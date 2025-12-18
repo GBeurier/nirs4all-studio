@@ -1,0 +1,269 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@layer base {
+  :root {
+    /* Light theme - Teal/Cyan scientific palette */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Teal/Cyan accent - scientific, modern */
+    --primary: 173 80% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 173 60% 30%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 11%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 173 80% 35%;
+
+    --radius: 0.75rem;
+
+    /* Custom tokens - light */
+    --glow-primary: 0 0 30px hsl(173 80% 35% / 0.1);
+    --glow-success: 0 0 20px hsl(142 76% 36% / 0.1);
+    --gradient-primary: linear-gradient(135deg, hsl(173 80% 35%), hsl(173 60% 30%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(210 40% 98%));
+    --gradient-sidebar: linear-gradient(180deg, hsl(210 40% 98%), hsl(210 40% 96%));
+
+    /* Glass effect - light */
+    --glass-bg: hsl(0 0% 100% / 0.8);
+    --glass-border: hsl(214 32% 91% / 0.8);
+
+    /* Sidebar - light */
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 222 47% 20%;
+    --sidebar-primary: 173 80% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 94%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 173 80% 35%;
+  }
+
+  .dark {
+    /* Core palette - Dark scientific theme */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 96%;
+
+    /* Teal/Cyan accent - scientific, modern */
+    --primary: 173 80% 45%;
+    --primary-foreground: 222 47% 6%;
+
+    --secondary: 222 30% 14%;
+    --secondary-foreground: 210 40% 90%;
+
+    --muted: 222 30% 12%;
+    --muted-foreground: 215 20% 55%;
+
+    --accent: 173 60% 35%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 76% 45%;
+    --success-foreground: 222 47% 6%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 6%;
+
+    --border: 222 30% 18%;
+    --input: 222 30% 16%;
+    --ring: 173 80% 45%;
+
+    /* Custom tokens - dark */
+    --glow-primary: 0 0 40px hsl(173 80% 45% / 0.15);
+    --glow-success: 0 0 30px hsl(142 76% 45% / 0.15);
+    --gradient-primary: linear-gradient(135deg, hsl(173 80% 45%), hsl(173 60% 35%));
+    --gradient-card: linear-gradient(145deg, hsl(222 47% 10%), hsl(222 47% 7%));
+    --gradient-sidebar: linear-gradient(180deg, hsl(222 47% 9%), hsl(222 47% 6%));
+
+    /* Glass effect - dark */
+    --glass-bg: hsl(222 47% 10% / 0.7);
+    --glass-border: hsl(222 30% 25% / 0.5);
+
+    /* Sidebar - dark */
+    --sidebar-background: 222 47% 7%;
+    --sidebar-foreground: 210 40% 85%;
+    --sidebar-primary: 173 80% 45%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 222 30% 14%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 30% 15%;
+    --sidebar-ring: 173 80% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  .font-mono {
+    font-family: "JetBrains Mono", monospace;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-xl border border-border/50;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+  }
+
+  .glow-primary {
+    box-shadow: var(--glow-primary);
+  }
+
+  .glow-success {
+    box-shadow: var(--glow-success);
+  }
+
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background: var(--gradient-primary);
+  }
+
+  .step-card {
+    @apply relative overflow-hidden rounded-lg border border-border/60 bg-card p-4 transition-all duration-300;
+  }
+
+  .step-card:hover {
+    @apply border-primary/40;
+    box-shadow: var(--glow-primary);
+  }
+
+  .data-grid {
+    @apply font-mono text-sm;
+  }
+
+  /* Stats card styling */
+  .stats-card {
+    @apply relative overflow-hidden rounded-xl border border-border/50 bg-card p-6 transition-all duration-300;
+  }
+
+  .stats-card:hover {
+    @apply border-primary/30;
+    box-shadow: var(--glow-primary);
+    transform: translateY(-2px);
+  }
+
+  /* Quick action card styling */
+  .action-card {
+    @apply flex flex-col items-center justify-center gap-3 rounded-xl border border-border/50 bg-card p-6 cursor-pointer transition-all duration-300;
+  }
+
+  .action-card:hover {
+    @apply border-primary/40 bg-primary/5;
+    box-shadow: var(--glow-primary);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .animate-pulse-glow {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%,
+    100% {
+      box-shadow: 0 0 20px hsl(173 80% 45% / 0.1);
+    }
+    50% {
+      box-shadow: 0 0 40px hsl(173 80% 45% / 0.25);
+    }
+  }
+}
+
+/* Custom scrollbar - adapts to theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}

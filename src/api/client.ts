@@ -1,0 +1,223 @@
+/**
+ * API client for nirs4all backend communication
+ */
+
+const API_BASE_URL = "/api";
+
+interface ApiError {
+  detail: string;
+  status: number;
+}
+
+class ApiClient {
+  private baseUrl: string;
+
+  constructor(baseUrl: string = API_BASE_URL) {
+    this.baseUrl = baseUrl;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+
+    const config: RequestInit = {
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+      ...options,
+    };
+
+    try {
+      const response = await fetch(url, config);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error: ApiError = {
+          detail: errorData.detail || `HTTP error ${response.status}`,
+          status: response.status,
+        };
+        throw error;
+      }
+
+      return await response.json();
+    } catch (error) {
+      if ((error as ApiError).status) {
+        throw error;
+      }
+      throw {
+        detail: error instanceof Error ? error.message : "Network error",
+        status: 0,
+      } as ApiError;
+    }
+  }
+
+  // GET request
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: "GET" });
+  }
+
+  // POST request
+  async post<T>(endpoint: string, data?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "POST",
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  // PUT request
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "PUT",
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  // DELETE request
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: "DELETE" });
+  }
+}
+
+export const api = new ApiClient();
+
+// Health check
+export async function checkHealth(): Promise<{ status: string }> {
+  return api.get("/health");
+}
+
+// Workspace API
+export interface WorkspaceResponse {
+  workspace: {
+    path: string;
+    name: string;
+    created_at: string;
+  } | null;
+  datasets: DatasetInfo[];
+}
+
+export interface DatasetInfo {
+  id: string;
+  name: string;
+  path: string;
+  samples?: number;
+  features?: number;
+  targets?: number;
+  config?: Record<string, unknown>;
+  group_id?: string;
+  created_at: string;
+}
+
+export interface GroupInfo {
+  id: string;
+  name: string;
+  color?: string;
+  created_at: string;
+}
+
+export async function getWorkspace(): Promise<WorkspaceResponse> {
+  return api.get("/workspace");
+}
+
+export async function selectWorkspace(
+  path: string,
+  persistGlobal: boolean = true
+): Promise<{ success: boolean; workspace: WorkspaceResponse["workspace"] }> {
+  return api.post("/workspace/select", { path, persist_global: persistGlobal });
+}
+
+export async function linkDataset(
+  path: string,
+  config?: Record<string, unknown>
+): Promise<{ success: boolean; dataset: DatasetInfo }> {
+  return api.post("/datasets/link", { path, config });
+}
+
+export async function unlinkDataset(
+  datasetId: string
+): Promise<{ success: boolean }> {
+  return api.delete(`/datasets/${datasetId}`);
+}
+
+export async function refreshDataset(
+  datasetId: string
+): Promise<{ success: boolean; dataset: DatasetInfo }> {
+  return api.post(`/datasets/${datasetId}/refresh`);
+}
+
+export async function getGroups(): Promise<{ groups: GroupInfo[] }> {
+  return api.get("/workspace/groups");
+}
+
+export async function createGroup(
+  name: string
+): Promise<{ success: boolean; group: GroupInfo }> {
+  return api.post("/workspace/groups", { name });
+}
+
+export async function deleteGroup(
+  groupId: string
+): Promise<{ success: boolean }> {
+  return api.delete(`/workspace/groups/${groupId}`);
+}
+
+// Pipeline API
+export interface PipelineInfo {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  steps: PipelineStep[];
+  created_at: string;
+  updated_at: string;
+  is_favorite?: boolean;
+}
+
+export interface PipelineStep {
+  id: string;
+  type: "preprocessing" | "splitting" | "model" | "metrics";
+  name: string;
+  params: Record<string, unknown>;
+}
+
+export async function listPipelines(): Promise<{ pipelines: PipelineInfo[] }> {
+  return api.get("/pipelines");
+}
+
+export async function getPipeline(id: string): Promise<PipelineInfo> {
+  return api.get(`/pipelines/${id}`);
+}
+
+export async function savePipeline(
+  pipeline: Partial<PipelineInfo>
+): Promise<{ success: boolean; pipeline: PipelineInfo }> {
+  if (pipeline.id) {
+    return api.put(`/pipelines/${pipeline.id}`, pipeline);
+  }
+  return api.post("/pipelines", pipeline);
+}
+
+export async function deletePipeline(
+  id: string
+): Promise<{ success: boolean }> {
+  return api.delete(`/pipelines/${id}`);
+}
+
+// Predictions API
+export interface PredictionRecord {
+  id: string;
+  dataset_name: string;
+  pipeline_name: string;
+  model_name: string;
+  run_id: string;
+  metrics: Record<string, number>;
+  created_at: string;
+}
+
+export async function listPredictions(): Promise<{
+  predictions: PredictionRecord[];
+}> {
+  return api.get("/predictions");
+}
