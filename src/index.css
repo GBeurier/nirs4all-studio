@@ -267,3 +267,34 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
 }
+
+/* Pipeline Editor - Drag and Drop styles */
+body.dragging {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+body.dragging * {
+  cursor: grabbing !important;
+}
+
+/* Smooth layout animations for pipeline nodes */
+.pipeline-node {
+  transition: transform 0.2s ease-out, opacity 0.15s ease-out;
+}
+
+/* Drop zone pulse animation */
+@keyframes dropZonePulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scaleX(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.drop-zone-active {
+  animation: dropZonePulse 1s ease-in-out infinite;
+}

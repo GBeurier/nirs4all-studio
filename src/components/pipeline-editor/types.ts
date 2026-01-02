@@ -1,6 +1,6 @@
 /**
  * Pipeline Editor Types
- * Based on spectral-workbench with additions from nirs4all_ui
+ * Tree-based pipeline structure with support for nested branches
  */
 
 export type StepType = "preprocessing" | "splitting" | "model" | "metrics" | "branch" | "merge";
@@ -10,7 +10,7 @@ export interface PipelineStep {
   type: StepType;
   name: string;
   params: Record<string, string | number | boolean>;
-  branches?: PipelineStep[][]; // For branching steps: list of pipelines
+  branches?: PipelineStep[][]; // For branching steps: list of parallel pipelines
 }
 
 export interface StepOption {
@@ -38,6 +38,24 @@ export interface SavedPipeline {
   last_modified: string;
   run_count?: number;
   last_run_status?: "success" | "failed" | "running";
+}
+
+// DnD Types
+export type DragItemType = "palette-item" | "pipeline-step";
+
+export interface DragData {
+  type: DragItemType;
+  stepType?: StepType;
+  option?: StepOption;
+  stepId?: string;
+  step?: PipelineStep;
+  sourcePath?: string[]; // Path to the step in the tree (for nested branches)
+}
+
+export interface DropIndicator {
+  path: string[]; // Path to the parent container
+  index: number; // Insert position
+  position: "before" | "after" | "inside"; // Where relative to the target
 }
 
 // Step options configuration (for component library)
@@ -109,52 +127,102 @@ export const stepTypeLabels: Record<StepType, string> = {
   splitting: "Splitting",
   model: "Models",
   metrics: "Metrics",
-  branch: "Flow Control",
-  merge: "Flow Control",
+  branch: "Branching",
+  merge: "Merge",
 };
 
 // Color configurations for step types
-export const stepColors: Record<StepType, { border: string; bg: string; hover: string; text: string; active: string }> = {
+export const stepColors: Record<StepType, {
+  border: string;
+  bg: string;
+  hover: string;
+  selected: string;
+  text: string;
+  active: string;
+  gradient: string;
+}> = {
   preprocessing: {
     border: "border-blue-500/30",
     bg: "bg-blue-500/5",
     hover: "hover:bg-blue-500/10 hover:border-blue-500/50",
+    selected: "bg-blue-500/10 border-blue-500/100",
     text: "text-blue-500",
     active: "ring-blue-500 border-blue-500",
+    gradient: "from-blue-500/20 to-blue-500/5",
   },
   splitting: {
     border: "border-purple-500/30",
     bg: "bg-purple-500/5",
     hover: "hover:bg-purple-500/10 hover:border-purple-500/50",
+    selected: "bg-purple-500/10 border-purple-500/100",
     text: "text-purple-500",
     active: "ring-purple-500 border-purple-500",
+    gradient: "from-purple-500/20 to-purple-500/5",
   },
   model: {
-    border: "border-primary/30",
-    bg: "bg-primary/5",
-    hover: "hover:bg-primary/10 hover:border-primary/50",
-    text: "text-primary",
-    active: "ring-primary border-primary",
+    border: "border-emerald-500/30",
+    bg: "bg-emerald-500/5",
+    hover: "hover:bg-emerald-500/10 hover:border-emerald-500/50",
+    selected: "bg-emerald-500/10 border-emerald-500/100",
+    text: "text-emerald-500",
+    active: "ring-emerald-500 border-emerald-500",
+    gradient: "from-emerald-500/20 to-emerald-500/5",
   },
   metrics: {
     border: "border-orange-500/30",
     bg: "bg-orange-500/5",
     hover: "hover:bg-orange-500/10 hover:border-orange-500/50",
+    selected: "bg-orange-500/10 border-orange-500/100",
     text: "text-orange-500",
     active: "ring-orange-500 border-orange-500",
+    gradient: "from-orange-500/20 to-orange-500/5",
   },
   branch: {
-    border: "border-slate-500/30",
-    bg: "bg-slate-500/5",
-    hover: "hover:bg-slate-500/10 hover:border-slate-500/50",
-    text: "text-slate-500",
-    active: "ring-slate-500 border-slate-500",
+    border: "border-cyan-500/30",
+    bg: "bg-cyan-500/5",
+    hover: "hover:bg-cyan-500/10 hover:border-cyan-500/50",
+    selected: "bg-cyan-500/10 border-cyan-500/100",
+    text: "text-cyan-500",
+    active: "ring-cyan-500 border-cyan-500",
+    gradient: "from-cyan-500/20 to-cyan-500/5",
   },
   merge: {
-    border: "border-slate-500/30",
-    bg: "bg-slate-500/5",
-    hover: "hover:bg-slate-500/10 hover:border-slate-500/50",
-    text: "text-slate-500",
-    active: "ring-slate-500 border-slate-500",
+    border: "border-pink-500/30",
+    bg: "bg-pink-500/5",
+    hover: "hover:bg-pink-500/10 hover:border-pink-500/50",
+    selected: "bg-pink-500/10 border-pink-500/100",
+    text: "text-pink-500",
+    active: "ring-pink-500 border-pink-500",
+    gradient: "from-pink-500/20 to-pink-500/5",
   },
 };
+
+// Utility to generate unique IDs
+export function generateStepId(): string {
+  return `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Utility to create a step from an option
+export function createStepFromOption(type: StepType, option: StepOption): PipelineStep {
+  return {
+    id: generateStepId(),
+    type,
+    name: option.name,
+    params: { ...option.defaultParams },
+    branches: option.defaultBranches
+      ? JSON.parse(JSON.stringify(option.defaultBranches))
+      : undefined,
+  };
+}
+
+// Deep clone a step (including branches)
+export function cloneStep(step: PipelineStep): PipelineStep {
+  return {
+    ...step,
+    id: generateStepId(),
+    params: { ...step.params },
+    branches: step.branches?.map(branch =>
+      branch.map(s => cloneStep(s))
+    ),
+  };
+}

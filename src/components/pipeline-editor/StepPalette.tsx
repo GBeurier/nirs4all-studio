@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import {
   Waves,
   Shuffle,
@@ -11,7 +10,9 @@ import {
   ChevronRight,
   GitBranch,
   GitMerge,
+  GripVertical,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -20,6 +21,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { usePipelineDnd } from "./PipelineDndContext";
 import {
   stepOptions,
   stepTypeLabels,
@@ -44,10 +46,12 @@ interface DraggableStepProps {
 }
 
 function DraggableStep({ stepType, option, onDoubleClick }: DraggableStepProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { isDragging: globalIsDragging } = usePipelineDnd();
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `palette-${stepType}-${option.name}`,
     data: {
-      type: "palette-item",
+      type: "palette-item" as const,
       stepType,
       option,
     },
@@ -56,28 +60,37 @@ function DraggableStep({ stepType, option, onDoubleClick }: DraggableStepProps) 
   const Icon = stepIcons[stepType];
   const colors = stepColors[stepType];
 
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.5 : 1,
-  };
-
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
-      style={style}
       {...listeners}
       {...attributes}
       onDoubleClick={onDoubleClick}
-      className={`flex items-center gap-3 p-3 rounded-lg border cursor-grab active:cursor-grabbing transition-all ${colors.border} ${colors.bg} ${colors.hover} ${
-        isDragging ? "ring-2 ring-primary shadow-lg scale-105" : ""
-      }`}
+      layout
+      initial={false}
+      animate={{
+        opacity: isDragging ? 0.4 : 1,
+        scale: isDragging ? 0.98 : 1,
+      }}
+      whileHover={!globalIsDragging ? { scale: 1.01, y: -1 } : {}}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.15 }}
+      className={`
+        flex items-center gap-2 p-2 rounded-md border cursor-grab active:cursor-grabbing
+        transition-colors select-none overflow-hidden
+        ${colors.border} ${colors.bg} ${colors.hover}
+        ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
+      `}
     >
-      <Icon className={`h-4 w-4 flex-shrink-0 ${colors.text}`} />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground truncate">{option.name}</p>
-        <p className="text-xs text-muted-foreground truncate">{option.description}</p>
+      <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/50" />
+      <div className={`p-1 rounded ${colors.bg} ${colors.text} flex-shrink-0`}>
+        <Icon className="h-3 w-3" />
       </div>
-    </div>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
+        <p className="text-[10px] text-muted-foreground truncate leading-tight">{option.description}</p>
+      </div>
+    </motion.div>
   );
 }
 
@@ -87,14 +100,7 @@ interface StepPaletteProps {
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
-  const [openSections, setOpenSections] = useState<Record<StepType, boolean>>({
-    preprocessing: true,
-    splitting: true,
-    model: true,
-    metrics: true,
-    branch: true,
-    merge: true,
-  });
+  const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
 
   const filteredOptions = useCallback(
     (type: StepType) =>
@@ -106,8 +112,44 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     [search]
   );
 
+  // When search changes, open all sections that have matches
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (value.trim()) {
+      // Open all sections that have matching results
+      const matchingSections = new Set<StepType>();
+      (Object.keys(stepOptions) as StepType[]).forEach((type) => {
+        const matches = stepOptions[type].filter(
+          (opt) =>
+            opt.name.toLowerCase().includes(value.toLowerCase()) ||
+            opt.description.toLowerCase().includes(value.toLowerCase())
+        );
+        if (matches.length > 0) {
+          matchingSections.add(type);
+        }
+      });
+      setOpenSections(matchingSections);
+    }
+  };
+
   const toggleSection = (type: StepType) => {
-    setOpenSections((prev) => ({ ...prev, [type]: !prev[type] }));
+    setOpenSections((prev) => {
+      // If search is active, allow multiple sections
+      if (search) {
+        const next = new Set(prev);
+        if (next.has(type)) {
+          next.delete(type);
+        } else {
+          next.add(type);
+        }
+        return next;
+      }
+      // Otherwise, exclusive mode - only one section open at a time
+      if (prev.has(type)) {
+        return new Set<StepType>();
+      }
+      return new Set<StepType>([type]);
+    });
   };
 
   const totalSteps = useMemo(
@@ -134,7 +176,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
           <Input
             placeholder="Search components..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -155,27 +197,27 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
             return (
               <Collapsible
                 key={type}
-                open={openSections[type]}
+                open={openSections.has(type)}
                 onOpenChange={() => toggleSection(type)}
               >
-                <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-2 hover:bg-muted/50 rounded px-2 -mx-2 transition-colors">
-                  {openSections[type] ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-1.5 hover:bg-muted/50 rounded px-2 -mx-2 transition-colors">
+                  {openSections.has(type) ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   )}
-                  <div className={`p-1.5 rounded ${colors.bg}`}>
-                    <Icon className={`h-3.5 w-3.5 ${colors.text}`} />
+                  <div className={`p-1 rounded ${colors.bg} flex-shrink-0`}>
+                    <Icon className={`h-3 w-3 ${colors.text}`} />
                   </div>
-                  <span className="font-medium text-sm text-foreground flex-1">
+                  <span className="font-medium text-xs text-foreground flex-1 truncate">
                     {stepTypeLabels[type]}
                   </span>
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">
                     {options.length}
                   </Badge>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <div className="space-y-2 pl-6">
+                <CollapsibleContent className="pt-1">
+                  <div className="space-y-1 pl-5">
                     {options.map((option) => (
                       <DraggableStep
                         key={option.name}

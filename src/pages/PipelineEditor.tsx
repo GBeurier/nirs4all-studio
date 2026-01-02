@@ -1,16 +1,4 @@
-import { useState } from "react";
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { useState, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -56,10 +44,11 @@ import { toast } from "sonner";
 import { usePipelineEditor } from "@/hooks/usePipelineEditor";
 import {
   StepPalette,
-  PipelineCanvas,
+  PipelineTree,
   StepConfigPanel,
+  PipelineDndProvider,
 } from "@/components/pipeline-editor";
-import type { StepType, StepOption } from "@/components/pipeline-editor/types";
+import type { StepType, StepOption, DragData, DropIndicator } from "@/components/pipeline-editor/types";
 
 // Demo pipeline for testing
 const demoPipeline = [
@@ -92,7 +81,6 @@ export default function PipelineEditor() {
   const isNew = !id || id === "new";
 
   const [showClearDialog, setShowClearDialog] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
 
   // Initialize with demo pipeline if editing, empty if new
   const {
@@ -112,8 +100,11 @@ export default function PipelineEditor() {
     removeStep,
     duplicateStep,
     moveStep,
-    reorderSteps,
     updateStep,
+    addBranch,
+    removeBranch,
+    handleDrop,
+    handleReorder,
     undo,
     redo,
     getSelectedStep,
@@ -124,45 +115,18 @@ export default function PipelineEditor() {
     initialName: isNew ? "New Pipeline" : "SNV + SG → PLS",
   });
 
-  // DnD sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // Drag handlers
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-
-    if (!over) return;
-
-    // Handle dropping from palette
-    if (active.data.current?.type === "palette-item") {
-      const { stepType, option } = active.data.current as {
-        stepType: StepType;
-        option: StepOption;
-      };
-      addStep(stepType, option);
-      toast.success(`${option.name} added to pipeline`);
-      return;
+  // Handle drop from DnD context
+  const onDrop = useCallback((data: DragData, indicator: DropIndicator) => {
+    handleDrop(data, indicator);
+    if (data.type === "palette-item" && data.option) {
+      toast.success(`${data.option.name} added to pipeline`);
     }
+  }, [handleDrop]);
 
-    // Handle reordering
-    if (active.id !== over.id) {
-      reorderSteps(active.id as string, over.id as string);
-    }
-  };
+  // Handle reorder from DnD context
+  const onReorder = useCallback((activeId: string, overId: string, data: DragData) => {
+    handleReorder(activeId, overId, data);
+  }, [handleReorder]);
 
   // Actions
   const handleSave = () => {
@@ -203,12 +167,7 @@ export default function PipelineEditor() {
 
   return (
     <TooltipProvider>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
+      <PipelineDndProvider onDrop={onDrop} onReorder={onReorder}>
         <motion.div
           className="h-full flex flex-col"
           initial={{ opacity: 0 }}
@@ -344,22 +303,22 @@ export default function PipelineEditor() {
                   >
                     <div className="space-y-1 text-xs">
                       <p>
-                        <kbd className="px-1 bg-muted rounded">Ctrl+Z</kbd> Undo
+                        <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-foreground font-mono text-[10px]">Ctrl+Z</kbd> Undo
                       </p>
                       <p>
-                        <kbd className="px-1 bg-muted rounded">Ctrl+Shift+Z</kbd>{" "}
+                        <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-foreground font-mono text-[10px]">Ctrl+Shift+Z</kbd>{" "}
                         Redo
                       </p>
                       <p>
-                        <kbd className="px-1 bg-muted rounded">Ctrl+D</kbd>{" "}
+                        <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-foreground font-mono text-[10px]">Ctrl+D</kbd>{" "}
                         Duplicate
                       </p>
                       <p>
-                        <kbd className="px-1 bg-muted rounded">Del</kbd> Delete
+                        <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-foreground font-mono text-[10px]">Del</kbd> Delete
                         selected
                       </p>
                       <p>
-                        <kbd className="px-1 bg-muted rounded">Esc</kbd>{" "}
+                        <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-foreground font-mono text-[10px]">Esc</kbd>{" "}
                         Deselect
                       </p>
                     </div>
@@ -442,14 +401,15 @@ export default function PipelineEditor() {
               <StepPalette onAddStep={addStep} />
             </div>
 
-            {/* Center: Pipeline Canvas */}
-            <PipelineCanvas
+            {/* Center: Pipeline Tree */}
+            <PipelineTree
               steps={steps}
               selectedStepId={selectedStepId}
               onSelectStep={setSelectedStepId}
               onRemoveStep={removeStep}
               onDuplicateStep={duplicateStep}
-              onMoveStep={moveStep}
+              onAddBranch={addBranch}
+              onRemoveBranch={removeBranch}
             />
 
             {/* Right Panel: Configuration */}
@@ -463,18 +423,7 @@ export default function PipelineEditor() {
             </div>
           </div>
         </motion.div>
-
-        {/* Drag Overlay */}
-        <DragOverlay>
-          {activeId && activeId.startsWith("palette-") ? (
-            <div className="p-4 rounded-lg border-2 border-primary bg-card shadow-2xl opacity-90">
-              <span className="font-medium text-foreground">
-                Drop to add step
-              </span>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      </PipelineDndProvider>
 
       {/* Clear Confirmation Dialog */}
       <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>

@@ -13,6 +13,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ const mainNavItems: NavItem[] = [
 
 const workflowNavItems: NavItem[] = [
   { title: "Pipelines", href: "/pipelines", icon: GitBranch },
+  { title: "New Pipeline", href: "/pipelines/new", icon: Plus },
   { title: "Runs", href: "/runs", icon: Play },
 ];
 
@@ -55,6 +57,15 @@ export function AppSidebar() {
   const isActive = (href: string) => {
     if (href === "/") {
       return location.pathname === "/";
+    }
+    // Exact match for specific sub-routes
+    if (href === "/pipelines/new") {
+      return location.pathname === "/pipelines/new";
+    }
+    // For parent routes, don't match if we're on a child route that has its own menu item
+    if (href === "/pipelines") {
+      return location.pathname === "/pipelines" ||
+        (location.pathname.startsWith("/pipelines") && location.pathname !== "/pipelines/new");
     }
     return location.pathname.startsWith(href);
   };

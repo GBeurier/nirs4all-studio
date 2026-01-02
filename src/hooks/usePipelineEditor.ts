@@ -1,6 +1,13 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
-import type { PipelineStep, StepType, StepOption } from "../components/pipeline-editor/types";
+import type {
+  PipelineStep,
+  StepType,
+  StepOption,
+  DragData,
+  DropIndicator
+} from "../components/pipeline-editor/types";
+import { createStepFromOption, cloneStep } from "../components/pipeline-editor/types";
 
 interface UsePipelineEditorOptions {
   initialSteps?: PipelineStep[];
@@ -31,11 +38,20 @@ interface UsePipelineEditorReturn {
 
   // Step operations
   addStep: (type: StepType, option: StepOption) => void;
-  removeStep: (id: string) => void;
-  duplicateStep: (id: string) => void;
-  moveStep: (id: string, direction: "up" | "down") => void;
+  addStepAtPath: (type: StepType, option: StepOption, path: string[], index: number) => void;
+  removeStep: (id: string, path?: string[]) => void;
+  duplicateStep: (id: string, path?: string[]) => void;
+  moveStep: (id: string, direction: "up" | "down", path?: string[]) => void;
   reorderSteps: (activeId: string, overId: string) => void;
   updateStep: (id: string, updates: Partial<PipelineStep>) => void;
+
+  // Branch operations
+  addBranch: (stepId: string) => void;
+  removeBranch: (stepId: string, branchIndex: number) => void;
+
+  // DnD handlers
+  handleDrop: (data: DragData, indicator: DropIndicator) => void;
+  handleReorder: (activeId: string, overId: string, data: DragData) => void;
 
   // History
   undo: () => void;
@@ -46,6 +62,103 @@ interface UsePipelineEditorReturn {
   clearPipeline: () => void;
   loadPipeline: (steps: PipelineStep[], name?: string) => void;
   exportPipeline: () => { name: string; steps: PipelineStep[] };
+}
+
+// Helper to find step by path
+function getStepsAtPath(steps: PipelineStep[], path: string[]): PipelineStep[] {
+  if (path.length === 0) return steps;
+
+  const [stepId, type, indexStr, ...rest] = path;
+  const step = steps.find(s => s.id === stepId);
+
+  if (!step) return [];
+  if (type === "branch" && step.branches) {
+    const branchIndex = parseInt(indexStr, 10);
+    if (branchIndex >= 0 && branchIndex < step.branches.length) {
+      return getStepsAtPath(step.branches[branchIndex], rest);
+    }
+  }
+  return [];
+}
+
+// Helper to update steps at a specific path
+function updateStepsAtPath(
+  steps: PipelineStep[],
+  path: string[],
+  updater: (steps: PipelineStep[]) => PipelineStep[]
+): PipelineStep[] {
+  if (path.length === 0) {
+    return updater(steps);
+  }
+
+  const [stepId, type, indexStr, ...rest] = path;
+
+  return steps.map(step => {
+    if (step.id !== stepId) return step;
+
+    if (type === "branch" && step.branches) {
+      const branchIndex = parseInt(indexStr, 10);
+      return {
+        ...step,
+        branches: step.branches.map((branch, idx) =>
+          idx === branchIndex
+            ? updateStepsAtPath(branch, rest, updater)
+            : branch
+        ),
+      };
+    }
+    return step;
+  });
+}
+
+// Count steps recursively
+function countStepsRecursive(steps: PipelineStep[]): Record<StepType, number> {
+  const counts: Record<StepType, number> = {
+    preprocessing: 0,
+    splitting: 0,
+    model: 0,
+    metrics: 0,
+    branch: 0,
+    merge: 0,
+  };
+
+  for (const step of steps) {
+    counts[step.type]++;
+    if (step.branches) {
+      for (const branch of step.branches) {
+        const branchCounts = countStepsRecursive(branch);
+        for (const type of Object.keys(branchCounts) as StepType[]) {
+          counts[type] += branchCounts[type];
+        }
+      }
+    }
+  }
+
+  return counts;
+}
+
+// Find step by ID recursively
+function findStepById(steps: PipelineStep[], id: string): PipelineStep | null {
+  for (const step of steps) {
+    if (step.id === id) return step;
+    if (step.branches) {
+      for (const branch of step.branches) {
+        const found = findStepById(branch, id);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+
+// Remove step by ID recursively
+function removeStepById(steps: PipelineStep[], id: string): PipelineStep[] {
+  return steps
+    .filter(step => step.id !== id)
+    .map(step => ({
+      ...step,
+      branches: step.branches?.map(branch => removeStepById(branch, id)),
+    }));
 }
 
 export function usePipelineEditor(
@@ -72,25 +185,18 @@ export function usePipelineEditor(
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
 
-  const stepCounts = useMemo(() => ({
-    preprocessing: steps.filter((s) => s.type === "preprocessing").length,
-    splitting: steps.filter((s) => s.type === "splitting").length,
-    model: steps.filter((s) => s.type === "model").length,
-    metrics: steps.filter((s) => s.type === "metrics").length,
-    branch: steps.filter((s) => s.type === "branch").length,
-    merge: steps.filter((s) => s.type === "merge").length,
-  }), [steps]);
+  const stepCounts = useMemo(() => countStepsRecursive(steps), [steps]);
 
-  const totalSteps = steps.length;
+  const totalSteps = useMemo(() => {
+    return Object.values(stepCounts).reduce((a, b) => a + b, 0);
+  }, [stepCounts]);
 
   // Push to history
   const pushToHistory = useCallback(
     (newSteps: PipelineStep[]) => {
       setHistory((prev) => {
-        // Remove any future history when making a new change
         const newHistory = prev.slice(0, historyIndex + 1);
         newHistory.push(newSteps);
-        // Limit history size
         if (newHistory.length > maxHistorySize) {
           newHistory.shift();
           return newHistory;
@@ -121,16 +227,10 @@ export function usePipelineEditor(
     }
   }, [history, historyIndex]);
 
-  // Add step
+  // Add step to root
   const addStep = useCallback(
     (type: StepType, option: StepOption) => {
-      const newStep: PipelineStep = {
-        id: `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        type,
-        name: option.name,
-        params: { ...option.defaultParams },
-        branches: option.defaultBranches ? JSON.parse(JSON.stringify(option.defaultBranches)) : undefined,
-      };
+      const newStep = createStepFromOption(type, option);
       const newSteps = [...steps, newStep];
       setSteps(newSteps);
       pushToHistory(newSteps);
@@ -139,10 +239,38 @@ export function usePipelineEditor(
     [steps, pushToHistory]
   );
 
-  // Remove step
+  // Add step at a specific path and index
+  const addStepAtPath = useCallback(
+    (type: StepType, option: StepOption, path: string[], index: number) => {
+      const newStep = createStepFromOption(type, option);
+
+      const newSteps = updateStepsAtPath(steps, path, (targetSteps) => {
+        const result = [...targetSteps];
+        result.splice(index, 0, newStep);
+        return result;
+      });
+
+      setSteps(newSteps);
+      pushToHistory(newSteps);
+      setSelectedStepId(newStep.id);
+    },
+    [steps, pushToHistory]
+  );
+
+  // Remove step (with optional path for nested steps)
   const removeStep = useCallback(
-    (id: string) => {
-      const newSteps = steps.filter((s) => s.id !== id);
+    (id: string, path?: string[]) => {
+      let newSteps: PipelineStep[];
+
+      if (path && path.length > 0) {
+        newSteps = updateStepsAtPath(steps, path, (targetSteps) =>
+          targetSteps.filter(s => s.id !== id)
+        );
+      } else {
+        // Remove from root, but also check nested
+        newSteps = removeStepById(steps, id);
+      }
+
       setSteps(newSteps);
       pushToHistory(newSteps);
       if (selectedStepId === id) {
@@ -154,24 +282,35 @@ export function usePipelineEditor(
 
   // Duplicate step
   const duplicateStep = useCallback(
-    (id: string) => {
-      const stepIndex = steps.findIndex((s) => s.id === id);
-      if (stepIndex === -1) return;
+    (id: string, path?: string[]) => {
+      const step = findStepById(steps, id);
+      if (!step) return;
 
-      const step = steps[stepIndex];
-      const newStep: PipelineStep = {
-        ...step,
-        id: `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        params: { ...step.params },
-      };
+      const newStep = cloneStep(step);
 
-      const newSteps = [
-        ...steps.slice(0, stepIndex + 1),
-        newStep,
-        ...steps.slice(stepIndex + 1),
-      ];
-      setSteps(newSteps);
-      pushToHistory(newSteps);
+      if (path && path.length > 0) {
+        const newSteps = updateStepsAtPath(steps, path, (targetSteps) => {
+          const idx = targetSteps.findIndex(s => s.id === id);
+          if (idx === -1) return targetSteps;
+          const result = [...targetSteps];
+          result.splice(idx + 1, 0, newStep);
+          return result;
+        });
+        setSteps(newSteps);
+        pushToHistory(newSteps);
+      } else {
+        const stepIndex = steps.findIndex(s => s.id === id);
+        if (stepIndex === -1) return;
+
+        const newSteps = [
+          ...steps.slice(0, stepIndex + 1),
+          newStep,
+          ...steps.slice(stepIndex + 1),
+        ];
+        setSteps(newSteps);
+        pushToHistory(newSteps);
+      }
+
       setSelectedStepId(newStep.id);
     },
     [steps, pushToHistory]
@@ -179,27 +318,41 @@ export function usePipelineEditor(
 
   // Move step up/down
   const moveStep = useCallback(
-    (id: string, direction: "up" | "down") => {
-      const oldIndex = steps.findIndex((s) => s.id === id);
-      if (oldIndex === -1) return;
+    (id: string, direction: "up" | "down", path?: string[]) => {
+      if (path && path.length > 0) {
+        const newSteps = updateStepsAtPath(steps, path, (targetSteps) => {
+          const oldIndex = targetSteps.findIndex(s => s.id === id);
+          if (oldIndex === -1) return targetSteps;
 
-      const newIndex = direction === "up" ? oldIndex - 1 : oldIndex + 1;
-      if (newIndex < 0 || newIndex >= steps.length) return;
+          const newIndex = direction === "up" ? oldIndex - 1 : oldIndex + 1;
+          if (newIndex < 0 || newIndex >= targetSteps.length) return targetSteps;
 
-      const newSteps = arrayMove(steps, oldIndex, newIndex);
-      setSteps(newSteps);
-      pushToHistory(newSteps);
+          return arrayMove(targetSteps, oldIndex, newIndex);
+        });
+        setSteps(newSteps);
+        pushToHistory(newSteps);
+      } else {
+        const oldIndex = steps.findIndex(s => s.id === id);
+        if (oldIndex === -1) return;
+
+        const newIndex = direction === "up" ? oldIndex - 1 : oldIndex + 1;
+        if (newIndex < 0 || newIndex >= steps.length) return;
+
+        const newSteps = arrayMove(steps, oldIndex, newIndex);
+        setSteps(newSteps);
+        pushToHistory(newSteps);
+      }
     },
     [steps, pushToHistory]
   );
 
-  // Reorder steps (drag and drop)
+  // Reorder steps (simple case - same level)
   const reorderSteps = useCallback(
     (activeId: string, overId: string) => {
       if (activeId === overId) return;
 
-      const oldIndex = steps.findIndex((s) => s.id === activeId);
-      const newIndex = steps.findIndex((s) => s.id === overId);
+      const oldIndex = steps.findIndex(s => s.id === activeId);
+      const newIndex = steps.findIndex(s => s.id === overId);
 
       if (oldIndex !== -1 && newIndex !== -1) {
         const newSteps = arrayMove(steps, oldIndex, newIndex);
@@ -210,11 +363,62 @@ export function usePipelineEditor(
     [steps, pushToHistory]
   );
 
-  // Update step
+  // Update step properties
   const updateStep = useCallback(
     (id: string, updates: Partial<PipelineStep>) => {
-      const newSteps = steps.map((s) =>
-        s.id === id ? { ...s, ...updates } : s
+      const updateRecursive = (stepsArray: PipelineStep[]): PipelineStep[] => {
+        return stepsArray.map(s => {
+          if (s.id === id) {
+            return { ...s, ...updates };
+          }
+          if (s.branches) {
+            return {
+              ...s,
+              branches: s.branches.map(branch => updateRecursive(branch)),
+            };
+          }
+          return s;
+        });
+      };
+
+      const newSteps = updateRecursive(steps);
+      setSteps(newSteps);
+      pushToHistory(newSteps);
+    },
+    [steps, pushToHistory]
+  );
+
+  // Add a new branch to a branch step
+  const addBranch = useCallback(
+    (stepId: string) => {
+      const newSteps = steps.map(s => {
+        if (s.id === stepId && s.type === "branch" && s.branches) {
+          return {
+            ...s,
+            branches: [...s.branches, []],
+          };
+        }
+        return s;
+      });
+      setSteps(newSteps);
+      pushToHistory(newSteps);
+    },
+    [steps, pushToHistory]
+  );
+
+  // Remove a branch from a branch step
+  const removeBranch = useCallback(
+    (stepId: string, branchIndex: number, path?: string[]) => {
+      const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
+        targetSteps.map((s) => {
+          if (s.id === stepId && s.type === "branch" && s.branches && s.branches.length > 1) {
+            return {
+              ...s,
+              branches: s.branches.filter((_, idx) => idx !== branchIndex),
+            };
+          }
+          return s;
+        })
       );
       setSteps(newSteps);
       pushToHistory(newSteps);
@@ -222,9 +426,53 @@ export function usePipelineEditor(
     [steps, pushToHistory]
   );
 
-  // Get selected step
+  // Handle drop from palette or reorder
+  const handleDrop = useCallback(
+    (data: DragData, indicator: DropIndicator) => {
+      if (data.type === "palette-item" && data.stepType && data.option) {
+        addStepAtPath(data.stepType, data.option, indicator.path, indicator.index);
+      } else if (data.type === "pipeline-step" && data.stepId && data.step) {
+        // Moving an existing step
+        const newStep = cloneStep(data.step);
+
+        // First remove from old location
+        let newSteps = removeStepById(steps, data.stepId);
+
+        // Then add at new location
+        newSteps = updateStepsAtPath(newSteps, indicator.path, (targetSteps) => {
+          const result = [...targetSteps];
+          result.splice(indicator.index, 0, { ...data.step!, id: data.stepId! });
+          return result;
+        });
+
+        setSteps(newSteps);
+        pushToHistory(newSteps);
+      }
+    },
+    [steps, pushToHistory, addStepAtPath]
+  );
+
+  // Handle reorder within same level
+  const handleReorder = useCallback(
+    (activeId: string, overId: string, data: DragData) => {
+      if (activeId === overId) return;
+
+      // Simple case: both at root level
+      const oldIndex = steps.findIndex(s => s.id === activeId);
+      const newIndex = steps.findIndex(s => s.id === overId);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newSteps = arrayMove(steps, oldIndex, newIndex);
+        setSteps(newSteps);
+        pushToHistory(newSteps);
+      }
+    },
+    [steps, pushToHistory]
+  );
+
+  // Get selected step (recursive search)
   const getSelectedStep = useCallback(
-    () => steps.find((s) => s.id === selectedStepId) || null,
+    () => findStepById(steps, selectedStepId || ""),
     [steps, selectedStepId]
   );
 
@@ -252,7 +500,7 @@ export function usePipelineEditor(
   const exportPipeline = useCallback(
     () => ({
       name: pipelineName,
-      steps: steps.map((s) => ({ ...s })),
+      steps: JSON.parse(JSON.stringify(steps)),
     }),
     [pipelineName, steps]
   );
@@ -260,7 +508,6 @@ export function usePipelineEditor(
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in input/textarea
       const activeElement = document.activeElement;
       if (
         activeElement?.tagName === "INPUT" ||
@@ -269,13 +516,11 @@ export function usePipelineEditor(
         return;
       }
 
-      // Undo: Ctrl+Z
       if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         undo();
       }
 
-      // Redo: Ctrl+Shift+Z or Ctrl+Y
       if (
         (e.metaKey || e.ctrlKey) &&
         (e.key === "y" || (e.key === "z" && e.shiftKey))
@@ -284,18 +529,15 @@ export function usePipelineEditor(
         redo();
       }
 
-      // Delete selected step: Delete or Backspace
       if ((e.key === "Delete" || e.key === "Backspace") && selectedStepId) {
         e.preventDefault();
         removeStep(selectedStepId);
       }
 
-      // Escape to deselect
       if (e.key === "Escape") {
         setSelectedStepId(null);
       }
 
-      // D to duplicate selected step
       if (e.key === "d" && (e.metaKey || e.ctrlKey) && selectedStepId) {
         e.preventDefault();
         duplicateStep(selectedStepId);
@@ -329,11 +571,20 @@ export function usePipelineEditor(
 
     // Step operations
     addStep,
+    addStepAtPath,
     removeStep,
     duplicateStep,
     moveStep,
     reorderSteps,
     updateStep,
+
+    // Branch operations
+    addBranch,
+    removeBranch,
+
+    // DnD handlers
+    handleDrop,
+    handleReorder,
 
     // History
     undo,
