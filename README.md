@@ -31,9 +31,37 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (recommended: use `nvm` + the version in `.nvmrc`)
 - Python 3.11+
 - nirs4all library (optional for UI development)
+
+### WSL (recommended on Windows)
+
+If you're using WSL, make sure you're using Linux `node`/`npm` (not the Windows ones mounted under `/mnt/c`).
+
+1. **One-time: permanently disable Windows PATH injection into WSL** (prevents UNC/cmd.exe install failures):
+   ```bash
+   sudo tee /etc/wsl.conf <<'EOF'
+   [interop]
+   appendWindowsPath=false
+   EOF
+   ```
+   Then restart WSL from Windows:
+   ```powershell
+   wsl.exe --shutdown
+   ```
+
+2. **Install/use Node via nvm (WSL-native):**
+   ```bash
+   npm run setup:wsl
+   nvm use
+   ```
+
+Quick check (should NOT point to `/mnt/c/...`):
+```bash
+which node
+which npm
+```
 
 ### Development Setup
 

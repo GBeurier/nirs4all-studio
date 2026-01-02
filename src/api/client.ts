@@ -163,6 +163,72 @@ export async function deleteGroup(
   return api.delete(`/workspace/groups/${groupId}`);
 }
 
+export async function renameGroup(
+  groupId: string,
+  newName: string
+): Promise<{ success: boolean }> {
+  return api.put(`/workspace/groups/${groupId}`, { name: newName });
+}
+
+export async function addDatasetToGroup(
+  groupId: string,
+  datasetId: string
+): Promise<{ success: boolean }> {
+  return api.post(`/workspace/groups/${groupId}/datasets`, {
+    dataset_id: datasetId,
+  });
+}
+
+export async function removeDatasetFromGroup(
+  groupId: string,
+  datasetId: string
+): Promise<{ success: boolean }> {
+  return api.delete(`/workspace/groups/${groupId}/datasets/${datasetId}`);
+}
+
+// Dataset API - Extended
+import type {
+  Dataset,
+  DatasetGroup,
+  DatasetConfig,
+  DatasetStats,
+  DatasetListResponse,
+  ExportConfig,
+} from "@/types/datasets";
+
+export async function listDatasets(): Promise<DatasetListResponse> {
+  return api.get("/datasets");
+}
+
+export async function getDataset(datasetId: string): Promise<{ dataset: Dataset }> {
+  return api.get(`/datasets/${datasetId}`);
+}
+
+export async function updateDatasetConfig(
+  datasetId: string,
+  config: Partial<DatasetConfig>
+): Promise<{ success: boolean; dataset: Dataset }> {
+  return api.put(`/datasets/${datasetId}`, { config });
+}
+
+export async function getDatasetStats(
+  datasetId: string,
+  partition: string = "train"
+): Promise<DatasetStats> {
+  return api.get(`/datasets/${datasetId}/stats?partition=${partition}`);
+}
+
+export async function exportDataset(
+  datasetId: string,
+  config: ExportConfig
+): Promise<{ success: boolean; export_path: string }> {
+  return api.post(`/datasets/${datasetId}/export`, config);
+}
+
+export async function listGroups(): Promise<{ groups: DatasetGroup[] }> {
+  return api.get("/workspace/groups");
+}
+
 // Pipeline API
 export interface PipelineInfo {
   id: string;
@@ -220,4 +286,56 @@ export async function listPredictions(): Promise<{
   predictions: PredictionRecord[];
 }> {
   return api.get("/predictions");
+}
+
+// Runs API
+import type {
+  Run,
+  RunListResponse,
+  RunStatsResponse,
+  RunActionResponse,
+  ExperimentConfig,
+} from "@/types/runs";
+
+export async function listRuns(): Promise<RunListResponse> {
+  return api.get("/runs");
+}
+
+export async function getRun(runId: string): Promise<Run> {
+  return api.get(`/runs/${runId}`);
+}
+
+export async function getRunStats(): Promise<RunStatsResponse> {
+  return api.get("/runs/stats");
+}
+
+export async function createRun(config: ExperimentConfig): Promise<Run> {
+  return api.post("/runs", { config });
+}
+
+export async function stopRun(runId: string): Promise<RunActionResponse> {
+  return api.post(`/runs/${runId}/stop`);
+}
+
+export async function pauseRun(runId: string): Promise<RunActionResponse> {
+  return api.post(`/runs/${runId}/pause`);
+}
+
+export async function resumeRun(runId: string): Promise<RunActionResponse> {
+  return api.post(`/runs/${runId}/resume`);
+}
+
+export async function retryRun(runId: string): Promise<Run> {
+  return api.post(`/runs/${runId}/retry`);
+}
+
+export async function deleteRun(runId: string): Promise<RunActionResponse> {
+  return api.delete(`/runs/${runId}`);
+}
+
+export async function getPipelineLogs(
+  runId: string,
+  pipelineId: string
+): Promise<{ pipeline_id: string; logs: string[] }> {
+  return api.get(`/runs/${runId}/logs/${pipelineId}`);
 }

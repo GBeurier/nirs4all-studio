@@ -1,15 +1,62 @@
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Database, Plus, Search, FolderOpen, RefreshCw } from "lucide-react";
+import {
+  Database,
+  Plus,
+  Search,
+  FolderOpen,
+  RefreshCw,
+  LayoutGrid,
+  List,
+  Filter,
+  Tags,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DatasetCard,
+  AddDatasetModal,
+  EditDatasetModal,
+  GroupsModal,
+} from "@/components/datasets";
+import {
+  listDatasets,
+  linkDataset,
+  unlinkDataset,
+  refreshDataset,
+  updateDatasetConfig,
+  listGroups,
+  createGroup,
+  renameGroup,
+  deleteGroup,
+  addDatasetToGroup,
+  removeDatasetFromGroup,
+  getWorkspace,
+  selectWorkspace,
+} from "@/api/client";
+import { selectFolder } from "@/utils/fileDialogs";
+import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 },
+    transition: { staggerChildren: 0.05 },
   },
 };
 
@@ -18,8 +65,181 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-// Placeholder component for datasets page
+type ViewMode = "grid" | "list";
+type FilterGroup = "all" | string;
+
 export default function Datasets() {
+  // Data state
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [groups, setGroups] = useState<DatasetGroup[]>([]);
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // UI state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [filterGroup, setFilterGroup] = useState<FilterGroup>("all");
+
+  // Modal state
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [groupsModalOpen, setGroupsModalOpen] = useState(false);
+  const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+
+  // Load data
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Load workspace
+      const wsResponse = await getWorkspace();
+      if (wsResponse.workspace) {
+        setWorkspacePath(wsResponse.workspace.path);
+      }
+
+      // Load datasets
+      const dsResponse = await listDatasets();
+      setDatasets(dsResponse.datasets || []);
+
+      // Load groups
+      const groupsResponse = await listGroups();
+      setGroups(groupsResponse.groups || []);
+    } catch (error) {
+      console.error("Failed to load data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Filter datasets
+  const filteredDatasets = datasets.filter((ds) => {
+    // Search filter
+    const matchesSearch =
+      !searchQuery ||
+      ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ds.path.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // Group filter
+    let matchesGroup = true;
+    if (filterGroup !== "all") {
+      const group = groups.find((g) => g.id === filterGroup);
+      matchesGroup = group?.dataset_ids.includes(ds.id) || false;
+    }
+
+    return matchesSearch && matchesGroup;
+  });
+
+  // Stats
+  const totalSamples = datasets.reduce(
+    (sum, ds) => sum + (ds.num_samples || 0),
+    0
+  );
+  const totalFeatures = datasets.reduce(
+    (sum, ds) => sum + (ds.num_features || 0),
+    0
+  );
+
+  // Handlers
+  const handleSelectWorkspace = async () => {
+    try {
+      const path = await selectFolder();
+      if (path) {
+        await selectWorkspace(path, true);
+        await loadData();
+      }
+    } catch (error) {
+      console.error("Failed to select workspace:", error);
+    }
+  };
+
+  const handleRefreshAll = async () => {
+    setRefreshing(true);
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleAddDataset = async (
+    path: string,
+    config?: Partial<DatasetConfig>
+  ) => {
+    await linkDataset(path, config);
+    await loadData();
+  };
+
+  const handleEditDataset = (dataset: Dataset) => {
+    setSelectedDataset(dataset);
+    setEditModalOpen(true);
+  };
+
+  const handleSaveDatasetConfig = async (
+    datasetId: string,
+    config: Partial<DatasetConfig>
+  ) => {
+    await updateDatasetConfig(datasetId, config);
+    await loadData();
+  };
+
+  const handleDeleteDataset = async (dataset: Dataset) => {
+    if (!confirm(`Remove "${dataset.name}" from workspace?`)) return;
+    await unlinkDataset(dataset.id);
+    await loadData();
+  };
+
+  const handleRefreshDataset = async (dataset: Dataset) => {
+    await refreshDataset(dataset.id);
+    await loadData();
+  };
+
+  const handleAssignGroup = async (
+    dataset: Dataset,
+    groupId: string | null
+  ) => {
+    // Remove from current group
+    const currentGroup = groups.find((g) => g.dataset_ids.includes(dataset.id));
+    if (currentGroup) {
+      await removeDatasetFromGroup(currentGroup.id, dataset.id);
+    }
+
+    // Add to new group
+    if (groupId) {
+      await addDatasetToGroup(groupId, dataset.id);
+    }
+
+    await loadData();
+  };
+
+  // Groups handlers
+  const handleCreateGroup = async (name: string) => {
+    await createGroup(name);
+    await loadData();
+  };
+
+  const handleRenameGroup = async (groupId: string, newName: string) => {
+    await renameGroup(groupId, newName);
+    await loadData();
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    await deleteGroup(groupId);
+    await loadData();
+  };
+
+  const handleRemoveDatasetFromGroup = async (
+    groupId: string,
+    datasetId: string
+  ) => {
+    await removeDatasetFromGroup(groupId, datasetId);
+    await loadData();
+  };
+
   return (
     <motion.div
       className="space-y-6"
@@ -39,11 +259,11 @@ export default function Datasets() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <FolderOpen className="mr-2 h-4 w-4" />
-            Browse
+          <Button variant="outline" onClick={() => setGroupsModalOpen(true)}>
+            <Tags className="mr-2 h-4 w-4" />
+            Groups
           </Button>
-          <Button>
+          <Button onClick={() => setAddModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Dataset
           </Button>
@@ -51,7 +271,7 @@ export default function Datasets() {
       </motion.div>
 
       {/* Stats */}
-      <motion.div variants={itemVariants} className="grid gap-4 md:grid-cols-3">
+      <motion.div variants={itemVariants} className="grid gap-4 md:grid-cols-4">
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -59,7 +279,7 @@ export default function Datasets() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">{datasets.length}</div>
           </CardContent>
         </Card>
         <Card className="glass-card">
@@ -69,61 +289,192 @@ export default function Datasets() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">
+              {totalSamples.toLocaleString()}
+            </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Storage Used
+              Avg Features
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0 MB</div>
+            <div className="text-2xl font-bold">
+              {datasets.length > 0
+                ? Math.round(totalFeatures / datasets.length).toLocaleString()
+                : 0}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Groups
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{groups.length}</div>
           </CardContent>
         </Card>
       </motion.div>
 
       {/* Search and Filter */}
-      <motion.div variants={itemVariants} className="flex gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-wrap items-center gap-4"
+      >
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search datasets..." className="pl-9" />
+          <Input
+            placeholder="Search datasets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
         </div>
-        <Button variant="outline" size="icon">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+
+        {groups.length > 0 && (
+          <Select
+            value={filterGroup}
+            onValueChange={(v) => setFilterGroup(v as FilterGroup)}
+          >
+            <SelectTrigger className="w-[180px]">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Filter by group" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Datasets</SelectItem>
+              {groups.map((group) => (
+                <SelectItem key={group.id} value={group.id}>
+                  {group.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        <div className="flex items-center gap-1 ml-auto">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={viewMode === "grid" ? "secondary" : "ghost"}
+                  size="icon"
+                  onClick={() => setViewMode("grid")}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Grid View</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={viewMode === "list" ? "secondary" : "ghost"}
+                  size="icon"
+                  onClick={() => setViewMode("list")}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>List View</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <div className="w-px h-6 bg-border mx-2" />
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleRefreshAll}
+                  disabled={refreshing}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh All</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </motion.div>
 
-      {/* Empty State */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardContent className="p-12">
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted mb-4">
-                <Database className="h-10 w-10 text-muted-foreground" />
+      {/* Dataset Grid/List */}
+      {loading ? (
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardContent className="p-12">
+              <div className="flex flex-col items-center justify-center text-center">
+                <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin mb-4" />
+                <p className="text-muted-foreground">Loading datasets...</p>
               </div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">
-                No datasets yet
-              </h3>
-              <p className="text-muted-foreground max-w-md mb-6">
-                Get started by adding a dataset. You can link a folder containing
-                your spectral data files (CSV, JCAMP-DX, or other supported formats).
-              </p>
-              <div className="flex gap-3">
-                <Button variant="outline">
-                  <FolderOpen className="mr-2 h-4 w-4" />
-                  Select Folder
-                </Button>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Dataset
-                </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      ) : filteredDatasets.length === 0 ? (
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardContent className="p-12">
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted mb-4">
+                  <Database className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  {datasets.length === 0 ? "No datasets yet" : "No matches"}
+                </h3>
+                <p className="text-muted-foreground max-w-md mb-6">
+                  {datasets.length === 0
+                    ? "Get started by adding a dataset. You can link a folder containing your spectral data files."
+                    : "Try adjusting your search or filter criteria."}
+                </p>
+                {datasets.length === 0 && (
+                  <div className="flex gap-3">
+                    <Button variant="outline" onClick={handleSelectWorkspace}>
+                      <FolderOpen className="mr-2 h-4 w-4" />
+                      Select Workspace
+                    </Button>
+                    <Button onClick={() => setAddModalOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Dataset
+                    </Button>
+                  </div>
+                )}
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      ) : (
+        <motion.div
+          variants={containerVariants}
+          className={
+            viewMode === "grid"
+              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+              : "space-y-3"
+          }
+        >
+          {filteredDatasets.map((dataset) => (
+            <DatasetCard
+              key={dataset.id}
+              dataset={dataset}
+              groups={groups}
+              onPreview={() => console.log("Preview:", dataset.id)}
+              onEdit={() => handleEditDataset(dataset)}
+              onDelete={() => handleDeleteDataset(dataset)}
+              onRefresh={() => handleRefreshDataset(dataset)}
+              onAssignGroup={(ds, groupId) => handleAssignGroup(ds, groupId)}
+            />
+          ))}
+        </motion.div>
+      )}
 
       {/* Workspace Info */}
       <motion.div variants={itemVariants}>
@@ -131,16 +482,41 @@ export default function Datasets() {
           <CardContent className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Badge variant="outline">Workspace</Badge>
-              <span className="text-sm text-muted-foreground">
-                No workspace selected
+              <span className="text-sm text-muted-foreground truncate max-w-md">
+                {workspacePath || "No workspace selected"}
               </span>
             </div>
-            <Button variant="ghost" size="sm">
-              Select Workspace
+            <Button variant="ghost" size="sm" onClick={handleSelectWorkspace}>
+              {workspacePath ? "Change" : "Select Workspace"}
             </Button>
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Modals */}
+      <AddDatasetModal
+        open={addModalOpen}
+        onOpenChange={setAddModalOpen}
+        onAdd={handleAddDataset}
+      />
+
+      <EditDatasetModal
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        dataset={selectedDataset}
+        onSave={handleSaveDatasetConfig}
+      />
+
+      <GroupsModal
+        open={groupsModalOpen}
+        onOpenChange={setGroupsModalOpen}
+        groups={groups}
+        datasets={datasets}
+        onCreateGroup={handleCreateGroup}
+        onRenameGroup={handleRenameGroup}
+        onDeleteGroup={handleDeleteGroup}
+        onRemoveDatasetFromGroup={handleRemoveDatasetFromGroup}
+      />
     </motion.div>
   );
 }

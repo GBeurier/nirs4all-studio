@@ -14,7 +14,6 @@ Phase 5 Enhancement:
 """
 
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -25,20 +24,22 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 from .jobs import job_manager, Job, JobStatus, JobType
+from .nirs4all_adapter import (
+    NIRS4ALL_AVAILABLE,
+    require_nirs4all,
+    build_pipeline_steps,
+    build_dataset_spec,
+    ensure_models_dir,
+    extract_metrics_from_prediction,
+)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
-try:
-    from nirs4all.data.dataset import SpectroDataset
-    from nirs4all.pipeline import PipelineRunner
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    print(f"Note: nirs4all not available for training API: {e}")
-    NIRS4ALL_AVAILABLE = False
+if not NIRS4ALL_AVAILABLE:
+    print("Note: nirs4all not available for training API")
 
 
 router = APIRouter()
@@ -120,11 +121,7 @@ async def start_training(request: TrainingRequest):
     Creates a background job that trains a model using the specified
     pipeline and dataset configuration.
     """
-    if not NIRS4ALL_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="nirs4all library not available for training",
-        )
+    require_nirs4all()
 
     workspace = workspace_manager.get_current_workspace()
     if not workspace:

@@ -1,47 +1,89 @@
+import { useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  Save,
+  Star,
+  Play,
+  Undo2,
+  Redo2,
+  Keyboard,
+  Trash2,
+  Download,
+  Upload,
+  MoreHorizontal,
+} from "lucide-react";
 import { motion } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
-import { Save, Play, Undo, Redo, Trash2, ArrowLeft } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { usePipelineEditor } from "@/hooks/usePipelineEditor";
+import {
+  StepPalette,
+  PipelineCanvas,
+  StepConfigPanel,
+} from "@/components/pipeline-editor";
+import type { StepType, StepOption } from "@/components/pipeline-editor/types";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
-// Component categories for the palette
-const componentCategories = [
+// Demo pipeline for testing
+const demoPipeline = [
+  { id: "1", type: "preprocessing" as const, name: "SNV", params: {} },
   {
-    name: "Preprocessing",
-    color: "bg-blue-500",
-    items: ["StandardScaler", "SNV", "MSC", "Savitzky-Golay", "Baseline Correction"],
+    id: "2",
+    type: "preprocessing" as const,
+    name: "SavitzkyGolay",
+    params: { window: 11, polyorder: 2, deriv: 1 },
   },
   {
-    name: "Splitting",
-    color: "bg-purple-500",
-    items: ["Train/Test Split", "K-Fold CV", "LOOCV", "Stratified K-Fold"],
+    id: "3",
+    type: "splitting" as const,
+    name: "KennardStone",
+    params: { test_size: 0.2 },
   },
   {
-    name: "Models",
-    color: "bg-green-500",
-    items: ["PLS Regression", "Random Forest", "SVM", "Neural Network", "XGBoost"],
+    id: "4",
+    type: "model" as const,
+    name: "PLSRegression",
+    params: { n_components: 10, max_iter: 500 },
   },
-  {
-    name: "Metrics",
-    color: "bg-orange-500",
-    items: ["R² Score", "RMSE", "MAE", "RPD", "Bias"],
-  },
+  { id: "5", type: "metrics" as const, name: "RMSE", params: {} },
+  { id: "6", type: "metrics" as const, name: "R2", params: {} },
 ];
 
 export default function PipelineEditor() {
@@ -49,118 +91,412 @@ export default function PipelineEditor() {
   const navigate = useNavigate();
   const isNew = !id || id === "new";
 
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Initialize with demo pipeline if editing, empty if new
+  const {
+    steps,
+    pipelineName,
+    selectedStepId,
+    isFavorite,
+    isDirty,
+    canUndo,
+    canRedo,
+    stepCounts,
+    totalSteps,
+    setPipelineName,
+    setSelectedStepId,
+    setIsFavorite,
+    addStep,
+    removeStep,
+    duplicateStep,
+    moveStep,
+    reorderSteps,
+    updateStep,
+    undo,
+    redo,
+    getSelectedStep,
+    clearPipeline,
+    exportPipeline,
+  } = usePipelineEditor({
+    initialSteps: isNew ? [] : demoPipeline,
+    initialName: isNew ? "New Pipeline" : "SNV + SG → PLS",
+  });
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Drag handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    // Handle dropping from palette
+    if (active.data.current?.type === "palette-item") {
+      const { stepType, option } = active.data.current as {
+        stepType: StepType;
+        option: StepOption;
+      };
+      addStep(stepType, option);
+      toast.success(`${option.name} added to pipeline`);
+      return;
+    }
+
+    // Handle reordering
+    if (active.id !== over.id) {
+      reorderSteps(active.id as string, over.id as string);
+    }
+  };
+
+  // Actions
+  const handleSave = () => {
+    const pipeline = exportPipeline();
+    console.log("Saving pipeline:", pipeline);
+    toast.success(`"${pipelineName}" saved to library`);
+  };
+
+  const handleToggleFavorite = () => {
+    setIsFavorite(!isFavorite);
+    toast.success(
+      isFavorite
+        ? `"${pipelineName}" removed from favorites`
+        : `"${pipelineName}" added to favorites`
+    );
+  };
+
+  const handleExportJson = () => {
+    const pipeline = exportPipeline();
+    const json = JSON.stringify(pipeline, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${pipelineName.replace(/\s+/g, "_")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Pipeline exported as JSON");
+  };
+
+  const handleClearPipeline = () => {
+    clearPipeline();
+    setShowClearDialog(false);
+    toast.success("Pipeline cleared");
+  };
+
+  const selectedStep = getSelectedStep();
+
   return (
-    <motion.div
-      className="h-full flex flex-col gap-4"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      {/* Toolbar */}
-      <motion.div
-        variants={itemVariants}
-        className="flex items-center justify-between"
+    <TooltipProvider>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
       >
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/pipelines")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Input
-            placeholder="Pipeline name..."
-            defaultValue={isNew ? "" : "My Pipeline"}
-            className="w-64 font-semibold"
-          />
-          <Badge variant="outline">
-            {isNew ? "New" : "Draft"}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" disabled>
-            <Undo className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" disabled>
-            <Redo className="h-4 w-4" />
-          </Button>
-          <Separator orientation="vertical" className="h-6" />
-          <Button variant="outline">
-            <Save className="mr-2 h-4 w-4" />
-            Save
-          </Button>
-          <Button>
-            <Play className="mr-2 h-4 w-4" />
-            Run
-          </Button>
-        </div>
-      </motion.div>
+        <motion.div
+          className="h-full flex flex-col"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          {/* Header Toolbar */}
+          <header className="border-b border-border bg-card px-4 py-3 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              {/* Left side: Back button, Name, Badges */}
+              <div className="flex items-center gap-4">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => navigate("/pipelines")}
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Back to Pipelines</TooltipContent>
+                </Tooltip>
 
-      {/* Main Editor Area */}
-      <motion.div variants={itemVariants} className="flex-1 grid grid-cols-12 gap-4">
-        {/* Component Library */}
-        <div className="col-span-3">
-          <Card className="h-full">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Components</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {componentCategories.map((category) => (
-                <div key={category.name}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-2 h-2 rounded-full ${category.color}`} />
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      {category.name}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {category.items.map((item) => (
-                      <div
-                        key={item}
-                        className="px-3 py-2 text-sm rounded-md border border-border/50 bg-card cursor-grab hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                        draggable
+                <div>
+                  <Input
+                    value={pipelineName}
+                    onChange={(e) => setPipelineName(e.target.value)}
+                    className="text-lg font-semibold border-none bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 w-auto"
+                    style={{ minWidth: "200px" }}
+                  />
+                  <div className="flex items-center gap-2 mt-1">
+                    {stepCounts.preprocessing > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-blue-500/30 text-blue-500"
                       >
-                        {item}
-                      </div>
-                    ))}
+                        {stepCounts.preprocessing} preprocessing
+                      </Badge>
+                    )}
+                    {stepCounts.splitting > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-purple-500/30 text-purple-500"
+                      >
+                        {stepCounts.splitting} splitting
+                      </Badge>
+                    )}
+                    {stepCounts.model > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-primary/30 text-primary"
+                      >
+                        {stepCounts.model} model
+                      </Badge>
+                    )}
+                    {stepCounts.metrics > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-orange-500/30 text-orange-500"
+                      >
+                        {stepCounts.metrics} metrics
+                      </Badge>
+                    )}
+                    {stepCounts.branch > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-slate-500/30 text-slate-500"
+                      >
+                        {stepCounts.branch} branches
+                      </Badge>
+                    )}
+                    {stepCounts.merge > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-slate-500/30 text-slate-500"
+                      >
+                        {stepCounts.merge} merges
+                      </Badge>
+                    )}
+                    {isDirty && (
+                      <Badge variant="secondary" className="text-xs">
+                        Unsaved
+                      </Badge>
+                    )}
                   </div>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
+              </div>
 
-        {/* Canvas */}
-        <div className="col-span-6">
-          <Card className="h-full">
-            <CardContent className="h-full p-6 flex flex-col items-center justify-center">
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Trash2 className="h-8 w-8 text-muted-foreground" />
+              {/* Right side: Actions */}
+              <div className="flex items-center gap-2">
+                {/* Undo/Redo */}
+                <div className="flex items-center border-r border-border pr-2 mr-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={undo}
+                        disabled={!canUndo}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={redo}
+                        disabled={!canRedo}
+                      >
+                        <Redo2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+                  </Tooltip>
                 </div>
-                <h3 className="font-semibold text-foreground mb-2">
-                  Drop components here
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-xs">
-                  Drag components from the library on the left to build your pipeline.
-                  Connect preprocessing, splitting, model, and metrics steps.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Configuration Panel */}
-        <div className="col-span-3">
-          <Card className="h-full">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Configuration</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                Select a component to configure its parameters
+                {/* Keyboard shortcuts hint */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <Keyboard className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    align="end"
+                    className="max-w-xs"
+                  >
+                    <div className="space-y-1 text-xs">
+                      <p>
+                        <kbd className="px-1 bg-muted rounded">Ctrl+Z</kbd> Undo
+                      </p>
+                      <p>
+                        <kbd className="px-1 bg-muted rounded">Ctrl+Shift+Z</kbd>{" "}
+                        Redo
+                      </p>
+                      <p>
+                        <kbd className="px-1 bg-muted rounded">Ctrl+D</kbd>{" "}
+                        Duplicate
+                      </p>
+                      <p>
+                        <kbd className="px-1 bg-muted rounded">Del</kbd> Delete
+                        selected
+                      </p>
+                      <p>
+                        <kbd className="px-1 bg-muted rounded">Esc</kbd>{" "}
+                        Deselect
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+
+                {/* Favorite */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleToggleFavorite}
+                      className={isFavorite ? "text-yellow-500" : ""}
+                    >
+                      <Star
+                        className={`h-4 w-4 mr-2 ${
+                          isFavorite ? "fill-current" : ""
+                        }`}
+                      />
+                      {isFavorite ? "Favorited" : "Favorite"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isFavorite
+                      ? "Remove from favorites"
+                      : "Add to favorites"}
+                  </TooltipContent>
+                </Tooltip>
+
+                {/* More actions */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-popover">
+                    <DropdownMenuItem onClick={handleExportJson}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export as JSON
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import from JSON
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setShowClearDialog(true)}
+                      className="text-destructive focus:text-destructive"
+                      disabled={totalSteps === 0}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Clear All Steps
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Save */}
+                <Button variant="outline" size="sm" onClick={handleSave}>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </Button>
+
+                {/* Use in Experiment */}
+                <Link to="/runs">
+                  <Button size="sm" disabled={totalSteps === 0}>
+                    <Play className="h-4 w-4 mr-2" />
+                    Use in Experiment
+                  </Button>
+                </Link>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </motion.div>
-    </motion.div>
+            </div>
+          </header>
+
+          {/* Main Content: 3-Panel Layout */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Panel: Step Palette */}
+            <div className="w-72 flex-shrink-0">
+              <StepPalette onAddStep={addStep} />
+            </div>
+
+            {/* Center: Pipeline Canvas */}
+            <PipelineCanvas
+              steps={steps}
+              selectedStepId={selectedStepId}
+              onSelectStep={setSelectedStepId}
+              onRemoveStep={removeStep}
+              onDuplicateStep={duplicateStep}
+              onMoveStep={moveStep}
+            />
+
+            {/* Right Panel: Configuration */}
+            <div className="w-80 flex-shrink-0 border-l border-border">
+              <StepConfigPanel
+                step={selectedStep}
+                onUpdate={updateStep}
+                onRemove={removeStep}
+                onDuplicate={duplicateStep}
+              />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Drag Overlay */}
+        <DragOverlay>
+          {activeId && activeId.startsWith("palette-") ? (
+            <div className="p-4 rounded-lg border-2 border-primary bg-card shadow-2xl opacity-90">
+              <span className="font-medium text-foreground">
+                Drop to add step
+              </span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      {/* Clear Confirmation Dialog */}
+      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <AlertDialogContent className="bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear Pipeline?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all {totalSteps} steps from your pipeline. This
+              action can be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearPipeline}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </TooltipProvider>
   );
 }

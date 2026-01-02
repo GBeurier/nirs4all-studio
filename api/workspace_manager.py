@@ -24,9 +24,9 @@ try:
     nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
     if str(nirs4all_path) not in sys.path:
         sys.path.insert(0, str(nirs4all_path))
-    from nirs4all.data.dataset_config import DatasetConfigs
-    from nirs4all.data.dataset_config_parser import parse_config
-    from nirs4all.data.loader import handle_data
+    from nirs4all.data import DatasetConfigs
+    from nirs4all.data.config_parser import parse_config
+    from nirs4all.data.loaders.loader import handle_data
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     print(f"Note: nirs4all not available, using stub functionality: {e}")

@@ -6,8 +6,10 @@ import Playground from "@/pages/Playground";
 import Pipelines from "@/pages/Pipelines";
 import PipelineEditor from "@/pages/PipelineEditor";
 import Runs from "@/pages/Runs";
+import NewExperiment from "@/pages/NewExperiment";
 import Results from "@/pages/Results";
 import Predictions from "@/pages/Predictions";
+import Analysis from "@/pages/Analysis";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/NotFound";
 
@@ -22,8 +24,10 @@ function App() {
         <Route path="pipelines/:id" element={<PipelineEditor />} />
         <Route path="pipelines/new" element={<PipelineEditor />} />
         <Route path="runs" element={<Runs />} />
+        <Route path="runs/new" element={<NewExperiment />} />
         <Route path="results" element={<Results />} />
         <Route path="predictions" element={<Predictions />} />
+        <Route path="analysis" element={<Analysis />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>

@@ -9,6 +9,7 @@ import {
   Play,
   BarChart3,
   Target,
+  Beaker,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -44,6 +45,7 @@ const workflowNavItems: NavItem[] = [
 const analysisNavItems: NavItem[] = [
   { title: "Results", href: "/results", icon: BarChart3 },
   { title: "Predictions", href: "/predictions", icon: Target },
+  { title: "Analysis", href: "/analysis", icon: Beaker },
 ];
 
 export function AppSidebar() {

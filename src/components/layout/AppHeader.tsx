@@ -1,47 +1,125 @@
-import { useLocation } from "react-router-dom";
-import { Moon, Sun, Monitor } from "lucide-react";
+import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { Moon, Sun, Monitor, Search, Command } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Breadcrumbs } from "./Breadcrumbs";
+import { MobileSidebar } from "./MobileSidebar";
 
-const routeTitles: Record<string, string> = {
-  "/": "Dashboard",
-  "/datasets": "Datasets",
-  "/playground": "Playground",
-  "/pipelines": "Pipelines",
-  "/runs": "Runs",
-  "/results": "Results",
-  "/predictions": "Predictions",
-  "/settings": "Settings",
-};
+// Quick search navigation items
+const searchItems = [
+  { label: "Dashboard", path: "/", keywords: ["home", "overview"] },
+  { label: "Datasets", path: "/datasets", keywords: ["data", "import", "load"] },
+  { label: "Playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
+  { label: "Pipelines", path: "/pipelines", keywords: ["workflow", "ml", "model"] },
+  { label: "Pipeline Editor", path: "/pipelines/new", keywords: ["create", "build", "new"] },
+  { label: "Runs", path: "/runs", keywords: ["experiment", "train", "execute"] },
+  { label: "Results", path: "/results", keywords: ["metrics", "performance", "evaluate"] },
+  { label: "Predictions", path: "/predictions", keywords: ["predict", "inference"] },
+  { label: "Analysis", path: "/analysis", keywords: ["pca", "importance", "explore"] },
+  { label: "Settings", path: "/settings", keywords: ["config", "preferences", "options"] },
+];
 
 export function AppHeader() {
-  const location = useLocation();
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
-  // Get title from route, with special handling for nested routes
-  const getTitle = () => {
-    const path = location.pathname;
-    if (routeTitles[path]) {
-      return routeTitles[path];
+  const filteredItems = searchQuery.trim()
+    ? searchItems.filter((item) => {
+        const query = searchQuery.toLowerCase();
+        return (
+          item.label.toLowerCase().includes(query) ||
+          item.keywords.some((k) => k.includes(query))
+        );
+      })
+    : [];
+
+  const handleSearch = useCallback(
+    (path: string) => {
+      navigate(path);
+      setSearchQuery("");
+      setShowSearchResults(false);
+    },
+    [navigate]
+  );
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && filteredItems.length > 0) {
+      handleSearch(filteredItems[0].path);
     }
-    // Handle nested routes like /pipelines/new
-    const basePath = "/" + path.split("/")[1];
-    return routeTitles[basePath] || "nirs4all";
+    if (e.key === "Escape") {
+      setShowSearchResults(false);
+      setSearchQuery("");
+    }
   };
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border/50 bg-background px-6">
+    <header className="flex h-16 items-center justify-between border-b border-border/50 bg-background px-4 md:px-6">
       <div className="flex items-center gap-4">
-        <h1 className="text-xl font-semibold text-foreground">{getTitle()}</h1>
+        {/* Mobile menu trigger */}
+        <MobileSidebar />
+        
+        {/* Breadcrumbs - hidden on mobile */}
+        <div className="hidden md:block">
+          <Breadcrumbs />
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Search - hidden on small screens */}
+        <div className="relative hidden sm:block">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setShowSearchResults(true);
+            }}
+            onFocus={() => setShowSearchResults(true)}
+            onBlur={() => {
+              // Delay to allow click on results
+              setTimeout(() => setShowSearchResults(false), 200);
+            }}
+            onKeyDown={handleKeyDown}
+            className="w-48 lg:w-64 pl-9 pr-12 bg-muted/50 border-border/50 focus:bg-muted"
+          />
+          <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 hidden lg:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+            <Command className="h-3 w-3" />K
+          </kbd>
+
+          {/* Search Results Dropdown */}
+          {showSearchResults && filteredItems.length > 0 && (
+            <div className="absolute top-full mt-2 w-full rounded-md border border-border bg-popover p-1 shadow-lg z-50">
+              {filteredItems.map((item) => (
+                <button
+                  key={item.path}
+                  onClick={() => handleSearch(item.path)}
+                  className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Mobile search button */}
+        <Button variant="ghost" size="icon" className="sm:hidden h-9 w-9">
+          <Search className="h-4 w-4" />
+          <span className="sr-only">Search</span>
+        </Button>
+
+        {/* Theme Toggle */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-9 w-9">
