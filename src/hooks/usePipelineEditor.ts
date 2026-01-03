@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { arrayMove } from "@dnd-kit/sortable";
 import type {
   PipelineStep,
@@ -9,10 +9,57 @@ import type {
 } from "../components/pipeline-editor/types";
 import { createStepFromOption, cloneStep } from "../components/pipeline-editor/types";
 
+// Storage key for persisting pipeline editor state
+const STORAGE_KEY_PREFIX = "nirs4all_pipeline_editor_";
+
+interface PersistedPipelineState {
+  steps: PipelineStep[];
+  pipelineName: string;
+  isFavorite: boolean;
+  lastModified: number;
+}
+
+function getPersistenceKey(pipelineId: string): string {
+  return `${STORAGE_KEY_PREFIX}${pipelineId}`;
+}
+
+function loadPersistedState(pipelineId: string): PersistedPipelineState | null {
+  try {
+    const key = getPersistenceKey(pipelineId);
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn("Failed to load persisted pipeline state:", e);
+  }
+  return null;
+}
+
+function savePersistedState(pipelineId: string, state: PersistedPipelineState): void {
+  try {
+    const key = getPersistenceKey(pipelineId);
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch (e) {
+    console.warn("Failed to persist pipeline state:", e);
+  }
+}
+
+function clearPersistedState(pipelineId: string): void {
+  try {
+    const key = getPersistenceKey(pipelineId);
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.warn("Failed to clear persisted pipeline state:", e);
+  }
+}
+
 interface UsePipelineEditorOptions {
   initialSteps?: PipelineStep[];
   initialName?: string;
   maxHistorySize?: number;
+  pipelineId?: string; // Unique ID for persistence
+  persistState?: boolean; // Enable/disable persistence (default: true)
 }
 
 interface UsePipelineEditorReturn {
@@ -62,6 +109,9 @@ interface UsePipelineEditorReturn {
   clearPipeline: () => void;
   loadPipeline: (steps: PipelineStep[], name?: string) => void;
   exportPipeline: () => { name: string; steps: PipelineStep[] };
+
+  // Persistence
+  clearPersistedData: () => void;
 }
 
 // Helper to find step by path
@@ -168,18 +218,64 @@ export function usePipelineEditor(
     initialSteps = [],
     initialName = "New Pipeline",
     maxHistorySize = 50,
+    pipelineId = "default",
+    persistState = true,
   } = options;
 
+  // Load persisted state on initial render
+  const persistedState = useMemo(() => {
+    if (!persistState) return null;
+    return loadPersistedState(pipelineId);
+  }, [pipelineId, persistState]);
+
+  // Determine initial values (prefer persisted over provided)
+  const resolvedInitialSteps = persistedState?.steps ?? initialSteps;
+  const resolvedInitialName = persistedState?.pipelineName ?? initialName;
+  const resolvedInitialFavorite = persistedState?.isFavorite ?? false;
+
   // Core state
-  const [steps, setSteps] = useState<PipelineStep[]>(initialSteps);
-  const [pipelineName, setPipelineName] = useState(initialName);
+  const [steps, setSteps] = useState<PipelineStep[]>(resolvedInitialSteps);
+  const [pipelineName, setPipelineNameState] = useState(resolvedInitialName);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [isFavorite, setIsFavoriteState] = useState(resolvedInitialFavorite);
   const [isDirty, setIsDirty] = useState(false);
 
   // History state
-  const [history, setHistory] = useState<PipelineStep[][]>([initialSteps]);
+  const [history, setHistory] = useState<PipelineStep[][]>([resolvedInitialSteps]);
   const [historyIndex, setHistoryIndex] = useState(0);
+
+  // Track if this is the initial mount to avoid saving on load
+  const isInitialMount = useRef(true);
+
+  // Persist state whenever it changes
+  useEffect(() => {
+    if (!persistState) return;
+
+    // Skip saving on initial mount to avoid overwriting with potentially stale data
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    const state: PersistedPipelineState = {
+      steps,
+      pipelineName,
+      isFavorite,
+      lastModified: Date.now(),
+    };
+    savePersistedState(pipelineId, state);
+  }, [steps, pipelineName, isFavorite, pipelineId, persistState]);
+
+  // Wrapper for setPipelineName that also persists
+  const setPipelineName = useCallback((name: string) => {
+    setPipelineNameState(name);
+    setIsDirty(true);
+  }, []);
+
+  // Wrapper for setIsFavorite that also persists
+  const setIsFavorite = useCallback((favorite: boolean) => {
+    setIsFavoriteState(favorite);
+  }, []);
 
   // Computed values
   const canUndo = historyIndex > 0;
@@ -493,7 +589,7 @@ export function usePipelineEditor(
       setIsDirty(false);
       if (name) setPipelineName(name);
     },
-    []
+    [setPipelineName]
   );
 
   // Export pipeline
@@ -504,6 +600,13 @@ export function usePipelineEditor(
     }),
     [pipelineName, steps]
   );
+
+  // Clear persisted data
+  const clearPersistedData = useCallback(() => {
+    if (persistState) {
+      clearPersistedState(pipelineId);
+    }
+  }, [pipelineId, persistState]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -595,5 +698,8 @@ export function usePipelineEditor(
     clearPipeline,
     loadPipeline,
     exportPipeline,
+
+    // Persistence
+    clearPersistedData,
   };
 }

@@ -80,6 +80,9 @@ export default function PipelineEditor() {
   const navigate = useNavigate();
   const isNew = !id || id === "new";
 
+  // Use a stable ID for persistence: either the route param or "new" for new pipelines
+  const pipelineId = id || "new";
+
   const [showClearDialog, setShowClearDialog] = useState(false);
 
   // Initialize with demo pipeline if editing, empty if new
@@ -113,6 +116,8 @@ export default function PipelineEditor() {
   } = usePipelineEditor({
     initialSteps: isNew ? [] : demoPipeline,
     initialName: isNew ? "New Pipeline" : "SNV + SG → PLS",
+    pipelineId: pipelineId,
+    persistState: true,
   });
 
   // Handle drop from DnD context

@@ -100,9 +100,10 @@ export function PipelineNode({
   const Icon = stepIcons[step.type];
   const colors = stepColors[step.type];
 
-  // Format parameters for display
-  const paramEntries = Object.entries(step.params).slice(0, 3);
-  const hasMoreParams = Object.keys(step.params).length > 3;
+  // Format parameters for display - show all, let CSS truncate handle overflow
+  const paramString = Object.entries(step.params)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
 
   const nodeContent = (
     <motion.div
@@ -124,7 +125,7 @@ export function PipelineNode({
         scale: { duration: 0.15 },
       }}
       className={`
-        group relative rounded-xl border-2 transition-all duration-200 bg-card
+        group relative rounded-xl border-2 transition-all duration-200 bg-card w-full overflow-hidden
         ${colors.border}
         ${isSelected ? `ring-2 ${colors.active} shadow-lg` : ""}
         ${isOver && !isBeingDragged ? "ring-2 ring-primary/50 border-primary/50" : ""}
@@ -139,7 +140,7 @@ export function PipelineNode({
       }}
     >
       {/* Main Content */}
-      <div className="flex items-center gap-2 p-3">
+      <div className="flex items-center gap-2 p-3 w-full overflow-hidden">
         {/* Step Number Badge */}
         <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-card border-2 border-border flex items-center justify-center text-[10px] font-bold text-muted-foreground shadow-sm z-10">
           {index + 1}
@@ -149,36 +150,35 @@ export function PipelineNode({
         <button
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing p-1 -m-0.5 rounded hover:bg-muted/80 transition-colors touch-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+          className="cursor-grab active:cursor-grabbing p-1 -m-0.5 rounded hover:bg-muted/80 transition-colors touch-none focus:outline-none focus:ring-2 focus:ring-primary/50 shrink-0"
           aria-label="Drag to reorder"
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </button>
 
         {/* Step Icon */}
-        <div className={`p-2 rounded-lg bg-gradient-to-br ${colors.gradient} ${colors.text}`}>
+        <div className={`p-2 rounded-lg bg-gradient-to-br ${colors.gradient} ${colors.text} shrink-0`}>
           <Icon className="h-4 w-4" />
         </div>
 
         {/* Step Info */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-sm text-foreground">{step.name}</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize">
+            <span className="font-semibold text-sm text-foreground truncate">{step.name}</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize shrink-0">
               {step.type}
             </Badge>
           </div>
-          {paramEntries.length > 0 && (
-            <p className="text-xs text-muted-foreground truncate font-mono">
-              {paramEntries.map(([k, v]) => `${k}=${v}`).join(", ")}
-              {hasMoreParams && " ..."}
+          {paramString && (
+            <p className="text-xs text-muted-foreground font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={paramString}>
+              {paramString}
             </p>
           )}
         </div>
 
-        {/* Quick Actions - Only show when not dragging */}
+        {/* Quick Actions - Absolutely positioned to not affect text truncation */}
         {!isDragging && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-card pl-1">
             <Button
               variant="ghost"
               size="icon"

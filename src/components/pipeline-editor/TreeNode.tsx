@@ -105,8 +105,10 @@ export function TreeNode({
   const Icon = stepIcons[step.type];
   const colors = stepColors[step.type];
 
-  const paramEntries = Object.entries(step.params).slice(0, 2);
-  const hasMoreParams = Object.keys(step.params).length > 2;
+  // Format all parameters - let CSS truncate handle overflow
+  const paramString = Object.entries(step.params)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
 
   const nodeContent = (
     <div
@@ -132,36 +134,35 @@ export function TreeNode({
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-muted transition-colors touch-none"
+        className="cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-muted transition-colors touch-none shrink-0"
         aria-label="Drag to reorder"
       >
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
 
       {/* Step Icon */}
-      <div className={`p-1.5 rounded ${colors.bg} ${colors.text}`}>
+      <div className={`p-1.5 rounded ${colors.bg} ${colors.text} shrink-0`}>
         <Icon className="h-3.5 w-3.5" />
       </div>
 
       {/* Step Info */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm text-foreground">{step.name}</span>
-          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+          <span className="font-medium text-sm text-foreground truncate">{step.name}</span>
+          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
             {step.type}
           </Badge>
         </div>
-        {paramEntries.length > 0 && (
-          <p className="text-[10px] text-muted-foreground truncate font-mono leading-tight">
-            {paramEntries.map(([k, v]) => `${k}=${v}`).join(", ")}
-            {hasMoreParams && "…"}
+        {paramString && (
+          <p className="text-[10px] text-muted-foreground truncate font-mono leading-tight" title={paramString}>
+            {paramString}
           </p>
         )}
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - positioned absolutely to not affect truncation */}
       {!isDragging && (
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <Button
             variant="ghost"
             size="icon"
