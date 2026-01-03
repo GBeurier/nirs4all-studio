@@ -22,7 +22,7 @@ import {
   Waves,
   Shuffle,
   Target,
-  BarChart3,
+  Sparkles,
   GitBranch,
   GitMerge,
 } from "lucide-react";
@@ -34,7 +34,7 @@ const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
   splitting: Shuffle,
   model: Target,
-  metrics: BarChart3,
+  generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
 };

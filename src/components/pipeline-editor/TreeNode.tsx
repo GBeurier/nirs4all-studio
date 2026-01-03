@@ -4,7 +4,6 @@ import {
   Waves,
   Shuffle,
   Target,
-  BarChart3,
   GripVertical,
   Copy,
   Trash2,
@@ -14,6 +13,8 @@ import {
   Settings,
   ChevronRight,
   ChevronDown,
+  Sparkles,
+  Repeat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,14 +25,25 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { usePipelineDnd } from "./PipelineDndContext";
-import { stepColors, type PipelineStep, type StepType } from "./types";
+import {
+  stepColors,
+  type PipelineStep,
+  type StepType,
+  calculateStepVariants,
+  formatSweepDisplay,
+} from "./types";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
   splitting: Shuffle,
   model: Target,
-  metrics: BarChart3,
+  generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
 };
@@ -105,10 +117,25 @@ export function TreeNode({
   const Icon = stepIcons[step.type];
   const colors = stepColors[step.type];
 
-  // Format all parameters - let CSS truncate handle overflow
-  const paramString = Object.entries(step.params)
+  // Check for parameter sweeps
+  const hasSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+  const totalVariants = calculateStepVariants(step);
+  const sweepCount = step.paramSweeps ? Object.keys(step.paramSweeps).length : 0;
+  const sweepKeys = step.paramSweeps ? Object.keys(step.paramSweeps) : [];
+
+  // Format parameters - prioritize non-swept params
+  const paramEntries = Object.entries(step.params);
+  const displayParams = paramEntries
+    .filter(([k]) => !sweepKeys.includes(k))
+    .slice(0, 2)
     .map(([k, v]) => `${k}=${v}`)
     .join(", ");
+
+  // Sweep summary for tooltip
+  const sweepSummary = sweepKeys.map(k => {
+    const sweep = step.paramSweeps![k];
+    return `${k}: ${formatSweepDisplay(sweep)}`;
+  }).join("\n");
 
   const nodeContent = (
     <div
@@ -152,11 +179,37 @@ export function TreeNode({
           <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
             {step.type}
           </Badge>
+          {/* Sweep indicator */}
+          {hasSweeps && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className="text-[9px] px-1 py-0 h-4 bg-orange-500 hover:bg-orange-500 shrink-0 cursor-help">
+                  <Repeat className="h-2.5 w-2.5 mr-0.5" />
+                  {totalVariants}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-[220px]">
+                <div className="text-xs">
+                  <div className="font-semibold mb-1">Sweeps ({sweepCount})</div>
+                  <pre className="text-muted-foreground whitespace-pre-wrap">{sweepSummary}</pre>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
-        {paramString && (
-          <p className="text-[10px] text-muted-foreground truncate font-mono leading-tight" title={paramString}>
-            {paramString}
+        {/* Show params or sweep summary */}
+        {hasSweeps ? (
+          <p className="text-[10px] text-muted-foreground truncate font-mono leading-tight">
+            {displayParams && <span>{displayParams}</span>}
+            {displayParams && sweepCount > 0 && <span className="mx-1">•</span>}
+            <span className="text-orange-500">{sweepCount} sweep{sweepCount !== 1 ? "s" : ""}</span>
           </p>
+        ) : (
+          displayParams && (
+            <p className="text-[10px] text-muted-foreground truncate font-mono leading-tight" title={Object.entries(step.params).map(([k, v]) => `${k}=${v}`).join(", ")}>
+              {Object.entries(step.params).map(([k, v]) => `${k}=${v}`).join(", ")}
+            </p>
+          )
         )}
       </div>
 
@@ -199,12 +252,14 @@ export function TreeNode({
             <Copy className="h-3.5 w-3.5 mr-2" />
             Duplicate
           </ContextMenuItem>
-          {step.type === "branch" && onAddBranch && (
+          {(step.type === "branch" || step.type === "generator") && onAddBranch && (
             <>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={onAddBranch}>
                 <Plus className="h-3.5 w-3.5 mr-2" />
-                Add Branch
+                Add {step.type === "generator"
+                  ? (step.generatorKind === "cartesian" ? "Stage" : "Option")
+                  : "Branch"}
               </ContextMenuItem>
             </>
           )}
@@ -217,7 +272,7 @@ export function TreeNode({
       </ContextMenu>
 
       {/* Render branches as nested tree */}
-      {step.type === "branch" && step.branches && (
+      {(step.type === "branch" || step.type === "generator") && step.branches && (
         <div className="ml-4 mt-1">
           {/* Collapse/expand toggle */}
           <button
@@ -229,7 +284,11 @@ export function TreeNode({
             ) : (
               <ChevronRight className="h-3 w-3" />
             )}
-            <span>{step.branches.length} branches</span>
+            <span>
+              {step.branches.length} {step.type === "generator"
+                ? (step.generatorKind === "cartesian" ? "stages" : "options")
+                : "branches"}
+            </span>
           </button>
 
           {isBranchesExpanded && (
@@ -250,16 +309,22 @@ export function TreeNode({
                   onDuplicateStep={onDuplicateStep}
                   onAddBranchNested={onAddBranchNested}
                   onRemoveBranchNested={onRemoveBranchNested}
+                  isGenerator={step.type === "generator"}
+                  branchLabel={step.type === "generator"
+                    ? (step.generatorKind === "cartesian" ? "Stage" : "Option")
+                    : "Branch"}
                 />
               ))}
               {/* Add branch button */}
               {onAddBranch && (
                 <button
                   onClick={onAddBranch}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary py-1 px-2 rounded hover:bg-muted/50 transition-colors ml-2 mt-1"
+                  className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded hover:bg-muted/50 transition-colors ml-2 mt-1 ${step.type === "generator" ? "text-orange-500 hover:text-orange-600" : "text-muted-foreground hover:text-primary"}`}
                 >
                   <Plus className="h-3 w-3" />
-                  <span>Add branch</span>
+                  <span>Add {step.type === "generator"
+                    ? (step.generatorKind === "cartesian" ? "stage" : "option")
+                    : "branch"}</span>
                 </button>
               )}
             </>
@@ -285,6 +350,8 @@ interface BranchNodeProps {
   onDuplicateStep: (id: string, path?: string[]) => void;
   onAddBranchNested?: (stepId: string, path?: string[]) => void;
   onRemoveBranchNested?: (stepId: string, branchIndex: number, path?: string[]) => void;
+  isGenerator?: boolean;
+  branchLabel?: string;
 }
 
 function BranchNode({
@@ -301,6 +368,8 @@ function BranchNode({
   onDuplicateStep,
   onAddBranchNested,
   onRemoveBranchNested,
+  isGenerator = false,
+  branchLabel = "Branch",
 }: BranchNodeProps) {
   const branchPath = [...parentPath, "branch", String(branchIndex)];
   const { dropIndicator } = usePipelineDnd();
@@ -318,21 +387,25 @@ function BranchNode({
     },
   });
 
+  const BranchIcon = isGenerator ? Sparkles : GitBranch;
+  const borderColor = isGenerator ? "border-orange-400/50" : "border-muted-foreground/30";
+  const iconColor = isGenerator ? "text-orange-400" : "";
+
   return (
     <div className="relative">
       {/* Branch header */}
       <div className="flex items-center gap-1 py-0.5 text-muted-foreground group/branch">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1 hover:text-foreground transition-colors rounded px-0.5 hover:bg-muted/50"
+          className={`flex items-center gap-1 hover:text-foreground transition-colors rounded px-0.5 hover:bg-muted/50 ${iconColor}`}
         >
           {isExpanded ? (
             <ChevronDown className="h-3 w-3" />
           ) : (
             <ChevronRight className="h-3 w-3" />
           )}
-          <GitBranch className="h-3 w-3" />
-          <span className="text-[10px] font-medium">Branch {branchIndex + 1}</span>
+          <BranchIcon className="h-3 w-3" />
+          <span className="text-[10px] font-medium">{branchLabel} {branchIndex + 1}</span>
           {!isExpanded && branch.length > 0 && (
             <span className="text-[9px] text-muted-foreground/70">({branch.length} steps)</span>
           )}
@@ -351,7 +424,7 @@ function BranchNode({
 
       {/* Branch content with tree line */}
       {isExpanded && (
-        <div className="border-l border-dashed border-muted-foreground/30 ml-1.5 pl-3">
+        <div className={`border-l border-dashed ${borderColor} ml-1.5 pl-3`}>
         {/* Initial drop zone in branch */}
         <BranchDropZone
           id={`branch-${parentPath.join("-")}-${branchIndex}-start`}
@@ -364,10 +437,10 @@ function BranchNode({
             ref={setNodeRef}
             className={`
               py-2 px-3 text-xs text-muted-foreground rounded border border-dashed transition-all
-              ${isOver ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30"}
+              ${isOver ? "border-primary bg-primary/10 text-primary" : isGenerator ? "border-orange-400/30" : "border-muted-foreground/30"}
             `}
           >
-            {isOver ? "Drop here" : "Empty branch - drop steps here"}
+            {isOver ? "Drop here" : `Empty ${branchLabel.toLowerCase()} - drop steps here`}
           </div>
         ) : (
           branch.map((branchStep, idx) => (

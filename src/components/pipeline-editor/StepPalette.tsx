@@ -4,13 +4,13 @@ import {
   Waves,
   Shuffle,
   Target,
-  BarChart3,
   Search,
   ChevronDown,
   ChevronRight,
   GitBranch,
   GitMerge,
   GripVertical,
+  Sparkles,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
   splitting: Shuffle,
   model: Target,
-  metrics: BarChart3,
+  generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
 };

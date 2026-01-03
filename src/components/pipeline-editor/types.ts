@@ -1,16 +1,46 @@
 /**
  * Pipeline Editor Types
- * Tree-based pipeline structure with support for nested branches
+ * Tree-based pipeline structure with support for nested branches and generators
  */
 
-export type StepType = "preprocessing" | "splitting" | "model" | "metrics" | "branch" | "merge";
+export type StepType = "preprocessing" | "splitting" | "model" | "generator" | "branch" | "merge";
+
+// Generator types for step-level generators
+export type GeneratorKind = "or" | "cartesian";
+
+// Parameter sweep types for parameter-level generators
+export type SweepType = "range" | "log_range" | "grid" | "or";
+
+// Parameter sweep configuration
+export interface ParameterSweep {
+  type: SweepType;
+  // For range/log_range
+  from?: number;
+  to?: number;
+  step?: number;
+  count?: number; // For log_range or limiting
+  // For or (discrete choices)
+  choices?: (string | number | boolean)[];
+  // For grid (multiple params - used at step level)
+  gridParams?: Record<string, (string | number | boolean)[]>;
+}
 
 export interface PipelineStep {
   id: string;
   type: StepType;
   name: string;
   params: Record<string, string | number | boolean>;
-  branches?: PipelineStep[][]; // For branching steps: list of parallel pipelines
+  // Parameter sweeps: which params have generators attached
+  paramSweeps?: Record<string, ParameterSweep>;
+  // For branching steps: list of parallel pipelines
+  branches?: PipelineStep[][];
+  // For generator steps (OR, Cartesian): child steps/options
+  generatorKind?: GeneratorKind;
+  generatorOptions?: {
+    pick?: number | [number, number]; // Combinations
+    arrange?: number | [number, number]; // Permutations
+    count?: number; // Limit variants
+  };
 }
 
 export interface StepOption {
@@ -18,6 +48,7 @@ export interface StepOption {
   description: string;
   defaultParams: Record<string, string | number | boolean>;
   defaultBranches?: PipelineStep[][];
+  generatorKind?: GeneratorKind;
 }
 
 export interface StepCategory {
@@ -56,6 +87,41 @@ export interface DropIndicator {
   path: string[]; // Path to the parent container
   index: number; // Insert position
   position: "before" | "after" | "inside"; // Where relative to the target
+}
+
+// Utility to calculate sweep variant count
+export function calculateSweepVariants(sweep: ParameterSweep): number {
+  switch (sweep.type) {
+    case "range":
+      if (sweep.from !== undefined && sweep.to !== undefined) {
+        const step = sweep.step ?? 1;
+        return Math.floor((sweep.to - sweep.from) / step) + 1;
+      }
+      return 0;
+    case "log_range":
+      return sweep.count ?? 5;
+    case "or":
+      return sweep.choices?.length ?? 0;
+    case "grid":
+      if (sweep.gridParams) {
+        return Object.values(sweep.gridParams).reduce(
+          (acc, vals) => acc * vals.length, 1
+        );
+      }
+      return 0;
+    default:
+      return 0;
+  }
+}
+
+// Calculate total variants for a step (product of all param sweeps)
+export function calculateStepVariants(step: PipelineStep): number {
+  if (!step.paramSweeps || Object.keys(step.paramSweeps).length === 0) {
+    return 1;
+  }
+  return Object.values(step.paramSweeps).reduce(
+    (acc, sweep) => acc * calculateSweepVariants(sweep), 1
+  );
 }
 
 // Step options configuration (for component library)
@@ -97,15 +163,21 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "MLP", description: "Multi-layer Perceptron", defaultParams: { hidden_layers: "100,50", activation: "relu" } },
     { name: "LSTM", description: "Long Short-Term Memory", defaultParams: { units: 64, layers: 2, dropout: 0.2 } },
   ],
-  metrics: [
-    { name: "RMSE", description: "Root Mean Squared Error", defaultParams: {} },
-    { name: "R2", description: "Coefficient of Determination", defaultParams: {} },
-    { name: "MAE", description: "Mean Absolute Error", defaultParams: {} },
-    { name: "RPD", description: "Ratio of Performance to Deviation", defaultParams: {} },
-    { name: "RPIQ", description: "Ratio of Performance to IQ", defaultParams: {} },
-    { name: "Bias", description: "Systematic error (bias)", defaultParams: {} },
-    { name: "SEP", description: "Standard Error of Prediction", defaultParams: {} },
-    { name: "nRMSE", description: "Normalized RMSE", defaultParams: { normalization: "range" } },
+  generator: [
+    {
+      name: "ChooseOne",
+      description: "Choose between step alternatives (_or_)",
+      defaultParams: {},
+      defaultBranches: [[], [], []], // Start with 3 empty options
+      generatorKind: "or"
+    },
+    {
+      name: "Cartesian",
+      description: "All combinations of stages (_cartesian_)",
+      defaultParams: {},
+      defaultBranches: [[], []], // Start with 2 stages
+      generatorKind: "cartesian"
+    },
   ],
   branch: [
     {
@@ -126,7 +198,7 @@ export const stepTypeLabels: Record<StepType, string> = {
   preprocessing: "Preprocessing",
   splitting: "Splitting",
   model: "Models",
-  metrics: "Metrics",
+  generator: "Generators",
   branch: "Branching",
   merge: "Merge",
 };
@@ -168,7 +240,7 @@ export const stepColors: Record<StepType, {
     active: "ring-emerald-500 border-emerald-500",
     gradient: "from-emerald-500/20 to-emerald-500/5",
   },
-  metrics: {
+  generator: {
     border: "border-orange-500/30",
     bg: "bg-orange-500/5",
     hover: "hover:bg-orange-500/10 hover:border-orange-500/50",
@@ -212,17 +284,43 @@ export function createStepFromOption(type: StepType, option: StepOption): Pipeli
     branches: option.defaultBranches
       ? JSON.parse(JSON.stringify(option.defaultBranches))
       : undefined,
+    generatorKind: option.generatorKind,
   };
 }
 
-// Deep clone a step (including branches)
+// Deep clone a step (including branches and sweeps)
 export function cloneStep(step: PipelineStep): PipelineStep {
   return {
     ...step,
     id: generateStepId(),
     params: { ...step.params },
+    paramSweeps: step.paramSweeps
+      ? JSON.parse(JSON.stringify(step.paramSweeps))
+      : undefined,
     branches: step.branches?.map(branch =>
       branch.map(s => cloneStep(s))
     ),
+    generatorOptions: step.generatorOptions
+      ? { ...step.generatorOptions }
+      : undefined,
   };
+}
+
+// Format sweep for display
+export function formatSweepDisplay(sweep: ParameterSweep): string {
+  switch (sweep.type) {
+    case "range":
+      return `${sweep.from}→${sweep.to}${sweep.step && sweep.step !== 1 ? ` (step ${sweep.step})` : ""}`;
+    case "log_range":
+      return `log(${sweep.from}→${sweep.to})`;
+    case "or":
+      if (sweep.choices && sweep.choices.length <= 3) {
+        return sweep.choices.join(" | ");
+      }
+      return `${sweep.choices?.length ?? 0} choices`;
+    case "grid":
+      return "grid";
+    default:
+      return "sweep";
+  }
 }

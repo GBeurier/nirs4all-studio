@@ -4,7 +4,6 @@ import {
   Waves,
   Shuffle,
   Target,
-  BarChart3,
   GripVertical,
   Copy,
   Trash2,
@@ -12,6 +11,9 @@ import {
   GitBranch,
   GitMerge,
   Settings,
+  Repeat,
+  Sparkles,
+  Grid3X3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,14 +24,25 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { usePipelineDnd } from "./PipelineDndContext";
-import { stepColors, type PipelineStep, type StepType } from "./types";
+import {
+  stepColors,
+  type PipelineStep,
+  type StepType,
+  calculateStepVariants,
+  formatSweepDisplay,
+} from "./types";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
   splitting: Shuffle,
   model: Target,
-  metrics: BarChart3,
+  generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
 };
@@ -100,10 +113,27 @@ export function PipelineNode({
   const Icon = stepIcons[step.type];
   const colors = stepColors[step.type];
 
-  // Format parameters for display - show all, let CSS truncate handle overflow
-  const paramString = Object.entries(step.params)
+  // Check for parameter sweeps
+  const hasSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+  const totalVariants = calculateStepVariants(step);
+  const sweepCount = step.paramSweeps ? Object.keys(step.paramSweeps).length : 0;
+
+  // Format parameters for display - show limited params when there are sweeps
+  const paramEntries = Object.entries(step.params);
+  const sweepKeys = step.paramSweeps ? Object.keys(step.paramSweeps) : [];
+
+  // Show non-swept params first, then indicate sweeps
+  const displayParams = paramEntries
+    .filter(([k]) => !sweepKeys.includes(k))
+    .slice(0, 2) // Limit displayed params
     .map(([k, v]) => `${k}=${v}`)
     .join(", ");
+
+  // Sweep summary for tooltip
+  const sweepSummary = sweepKeys.map(k => {
+    const sweep = step.paramSweeps![k];
+    return `${k}: ${formatSweepDisplay(sweep)}`;
+  }).join("\n");
 
   const nodeContent = (
     <motion.div
@@ -168,11 +198,38 @@ export function PipelineNode({
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize shrink-0">
               {step.type}
             </Badge>
+            {/* Sweep indicator badge */}
+            {hasSweeps && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge className="text-[10px] px-1.5 py-0 bg-orange-500 hover:bg-orange-500 shrink-0 cursor-help">
+                    <Repeat className="h-2.5 w-2.5 mr-0.5" />
+                    {totalVariants}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[250px]">
+                  <div className="text-xs">
+                    <div className="font-semibold mb-1">Parameter Sweeps ({sweepCount})</div>
+                    <pre className="text-muted-foreground whitespace-pre-wrap">{sweepSummary}</pre>
+                    <div className="mt-1 text-orange-400">{totalVariants} total variants</div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
-          {paramString && (
-            <p className="text-xs text-muted-foreground font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={paramString}>
-              {paramString}
+          {/* Show params or sweep summary */}
+          {hasSweeps ? (
+            <p className="text-xs text-muted-foreground font-mono overflow-hidden text-ellipsis whitespace-nowrap">
+              {displayParams && <span>{displayParams}</span>}
+              {displayParams && sweepCount > 0 && <span className="mx-1">•</span>}
+              <span className="text-orange-500">{sweepCount} sweep{sweepCount !== 1 ? "s" : ""}</span>
             </p>
+          ) : (
+            displayParams && (
+              <p className="text-xs text-muted-foreground font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={Object.entries(step.params).map(([k, v]) => `${k}=${v}`).join(", ")}>
+                {Object.entries(step.params).map(([k, v]) => `${k}=${v}`).join(", ")}
+              </p>
+            )
           )}
         </div>
 
@@ -207,6 +264,20 @@ export function PipelineNode({
           depth={depth}
           onAddBranch={onAddBranch}
           onRemoveBranch={onRemoveBranch}
+          branchLabel="Branch"
+        />
+      )}
+
+      {/* Generator options (for generator type steps - similar to branches) */}
+      {step.type === "generator" && step.branches && (
+        <BranchesContainer
+          step={step}
+          path={path}
+          depth={depth}
+          onAddBranch={onAddBranch}
+          onRemoveBranch={onRemoveBranch}
+          branchLabel={step.generatorKind === "cartesian" ? "Stage" : "Option"}
+          isGenerator
         />
       )}
     </motion.div>
@@ -246,13 +317,17 @@ interface BranchesContainerProps {
   depth: number;
   onAddBranch?: () => void;
   onRemoveBranch?: (branchIndex: number) => void;
+  branchLabel?: string;
+  isGenerator?: boolean;
 }
 
-function BranchesContainer({ step, path, depth, onAddBranch, onRemoveBranch }: BranchesContainerProps) {
+function BranchesContainer({ step, path, depth, onAddBranch, onRemoveBranch, branchLabel = "Branch", isGenerator = false }: BranchesContainerProps) {
   if (!step.branches) return null;
 
+  const borderColor = isGenerator ? "border-orange-500/30" : "border-muted-foreground/30";
+
   return (
-    <div className="pl-6 pb-3 pt-1 border-l-2 border-dashed border-muted-foreground/30 ml-6">
+    <div className={`pl-6 pb-3 pt-1 border-l-2 border-dashed ${borderColor} ml-6`}>
       <div className="space-y-2">
         {step.branches.map((branch, branchIndex) => (
           <BranchDropZone
@@ -263,6 +338,8 @@ function BranchesContainer({ step, path, depth, onAddBranch, onRemoveBranch }: B
             depth={depth + 1}
             onRemoveBranch={onRemoveBranch}
             canRemove={step.branches!.length > 2}
+            branchLabel={branchLabel}
+            isGenerator={isGenerator}
           />
         ))}
 
@@ -270,10 +347,10 @@ function BranchesContainer({ step, path, depth, onAddBranch, onRemoveBranch }: B
         {onAddBranch && (
           <button
             onClick={onAddBranch}
-            className="w-full h-8 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 text-muted-foreground hover:text-primary text-xs"
+            className={`w-full h-8 rounded-lg border-2 border-dashed hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 text-muted-foreground hover:text-primary text-xs ${isGenerator ? "border-orange-500/30" : "border-muted-foreground/30"}`}
           >
             <Plus className="h-3.5 w-3.5" />
-            <span className="font-medium">Add Branch</span>
+            <span className="font-medium">Add {branchLabel}</span>
           </button>
         )}
       </div>
@@ -289,9 +366,11 @@ interface BranchDropZoneProps {
   depth: number;
   onRemoveBranch?: (branchIndex: number) => void;
   canRemove: boolean;
+  branchLabel?: string;
+  isGenerator?: boolean;
 }
 
-function BranchDropZone({ branchIndex, branch, parentPath, depth, onRemoveBranch, canRemove }: BranchDropZoneProps) {
+function BranchDropZone({ branchIndex, branch, parentPath, depth, onRemoveBranch, canRemove, branchLabel = "Branch", isGenerator = false }: BranchDropZoneProps) {
   const branchPath = [...parentPath, "branch", String(branchIndex)];
 
   const { setNodeRef, isOver } = useDroppable({
@@ -305,6 +384,10 @@ function BranchDropZone({ branchIndex, branch, parentPath, depth, onRemoveBranch
     },
   });
 
+  const IconComponent = isGenerator ? Sparkles : GitBranch;
+  const borderColorIdle = isGenerator ? "border-orange-500/20" : "border-muted-foreground/20";
+  const bgColorIdle = isGenerator ? "bg-orange-500/5" : "bg-muted/10";
+
   return (
     <div
       ref={setNodeRef}
@@ -312,14 +395,14 @@ function BranchDropZone({ branchIndex, branch, parentPath, depth, onRemoveBranch
         w-full rounded-lg border-2 p-2 transition-all
         ${isOver
           ? "border-primary bg-primary/10 border-solid"
-          : "border-dashed border-muted-foreground/20 bg-muted/10"
+          : `border-dashed ${borderColorIdle} ${bgColorIdle}`
         }
       `}
     >
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-          <GitBranch className="h-3 w-3" />
-          Branch {branchIndex + 1}
+        <span className={`text-xs font-medium flex items-center gap-1 ${isGenerator ? "text-orange-500" : "text-muted-foreground"}`}>
+          <IconComponent className="h-3 w-3" />
+          {branchLabel} {branchIndex + 1}
         </span>
         {canRemove && onRemoveBranch && (
           <Button

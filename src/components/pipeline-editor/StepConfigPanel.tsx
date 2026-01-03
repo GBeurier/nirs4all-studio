@@ -1,14 +1,19 @@
+import { useState } from "react";
 import {
   Waves,
   Shuffle,
   Target,
-  BarChart3,
   GitBranch,
   GitMerge,
   Trash2,
   Copy,
   Info,
   RotateCcw,
+  Repeat,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,17 +36,26 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   stepOptions,
   stepColors,
   type PipelineStep,
   type StepType,
+  type ParameterSweep,
+  type SweepType,
+  calculateSweepVariants,
+  calculateStepVariants,
 } from "./types";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
   splitting: Shuffle,
   model: Target,
-  metrics: BarChart3,
+  generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
 };
@@ -78,6 +92,205 @@ const parameterInfo: Record<string, string> = {
   n_repeats: "Number of times to repeat cross-validation",
   normalization: "Normalization method (range, std, mean)",
 };
+
+// Sweep type labels
+const sweepTypeLabels: Record<SweepType, string> = {
+  range: "Range",
+  log_range: "Log Range",
+  or: "Choices",
+  grid: "Grid",
+};
+
+// Component for sweep configuration
+interface SweepConfigProps {
+  paramKey: string;
+  currentValue: string | number | boolean;
+  sweep: ParameterSweep | undefined;
+  onSweepChange: (sweep: ParameterSweep | undefined) => void;
+}
+
+function SweepConfig({ paramKey, currentValue, sweep, onSweepChange }: SweepConfigProps) {
+  const [isOpen, setIsOpen] = useState(!!sweep);
+  const isNumeric = typeof currentValue === "number";
+
+  const handleEnableSweep = () => {
+    if (!sweep) {
+      // Create default sweep based on value type
+      if (isNumeric) {
+        const val = currentValue as number;
+        onSweepChange({
+          type: "range",
+          from: Math.max(1, Math.floor(val * 0.5)),
+          to: Math.ceil(val * 1.5),
+          step: val >= 10 ? Math.ceil(val * 0.1) : 1,
+        });
+      } else {
+        onSweepChange({
+          type: "or",
+          choices: [currentValue],
+        });
+      }
+      setIsOpen(true);
+    } else {
+      onSweepChange(undefined);
+      setIsOpen(false);
+    }
+  };
+
+  const handleTypeChange = (type: SweepType) => {
+    if (type === "range") {
+      const val = typeof currentValue === "number" ? currentValue : 10;
+      onSweepChange({
+        type: "range",
+        from: Math.max(1, Math.floor(val * 0.5)),
+        to: Math.ceil(val * 1.5),
+        step: 1,
+      });
+    } else if (type === "log_range") {
+      const val = typeof currentValue === "number" ? currentValue : 1;
+      onSweepChange({
+        type: "log_range",
+        from: Math.max(0.001, val * 0.1),
+        to: val * 10,
+        count: 5,
+      });
+    } else if (type === "or") {
+      onSweepChange({
+        type: "or",
+        choices: [currentValue],
+      });
+    }
+  };
+
+  const variantCount = sweep ? calculateSweepVariants(sweep) : 0;
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex items-center gap-1">
+        <Button
+          variant={sweep ? "default" : "ghost"}
+          size="sm"
+          className={`h-6 px-2 text-xs gap-1 ${sweep ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+          onClick={handleEnableSweep}
+        >
+          <Repeat className="h-3 w-3" />
+          {sweep ? `Sweep (${variantCount})` : "Sweep"}
+        </Button>
+        {sweep && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={() => setIsOpen(!isOpen)}
+          >
+            {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+        )}
+      </div>
+
+      {sweep && isOpen && (
+        <div className="mt-2 p-3 rounded-lg border border-orange-500/30 bg-orange-500/5 space-y-3">
+          <div className="flex items-center justify-between">
+            <Select value={sweep.type} onValueChange={(v) => handleTypeChange(v as SweepType)}>
+              <SelectTrigger className="h-7 w-28 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                {isNumeric && <SelectItem value="range">Range</SelectItem>}
+                {isNumeric && <SelectItem value="log_range">Log Range</SelectItem>}
+                <SelectItem value="or">Choices</SelectItem>
+              </SelectContent>
+            </Select>
+            <Badge variant="secondary" className="text-xs bg-orange-500/20 text-orange-600">
+              {variantCount} variant{variantCount !== 1 ? "s" : ""}
+            </Badge>
+          </div>
+
+          {(sweep.type === "range" || sweep.type === "log_range") && (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input
+                  type="number"
+                  value={sweep.from ?? 0}
+                  onChange={(e) => onSweepChange({ ...sweep, from: parseFloat(e.target.value) || 0 })}
+                  className="h-7 text-xs font-mono"
+                  step={sweep.type === "log_range" ? 0.001 : 1}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input
+                  type="number"
+                  value={sweep.to ?? 10}
+                  onChange={(e) => onSweepChange({ ...sweep, to: parseFloat(e.target.value) || 10 })}
+                  className="h-7 text-xs font-mono"
+                  step={sweep.type === "log_range" ? 0.001 : 1}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">
+                  {sweep.type === "log_range" ? "Count" : "Step"}
+                </Label>
+                <Input
+                  type="number"
+                  value={sweep.type === "log_range" ? (sweep.count ?? 5) : (sweep.step ?? 1)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 1;
+                    if (sweep.type === "log_range") {
+                      onSweepChange({ ...sweep, count: val });
+                    } else {
+                      onSweepChange({ ...sweep, step: val });
+                    }
+                  }}
+                  className="h-7 text-xs font-mono"
+                  min={1}
+                />
+              </div>
+            </div>
+          )}
+
+          {sweep.type === "or" && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Choices (comma-separated)</Label>
+              <Input
+                value={sweep.choices?.join(", ") ?? ""}
+                onChange={(e) => {
+                  const choices = e.target.value.split(",").map(s => {
+                    const trimmed = s.trim();
+                    const num = parseFloat(trimmed);
+                    if (!isNaN(num) && isNumeric) return num;
+                    if (trimmed === "true") return true;
+                    if (trimmed === "false") return false;
+                    return trimmed;
+                  }).filter(v => v !== "");
+                  onSweepChange({ ...sweep, choices });
+                }}
+                className="h-7 text-xs font-mono"
+                placeholder="value1, value2, value3"
+              />
+            </div>
+          )}
+
+          {/* Preview values */}
+          <div className="text-xs text-muted-foreground">
+            {sweep.type === "range" && sweep.from !== undefined && sweep.to !== undefined && (
+              <span>
+                Values: {Array.from(
+                  { length: Math.min(5, variantCount) },
+                  (_, i) => sweep.from! + i * (sweep.step ?? 1)
+                ).join(", ")}{variantCount > 5 ? `, ... (${variantCount} total)` : ""}
+              </span>
+            )}
+            {sweep.type === "log_range" && (
+              <span>Logarithmically spaced from {sweep.from} to {sweep.to}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface StepConfigPanelProps {
   step: PipelineStep | null;
@@ -131,35 +344,68 @@ export function StepConfigPanel({
     if (currentOption) {
       onUpdate(step.id, {
         params: { ...currentOption.defaultParams },
+        paramSweeps: undefined, // Clear sweeps on reset
       });
     }
   };
 
+  const handleSweepChange = (key: string, sweep: ParameterSweep | undefined) => {
+    const newSweeps = { ...(step.paramSweeps || {}) };
+    if (sweep) {
+      newSweeps[key] = sweep;
+    } else {
+      delete newSweeps[key];
+    }
+    onUpdate(step.id, {
+      paramSweeps: Object.keys(newSweeps).length > 0 ? newSweeps : undefined,
+    });
+  };
+
+  // Calculate total variants for this step
+  const totalVariants = calculateStepVariants(step);
+  const hasSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+
   const renderParamInput = (key: string, value: string | number | boolean) => {
     const info = parameterInfo[key];
+    const sweep = step.paramSweeps?.[key];
+    const hasSweepActive = !!sweep;
 
     // Boolean parameters
     if (typeof value === "boolean") {
       return (
-        <div key={key} className="flex items-center justify-between py-2">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm capitalize">
-              {key.replace(/_/g, " ")}
-            </Label>
-            {info && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-[200px]">
-                  <p>{info}</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
+        <div key={key} className="space-y-1">
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-2">
+              <Label className={`text-sm capitalize ${hasSweepActive ? "text-orange-500" : ""}`}>
+                {key.replace(/_/g, " ")}
+              </Label>
+              {info && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-[200px]">
+                    <p>{info}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {hasSweepActive && (
+                <Badge variant="outline" className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500">
+                  sweep
+                </Badge>
+              )}
+            </div>
+            <Switch
+              checked={value}
+              onCheckedChange={(checked) => handleParamChange(key, checked)}
+              disabled={hasSweepActive}
+            />
           </div>
-          <Switch
-            checked={value}
-            onCheckedChange={(checked) => handleParamChange(key, checked)}
+          <SweepConfig
+            paramKey={key}
+            currentValue={value}
+            sweep={sweep}
+            onSweepChange={(s) => handleSweepChange(key, s)}
           />
         </div>
       );
@@ -170,7 +416,7 @@ export function StepConfigPanel({
       return (
         <div key={key} className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm capitalize">
+            <Label className={`text-sm capitalize ${hasSweepActive ? "text-orange-500" : ""}`}>
               {key.replace(/_/g, " ")}
             </Label>
             {info && (
@@ -183,10 +429,16 @@ export function StepConfigPanel({
                 </TooltipContent>
               </Tooltip>
             )}
+            {hasSweepActive && (
+              <Badge variant="outline" className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500">
+                sweep
+              </Badge>
+            )}
           </div>
           <Select
             value={String(value)}
             onValueChange={(v) => handleParamChange(key, v)}
+            disabled={hasSweepActive}
           >
             <SelectTrigger>
               <SelectValue />
@@ -198,6 +450,12 @@ export function StepConfigPanel({
               <SelectItem value="sigmoid">Sigmoid</SelectItem>
             </SelectContent>
           </Select>
+          <SweepConfig
+            paramKey={key}
+            currentValue={value}
+            sweep={sweep}
+            onSweepChange={(s) => handleSweepChange(key, s)}
+          />
         </div>
       );
     }
@@ -206,7 +464,7 @@ export function StepConfigPanel({
       return (
         <div key={key} className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm capitalize">
+            <Label className={`text-sm capitalize ${hasSweepActive ? "text-orange-500" : ""}`}>
               {key.replace(/_/g, " ")}
             </Label>
             {info && (
@@ -219,10 +477,16 @@ export function StepConfigPanel({
                 </TooltipContent>
               </Tooltip>
             )}
+            {hasSweepActive && (
+              <Badge variant="outline" className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500">
+                sweep
+              </Badge>
+            )}
           </div>
           <Select
             value={String(value)}
             onValueChange={(v) => handleParamChange(key, v)}
+            disabled={hasSweepActive}
           >
             <SelectTrigger>
               <SelectValue />
@@ -233,6 +497,12 @@ export function StepConfigPanel({
               <SelectItem value="max">Max</SelectItem>
             </SelectContent>
           </Select>
+          <SweepConfig
+            paramKey={key}
+            currentValue={value}
+            sweep={sweep}
+            onSweepChange={(s) => handleSweepChange(key, s)}
+          />
         </div>
       );
     }
@@ -241,7 +511,7 @@ export function StepConfigPanel({
       return (
         <div key={key} className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm capitalize">
+            <Label className={`text-sm capitalize ${hasSweepActive ? "text-orange-500" : ""}`}>
               {key.replace(/_/g, " ")}
             </Label>
             {info && (
@@ -254,10 +524,16 @@ export function StepConfigPanel({
                 </TooltipContent>
               </Tooltip>
             )}
+            {hasSweepActive && (
+              <Badge variant="outline" className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500">
+                sweep
+              </Badge>
+            )}
           </div>
           <Select
             value={String(value)}
             onValueChange={(v) => handleParamChange(key, v)}
+            disabled={hasSweepActive}
           >
             <SelectTrigger>
               <SelectValue />
@@ -269,6 +545,12 @@ export function StepConfigPanel({
               <SelectItem value="leaky_relu">Leaky ReLU</SelectItem>
             </SelectContent>
           </Select>
+          <SweepConfig
+            paramKey={key}
+            currentValue={value}
+            sweep={sweep}
+            onSweepChange={(s) => handleSweepChange(key, s)}
+          />
         </div>
       );
     }
@@ -277,7 +559,7 @@ export function StepConfigPanel({
       return (
         <div key={key} className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm capitalize">
+            <Label className={`text-sm capitalize ${hasSweepActive ? "text-orange-500" : ""}`}>
               {key.replace(/_/g, " ")}
             </Label>
             {info && (
@@ -290,10 +572,16 @@ export function StepConfigPanel({
                 </TooltipContent>
               </Tooltip>
             )}
+            {hasSweepActive && (
+              <Badge variant="outline" className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500">
+                sweep
+              </Badge>
+            )}
           </div>
           <Select
             value={String(value)}
             onValueChange={(v) => handleParamChange(key, v)}
+            disabled={hasSweepActive}
           >
             <SelectTrigger>
               <SelectValue />
@@ -304,6 +592,12 @@ export function StepConfigPanel({
               <SelectItem value="median">Median Spectrum</SelectItem>
             </SelectContent>
           </Select>
+          <SweepConfig
+            paramKey={key}
+            currentValue={value}
+            sweep={sweep}
+            onSweepChange={(s) => handleSweepChange(key, s)}
+          />
         </div>
       );
     }
@@ -312,7 +606,9 @@ export function StepConfigPanel({
     return (
       <div key={key} className="space-y-2">
         <div className="flex items-center gap-2">
-          <Label className="text-sm capitalize">{key.replace(/_/g, " ")}</Label>
+          <Label className={`text-sm capitalize ${hasSweepActive ? "text-orange-500" : ""}`}>
+            {key.replace(/_/g, " ")}
+          </Label>
           {info && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -322,6 +618,11 @@ export function StepConfigPanel({
                 <p>{info}</p>
               </TooltipContent>
             </Tooltip>
+          )}
+          {hasSweepActive && (
+            <Badge variant="outline" className="text-[10px] px-1 h-4 border-orange-500/50 text-orange-500">
+              sweep
+            </Badge>
           )}
         </div>
         <Input
@@ -342,6 +643,13 @@ export function StepConfigPanel({
               : undefined
           }
           className="font-mono text-sm"
+          disabled={hasSweepActive}
+        />
+        <SweepConfig
+          paramKey={key}
+          currentValue={value}
+          sweep={sweep}
+          onSweepChange={(s) => handleSweepChange(key, s)}
         />
       </div>
     );
@@ -359,13 +667,19 @@ export function StepConfigPanel({
             <h2 className="font-semibold text-foreground truncate">
               {step.name}
             </h2>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="secondary" className="text-xs capitalize">
                 {step.type}
               </Badge>
               <span className="text-xs text-muted-foreground">
                 {Object.keys(step.params).length} params
               </span>
+              {hasSweeps && (
+                <Badge className="text-xs bg-orange-500 hover:bg-orange-600">
+                  <Repeat className="h-3 w-3 mr-1" />
+                  {totalVariants} variants
+                </Badge>
+              )}
             </div>
           </div>
         </div>
