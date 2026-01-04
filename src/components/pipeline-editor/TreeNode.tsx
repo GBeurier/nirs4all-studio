@@ -18,8 +18,12 @@ import {
   Filter,
   Zap,
   BarChart3,
-  Power,
-  PowerOff,
+  Layers,
+  FlaskConical,
+  Combine,
+  LineChart,
+  MessageSquare,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +45,7 @@ import {
 import { usePipelineDnd } from "./PipelineDndContext";
 import {
   stepColors,
+  CONTAINER_STEP_TYPES,
   type PipelineStep,
   type StepType,
   calculateStepVariants,
@@ -57,6 +62,12 @@ const stepIcons: Record<StepType, typeof Waves> = {
   merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
+  sample_augmentation: Layers,
+  feature_augmentation: FlaskConical,
+  sample_filter: Filter,
+  concat_transform: Combine,
+  chart: LineChart,
+  comment: MessageSquare,
 };
 
 interface TreeNodeProps {
@@ -77,6 +88,27 @@ interface TreeNodeProps {
   onDuplicateStep: (id: string, path?: string[]) => void;
   onAddBranchNested?: (stepId: string, path?: string[]) => void;
   onRemoveBranchNested?: (stepId: string, branchIndex: number, path?: string[]) => void;
+  // For container children (sample_augmentation, feature_augmentation, etc.)
+  onAddChild?: (stepId: string, path?: string[]) => void;
+  onRemoveChild?: (stepId: string, childId: string, path?: string[]) => void;
+  onUpdateStep?: (stepId: string, updates: Partial<PipelineStep>, path?: string[]) => void;
+}
+
+// Check if a step type has children (not branches)
+function hasChildren(step: PipelineStep): boolean {
+  const containerTypes: StepType[] = ["sample_augmentation", "feature_augmentation", "sample_filter", "concat_transform"];
+  return containerTypes.includes(step.type) && (step.children?.length ?? 0) > 0;
+}
+
+// Get container label based on step type
+function getContainerChildLabel(stepType: StepType): string {
+  switch (stepType) {
+    case "sample_augmentation": return "transformer";
+    case "feature_augmentation": return "transform";
+    case "sample_filter": return "filter";
+    case "concat_transform": return "transform";
+    default: return "child";
+  }
 }
 
 export function TreeNode({
@@ -96,10 +128,19 @@ export function TreeNode({
   onDuplicateStep,
   onAddBranchNested,
   onRemoveBranchNested,
+  onAddChild,
+  onRemoveChild,
+  onUpdateStep,
 }: TreeNodeProps) {
   const { isDragging, activeId } = usePipelineDnd();
   const isBeingDragged = activeId === step.id;
   const [isBranchesExpanded, setIsBranchesExpanded] = useState(true);
+  const [isChildrenExpanded, setIsChildrenExpanded] = useState(true);
+
+  // Check if this is a container step with children
+  const isContainer = ["sample_augmentation", "feature_augmentation", "sample_filter", "concat_transform"].includes(step.type);
+  const containerChildren = step.children ?? [];
+  const childLabel = getContainerChildLabel(step.type);
 
   const {
     attributes,
@@ -153,6 +194,27 @@ export function TreeNode({
     return `${k}: ${formatSweepDisplay(sweep)}`;
   }).join("\n");
 
+  // Determine if this node is foldable (has branches or children)
+  const isFoldable = ((step.type === "branch" || step.type === "generator") && step.branches && step.branches.length > 0) || (isContainer && containerChildren.length > 0);
+  // Use appropriate expand state for the step type
+  const isExpanded = (step.type === "branch" || step.type === "generator") ? isBranchesExpanded : isChildrenExpanded;
+  const setIsExpanded = (step.type === "branch" || step.type === "generator") ? setIsBranchesExpanded : setIsChildrenExpanded;
+
+  // Get fold label for tooltip
+  const getFoldLabel = () => {
+    if (step.type === "branch" || step.type === "generator") {
+      const count = step.branches?.length ?? 0;
+      const label = step.type === "generator"
+        ? (step.generatorKind === "cartesian" ? "stages" : "options")
+        : "branches";
+      return `${count} ${label}`;
+    }
+    if (isContainer) {
+      return `${containerChildren.length} ${childLabel}${containerChildren.length !== 1 ? "s" : ""}`;
+    }
+    return "";
+  };
+
   const nodeContent = (
     <div
       ref={(node) => {
@@ -173,6 +235,31 @@ export function TreeNode({
         onSelect();
       }}
     >
+      {/* Expand/Collapse toggle for foldable nodes */}
+      {isFoldable && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+              className={`p-0.5 rounded hover:bg-muted transition-colors shrink-0 ${colors.text}`}
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <span className="text-xs">{isExpanded ? "Collapse" : "Expand"} {getFoldLabel()}</span>
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       {/* Drag Handle */}
       <button
         {...attributes}
@@ -226,6 +313,25 @@ export function TreeNode({
                   <div className="font-semibold mb-1">Optuna Finetuning</div>
                   <p className="text-muted-foreground">
                     {finetuneTrials} trials, {finetuneParamCount} parameter{finetuneParamCount !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {/* Container children indicator */}
+          {isContainer && containerChildren.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className={`text-[9px] px-1 py-0 h-4 shrink-0 cursor-help ${colors.text} bg-opacity-20`} style={{ backgroundColor: 'currentColor', opacity: 0.2 }}>
+                  <Package className="h-2.5 w-2.5 mr-0.5" />
+                  {containerChildren.length}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-[220px]">
+                <div className="text-xs">
+                  <div className="font-semibold mb-1">{containerChildren.length} {childLabel}{containerChildren.length !== 1 ? "s" : ""}</div>
+                  <p className="text-muted-foreground">
+                    {containerChildren.map(c => c.name).join(", ")}
                   </p>
                 </div>
               </TooltipContent>
@@ -310,6 +416,15 @@ export function TreeNode({
               </ContextMenuItem>
             </>
           )}
+          {isContainer && onAddChild && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => onAddChild(step.id, path)} className={colors.text}>
+                <Plus className="h-3.5 w-3.5 mr-2" />
+                Add {childLabel}
+              </ContextMenuItem>
+            </>
+          )}
           <ContextMenuSeparator />
           <ContextMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
             <Trash2 className="h-3.5 w-3.5 mr-2" />
@@ -319,63 +434,62 @@ export function TreeNode({
       </ContextMenu>
 
       {/* Render branches as nested tree */}
-      {(step.type === "branch" || step.type === "generator") && step.branches && (
+      {(step.type === "branch" || step.type === "generator") && step.branches && isBranchesExpanded && (
         <div className="ml-4 mt-1">
-          {/* Collapse/expand toggle */}
-          <button
-            onClick={() => setIsBranchesExpanded(!isBranchesExpanded)}
-            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground py-0.5 px-1 rounded hover:bg-muted/50 transition-colors mb-1"
-          >
-            {isBranchesExpanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-            <span>
-              {step.branches.length} {step.type === "generator"
-                ? (step.generatorKind === "cartesian" ? "stages" : "options")
-                : "branches"}
-            </span>
-          </button>
-
-          {isBranchesExpanded && (
-            <>
-              {step.branches.map((branch, branchIndex) => (
-                <BranchNode
-                  key={branchIndex}
-                  branch={branch}
-                  branchIndex={branchIndex}
-                  parentPath={[...path, step.id]}
-                  parentStepId={step.id}
-                  depth={depth + 1}
-                  canRemove={step.branches!.length > 1}
-                  onRemoveBranch={onRemoveBranchNested ? (bIdx) => onRemoveBranchNested(step.id, bIdx, path) : undefined}
-                  selectedStepId={selectedStepId}
-                  onSelectStep={onSelectStep}
-                  onRemoveStep={onRemoveStep}
-                  onDuplicateStep={onDuplicateStep}
-                  onAddBranchNested={onAddBranchNested}
-                  onRemoveBranchNested={onRemoveBranchNested}
-                  isGenerator={step.type === "generator"}
-                  branchLabel={step.type === "generator"
-                    ? (step.generatorKind === "cartesian" ? "Stage" : "Option")
-                    : "Branch"}
-                />
-              ))}
-              {/* Add branch button */}
-              {onAddBranch && (
-                <button
-                  onClick={onAddBranch}
-                  className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded hover:bg-muted/50 transition-colors ml-2 mt-1 ${step.type === "generator" ? "text-orange-500 hover:text-orange-600" : "text-muted-foreground hover:text-primary"}`}
-                >
-                  <Plus className="h-3 w-3" />
-                  <span>Add {step.type === "generator"
-                    ? (step.generatorKind === "cartesian" ? "stage" : "option")
-                    : "branch"}</span>
-                </button>
-              )}
-            </>
+          {step.branches.map((branch, branchIndex) => (
+            <BranchNode
+              key={branchIndex}
+              branch={branch}
+              branchIndex={branchIndex}
+              parentPath={[...path, step.id]}
+              parentStepId={step.id}
+              depth={depth + 1}
+              canRemove={step.branches!.length > 1}
+              onRemoveBranch={onRemoveBranchNested ? (bIdx) => onRemoveBranchNested(step.id, bIdx, path) : undefined}
+              selectedStepId={selectedStepId}
+              onSelectStep={onSelectStep}
+              onRemoveStep={onRemoveStep}
+              onDuplicateStep={onDuplicateStep}
+              onAddBranchNested={onAddBranchNested}
+              onRemoveBranchNested={onRemoveBranchNested}
+              onAddChild={onAddChild}
+              onRemoveChild={onRemoveChild}
+              isGenerator={step.type === "generator"}
+              branchLabel={step.type === "generator"
+                ? (step.generatorKind === "cartesian" ? "Stage" : "Option")
+                : "Branch"}
+            />
+          ))}
+          {/* Add branch button */}
+          {onAddBranch && (
+            <button
+              onClick={onAddBranch}
+              className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded hover:bg-muted/50 transition-colors ml-2 mt-1 ${step.type === "generator" ? "text-orange-500 hover:text-orange-600" : "text-muted-foreground hover:text-primary"}`}
+            >
+              <Plus className="h-3 w-3" />
+              <span>Add {step.type === "generator"
+                ? (step.generatorKind === "cartesian" ? "stage" : "option")
+                : "branch"}</span>
+            </button>
           )}
+        </div>
+      )}
+
+      {/* Render container children (sample_augmentation, feature_augmentation, etc.) */}
+      {isContainer && isChildrenExpanded && (
+        <div className="ml-4 mt-1">
+          <ContainerChildrenNode
+            children={containerChildren}
+            parentStep={step}
+            parentPath={[...path, step.id]}
+            depth={depth + 1}
+            childLabel={childLabel}
+            selectedStepId={selectedStepId}
+            onSelectStep={onSelectStep}
+            onRemoveChild={onRemoveChild}
+            onAddChild={onAddChild}
+            colors={colors}
+          />
         </div>
       )}
     </div>
@@ -397,6 +511,9 @@ interface BranchNodeProps {
   onDuplicateStep: (id: string, path?: string[]) => void;
   onAddBranchNested?: (stepId: string, path?: string[]) => void;
   onRemoveBranchNested?: (stepId: string, branchIndex: number, path?: string[]) => void;
+  // Container children operations
+  onAddChild?: (stepId: string, path?: string[]) => void;
+  onRemoveChild?: (stepId: string, childId: string, path?: string[]) => void;
   isGenerator?: boolean;
   branchLabel?: string;
 }
@@ -415,6 +532,8 @@ function BranchNode({
   onDuplicateStep,
   onAddBranchNested,
   onRemoveBranchNested,
+  onAddChild,
+  onRemoveChild,
   isGenerator = false,
   branchLabel = "Branch",
 }: BranchNodeProps) {
@@ -509,6 +628,8 @@ function BranchNode({
                 onDuplicateStep={onDuplicateStep}
                 onAddBranchNested={onAddBranchNested}
                 onRemoveBranchNested={onRemoveBranchNested}
+                onAddChild={onAddChild}
+                onRemoveChild={onRemoveChild}
               />
               <BranchDropZone
                 id={`branch-${parentPath.join("-")}-${branchIndex}-after-${branchStep.id}`}
@@ -561,6 +682,204 @@ function BranchDropZone({ id, path, index }: BranchDropZoneProps) {
           <Plus className="h-3 w-3 text-primary" />
           <span className="text-[10px] font-medium text-primary">Drop here</span>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Container children node - renders children of container steps (sample_augmentation, feature_augmentation, etc.)
+interface ContainerChildrenNodeProps {
+  children: PipelineStep[];
+  parentStep: PipelineStep;
+  parentPath: string[];
+  depth: number;
+  childLabel: string;
+  selectedStepId: string | null;
+  onSelectStep: (id: string | null) => void;
+  onRemoveChild?: (stepId: string, childId: string, path?: string[]) => void;
+  onAddChild?: (stepId: string, path?: string[]) => void;
+  colors: { bg: string; border: string; text: string };
+}
+
+function ContainerChildrenNode({
+  children,
+  parentStep,
+  parentPath,
+  depth,
+  childLabel,
+  selectedStepId,
+  onSelectStep,
+  onRemoveChild,
+  onAddChild,
+  colors,
+}: ContainerChildrenNodeProps) {
+  const { dropIndicator } = usePipelineDnd();
+  const childrenPath = [...parentPath, "children"];
+
+  // Drop zone for adding new children at end
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `container-${parentStep.id}-children`,
+    data: {
+      type: "container-drop-zone",
+      path: childrenPath,
+      parentStepId: parentStep.id,
+      index: children.length,
+      position: "inside",
+      accepts: ["preprocessing", "y_processing", "filter", "augmentation"],
+    },
+  });
+
+  return (
+    <div className={`border-l border-dashed ${colors.border} ml-1.5 pl-3`}>
+      {children.length === 0 ? (
+        <div
+          ref={setDropRef}
+          className={`
+            py-2 px-3 text-xs text-muted-foreground rounded border border-dashed transition-all cursor-pointer
+            ${isOver ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30"}
+          `}
+          onClick={() => onAddChild?.(parentStep.id, parentPath)}
+        >
+          {isOver ? "Drop transformer here" : `No ${childLabel}s - click to add or drop here`}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {children.map((child, idx) => (
+            <ContainerChildItem
+              key={child.id}
+              child={child}
+              index={idx}
+              parentStep={parentStep}
+              parentPath={parentPath}
+              childLabel={childLabel}
+              isSelected={selectedStepId === child.id}
+              onSelect={() => onSelectStep(child.id)}
+              onRemove={() => onRemoveChild?.(parentStep.id, child.id, parentPath)}
+              colors={colors}
+            />
+          ))}
+          {/* Drop zone at the end - only visible when dragging over */}
+          <div
+            ref={setDropRef}
+            className={`
+              rounded border border-dashed transition-all flex items-center justify-center
+              ${isOver ? "h-8 border-primary bg-primary/10" : "h-1 border-transparent"}
+            `}
+          >
+            {isOver && (
+              <>
+                <Plus className="h-3 w-3 text-primary mr-1" />
+                <span className="text-[10px] text-primary">Drop {childLabel}</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Individual child item within a container
+interface ContainerChildItemProps {
+  child: PipelineStep;
+  index: number;
+  parentStep: PipelineStep;
+  parentPath: string[];
+  childLabel: string;
+  isSelected: boolean;
+  onSelect: () => void;
+  onRemove: () => void;
+  colors: { bg: string; border: string; text: string };
+}
+
+function ContainerChildItem({
+  child,
+  index,
+  parentStep,
+  parentPath,
+  childLabel,
+  isSelected,
+  onSelect,
+  onRemove,
+  colors,
+}: ContainerChildItemProps) {
+  const Icon = stepIcons[child.type] || Waves;
+  const childColors = stepColors[child.type] || colors;
+  const { isDragging: globalIsDragging, activeId } = usePipelineDnd();
+  const isBeingDragged = activeId === child.id;
+
+  // Make this child item draggable
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+  } = useDraggable({
+    id: child.id,
+    data: {
+      type: "pipeline-step",
+      stepId: child.id,
+      step: child,
+      sourcePath: [...parentPath, "children"],
+      isContainerChild: true,
+      parentStepId: parentStep.id,
+    },
+  });
+
+  // Format child parameters
+  const paramEntries = Object.entries(child.params);
+  const displayParams = paramEntries
+    .slice(0, 2)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+
+  return (
+    <div
+      ref={setDragRef}
+      className={`
+        group flex items-center gap-2 px-2 py-1.5 rounded text-xs cursor-pointer transition-all
+        ${isBeingDragged ? "opacity-30" : "opacity-100"}
+        ${isSelected
+          ? `${childColors.bg} ${childColors.border} border ring-1 ${childColors.active || 'ring-primary'}`
+          : "hover:bg-muted/50 border border-transparent"
+        }
+      `}
+      onClick={onSelect}
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-muted transition-colors touch-none shrink-0 opacity-50 group-hover:opacity-100"
+        aria-label="Drag to reorder"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
+      </button>
+
+      {/* Child icon */}
+      <Icon className={`h-3 w-3 flex-shrink-0 ${childColors.text}`} />
+
+      {/* Child info */}
+      <div className="flex-1 min-w-0">
+        <span className="font-medium truncate">{child.name || child.type}</span>
+        {displayParams && (
+          <span className="text-muted-foreground ml-1 truncate">({displayParams})</span>
+        )}
+      </div>
+
+      {/* Remove button - now always visible on hover */}
+      {!globalIsDragging && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
       )}
     </div>
   );

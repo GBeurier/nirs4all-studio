@@ -28,6 +28,11 @@ import {
   SlidersHorizontal,
   Filter,
   Layers,
+  FlaskConical,
+  Combine,
+  LineChart,
+  MessageSquare,
+  Zap,
 } from "lucide-react";
 import type { PipelineStep, StepType, StepOption, DragData, DropIndicator } from "./types";
 import { stepColors } from "./types";
@@ -42,7 +47,13 @@ const stepIcons: Record<StepType, typeof Waves> = {
   branch: GitBranch,
   merge: GitMerge,
   filter: Filter,
-  augmentation: Layers,
+  augmentation: Zap,
+  sample_augmentation: Layers,
+  feature_augmentation: FlaskConical,
+  sample_filter: Filter,
+  concat_transform: Combine,
+  chart: LineChart,
+  comment: MessageSquare,
 };
 
 interface PipelineDndContextValue {
@@ -130,10 +141,11 @@ export function PipelineDndProvider({ children, onDrop, onReorder }: PipelineDnd
       path?: string[];
       index?: number;
       position?: "before" | "after" | "inside";
-      accepts?: boolean;
+      accepts?: boolean | string[];
+      parentStepId?: string;
     };
 
-    if (overData?.type === "drop-zone" && overData.accepts !== false) {
+    if ((overData?.type === "drop-zone" || overData?.type === "container-drop-zone") && overData.accepts !== false) {
       setDropIndicator({
         path: overData.path || [],
         index: overData.index ?? 0,
@@ -165,10 +177,11 @@ export function PipelineDndProvider({ children, onDrop, onReorder }: PipelineDnd
         index?: number;
         stepId?: string;
         position?: "before" | "after" | "inside";
+        parentStepId?: string;
       };
 
-      if (overData?.type === "drop-zone") {
-        // Dropping into a drop zone
+      if (overData?.type === "drop-zone" || overData?.type === "container-drop-zone") {
+        // Dropping into a drop zone (including container drop zones)
         const indicator: DropIndicator = {
           path: overData.path || [],
           index: overData.index ?? 0,

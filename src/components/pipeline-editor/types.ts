@@ -20,7 +20,13 @@ export type StepType =
   | "branch"
   | "merge"
   | "filter"              // Sample filtering (outliers, conditions)
-  | "augmentation";       // Sample augmentation (training-time)
+  | "augmentation"        // Sample augmentation (training-time)
+  | "sample_augmentation" // Container for sample_augmentation with transformers
+  | "feature_augmentation" // Container for feature_augmentation
+  | "sample_filter"       // Container for sample_filter with filters
+  | "concat_transform"    // Horizontal feature concatenation from multiple transforms
+  | "chart"               // Visualization steps (chart_2d, chart_y)
+  | "comment";            // Non-functional comment step
 
 // Generator types for step-level generators
 export type GeneratorKind = "or" | "cartesian";
@@ -60,19 +66,126 @@ export interface FinetuneConfig {
   enabled: boolean;
   n_trials: number;
   timeout?: number;       // Max optimization time in seconds
-  approach: "grouped" | "individual";  // Shared across folds vs per-fold
+  approach: "grouped" | "individual" | "single" | "cross";  // Shared across folds vs per-fold
   eval_mode: "best" | "mean";          // Score evaluation mode
+  sample?: "grid" | "random" | "hyperband"; // Sampling strategy
+  verbose?: number;       // Verbosity level
   model_params: FinetuneParamConfig[];
+  // For neural network training parameters tuning (epochs, batch_size, etc.)
+  train_params?: FinetuneParamConfig[];
 }
 
-// Training parameters for deep learning models
+// Step-level training parameters (defaults, not tunable)
+export interface TrainParams {
+  epochs?: number;
+  batch_size?: number;
+  learning_rate?: number;
+  patience?: number;
+  verbose?: number;
+  optimizer?: string;
+  [key: string]: unknown;  // Allow arbitrary params
+}
+
+// Step-level metadata that sits at the step level in nirs4all (not inside model/preprocessing)
+export interface StepMetadata {
+  customName?: string;           // Maps to "name" in nirs4all step
+  trainParams?: TrainParams;     // Maps to "train_params" at step level
+  action?: "extend" | "add" | "replace";  // For augmentation steps
+}
+
+// Step-level generator (e.g., _range_ on a model step)
+export interface StepGenerator {
+  type: "_range_" | "_log_range_" | "_grid_" | "_or_";
+  values?: number[] | unknown[];  // For _range_: [start, end, step], for _or_: alternatives
+  param?: string;                 // Which param the generator affects (for _range_/_log_range_)
+  pick?: number | [number, number];
+  arrange?: number | [number, number];
+  count?: number;
+}
+
+// Training parameters for deep learning models (legacy - prefer stepMetadata.trainParams)
 export interface TrainingConfig {
   epochs: number;
   batch_size: number;
-  learning_rate: number;
+  learning_rate?: number;
   patience?: number;      // Early stopping patience
-  optimizer: "adam" | "sgd" | "rmsprop" | "adamw";
+  optimizer?: "adam" | "sgd" | "rmsprop" | "adamw";
   callbacks?: string[];   // Training callbacks
+  verbose?: number;       // Verbosity level
+}
+
+// Container step types that have nested children
+export const CONTAINER_STEP_TYPES: StepType[] = [
+  "branch",
+  "generator",
+  "sample_augmentation",
+  "feature_augmentation",
+  "sample_filter",
+  "concat_transform",
+];
+
+// Sample augmentation configuration
+export interface SampleAugmentationConfig {
+  transformers: TransformerConfig[];
+  count?: number;         // Number of augmented samples per original
+  selection?: "random" | "all" | "sequential";
+  random_state?: number;
+}
+
+// Feature augmentation configuration
+export interface FeatureAugmentationConfig {
+  action?: "extend" | "add" | "replace";
+  // For _or_ generator mode
+  orOptions?: TransformerConfig[];
+  pick?: number | [number, number];
+  count?: number;
+  // For direct list mode
+  transforms?: TransformerConfig[];
+}
+
+// Sample filter configuration
+export interface SampleFilterConfig {
+  filters: TransformerConfig[];
+  mode?: "any" | "all" | "vote";
+  report?: boolean;
+}
+
+// Concat transform configuration
+export interface ConcatTransformConfig {
+  branches: TransformerConfig[][];  // Each branch is a chain of transforms
+}
+
+// Transformer within augmentation/filter configs
+export interface TransformerConfig {
+  id: string;
+  name: string;
+  classPath?: string;     // Full class path for nirs4all
+  params: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+// Merge step configuration (complex merge with predictions selection)
+export interface MergeConfig {
+  mode?: string;          // Simple mode: "predictions", "features", "concatenate"
+  predictions?: MergePredictionSource[];
+  features?: number[];    // Branch indices to include features from
+  output_as?: "features" | "predictions";
+  on_missing?: "warn" | "error" | "drop";
+}
+
+// Merge prediction source configuration
+export interface MergePredictionSource {
+  branch: number;
+  select: "best" | "all" | { top_k: number };
+  metric?: "rmse" | "r2" | "mae";
+}
+
+// Chart step configuration
+export interface ChartConfig {
+  chartType: "chart_2d" | "chart_y";
+  include_excluded?: boolean;
+  highlight_excluded?: boolean;
+  [key: string]: unknown;
 }
 
 export interface PipelineStep {
@@ -80,15 +193,21 @@ export interface PipelineStep {
   type: StepType;
   name: string;
   params: Record<string, string | number | boolean>;
+  // Full class path (for export to nirs4all)
+  classPath?: string;
   // Parameter sweeps: which params have generators attached
   paramSweeps?: Record<string, ParameterSweep>;
-  // For branching steps: list of parallel pipelines
+  // For branching steps: list of parallel pipelines (branch, generator)
   branches?: PipelineStep[][];
+  // Named branches support (for dict-style branches like {"snv_path": [...], "msc_path": [...]})
+  namedBranches?: Record<string, PipelineStep[]>;
   // Branch metadata (names, collapsed state)
   branchMetadata?: {
     name?: string;
     isCollapsed?: boolean;
   }[];
+  // For container steps: nested children (sample_augmentation, feature_augmentation, etc.)
+  children?: PipelineStep[];
   // For generator steps (OR, Cartesian): child steps/options
   generatorKind?: GeneratorKind;
   generatorOptions?: {
@@ -96,9 +215,13 @@ export interface PipelineStep {
     arrange?: number | [number, number]; // Permutations
     count?: number; // Limit variants
   };
+  // Step-level generator (e.g., _range_ on a model step)
+  stepGenerator?: StepGenerator;
+  // Step-level metadata (name, train_params, action)
+  stepMetadata?: StepMetadata;
   // Finetuning configuration (for model steps)
   finetuneConfig?: FinetuneConfig;
-  // Training configuration (for deep learning models)
+  // Training configuration (for deep learning models) - legacy, prefer stepMetadata.trainParams
   trainingConfig?: TrainingConfig;
   // Y-Processing configuration (for pipeline-level target scaling)
   yProcessingConfig?: {
@@ -106,18 +229,19 @@ export interface PipelineStep {
     scaler: string;
     params: Record<string, string | number | boolean>;
   };
-  // Feature augmentation configuration
-  featureAugmentationConfig?: {
-    enabled: boolean;
-    action: "extend" | "add" | "replace";
-    transforms: {
-      id: string;
-      name: string;
-      params: Record<string, string | number | boolean>;
-      enabled: boolean;
-    }[];
-  };
-  // Stacking/MetaModel configuration (for merge steps)
+  // Feature augmentation configuration (container params, not transforms)
+  featureAugmentationConfig?: FeatureAugmentationConfig;
+  // Sample augmentation configuration (container params, not transformers)
+  sampleAugmentationConfig?: SampleAugmentationConfig;
+  // Sample filter configuration (container params, not filters)
+  sampleFilterConfig?: SampleFilterConfig;
+  // Concat transform configuration
+  concatTransformConfig?: ConcatTransformConfig;
+  // Merge configuration (complex merge with predictions)
+  mergeConfig?: MergeConfig;
+  // Chart configuration
+  chartConfig?: ChartConfig;
+  // Stacking/MetaModel configuration (for merge steps) - legacy
   stackingConfig?: {
     enabled: boolean;
     metaModel: string;
@@ -128,12 +252,16 @@ export interface PipelineStep {
     useOriginalFeatures: boolean;
     passthrough: boolean;
   };
+  // For function-based operators (e.g., nicon)
+  functionPath?: string;
   // Step enabled/disabled state
   enabled?: boolean;
-  // Custom step name for reference in MetaModel
+  // Custom step name for reference in MetaModel (legacy, prefer stepMetadata.customName)
   customName?: string;
   // Tags for categorization
   tags?: string[];
+  // Raw nirs4all step for unsupported complex structures
+  rawNirs4all?: unknown;
 }
 
 export interface StepOption {
@@ -554,6 +682,11 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "YOutlierFilter", description: "Remove Y outliers", defaultParams: { method: "iqr", threshold: 1.5 }, category: "Outlier" },
     { name: "XOutlierFilter", description: "Remove X outliers (Mahalanobis)", defaultParams: { threshold: 3.0 }, category: "Outlier" },
     { name: "HotellingT2Filter", description: "Hotelling T² outlier detection", defaultParams: { alpha: 0.05 }, category: "Outlier" },
+    { name: "SpectralQualityFilter", description: "Filter by spectral quality metrics", defaultParams: { max_nan_ratio: 0.1, max_zero_ratio: 0.3 }, category: "Quality" },
+  ],
+
+  sample_filter: [
+    { name: "SampleFilter", description: "Composite filter with multiple criteria", defaultParams: { mode: "any", report: true }, category: "Composite" },
   ],
 
   augmentation: [
@@ -568,6 +701,29 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "BandMasking", description: "Randomly mask spectral bands", defaultParams: { n_bands: 3, max_width: 10 }, category: "Masking" },
     { name: "ChannelDropout", description: "Drop random channels", defaultParams: { dropout_rate: 0.05 }, category: "Masking" },
     { name: "Mixup", description: "Mixup augmentation", defaultParams: { alpha: 0.2 }, category: "Mixing" },
+    { name: "Rotate_Translate", description: "Rotation and translation augmentation", defaultParams: { p_range: 1.0, y_factor: 2.0 }, category: "Transform" },
+    { name: "GaussianAdditiveNoise", description: "Gaussian additive noise", defaultParams: { sigma: 0.005 }, category: "Noise" },
+  ],
+
+  sample_augmentation: [
+    { name: "SampleAugmentation", description: "Training-time sample augmentation with multiple transformers", defaultParams: { count: 2, selection: "random" }, category: "Composite" },
+  ],
+
+  feature_augmentation: [
+    { name: "FeatureAugmentation", description: "Feature-level augmentation with multiple transforms", defaultParams: { action: "extend" }, category: "Composite" },
+  ],
+
+  concat_transform: [
+    { name: "ConcatTransform", description: "Concatenate features from multiple transformation branches", defaultParams: {}, category: "Feature Fusion" },
+  ],
+
+  chart: [
+    { name: "chart_2d", description: "2D spectrum visualization", defaultParams: {}, category: "Visualization" },
+    { name: "chart_y", description: "Y distribution visualization", defaultParams: {}, category: "Visualization" },
+  ],
+
+  comment: [
+    { name: "Comment", description: "Non-functional comment for documentation", defaultParams: { text: "" }, category: "Documentation" },
   ],
 };
 
@@ -581,6 +737,12 @@ export const stepTypeLabels: Record<StepType, string> = {
   merge: "Merge",
   filter: "Filters",
   augmentation: "Augmentation",
+  sample_augmentation: "Sample Augmentation",
+  feature_augmentation: "Feature Augmentation",
+  sample_filter: "Sample Filter",
+  concat_transform: "Concat Transform",
+  chart: "Charts",
+  comment: "Comments",
 };
 
 // Color configurations for step types
@@ -674,6 +836,60 @@ export const stepColors: Record<StepType, {
     active: "ring-indigo-500 border-indigo-500",
     gradient: "from-indigo-500/20 to-indigo-500/5",
   },
+  sample_augmentation: {
+    border: "border-violet-500/30",
+    bg: "bg-violet-500/5",
+    hover: "hover:bg-violet-500/10 hover:border-violet-500/50",
+    selected: "bg-violet-500/10 border-violet-500/100",
+    text: "text-violet-500",
+    active: "ring-violet-500 border-violet-500",
+    gradient: "from-violet-500/20 to-violet-500/5",
+  },
+  feature_augmentation: {
+    border: "border-fuchsia-500/30",
+    bg: "bg-fuchsia-500/5",
+    hover: "hover:bg-fuchsia-500/10 hover:border-fuchsia-500/50",
+    selected: "bg-fuchsia-500/10 border-fuchsia-500/100",
+    text: "text-fuchsia-500",
+    active: "ring-fuchsia-500 border-fuchsia-500",
+    gradient: "from-fuchsia-500/20 to-fuchsia-500/5",
+  },
+  sample_filter: {
+    border: "border-red-500/30",
+    bg: "bg-red-500/5",
+    hover: "hover:bg-red-500/10 hover:border-red-500/50",
+    selected: "bg-red-500/10 border-red-500/100",
+    text: "text-red-500",
+    active: "ring-red-500 border-red-500",
+    gradient: "from-red-500/20 to-red-500/5",
+  },
+  concat_transform: {
+    border: "border-teal-500/30",
+    bg: "bg-teal-500/5",
+    hover: "hover:bg-teal-500/10 hover:border-teal-500/50",
+    selected: "bg-teal-500/10 border-teal-500/100",
+    text: "text-teal-500",
+    active: "ring-teal-500 border-teal-500",
+    gradient: "from-teal-500/20 to-teal-500/5",
+  },
+  chart: {
+    border: "border-sky-500/30",
+    bg: "bg-sky-500/5",
+    hover: "hover:bg-sky-500/10 hover:border-sky-500/50",
+    selected: "bg-sky-500/10 border-sky-500/100",
+    text: "text-sky-500",
+    active: "ring-sky-500 border-sky-500",
+    gradient: "from-sky-500/20 to-sky-500/5",
+  },
+  comment: {
+    border: "border-gray-500/30",
+    bg: "bg-gray-500/5",
+    hover: "hover:bg-gray-500/10 hover:border-gray-500/50",
+    selected: "bg-gray-500/10 border-gray-500/100",
+    text: "text-gray-500",
+    active: "ring-gray-500 border-gray-500",
+    gradient: "from-gray-500/20 to-gray-500/5",
+  },
 };
 
 // Utility to generate unique IDs
@@ -681,8 +897,19 @@ export function generateStepId(): string {
   return `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// Container step types that use children (not branches)
+const CHILDREN_CONTAINER_TYPES: StepType[] = [
+  "sample_augmentation",
+  "feature_augmentation",
+  "sample_filter",
+  "concat_transform",
+];
+
 // Utility to create a step from an option
 export function createStepFromOption(type: StepType, option: StepOption): PipelineStep {
+  // Determine if this is a container type that uses children
+  const usesChildren = CHILDREN_CONTAINER_TYPES.includes(type);
+
   return {
     id: generateStepId(),
     type,
@@ -692,6 +919,8 @@ export function createStepFromOption(type: StepType, option: StepOption): Pipeli
       ? JSON.parse(JSON.stringify(option.defaultBranches))
       : undefined,
     generatorKind: option.generatorKind,
+    // Initialize children array for container step types
+    children: usesChildren ? [] : undefined,
   };
 }
 

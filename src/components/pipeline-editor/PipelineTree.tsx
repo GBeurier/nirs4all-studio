@@ -12,6 +12,9 @@ interface PipelineTreeProps {
   onDuplicateStep: (id: string, path?: string[]) => void;
   onAddBranch?: (stepId: string, path?: string[]) => void;
   onRemoveBranch?: (stepId: string, branchIndex: number, path?: string[]) => void;
+  // For container step child management
+  onAddChild?: (stepId: string, path?: string[]) => void;
+  onRemoveChild?: (stepId: string, childId: string, path?: string[]) => void;
 }
 
 export function PipelineTree({
@@ -22,6 +25,8 @@ export function PipelineTree({
   onDuplicateStep,
   onAddBranch,
   onRemoveBranch,
+  onAddChild,
+  onRemoveChild,
 }: PipelineTreeProps) {
   const { isDragging } = usePipelineDnd();
 
@@ -39,7 +44,7 @@ export function PipelineTree({
 
   return (
     <div
-      className={`flex-1 p-4 overflow-auto transition-colors relative ${isDragging ? "bg-muted/20" : ""}`}
+      className={`h-full flex flex-col transition-colors relative ${isDragging ? "bg-muted/20" : ""}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onSelectStep(null);
@@ -56,8 +61,11 @@ export function PipelineTree({
       />
 
       {steps.length === 0 ? (
-        <EmptyCanvasState isOver={isOverInitial} setDropRef={setInitialRef} />
+        <div className="flex-1 p-4">
+          <EmptyCanvasState isOver={isOverInitial} setDropRef={setInitialRef} />
+        </div>
       ) : (
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
         <div className="max-w-2xl mx-auto relative">
           {/* Start marker */}
           <div className="flex items-center gap-2 mb-1 ml-1">
@@ -90,6 +98,8 @@ export function PipelineTree({
                   onDuplicateStep={onDuplicateStep}
                   onAddBranchNested={onAddBranch}
                   onRemoveBranchNested={onRemoveBranch}
+                  onAddChild={onAddChild}
+                  onRemoveChild={onRemoveChild}
                 />
                 <DropZone id={`drop-after-${step.id}`} path={[]} index={index + 1} />
               </div>
@@ -101,6 +111,7 @@ export function PipelineTree({
             <Flag className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-medium text-primary">Output</span>
           </div>
+        </div>
         </div>
       )}
     </div>

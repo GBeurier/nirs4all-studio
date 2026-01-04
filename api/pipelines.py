@@ -153,6 +153,103 @@ async def list_pipelines():
         )
 
 
+# ============================================================================
+# Pipeline Samples API (MUST BE BEFORE /pipelines/{pipeline_id})
+# ============================================================================
+
+
+def _get_samples_dir_inline() -> Path:
+    """Get the pipeline samples directory from nirs4all."""
+    # Try relative to nirs4all_webapp (sibling directory)
+    samples_path = Path(__file__).parent.parent.parent / "nirs4all" / "examples" / "pipeline_samples"
+    if samples_path.exists():
+        return samples_path
+    # Try absolute path for development
+    samples_path = Path("/home/delete/nirs4all/examples/pipeline_samples")
+    if samples_path.exists():
+        return samples_path
+    raise HTTPException(status_code=404, detail="Pipeline samples directory not found")
+
+
+@router.get("/pipelines/samples")
+async def list_pipeline_samples():
+    """
+    List all available pipeline sample files.
+
+    Returns the list of sample files from nirs4all/examples/pipeline_samples.
+    """
+    samples_dir = _get_samples_dir_inline()
+
+    samples = []
+    for filepath in sorted(samples_dir.glob("*.json")) + sorted(samples_dir.glob("*.yaml")):
+        # Skip test and export scripts
+        if filepath.stem in ("test_all_pipelines", "export_canonical"):
+            continue
+
+        try:
+            data = _load_sample_file(filepath)
+            name = data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem
+            description = data.get("description", "") if isinstance(data, dict) else ""
+        except Exception:
+            name = filepath.stem
+            description = ""
+
+        samples.append({
+            "id": filepath.stem,
+            "filename": filepath.name,
+            "format": filepath.suffix[1:],
+            "name": name,
+            "description": description,
+        })
+
+    return {
+        "samples": samples,
+        "total": len(samples),
+        "samples_dir": str(samples_dir),
+    }
+
+
+@router.get("/pipelines/samples/{sample_id}")
+async def get_pipeline_sample(sample_id: str, canonical: bool = True):
+    """
+    Get a specific pipeline sample.
+
+    Args:
+        sample_id: The sample file stem (e.g., "01_basic_regression")
+        canonical: If True, return canonical serialized form via nirs4all
+
+    Returns:
+        Pipeline definition in nirs4all format.
+    """
+    samples_dir = _get_samples_dir_inline()
+
+    # Try both JSON and YAML
+    filepath = None
+    for ext in [".json", ".yaml", ".yml"]:
+        candidate = samples_dir / f"{sample_id}{ext}"
+        if candidate.exists():
+            filepath = candidate
+            break
+
+    if not filepath:
+        raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found")
+
+    if canonical:
+        result = _get_canonical_pipeline(filepath)
+    else:
+        result = _load_sample_file(filepath)
+        if isinstance(result, dict) and "pipeline" in result:
+            result["pipeline"] = _filter_comments(result["pipeline"])
+        elif isinstance(result, list):
+            result = {"pipeline": _filter_comments(result), "name": filepath.stem}
+
+    result["source_file"] = filepath.name
+    return result
+
+
+# ============================================================================
+
+
 @router.get("/pipelines/{pipeline_id}")
 async def get_pipeline(pipeline_id: str):
     """Get a specific pipeline by ID."""
@@ -1515,7 +1612,7 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
         "type": "preprocessing",
         "name": "SNV",
         "params": {},
-        "generator": { "_or_": [...], "pick": 2 }  # Optional
+        "generator": { "_or_": [...], "_range_": [1, 10, 1], "pick": 2 }  # Optional
     }
 
     This converts to nirs4all format which is just the step definition,
@@ -1528,6 +1625,7 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
         step_params = step.get("params", {})
         step_type = step.get("type", "")
         generator = step.get("generator")
+        children = step.get("children", [])
 
         # Build the base step representation
         # For nirs4all, we represent operators as class names or dicts
@@ -1542,39 +1640,66 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
         elif step_type == "y_processing":
             base_step = {"y_processing": base_step}
 
-        # Apply generator wrapper if present
+        # Handle generator step type (choice/or node)
+        if step_type == "generator" and children:
+            # This is a ChooseOne/ChooseN node
+            alternatives = []
+            for child in children:
+                child_steps = _convert_frontend_steps_to_nirs4all([child])
+                alternatives.extend(child_steps)
+            if alternatives:
+                gen_step = {"_or_": alternatives}
+                # Include pick/count from generator options
+                if generator:
+                    if generator.get("pick"):
+                        gen_step["pick"] = generator["pick"]
+                    if generator.get("count"):
+                        gen_step["count"] = generator["count"]
+                result.append(gen_step)
+            continue
+
+        # Handle branch step type
+        if step_type == "branch" and children:
+            branch_paths = []
+            for child in children:
+                child_steps = _convert_frontend_steps_to_nirs4all([child])
+                branch_paths.extend(child_steps)
+            if branch_paths:
+                result.append({"branch": branch_paths})
+            continue
+
+        # Apply generator wrapper if present on regular steps
         if generator:
-            # Generator contains _or_, _range_, pick, etc.
-            # Merge generator info with the step
-            if "_or_" in generator:
-                # The _or_ contains alternatives, count those
-                result.append(generator)
-            elif "_range_" in generator:
-                result.append(generator)
+            # Generator contains _or_, _range_, _log_range_, pick, etc.
+            if "_or_" in generator and generator["_or_"]:
+                # The _or_ contains alternatives
+                gen_step = {"_or_": generator["_or_"]}
+                if generator.get("pick"):
+                    gen_step["pick"] = generator["pick"]
+                if generator.get("count"):
+                    gen_step["count"] = generator["count"]
+                result.append(gen_step)
+            elif "_range_" in generator and generator["_range_"]:
+                # Range generator on a param
+                gen_step = {"_range_": generator["_range_"]}
+                result.append(gen_step)
+            elif "_log_range_" in generator and generator["_log_range_"]:
+                # Log range generator
+                gen_step = {"_log_range_": generator["_log_range_"]}
+                result.append(gen_step)
             else:
                 result.append(base_step)
         else:
             result.append(base_step)
 
-        # Handle children for branch nodes
-        if "children" in step and step["children"]:
-            children = step["children"]
-            if step_type == "branch":
-                # Branch: each child is a separate pipeline path
-                branch_paths = []
-                for child in children:
-                    child_steps = _convert_frontend_steps_to_nirs4all([child])
-                    branch_paths.extend(child_steps)
-                if branch_paths:
-                    result.append({"branch": branch_paths})
-            elif step_type == "choice":
-                # Choice (_or_): each child is an alternative
-                alternatives = []
-                for child in children:
-                    child_steps = _convert_frontend_steps_to_nirs4all([child])
-                    alternatives.extend(child_steps)
-                if alternatives:
-                    result.append({"_or_": alternatives})
+        # Handle children for other container steps (sample_augmentation, etc.)
+        if children and step_type not in ("branch", "generator"):
+            child_steps = _convert_frontend_steps_to_nirs4all(children)
+            # These are typically wrapped in the container keyword
+            if step_type == "sample_augmentation":
+                result.append({"sample_augmentation": {"transformers": child_steps}})
+            elif step_type == "feature_augmentation":
+                result.append({"feature_augmentation": child_steps})
 
     return result
 
@@ -1903,3 +2028,257 @@ async def import_pipeline(content: str, format: str = "yaml", name: Optional[str
     )
 
     return await create_pipeline(pipeline_data)
+
+
+# ============================================================================
+# Pipeline Samples API (for testing/demo)
+# ============================================================================
+
+
+def _get_samples_dir() -> Path:
+    """Get the pipeline samples directory from nirs4all."""
+    # Try relative to nirs4all_webapp (sibling directory)
+    samples_path = Path(__file__).parent.parent.parent / "nirs4all" / "examples" / "pipeline_samples"
+    if samples_path.exists():
+        return samples_path
+    # Try absolute path for development
+    samples_path = Path("/home/delete/nirs4all/examples/pipeline_samples")
+    if samples_path.exists():
+        return samples_path
+    raise HTTPException(status_code=404, detail="Pipeline samples directory not found")
+
+
+def _load_sample_file(filepath: Path) -> Dict[str, Any]:
+    """Load a pipeline sample file (JSON or YAML)."""
+    import yaml
+
+    suffix = filepath.suffix.lower()
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            if suffix == '.json':
+                return json.load(f)
+            elif suffix in ('.yaml', '.yml'):
+                return yaml.safe_load(f)
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported format: {suffix}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load sample: {e}")
+
+
+def _filter_comments(steps: List[Any]) -> List[Any]:
+    """Remove _comment steps from pipeline."""
+    filtered = []
+    for step in steps:
+        if isinstance(step, dict):
+            if set(step.keys()) == {"_comment"}:
+                continue
+            # Remove _comment key from steps but keep the rest
+            step = {k: v for k, v in step.items() if k != "_comment"}
+        filtered.append(step)
+    return filtered
+
+
+def _get_canonical_pipeline(filepath: Path) -> Dict[str, Any]:
+    """
+    Load a pipeline file and return its canonical serialized form.
+
+    Uses nirs4all's PipelineConfigs to get the canonical representation.
+    """
+    if not NIRS4ALL_AVAILABLE:
+        # Fallback: just load and clean comments
+        data = _load_sample_file(filepath)
+        steps = data.get("pipeline", data) if isinstance(data, dict) else data
+        return {
+            "name": data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem,
+            "description": data.get("description", "") if isinstance(data, dict) else "",
+            "pipeline": _filter_comments(steps) if isinstance(steps, list) else steps,
+            "has_generators": False,
+            "num_configurations": 1,
+        }
+
+    try:
+        from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
+
+        data = _load_sample_file(filepath)
+
+        if isinstance(data, dict):
+            steps = data.get("pipeline", [])
+            name = data.get("name", filepath.stem)
+            description = data.get("description", "")
+        elif isinstance(data, list):
+            steps = data
+            name = filepath.stem
+            description = ""
+        else:
+            raise ValueError("Pipeline must be list or dict with 'pipeline' key")
+
+        steps = _filter_comments(steps)
+
+        # Create PipelineConfigs to get canonical form
+        config = PipelineConfigs(steps, name=name, description=description)
+        canonical_steps = config.steps[0] if config.steps else []
+
+        return {
+            "name": name,
+            "description": description,
+            "pipeline": canonical_steps,
+            "has_generators": config.has_configurations,
+            "num_configurations": len(config.steps),
+        }
+    except Exception as e:
+        # Fallback to raw load
+        data = _load_sample_file(filepath)
+        steps = data.get("pipeline", data) if isinstance(data, dict) else data
+        return {
+            "name": data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem,
+            "description": data.get("description", "") if isinstance(data, dict) else "",
+            "pipeline": _filter_comments(steps) if isinstance(steps, list) else steps,
+            "has_generators": False,
+            "num_configurations": 1,
+            "error": str(e),
+        }
+
+
+@router.get("/pipelines/samples")
+async def list_pipeline_samples():
+    """
+    List all available pipeline sample files.
+
+    Returns the list of sample files from nirs4all/examples/pipeline_samples.
+    """
+    samples_dir = _get_samples_dir()
+
+    samples = []
+    for filepath in sorted(samples_dir.glob("*.json")) + sorted(samples_dir.glob("*.yaml")):
+        # Skip test and export scripts
+        if filepath.stem in ("test_all_pipelines", "export_canonical"):
+            continue
+
+        try:
+            data = _load_sample_file(filepath)
+            name = data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem
+            description = data.get("description", "") if isinstance(data, dict) else ""
+        except Exception:
+            name = filepath.stem
+            description = ""
+
+        samples.append({
+            "id": filepath.stem,
+            "filename": filepath.name,
+            "format": filepath.suffix[1:],
+            "name": name,
+            "description": description,
+        })
+
+    return {
+        "samples": samples,
+        "total": len(samples),
+        "samples_dir": str(samples_dir),
+    }
+
+
+@router.get("/pipelines/samples/{sample_id}")
+async def get_pipeline_sample(sample_id: str, canonical: bool = True):
+    """
+    Get a specific pipeline sample.
+
+    Args:
+        sample_id: The sample file stem (e.g., "01_basic_regression")
+        canonical: If True, return canonical serialized form via nirs4all
+
+    Returns:
+        Pipeline definition in nirs4all format.
+    """
+    samples_dir = _get_samples_dir()
+
+    # Try both JSON and YAML
+    filepath = None
+    for ext in [".json", ".yaml", ".yml"]:
+        candidate = samples_dir / f"{sample_id}{ext}"
+        if candidate.exists():
+            filepath = candidate
+            break
+
+    if not filepath:
+        raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found")
+
+    if canonical:
+        result = _get_canonical_pipeline(filepath)
+    else:
+        result = _load_sample_file(filepath)
+        if isinstance(result, dict) and "pipeline" in result:
+            result["pipeline"] = _filter_comments(result["pipeline"])
+        elif isinstance(result, list):
+            result = {"pipeline": _filter_comments(result), "name": filepath.stem}
+
+    result["source_file"] = filepath.name
+    return result
+
+
+@router.post("/pipelines/samples/{sample_id}/validate-roundtrip")
+async def validate_sample_roundtrip(sample_id: str, editor_steps: List[Dict[str, Any]]):
+    """
+    Validate that editor steps produce identical output to the sample.
+
+    This endpoint is used to test the pipeline editor's import/export fidelity.
+
+    Args:
+        sample_id: The sample file stem
+        editor_steps: The pipeline steps as exported from the editor
+
+    Returns:
+        Validation result with differences if any.
+    """
+    samples_dir = _get_samples_dir()
+
+    # Load canonical sample
+    filepath = None
+    for ext in [".json", ".yaml", ".yml"]:
+        candidate = samples_dir / f"{sample_id}{ext}"
+        if candidate.exists():
+            filepath = candidate
+            break
+
+    if not filepath:
+        raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found")
+
+    canonical = _get_canonical_pipeline(filepath)
+    original_steps = canonical.get("pipeline", [])
+
+    # Deep comparison
+    differences = []
+
+    def normalize_for_comparison(obj):
+        """Normalize object for comparison (sort dicts, etc.)"""
+        if isinstance(obj, dict):
+            return {k: normalize_for_comparison(v) for k, v in sorted(obj.items())}
+        elif isinstance(obj, list):
+            return [normalize_for_comparison(item) for item in obj]
+        return obj
+
+    original_normalized = normalize_for_comparison(original_steps)
+    editor_normalized = normalize_for_comparison(editor_steps)
+
+    original_json = json.dumps(original_normalized, sort_keys=True)
+    editor_json = json.dumps(editor_normalized, sort_keys=True)
+
+    is_identical = original_json == editor_json
+
+    if not is_identical:
+        # Find specific differences
+        if len(original_steps) != len(editor_steps):
+            differences.append(f"Step count differs: {len(original_steps)} vs {len(editor_steps)}")
+
+        for i, (orig, edit) in enumerate(zip(original_steps, editor_steps)):
+            orig_json = json.dumps(normalize_for_comparison(orig), sort_keys=True)
+            edit_json = json.dumps(normalize_for_comparison(edit), sort_keys=True)
+            if orig_json != edit_json:
+                differences.append(f"Step {i} differs")
+
+    return {
+        "valid": is_identical,
+        "sample_id": sample_id,
+        "differences": differences,
+        "original_step_count": len(original_steps),
+        "editor_step_count": len(editor_steps),
+    }

@@ -24,6 +24,9 @@ import {
   GraduationCap,
   Layers,
   Boxes,
+  Combine,
+  LineChart,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +66,8 @@ import {
   type StepType,
   type ParameterSweep,
   type SweepType,
+  type MergeConfig,
+  type MergePredictionSource,
   calculateSweepVariants,
   calculateStepVariants,
   formatSweepDisplay,
@@ -83,6 +88,12 @@ const stepIcons: Record<StepType, typeof Waves> = {
   merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
+  sample_augmentation: Zap,
+  feature_augmentation: Layers,
+  sample_filter: Filter,
+  concat_transform: Combine,
+  chart: LineChart,
+  comment: MessageSquare,
 };
 
 // Parameter info/tooltips for common parameters
@@ -199,6 +210,10 @@ interface StepConfigPanelProps {
   onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
+  // For container step child management
+  onSelectStep?: (id: string | null) => void;
+  onAddChild?: (stepId: string) => void;
+  onRemoveChild?: (stepId: string, childId: string) => void;
 }
 
 export function StepConfigPanel({
@@ -206,6 +221,9 @@ export function StepConfigPanel({
   onUpdate,
   onRemove,
   onDuplicate,
+  onSelectStep,
+  onAddChild,
+  onRemoveChild,
 }: StepConfigPanelProps) {
   if (!step) {
     return (
@@ -588,7 +606,7 @@ export function StepConfigPanel({
         </div>
       </div>
 
-      {/* Content - Use tabs for model steps, specialized panels for y_processing and merge */}
+      {/* Content - Use tabs for model steps, specialized panels for other types */}
       {step.type === "model" ? (
         <ModelStepContent
           step={step}
@@ -617,6 +635,60 @@ export function StepConfigPanel({
           handleNameChange={handleNameChange}
           handleResetParams={handleResetParams}
           currentOption={currentOption}
+        />
+      ) : step.type === "sample_augmentation" ? (
+        <SampleAugmentationStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+          onSelectStep={onSelectStep}
+          onAddChild={onAddChild}
+          onRemoveChild={onRemoveChild}
+        />
+      ) : step.type === "feature_augmentation" ? (
+        <FeatureAugmentationStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+          onSelectStep={onSelectStep}
+          onAddChild={onAddChild}
+          onRemoveChild={onRemoveChild}
+        />
+      ) : step.type === "sample_filter" ? (
+        <SampleFilterStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+          onSelectStep={onSelectStep}
+          onAddChild={onAddChild}
+          onRemoveChild={onRemoveChild}
+        />
+      ) : step.type === "concat_transform" ? (
+        <ConcatTransformStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+          onSelectStep={onSelectStep}
+          onAddChild={onAddChild}
+          onRemoveChild={onRemoveChild}
+        />
+      ) : step.type === "chart" ? (
+        <ChartStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+        />
+      ) : step.type === "comment" ? (
+        <CommentStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
         />
       ) : (
         <>
@@ -1171,13 +1243,24 @@ function MergeStepContent({
   // Initialize stacking config if not present
   const stackingConfig = step.stackingConfig ?? defaultStackingConfig();
 
+  // Initialize mergeConfig if not present
+  const mergeConfig = step.mergeConfig ?? { mode: "predictions" };
+
   const handleStackingChange = useCallback((newConfig: typeof stackingConfig) => {
     onUpdate(step.id, {
       stackingConfig: newConfig,
     });
   }, [onUpdate, step.id]);
 
+  const handleMergeConfigChange = useCallback((newConfig: MergeConfig) => {
+    onUpdate(step.id, {
+      mergeConfig: newConfig,
+    });
+  }, [onUpdate, step.id]);
+
   const hasStackingEnabled = stackingConfig?.enabled ?? false;
+  const hasAdvancedConfig = (mergeConfig.predictions && mergeConfig.predictions.length > 0) ||
+                            (mergeConfig.features && mergeConfig.features.length > 0);
 
   return (
     <>
@@ -1190,6 +1273,20 @@ function MergeStepContent({
             >
               <GitMerge className="h-3.5 w-3.5 mr-1.5" />
               Merge
+            </TabsTrigger>
+            <TabsTrigger
+              value="sources"
+              className={`text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none ${
+                hasAdvancedConfig ? "text-blue-500 data-[state=active]:text-blue-600" : ""
+              }`}
+            >
+              <GitBranch className="h-3.5 w-3.5 mr-1.5" />
+              Sources
+              {hasAdvancedConfig && (
+                <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-blue-500">
+                  {(mergeConfig.predictions?.length ?? 0) + (mergeConfig.features?.length ?? 0)}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger
               value="stacking"
@@ -1310,6 +1407,287 @@ function MergeStepContent({
           </ScrollArea>
         </TabsContent>
 
+        {/* Sources Tab - Advanced branch merge configuration */}
+        <TabsContent value="sources" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
+              {/* Mode Selection */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Source Mode</Label>
+                <Select
+                  value={mergeConfig.mode ?? "predictions"}
+                  onValueChange={(value) => handleMergeConfigChange({ ...mergeConfig, mode: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="predictions">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Predictions</span>
+                        <span className="text-xs text-muted-foreground">Merge model predictions</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="features">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Features</span>
+                        <span className="text-xs text-muted-foreground">Merge transformed features</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="concatenate">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Concatenate</span>
+                        <span className="text-xs text-muted-foreground">Concatenate all outputs</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="custom">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Custom</span>
+                        <span className="text-xs text-muted-foreground">Configure specific branches</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
+              {/* Predictions Configuration (when mode is custom or predictions) */}
+              {(mergeConfig.mode === "custom" || mergeConfig.mode === "predictions") && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Prediction Sources</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        const newSource: MergePredictionSource = { branch: 0, select: "best" };
+                        handleMergeConfigChange({
+                          ...mergeConfig,
+                          predictions: [...(mergeConfig.predictions ?? []), newSource],
+                        });
+                      }}
+                    >
+                      + Add Source
+                    </Button>
+                  </div>
+
+                  {(mergeConfig.predictions ?? []).map((source, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-muted/50 border space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Source {idx + 1}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const newPredictions = mergeConfig.predictions?.filter((_, i) => i !== idx);
+                            handleMergeConfigChange({ ...mergeConfig, predictions: newPredictions });
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Branch Index</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={source.branch}
+                            onChange={(e) => {
+                              const newPredictions = [...(mergeConfig.predictions ?? [])];
+                              newPredictions[idx] = { ...source, branch: parseInt(e.target.value, 10) };
+                              handleMergeConfigChange({ ...mergeConfig, predictions: newPredictions });
+                            }}
+                            className="h-8"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Selection</Label>
+                          <Select
+                            value={typeof source.select === "object" ? "top_k" : source.select}
+                            onValueChange={(value) => {
+                              const newPredictions = [...(mergeConfig.predictions ?? [])];
+                              newPredictions[idx] = {
+                                ...source,
+                                select: value === "top_k" ? { top_k: 3 } : value as "best" | "all"
+                              };
+                              handleMergeConfigChange({ ...mergeConfig, predictions: newPredictions });
+                            }}
+                          >
+                            <SelectTrigger className="h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-popover">
+                              <SelectItem value="best">Best</SelectItem>
+                              <SelectItem value="all">All</SelectItem>
+                              <SelectItem value="top_k">Top K</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {typeof source.select === "object" && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Top K</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={source.select.top_k}
+                              onChange={(e) => {
+                                const newPredictions = [...(mergeConfig.predictions ?? [])];
+                                newPredictions[idx] = {
+                                  ...source,
+                                  select: { top_k: parseInt(e.target.value, 10) }
+                                };
+                                handleMergeConfigChange({ ...mergeConfig, predictions: newPredictions });
+                              }}
+                              className="h-8"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Metric</Label>
+                            <Select
+                              value={source.metric ?? "rmse"}
+                              onValueChange={(value) => {
+                                const newPredictions = [...(mergeConfig.predictions ?? [])];
+                                newPredictions[idx] = {
+                                  ...source,
+                                  metric: value as "rmse" | "r2" | "mae"
+                                };
+                                handleMergeConfigChange({ ...mergeConfig, predictions: newPredictions });
+                              }}
+                            >
+                              <SelectTrigger className="h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-popover">
+                                <SelectItem value="rmse">RMSE</SelectItem>
+                                <SelectItem value="r2">R²</SelectItem>
+                                <SelectItem value="mae">MAE</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {(!mergeConfig.predictions || mergeConfig.predictions.length === 0) && (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      No prediction sources configured. Click "Add Source" to add one.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Features Configuration (when mode is custom or features) */}
+              {(mergeConfig.mode === "custom" || mergeConfig.mode === "features") && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Feature Sources (Branch Indices)</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        const existing = mergeConfig.features ?? [];
+                        const nextIdx = existing.length > 0 ? Math.max(...existing) + 1 : 0;
+                        handleMergeConfigChange({
+                          ...mergeConfig,
+                          features: [...existing, nextIdx],
+                        });
+                      }}
+                    >
+                      + Add Branch
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {(mergeConfig.features ?? []).map((branchIdx, idx) => (
+                      <div key={idx} className="flex items-center gap-1 px-2 py-1 rounded bg-muted border">
+                        <span className="text-sm">Branch {branchIdx}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => {
+                            const newFeatures = mergeConfig.features?.filter((_, i) => i !== idx);
+                            handleMergeConfigChange({ ...mergeConfig, features: newFeatures });
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(!mergeConfig.features || mergeConfig.features.length === 0) && (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      No feature sources configured. All branches will be used.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Output Configuration */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Output Options</Label>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Output As</Label>
+                  <Select
+                    value={mergeConfig.output_as ?? "predictions"}
+                    onValueChange={(value) => handleMergeConfigChange({
+                      ...mergeConfig,
+                      output_as: value as "features" | "predictions"
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover">
+                      <SelectItem value="predictions">Predictions</SelectItem>
+                      <SelectItem value="features">Features</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">On Missing</Label>
+                  <Select
+                    value={mergeConfig.on_missing ?? "warn"}
+                    onValueChange={(value) => handleMergeConfigChange({
+                      ...mergeConfig,
+                      on_missing: value as "warn" | "error" | "drop"
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover">
+                      <SelectItem value="warn">Warn</SelectItem>
+                      <SelectItem value="error">Error</SelectItem>
+                      <SelectItem value="drop">Drop</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    How to handle missing predictions from branches
+                  </p>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         {/* Stacking Tab */}
         <TabsContent value="stacking" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
@@ -1340,6 +1718,839 @@ function MergeStepContent({
           className="w-full"
           onClick={() => onRemove(step.id)}
         >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Sample Augmentation Step Content
+// ============================================================================
+
+interface SampleAugmentationStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onSelectStep?: (id: string | null) => void;
+  onAddChild?: (stepId: string) => void;
+  onRemoveChild?: (stepId: string, childId: string) => void;
+}
+
+function SampleAugmentationStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  onSelectStep,
+  onAddChild,
+  onRemoveChild,
+}: SampleAugmentationStepContentProps) {
+  const config = step.sampleAugmentationConfig;
+  // Use step.children for the actual transformers list
+  const children = step.children ?? [];
+
+  const handleParamChange = (key: string, value: string | number | boolean) => {
+    onUpdate(step.id, {
+      params: { ...step.params, [key]: value },
+    });
+    // Also update the structured config
+    if (config) {
+      const newConfig = { ...config };
+      if (key === "count") newConfig.count = value as number;
+      if (key === "selection") newConfig.selection = value as "random" | "all" | "sequential";
+      if (key === "random_state") newConfig.random_state = value as number;
+      onUpdate(step.id, { sampleAugmentationConfig: newConfig });
+    }
+  };
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
+            <Zap className="h-5 w-5 text-violet-500" />
+            <div>
+              <h4 className="font-medium text-sm">Sample Augmentation</h4>
+              <p className="text-xs text-muted-foreground">
+                Augment training samples with multiple transformers
+              </p>
+            </div>
+          </div>
+
+          {/* Configuration */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Augmentation Count</Label>
+              <Input
+                type="number"
+                value={Number(step.params.count) || config?.count || 1}
+                onChange={(e) => handleParamChange("count", parseInt(e.target.value) || 1)}
+                min={1}
+                className="h-9"
+              />
+              <p className="text-xs text-muted-foreground">
+                Number of augmented samples per original
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Selection Strategy</Label>
+              <Select
+                value={String(step.params.selection || config?.selection || "random")}
+                onValueChange={(v) => handleParamChange("selection", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="random">Random</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="sequential">Sequential</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Random State</Label>
+              <Input
+                type="number"
+                value={Number(step.params.random_state) || config?.random_state || 42}
+                onChange={(e) => handleParamChange("random_state", parseInt(e.target.value))}
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Transformers - editable list from step.children */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Transformers ({children.length})</Label>
+              {onAddChild && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => onAddChild(step.id)}
+                >
+                  <Zap className="h-3 w-3 mr-1" />
+                  Add Transformer
+                </Button>
+              )}
+            </div>
+            {children.length > 0 ? (
+              <div className="space-y-2">
+                {children.map((t, i) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border hover:bg-muted/70 cursor-pointer group"
+                    onClick={() => onSelectStep?.(t.id)}
+                  >
+                    <Badge variant="secondary" className="text-xs">{i + 1}</Badge>
+                    <span className="text-sm font-medium flex-1">{t.name}</span>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {Object.keys(t.params || {}).length > 0 &&
+                        `(${Object.entries(t.params).slice(0, 2).map(([k, v]) => `${k}=${v}`).join(", ")})`
+                      }
+                    </span>
+                    {onRemoveChild && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveChild(step.id, t.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="text-center py-4 border border-dashed rounded-lg hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-colors"
+                onClick={() => onAddChild?.(step.id)}
+              >
+                <p className="text-sm text-muted-foreground">
+                  No transformers configured
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Click to add a transformer
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button variant="outline" size="sm" className="w-full" onClick={() => onDuplicate(step.id)}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(step.id)}>
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Feature Augmentation Step Content
+// ============================================================================
+
+interface FeatureAugmentationStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onSelectStep?: (id: string | null) => void;
+  onAddChild?: (stepId: string) => void;
+  onRemoveChild?: (stepId: string, childId: string) => void;
+}
+
+function FeatureAugmentationStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  onSelectStep,
+  onAddChild,
+  onRemoveChild,
+}: FeatureAugmentationStepContentProps) {
+  const config = step.featureAugmentationConfig;
+  // Use step.children for the actual transforms list
+  const children = step.children ?? [];
+
+  const handleActionChange = (action: string) => {
+    onUpdate(step.id, {
+      params: { ...step.params, action },
+      featureAugmentationConfig: config ? { ...config, action: action as "extend" | "add" | "replace" } : undefined,
+    });
+  };
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/30">
+            <Layers className="h-5 w-5 text-fuchsia-500" />
+            <div>
+              <h4 className="font-medium text-sm">Feature Augmentation</h4>
+              <p className="text-xs text-muted-foreground">
+                Generate multiple preprocessing channels
+              </p>
+            </div>
+          </div>
+
+          {/* Action Mode */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Action Mode</Label>
+            <Select
+              value={String(step.params.action || config?.action || "extend")}
+              onValueChange={handleActionChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="extend">Extend - Add each as independent channel</SelectItem>
+                <SelectItem value="add">Add - Chain, keep originals</SelectItem>
+                <SelectItem value="replace">Replace - Chain, discard originals</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Generator Options */}
+          {config?.orOptions && config.orOptions.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Generator Options</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Pick</Label>
+                    <Input
+                      type="text"
+                      value={config.pick !== undefined ? (Array.isArray(config.pick) ? JSON.stringify(config.pick) : config.pick) : ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const parsed = v.startsWith("[") ? JSON.parse(v) : parseInt(v) || undefined;
+                        onUpdate(step.id, {
+                          featureAugmentationConfig: { ...config, pick: parsed },
+                        });
+                      }}
+                      className="h-8"
+                      placeholder="e.g., 2 or [1,3]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Count</Label>
+                    <Input
+                      type="number"
+                      value={config.count || ""}
+                      onChange={(e) => {
+                        onUpdate(step.id, {
+                          featureAugmentationConfig: { ...config, count: parseInt(e.target.value) || undefined },
+                        });
+                      }}
+                      className="h-8"
+                      placeholder="Limit variants"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <Separator />
+
+          {/* Transforms - editable list from step.children */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">
+                Transforms ({children.length})
+              </Label>
+              {onAddChild && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => onAddChild(step.id)}
+                >
+                  <Layers className="h-3 w-3 mr-1" />
+                  Add Transform
+                </Button>
+              )}
+            </div>
+            {children.length > 0 ? (
+              <div className="space-y-2">
+                {children.map((t, i) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border hover:bg-muted/70 cursor-pointer group"
+                    onClick={() => onSelectStep?.(t.id)}
+                  >
+                    <Badge variant="secondary" className="text-xs">{i + 1}</Badge>
+                    <span className="text-sm font-medium flex-1">{t.name}</span>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {Object.keys(t.params || {}).length > 0 &&
+                        `(${Object.entries(t.params).slice(0, 2).map(([k, v]) => `${k}=${v}`).join(", ")})`
+                      }
+                    </span>
+                    {onRemoveChild && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveChild(step.id, t.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="text-center py-4 border border-dashed rounded-lg hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-colors"
+                onClick={() => onAddChild?.(step.id)}
+              >
+                <p className="text-sm text-muted-foreground">
+                  No transforms configured
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Click to add a transform
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button variant="outline" size="sm" className="w-full" onClick={() => onDuplicate(step.id)}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(step.id)}>
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Sample Filter Step Content
+// ============================================================================
+
+interface SampleFilterStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onSelectStep?: (id: string | null) => void;
+  onAddChild?: (stepId: string) => void;
+  onRemoveChild?: (stepId: string, childId: string) => void;
+}
+
+function SampleFilterStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  onSelectStep,
+  onAddChild,
+  onRemoveChild,
+}: SampleFilterStepContentProps) {
+  const config = step.sampleFilterConfig;
+  // Use step.children for the actual filters list
+  const children = step.children ?? [];
+
+  const handleModeChange = (mode: string) => {
+    onUpdate(step.id, {
+      params: { ...step.params, mode },
+      sampleFilterConfig: config ? { ...config, mode: mode as "any" | "all" | "vote" } : undefined,
+    });
+  };
+
+  const handleReportChange = (report: boolean) => {
+    onUpdate(step.id, {
+      params: { ...step.params, report },
+      sampleFilterConfig: config ? { ...config, report } : undefined,
+    });
+  };
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+            <Filter className="h-5 w-5 text-red-500" />
+            <div>
+              <h4 className="font-medium text-sm">Sample Filter</h4>
+              <p className="text-xs text-muted-foreground">
+                Filter samples with multiple criteria
+              </p>
+            </div>
+          </div>
+
+          {/* Configuration */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Filter Mode</Label>
+              <Select
+                value={String(step.params.mode || config?.mode || "any")}
+                onValueChange={handleModeChange}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="any">Any - Remove if any filter triggers</SelectItem>
+                  <SelectItem value="all">All - Remove only if all filters trigger</SelectItem>
+                  <SelectItem value="vote">Vote - Majority vote decision</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Generate Report</Label>
+              </div>
+              <Switch
+                checked={Boolean(step.params.report ?? config?.report ?? true)}
+                onCheckedChange={handleReportChange}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Filters - editable list from step.children */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Filters ({children.length})</Label>
+              {onAddChild && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => onAddChild(step.id)}
+                >
+                  <Filter className="h-3 w-3 mr-1" />
+                  Add Filter
+                </Button>
+              )}
+            </div>
+            {children.length > 0 ? (
+              <div className="space-y-2">
+                {children.map((f, i) => (
+                  <div
+                    key={f.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border hover:bg-muted/70 cursor-pointer group"
+                    onClick={() => onSelectStep?.(f.id)}
+                  >
+                    <Badge variant="secondary" className="text-xs">{i + 1}</Badge>
+                    <span className="text-sm font-medium flex-1">{f.name}</span>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {Object.keys(f.params || {}).length > 0 &&
+                        `(${Object.entries(f.params).slice(0, 2).map(([k, v]) => `${k}=${v}`).join(", ")})`
+                      }
+                    </span>
+                    {onRemoveChild && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveChild(step.id, f.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="text-center py-4 border border-dashed rounded-lg hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-colors"
+                onClick={() => onAddChild?.(step.id)}
+              >
+                <p className="text-sm text-muted-foreground">
+                  No filters configured
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Click to add a filter
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button variant="outline" size="sm" className="w-full" onClick={() => onDuplicate(step.id)}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(step.id)}>
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Concat Transform Step Content
+// ============================================================================
+
+interface ConcatTransformStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onSelectStep?: (id: string | null) => void;
+  onAddChild?: (stepId: string) => void;
+  onRemoveChild?: (stepId: string, childId: string) => void;
+}
+
+function ConcatTransformStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  onSelectStep,
+  onAddChild,
+  onRemoveChild,
+}: ConcatTransformStepContentProps) {
+  const config = step.concatTransformConfig;
+  // Use step.children for the actual transforms list (flat list for simple case)
+  const children = step.children ?? [];
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-teal-500/10 border border-teal-500/30">
+            <Combine className="h-5 w-5 text-teal-500" />
+            <div>
+              <h4 className="font-medium text-sm">Concat Transform</h4>
+              <p className="text-xs text-muted-foreground">
+                Concatenate features from multiple transformation branches
+              </p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Transforms - editable list from step.children */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Transforms ({children.length})</Label>
+              {onAddChild && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => onAddChild(step.id)}
+                >
+                  <Combine className="h-3 w-3 mr-1" />
+                  Add Transform
+                </Button>
+              )}
+            </div>
+            {children.length > 0 ? (
+              <div className="space-y-2">
+                {children.map((t, i) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 border hover:bg-muted/70 cursor-pointer group"
+                    onClick={() => onSelectStep?.(t.id)}
+                  >
+                    <Badge variant="secondary" className="text-xs">{i + 1}</Badge>
+                    <span className="text-sm font-medium flex-1">{t.name}</span>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {Object.keys(t.params || {}).length > 0 &&
+                        `(${Object.entries(t.params).slice(0, 2).map(([k, v]) => `${k}=${v}`).join(", ")})`
+                      }
+                    </span>
+                    {onRemoveChild && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveChild(step.id, t.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="text-center py-4 border border-dashed rounded-lg hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-colors"
+                onClick={() => onAddChild?.(step.id)}
+              >
+                <p className="text-sm text-muted-foreground">
+                  No transforms configured
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Click to add a transform
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button variant="outline" size="sm" className="w-full" onClick={() => onDuplicate(step.id)}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(step.id)}>
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Chart Step Content
+// ============================================================================
+
+interface ChartStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+}
+
+function ChartStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+}: ChartStepContentProps) {
+  const config = step.chartConfig;
+
+  const handleChartTypeChange = (chartType: string) => {
+    onUpdate(step.id, {
+      params: { ...step.params, chartType },
+      chartConfig: config ? { ...config, chartType: chartType as "chart_2d" | "chart_y" } : { chartType: chartType as "chart_2d" | "chart_y" },
+    });
+  };
+
+  const handleOptionChange = (key: string, value: boolean) => {
+    onUpdate(step.id, {
+      chartConfig: config ? { ...config, [key]: value } : { chartType: "chart_2d", [key]: value },
+    });
+  };
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-sky-500/10 border border-sky-500/30">
+            <LineChart className="h-5 w-5 text-sky-500" />
+            <div>
+              <h4 className="font-medium text-sm">Chart Visualization</h4>
+              <p className="text-xs text-muted-foreground">
+                Add visualization step to the pipeline
+              </p>
+            </div>
+          </div>
+
+          {/* Chart Type */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Chart Type</Label>
+            <Select
+              value={step.name || config?.chartType || "chart_2d"}
+              onValueChange={handleChartTypeChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="chart_2d">chart_2d - 2D spectrum visualization</SelectItem>
+                <SelectItem value="chart_y">chart_y - Y distribution visualization</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          {/* Options */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Include Excluded</Label>
+                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+              </div>
+              <Switch
+                checked={Boolean(config?.include_excluded)}
+                onCheckedChange={(v) => handleOptionChange("include_excluded", v)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Highlight Excluded</Label>
+              </div>
+              <Switch
+                checked={Boolean(config?.highlight_excluded)}
+                onCheckedChange={(v) => handleOptionChange("highlight_excluded", v)}
+              />
+            </div>
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button variant="outline" size="sm" className="w-full" onClick={() => onDuplicate(step.id)}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(step.id)}>
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Comment Step Content
+// ============================================================================
+
+interface CommentStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+}
+
+function CommentStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+}: CommentStepContentProps) {
+  const handleTextChange = (text: string) => {
+    onUpdate(step.id, {
+      params: { ...step.params, text },
+    });
+  };
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-500/10 border border-gray-500/30">
+            <MessageSquare className="h-5 w-5 text-gray-500" />
+            <div>
+              <h4 className="font-medium text-sm">Comment</h4>
+              <p className="text-xs text-muted-foreground">
+                Non-functional documentation comment
+              </p>
+            </div>
+          </div>
+
+          {/* Comment Text */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Comment Text</Label>
+            <textarea
+              value={String(step.params.text || "")}
+              onChange={(e) => handleTextChange(e.target.value)}
+              className="w-full min-h-[120px] p-3 rounded-md border bg-background text-sm resize-y"
+              placeholder="Add documentation or notes here..."
+            />
+            <p className="text-xs text-muted-foreground">
+              Comments are exported as _comment entries in the pipeline
+            </p>
+          </div>
+        </div>
+      </ScrollArea>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button variant="outline" size="sm" className="w-full" onClick={() => onDuplicate(step.id)}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button variant="destructive" size="sm" className="w-full" onClick={() => onRemove(step.id)}>
           <Trash2 className="h-4 w-4 mr-2" />
           Remove Step
         </Button>

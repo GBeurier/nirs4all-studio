@@ -49,6 +49,9 @@ import {
   Undo2,
   Redo2,
   FileJson,
+  Combine,
+  LineChart,
+  MessageSquare,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +73,12 @@ const stepTypeIcons: Record<StepType, LucideIcon> = {
   merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
+  sample_augmentation: Zap,
+  feature_augmentation: Layers,
+  sample_filter: Filter,
+  concat_transform: Combine,
+  chart: LineChart,
+  comment: MessageSquare,
 };
 
 // Color classes for step types
@@ -83,6 +92,12 @@ const stepTypeColors: Record<StepType, string> = {
   merge: "text-pink-500",
   filter: "text-rose-500",
   augmentation: "text-indigo-500",
+  sample_augmentation: "text-violet-500",
+  feature_augmentation: "text-fuchsia-500",
+  sample_filter: "text-red-500",
+  concat_transform: "text-teal-500",
+  chart: "text-sky-500",
+  comment: "text-gray-500",
 };
 
 export interface CommandPaletteProps {

@@ -372,3 +372,54 @@ export async function getPipelineLogs(
 ): Promise<{ pipeline_id: string; logs: string[] }> {
   return api.get(`/runs/${runId}/logs/${pipelineId}`);
 }
+
+// Pipeline Samples API
+export interface PipelineSampleInfo {
+  id: string;
+  filename: string;
+  format: string;
+  name: string;
+  description: string;
+}
+
+export interface PipelineSamplesResponse {
+  samples: PipelineSampleInfo[];
+  total: number;
+  samples_dir: string;
+}
+
+export interface PipelineSampleDetail {
+  name: string;
+  description: string;
+  pipeline: unknown[];
+  has_generators: boolean;
+  num_configurations: number;
+  source_file: string;
+  error?: string;
+}
+
+export interface RoundtripValidationResult {
+  valid: boolean;
+  sample_id: string;
+  differences: string[];
+  original_step_count: number;
+  editor_step_count: number;
+}
+
+export async function listPipelineSamples(): Promise<PipelineSamplesResponse> {
+  return api.get("/pipelines/samples");
+}
+
+export async function getPipelineSample(
+  sampleId: string,
+  canonical: boolean = true
+): Promise<PipelineSampleDetail> {
+  return api.get(`/pipelines/samples/${sampleId}?canonical=${canonical}`);
+}
+
+export async function validateSampleRoundtrip(
+  sampleId: string,
+  editorSteps: unknown[]
+): Promise<RoundtripValidationResult> {
+  return api.post(`/pipelines/samples/${sampleId}/validate-roundtrip`, editorSteps);
+}

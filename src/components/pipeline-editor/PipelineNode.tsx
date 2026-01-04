@@ -14,6 +14,14 @@ import {
   Repeat,
   Sparkles,
   Grid3X3,
+  Filter,
+  Layers,
+  BarChart,
+  Sliders,
+  Combine,
+  LineChart,
+  MessageSquare,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,11 +48,20 @@ import {
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
+  y_processing: BarChart,
   splitting: Shuffle,
   model: Target,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
+  filter: Filter,
+  augmentation: Layers,
+  sample_augmentation: Zap,
+  feature_augmentation: Layers,
+  sample_filter: Filter,
+  concat_transform: Combine,
+  chart: LineChart,
+  comment: MessageSquare,
 };
 
 interface PipelineNodeProps {
@@ -216,6 +233,51 @@ export function PipelineNode({
                 </TooltipContent>
               </Tooltip>
             )}
+            {/* Finetuning indicator badge */}
+            {step.finetuneConfig?.enabled && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge className="text-[10px] px-1.5 py-0 bg-purple-500 hover:bg-purple-500 shrink-0 cursor-help">
+                    <Sliders className="h-2.5 w-2.5 mr-0.5" />
+                    Tune
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[280px]">
+                  <div className="text-xs">
+                    <div className="font-semibold mb-1">Finetuning Enabled</div>
+                    <div className="text-muted-foreground space-y-0.5">
+                      <div>Trials: {step.finetuneConfig.n_trials}</div>
+                      <div>Approach: {step.finetuneConfig.approach}</div>
+                      <div>Params: {step.finetuneConfig.model_params.map(p => p.name).join(", ") || "none"}</div>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {/* Augmentation count badge */}
+            {step.type === "augmentation" && step.branches?.[0] && (
+              <Badge className="text-[10px] px-1.5 py-0 bg-indigo-500 hover:bg-indigo-500 shrink-0">
+                <Layers className="h-2.5 w-2.5 mr-0.5" />
+                {step.branches[0].length} transforms
+              </Badge>
+            )}
+            {/* Generator options badge */}
+            {step.generatorOptions && (step.generatorOptions.pick || step.generatorOptions.count) && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge className="text-[10px] px-1.5 py-0 bg-cyan-500 hover:bg-cyan-500 shrink-0 cursor-help">
+                    pick={Array.isArray(step.generatorOptions.pick) ? step.generatorOptions.pick.join("-") : step.generatorOptions.pick}
+                    {step.generatorOptions.count && ` ×${step.generatorOptions.count}`}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <div className="text-xs">
+                    Generator: pick {JSON.stringify(step.generatorOptions.pick)} options
+                    {step.generatorOptions.count && `, generate ${step.generatorOptions.count} variants`}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
           {/* Show params or sweep summary */}
           {hasSweeps ? (
@@ -230,6 +292,12 @@ export function PipelineNode({
                 {Object.entries(step.params).map(([k, v]) => `${k}=${v}`).join(", ")}
               </p>
             )
+          )}
+          {/* Custom name display */}
+          {step.customName && (
+            <p className="text-xs text-emerald-500 font-medium">
+              as "{step.customName}"
+            </p>
           )}
         </div>
 
@@ -278,6 +346,26 @@ export function PipelineNode({
           onRemoveBranch={onRemoveBranch}
           branchLabel={step.generatorKind === "cartesian" ? "Stage" : "Option"}
           isGenerator
+        />
+      )}
+
+      {/* Augmentation transformers (for augmentation steps with nested content) */}
+      {step.type === "augmentation" && step.branches?.[0] && step.branches[0].length > 0 && (
+        <NestedStepsDisplay
+          steps={step.branches[0]}
+          label="Transformers"
+          colorClass="text-indigo-500"
+          borderClass="border-indigo-500/30"
+        />
+      )}
+
+      {/* Filter steps (for filter steps with nested content) */}
+      {step.type === "filter" && step.branches?.[0] && step.branches[0].length > 0 && (
+        <NestedStepsDisplay
+          steps={step.branches[0]}
+          label="Filters"
+          colorClass="text-rose-500"
+          borderClass="border-rose-500/30"
         />
       )}
     </motion.div>
@@ -445,6 +533,39 @@ function BranchStepPreview({ step, index }: { step: PipelineStep; index: number 
       <span className="text-[10px] font-mono text-muted-foreground w-3">{index + 1}</span>
       <Icon className={`h-3 w-3 ${colors.text}`} />
       <span className="text-xs font-medium truncate">{step.name}</span>
+      {/* Show params summary for nested steps */}
+      {Object.keys(step.params).length > 0 && (
+        <span className="text-[10px] text-muted-foreground font-mono truncate ml-auto">
+          {Object.entries(step.params).slice(0, 2).map(([k, v]) => `${k}=${v}`).join(", ")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Display for nested steps in augmentation/filter containers (read-only preview)
+interface NestedStepsDisplayProps {
+  steps: PipelineStep[];
+  label: string;
+  colorClass: string;
+  borderClass: string;
+}
+
+function NestedStepsDisplay({ steps, label, colorClass, borderClass }: NestedStepsDisplayProps) {
+  return (
+    <div className={`pl-6 pb-3 pt-1 border-l-2 border-dashed ${borderClass} ml-6`}>
+      <div className="space-y-1">
+        <span className={`text-xs font-medium ${colorClass}`}>
+          {label} ({steps.length})
+        </span>
+        {steps.map((nestedStep, idx) => (
+          <BranchStepPreview
+            key={nestedStep.id}
+            step={nestedStep}
+            index={idx}
+          />
+        ))}
+      </div>
     </div>
   );
 }

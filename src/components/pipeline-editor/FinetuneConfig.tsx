@@ -76,6 +76,7 @@ import type {
   FinetuneConfig,
   FinetuneParamConfig,
   FinetuneParamType,
+  TrainingConfig,
 } from "./types";
 
 // Default finetuning configuration
@@ -949,6 +950,357 @@ export function FinetuneParamList({
 }
 
 // =============================================================================
+// TrainParamsList - Training parameters for neural network models
+// =============================================================================
+
+// Common training parameters for neural networks
+const TRAIN_PARAM_PRESETS: ParamPreset[] = [
+  { name: "epochs", type: "int", low: 10, high: 500, step: 10, description: "Training epochs" },
+  { name: "batch_size", type: "categorical", choices: [16, 32, 64, 128, 256], description: "Batch size" },
+  { name: "learning_rate", type: "log_float", low: 0.0001, high: 0.1, description: "Learning rate" },
+  { name: "patience", type: "int", low: 5, high: 50, step: 5, description: "Early stopping patience" },
+  { name: "dropout", type: "float", low: 0.0, high: 0.5, step: 0.1, description: "Dropout rate" },
+  { name: "weight_decay", type: "log_float", low: 0.00001, high: 0.01, description: "Weight decay" },
+];
+
+// Neural network model names that support train_params
+const NEURAL_NETWORK_MODELS = [
+  "Nicon", "MLPRegressor", "MLPClassifier", "DeepPLS",
+  "TabPFN", "XGBoost", "LightGBM", "CatBoost"
+];
+
+interface TrainParamsListProps {
+  params: FinetuneParamConfig[];
+  onUpdate: (params: FinetuneParamConfig[]) => void;
+  modelName: string;
+}
+
+function TrainParamsList({ params, onUpdate, modelName }: TrainParamsListProps) {
+  const [showAddPopover, setShowAddPopover] = useState(false);
+
+  // Only show for neural network models
+  const isNeuralNetwork = useMemo(
+    () => NEURAL_NETWORK_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase())),
+    [modelName]
+  );
+
+  // Filter out already-added params
+  const unusedPresets = useMemo(
+    () => TRAIN_PARAM_PRESETS.filter((p) => !params.find((ep) => ep.name === p.name)),
+    [params]
+  );
+
+  const handleAddParam = (preset: ParamPreset) => {
+    const newParam: FinetuneParamConfig = {
+      name: preset.name,
+      type: preset.type,
+      low: preset.low,
+      high: preset.high,
+      step: preset.step,
+      choices: preset.choices,
+    };
+    onUpdate([...params, newParam]);
+    setShowAddPopover(false);
+  };
+
+  const handleUpdateParam = (index: number, updates: Partial<FinetuneParamConfig>) => {
+    const newParams = [...params];
+    newParams[index] = { ...newParams[index], ...updates };
+    onUpdate(newParams);
+  };
+
+  const handleRemoveParam = (index: number) => {
+    onUpdate(params.filter((_, i) => i !== index));
+  };
+
+  // Don't render if not a neural network model
+  if (!isNeuralNetwork) return null;
+
+  return (
+    <div className="space-y-3">
+      <Separator />
+      <div className="flex items-center justify-between">
+        <div>
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-500" />
+            Training Parameters
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Tune training hyperparameters (epochs, batch_size, etc.)
+          </p>
+        </div>
+        <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
+              disabled={unusedPresets.length === 0}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add Training Param
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 bg-popover p-0">
+            <div className="p-3 border-b border-border">
+              <h4 className="font-medium text-sm">Training Parameters</h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                Add training hyperparameters to tune
+              </p>
+            </div>
+            <ScrollArea className="max-h-64">
+              <div className="p-2 space-y-1">
+                {unusedPresets.map((preset) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => handleAddParam(preset)}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{preset.name}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {preset.type}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {preset.description}
+                    </p>
+                  </button>
+                ))}
+                {unusedPresets.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    All training parameters added
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {params.length === 0 ? (
+        <div className="text-center py-4 rounded-lg border border-dashed">
+          <p className="text-sm text-muted-foreground">No training parameters to tune</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Add epochs, batch_size, learning_rate, etc.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {params.map((param, index) => (
+            <FinetuneParamEditor
+              key={param.name}
+              param={param}
+              onUpdate={(updates) => handleUpdateParam(index, updates)}
+              onRemove={() => handleRemoveParam(index)}
+              existingParams={params.map((p) => p.name)}
+              modelName={modelName}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// BestModelTrainingConfig - Static training params for best model training
+// =============================================================================
+
+interface BestModelTrainingConfigProps {
+  step: PipelineStep;
+  onUpdate: (updates: Partial<PipelineStep>) => void;
+  modelName: string;
+}
+
+// Static training parameter presets (fixed values, not ranges)
+const STATIC_TRAIN_PARAM_PRESETS = [
+  { name: "epochs", default: 100, type: "number" as const, description: "Training epochs" },
+  { name: "batch_size", default: 32, type: "number" as const, description: "Batch size" },
+  { name: "learning_rate", default: 0.001, type: "number" as const, description: "Learning rate" },
+  { name: "patience", default: 20, type: "number" as const, description: "Early stopping patience" },
+  { name: "verbose", default: 0, type: "number" as const, description: "Verbosity level (0-2)" },
+];
+
+function BestModelTrainingConfig({ step, onUpdate, modelName }: BestModelTrainingConfigProps) {
+  const [showAddPopover, setShowAddPopover] = useState(false);
+
+  // Only show for neural network models
+  const isNeuralNetwork = useMemo(
+    () => NEURAL_NETWORK_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase())),
+    [modelName]
+  );
+
+  // Get current training config
+  const trainingConfig = step.trainingConfig ?? { epochs: 100, batch_size: 32 };
+
+  // Get used parameter names
+  const usedParams = useMemo(() => {
+    const params = new Set<string>();
+    if (trainingConfig.epochs !== undefined) params.add("epochs");
+    if (trainingConfig.batch_size !== undefined) params.add("batch_size");
+    if (trainingConfig.learning_rate !== undefined) params.add("learning_rate");
+    if (trainingConfig.patience !== undefined) params.add("patience");
+    if (trainingConfig.verbose !== undefined) params.add("verbose");
+    return params;
+  }, [trainingConfig]);
+
+  const unusedPresets = useMemo(
+    () => STATIC_TRAIN_PARAM_PRESETS.filter(p => !usedParams.has(p.name)),
+    [usedParams]
+  );
+
+  const handleUpdateTrainingConfig = useCallback(
+    (key: string, value: number | undefined) => {
+      const newConfig = { ...trainingConfig, [key]: value };
+      // Remove undefined values
+      Object.keys(newConfig).forEach(k => {
+        if (newConfig[k as keyof typeof newConfig] === undefined) {
+          delete newConfig[k as keyof typeof newConfig];
+        }
+      });
+      onUpdate({ trainingConfig: newConfig });
+    },
+    [trainingConfig, onUpdate]
+  );
+
+  const handleAddParam = (preset: typeof STATIC_TRAIN_PARAM_PRESETS[0]) => {
+    handleUpdateTrainingConfig(preset.name, preset.default);
+    setShowAddPopover(false);
+  };
+
+  const handleRemoveParam = (paramName: string) => {
+    handleUpdateTrainingConfig(paramName, undefined);
+  };
+
+  // Don't render if not a neural network model
+  if (!isNeuralNetwork) return null;
+
+  // Check if there are any params set
+  const hasParams = usedParams.size > 0;
+
+  return (
+    <div className="space-y-3">
+      <Separator />
+      <div className="flex items-center justify-between">
+        <div>
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <Target className="h-4 w-4 text-emerald-500" />
+            Best Model Training
+          </Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Fixed training params for final model (after tuning)
+          </p>
+        </div>
+        <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10"
+              disabled={unusedPresets.length === 0}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add Training Param
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 bg-popover p-0">
+            <div className="p-3 border-b border-border">
+              <h4 className="font-medium text-sm">Best Model Training</h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                Fixed params for final training
+              </p>
+            </div>
+            <ScrollArea className="max-h-64">
+              <div className="p-2 space-y-1">
+                {unusedPresets.map((preset) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => handleAddParam(preset)}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{preset.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        default: {preset.default}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {preset.description}
+                    </p>
+                  </button>
+                ))}
+                {unusedPresets.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    All training parameters added
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {!hasParams ? (
+        <div className="text-center py-4 rounded-lg border border-dashed border-emerald-500/30">
+          <p className="text-sm text-muted-foreground">No fixed training parameters</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Add epochs, batch_size, etc. for final model training
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {Array.from(usedParams).map((paramName) => {
+            const preset = STATIC_TRAIN_PARAM_PRESETS.find(p => p.name === paramName);
+            const value = trainingConfig[paramName as keyof typeof trainingConfig];
+            return (
+              <div
+                key={paramName}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5"
+              >
+                <Hash className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <Label className="text-sm font-medium">{paramName}</Label>
+                  {preset && (
+                    <p className="text-xs text-muted-foreground">{preset.description}</p>
+                  )}
+                </div>
+                <Input
+                  type="number"
+                  value={value ?? ""}
+                  onChange={(e) => handleUpdateTrainingConfig(paramName, parseFloat(e.target.value) || 0)}
+                  className="w-24 h-8 text-xs font-mono"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleRemoveParam(paramName)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Info box */}
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+        <Lightbulb className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-muted-foreground">
+          <p>
+            These are <strong>fixed</strong> training parameters used when training the final best model
+            after Optuna finds optimal hyperparameters. Use more epochs here than during tuning
+            for better convergence.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // FinetuneTab - Main tab content for model step finetuning
 // =============================================================================
 
@@ -1056,8 +1408,22 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
             availableParams={availableParams}
           />
 
+          {/* Training Parameters (for neural network models) */}
+          <TrainParamsList
+            params={config.train_params ?? []}
+            onUpdate={(params) => handleConfigUpdate({ train_params: params })}
+            modelName={step.name}
+          />
+
+          {/* Best Model Training Parameters (static, for final training after tuning) */}
+          <BestModelTrainingConfig
+            step={step}
+            onUpdate={onUpdate}
+            modelName={step.name}
+          />
+
           {/* Summary */}
-          {config.model_params && config.model_params.length > 0 && (
+          {((config.model_params && config.model_params.length > 0) || (config.train_params && config.train_params.length > 0)) && (
             <>
               <Separator />
               <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-500/10 border border-purple-500/30">
@@ -1066,12 +1432,20 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
                   <p className="font-medium text-foreground">
                     Optuna will explore {config.n_trials} configurations
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {config.model_params.length} parameter
-                    {config.model_params.length !== 1 ? "s" : ""} will be optimized:
-                    {" "}
-                    {config.model_params.map((p) => p.name).join(", ")}
-                  </p>
+                  {config.model_params && config.model_params.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Model params ({config.model_params.length}):
+                      {" "}
+                      {config.model_params.map((p) => p.name).join(", ")}
+                    </p>
+                  )}
+                  {config.train_params && config.train_params.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Training params ({config.train_params.length}):
+                      {" "}
+                      {config.train_params.map((p) => p.name).join(", ")}
+                    </p>
+                  )}
                 </div>
               </div>
             </>

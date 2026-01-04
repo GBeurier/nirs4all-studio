@@ -8,15 +8,27 @@ import type {
   DropIndicator
 } from "../components/pipeline-editor/types";
 import { createStepFromOption, cloneStep } from "../components/pipeline-editor/types";
+import { importFromNirs4all, exportToNirs4all as exportToNirs4allFormat } from "../utils/pipelineConverter";
 
 // Storage key for persisting pipeline editor state
 const STORAGE_KEY_PREFIX = "nirs4all_pipeline_editor_";
+
+// Pipeline-level configuration
+export interface PipelineConfig {
+  /** Global random seed for reproducibility */
+  seed?: number;
+  /** Verbose level for training output */
+  verbose?: number;
+  /** Export model after training */
+  exportModel?: boolean;
+}
 
 interface PersistedPipelineState {
   steps: PipelineStep[];
   pipelineName: string;
   isFavorite: boolean;
   lastModified: number;
+  config?: PipelineConfig;
 }
 
 function getPersistenceKey(pipelineId: string): string {
@@ -57,6 +69,7 @@ function clearPersistedState(pipelineId: string): void {
 interface UsePipelineEditorOptions {
   initialSteps?: PipelineStep[];
   initialName?: string;
+  initialConfig?: PipelineConfig;
   maxHistorySize?: number;
   pipelineId?: string; // Unique ID for persistence
   persistState?: boolean; // Enable/disable persistence (default: true)
@@ -66,6 +79,7 @@ interface UsePipelineEditorReturn {
   // State
   steps: PipelineStep[];
   pipelineName: string;
+  pipelineConfig: PipelineConfig;
   selectedStepId: string | null;
   isFavorite: boolean;
   isDirty: boolean;
@@ -80,6 +94,7 @@ interface UsePipelineEditorReturn {
 
   // Actions
   setPipelineName: (name: string) => void;
+  setPipelineConfig: (config: Partial<PipelineConfig>) => void;
   setSelectedStepId: (id: string | null) => void;
   setIsFavorite: (favorite: boolean) => void;
 
@@ -93,8 +108,13 @@ interface UsePipelineEditorReturn {
   updateStep: (id: string, updates: Partial<PipelineStep>) => void;
 
   // Branch operations
-  addBranch: (stepId: string) => void;
-  removeBranch: (stepId: string, branchIndex: number) => void;
+  addBranch: (stepId: string, path?: string[]) => void;
+  removeBranch: (stepId: string, branchIndex: number, path?: string[]) => void;
+
+  // Container children operations (for sample_augmentation, feature_augmentation, etc.)
+  addChild: (stepId: string, path?: string[]) => void;
+  removeChild: (stepId: string, childId: string, path?: string[]) => void;
+  updateChild: (stepId: string, childId: string, updates: Partial<PipelineStep>, path?: string[]) => void;
 
   // DnD handlers
   handleDrop: (data: DragData, indicator: DropIndicator) => void;
@@ -107,31 +127,50 @@ interface UsePipelineEditorReturn {
   // Pipeline
   getSelectedStep: () => PipelineStep | null;
   clearPipeline: () => void;
-  loadPipeline: (steps: PipelineStep[], name?: string) => void;
-  exportPipeline: () => { name: string; steps: PipelineStep[] };
+  loadPipeline: (steps: PipelineStep[], name?: string, config?: PipelineConfig) => void;
+  exportPipeline: () => { name: string; steps: PipelineStep[]; config: PipelineConfig };
+
+  // nirs4all format
+  loadFromNirs4all: (pipeline: unknown) => void;
+  exportToNirs4all: () => unknown[];
 
   // Persistence
   clearPersistedData: () => void;
 }
 
-// Helper to find step by path
+// Helper to find step by path (supports branches and children)
 function getStepsAtPath(steps: PipelineStep[], path: string[]): PipelineStep[] {
   if (path.length === 0) return steps;
 
-  const [stepId, type, indexStr, ...rest] = path;
+  const [stepId, type, ...rest] = path;
   const step = steps.find(s => s.id === stepId);
 
   if (!step) return [];
+
   if (type === "branch" && step.branches) {
+    const [indexStr, ...branchRest] = rest;
     const branchIndex = parseInt(indexStr, 10);
     if (branchIndex >= 0 && branchIndex < step.branches.length) {
-      return getStepsAtPath(step.branches[branchIndex], rest);
+      return getStepsAtPath(step.branches[branchIndex], branchRest);
     }
   }
+
+  if (type === "children" && step.children) {
+    return getStepsAtPath(step.children, rest);
+  }
+
   return [];
 }
 
-// Helper to update steps at a specific path
+// Container step types that use children (not branches)
+const CHILDREN_CONTAINER_TYPES: StepType[] = [
+  "sample_augmentation",
+  "feature_augmentation",
+  "sample_filter",
+  "concat_transform",
+];
+
+// Helper to update steps at a specific path (supports branches and children)
 function updateStepsAtPath(
   steps: PipelineStep[],
   path: string[],
@@ -141,22 +180,36 @@ function updateStepsAtPath(
     return updater(steps);
   }
 
-  const [stepId, type, indexStr, ...rest] = path;
+  const [stepId, type, ...rest] = path;
 
   return steps.map(step => {
     if (step.id !== stepId) return step;
 
     if (type === "branch" && step.branches) {
+      const [indexStr, ...branchRest] = rest;
       const branchIndex = parseInt(indexStr, 10);
       return {
         ...step,
         branches: step.branches.map((branch, idx) =>
           idx === branchIndex
-            ? updateStepsAtPath(branch, rest, updater)
+            ? updateStepsAtPath(branch, branchRest, updater)
             : branch
         ),
       };
     }
+
+    if (type === "children") {
+      // For children, we update the children array directly
+      // Initialize children array if it doesn't exist for container types
+      const currentChildren = step.children ?? (CHILDREN_CONTAINER_TYPES.includes(step.type) ? [] : undefined);
+      if (currentChildren !== undefined) {
+        return {
+          ...step,
+          children: updateStepsAtPath(currentChildren, rest, updater),
+        };
+      }
+    }
+
     return step;
   });
 }
@@ -173,6 +226,12 @@ function countStepsRecursive(steps: PipelineStep[]): Record<StepType, number> {
     merge: 0,
     filter: 0,
     augmentation: 0,
+    sample_augmentation: 0,
+    feature_augmentation: 0,
+    sample_filter: 0,
+    concat_transform: 0,
+    chart: 0,
+    comment: 0,
   };
 
   for (const step of steps) {
@@ -187,32 +246,46 @@ function countStepsRecursive(steps: PipelineStep[]): Record<StepType, number> {
         }
       }
     }
+    // Also count children for container steps
+    if (step.children) {
+      const childCounts = countStepsRecursive(step.children);
+      for (const type of Object.keys(childCounts) as StepType[]) {
+        counts[type] += childCounts[type];
+      }
+    }
   }
 
   return counts;
 }
 
-// Find step by ID recursively
+// Find step by ID recursively (including children of container steps)
 function findStepById(steps: PipelineStep[], id: string): PipelineStep | null {
   for (const step of steps) {
     if (step.id === id) return step;
+    // Search in branches
     if (step.branches) {
       for (const branch of step.branches) {
         const found = findStepById(branch, id);
         if (found) return found;
       }
     }
+    // Search in children (for container steps like sample_augmentation, feature_augmentation, etc.)
+    if (step.children) {
+      const found = findStepById(step.children, id);
+      if (found) return found;
+    }
   }
   return null;
 }
 
-// Remove step by ID recursively
+// Remove step by ID recursively (including from children)
 function removeStepById(steps: PipelineStep[], id: string): PipelineStep[] {
   return steps
     .filter(step => step.id !== id)
     .map(step => ({
       ...step,
       branches: step.branches?.map(branch => removeStepById(branch, id)),
+      children: step.children ? removeStepById(step.children, id) : undefined,
     }));
 }
 
@@ -222,6 +295,7 @@ export function usePipelineEditor(
   const {
     initialSteps = [],
     initialName = "New Pipeline",
+    initialConfig = {},
     maxHistorySize = 50,
     pipelineId = "default",
     persistState = true,
@@ -237,10 +311,12 @@ export function usePipelineEditor(
   const resolvedInitialSteps = persistedState?.steps ?? initialSteps;
   const resolvedInitialName = persistedState?.pipelineName ?? initialName;
   const resolvedInitialFavorite = persistedState?.isFavorite ?? false;
+  const resolvedInitialConfig = persistedState?.config ?? initialConfig;
 
   // Core state
   const [steps, setSteps] = useState<PipelineStep[]>(resolvedInitialSteps);
   const [pipelineName, setPipelineNameState] = useState(resolvedInitialName);
+  const [pipelineConfig, setPipelineConfigState] = useState<PipelineConfig>(resolvedInitialConfig);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [isFavorite, setIsFavoriteState] = useState(resolvedInitialFavorite);
   const [isDirty, setIsDirty] = useState(false);
@@ -267,9 +343,10 @@ export function usePipelineEditor(
       pipelineName,
       isFavorite,
       lastModified: Date.now(),
+      config: pipelineConfig,
     };
     savePersistedState(pipelineId, state);
-  }, [steps, pipelineName, isFavorite, pipelineId, persistState]);
+  }, [steps, pipelineName, isFavorite, pipelineConfig, pipelineId, persistState]);
 
   // Wrapper for setPipelineName that also persists
   const setPipelineName = useCallback((name: string) => {
@@ -280,6 +357,12 @@ export function usePipelineEditor(
   // Wrapper for setIsFavorite that also persists
   const setIsFavorite = useCallback((favorite: boolean) => {
     setIsFavoriteState(favorite);
+  }, []);
+
+  // Wrapper for setPipelineConfig
+  const setPipelineConfig = useCallback((config: PipelineConfig) => {
+    setPipelineConfigState(config);
+    setIsDirty(true);
   }, []);
 
   // Computed values
@@ -464,7 +547,7 @@ export function usePipelineEditor(
     [steps, pushToHistory]
   );
 
-  // Update step properties
+  // Update step properties (recursively searches in branches and children)
   const updateStep = useCallback(
     (id: string, updates: Partial<PipelineStep>) => {
       const updateRecursive = (stepsArray: PipelineStep[]): PipelineStep[] => {
@@ -472,13 +555,20 @@ export function usePipelineEditor(
           if (s.id === id) {
             return { ...s, ...updates };
           }
+          let updated = s;
           if (s.branches) {
-            return {
-              ...s,
+            updated = {
+              ...updated,
               branches: s.branches.map(branch => updateRecursive(branch)),
             };
           }
-          return s;
+          if (s.children) {
+            updated = {
+              ...updated,
+              children: updateRecursive(s.children),
+            };
+          }
+          return updated;
         });
       };
 
@@ -489,18 +579,23 @@ export function usePipelineEditor(
     [steps, pushToHistory]
   );
 
-  // Add a new branch to a branch step
+  // Add a new branch to a branch step (supports nested paths)
   const addBranch = useCallback(
-    (stepId: string) => {
-      const newSteps = steps.map(s => {
-        if (s.id === stepId && s.type === "branch" && s.branches) {
-          return {
-            ...s,
-            branches: [...s.branches, []],
-          };
-        }
-        return s;
-      });
+    (stepId: string, path?: string[]) => {
+      const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
+        targetSteps.map((s) => {
+          // Support both branch and generator step types (both have branches)
+          if (s.id === stepId && (s.type === "branch" || s.type === "generator") && s.branches) {
+            return {
+              ...s,
+              branches: [...s.branches, []],
+              // Also add branch metadata for new branch
+              branchMetadata: [...(s.branchMetadata || []), {}],
+            };
+          }
+          return s;
+        })
+      );
       setSteps(newSteps);
       pushToHistory(newSteps);
     },
@@ -516,6 +611,76 @@ export function usePipelineEditor(
             return {
               ...s,
               branches: s.branches.filter((_, idx) => idx !== branchIndex),
+            };
+          }
+          return s;
+        })
+      );
+      setSteps(newSteps);
+      pushToHistory(newSteps);
+    },
+    [steps, pushToHistory]
+  );
+
+  // Add a child to a container step (sample_augmentation, feature_augmentation, etc.)
+  const addChild = useCallback(
+    (stepId: string, path?: string[]) => {
+      const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
+        targetSteps.map((s) => {
+          if (s.id === stepId) {
+            // Determine child type based on container type
+            const childType = s.type === "sample_filter" ? "filter" : "preprocessing";
+            const newChild: PipelineStep = {
+              id: `child-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              type: childType,
+              name: childType === "filter" ? "ThresholdFilter" : "SNV",
+              params: {},
+            };
+            return {
+              ...s,
+              children: [...(s.children || []), newChild],
+            };
+          }
+          return s;
+        })
+      );
+      setSteps(newSteps);
+      pushToHistory(newSteps);
+    },
+    [steps, pushToHistory]
+  );
+
+  // Remove a child from a container step
+  const removeChild = useCallback(
+    (stepId: string, childId: string, path?: string[]) => {
+      const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
+        targetSteps.map((s) => {
+          if (s.id === stepId && s.children) {
+            return {
+              ...s,
+              children: s.children.filter((c) => c.id !== childId),
+            };
+          }
+          return s;
+        })
+      );
+      setSteps(newSteps);
+      pushToHistory(newSteps);
+    },
+    [steps, pushToHistory]
+  );
+
+  // Update a child in a container step
+  const updateChild = useCallback(
+    (stepId: string, childId: string, updates: Partial<PipelineStep>, path?: string[]) => {
+      const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
+        targetSteps.map((s) => {
+          if (s.id === stepId && s.children) {
+            return {
+              ...s,
+              children: s.children.map((c) =>
+                c.id === childId ? { ...c, ...updates } : c
+              ),
             };
           }
           return s;
@@ -606,6 +771,42 @@ export function usePipelineEditor(
     [pipelineName, steps]
   );
 
+  // Load from nirs4all canonical format
+  const loadFromNirs4all = useCallback(
+    (pipeline: unknown) => {
+      try {
+        // Handle both pipeline object and array
+        const pipelineData = Array.isArray(pipeline)
+          ? { pipeline }
+          : pipeline as { name?: string; description?: string; pipeline: unknown[] };
+
+        const newSteps = importFromNirs4all(pipelineData as Parameters<typeof importFromNirs4all>[0]);
+        setSteps(newSteps);
+        setHistory([newSteps]);
+        setHistoryIndex(0);
+        setSelectedStepId(null);
+        setIsDirty(false);
+
+        if ('name' in pipelineData && pipelineData.name) {
+          setPipelineName(pipelineData.name);
+        }
+      } catch (e) {
+        console.error("Failed to load nirs4all pipeline:", e);
+        throw e;
+      }
+    },
+    [setPipelineName]
+  );
+
+  // Export to nirs4all canonical format
+  const exportToNirs4all = useCallback(
+    () => {
+      const result = exportToNirs4allFormat(steps);
+      return Array.isArray(result) ? result : result.pipeline;
+    },
+    [steps]
+  );
+
   // Clear persisted data
   const clearPersistedData = useCallback(() => {
     if (persistState) {
@@ -660,6 +861,7 @@ export function usePipelineEditor(
     // State
     steps,
     pipelineName,
+    pipelineConfig,
     selectedStepId,
     isFavorite,
     isDirty,
@@ -674,6 +876,7 @@ export function usePipelineEditor(
 
     // Actions
     setPipelineName,
+    setPipelineConfig,
     setSelectedStepId,
     setIsFavorite,
 
@@ -690,6 +893,11 @@ export function usePipelineEditor(
     addBranch,
     removeBranch,
 
+    // Container children operations
+    addChild,
+    removeChild,
+    updateChild,
+
     // DnD handlers
     handleDrop,
     handleReorder,
@@ -703,6 +911,10 @@ export function usePipelineEditor(
     clearPipeline,
     loadPipeline,
     exportPipeline,
+
+    // nirs4all format
+    loadFromNirs4all,
+    exportToNirs4all,
 
     // Persistence
     clearPersistedData,

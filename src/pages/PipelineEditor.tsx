@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -18,10 +18,14 @@ import {
   Info,
   Loader2,
   Command,
+  FileJson,
+  FolderOpen,
+  Settings,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -35,6 +39,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
@@ -53,6 +60,8 @@ import {
 } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { usePipelineEditor } from "@/hooks/usePipelineEditor";
+import { listPipelineSamples, getPipelineSample } from "@/api/client";
+import type { PipelineSampleInfo } from "@/api/client";
 import {
   useVariantCount,
   formatVariantCount,
@@ -110,10 +119,18 @@ export default function PipelineEditor() {
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
+  // File input ref for importing
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pipeline samples state
+  const [samples, setSamples] = useState<PipelineSampleInfo[]>([]);
+  const [samplesLoading, setSamplesLoading] = useState(false);
+
   // Initialize with demo pipeline if editing, empty if new
   const {
     steps,
     pipelineName,
+    pipelineConfig,
     selectedStepId,
     isFavorite,
     isDirty,
@@ -122,6 +139,7 @@ export default function PipelineEditor() {
     stepCounts,
     totalSteps,
     setPipelineName,
+    setPipelineConfig,
     setSelectedStepId,
     setIsFavorite,
     addStep,
@@ -131,6 +149,8 @@ export default function PipelineEditor() {
     updateStep,
     addBranch,
     removeBranch,
+    addChild,
+    removeChild,
     handleDrop,
     handleReorder,
     undo,
@@ -138,12 +158,41 @@ export default function PipelineEditor() {
     getSelectedStep,
     clearPipeline,
     exportPipeline,
+    loadFromNirs4all,
+    exportToNirs4all,
   } = usePipelineEditor({
     initialSteps: isNew ? [] : demoPipeline,
     initialName: isNew ? "New Pipeline" : "SNV + SG → PLS",
     pipelineId: pipelineId,
     persistState: true,
   });
+
+  // Load samples on first dropdown open
+  const handleLoadSamples = useCallback(async () => {
+    if (samples.length > 0) return; // Already loaded
+    setSamplesLoading(true);
+    try {
+      const result = await listPipelineSamples();
+      setSamples(result.samples);
+    } catch (err) {
+      console.error("Failed to load samples:", err);
+      toast.error("Failed to load pipeline samples");
+    } finally {
+      setSamplesLoading(false);
+    }
+  }, [samples.length]);
+
+  const handleLoadSample = useCallback(async (sampleId: string, sampleName: string) => {
+    try {
+      const result = await getPipelineSample(sampleId, true);
+      loadFromNirs4all(result);
+      setPipelineName(result.name || sampleName);
+      toast.success(`Loaded sample: ${result.name || sampleName}`);
+    } catch (err) {
+      console.error("Failed to load sample:", err);
+      toast.error(`Failed to load sample: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }, [loadFromNirs4all, setPipelineName]);
 
   // Keyboard navigation hook
   const {
@@ -222,6 +271,79 @@ export default function PipelineEditor() {
     toast.success("Pipeline exported as JSON");
   };
 
+  const handleExportNirs4all = () => {
+    const nirs4allSteps = exportToNirs4all();
+    const pipeline: Record<string, unknown> = {
+      name: pipelineName,
+      description: "",
+      pipeline: nirs4allSteps,
+    };
+    // Include seed if set
+    if (pipelineConfig.seed !== undefined) {
+      pipeline.seed = pipelineConfig.seed;
+    }
+    const json = JSON.stringify(pipeline, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${pipelineName.replace(/\s+/g, "_")}_nirs4all.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Pipeline exported in nirs4all format");
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        let data: unknown;
+
+        // Try to parse as JSON
+        if (file.name.endsWith('.json')) {
+          data = JSON.parse(content);
+        } else if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
+          // For YAML, we'll need to use the backend
+          toast.error("YAML import requires the backend API. Please use JSON format or load from samples.");
+          return;
+        } else {
+          // Try JSON anyway
+          data = JSON.parse(content);
+        }
+
+        // Check if it's nirs4all format (has 'pipeline' key with array or is an array)
+        const pipeline = data as Record<string, unknown>;
+        if (Array.isArray(pipeline) || (pipeline.pipeline && Array.isArray(pipeline.pipeline))) {
+          loadFromNirs4all(pipeline);
+          const name = typeof pipeline.name === 'string' ? pipeline.name : file.name.replace(/\.[^/.]+$/, "");
+          setPipelineName(name);
+          toast.success(`Pipeline "${name}" imported successfully`);
+        } else if (pipeline.steps && Array.isArray(pipeline.steps)) {
+          // It's editor format
+          // We need to use loadPipeline for editor format
+          toast.info("Detected editor format - please use nirs4all format for import");
+        } else {
+          toast.error("Invalid pipeline format. Expected nirs4all format with 'pipeline' array.");
+        }
+      } catch (err) {
+        console.error("Import error:", err);
+        toast.error(`Failed to import: ${err instanceof Error ? err.message : 'Invalid file'}`);
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset the input so the same file can be imported again
+    event.target.value = '';
+  };
+
   const handleClearPipeline = () => {
     clearPipeline();
     setShowClearDialog(false);
@@ -231,20 +353,27 @@ export default function PipelineEditor() {
   const selectedStep = getSelectedStep();
 
   // Get variant count from nirs4all backend
-  // Convert editor steps to the format expected by the API
+  // Convert editor steps to the format expected by the API with full generator info
   const apiSteps = useMemo(() => {
-    return steps.map((step) => ({
+    const convertStep = (step: EditorPipelineStep): PipelineStep => ({
       id: step.id,
-      type: step.type,
+      // Map editor step types to API step types (generator -> branch for API compatibility)
+      type: step.type === "generator" ? "branch" : step.type as PipelineStep["type"],
       name: step.name,
       params: step.params || {},
-      children: step.branches?.flat().map((child) => ({
-        id: child.id,
-        type: child.type,
-        name: child.name,
-        params: child.params || {},
-      })),
-    })) as PipelineStep[];
+      // Include generator configuration for variant counting
+      generator: step.stepGenerator ? {
+        _or_: step.stepGenerator.type === "_or_" ? step.stepGenerator.values : undefined,
+        _range_: step.stepGenerator.type === "_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
+        _log_range_: step.stepGenerator.type === "_log_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
+        // pick as tuple becomes the first element (upper bound)
+        pick: Array.isArray(step.generatorOptions?.pick) ? step.generatorOptions.pick[1] : step.generatorOptions?.pick,
+        count: step.generatorOptions?.count,
+      } : undefined,
+      // Convert branches recursively for branch/generator steps
+      children: step.branches?.flat().map((child) => convertStep(child)),
+    });
+    return steps.map(convertStep) as PipelineStep[];
   }, [steps]);
 
   const {
@@ -469,6 +598,68 @@ export default function PipelineEditor() {
                   </Tooltip>
                 </div>
 
+                {/* Pipeline Settings */}
+                <Popover>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={pipelineConfig.seed !== undefined ? "text-primary" : ""}
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Pipeline Settings</TooltipContent>
+                  </Tooltip>
+                  <PopoverContent align="end" className="w-72 bg-popover">
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-medium">Pipeline Settings</h4>
+                      <div className="space-y-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="global-seed" className="text-xs text-muted-foreground">
+                            Global Seed
+                          </Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="global-seed"
+                              type="number"
+                              placeholder="Random"
+                              value={pipelineConfig.seed ?? ""}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setPipelineConfig({
+                                  ...pipelineConfig,
+                                  seed: value === "" ? undefined : parseInt(value, 10),
+                                });
+                              }}
+                              className="h-8 text-sm"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPipelineConfig({
+                                  ...pipelineConfig,
+                                  seed: Math.floor(Math.random() * 10000),
+                                });
+                              }}
+                              className="h-8 px-2"
+                            >
+                              Generate
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Set a seed for reproducible results across all splits and operations.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 {/* Keyboard shortcuts button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -535,12 +726,52 @@ export default function PipelineEditor() {
                   <DropdownMenuContent align="end" className="bg-popover">
                     <DropdownMenuItem onClick={handleExportJson}>
                       <Download className="h-4 w-4 mr-2" />
-                      Export as JSON
+                      Export as JSON (Editor)
                     </DropdownMenuItem>
-                    <DropdownMenuItem disabled>
+                    <DropdownMenuItem onClick={handleExportNirs4all}>
+                      <FileJson className="h-4 w-4 mr-2" />
+                      Export as JSON (nirs4all)
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleImportClick}>
                       <Upload className="h-4 w-4 mr-2" />
                       Import from JSON
                     </DropdownMenuItem>
+                    <DropdownMenuSub onOpenChange={(open) => { if (open) handleLoadSamples(); }}>
+                      <DropdownMenuSubTrigger>
+                        <FolderOpen className="h-4 w-4 mr-2" />
+                        Load Sample Pipeline
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="bg-popover max-h-80 overflow-y-auto min-w-[280px]">
+                        {samplesLoading ? (
+                          <div className="flex items-center justify-center py-4">
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">Loading samples...</span>
+                          </div>
+                        ) : samples.length === 0 ? (
+                          <DropdownMenuItem disabled>
+                            No samples available
+                          </DropdownMenuItem>
+                        ) : (
+                          samples.map((sample) => (
+                            <DropdownMenuItem
+                              key={sample.id}
+                              onClick={() => handleLoadSample(sample.id, sample.name)}
+                            >
+                              <FileJson className="h-4 w-4 mr-2 text-muted-foreground" />
+                              <div className="flex flex-col">
+                                <span>{sample.name}</span>
+                                {sample.description && (
+                                  <span className="text-xs text-muted-foreground truncate max-w-48">
+                                    {sample.description}
+                                  </span>
+                                )}
+                              </div>
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => setShowClearDialog(true)}
@@ -585,7 +816,7 @@ export default function PipelineEditor() {
             {/* Center: Pipeline Tree */}
             <div
               ref={panelRefs.tree}
-              className="flex-1 relative"
+              className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
               onClick={() => setFocusedPanel("tree")}
             >
               <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
@@ -597,6 +828,8 @@ export default function PipelineEditor() {
                 onDuplicateStep={duplicateStep}
                 onAddBranch={addBranch}
                 onRemoveBranch={removeBranch}
+                onAddChild={addChild}
+                onRemoveChild={removeChild}
               />
             </div>
 
@@ -612,6 +845,9 @@ export default function PipelineEditor() {
                 onUpdate={updateStep}
                 onRemove={removeStep}
                 onDuplicate={duplicateStep}
+                onSelectStep={setSelectedStepId}
+                onAddChild={addChild}
+                onRemoveChild={removeChild}
               />
             </div>
           </div>
@@ -671,6 +907,15 @@ export default function PipelineEditor() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Hidden file input for importing */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,.yaml,.yml"
+        onChange={handleFileImport}
+        className="hidden"
+      />
     </TooltipProvider>
   );
 }

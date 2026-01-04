@@ -15,6 +15,10 @@ import {
   Zap,
   BarChart3,
   Star,
+  Layers,
+  Combine,
+  LineChart,
+  MessageSquare,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
@@ -49,6 +53,12 @@ const stepIcons: Record<StepType, typeof Waves> = {
   merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
+  sample_augmentation: Zap,
+  feature_augmentation: Layers,
+  sample_filter: Filter,
+  concat_transform: Combine,
+  chart: LineChart,
+  comment: MessageSquare,
 };
 
 interface DraggableStepProps {
@@ -133,45 +143,61 @@ interface StepPaletteProps {
 }
 
 // Order of step types in the palette (most commonly used first)
+// Note: Some categories are merged together (see mergedCategories)
 const stepTypeOrder: StepType[] = [
   "preprocessing",
   "splitting",
   "model",
   "y_processing",
   "generator",
-  "branch",
-  "merge",
-  "filter",
-  "augmentation",
+  "branch",      // Includes merge
+  "filter",      // Includes sample_filter
+  "augmentation", // Augmentation operators (noise, drift, etc.)
+  "sample_augmentation", // Container types: includes feature_augmentation, concat_transform
+  "chart",
+  "comment",
 ];
 
-// Group options by category
-function groupByCategory(options: StepOption[]): Map<string, StepOption[]> {
-  const groups = new Map<string, StepOption[]>();
-  for (const opt of options) {
-    const category = opt.category || "General";
-    if (!groups.has(category)) {
-      groups.set(category, []);
-    }
-    groups.get(category)!.push(opt);
-  }
-  return groups;
-}
+// Categories that get merged together in the UI
+const mergedCategories: Partial<Record<StepType, { types: StepType[]; label: string }>> = {
+  branch: { types: ["branch", "merge"], label: "Branching & Merge" },
+  filter: { types: ["filter", "sample_filter"], label: "Filters" },
+  sample_augmentation: { types: ["sample_augmentation", "feature_augmentation", "concat_transform"], label: "Feature Processing" },
+};
+
+// Types that should be hidden because they're merged into another category
+const hiddenTypes = new Set<StepType>(["merge", "feature_augmentation", "concat_transform", "sample_filter"]);
+
+
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Get all options for a type, including merged types
+  const getOptionsForType = useCallback((type: StepType): { option: StepOption; actualType: StepType }[] => {
+    const merged = mergedCategories[type];
+    if (merged) {
+      // Return options from all merged types
+      return merged.types.flatMap(t =>
+        stepOptions[t].map(opt => ({ option: opt, actualType: t }))
+      );
+    }
+    return stepOptions[type].map(opt => ({ option: opt, actualType: type }));
+  }, []);
+
   const filteredOptions = useCallback(
-    (type: StepType) =>
-      stepOptions[type].filter(
-        (opt) =>
+    (type: StepType) => {
+      const allOptions = getOptionsForType(type);
+      return allOptions.filter(
+        ({ option: opt }) =>
           opt.name.toLowerCase().includes(search.toLowerCase()) ||
           opt.description.toLowerCase().includes(search.toLowerCase()) ||
           (opt.category?.toLowerCase().includes(search.toLowerCase()) ?? false)
-      ),
-    [search]
+      );
+    },
+    [search, getOptionsForType]
   );
 
   // When search changes, open all sections that have matches
@@ -181,12 +207,8 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       // Open all sections that have matching results
       const matchingSections = new Set<StepType>();
       stepTypeOrder.forEach((type) => {
-        const matches = stepOptions[type].filter(
-          (opt) =>
-            opt.name.toLowerCase().includes(value.toLowerCase()) ||
-            opt.description.toLowerCase().includes(value.toLowerCase()) ||
-            (opt.category?.toLowerCase().includes(value.toLowerCase()) ?? false)
-        );
+        if (hiddenTypes.has(type)) return;
+        const matches = filteredOptions(type);
         if (matches.length > 0) {
           matchingSections.add(type);
         }
@@ -229,14 +251,20 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     });
   };
 
+  // Total steps (visible only, not counting hidden merged types)
   const totalSteps = useMemo(
     () =>
-      stepTypeOrder.reduce(
-        (acc, type) => acc + filteredOptions(type).length,
-        0
-      ),
+      stepTypeOrder
+        .filter(type => !hiddenTypes.has(type))
+        .reduce(
+          (acc, type) => acc + filteredOptions(type).length,
+          0
+        ),
     [filteredOptions]
   );
+
+  // Threshold for showing subcategories (if total options in a section < this, show flat list)
+  const SUBMENU_THRESHOLD = 10;
 
   return (
     <div className="h-full flex flex-col bg-card border-r border-border">
@@ -266,15 +294,33 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-3">
           {stepTypeOrder.map((type) => {
+            // Skip hidden types (they're merged into other categories)
+            if (hiddenTypes.has(type)) return null;
+
             const Icon = stepIcons[type];
             const colors = stepColors[type];
             const options = filteredOptions(type);
             if (options.length === 0 && search) return null;
 
-            // Group by category
-            const grouped = groupByCategory(options);
-            const hasCategories = grouped.size > 1 || !grouped.has("General");
+            // Get the display label (merged or original)
+            const merged = mergedCategories[type];
+            const displayLabel = merged ? merged.label : stepTypeLabels[type];
+
+            // Group by category (using the option's category or type as fallback for merged)
+            const groupedMap = new Map<string, { option: StepOption; actualType: StepType }[]>();
+            for (const item of options) {
+              // For merged categories, use a combo key to distinguish source types
+              const categoryKey = item.option.category || "General";
+              if (!groupedMap.has(categoryKey)) {
+                groupedMap.set(categoryKey, []);
+              }
+              groupedMap.get(categoryKey)!.push(item);
+            }
+
+            const hasCategories = groupedMap.size > 1 || !groupedMap.has("General");
             const isExpanded = openSections.has(type);
+            // Only show subcategories if we have more than SUBMENU_THRESHOLD options
+            const shouldShowSubcategories = hasCategories && !search && options.length >= SUBMENU_THRESHOLD;
 
             return (
               <Collapsible
@@ -292,7 +338,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                     <Icon className={`h-3 w-3 ${colors.text}`} />
                   </div>
                   <span className="font-medium text-xs text-foreground flex-1 truncate">
-                    {stepTypeLabels[type]}
+                    {displayLabel}
                   </span>
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex-shrink-0">
                     {options.length}
@@ -300,9 +346,9 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-1">
                   <div className="pl-5">
-                    {hasCategories && !search ? (
+                    {shouldShowSubcategories ? (
                       // Render grouped by category with nested collapsibles
-                      Array.from(grouped.entries()).map(([category, categoryOptions]) => {
+                      Array.from(groupedMap.entries()).map(([category, categoryItems]) => {
                         const categoryKey = `${type}-${category}`;
                         const isCategoryExpanded = expandedCategories.has(categoryKey) || search.length > 0;
 
@@ -319,17 +365,17 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                                 <ChevronRight className="h-3 w-3" />
                               )}
                               <span className="text-[10px] font-medium uppercase tracking-wide">{category}</span>
-                              <span className="text-[9px] text-muted-foreground ml-auto">{categoryOptions.length}</span>
+                              <span className="text-[9px] text-muted-foreground ml-auto">{categoryItems.length}</span>
                             </CollapsibleTrigger>
                             <CollapsibleContent>
                               <div className="space-y-1 pl-2 pt-0.5 pb-1">
-                                {categoryOptions.map((option) => (
+                                {categoryItems.map(({ option, actualType }) => (
                                   <DraggableStep
-                                    key={option.name}
-                                    stepType={type}
+                                    key={`${actualType}-${option.name}`}
+                                    stepType={actualType}
                                     option={option}
-                                    onDoubleClick={() => onAddStep(type, option)}
-                                    isCompact={categoryOptions.length > 8}
+                                    onDoubleClick={() => onAddStep(actualType, option)}
+                                    isCompact={categoryItems.length > 8}
                                   />
                                 ))}
                               </div>
@@ -338,14 +384,14 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                         );
                       })
                     ) : (
-                      // Flat list (no categories or searching)
+                      // Flat list (no categories, searching, or below threshold)
                       <div className="space-y-1">
-                        {options.map((option) => (
+                        {options.map(({ option, actualType }) => (
                           <DraggableStep
-                            key={option.name}
-                            stepType={type}
+                            key={`${actualType}-${option.name}`}
+                            stepType={actualType}
                             option={option}
-                            onDoubleClick={() => onAddStep(type, option)}
+                            onDoubleClick={() => onAddStep(actualType, option)}
                           />
                         ))}
                       </div>
