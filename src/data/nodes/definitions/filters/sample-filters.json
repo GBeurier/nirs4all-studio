@@ -1,0 +1,138 @@
+[
+  {
+    "id": "filter.outlier_detection",
+    "name": "OutlierDetection",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.OutlierDetection",
+    "description": "Detect and remove outliers",
+    "longDescription": "Identifies and optionally removes outlier samples using various methods.",
+    "category": "Outlier",
+    "tags": ["filter", "outlier", "detection", "removal"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "method",
+        "type": "select",
+        "default": "hotelling",
+        "options": [
+          { "value": "hotelling", "label": "Hotelling T²" },
+          { "value": "isolation_forest", "label": "Isolation Forest" },
+          { "value": "lof", "label": "Local Outlier Factor" },
+          { "value": "mahalanobis", "label": "Mahalanobis Distance" }
+        ],
+        "description": "Outlier detection method"
+      },
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 0.95,
+        "min": 0.5,
+        "max": 0.999,
+        "step": 0.01,
+        "description": "Confidence threshold for outlier detection"
+      },
+      {
+        "name": "remove",
+        "type": "bool",
+        "default": false,
+        "description": "Remove detected outliers from dataset"
+      }
+    ]
+  },
+  {
+    "id": "filter.sample_selector",
+    "name": "SampleSelector",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.SampleSelector",
+    "description": "Select samples by criteria",
+    "longDescription": "Filter samples based on metadata, indices, or value ranges.",
+    "category": "Selection",
+    "tags": ["filter", "sample", "selection", "subset"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "column",
+        "type": "string",
+        "default": "",
+        "description": "Metadata column to filter by"
+      },
+      {
+        "name": "values",
+        "type": "array",
+        "default": [],
+        "description": "Values to include"
+      }
+    ]
+  },
+  {
+    "id": "filter.y_range",
+    "name": "YRangeFilter",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.YRangeFilter",
+    "description": "Filter samples by Y value range",
+    "longDescription": "Keeps only samples where Y falls within specified range.",
+    "category": "Range",
+    "tags": ["filter", "range", "target", "y"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "min_y",
+        "type": "float",
+        "description": "Minimum Y value (optional)"
+      },
+      {
+        "name": "max_y",
+        "type": "float",
+        "description": "Maximum Y value (optional)"
+      }
+    ]
+  },
+  {
+    "id": "filter.duplicates",
+    "name": "DuplicateRemover",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.DuplicateRemover",
+    "description": "Remove duplicate samples",
+    "longDescription": "Identifies and removes duplicate spectral samples.",
+    "category": "Cleaning",
+    "tags": ["filter", "duplicate", "cleaning", "removal"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "tolerance",
+        "type": "float",
+        "default": 1e-6,
+        "min": 0,
+        "max": 0.01,
+        "description": "Tolerance for considering samples as duplicates"
+      }
+    ]
+  },
+  {
+    "id": "filter.quality",
+    "name": "QualityFilter",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.QualityFilter",
+    "description": "Filter by spectral quality metrics",
+    "longDescription": "Removes samples with poor spectral quality (noise, saturation, etc.).",
+    "category": "Quality",
+    "tags": ["filter", "quality", "noise", "spectral"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "max_noise",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 1,
+        "description": "Maximum allowed noise level"
+      },
+      {
+        "name": "check_saturation",
+        "type": "bool",
+        "default": true,
+        "description": "Check for detector saturation"
+      }
+    ]
+  }
+]

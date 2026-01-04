@@ -1,0 +1,302 @@
+[
+  {
+    "id": "model.nicon",
+    "name": "NICoN",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.nicon",
+    "description": "NICoN (NIRS Convolutional Network)",
+    "longDescription": "Deep convolutional neural network designed specifically for NIR spectroscopy.",
+    "category": "Deep Learning",
+    "tags": ["deep-learning", "cnn", "nirs", "neural-network"],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [50, 500]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 0.00001,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.0001, 0.01]
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.deep.nicon"
+    ]
+  },
+  {
+    "id": "model.cnn1d",
+    "name": "CNN1D",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.CNN1D",
+    "description": "1D Convolutional Neural Network",
+    "longDescription": "Generic 1D CNN architecture for spectral data.",
+    "category": "Deep Learning",
+    "tags": ["deep-learning", "cnn", "neural-network", "1d"],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [50, 500]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 0.00001,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.0001, 0.01]
+      },
+      {
+        "name": "n_filters",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Number of convolutional filters",
+        "sweepable": true
+      },
+      {
+        "name": "kernel_size",
+        "type": "int",
+        "default": 7,
+        "min": 3,
+        "max": 31,
+        "description": "Convolution kernel size",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.deep.CNN1D"
+    ]
+  },
+  {
+    "id": "model.mlp",
+    "name": "MLPRegressor",
+    "type": "model",
+    "classPath": "sklearn.neural_network.MLPRegressor",
+    "description": "Multi-Layer Perceptron Regressor",
+    "longDescription": "Fully connected neural network for regression.",
+    "category": "Deep Learning",
+    "tags": ["deep-learning", "mlp", "neural-network", "perceptron"],
+    "source": "sklearn",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "hidden_layer_sizes",
+        "type": "string",
+        "default": "(100, 50)",
+        "description": "Hidden layer sizes as tuple",
+        "sweepable": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 200,
+        "min": 100,
+        "max": 2000,
+        "description": "Maximum number of iterations",
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate_init",
+        "type": "float",
+        "default": 0.001,
+        "min": 0.00001,
+        "max": 0.1,
+        "description": "Initial learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.0001, 0.01]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.neural_network._multilayer_perceptron.MLPRegressor"
+    ]
+  },
+  {
+    "id": "model.lstm",
+    "name": "LSTM",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.LSTM",
+    "description": "Long Short-Term Memory Network",
+    "longDescription": "LSTM recurrent neural network for sequence modeling.",
+    "category": "Deep Learning",
+    "tags": ["deep-learning", "lstm", "rnn", "recurrent"],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true
+      },
+      {
+        "name": "hidden_size",
+        "type": "int",
+        "default": 64,
+        "min": 8,
+        "max": 512,
+        "description": "LSTM hidden layer size",
+        "sweepable": true
+      },
+      {
+        "name": "num_layers",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 8,
+        "description": "Number of LSTM layers",
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 0.00001,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.0001, 0.01]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.deep.LSTM"
+    ]
+  },
+  {
+    "id": "model.transformer",
+    "name": "Transformer",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.Transformer",
+    "description": "Transformer Model",
+    "longDescription": "Attention-based transformer architecture for spectral data.",
+    "category": "Deep Learning",
+    "tags": ["deep-learning", "transformer", "attention", "neural-network"],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true
+      },
+      {
+        "name": "d_model",
+        "type": "int",
+        "default": 64,
+        "min": 16,
+        "max": 512,
+        "description": "Model dimension",
+        "sweepable": true
+      },
+      {
+        "name": "nhead",
+        "type": "int",
+        "default": 4,
+        "min": 1,
+        "max": 16,
+        "description": "Number of attention heads",
+        "sweepable": true
+      },
+      {
+        "name": "num_layers",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 8,
+        "description": "Number of transformer layers",
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 0.00001,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.0001, 0.01]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.deep.Transformer"
+    ]
+  },
+  {
+    "id": "model.tabpfn",
+    "name": "TabPFN",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.TabPFN",
+    "description": "TabPFN (Prior-Data Fitted Network)",
+    "longDescription": "Pre-trained transformer for tabular data - no hyperparameter tuning needed.",
+    "category": "Deep Learning",
+    "tags": ["deep-learning", "tabpfn", "transformer", "pretrained"],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [],
+    "supportsParameterSweeps": false,
+    "supportsFinetuning": false
+  }
+]

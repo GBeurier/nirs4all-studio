@@ -1,0 +1,72 @@
+[
+  {
+    "id": "preprocessing.reflectance_to_absorbance",
+    "name": "ReflectanceToAbsorbance",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.ReflectanceToAbsorbance",
+    "description": "Convert reflectance to absorbance (Beer-Lambert)",
+    "longDescription": "Converts reflectance data to absorbance using the Beer-Lambert law: A = -log10(R).",
+    "category": "Conversion",
+    "tags": ["conversion", "reflectance", "absorbance", "beer-lambert"],
+    "source": "nirs4all",
+    "parameters": [],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.log_transform",
+    "name": "LogTransform",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.LogTransform",
+    "description": "Logarithmic transform",
+    "longDescription": "Applies logarithmic transformation to spectral data.",
+    "category": "Conversion",
+    "tags": ["conversion", "log", "transform"],
+    "source": "nirs4all",
+    "parameters": [],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.to_absorbance",
+    "name": "ToAbsorbance",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.ToAbsorbance",
+    "description": "Convert to absorbance",
+    "longDescription": "Converts spectral data to absorbance format.",
+    "category": "Conversion",
+    "tags": ["conversion", "absorbance"],
+    "source": "nirs4all",
+    "parameters": [],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.from_absorbance",
+    "name": "FromAbsorbance",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.FromAbsorbance",
+    "description": "Convert from absorbance",
+    "longDescription": "Converts spectral data from absorbance format.",
+    "category": "Conversion",
+    "tags": ["conversion", "absorbance", "inverse"],
+    "source": "nirs4all",
+    "parameters": [],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.kubelka_munk",
+    "name": "KubelkaMunk",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.KubelkaMunk",
+    "description": "Kubelka-Munk transformation",
+    "longDescription": "Applies Kubelka-Munk transformation for diffuse reflectance spectra.",
+    "category": "Conversion",
+    "tags": ["conversion", "kubelka-munk", "diffuse", "reflectance"],
+    "source": "nirs4all",
+    "parameters": [],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  }
+]

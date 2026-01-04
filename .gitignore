@@ -23,3 +23,6 @@ coverage
 *.swp
 *.tmp
 *.old
+
+*storybook.log
+storybook-static

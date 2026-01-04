@@ -1,0 +1,27 @@
+{
+  "type": "model",
+  "label": "Models",
+  "description": "Regression and classification models",
+  "icon": "Target",
+  "color": {
+    "border": "border-emerald-500/30",
+    "bg": "bg-emerald-500/5",
+    "hover": "hover:bg-emerald-500/10 hover:border-emerald-500/50",
+    "selected": "bg-emerald-500/10 border-emerald-500/100",
+    "text": "text-emerald-500",
+    "active": "ring-emerald-500 border-emerald-500",
+    "gradient": "from-emerald-500/20 to-emerald-500/5"
+  },
+  "defaultOpen": false,
+  "displayOrder": 4,
+  "subcategories": [
+    { "id": "pls", "label": "PLS", "displayOrder": 1 },
+    { "id": "advanced_pls", "label": "Advanced PLS", "displayOrder": 2 },
+    { "id": "kernel_pls", "label": "Kernel PLS", "displayOrder": 3 },
+    { "id": "linear", "label": "Linear", "displayOrder": 4 },
+    { "id": "svm", "label": "SVM", "displayOrder": 5 },
+    { "id": "ensemble", "label": "Ensemble", "displayOrder": 6 },
+    { "id": "deep_learning", "label": "Deep Learning", "displayOrder": 7 },
+    { "id": "meta", "label": "Meta", "displayOrder": 8 }
+  ]
+}

@@ -1,0 +1,83 @@
+[
+  {
+    "id": "preprocessing.crop_transformer",
+    "name": "CropTransformer",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.CropTransformer",
+    "description": "Trim wavelength range",
+    "longDescription": "Crops spectra to a specific wavelength range by index.",
+    "category": "Feature Ops",
+    "tags": ["crop", "trim", "wavelength", "range"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "start",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "description": "Start index for cropping",
+        "sweepable": true
+      },
+      {
+        "name": "end",
+        "type": "int",
+        "default": -1,
+        "description": "End index for cropping (-1 for end)",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.resampler",
+    "name": "Resampler",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.Resampler",
+    "description": "Wavelength resampling/interpolation",
+    "longDescription": "Resamples spectra to a specified number of points using interpolation.",
+    "category": "Feature Ops",
+    "tags": ["resample", "interpolation", "wavelength", "points"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_points",
+        "type": "int",
+        "default": 512,
+        "min": 10,
+        "max": 4096,
+        "description": "Number of points after resampling",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.normalize",
+    "name": "Normalize",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing.Normalizer",
+    "description": "L1/L2/Max normalization",
+    "longDescription": "Normalizes samples individually to unit norm.",
+    "category": "Normalization",
+    "tags": ["normalization", "l1", "l2", "max", "unit"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "norm",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          { "value": "l1", "label": "L1 norm", "description": "Sum of absolute values = 1" },
+          { "value": "l2", "label": "L2 norm", "description": "Euclidean norm = 1" },
+          { "value": "max", "label": "Max norm", "description": "Maximum absolute value = 1" }
+        ],
+        "description": "Norm to use for normalization",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  }
+]

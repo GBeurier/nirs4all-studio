@@ -492,6 +492,201 @@ class WorkspaceManager:
             print(f"Failed to update workspace config: {e}")
             return False
 
+    # ----------------------- Custom Nodes Management (Phase 5) -----------------------
+
+    def get_custom_nodes_path(self) -> Optional[Path]:
+        """Get the path to the custom nodes file for the current workspace."""
+        if not self._current_workspace_path:
+            return None
+        workspace_path = Path(self._current_workspace_path)
+        nirs4all_dir = workspace_path / ".nirs4all"
+        nirs4all_dir.mkdir(exist_ok=True)
+        return nirs4all_dir / "custom_nodes.json"
+
+    def get_custom_nodes(self) -> List[Dict[str, Any]]:
+        """Get all custom nodes for the current workspace."""
+        nodes_path = self.get_custom_nodes_path()
+        if not nodes_path or not nodes_path.exists():
+            return []
+
+        try:
+            with open(nodes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("nodes", [])
+        except Exception as e:
+            print(f"Failed to load custom nodes: {e}")
+            return []
+
+    def save_custom_nodes(self, nodes: List[Dict[str, Any]]) -> bool:
+        """Save all custom nodes for the current workspace."""
+        nodes_path = self.get_custom_nodes_path()
+        if not nodes_path:
+            return False
+
+        try:
+            data = {
+                "nodes": nodes,
+                "version": "1.0",
+                "last_updated": datetime.now().isoformat(),
+            }
+            with open(nodes_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Failed to save custom nodes: {e}")
+            return False
+
+    def add_custom_node(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a new custom node to the workspace."""
+        if not self._workspace_config:
+            raise RuntimeError("No workspace selected")
+
+        nodes = self.get_custom_nodes()
+
+        # Check for duplicate ID
+        node_id = node.get("id")
+        if any(n.get("id") == node_id for n in nodes):
+            raise ValueError(f"Custom node with ID '{node_id}' already exists")
+
+        # Add metadata
+        node["created_at"] = datetime.now().isoformat()
+        node["updated_at"] = node["created_at"]
+        node["source"] = "workspace"
+
+        nodes.append(node)
+        self.save_custom_nodes(nodes)
+        return node
+
+    def update_custom_node(self, node_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update an existing custom node."""
+        if not self._workspace_config:
+            raise RuntimeError("No workspace selected")
+
+        nodes = self.get_custom_nodes()
+        for i, node in enumerate(nodes):
+            if node.get("id") == node_id:
+                # Preserve certain fields
+                updates["id"] = node_id
+                updates["created_at"] = node.get("created_at", datetime.now().isoformat())
+                updates["updated_at"] = datetime.now().isoformat()
+                updates["source"] = "workspace"
+                nodes[i] = updates
+                self.save_custom_nodes(nodes)
+                return updates
+        return None
+
+    def delete_custom_node(self, node_id: str) -> bool:
+        """Delete a custom node from the workspace."""
+        if not self._workspace_config:
+            raise RuntimeError("No workspace selected")
+
+        nodes = self.get_custom_nodes()
+        original_len = len(nodes)
+        nodes = [n for n in nodes if n.get("id") != node_id]
+
+        if len(nodes) != original_len:
+            self.save_custom_nodes(nodes)
+            return True
+        return False
+
+    def import_custom_nodes(self, nodes_to_import: List[Dict[str, Any]], overwrite: bool = False) -> Dict[str, Any]:
+        """Import custom nodes from an external source.
+
+        Args:
+            nodes_to_import: List of node definitions to import
+            overwrite: If True, overwrite existing nodes with same ID
+
+        Returns:
+            Dict with 'imported', 'skipped', 'errors' counts
+        """
+        if not self._workspace_config:
+            raise RuntimeError("No workspace selected")
+
+        existing_nodes = self.get_custom_nodes()
+        existing_ids = {n.get("id") for n in existing_nodes}
+
+        imported = 0
+        skipped = 0
+        errors = 0
+
+        for node in nodes_to_import:
+            try:
+                node_id = node.get("id")
+                if not node_id:
+                    errors += 1
+                    continue
+
+                if node_id in existing_ids:
+                    if overwrite:
+                        # Remove old version
+                        existing_nodes = [n for n in existing_nodes if n.get("id") != node_id]
+                        existing_ids.discard(node_id)
+                    else:
+                        skipped += 1
+                        continue
+
+                # Add metadata
+                node["imported_at"] = datetime.now().isoformat()
+                node["updated_at"] = node["imported_at"]
+                node["source"] = "workspace"
+
+                existing_nodes.append(node)
+                existing_ids.add(node_id)
+                imported += 1
+
+            except Exception as e:
+                print(f"Failed to import node: {e}")
+                errors += 1
+
+        self.save_custom_nodes(existing_nodes)
+        return {"imported": imported, "skipped": skipped, "errors": errors}
+
+    def get_custom_node_settings(self) -> Dict[str, Any]:
+        """Get custom node settings for the workspace."""
+        nodes_path = self.get_custom_nodes_path()
+        if not nodes_path or not nodes_path.exists():
+            return self._default_custom_node_settings()
+
+        try:
+            with open(nodes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("settings", self._default_custom_node_settings())
+        except Exception:
+            return self._default_custom_node_settings()
+
+    def save_custom_node_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save custom node settings for the workspace."""
+        nodes_path = self.get_custom_nodes_path()
+        if not nodes_path:
+            return False
+
+        try:
+            # Load existing data or create new
+            if nodes_path.exists():
+                with open(nodes_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = {"nodes": [], "version": "1.0"}
+
+            data["settings"] = settings
+            data["last_updated"] = datetime.now().isoformat()
+
+            with open(nodes_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Failed to save custom node settings: {e}")
+            return False
+
+    def _default_custom_node_settings(self) -> Dict[str, Any]:
+        """Get default custom node settings."""
+        return {
+            "enabled": True,
+            "allowedPackages": ["nirs4all", "sklearn", "scipy", "numpy", "pandas"],
+            "requireApproval": False,
+            "allowUserNodes": True,
+        }
+
 
 # Global workspace manager instance
 workspace_manager = WorkspaceManager()

@@ -1,0 +1,114 @@
+[
+  {
+    "id": "y_processing.standard_scaler",
+    "name": "StandardScaler",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.StandardScaler",
+    "description": "Standardize target to zero mean, unit variance",
+    "longDescription": "Standardizes targets by removing the mean and scaling to unit variance.",
+    "category": "Scaling",
+    "tags": ["scaling", "standardize", "normalize", "target"],
+    "source": "sklearn",
+    "parameters": [],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.StandardScaler"
+    ]
+  },
+  {
+    "id": "y_processing.min_max_scaler",
+    "name": "MinMaxScaler",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.MinMaxScaler",
+    "description": "Scale target to [0, 1] range",
+    "longDescription": "Transforms targets by scaling each to a given range (default 0-1).",
+    "category": "Scaling",
+    "tags": ["scaling", "minmax", "normalize", "target"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "feature_range",
+        "type": "string",
+        "default": "(0, 1)",
+        "description": "Desired range as tuple (min, max)"
+      }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.MinMaxScaler"
+    ]
+  },
+  {
+    "id": "y_processing.robust_scaler",
+    "name": "RobustScaler",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.RobustScaler",
+    "description": "Scale target using statistics robust to outliers",
+    "longDescription": "Scales targets using statistics that are robust to outliers (median and IQR).",
+    "category": "Scaling",
+    "tags": ["scaling", "robust", "outlier", "target"],
+    "source": "sklearn",
+    "parameters": [],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.RobustScaler"
+    ]
+  },
+  {
+    "id": "y_processing.power_transformer",
+    "name": "PowerTransformer",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.PowerTransformer",
+    "description": "Apply power transform (Box-Cox/Yeo-Johnson)",
+    "longDescription": "Apply a power transform to make target data more Gaussian-like.",
+    "category": "Transform",
+    "tags": ["transform", "power", "boxcox", "yeo-johnson", "target"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "method",
+        "type": "select",
+        "default": "yeo-johnson",
+        "options": [
+          { "value": "yeo-johnson", "label": "Yeo-Johnson (handles negatives)" },
+          { "value": "box-cox", "label": "Box-Cox (positive only)" }
+        ],
+        "description": "Power transform method"
+      }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.PowerTransformer"
+    ]
+  },
+  {
+    "id": "y_processing.quantile_transformer",
+    "name": "QuantileTransformer",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.QuantileTransformer",
+    "description": "Transform to uniform or normal distribution",
+    "longDescription": "Transform targets to follow a uniform or normal distribution using quantiles.",
+    "category": "Transform",
+    "tags": ["transform", "quantile", "uniform", "normal", "target"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "output_distribution",
+        "type": "select",
+        "default": "uniform",
+        "options": [
+          { "value": "uniform", "label": "Uniform" },
+          { "value": "normal", "label": "Normal (Gaussian)" }
+        ],
+        "description": "Output distribution"
+      },
+      {
+        "name": "n_quantiles",
+        "type": "int",
+        "default": 1000,
+        "min": 10,
+        "max": 10000,
+        "description": "Number of quantiles to compute"
+      }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.QuantileTransformer"
+    ]
+  }
+]

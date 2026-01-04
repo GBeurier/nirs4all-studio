@@ -1,0 +1,57 @@
+[
+  {
+    "id": "misc.chart",
+    "name": "Chart",
+    "type": "chart",
+    "classPath": "_chart_",
+    "description": "Visualization chart step",
+    "longDescription": "Adds a visualization step to the pipeline for debugging or analysis.",
+    "category": "Visualization",
+    "tags": ["chart", "visualization", "plot", "debug"],
+    "source": "nirs4all",
+    "isVisualization": true,
+    "parameters": [
+      {
+        "name": "chart_type",
+        "type": "select",
+        "default": "spectra",
+        "options": [
+          { "value": "spectra", "label": "Spectra Plot" },
+          { "value": "scatter", "label": "Scatter Plot" },
+          { "value": "pca", "label": "PCA Scores" },
+          { "value": "loadings", "label": "Loadings Plot" },
+          { "value": "histogram", "label": "Histogram" }
+        ],
+        "description": "Type of chart to display"
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "default": "",
+        "description": "Chart title"
+      }
+    ],
+    "executionMode": "visualization_only"
+  },
+  {
+    "id": "misc.comment",
+    "name": "Comment",
+    "type": "comment",
+    "classPath": "_comment_",
+    "description": "Comment node (non-executing)",
+    "longDescription": "A non-executing comment node for documentation within the pipeline.",
+    "category": "Documentation",
+    "tags": ["comment", "note", "documentation"],
+    "source": "editor",
+    "isComment": true,
+    "parameters": [
+      {
+        "name": "text",
+        "type": "string",
+        "default": "Add your comment here...",
+        "description": "Comment text"
+      }
+    ],
+    "executionMode": "skip"
+  }
+]

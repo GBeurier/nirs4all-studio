@@ -1,0 +1,58 @@
+[
+  {
+    "id": "model.meta_model",
+    "name": "MetaModel",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.MetaModel",
+    "description": "Meta Model for stacking",
+    "longDescription": "Meta-learner that combines predictions from multiple base models (stacking ensemble).",
+    "category": "Meta",
+    "tags": ["meta", "stacking", "ensemble", "combination"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "select",
+        "default": "ridge",
+        "options": [
+          { "value": "ridge", "label": "Ridge" },
+          { "value": "lasso", "label": "Lasso" },
+          { "value": "pls", "label": "PLSRegression" },
+          { "value": "linear", "label": "Linear Regression" }
+        ],
+        "description": "Base estimator for meta-model"
+      }
+    ],
+    "supportsParameterSweeps": false,
+    "supportsFinetuning": false,
+    "usedAfterMerge": true
+  },
+  {
+    "id": "model.pcr",
+    "name": "PCR",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.PCR",
+    "description": "Principal Component Regression",
+    "longDescription": "PCA followed by regression - classic dimensionality reduction approach.",
+    "category": "Meta",
+    "tags": ["pca", "pcr", "dimensionality-reduction"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 100,
+        "description": "Number of principal components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true
+  }
+]

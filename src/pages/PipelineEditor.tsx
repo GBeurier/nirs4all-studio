@@ -355,24 +355,59 @@ export default function PipelineEditor() {
   // Get variant count from nirs4all backend
   // Convert editor steps to the format expected by the API with full generator info
   const apiSteps = useMemo(() => {
-    const convertStep = (step: EditorPipelineStep): PipelineStep => ({
-      id: step.id,
-      // Map editor step types to API step types (generator -> branch for API compatibility)
-      type: step.type === "generator" ? "branch" : step.type as PipelineStep["type"],
-      name: step.name,
-      params: step.params || {},
-      // Include generator configuration for variant counting
-      generator: step.stepGenerator ? {
-        _or_: step.stepGenerator.type === "_or_" ? step.stepGenerator.values : undefined,
-        _range_: step.stepGenerator.type === "_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
-        _log_range_: step.stepGenerator.type === "_log_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
-        // pick as tuple becomes the first element (upper bound)
-        pick: Array.isArray(step.generatorOptions?.pick) ? step.generatorOptions.pick[1] : step.generatorOptions?.pick,
-        count: step.generatorOptions?.count,
-      } : undefined,
-      // Convert branches recursively for branch/generator steps
-      children: step.branches?.flat().map((child) => convertStep(child)),
-    });
+    const convertStep = (step: EditorPipelineStep): PipelineStep => {
+      // Build generator object from stepGenerator or paramSweeps
+      let generator: PipelineStep["generator"] = undefined;
+
+      // Check for step-level generator (nirs4all format)
+      if (step.stepGenerator) {
+        generator = {
+          _or_: step.stepGenerator.type === "_or_" ? step.stepGenerator.values : undefined,
+          _range_: step.stepGenerator.type === "_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
+          _log_range_: step.stepGenerator.type === "_log_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
+          pick: Array.isArray(step.generatorOptions?.pick) ? step.generatorOptions.pick[1] : step.generatorOptions?.pick,
+          count: step.generatorOptions?.count,
+        };
+      }
+      // Check for paramSweeps (UI sweep format) and convert to generator format
+      else if (step.paramSweeps && Object.keys(step.paramSweeps).length > 0) {
+        // Convert paramSweeps to nirs4all generator format
+        // For API counting, we send step-level info
+        for (const [paramName, sweep] of Object.entries(step.paramSweeps)) {
+          if (sweep.type === "range" && sweep.from !== undefined && sweep.to !== undefined) {
+            generator = {
+              _range_: [sweep.from, sweep.to, sweep.step ?? 1],
+              param: paramName,
+            };
+            break; // Only handle first sweep for now (main source of variants)
+          } else if (sweep.type === "log_range" && sweep.from !== undefined && sweep.to !== undefined) {
+            generator = {
+              _log_range_: [sweep.from, sweep.to, sweep.count ?? 5],
+              param: paramName,
+            };
+            break;
+          } else if (sweep.type === "or" && sweep.choices) {
+            generator = {
+              _or_: sweep.choices,
+              param: paramName,
+            };
+            break;
+          }
+        }
+      }
+
+      return {
+        id: step.id,
+        // Map editor step types to API step types (generator -> branch for API compatibility)
+        type: step.type === "generator" ? "branch" : step.type as PipelineStep["type"],
+        name: step.name,
+        params: step.params || {},
+        // Include generator configuration for variant counting
+        generator,
+        // Convert branches recursively for branch/generator steps
+        children: step.branches?.flat().map((child) => convertStep(child)),
+      };
+    };
     return steps.map(convertStep) as PipelineStep[];
   }, [steps]);
 

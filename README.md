@@ -109,8 +109,11 @@ nirs4all_webapp/
 ├── src/                    # React frontend source
 │   ├── components/         # UI components
 │   │   ├── layout/         # App layout (sidebar, header)
+│   │   ├── pipeline-editor/# Pipeline Editor (see Architecture)
 │   │   └── ui/             # shadcn/ui components
 │   ├── context/            # React context providers
+│   ├── data/               # Data models and registries
+│   │   └── nodes/          # Node registry system
 │   ├── lib/                # Utilities and helpers
 │   ├── api/                # API client
 │   └── pages/              # Route components
@@ -120,11 +123,140 @@ nirs4all_webapp/
 │   ├── pipelines.py        # Pipeline CRUD
 │   ├── predictions.py      # Prediction storage
 │   └── system.py           # Health and system info
+├── docs/                   # Documentation
+│   └── _internals/         # Developer guides
 ├── public/                 # Static assets
 ├── main.py                 # FastAPI application entry
 ├── launcher.py             # PyWebView desktop launcher
 └── package.json            # Node dependencies
 ```
+
+## Pipeline Editor Architecture
+
+The Pipeline Editor is a visual pipeline builder for nirs4all workflows. It follows a modular architecture for maintainability and extensibility.
+
+### Core Components
+
+```
+src/components/pipeline-editor/
+├── config/                     # Configuration panel
+│   └── step-renderers/         # Type-specific renderers
+│       ├── DefaultRenderer.tsx # Standard algorithm + params
+│       ├── ModelRenderer.tsx   # Model-specific UI
+│       ├── MergeRenderer.tsx   # Merge step UI
+│       └── ...
+├── shared/                     # Reusable UI components
+│   ├── ParameterInput.tsx      # Number/text inputs
+│   ├── ParameterSelect.tsx     # Dropdown select
+│   ├── ParameterSwitch.tsx     # Boolean toggle
+│   ├── CollapsibleSection.tsx  # Expandable sections
+│   ├── InfoTooltip.tsx         # Help tooltips
+│   └── ValidationMessage.tsx   # Error/warning display
+├── validation/                 # Validation system
+│   ├── engine.ts               # Core validation engine
+│   ├── parameterValidator.ts   # Parameter validation
+│   ├── stepValidator.ts        # Step validation
+│   ├── pipelineValidator.ts    # Pipeline structure
+│   ├── rules.ts                # Validation rules registry
+│   ├── useValidation.ts        # React hook
+│   ├── ValidationPanel.tsx     # Issues display
+│   └── ValidationContext.tsx   # React context
+└── types.ts                    # Shared TypeScript types
+```
+
+### Node Registry System
+
+```
+src/data/nodes/
+├── definitions/           # Node definitions (JSON)
+│   ├── preprocessing/     # Preprocessing nodes
+│   ├── models/            # Model nodes
+│   ├── splitting/         # CV splitters
+│   └── ...
+├── custom/                # Custom node system
+│   └── CustomNodeStorage.ts  # User-defined nodes
+├── categories/            # Category configuration
+├── NodeRegistry.ts        # Runtime registry
+├── types.ts               # TypeScript types
+└── index.ts               # Public API
+```
+
+### Key Design Patterns
+
+| Pattern | Location | Purpose |
+|---------|----------|---------|
+| Registry | `NodeRegistry.ts` | Central node definition lookup |
+| Validator | `validation/` | Multi-level validation with rules |
+| Context | `ValidationContext.tsx` | Shared validation state |
+| Factory | `step-renderers/` | Type-specific UI rendering |
+| Singleton | `CustomNodeStorage` | Persistent custom nodes |
+
+### Validation System
+
+The validation system provides multi-level validation:
+
+1. **Parameter Level**: Type checking, range validation, required fields
+2. **Step Level**: Step structure, container validation
+3. **Pipeline Level**: Model presence, splitter ordering, structure
+
+```typescript
+import { validate, useValidation } from './validation';
+
+// Direct validation
+const result = validate(steps, { strictMode: true });
+console.log(result.isValid, result.errors);
+
+// React hook (debounced)
+const { isValid, errorCount, getStepIssues } = useValidation(steps);
+```
+
+### Custom Nodes
+
+Users can define custom operators:
+
+```typescript
+import { CustomNodeStorage } from '@/data/nodes/custom';
+
+const storage = CustomNodeStorage.getInstance();
+storage.add({
+  id: 'custom.my_transform',
+  name: 'MyTransform',
+  type: 'preprocessing',
+  classPath: 'mypackage.MyTransform',
+  description: 'Custom transform',
+  source: 'custom',
+  parameters: [/* ... */]
+});
+```
+
+See [developer_guide_custom_nodes.md](docs/_internals/developer_guide_custom_nodes.md) for details.
+
+### Test Coverage
+
+| Area | Tests | Coverage |
+|------|-------|----------|
+| Shared Components | 231 | Unit tests for all props/states |
+| Step Renderers | 87 | Renderer-specific behavior |
+| Validation | 143 | Integration + unit tests |
+| Custom Nodes | 82 | E2E workflow tests |
+
+Run tests:
+```bash
+npm run test               # All tests
+npm run test:coverage      # With coverage report
+npm run test:ui            # Interactive UI
+```
+
+### Storybook
+
+Component documentation with Storybook:
+
+```bash
+npm run storybook          # Development server (port 6006)
+npm run build-storybook    # Build static docs
+```
+
+Stories are located in `__stories__/` directories next to components.
 
 ## Scripts
 
@@ -134,6 +266,11 @@ nirs4all_webapp/
 | `npm run build` | Build for production |
 | `npm run preview` | Preview production build |
 | `npm run lint` | Run ESLint |
+| `npm run test` | Run Vitest tests |
+| `npm run test:coverage` | Run tests with coverage |
+| `npm run test:ui` | Open Vitest UI |
+| `npm run storybook` | Start Storybook dev server |
+| `npm run build-storybook` | Build static Storybook |
 
 ## Design System
 

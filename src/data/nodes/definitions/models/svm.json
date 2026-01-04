@@ -1,0 +1,98 @@
+[
+  {
+    "id": "model.svr",
+    "name": "SVR",
+    "type": "model",
+    "classPath": "sklearn.svm.SVR",
+    "description": "Support Vector Regression",
+    "longDescription": "Epsilon-Support Vector Regression using kernel methods.",
+    "category": "SVM",
+    "tags": ["svm", "svr", "kernel", "regression"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          { "value": "rbf", "label": "RBF (Gaussian)" },
+          { "value": "linear", "label": "Linear" },
+          { "value": "poly", "label": "Polynomial" },
+          { "value": "sigmoid", "label": "Sigmoid" }
+        ],
+        "description": "Kernel type"
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.001,
+        "max": 1000,
+        "description": "Regularization parameter",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.01, 100]
+      },
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 0.1,
+        "min": 0.001,
+        "max": 1,
+        "step": 0.01,
+        "description": "Epsilon in the epsilon-SVR model",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [0.01, 0.5]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "legacyClassPaths": [
+      "sklearn.svm._classes.SVR"
+    ]
+  },
+  {
+    "id": "model.svc",
+    "name": "SVC",
+    "type": "model",
+    "classPath": "sklearn.svm.SVC",
+    "description": "Support Vector Classification",
+    "longDescription": "C-Support Vector Classification using kernel methods.",
+    "category": "SVM",
+    "tags": ["svm", "svc", "kernel", "classification"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          { "value": "rbf", "label": "RBF (Gaussian)" },
+          { "value": "linear", "label": "Linear" },
+          { "value": "poly", "label": "Polynomial" },
+          { "value": "sigmoid", "label": "Sigmoid" }
+        ],
+        "description": "Kernel type"
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.001,
+        "max": 1000,
+        "description": "Regularization parameter",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.01, 100]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true
+  }
+]

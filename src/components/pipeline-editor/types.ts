@@ -355,14 +355,51 @@ export function calculateSweepVariants(sweep: ParameterSweep): number {
 export function calculateStepVariants(step: PipelineStep): number {
   let variants = 1;
 
-  // Parameter-level sweeps
+  // Parameter-level sweeps (UI-defined sweeps)
   if (step.paramSweeps && Object.keys(step.paramSweeps).length > 0) {
     variants = Object.values(step.paramSweeps).reduce(
       (acc, sweep) => acc * calculateSweepVariants(sweep), 1
     );
   }
 
-  // Generator options (OR with pick/arrange)
+  // Step-level generator (nirs4all format: _range_, _or_, etc.)
+  if (step.stepGenerator) {
+    const gen = step.stepGenerator;
+    let genVariants = 1;
+
+    if (gen.type === "_range_" && Array.isArray(gen.values) && gen.values.length >= 2) {
+      // _range_: [start, end, step?]
+      const [start, end, rangeStep = 1] = gen.values as number[];
+      genVariants = Math.max(1, Math.floor((end - start) / rangeStep) + 1);
+    } else if (gen.type === "_log_range_" && Array.isArray(gen.values) && gen.values.length >= 2) {
+      // _log_range_: [start, end, count]
+      const count = gen.values.length >= 3 ? (gen.values[2] as number) : 5;
+      genVariants = count;
+    } else if (gen.type === "_or_" && Array.isArray(gen.values)) {
+      // _or_: list of alternatives
+      genVariants = gen.values.length;
+      // Apply pick modifier if present
+      if (typeof gen.pick === "number" && gen.pick > 0 && gen.pick < genVariants) {
+        genVariants = binomialCoefficient(gen.values.length, gen.pick);
+      } else if (Array.isArray(gen.pick) && gen.pick.length === 2) {
+        // pick as range [min, max] - use max for estimate
+        genVariants = binomialCoefficient(gen.values.length, gen.pick[1]);
+      }
+    } else if (gen.type === "_grid_" && Array.isArray(gen.values)) {
+      // _grid_: Cartesian product of multiple params
+      // values would be an object or array of param arrays
+      genVariants = 1; // Can't easily calculate without more info
+    }
+
+    // Apply count limiter if present
+    if (gen.count && gen.count > 0 && genVariants > gen.count) {
+      genVariants = gen.count;
+    }
+
+    variants *= genVariants;
+  }
+
+  // Generator options (OR with pick/arrange) - for UI "Choose One" nodes
   if (step.generatorKind === "or" && step.branches) {
     const branchCount = step.branches.length;
     const pick = step.generatorOptions?.pick;

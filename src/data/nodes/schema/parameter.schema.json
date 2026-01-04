@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nirs4all.io/schemas/parameter.schema.json",
+  "title": "ParameterDefinition",
+  "description": "Schema for node parameter definitions",
+  "type": "object",
+  "required": ["name", "type"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Parameter name (Python argument name)"
+    },
+    "label": {
+      "type": "string",
+      "description": "Display label (defaults to humanized name)"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["int", "float", "bool", "string", "select", "array", "object"],
+      "description": "Parameter value type"
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Is this parameter required?"
+    },
+    "default": {
+      "description": "Default value"
+    },
+    "min": {
+      "type": "number",
+      "description": "Minimum value (numeric types)"
+    },
+    "max": {
+      "type": "number",
+      "description": "Maximum value (numeric types)"
+    },
+    "step": {
+      "type": "number",
+      "description": "Step size for numeric inputs"
+    },
+    "minLength": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Min length (string/array)"
+    },
+    "maxLength": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Max length (string/array)"
+    },
+    "pattern": {
+      "type": "string",
+      "description": "Regex pattern (strings)"
+    },
+    "options": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/SelectOption" },
+      "description": "For type='select'"
+    },
+    "allowCustom": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow values not in options"
+    },
+    "description": {
+      "type": "string",
+      "description": "Tooltip/help text"
+    },
+    "placeholder": {
+      "type": "string",
+      "description": "Input placeholder"
+    },
+    "unit": {
+      "type": "string",
+      "description": "Display unit: 'ms', '%', etc."
+    },
+    "group": {
+      "type": "string",
+      "description": "Group related params: 'Advanced', 'Training'"
+    },
+    "order": {
+      "type": "integer",
+      "description": "Display order within group"
+    },
+    "isAdvanced": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hide in basic view"
+    },
+    "isExpert": {
+      "type": "boolean",
+      "default": false,
+      "description": "Require expert mode to edit"
+    },
+    "isHidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "Never show in UI (internal use)"
+    },
+    "validator": {
+      "type": "string",
+      "description": "Custom validator function name"
+    },
+    "dependsOn": {
+      "type": "string",
+      "description": "Only show if this param has specific value"
+    },
+    "dependsOnValue": {
+      "description": "Value that enables this param"
+    },
+    "conditionalDefault": {
+      "type": "object",
+      "properties": {
+        "param": { "type": "string" },
+        "mapping": { "type": "object" }
+      },
+      "description": "Default varies based on other params"
+    },
+    "sweepable": {
+      "type": "boolean",
+      "default": true,
+      "description": "Can this param have a sweep attached?"
+    },
+    "sweepPresets": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/SweepPreset" },
+      "description": "Quick presets for this param"
+    },
+    "finetunable": {
+      "type": "boolean",
+      "default": false,
+      "description": "Can this param be finetuned with Optuna?"
+    },
+    "finetuneType": {
+      "type": "string",
+      "enum": ["int", "float", "log_float", "categorical"],
+      "description": "Type for finetuning"
+    },
+    "finetuneRange": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Default finetune range [min, max]"
+    }
+  },
+  "definitions": {
+    "SelectOption": {
+      "type": "object",
+      "required": ["value", "label"],
+      "properties": {
+        "value": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" }
+          ]
+        },
+        "label": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "SweepPreset": {
+      "type": "object",
+      "required": ["label", "type", "values"],
+      "properties": {
+        "label": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["range", "log_range", "choices"]
+        },
+        "values": {
+          "description": "Depends on type - object for range, array for choices"
+        }
+      }
+    }
+  }
+}

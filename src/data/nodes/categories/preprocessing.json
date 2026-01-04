@@ -1,0 +1,29 @@
+{
+  "type": "preprocessing",
+  "label": "Preprocessing",
+  "description": "Transform and prepare spectral data",
+  "icon": "Waves",
+  "color": {
+    "border": "border-blue-500/30",
+    "bg": "bg-blue-500/5",
+    "hover": "hover:bg-blue-500/10 hover:border-blue-500/50",
+    "selected": "bg-blue-500/10 border-blue-500/100",
+    "text": "text-blue-500",
+    "active": "ring-blue-500 border-blue-500",
+    "gradient": "from-blue-500/20 to-blue-500/5"
+  },
+  "defaultOpen": true,
+  "displayOrder": 1,
+  "subcategories": [
+    { "id": "nirs_core", "label": "NIRS Core", "displayOrder": 1 },
+    { "id": "derivatives", "label": "Derivatives", "displayOrder": 2 },
+    { "id": "smoothing", "label": "Smoothing", "displayOrder": 3 },
+    { "id": "baseline", "label": "Baseline", "displayOrder": 4 },
+    { "id": "wavelet", "label": "Wavelet", "displayOrder": 5 },
+    { "id": "conversion", "label": "Conversion", "displayOrder": 6 },
+    { "id": "feature_selection", "label": "Feature Selection", "displayOrder": 7 },
+    { "id": "feature_ops", "label": "Feature Ops", "displayOrder": 8 },
+    { "id": "normalization", "label": "Normalization", "displayOrder": 9 },
+    { "id": "scaling", "label": "Scaling", "displayOrder": 10 }
+  ]
+}

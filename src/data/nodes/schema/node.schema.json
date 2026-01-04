@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nirs4all.io/schemas/node.schema.json",
+  "title": "NodeDefinition",
+  "description": "Schema for pipeline editor node definitions",
+  "type": "object",
+  "required": ["id", "name", "type", "description", "parameters", "source"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z_]+\\.[a-z_0-9]+$",
+      "description": "Unique identifier in format 'type.name', e.g., 'preprocessing.snv'"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name for the node"
+    },
+    "type": {
+      "$ref": "#/definitions/NodeType",
+      "description": "Primary category/type of the node"
+    },
+    "classPath": {
+      "type": "string",
+      "description": "Full Python import path, e.g., 'sklearn.preprocessing.MinMaxScaler'"
+    },
+    "functionPath": {
+      "type": "string",
+      "description": "For function-based operators, e.g., 'nirs4all.operators.models.tensorflow.nicon.customizable_nicon'"
+    },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Alternative names for the node"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description for tooltips"
+    },
+    "longDescription": {
+      "type": "string",
+      "description": "Extended documentation"
+    },
+    "category": {
+      "type": "string",
+      "description": "Subcategory for palette organization"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Optional icon override (Lucide icon name)"
+    },
+    "color": {
+      "$ref": "#/definitions/ColorScheme",
+      "description": "Optional color override"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Searchable tags"
+    },
+    "parameters": {
+      "type": "array",
+      "items": { "$ref": "parameter.schema.json" },
+      "description": "Parameter definitions for this node"
+    },
+    "isAdvanced": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hide in basic mode"
+    },
+    "isDeepLearning": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show training config tab"
+    },
+    "isExperimental": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show warning badge"
+    },
+    "isDeprecated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show deprecation notice"
+    },
+    "deprecationMessage": {
+      "type": "string",
+      "description": "Migration guidance for deprecated nodes"
+    },
+    "validAfter": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/NodeType" },
+      "description": "Can only appear after these types"
+    },
+    "validBefore": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/NodeType" },
+      "description": "Can only appear before these types"
+    },
+    "requiresSplitter": {
+      "type": "boolean",
+      "default": false,
+      "description": "Must have a splitter before this node"
+    },
+    "maxInstances": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum occurrences in pipeline"
+    },
+    "supportsParameterSweeps": {
+      "type": "boolean",
+      "default": true,
+      "description": "Can use _range_, _or_, etc."
+    },
+    "supportsFinetuning": {
+      "type": "boolean",
+      "default": false,
+      "description": "Can use finetune_params (models only)"
+    },
+    "supportsStepGenerator": {
+      "type": "boolean",
+      "default": false,
+      "description": "Can be wrapped in _or_ at step level"
+    },
+    "isContainer": {
+      "type": "boolean",
+      "default": false,
+      "description": "Has children (sample_augmentation, branch, etc.)"
+    },
+    "containerType": {
+      "type": "string",
+      "enum": ["branches", "children"],
+      "description": "How children are organized"
+    },
+    "defaultBranches": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Initial branch count for container nodes"
+    },
+    "generatorKind": {
+      "type": "string",
+      "enum": ["or", "cartesian"],
+      "description": "For generator nodes, the kind of generator"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["nirs4all", "sklearn", "custom"],
+      "description": "Source of the node definition"
+    },
+    "version": {
+      "type": "string",
+      "description": "Minimum nirs4all version required"
+    },
+    "maxVersion": {
+      "type": "string",
+      "description": "Maximum supported version (for deprecated)"
+    },
+    "legacyClassPaths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Previous class paths for backwards compatibility"
+    }
+  },
+  "definitions": {
+    "NodeType": {
+      "type": "string",
+      "enum": [
+        "preprocessing",
+        "y_processing",
+        "splitting",
+        "model",
+        "generator",
+        "branch",
+        "merge",
+        "filter",
+        "augmentation",
+        "sample_augmentation",
+        "feature_augmentation",
+        "sample_filter",
+        "concat_transform",
+        "chart",
+        "comment"
+      ]
+    },
+    "ColorScheme": {
+      "type": "object",
+      "properties": {
+        "border": { "type": "string" },
+        "bg": { "type": "string" },
+        "hover": { "type": "string" },
+        "selected": { "type": "string" },
+        "text": { "type": "string" },
+        "active": { "type": "string" },
+        "gradient": { "type": "string" }
+      }
+    }
+  }
+}

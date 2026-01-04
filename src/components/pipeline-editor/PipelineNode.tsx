@@ -130,10 +130,12 @@ export function PipelineNode({
   const Icon = stepIcons[step.type];
   const colors = stepColors[step.type];
 
-  // Check for parameter sweeps
-  const hasSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+  // Check for parameter sweeps or step generators
+  const hasParamSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+  const hasStepGenerator = !!step.stepGenerator;
+  const hasSweeps = hasParamSweeps || hasStepGenerator;
   const totalVariants = calculateStepVariants(step);
-  const sweepCount = step.paramSweeps ? Object.keys(step.paramSweeps).length : 0;
+  const sweepCount = (step.paramSweeps ? Object.keys(step.paramSweeps).length : 0) + (hasStepGenerator ? 1 : 0);
 
   // Format parameters for display - show limited params when there are sweeps
   const paramEntries = Object.entries(step.params);
@@ -147,10 +149,27 @@ export function PipelineNode({
     .join(", ");
 
   // Sweep summary for tooltip
-  const sweepSummary = sweepKeys.map(k => {
+  const sweepSummaryParts: string[] = [];
+  if (step.stepGenerator) {
+    const gen = step.stepGenerator;
+    const paramName = gen.param || "value";
+    if (gen.type === "_range_" && Array.isArray(gen.values)) {
+      const [start, end, rangeStep = 1] = gen.values as number[];
+      sweepSummaryParts.push(`${paramName}: range(${start}, ${end}, ${rangeStep})`);
+    } else if (gen.type === "_log_range_" && Array.isArray(gen.values)) {
+      const [start, end, count = 5] = gen.values as number[];
+      sweepSummaryParts.push(`${paramName}: log_range(${start}, ${end}, ${count})`);
+    } else if (gen.type === "_or_" && Array.isArray(gen.values)) {
+      const choices = gen.values.slice(0, 3).map(String).join(", ");
+      const suffix = gen.values.length > 3 ? `, ... (${gen.values.length} total)` : "";
+      sweepSummaryParts.push(`${paramName}: [${choices}${suffix}]`);
+    }
+  }
+  sweepKeys.forEach(k => {
     const sweep = step.paramSweeps![k];
-    return `${k}: ${formatSweepDisplay(sweep)}`;
-  }).join("\n");
+    sweepSummaryParts.push(`${k}: ${formatSweepDisplay(sweep)}`);
+  });
+  const sweepSummary = sweepSummaryParts.join("\n");
 
   const nodeContent = (
     <motion.div

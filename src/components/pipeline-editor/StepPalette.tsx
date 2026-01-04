@@ -42,6 +42,7 @@ import {
   type StepType,
   type StepOption,
 } from "./types";
+import { useNodeRegistryOptional, type NodeDefinition } from "./contexts/NodeRegistryContext";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
@@ -60,6 +61,21 @@ const stepIcons: Record<StepType, typeof Waves> = {
   chart: LineChart,
   comment: MessageSquare,
 };
+
+/**
+ * Convert a NodeDefinition from the registry to a StepOption for backwards compatibility
+ */
+function nodeDefToStepOption(node: NodeDefinition): StepOption {
+  return {
+    name: node.name,
+    description: node.description,
+    defaultParams: node.defaultParams,
+    category: node.category,
+    isDeepLearning: node.isDeepLearning,
+    isAdvanced: node.isAdvanced,
+    tags: node.tags,
+  };
+}
 
 interface DraggableStepProps {
   stepType: StepType;
@@ -175,17 +191,32 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Try to use the registry if available (Phase 2 feature)
+  const registryContext = useNodeRegistryOptional();
+  const useRegistry = registryContext?.isJsonRegistry ?? false;
+
+  // Get step options from registry or legacy stepOptions
+  const getStepOptionsForType = useCallback((type: StepType): StepOption[] => {
+    if (useRegistry && registryContext) {
+      // Use the new JSON-based registry
+      const nodes = registryContext.getNodesByType(type);
+      return nodes.map(nodeDefToStepOption);
+    }
+    // Fallback to legacy stepOptions
+    return stepOptions[type] ?? [];
+  }, [useRegistry, registryContext]);
+
   // Get all options for a type, including merged types
   const getOptionsForType = useCallback((type: StepType): { option: StepOption; actualType: StepType }[] => {
     const merged = mergedCategories[type];
     if (merged) {
       // Return options from all merged types
       return merged.types.flatMap(t =>
-        stepOptions[t].map(opt => ({ option: opt, actualType: t }))
+        getStepOptionsForType(t).map(opt => ({ option: opt, actualType: t }))
       );
     }
-    return stepOptions[type].map(opt => ({ option: opt, actualType: type }));
-  }, []);
+    return getStepOptionsForType(type).map(opt => ({ option: opt, actualType: type }));
+  }, [getStepOptionsForType]);
 
   const filteredOptions = useCallback(
     (type: StepType) => {

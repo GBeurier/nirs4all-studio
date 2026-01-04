@@ -1,0 +1,91 @@
+[
+  {
+    "id": "container.sample_augmentation",
+    "name": "SampleAugmentation",
+    "type": "sample_augmentation",
+    "classPath": "sample_augmentation",
+    "description": "Container for sample augmentation steps",
+    "longDescription": "Wraps augmentation steps that add new samples (applied to training only).",
+    "category": "Containers",
+    "tags": ["container", "augmentation", "sample", "training"],
+    "source": "nirs4all",
+    "isContainer": true,
+    "containerType": "augmentation",
+    "parameters": [],
+    "acceptsChildren": true,
+    "childTypes": ["augmentation"],
+    "trainOnlyContainer": true,
+    "layout": {
+      "orientation": "vertical",
+      "label": "Sample Augmentation (Train Only)"
+    }
+  },
+  {
+    "id": "container.feature_augmentation",
+    "name": "FeatureAugmentation",
+    "type": "feature_augmentation",
+    "classPath": "feature_augmentation",
+    "description": "Container for feature augmentation steps",
+    "longDescription": "Wraps steps that add new features (applied during both train and predict).",
+    "category": "Containers",
+    "tags": ["container", "augmentation", "feature", "transform"],
+    "source": "nirs4all",
+    "isContainer": true,
+    "containerType": "feature_ops",
+    "parameters": [],
+    "acceptsChildren": true,
+    "childTypes": ["preprocessing"],
+    "layout": {
+      "orientation": "vertical",
+      "label": "Feature Augmentation"
+    }
+  },
+  {
+    "id": "container.sample_filter",
+    "name": "SampleFilterContainer",
+    "type": "sample_filter",
+    "classPath": "sample_filter",
+    "description": "Container for sample filter steps",
+    "longDescription": "Wraps filter steps that remove samples (applied to training only).",
+    "category": "Containers",
+    "tags": ["container", "filter", "sample", "training"],
+    "source": "nirs4all",
+    "isContainer": true,
+    "containerType": "filters",
+    "parameters": [],
+    "acceptsChildren": true,
+    "childTypes": ["filter"],
+    "trainOnlyContainer": true,
+    "layout": {
+      "orientation": "vertical",
+      "label": "Sample Filter (Train Only)"
+    }
+  },
+  {
+    "id": "container.concat_transform",
+    "name": "ConcatTransform",
+    "type": "concat_transform",
+    "classPath": "concat_transform",
+    "description": "Concatenate transformations",
+    "longDescription": "Container that concatenates the outputs of multiple transformations.",
+    "category": "Containers",
+    "tags": ["container", "concat", "transform", "combine"],
+    "source": "nirs4all",
+    "isContainer": true,
+    "containerType": "transforms",
+    "parameters": [
+      {
+        "name": "keep_original",
+        "type": "bool",
+        "default": true,
+        "description": "Whether to keep original features alongside transformed"
+      }
+    ],
+    "acceptsChildren": true,
+    "childTypes": ["preprocessing"],
+    "layout": {
+      "orientation": "vertical",
+      "label": "Concatenate Transforms"
+    }
+  }
+]

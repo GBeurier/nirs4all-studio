@@ -53,6 +53,8 @@ export interface GeneratorConfig {
   _grid_?: Record<string, unknown[]>;
   /** Parallel zip of multiple parameters */
   _zip_?: Record<string, unknown[]>;
+  /** Parameter name that the generator applies to */
+  param?: string;
   /** Number of items to select (combinations) */
   pick?: number;
   /** Number of items to select (permutations) */

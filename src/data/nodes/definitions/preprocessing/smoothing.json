@@ -1,0 +1,61 @@
+[
+  {
+    "id": "preprocessing.gaussian",
+    "name": "Gaussian",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.Gaussian",
+    "description": "Gaussian smoothing filter",
+    "longDescription": "Applies Gaussian convolution for smoothing spectra.",
+    "category": "Smoothing",
+    "tags": ["smoothing", "gaussian", "filter"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "sigma",
+        "type": "float",
+        "default": 2,
+        "min": 0.1,
+        "max": 20,
+        "step": 0.1,
+        "description": "Standard deviation for Gaussian kernel",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [0.5, 10]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.transforms.signal.Gaussian"
+    ]
+  },
+  {
+    "id": "preprocessing.moving_average",
+    "name": "MovingAverage",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.MovingAverage",
+    "description": "Moving average smoothing",
+    "longDescription": "Simple moving average filter for smoothing spectra.",
+    "category": "Smoothing",
+    "tags": ["smoothing", "moving", "average", "filter"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "window_size",
+        "type": "int",
+        "default": 5,
+        "min": 3,
+        "max": 51,
+        "step": 2,
+        "description": "Size of the moving window (should be odd)",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [3, 31]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  }
+]

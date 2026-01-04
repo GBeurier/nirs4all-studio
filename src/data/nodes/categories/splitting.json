@@ -1,0 +1,21 @@
+{
+  "type": "splitting",
+  "label": "Splitting",
+  "description": "Train/test splitting and cross-validation strategies",
+  "icon": "Shuffle",
+  "color": {
+    "border": "border-purple-500/30",
+    "bg": "bg-purple-500/5",
+    "hover": "hover:bg-purple-500/10 hover:border-purple-500/50",
+    "selected": "bg-purple-500/10 border-purple-500/100",
+    "text": "text-purple-500",
+    "active": "ring-purple-500 border-purple-500",
+    "gradient": "from-purple-500/20 to-purple-500/5"
+  },
+  "defaultOpen": false,
+  "displayOrder": 3,
+  "subcategories": [
+    { "id": "nirs", "label": "NIRS", "displayOrder": 1 },
+    { "id": "sklearn", "label": "sklearn", "displayOrder": 2 }
+  ]
+}

@@ -1,0 +1,308 @@
+[
+  {
+    "id": "model.opls",
+    "name": "OPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.OPLS",
+    "description": "Orthogonal PLS (removes orthogonal variation)",
+    "longDescription": "Orthogonal Partial Least Squares separates systematic variation into predictive and orthogonal components.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "orthogonal", "opls", "variation"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of predictive components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.pls.OPLS"
+    ]
+  },
+  {
+    "id": "model.oplsda",
+    "name": "OPLSDA",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.OPLSDA",
+    "description": "Orthogonal PLS-DA (classification)",
+    "longDescription": "OPLS combined with discriminant analysis for classification.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "orthogonal", "classification", "discriminant"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.ikpls",
+    "name": "IKPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.IKPLS",
+    "description": "Improved Kernel PLS (faster)",
+    "longDescription": "Optimized PLS algorithm with improved computational efficiency.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "kernel", "fast", "optimized"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 100,
+        "description": "Number of components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.pls.IKPLS"
+    ]
+  },
+  {
+    "id": "model.sparse_pls",
+    "name": "SparsePLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.SparsePLS",
+    "description": "Sparse PLS with L1 regularization",
+    "longDescription": "PLS with sparsity constraint for automatic variable selection.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "sparse", "l1", "regularization", "selection"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.1,
+        "min": 0.001,
+        "max": 1.0,
+        "step": 0.01,
+        "description": "Sparsity parameter",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [0.001, 1.0]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.lwpls",
+    "name": "LWPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.LWPLS",
+    "description": "Locally Weighted PLS",
+    "longDescription": "Local PLS models weighted by sample similarity for non-linear relationships.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "local", "weighted", "nonlinear"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      },
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 50,
+        "min": 5,
+        "max": 200,
+        "description": "Number of neighbors for local model",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [10, 100]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.models.pls.LWPLS"
+    ]
+  },
+  {
+    "id": "model.interval_pls",
+    "name": "IntervalPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.IntervalPLS",
+    "description": "Interval PLS for spectral band selection",
+    "longDescription": "Divides spectrum into intervals and selects the most informative ones.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "interval", "band", "selection"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true
+      },
+      {
+        "name": "n_intervals",
+        "type": "int",
+        "default": 20,
+        "min": 5,
+        "max": 100,
+        "description": "Number of spectral intervals",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.robust_pls",
+    "name": "RobustPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.RobustPLS",
+    "description": "Robust PLS (outlier resistant)",
+    "longDescription": "PLS with robust estimation methods for handling outliers.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "robust", "outlier"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.simpls",
+    "name": "SIMPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.SIMPLS",
+    "description": "SIMPLS algorithm",
+    "longDescription": "Statistically Inspired Modification of PLS - faster and numerically stable.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "simpls", "fast"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.dipls",
+    "name": "DiPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.DiPLS",
+    "description": "Discriminant PLS",
+    "longDescription": "Domain-invariant PLS for transfer learning scenarios.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "discriminant", "transfer"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.recursive_pls",
+    "name": "RecursivePLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.RecursivePLS",
+    "description": "Recursive PLS (adaptive)",
+    "longDescription": "Online/adaptive PLS that updates with new samples.",
+    "category": "Advanced PLS",
+    "tags": ["pls", "recursive", "adaptive", "online"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of components",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true
+  }
+]

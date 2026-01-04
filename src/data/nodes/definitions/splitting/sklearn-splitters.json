@@ -1,0 +1,234 @@
+[
+  {
+    "id": "splitting.kfold",
+    "name": "KFold",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.KFold",
+    "description": "K-fold cross validation",
+    "longDescription": "Splits data into K consecutive folds for cross-validation.",
+    "category": "sklearn",
+    "tags": ["splitting", "kfold", "cross-validation"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of folds",
+        "sweepable": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "description": "Shuffle data before splitting"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 42,
+        "min": 0,
+        "description": "Random seed for reproducibility"
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.KFold"
+    ]
+  },
+  {
+    "id": "splitting.repeated_kfold",
+    "name": "RepeatedKFold",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.RepeatedKFold",
+    "description": "Repeated K-fold CV",
+    "longDescription": "Repeats K-fold cross-validation multiple times with different randomization.",
+    "category": "sklearn",
+    "tags": ["splitting", "kfold", "repeated", "cross-validation"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of folds"
+      },
+      {
+        "name": "n_repeats",
+        "type": "int",
+        "default": 3,
+        "min": 2,
+        "max": 10,
+        "description": "Number of times to repeat K-fold"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 42,
+        "min": 0,
+        "description": "Random seed for reproducibility"
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.RepeatedKFold"
+    ]
+  },
+  {
+    "id": "splitting.shuffle_split",
+    "name": "ShuffleSplit",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.ShuffleSplit",
+    "description": "Random repeated train/test splits",
+    "longDescription": "Generates random train/test indices for multiple iterations.",
+    "category": "sklearn",
+    "tags": ["splitting", "shuffle", "random"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 100,
+        "description": "Number of re-shuffling iterations",
+        "sweepable": true
+      },
+      {
+        "name": "test_size",
+        "type": "float",
+        "default": 0.2,
+        "min": 0.05,
+        "max": 0.5,
+        "step": 0.05,
+        "description": "Proportion for test set",
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 42,
+        "min": 0,
+        "description": "Random seed for reproducibility"
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.ShuffleSplit"
+    ]
+  },
+  {
+    "id": "splitting.stratified_kfold",
+    "name": "StratifiedKFold",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.StratifiedKFold",
+    "description": "Stratified K-fold CV (classification)",
+    "longDescription": "K-fold cross-validation with stratification for classification problems.",
+    "category": "sklearn",
+    "tags": ["splitting", "stratified", "kfold", "classification"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of folds"
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "description": "Shuffle data before splitting"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 42,
+        "min": 0,
+        "description": "Random seed for reproducibility"
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.StratifiedKFold"
+    ]
+  },
+  {
+    "id": "splitting.leave_one_out",
+    "name": "LeaveOneOut",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.LeaveOneOut",
+    "description": "Leave-one-out cross validation",
+    "longDescription": "Each sample is used once as test set while remaining samples form training set.",
+    "category": "sklearn",
+    "tags": ["splitting", "loo", "leave-one-out"],
+    "source": "sklearn",
+    "parameters": [],
+    "supportsParameterSweeps": false,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.LeaveOneOut"
+    ]
+  },
+  {
+    "id": "splitting.group_kfold",
+    "name": "GroupKFold",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.GroupKFold",
+    "description": "Group-aware K-fold",
+    "longDescription": "K-fold cross-validation ensuring samples from the same group are not in both train and test sets.",
+    "category": "sklearn",
+    "tags": ["splitting", "group", "kfold"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of folds"
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.GroupKFold"
+    ]
+  },
+  {
+    "id": "splitting.group_shuffle_split",
+    "name": "GroupShuffleSplit",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection.GroupShuffleSplit",
+    "description": "Group-aware shuffle split",
+    "longDescription": "Random train/test splits with group awareness.",
+    "category": "sklearn",
+    "tags": ["splitting", "group", "shuffle"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "min": 1,
+        "max": 50,
+        "description": "Number of re-shuffling iterations"
+      },
+      {
+        "name": "test_size",
+        "type": "float",
+        "default": 0.2,
+        "min": 0.05,
+        "max": 0.5,
+        "step": 0.05,
+        "description": "Proportion for test set"
+      }
+    ],
+    "supportsParameterSweeps": true
+  }
+]

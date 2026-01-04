@@ -1,0 +1,111 @@
+[
+  {
+    "id": "generator.choose_one",
+    "name": "ChooseOne",
+    "type": "generator",
+    "classPath": "_or_",
+    "description": "Generator: try one item from a list",
+    "longDescription": "Pipeline generator that creates variants by trying each item from a list one at a time.",
+    "category": "Selection",
+    "tags": ["generator", "choice", "variants", "sweep"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "generatorType": "choose_one",
+    "parameters": [
+      {
+        "name": "items",
+        "type": "array",
+        "default": [],
+        "description": "List of items to choose from (preprocessing steps, models, etc.)",
+        "required": true
+      }
+    ],
+    "containerType": "list"
+  },
+  {
+    "id": "generator.choose_n",
+    "name": "ChooseN",
+    "type": "generator",
+    "classPath": "_and_",
+    "description": "Generator: choose N items from a list",
+    "longDescription": "Pipeline generator that creates variants by selecting N items from a list.",
+    "category": "Selection",
+    "tags": ["generator", "choice", "combination", "variants"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "generatorType": "choose_n",
+    "parameters": [
+      {
+        "name": "items",
+        "type": "array",
+        "default": [],
+        "description": "List of items to choose from"
+      },
+      {
+        "name": "n",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 10,
+        "description": "Number of items to select"
+      }
+    ],
+    "containerType": "list"
+  },
+  {
+    "id": "generator.cartesian",
+    "name": "Cartesian",
+    "type": "generator",
+    "classPath": "_cartesian_",
+    "description": "Generator: Cartesian product of options",
+    "longDescription": "Creates all combinations from multiple lists (Cartesian product).",
+    "category": "Combination",
+    "tags": ["generator", "cartesian", "product", "combinations"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "generatorType": "cartesian",
+    "parameters": [],
+    "containerType": "nested_list"
+  },
+  {
+    "id": "generator.range",
+    "name": "Range",
+    "type": "generator",
+    "classPath": "_range_",
+    "description": "Generator: parameter range sweep",
+    "longDescription": "Generates values over a range for parameter sweeping.",
+    "category": "Parameters",
+    "tags": ["generator", "range", "sweep", "parameters"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "generatorType": "range",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "float",
+        "default": 1,
+        "description": "Start value",
+        "required": true
+      },
+      {
+        "name": "to",
+        "type": "float",
+        "default": 10,
+        "description": "End value",
+        "required": true
+      },
+      {
+        "name": "step",
+        "type": "float",
+        "default": 1,
+        "description": "Step size"
+      },
+      {
+        "name": "param",
+        "type": "string",
+        "default": "n_components",
+        "description": "Parameter name to sweep"
+      }
+    ]
+  }
+]

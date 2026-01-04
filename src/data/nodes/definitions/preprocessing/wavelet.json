@@ -1,0 +1,77 @@
+[
+  {
+    "id": "preprocessing.haar",
+    "name": "Haar",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.Haar",
+    "description": "Haar wavelet decomposition",
+    "longDescription": "Applies Haar wavelet decomposition for feature extraction.",
+    "category": "Wavelet",
+    "tags": ["wavelet", "haar", "decomposition", "features"],
+    "source": "nirs4all",
+    "parameters": [],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.wavelet",
+    "name": "Wavelet",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.Wavelet",
+    "description": "Wavelet transform",
+    "longDescription": "General wavelet transform for denoising and feature extraction.",
+    "category": "Wavelet",
+    "tags": ["wavelet", "transform", "denoising"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "wavelet",
+        "type": "string",
+        "default": "db4",
+        "description": "Wavelet type (e.g., db4, sym4, coif1)",
+        "sweepable": true
+      },
+      {
+        "name": "level",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 10,
+        "description": "Decomposition level",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 7]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.wavelet_pca",
+    "name": "WaveletPCA",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.WaveletPCA",
+    "description": "Wavelet-based dimensionality reduction",
+    "longDescription": "Combines wavelet decomposition with PCA for dimensionality reduction.",
+    "category": "Wavelet",
+    "tags": ["wavelet", "pca", "reduction", "dimensionality"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 100,
+        "description": "Number of PCA components to retain",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [5, 50]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  }
+]

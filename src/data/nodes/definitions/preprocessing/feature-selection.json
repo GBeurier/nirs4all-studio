@@ -1,0 +1,108 @@
+[
+  {
+    "id": "preprocessing.cars",
+    "name": "CARS",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.CARS",
+    "description": "Competitive Adaptive Reweighted Sampling",
+    "longDescription": "Variable selection method that uses PLS to iteratively select important wavelengths.",
+    "category": "Feature Selection",
+    "tags": ["feature", "selection", "cars", "wavelength", "pls"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_pls_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components for variable importance",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [5, 30]
+      },
+      {
+        "name": "n_sampling_runs",
+        "type": "int",
+        "default": 50,
+        "min": 10,
+        "max": 200,
+        "description": "Number of sampling iterations",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.mcuve",
+    "name": "MCUVE",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.MCUVE",
+    "description": "Monte Carlo Uninformative Variable Elimination",
+    "longDescription": "Removes uninformative variables using Monte Carlo sampling.",
+    "category": "Feature Selection",
+    "tags": ["feature", "selection", "mcuve", "monte-carlo"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components",
+        "sweepable": true
+      },
+      {
+        "name": "n_iterations",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 500,
+        "description": "Number of Monte Carlo iterations",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  },
+  {
+    "id": "preprocessing.vip",
+    "name": "VIP",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.VIP",
+    "description": "Variable Importance in Projection",
+    "longDescription": "Selects variables based on their importance in PLS projection.",
+    "category": "Feature Selection",
+    "tags": ["feature", "selection", "vip", "pls", "importance"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components",
+        "sweepable": true
+      },
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.5,
+        "max": 3.0,
+        "step": 0.1,
+        "description": "VIP score threshold for variable selection",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [0.5, 2.0]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true
+  }
+]

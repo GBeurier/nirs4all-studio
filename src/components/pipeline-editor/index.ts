@@ -7,6 +7,10 @@ export { PipelineNode } from "./PipelineNode";
 export { StepConfigPanel } from "./StepConfigPanel";
 export { PipelineDndProvider, usePipelineDnd } from "./PipelineDndContext";
 
+// Phase 1: Foundation - Shared components and contexts
+export * from "./shared";
+export * from "./contexts";
+
 // Phase 2: Generation UX components
 export { SweepConfigPopover, SweepActivator, SweepBadge } from "./SweepConfigPopover";
 export {
