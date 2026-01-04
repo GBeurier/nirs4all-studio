@@ -15,6 +15,11 @@ import {
   ChevronDown,
   Sparkles,
   Repeat,
+  Filter,
+  Zap,
+  BarChart3,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +29,9 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
 } from "@/components/ui/context-menu";
 import {
   Tooltip,
@@ -41,11 +49,14 @@ import {
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
+  y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
+  filter: Filter,
+  augmentation: Zap,
 };
 
 interface TreeNodeProps {
@@ -123,6 +134,11 @@ export function TreeNode({
   const sweepCount = step.paramSweeps ? Object.keys(step.paramSweeps).length : 0;
   const sweepKeys = step.paramSweeps ? Object.keys(step.paramSweeps) : [];
 
+  // Check for finetuning
+  const hasFinetuning = step.finetuneConfig?.enabled;
+  const finetuneTrials = step.finetuneConfig?.n_trials ?? 0;
+  const finetuneParamCount = step.finetuneConfig?.model_params?.length ?? 0;
+
   // Format parameters - prioritize non-swept params
   const paramEntries = Object.entries(step.params);
   const displayParams = paramEntries
@@ -196,6 +212,25 @@ export function TreeNode({
               </TooltipContent>
             </Tooltip>
           )}
+          {/* Finetuning indicator */}
+          {hasFinetuning && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className="text-[9px] px-1 py-0 h-4 bg-purple-500 hover:bg-purple-500 shrink-0 cursor-help">
+                  <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+                  {finetuneTrials}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-[220px]">
+                <div className="text-xs">
+                  <div className="font-semibold mb-1">Optuna Finetuning</div>
+                  <p className="text-muted-foreground">
+                    {finetuneTrials} trials, {finetuneParamCount} parameter{finetuneParamCount !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         {/* Show params or sweep summary */}
         {hasSweeps ? (
@@ -243,7 +278,7 @@ export function TreeNode({
         <ContextMenuTrigger asChild>
           {nodeContent}
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-44">
+        <ContextMenuContent className="w-48">
           <ContextMenuItem onClick={onSelect}>
             <Settings className="h-3.5 w-3.5 mr-2" />
             Configure
@@ -252,6 +287,18 @@ export function TreeNode({
             <Copy className="h-3.5 w-3.5 mr-2" />
             Duplicate
           </ContextMenuItem>
+          {step.type === "model" && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onClick={onSelect}
+                className="text-purple-500 focus:text-purple-600"
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-2" />
+                {hasFinetuning ? "Edit Finetuning" : "Configure Finetuning"}
+              </ContextMenuItem>
+            </>
+          )}
           {(step.type === "branch" || step.type === "generator") && onAddBranch && (
             <>
               <ContextMenuSeparator />

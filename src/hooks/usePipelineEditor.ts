@@ -165,15 +165,20 @@ function updateStepsAtPath(
 function countStepsRecursive(steps: PipelineStep[]): Record<StepType, number> {
   const counts: Record<StepType, number> = {
     preprocessing: 0,
+    y_processing: 0,
     splitting: 0,
     model: 0,
-    metrics: 0,
+    generator: 0,
     branch: 0,
     merge: 0,
+    filter: 0,
+    augmentation: 0,
   };
 
   for (const step of steps) {
-    counts[step.type]++;
+    if (counts[step.type] !== undefined) {
+      counts[step.type]++;
+    }
     if (step.branches) {
       for (const branch of step.branches) {
         const branchCounts = countStepsRecursive(branch);

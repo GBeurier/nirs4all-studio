@@ -25,6 +25,9 @@ import {
   Sparkles,
   GitBranch,
   GitMerge,
+  SlidersHorizontal,
+  Filter,
+  Layers,
 } from "lucide-react";
 import type { PipelineStep, StepType, StepOption, DragData, DropIndicator } from "./types";
 import { stepColors } from "./types";
@@ -32,11 +35,14 @@ import { stepColors } from "./types";
 // Icons for step types
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
+  y_processing: SlidersHorizontal,
   splitting: Shuffle,
   model: Target,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
+  filter: Filter,
+  augmentation: Layers,
 };
 
 interface PipelineDndContextValue {

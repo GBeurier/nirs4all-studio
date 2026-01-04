@@ -1495,3 +1495,411 @@ async def create_pipeline_from_preset(preset_id: str, name: Optional[str] = None
     )
 
     return await create_pipeline(pipeline_data)
+
+
+# ============= Pipeline Variant Counting =============
+
+
+class PipelineCountRequest(BaseModel):
+    """Request model for counting pipeline variants."""
+    steps: List[Dict[str, Any]]
+
+
+def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any]:
+    """
+    Convert frontend pipeline step format to nirs4all generator format.
+
+    Frontend steps use structure like:
+    {
+        "id": "1",
+        "type": "preprocessing",
+        "name": "SNV",
+        "params": {},
+        "generator": { "_or_": [...], "pick": 2 }  # Optional
+    }
+
+    This converts to nirs4all format which is just the step definition,
+    potentially wrapped in generator keywords.
+    """
+    result = []
+
+    for step in steps:
+        step_name = step.get("name", "")
+        step_params = step.get("params", {})
+        step_type = step.get("type", "")
+        generator = step.get("generator")
+
+        # Build the base step representation
+        # For nirs4all, we represent operators as class names or dicts
+        if step_params:
+            base_step = {step_name: step_params}
+        else:
+            base_step = step_name
+
+        # Wrap with model/y_processing keyword if needed
+        if step_type == "model":
+            base_step = {"model": base_step}
+        elif step_type == "y_processing":
+            base_step = {"y_processing": base_step}
+
+        # Apply generator wrapper if present
+        if generator:
+            # Generator contains _or_, _range_, pick, etc.
+            # Merge generator info with the step
+            if "_or_" in generator:
+                # The _or_ contains alternatives, count those
+                result.append(generator)
+            elif "_range_" in generator:
+                result.append(generator)
+            else:
+                result.append(base_step)
+        else:
+            result.append(base_step)
+
+        # Handle children for branch nodes
+        if "children" in step and step["children"]:
+            children = step["children"]
+            if step_type == "branch":
+                # Branch: each child is a separate pipeline path
+                branch_paths = []
+                for child in children:
+                    child_steps = _convert_frontend_steps_to_nirs4all([child])
+                    branch_paths.extend(child_steps)
+                if branch_paths:
+                    result.append({"branch": branch_paths})
+            elif step_type == "choice":
+                # Choice (_or_): each child is an alternative
+                alternatives = []
+                for child in children:
+                    child_steps = _convert_frontend_steps_to_nirs4all([child])
+                    alternatives.extend(child_steps)
+                if alternatives:
+                    result.append({"_or_": alternatives})
+
+    return result
+
+
+@router.post("/pipelines/count-variants")
+async def count_pipeline_variants(request: PipelineCountRequest):
+    """
+    Count the number of pipeline variants without generating them.
+
+    Uses nirs4all's count_combinations function to efficiently calculate
+    the total number of variants a pipeline specification would generate.
+
+    This is useful for:
+    - Showing users how many pipelines will be tested
+    - Warning about combinatorial explosion
+    - Validating pipeline complexity before execution
+    """
+    if not NIRS4ALL_AVAILABLE:
+        # Fallback: simple count (1 variant if no generators)
+        return {
+            "count": 1,
+            "warning": "nirs4all not available, using simple count",
+            "breakdown": {}
+        }
+
+    try:
+        from nirs4all.pipeline.config.generator import count_combinations
+
+        # Convert frontend steps to nirs4all format
+        nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
+
+        # Count combinations
+        total_count = count_combinations(nirs4all_steps)
+
+        # Calculate per-step breakdown
+        breakdown = {}
+        for i, step in enumerate(request.steps):
+            step_name = step.get("name", f"step_{i}")
+            step_id = step.get("id", str(i))
+
+            # Count just this step
+            single_step = _convert_frontend_steps_to_nirs4all([step])
+            step_count = count_combinations(single_step) if single_step else 1
+
+            breakdown[step_id] = {
+                "name": step_name,
+                "count": step_count
+            }
+
+        # Add warning for large counts
+        warning = None
+        if total_count > 10000:
+            warning = f"Large search space: {total_count:,} variants. Consider reducing with 'count' limiter."
+        elif total_count > 1000:
+            warning = f"Moderate search space: {total_count:,} variants."
+
+        return {
+            "count": total_count,
+            "breakdown": breakdown,
+            "warning": warning,
+            "nirs4all_format": nirs4all_steps  # Debug: show converted format
+        }
+
+    except Exception as e:
+        return {
+            "count": 1,
+            "error": str(e),
+            "breakdown": {}
+        }
+
+
+# ============= Phase 6: Pipeline Execution =============
+
+
+class PipelineRunRequest(BaseModel):
+    """Request model for running a pipeline."""
+    dataset_id: str
+    verbose: int = 1
+    export_model: bool = True
+    model_name: Optional[str] = None
+
+
+class PipelineExportRequest(BaseModel):
+    """Request model for exporting pipeline."""
+    format: str = "python"  # python, yaml, json
+    dataset_path: Optional[str] = None
+
+
+@router.post("/pipelines/{pipeline_id}/execute")
+async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
+    """
+    Execute a pipeline using nirs4all.run().
+
+    This endpoint triggers pipeline execution as a background job
+    and returns a job ID for tracking progress via WebSocket.
+    """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available for pipeline execution",
+        )
+
+    from .workspace_manager import workspace_manager
+    from .jobs import job_manager, JobType
+
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
+
+    # Load pipeline
+    pipeline = _load_pipeline(pipeline_id)
+
+    # Validate dataset exists
+    from .nirs4all_adapter import resolve_dataset_path
+    try:
+        dataset_path = resolve_dataset_path(request.dataset_id)
+    except HTTPException:
+        raise
+
+    # Create job configuration
+    job_config = {
+        "pipeline_id": pipeline_id,
+        "pipeline_name": pipeline.get("name", "Unknown"),
+        "pipeline_steps": pipeline.get("steps", []),
+        "dataset_id": request.dataset_id,
+        "dataset_path": dataset_path,
+        "verbose": request.verbose,
+        "export_model": request.export_model,
+        "model_name": request.model_name or f"model_{pipeline_id}",
+        "workspace_path": workspace.path,
+    }
+
+    # Create and submit job
+    job = job_manager.create_job(JobType.TRAINING, job_config)
+    job_manager.submit_job(job, _run_pipeline_task)
+
+    return {
+        "success": True,
+        "job_id": job.id,
+        "pipeline_id": pipeline_id,
+        "status": job.status.value,
+        "message": "Pipeline execution started",
+        "websocket_url": f"/ws/job/{job.id}",
+    }
+
+
+def _run_pipeline_task(job, progress_callback):
+    """
+    Execute the pipeline using nirs4all.run().
+
+    Args:
+        job: The job instance with config
+        progress_callback: Callback for progress updates
+
+    Returns:
+        Execution result dictionary
+    """
+    import time
+    from .nirs4all_adapter import build_full_pipeline, ensure_models_dir
+
+    config = job.config
+    steps = config.get("pipeline_steps", [])
+    dataset_path = config.get("dataset_path")
+    workspace_path = config.get("workspace_path")
+
+    # Report starting
+    progress_callback(5, "Building pipeline...")
+
+    try:
+        # Build full pipeline with all features
+        build_result = build_full_pipeline(steps)
+        pipeline_steps = build_result.steps
+
+        if not pipeline_steps:
+            raise ValueError("Pipeline has no executable steps")
+
+        progress_callback(10, f"Running pipeline ({build_result.estimated_variants} variants)...")
+
+        # Execute using nirs4all.run()
+        import nirs4all
+
+        result = nirs4all.run(
+            pipeline=pipeline_steps,
+            dataset=dataset_path,
+            verbose=config.get("verbose", 1),
+        )
+
+        progress_callback(80, "Extracting results...")
+
+        # Extract metrics from result
+        metrics = {}
+        if hasattr(result, 'best_rmse'):
+            metrics['rmse'] = float(result.best_rmse)
+        if hasattr(result, 'best_r2'):
+            metrics['r2'] = float(result.best_r2)
+        if hasattr(result, 'best_score'):
+            metrics['score'] = float(result.best_score)
+
+        # Get top results if available
+        top_results = []
+        if hasattr(result, 'top'):
+            try:
+                for i, r in enumerate(result.top(5)):
+                    top_results.append({
+                        "rank": i + 1,
+                        "rmse": getattr(r, 'rmse', None),
+                        "r2": getattr(r, 'r2', None),
+                        "config": str(r) if hasattr(r, '__str__') else None,
+                    })
+            except Exception:
+                pass
+
+        # Export model if requested
+        model_path = None
+        if config.get("export_model"):
+            progress_callback(90, "Exporting model...")
+            try:
+                models_dir = ensure_models_dir(workspace_path)
+                model_name = config.get("model_name", f"model_{config['pipeline_id']}")
+                model_path = str(models_dir / f"{model_name}.n4a")
+                result.export(model_path)
+            except Exception as e:
+                print(f"Error exporting model: {e}")
+
+        progress_callback(100, "Complete!")
+
+        return {
+            "success": True,
+            "metrics": metrics,
+            "top_results": top_results,
+            "variants_tested": build_result.estimated_variants,
+            "model_path": model_path,
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
+@router.post("/pipelines/{pipeline_id}/export")
+async def export_pipeline(pipeline_id: str, request: PipelineExportRequest):
+    """
+    Export pipeline to various formats.
+
+    Supported formats:
+    - python: Executable Python code
+    - yaml: YAML configuration
+    - json: JSON configuration
+    """
+    from .nirs4all_adapter import export_pipeline_to_python, export_pipeline_to_yaml
+
+    pipeline = _load_pipeline(pipeline_id)
+    steps = pipeline.get("steps", [])
+    pipeline_name = pipeline.get("name", "pipeline").replace(" ", "_").lower()
+
+    if request.format == "python":
+        content = export_pipeline_to_python(
+            steps=steps,
+            pipeline_name=pipeline_name,
+            dataset_path=request.dataset_path or "path/to/your/dataset",
+        )
+        content_type = "text/x-python"
+        extension = "py"
+
+    elif request.format == "yaml":
+        content = export_pipeline_to_yaml(
+            steps=steps,
+            config={
+                "name": pipeline.get("name"),
+                "description": pipeline.get("description"),
+            }
+        )
+        content_type = "text/yaml"
+        extension = "yaml"
+
+    elif request.format == "json":
+        content = json.dumps(pipeline, indent=2)
+        content_type = "application/json"
+        extension = "json"
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported export format: {request.format}",
+        )
+
+    return {
+        "success": True,
+        "format": request.format,
+        "filename": f"{pipeline_name}.{extension}",
+        "content": content,
+        "content_type": content_type,
+    }
+
+
+@router.post("/pipelines/import")
+async def import_pipeline(content: str, format: str = "yaml", name: Optional[str] = None):
+    """
+    Import pipeline from YAML or JSON format.
+    """
+    from .nirs4all_adapter import import_pipeline_from_yaml
+
+    if format == "yaml":
+        imported = import_pipeline_from_yaml(content)
+    elif format == "json":
+        try:
+            imported = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported import format: {format}",
+        )
+
+    # Create pipeline from imported data
+    pipeline_data = PipelineCreate(
+        name=name or imported.get("name", "Imported Pipeline"),
+        description=imported.get("description", ""),
+        steps=imported.get("steps", []),
+        category="imported",
+    )
+
+    return await create_pipeline(pipeline_data)

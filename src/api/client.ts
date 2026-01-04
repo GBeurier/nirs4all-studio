@@ -9,6 +9,10 @@ interface ApiError {
   status: number;
 }
 
+interface RequestOptions extends Omit<RequestInit, 'body'> {
+  body?: unknown;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -18,16 +22,18 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestOptions = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    const { body, ...restOptions } = options;
 
     const config: RequestInit = {
       headers: {
         "Content-Type": "application/json",
         ...options.headers,
       },
-      ...options,
+      ...restOptions,
+      body: body ? JSON.stringify(body) : undefined,
     };
 
     try {
@@ -55,33 +61,60 @@ class ApiClient {
   }
 
   // GET request
-  async get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: "GET" });
+  async get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(endpoint, { method: "GET", ...options });
   }
 
   // POST request
-  async post<T>(endpoint: string, data?: unknown): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, {
       method: "POST",
-      body: data ? JSON.stringify(data) : undefined,
+      body: data,
+      ...options,
     });
   }
 
   // PUT request
-  async put<T>(endpoint: string, data?: unknown): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, {
       method: "PUT",
-      body: data ? JSON.stringify(data) : undefined,
+      body: data,
+      ...options,
     });
   }
 
   // DELETE request
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: "DELETE" });
+  async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(endpoint, { method: "DELETE", ...options });
   }
 }
 
 export const api = new ApiClient();
+
+// Axios-like wrapper for backward compatibility with hooks expecting response.data pattern
+class AxiosLikeClient {
+  async get<T>(endpoint: string, options?: RequestOptions): Promise<{ data: T }> {
+    const data = await api.get<T>(endpoint, options);
+    return { data };
+  }
+
+  async post<T>(endpoint: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
+    const data = await api.post<T>(endpoint, body, options);
+    return { data };
+  }
+
+  async put<T>(endpoint: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
+    const data = await api.put<T>(endpoint, body, options);
+    return { data };
+  }
+
+  async delete<T>(endpoint: string, options?: RequestOptions): Promise<{ data: T }> {
+    const data = await api.delete<T>(endpoint, options);
+    return { data };
+  }
+}
+
+export const apiClient = new AxiosLikeClient();
 
 // Health check
 export async function checkHealth(): Promise<{ status: string }> {

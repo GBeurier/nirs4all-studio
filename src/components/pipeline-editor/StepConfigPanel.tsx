@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Waves,
   Shuffle,
@@ -14,6 +14,16 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Filter,
+  Zap,
+  BarChart3,
+  Settings2,
+  Sliders,
+  Cpu,
+  AlertTriangle,
+  GraduationCap,
+  Layers,
+  Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +51,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   stepOptions,
   stepColors,
   type PipelineStep,
@@ -49,39 +65,83 @@ import {
   type SweepType,
   calculateSweepVariants,
   calculateStepVariants,
+  formatSweepDisplay,
 } from "./types";
+import { SweepConfigPopover } from "./SweepConfigPopover";
+import { FinetuneTab, FinetuningBadge, QuickFinetuneButton } from "./FinetuneConfig";
+import { YProcessingPanel, defaultYProcessingConfig, YProcessingBadge } from "./YProcessingPanel";
+import { FeatureAugmentationPanel, defaultFeatureAugmentationConfig, FeatureAugmentationBadge } from "./FeatureAugmentationPanel";
+import { StackingPanel, defaultStackingConfig, StackingBadge } from "./StackingPanel";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
+  y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
+  filter: Filter,
+  augmentation: Zap,
 };
 
 // Parameter info/tooltips for common parameters
 const parameterInfo: Record<string, string> = {
+  // General
   n_components: "Number of components/latent variables to use",
   n_estimators: "Number of trees in the ensemble",
   max_depth: "Maximum depth of trees",
   learning_rate: "Step size for gradient descent optimization",
   test_size: "Proportion of data to use for testing (0.0-1.0)",
   n_splits: "Number of folds for cross-validation",
+  random_state: "Random seed for reproducibility",
+
+  // Savitzky-Golay / Smoothing
+  window_length: "Size of the moving window (must be odd)",
   window: "Size of the moving window (must be odd)",
+  window_size: "Size of the moving window",
   polyorder: "Polynomial order for fitting",
   deriv: "Derivative order (0=smoothing, 1=first, 2=second)",
   sigma: "Standard deviation for Gaussian kernel",
+
+  // Baseline correction
+  order: "Polynomial order for baseline/detrending",
+  lam: "Smoothing parameter (lambda) - higher = smoother baseline",
+  p: "Asymmetry parameter (0 to 1) - lower emphasizes troughs",
+  max_half_window: "Maximum half window size for SNIP algorithm",
+  half_window: "Half window size for rolling ball",
+  poly_order: "Polynomial order for baseline fitting",
+
+  // Wavelets
+  wavelet: "Wavelet type (db4, sym4, haar, etc.)",
+  level: "Decomposition level",
+
+  // SVM/SVR
   C: "Regularization parameter (higher = less regularization)",
   epsilon: "Epsilon in epsilon-SVR model",
   kernel: "Kernel type for SVM (rbf, linear, poly)",
+  gamma: "Kernel coefficient for rbf/poly/sigmoid",
+
+  // Regularization
   alpha: "Regularization strength",
   l1_ratio: "L1 ratio for Elastic Net (0=L2, 1=L1)",
+
+  // Cross-validation
   shuffle: "Whether to shuffle data before splitting",
-  random_state: "Random seed for reproducibility",
-  order: "Polynomial order for detrending",
+  n_repeats: "Number of times to repeat cross-validation",
+
+  // Normalization
   norm: "Normalization type (l1, l2, max)",
   reference: "Reference spectrum for MSC (mean, first, median)",
+
+  // Feature range
+  feature_range_min: "Minimum value after scaling",
+  feature_range_max: "Maximum value after scaling",
+  start: "Start index for cropping",
+  end: "End index for cropping (-1 = end)",
+  n_points: "Number of points after resampling",
+
+  // Deep learning
   layers: "Number of hidden layers",
   filters: "Number of convolutional filters",
   kernel_size: "Size of convolution kernel",
@@ -89,208 +149,50 @@ const parameterInfo: Record<string, string> = {
   hidden_layers: "Comma-separated list of hidden layer sizes",
   activation: "Activation function (relu, tanh, sigmoid)",
   units: "Number of LSTM units",
-  n_repeats: "Number of times to repeat cross-validation",
-  normalization: "Normalization method (range, std, mean)",
+  n_heads: "Number of attention heads",
+  n_layers: "Number of transformer layers",
+  d_model: "Model dimension",
+
+  // Feature selection
+  n_pls_components: "Number of PLS components for CARS/MCUVE",
+  n_sampling_runs: "Number of sampling runs for CARS",
+  n_iterations: "Number of Monte Carlo iterations",
+  threshold: "Selection threshold",
+  n_intervals: "Number of spectral intervals for IntervalPLS",
+  n_neighbors: "Number of neighbors for locally weighted methods",
+
+  // NIRS-specific splitters
+  metric: "Distance metric for Kennard-Stone (euclidean, mahalanobis)",
+  n_clusters: "Number of clusters for K-means splitter",
+  n_bins: "Number of bins for stratification",
+
+  // Augmentation
+  std: "Standard deviation for noise",
+  probability: "Probability of applying augmentation",
+  magnitude: "Magnitude of the effect",
+  max_slope: "Maximum slope for linear drift",
+  max_shift: "Maximum wavelength shift",
+  max_factor: "Maximum stretch/compression factor",
+  n_bands: "Number of bands to mask",
+  max_width: "Maximum width of masked bands",
+  dropout_rate: "Probability of dropping each channel",
+
+  // Filter
+  condition: "Filter condition expression",
+  method: "Method for outlier detection (iqr, zscore, mad)",
+
+  // Transform
+  output_distribution: "Target distribution (uniform, normal)",
+  n_quantiles: "Number of quantiles for transformation",
+  strategy: "Binning strategy (uniform, quantile, kmeans)",
+  ranges: "Comma-separated range boundaries",
+  voting: "Voting method (soft, hard)",
+  axis: "Axis for concatenation (0=samples, 1=features)",
+  base_estimator: "Base estimator for meta-model",
 };
 
-// Sweep type labels
-const sweepTypeLabels: Record<SweepType, string> = {
-  range: "Range",
-  log_range: "Log Range",
-  or: "Choices",
-  grid: "Grid",
-};
-
-// Component for sweep configuration
-interface SweepConfigProps {
-  paramKey: string;
-  currentValue: string | number | boolean;
-  sweep: ParameterSweep | undefined;
-  onSweepChange: (sweep: ParameterSweep | undefined) => void;
-}
-
-function SweepConfig({ paramKey, currentValue, sweep, onSweepChange }: SweepConfigProps) {
-  const [isOpen, setIsOpen] = useState(!!sweep);
-  const isNumeric = typeof currentValue === "number";
-
-  const handleEnableSweep = () => {
-    if (!sweep) {
-      // Create default sweep based on value type
-      if (isNumeric) {
-        const val = currentValue as number;
-        onSweepChange({
-          type: "range",
-          from: Math.max(1, Math.floor(val * 0.5)),
-          to: Math.ceil(val * 1.5),
-          step: val >= 10 ? Math.ceil(val * 0.1) : 1,
-        });
-      } else {
-        onSweepChange({
-          type: "or",
-          choices: [currentValue],
-        });
-      }
-      setIsOpen(true);
-    } else {
-      onSweepChange(undefined);
-      setIsOpen(false);
-    }
-  };
-
-  const handleTypeChange = (type: SweepType) => {
-    if (type === "range") {
-      const val = typeof currentValue === "number" ? currentValue : 10;
-      onSweepChange({
-        type: "range",
-        from: Math.max(1, Math.floor(val * 0.5)),
-        to: Math.ceil(val * 1.5),
-        step: 1,
-      });
-    } else if (type === "log_range") {
-      const val = typeof currentValue === "number" ? currentValue : 1;
-      onSweepChange({
-        type: "log_range",
-        from: Math.max(0.001, val * 0.1),
-        to: val * 10,
-        count: 5,
-      });
-    } else if (type === "or") {
-      onSweepChange({
-        type: "or",
-        choices: [currentValue],
-      });
-    }
-  };
-
-  const variantCount = sweep ? calculateSweepVariants(sweep) : 0;
-
-  return (
-    <div className="mt-1.5">
-      <div className="flex items-center gap-1">
-        <Button
-          variant={sweep ? "default" : "ghost"}
-          size="sm"
-          className={`h-6 px-2 text-xs gap-1 ${sweep ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
-          onClick={handleEnableSweep}
-        >
-          <Repeat className="h-3 w-3" />
-          {sweep ? `Sweep (${variantCount})` : "Sweep"}
-        </Button>
-        {sweep && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={() => setIsOpen(!isOpen)}
-          >
-            {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </Button>
-        )}
-      </div>
-
-      {sweep && isOpen && (
-        <div className="mt-2 p-3 rounded-lg border border-orange-500/30 bg-orange-500/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <Select value={sweep.type} onValueChange={(v) => handleTypeChange(v as SweepType)}>
-              <SelectTrigger className="h-7 w-28 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                {isNumeric && <SelectItem value="range">Range</SelectItem>}
-                {isNumeric && <SelectItem value="log_range">Log Range</SelectItem>}
-                <SelectItem value="or">Choices</SelectItem>
-              </SelectContent>
-            </Select>
-            <Badge variant="secondary" className="text-xs bg-orange-500/20 text-orange-600">
-              {variantCount} variant{variantCount !== 1 ? "s" : ""}
-            </Badge>
-          </div>
-
-          {(sweep.type === "range" || sweep.type === "log_range") && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">From</Label>
-                <Input
-                  type="number"
-                  value={sweep.from ?? 0}
-                  onChange={(e) => onSweepChange({ ...sweep, from: parseFloat(e.target.value) || 0 })}
-                  className="h-7 text-xs font-mono"
-                  step={sweep.type === "log_range" ? 0.001 : 1}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">To</Label>
-                <Input
-                  type="number"
-                  value={sweep.to ?? 10}
-                  onChange={(e) => onSweepChange({ ...sweep, to: parseFloat(e.target.value) || 10 })}
-                  className="h-7 text-xs font-mono"
-                  step={sweep.type === "log_range" ? 0.001 : 1}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">
-                  {sweep.type === "log_range" ? "Count" : "Step"}
-                </Label>
-                <Input
-                  type="number"
-                  value={sweep.type === "log_range" ? (sweep.count ?? 5) : (sweep.step ?? 1)}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 1;
-                    if (sweep.type === "log_range") {
-                      onSweepChange({ ...sweep, count: val });
-                    } else {
-                      onSweepChange({ ...sweep, step: val });
-                    }
-                  }}
-                  className="h-7 text-xs font-mono"
-                  min={1}
-                />
-              </div>
-            </div>
-          )}
-
-          {sweep.type === "or" && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Choices (comma-separated)</Label>
-              <Input
-                value={sweep.choices?.join(", ") ?? ""}
-                onChange={(e) => {
-                  const choices = e.target.value.split(",").map(s => {
-                    const trimmed = s.trim();
-                    const num = parseFloat(trimmed);
-                    if (!isNaN(num) && isNumeric) return num;
-                    if (trimmed === "true") return true;
-                    if (trimmed === "false") return false;
-                    return trimmed;
-                  }).filter(v => v !== "");
-                  onSweepChange({ ...sweep, choices });
-                }}
-                className="h-7 text-xs font-mono"
-                placeholder="value1, value2, value3"
-              />
-            </div>
-          )}
-
-          {/* Preview values */}
-          <div className="text-xs text-muted-foreground">
-            {sweep.type === "range" && sweep.from !== undefined && sweep.to !== undefined && (
-              <span>
-                Values: {Array.from(
-                  { length: Math.min(5, variantCount) },
-                  (_, i) => sweep.from! + i * (sweep.step ?? 1)
-                ).join(", ")}{variantCount > 5 ? `, ... (${variantCount} total)` : ""}
-              </span>
-            )}
-            {sweep.type === "log_range" && (
-              <span>Logarithmically spaced from {sweep.from} to {sweep.to}</span>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// Note: SweepConfigPopover is now used instead of the inline SweepConfig component
+// It provides a cleaner UX with presets, better preview, and popover-based editing
 
 interface StepConfigPanelProps {
   step: PipelineStep | null;
@@ -401,7 +303,7 @@ export function StepConfigPanel({
               disabled={hasSweepActive}
             />
           </div>
-          <SweepConfig
+          <SweepConfigPopover
             paramKey={key}
             currentValue={value}
             sweep={sweep}
@@ -450,7 +352,7 @@ export function StepConfigPanel({
               <SelectItem value="sigmoid">Sigmoid</SelectItem>
             </SelectContent>
           </Select>
-          <SweepConfig
+          <SweepConfigPopover
             paramKey={key}
             currentValue={value}
             sweep={sweep}
@@ -497,7 +399,7 @@ export function StepConfigPanel({
               <SelectItem value="max">Max</SelectItem>
             </SelectContent>
           </Select>
-          <SweepConfig
+          <SweepConfigPopover
             paramKey={key}
             currentValue={value}
             sweep={sweep}
@@ -545,7 +447,7 @@ export function StepConfigPanel({
               <SelectItem value="leaky_relu">Leaky ReLU</SelectItem>
             </SelectContent>
           </Select>
-          <SweepConfig
+          <SweepConfigPopover
             paramKey={key}
             currentValue={value}
             sweep={sweep}
@@ -592,7 +494,7 @@ export function StepConfigPanel({
               <SelectItem value="median">Median Spectrum</SelectItem>
             </SelectContent>
           </Select>
-          <SweepConfig
+          <SweepConfigPopover
             paramKey={key}
             currentValue={value}
             sweep={sweep}
@@ -645,7 +547,7 @@ export function StepConfigPanel({
           className="font-mono text-sm"
           disabled={hasSweepActive}
         />
-        <SweepConfig
+        <SweepConfigPopover
           paramKey={key}
           currentValue={value}
           sweep={sweep}
@@ -680,85 +582,540 @@ export function StepConfigPanel({
                   {totalVariants} variants
                 </Badge>
               )}
+              <FinetuningBadge config={step.finetuneConfig} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-6">
-          {/* Step Algorithm Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Algorithm</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-[200px]">
-                  <p>Select the algorithm for this {step.type} step</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Select value={step.name} onValueChange={handleNameChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover max-h-[300px]">
-                {stepOptions[step.type].map((opt) => (
-                  <SelectItem key={opt.name} value={opt.name}>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{opt.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {opt.description}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {currentOption && (
-              <p className="text-xs text-muted-foreground">
-                {currentOption.description}
-              </p>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Parameters */}
-          {Object.keys(step.params).length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Parameters</Label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={handleResetParams}
-                >
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  Reset
-                </Button>
+      {/* Content - Use tabs for model steps, specialized panels for y_processing and merge */}
+      {step.type === "model" ? (
+        <ModelStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+          renderParamInput={renderParamInput}
+          handleNameChange={handleNameChange}
+          handleResetParams={handleResetParams}
+          currentOption={currentOption}
+        />
+      ) : step.type === "y_processing" ? (
+        <YProcessingStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+        />
+      ) : step.type === "merge" ? (
+        <MergeStepContent
+          step={step}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onDuplicate={onDuplicate}
+          renderParamInput={renderParamInput}
+          handleNameChange={handleNameChange}
+          handleResetParams={handleResetParams}
+          currentOption={currentOption}
+        />
+      ) : (
+        <>
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-6">
+              {/* Step Algorithm Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Algorithm</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-[200px]">
+                      <p>Select the algorithm for this {step.type} step</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select value={step.name} onValueChange={handleNameChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover max-h-[300px]">
+                    {stepOptions[step.type].map((opt) => (
+                      <SelectItem key={opt.name} value={opt.name}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{opt.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {opt.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {currentOption && (
+                  <p className="text-xs text-muted-foreground">
+                    {currentOption.description}
+                  </p>
+                )}
               </div>
-              {Object.entries(step.params).map(([key, value]) =>
-                renderParamInput(key, value)
+
+              <Separator />
+
+              {/* Parameters */}
+              {Object.keys(step.params).length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Parameters</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleResetParams}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
+                  {Object.entries(step.params).map(([key, value]) =>
+                    renderParamInput(key, value)
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
+                    <Info className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    No configurable parameters
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This step uses default settings
+                  </p>
+                </div>
               )}
             </div>
-          ) : (
-            <div className="text-center py-6">
-              <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
-                <Info className="h-5 w-5 text-muted-foreground" />
+          </ScrollArea>
+
+          {/* Actions */}
+          <div className="p-4 border-t border-border space-y-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => onDuplicate(step.id)}
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Duplicate Step
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full"
+              onClick={() => onRemove(step.id)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Remove Step
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Extracted component for model step content with tabs
+interface ModelStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  renderParamInput: (key: string, value: string | number | boolean) => React.ReactNode;
+  handleNameChange: (name: string) => void;
+  handleResetParams: () => void;
+  currentOption: { name: string; description: string; defaultParams: Record<string, string | number | boolean> } | undefined;
+}
+
+function ModelStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  renderParamInput,
+  handleNameChange,
+  handleResetParams,
+  currentOption,
+}: ModelStepContentProps) {
+  const [activeTab, setActiveTab] = useState("parameters");
+
+  const hasFinetuning = step.finetuneConfig?.enabled;
+
+  // Handler for FinetuneTab updates
+  const handleFinetuneUpdate = useCallback((updates: Partial<PipelineStep>) => {
+    onUpdate(step.id, updates);
+  }, [onUpdate, step.id]);
+
+  // Check if this is a deep learning model (for potential Training tab)
+  const currentStepOption = stepOptions.model.find((o) => o.name === step.name);
+  const isDeepLearning = currentStepOption?.isDeepLearning ?? false;
+
+  return (
+    <>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        <div className="border-b border-border px-2">
+          <TabsList className="h-10 w-full justify-start bg-transparent gap-1">
+            <TabsTrigger
+              value="parameters"
+              className="text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none"
+            >
+              <Sliders className="h-3.5 w-3.5 mr-1.5" />
+              Parameters
+            </TabsTrigger>
+            <TabsTrigger
+              value="finetuning"
+              className={`text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none ${
+                hasFinetuning ? "text-purple-500 data-[state=active]:text-purple-600" : ""
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              Finetuning
+              {hasFinetuning && (
+                <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-purple-500">
+                  {step.finetuneConfig?.n_trials}
+                </Badge>
+              )}
+            </TabsTrigger>
+            {isDeepLearning && (
+              <TabsTrigger
+                value="training"
+                className="text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none"
+              >
+                <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
+                Training
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </div>
+
+        {/* Parameters Tab */}
+        <TabsContent value="parameters" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
+              {/* Step Algorithm Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Model</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-[200px]">
+                      <p>Select the model algorithm</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select value={step.name} onValueChange={handleNameChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover max-h-[300px]">
+                    {stepOptions.model.map((opt) => (
+                      <SelectItem key={opt.name} value={opt.name}>
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{opt.name}</span>
+                            {opt.isDeepLearning && (
+                              <Badge variant="outline" className="text-[10px] py-0 h-4">
+                                DL
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {opt.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {currentOption && (
+                  <p className="text-xs text-muted-foreground">
+                    {currentOption.description}
+                  </p>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground">
-                No configurable parameters
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                This step uses default settings
-              </p>
+
+              <Separator />
+
+              {/* Parameters */}
+              {Object.keys(step.params).length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Parameters</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleResetParams}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
+                  {Object.entries(step.params).map(([key, value]) =>
+                    renderParamInput(key, value)
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
+                    <Info className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    No configurable parameters
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This step uses default settings
+                  </p>
+                </div>
+              )}
+
+              {/* Quick Finetuning CTA */}
+              {!hasFinetuning && Object.keys(step.params).some(k => typeof step.params[k] === "number") && (
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                  <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-foreground">
+                      Optimize parameters automatically?
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Let Optuna find the best values intelligently.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs border-purple-500/50 text-purple-500 hover:bg-purple-500/10"
+                    onClick={() => setActiveTab("finetuning")}
+                  >
+                    Configure
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Finetuning Tab */}
+        <TabsContent value="finetuning" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <FinetuneTab step={step} onUpdate={handleFinetuneUpdate} />
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Training Tab (for deep learning models) */}
+        {isDeepLearning && (
+          <TabsContent value="training" className="flex-1 overflow-hidden mt-0">
+            <ScrollArea className="h-full">
+              <TrainingTab step={step} onUpdate={handleFinetuneUpdate} />
+            </ScrollArea>
+          </TabsContent>
+        )}
+      </Tabs>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => onDuplicate(step.id)}
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="w-full"
+          onClick={() => onRemove(step.id)}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
+  );
+}
+
+// Training configuration tab for deep learning models
+interface TrainingTabProps {
+  step: PipelineStep;
+  onUpdate: (updates: Partial<PipelineStep>) => void;
+}
+
+function TrainingTab({ step, onUpdate }: TrainingTabProps) {
+  const config = step.trainingConfig ?? {
+    epochs: 100,
+    batch_size: 32,
+    learning_rate: 0.001,
+    patience: 20,
+    optimizer: "adam" as const,
+  };
+
+  const handleUpdate = (updates: Partial<typeof config>) => {
+    onUpdate({
+      trainingConfig: { ...config, ...updates },
+    });
+  };
+
+  return (
+    <div className="p-4 space-y-6">
+      {/* Training Configuration */}
+      <div className="space-y-4">
+        <Label className="text-sm font-medium flex items-center gap-2">
+          <GraduationCap className="h-4 w-4" />
+          Training Configuration
+        </Label>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Epochs</Label>
+            <Input
+              type="number"
+              value={config.epochs}
+              onChange={(e) => handleUpdate({ epochs: parseInt(e.target.value) || 100 })}
+              min={1}
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Batch Size</Label>
+            <Input
+              type="number"
+              value={config.batch_size}
+              onChange={(e) => handleUpdate({ batch_size: parseInt(e.target.value) || 32 })}
+              min={1}
+              className="font-mono"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Learning Rate</Label>
+            <Input
+              type="number"
+              value={config.learning_rate}
+              onChange={(e) => handleUpdate({ learning_rate: parseFloat(e.target.value) || 0.001 })}
+              step={0.0001}
+              min={0.00001}
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Patience (early stopping)</Label>
+            <Input
+              type="number"
+              value={config.patience ?? 20}
+              onChange={(e) => handleUpdate({ patience: parseInt(e.target.value) || 20 })}
+              min={1}
+              className="font-mono"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Optimizer</Label>
+          <Select
+            value={config.optimizer}
+            onValueChange={(value: "adam" | "sgd" | "rmsprop" | "adamw") =>
+              handleUpdate({ optimizer: value })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="adam">Adam</SelectItem>
+              <SelectItem value="adamw">AdamW</SelectItem>
+              <SelectItem value="sgd">SGD</SelectItem>
+              <SelectItem value="rmsprop">RMSprop</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Quick Presets */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Quick Presets</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { label: "Quick Train", epochs: 20, batch: 64, lr: 0.01, patience: 5 },
+            { label: "Standard", epochs: 100, batch: 32, lr: 0.001, patience: 20 },
+            { label: "Long Train", epochs: 500, batch: 16, lr: 0.0001, patience: 50 },
+            { label: "Fine-tune", epochs: 50, batch: 32, lr: 0.00001, patience: 10 },
+          ].map((preset) => (
+            <Button
+              key={preset.label}
+              variant="outline"
+              size="sm"
+              className="h-auto py-2 justify-start"
+              onClick={() =>
+                handleUpdate({
+                  epochs: preset.epochs,
+                  batch_size: preset.batch,
+                  learning_rate: preset.lr,
+                  patience: preset.patience,
+                })
+              }
+            >
+              <div className="text-left">
+                <div className="font-medium text-xs">{preset.label}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {preset.epochs} epochs, lr={preset.lr}
+                </div>
+              </div>
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Y-Processing Step Content - specialized panel for target variable scaling
+interface YProcessingStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+}
+
+function YProcessingStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+}: YProcessingStepContentProps) {
+  // Initialize config if not present
+  const config = step.yProcessingConfig ?? defaultYProcessingConfig();
+
+  const handleConfigChange = useCallback((newConfig: typeof config) => {
+    onUpdate(step.id, {
+      yProcessingConfig: newConfig,
+    });
+  }, [onUpdate, step.id]);
+
+  return (
+    <>
+      <ScrollArea className="flex-1">
+        <div className="p-4">
+          <YProcessingPanel
+            config={config}
+            onChange={handleConfigChange}
+          />
         </div>
       </ScrollArea>
 
@@ -783,6 +1140,210 @@ export function StepConfigPanel({
           Remove Step
         </Button>
       </div>
-    </div>
+    </>
+  );
+}
+
+// Merge Step Content - specialized panel with stacking configuration
+interface MergeStepContentProps {
+  step: PipelineStep;
+  onUpdate: (id: string, updates: Partial<PipelineStep>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  renderParamInput: (key: string, value: string | number | boolean) => React.ReactNode;
+  handleNameChange: (name: string) => void;
+  handleResetParams: () => void;
+  currentOption: { name: string; description: string; defaultParams: Record<string, string | number | boolean> } | undefined;
+}
+
+function MergeStepContent({
+  step,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  renderParamInput,
+  handleNameChange,
+  handleResetParams,
+  currentOption,
+}: MergeStepContentProps) {
+  const [activeTab, setActiveTab] = useState("merge");
+
+  // Initialize stacking config if not present
+  const stackingConfig = step.stackingConfig ?? defaultStackingConfig();
+
+  const handleStackingChange = useCallback((newConfig: typeof stackingConfig) => {
+    onUpdate(step.id, {
+      stackingConfig: newConfig,
+    });
+  }, [onUpdate, step.id]);
+
+  const hasStackingEnabled = stackingConfig?.enabled ?? false;
+
+  return (
+    <>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        <div className="border-b border-border px-2">
+          <TabsList className="h-10 w-full justify-start bg-transparent gap-1">
+            <TabsTrigger
+              value="merge"
+              className="text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none"
+            >
+              <GitMerge className="h-3.5 w-3.5 mr-1.5" />
+              Merge
+            </TabsTrigger>
+            <TabsTrigger
+              value="stacking"
+              className={`text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none ${
+                hasStackingEnabled ? "text-pink-500 data-[state=active]:text-pink-600" : ""
+              }`}
+            >
+              <Layers className="h-3.5 w-3.5 mr-1.5" />
+              Stacking
+              {hasStackingEnabled && (
+                <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-pink-500">
+                  ON
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Merge Configuration Tab */}
+        <TabsContent value="merge" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
+              {/* Merge Strategy Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Merge Strategy</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-[200px]">
+                      <p>How to combine outputs from multiple branches</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Select value={step.name} onValueChange={handleNameChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover max-h-[300px]">
+                    {stepOptions.merge.map((opt) => (
+                      <SelectItem key={opt.name} value={opt.name}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{opt.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {opt.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {currentOption && (
+                  <p className="text-xs text-muted-foreground">
+                    {currentOption.description}
+                  </p>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Parameters */}
+              {Object.keys(step.params).length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Parameters</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleResetParams}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
+                  {Object.entries(step.params).map(([key, value]) =>
+                    renderParamInput(key, value)
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
+                    <Info className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    No configurable parameters
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This merge strategy uses default settings
+                  </p>
+                </div>
+              )}
+
+              {/* Stacking CTA */}
+              {!hasStackingEnabled && (
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-pink-500/5 border border-pink-500/20">
+                  <Layers className="h-4 w-4 text-pink-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-foreground">
+                      Want to use stacking ensemble?
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Combine branch predictions with a meta-model for better results.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs border-pink-500/50 text-pink-500 hover:bg-pink-500/10"
+                    onClick={() => setActiveTab("stacking")}
+                  >
+                    Configure
+                  </Button>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Stacking Tab */}
+        <TabsContent value="stacking" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4">
+              <StackingPanel
+                config={stackingConfig}
+                onChange={handleStackingChange}
+              />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
+
+      {/* Actions */}
+      <div className="p-4 border-t border-border space-y-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => onDuplicate(step.id)}
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate Step
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="w-full"
+          onClick={() => onRemove(step.id)}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Remove Step
+        </Button>
+      </div>
+    </>
   );
 }

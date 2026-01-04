@@ -11,6 +11,10 @@ import {
   GitMerge,
   GripVertical,
   Sparkles,
+  Filter,
+  Zap,
+  BarChart3,
+  Star,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
@@ -21,6 +25,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { usePipelineDnd } from "./PipelineDndContext";
 import {
   stepOptions,
@@ -32,20 +41,24 @@ import {
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
+  y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
+  filter: Filter,
+  augmentation: Zap,
 };
 
 interface DraggableStepProps {
   stepType: StepType;
   option: StepOption;
   onDoubleClick: () => void;
+  isCompact?: boolean;
 }
 
-function DraggableStep({ stepType, option, onDoubleClick }: DraggableStepProps) {
+function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: DraggableStepProps) {
   const { isDragging: globalIsDragging } = usePipelineDnd();
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -61,36 +74,57 @@ function DraggableStep({ stepType, option, onDoubleClick }: DraggableStepProps) 
   const colors = stepColors[stepType];
 
   return (
-    <motion.div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      onDoubleClick={onDoubleClick}
-      layout
-      initial={false}
-      animate={{
-        opacity: isDragging ? 0.4 : 1,
-        scale: isDragging ? 0.98 : 1,
-      }}
-      whileHover={!globalIsDragging ? { scale: 1.01, y: -1 } : {}}
-      whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.15 }}
-      className={`
-        flex items-center gap-2 p-2 rounded-md border cursor-grab active:cursor-grabbing
-        transition-colors select-none overflow-hidden
-        ${colors.border} ${colors.bg} ${colors.hover}
-        ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
-      `}
-    >
-      <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/50" />
-      <div className={`p-1 rounded ${colors.bg} ${colors.text} flex-shrink-0`}>
-        <Icon className="h-3 w-3" />
-      </div>
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
-        <p className="text-[10px] text-muted-foreground truncate leading-tight">{option.description}</p>
-      </div>
-    </motion.div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <motion.div
+          ref={setNodeRef}
+          {...listeners}
+          {...attributes}
+          onDoubleClick={onDoubleClick}
+          layout
+          initial={false}
+          animate={{
+            opacity: isDragging ? 0.4 : 1,
+            scale: isDragging ? 0.98 : 1,
+          }}
+          whileHover={!globalIsDragging ? { scale: 1.01, y: -1 } : {}}
+          whileTap={{ scale: 0.98 }}
+          transition={{ duration: 0.15 }}
+          className={`
+            flex items-center gap-2 p-2 rounded-md border cursor-grab active:cursor-grabbing
+            transition-colors select-none overflow-hidden
+            ${colors.border} ${colors.bg} ${colors.hover}
+            ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
+            ${option.isDeepLearning ? "border-l-2 border-l-violet-500" : ""}
+          `}
+        >
+          <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/50" />
+          <div className={`p-1 rounded ${colors.bg} ${colors.text} flex-shrink-0`}>
+            <Icon className="h-3 w-3" />
+          </div>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex items-center gap-1">
+              <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
+              {option.isDeepLearning && (
+                <Star className="h-2.5 w-2.5 text-violet-500 flex-shrink-0" />
+              )}
+            </div>
+            {!isCompact && (
+              <p className="text-[10px] text-muted-foreground truncate leading-tight">{option.description}</p>
+            )}
+          </div>
+        </motion.div>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[200px]">
+        <div className="space-y-1">
+          <p className="font-medium">{option.name}</p>
+          <p className="text-xs text-muted-foreground">{option.description}</p>
+          {option.category && (
+            <Badge variant="secondary" className="text-[10px]">{option.category}</Badge>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -98,16 +132,44 @@ interface StepPaletteProps {
   onAddStep: (stepType: StepType, option: StepOption) => void;
 }
 
+// Order of step types in the palette (most commonly used first)
+const stepTypeOrder: StepType[] = [
+  "preprocessing",
+  "splitting",
+  "model",
+  "y_processing",
+  "generator",
+  "branch",
+  "merge",
+  "filter",
+  "augmentation",
+];
+
+// Group options by category
+function groupByCategory(options: StepOption[]): Map<string, StepOption[]> {
+  const groups = new Map<string, StepOption[]>();
+  for (const opt of options) {
+    const category = opt.category || "General";
+    if (!groups.has(category)) {
+      groups.set(category, []);
+    }
+    groups.get(category)!.push(opt);
+  }
+  return groups;
+}
+
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const filteredOptions = useCallback(
     (type: StepType) =>
       stepOptions[type].filter(
         (opt) =>
           opt.name.toLowerCase().includes(search.toLowerCase()) ||
-          opt.description.toLowerCase().includes(search.toLowerCase())
+          opt.description.toLowerCase().includes(search.toLowerCase()) ||
+          (opt.category?.toLowerCase().includes(search.toLowerCase()) ?? false)
       ),
     [search]
   );
@@ -118,17 +180,20 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     if (value.trim()) {
       // Open all sections that have matching results
       const matchingSections = new Set<StepType>();
-      (Object.keys(stepOptions) as StepType[]).forEach((type) => {
+      stepTypeOrder.forEach((type) => {
         const matches = stepOptions[type].filter(
           (opt) =>
             opt.name.toLowerCase().includes(value.toLowerCase()) ||
-            opt.description.toLowerCase().includes(value.toLowerCase())
+            opt.description.toLowerCase().includes(value.toLowerCase()) ||
+            (opt.category?.toLowerCase().includes(value.toLowerCase()) ?? false)
         );
         if (matches.length > 0) {
           matchingSections.add(type);
         }
       });
       setOpenSections(matchingSections);
+      // Expand all categories when searching
+      setExpandedCategories(new Set());
     }
   };
 
@@ -152,9 +217,21 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     });
   };
 
+  const toggleCategory = (categoryKey: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoryKey)) {
+        next.delete(categoryKey);
+      } else {
+        next.add(categoryKey);
+      }
+      return next;
+    });
+  };
+
   const totalSteps = useMemo(
     () =>
-      (Object.keys(stepOptions) as StepType[]).reduce(
+      stepTypeOrder.reduce(
         (acc, type) => acc + filteredOptions(type).length,
         0
       ),
@@ -174,7 +251,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search components..."
+            placeholder="Search steps..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
@@ -187,21 +264,26 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
 
       {/* Step Categories */}
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4">
-          {(Object.keys(stepOptions) as StepType[]).map((type) => {
+        <div className="p-4 space-y-3">
+          {stepTypeOrder.map((type) => {
             const Icon = stepIcons[type];
             const colors = stepColors[type];
             const options = filteredOptions(type);
             if (options.length === 0 && search) return null;
 
+            // Group by category
+            const grouped = groupByCategory(options);
+            const hasCategories = grouped.size > 1 || !grouped.has("General");
+            const isExpanded = openSections.has(type);
+
             return (
               <Collapsible
                 key={type}
-                open={openSections.has(type)}
+                open={isExpanded}
                 onOpenChange={() => toggleSection(type)}
               >
                 <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-1.5 hover:bg-muted/50 rounded px-2 -mx-2 transition-colors">
-                  {openSections.has(type) ? (
+                  {isExpanded ? (
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   ) : (
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
@@ -217,15 +299,57 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                   </Badge>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-1">
-                  <div className="space-y-1 pl-5">
-                    {options.map((option) => (
-                      <DraggableStep
-                        key={option.name}
-                        stepType={type}
-                        option={option}
-                        onDoubleClick={() => onAddStep(type, option)}
-                      />
-                    ))}
+                  <div className="pl-5">
+                    {hasCategories && !search ? (
+                      // Render grouped by category with nested collapsibles
+                      Array.from(grouped.entries()).map(([category, categoryOptions]) => {
+                        const categoryKey = `${type}-${category}`;
+                        const isCategoryExpanded = expandedCategories.has(categoryKey) || search.length > 0;
+
+                        return (
+                          <Collapsible
+                            key={categoryKey}
+                            open={isCategoryExpanded}
+                            onOpenChange={() => toggleCategory(categoryKey)}
+                          >
+                            <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1 px-1 hover:bg-muted/30 rounded transition-colors text-muted-foreground hover:text-foreground">
+                              {isCategoryExpanded ? (
+                                <ChevronDown className="h-3 w-3" />
+                              ) : (
+                                <ChevronRight className="h-3 w-3" />
+                              )}
+                              <span className="text-[10px] font-medium uppercase tracking-wide">{category}</span>
+                              <span className="text-[9px] text-muted-foreground ml-auto">{categoryOptions.length}</span>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="space-y-1 pl-2 pt-0.5 pb-1">
+                                {categoryOptions.map((option) => (
+                                  <DraggableStep
+                                    key={option.name}
+                                    stepType={type}
+                                    option={option}
+                                    onDoubleClick={() => onAddStep(type, option)}
+                                    isCompact={categoryOptions.length > 8}
+                                  />
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })
+                    ) : (
+                      // Flat list (no categories or searching)
+                      <div className="space-y-1">
+                        {options.map((option) => (
+                          <DraggableStep
+                            key={option.name}
+                            stepType={type}
+                            option={option}
+                            onDoubleClick={() => onAddStep(type, option)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>

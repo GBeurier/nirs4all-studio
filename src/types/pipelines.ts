@@ -5,7 +5,63 @@
 
 export type PipelineCategory = "user" | "preset" | "shared";
 export type PipelineRunStatus = "success" | "failed" | "running" | "pending";
-export type PipelineStepType = "preprocessing" | "splitting" | "model" | "metrics" | "augmentation" | "feature_selection";
+
+/**
+ * Pipeline step types matching nirs4all operator categories.
+ * Extended to support all operators from the library.
+ */
+export type PipelineStepType =
+  // Preprocessing categories
+  | "preprocessing"
+  | "scatter_correction"
+  | "baseline"
+  | "derivatives"
+  | "smoothing"
+  | "normalization"
+  | "wavelets"
+  | "signal_conversion"
+  // Data handling
+  | "splitting"
+  | "augmentation"
+  | "feature_selection"
+  // Models
+  | "model"
+  | "model_pls"
+  | "model_ensemble"
+  | "model_dl"
+  // Target processing
+  | "y_processing"
+  // Visualization
+  | "charts"
+  // Control flow
+  | "branch"
+  | "choice"
+  | "merge";
+
+/**
+ * Generator configuration for creating multiple pipeline variants.
+ * These map directly to nirs4all generator keywords.
+ */
+export interface GeneratorConfig {
+  /** Choose one of multiple alternatives */
+  _or_?: unknown[];
+  /** Linear numeric range: [start, end, step?] */
+  _range_?: [number, number, number?];
+  /** Logarithmic range: [start, end, num_steps?] */
+  _log_range_?: [number, number, number?];
+  /** Grid search over multiple parameters */
+  _grid_?: Record<string, unknown[]>;
+  /** Parallel zip of multiple parameters */
+  _zip_?: Record<string, unknown[]>;
+  /** Number of items to select (combinations) */
+  pick?: number;
+  /** Number of items to select (permutations) */
+  arrange?: number;
+  /** Limit total number of variants */
+  count?: number;
+  /** Random seed for reproducibility */
+  seed?: number;
+}
 
 export interface PipelineStep {
   id: string;
@@ -14,6 +70,12 @@ export interface PipelineStep {
   displayName?: string;
   params: Record<string, unknown>;
   enabled?: boolean;
+  /** Generator configuration for creating variants */
+  generator?: GeneratorConfig;
+  /** Child steps for branch/choice nodes */
+  children?: PipelineStep[];
+  /** Parent step ID for nested steps */
+  parentId?: string;
 }
 
 export interface Pipeline {
