@@ -1,3 +1,17 @@
+/**
+ * @deprecated This file is deprecated and will be removed in a future version.
+ *
+ * MIGRATION GUIDE:
+ * - Frontend processing is now handled by the backend via /api/playground/execute
+ * - Use usePlaygroundPipeline hook instead of usePipeline
+ * - Use OperatorPaletteNew component instead of OperatorPalette
+ * - Use UnifiedOperatorCard component instead of OperatorCard
+ * - Operator definitions are now fetched from /api/playground/operators
+ *
+ * This file remains for backward compatibility with legacy Playground page.
+ * New code should NOT import from this file.
+ */
+
 import { OperatorType, OperatorParams, OperatorDefinition } from '@/types/spectral';
 
 // Operator definitions with metadata

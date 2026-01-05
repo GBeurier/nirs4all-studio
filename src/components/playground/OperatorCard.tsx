@@ -1,3 +1,12 @@
+/**
+ * @deprecated This component is deprecated. Use UnifiedOperatorCard instead.
+ *
+ * MIGRATION GUIDE:
+ * - Import { UnifiedOperatorCard } from '@/components/playground'
+ * - UnifiedOperatorCard uses the unified operator format
+ * - UnifiedOperatorCard renders parameters dynamically from backend definitions
+ */
+
 import { useState } from 'react';
 import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import { PipelineOperator, OperatorParams, OperatorTarget } from '@/types/spectral';

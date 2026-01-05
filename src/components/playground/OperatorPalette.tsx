@@ -1,3 +1,12 @@
+/**
+ * @deprecated This component is deprecated. Use OperatorPaletteNew instead.
+ *
+ * MIGRATION GUIDE:
+ * - Import { OperatorPaletteNew } from '@/components/playground'
+ * - OperatorPaletteNew fetches operators from backend
+ * - OperatorPaletteNew supports both preprocessing and splitting operators
+ */
+
 import { useState, useMemo } from 'react';
 import { operatorDefinitions } from '@/lib/preprocessing/operators';
 import { OperatorType } from '@/types/spectral';

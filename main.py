@@ -31,6 +31,7 @@ from api.evaluation import router as evaluation_router
 from api.automl import router as automl_router
 from api.dashboard import router as dashboard_router
 from api.runs import router as runs_router
+from api.playground import router as playground_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -69,6 +70,7 @@ app.include_router(evaluation_router, prefix="/api", tags=["evaluation"])
 app.include_router(automl_router, prefix="/api", tags=["automl"])
 app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
 app.include_router(runs_router, prefix="/api", tags=["runs"])
+app.include_router(playground_router, prefix="/api", tags=["playground"])
 
 
 # ============= WebSocket Endpoints =============

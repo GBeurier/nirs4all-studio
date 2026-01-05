@@ -168,11 +168,13 @@ async def get_spectra(
     end: Optional[int] = Query(None, description="End index (exclusive)"),
     partition: str = Query("train", description="Partition to get spectra from"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
+    include_y: bool = Query(False, description="Whether to include target (y) values"),
 ):
     """
     Get raw spectra data from a dataset.
 
     Returns spectral data as a 2D array with wavelength headers.
+    Optionally includes target (y) values when include_y=True.
     """
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
@@ -217,7 +219,8 @@ async def get_spectra(
         except Exception:
             header_unit = "unknown"
 
-        return {
+        # Build response
+        response = {
             "dataset_id": dataset_id,
             "partition": partition,
             "source": source,
@@ -229,6 +232,26 @@ async def get_spectra(
             "wavelengths": headers,
             "wavelength_unit": header_unit,
         }
+
+        # Include y values if requested
+        if include_y:
+            try:
+                y = dataset.y(selector)
+                if y is not None and len(y) > 0:
+                    y_slice = y[start:end]
+                    # Handle multi-target (2D) vs single-target (1D)
+                    if y_slice.ndim == 1:
+                        response["y"] = y_slice.tolist()
+                    else:
+                        # Use first target column for simplicity
+                        response["y"] = y_slice[:, 0].tolist()
+                else:
+                    response["y"] = None
+            except Exception as e:
+                print(f"Warning: Could not get y values: {e}")
+                response["y"] = None
+
+        return response
 
     except HTTPException:
         raise

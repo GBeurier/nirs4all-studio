@@ -1,10 +1,19 @@
 import { useState, useCallback } from 'react';
 import { SpectralData } from '@/types/spectral';
+import { loadWorkspaceDataset } from '@/api/playground';
+
+export interface WorkspaceDatasetInfo {
+  datasetId: string;
+  datasetName: string;
+}
 
 export function useSpectralData() {
   const [rawData, setRawData] = useState<SpectralData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Track the source of the current data
+  const [dataSource, setDataSource] = useState<'file' | 'workspace' | 'demo' | null>(null);
+  const [currentDatasetInfo, setCurrentDatasetInfo] = useState<WorkspaceDatasetInfo | null>(null);
 
   const parseCSV = useCallback((content: string): SpectralData => {
     const lines = content.trim().split('\n');
@@ -71,12 +80,16 @@ export function useSpectralData() {
         const content = await file.text();
         const data = parseCSV(content);
         setRawData(data);
+        setDataSource('file');
+        setCurrentDatasetInfo(null);
       } else {
         throw new Error('Unsupported file format. Please use CSV files.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse file');
       setRawData(null);
+      setDataSource(null);
+      setCurrentDatasetInfo(null);
     } finally {
       setIsLoading(false);
     }
@@ -121,20 +134,46 @@ export function useSpectralData() {
     }
 
     setRawData({ wavelengths, spectra, y, sampleIds });
+    setDataSource('demo');
+    setCurrentDatasetInfo(null);
     setError(null);
+  }, []);
+
+  const loadFromWorkspace = useCallback(async (datasetId: string, datasetName: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const data = await loadWorkspaceDataset(datasetId, datasetName);
+      setRawData(data);
+      setDataSource('workspace');
+      setCurrentDatasetInfo({ datasetId, datasetName });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load workspace dataset');
+      setRawData(null);
+      setDataSource(null);
+      setCurrentDatasetInfo(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const clearData = useCallback(() => {
     setRawData(null);
     setError(null);
+    setDataSource(null);
+    setCurrentDatasetInfo(null);
   }, []);
 
   return {
     rawData,
     isLoading,
     error,
+    dataSource,
+    currentDatasetInfo,
     loadFile,
     loadDemoData,
+    loadFromWorkspace,
     clearData,
   };
 }

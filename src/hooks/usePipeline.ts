@@ -1,3 +1,15 @@
+/**
+ * @deprecated This hook is deprecated. Use usePlaygroundPipeline instead.
+ *
+ * MIGRATION GUIDE:
+ * - Import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline'
+ * - The new hook uses backend processing via /api/playground/execute
+ * - The new hook uses unified operator format (preprocessing + splitting)
+ * - The new hook integrates with React Query for caching and cancellation
+ *
+ * This hook remains for backward compatibility with legacy Playground page.
+ */
+
 import { useState, useCallback, useMemo } from 'react';
 import { PipelineOperator, OperatorType, OperatorParams, SpectralData } from '@/types/spectral';
 import { operatorDefinitions, processSpectrum } from '@/lib/preprocessing/operators';

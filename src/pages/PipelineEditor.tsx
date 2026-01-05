@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo, useRef } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Save,
@@ -111,6 +111,7 @@ const demoPipeline: EditorPipelineStep[] = [
 export default function PipelineEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isNew = !id || id === "new";
 
   // Use a stable ID for persistence: either the route param or "new" for new pipelines
@@ -167,6 +168,43 @@ export default function PipelineEditor() {
     pipelineId: pipelineId,
     persistState: true,
   });
+
+  // Handle import from Playground via sessionStorage
+  useEffect(() => {
+    const source = searchParams.get('source');
+    if (source === 'playground') {
+      const PLAYGROUND_EXPORT_KEY = 'playground-pipeline-export';
+      try {
+        const exportData = sessionStorage.getItem(PLAYGROUND_EXPORT_KEY);
+        if (exportData) {
+          const parsed = JSON.parse(exportData);
+          if (parsed.steps && Array.isArray(parsed.steps)) {
+            // Convert playground steps to nirs4all format
+            const nirs4allPipeline = parsed.steps.map((step: { type: string; name: string; params: Record<string, unknown> }) => ({
+              [step.type === 'splitting' ? 'split' : 'preprocessing']: step.name,
+              ...step.params,
+            }));
+
+            loadFromNirs4all({ pipeline: nirs4allPipeline });
+            setPipelineName(parsed.name || 'Imported from Playground');
+
+            toast.success('Pipeline imported from Playground', {
+              description: `${parsed.steps.length} operators loaded`,
+            });
+
+            // Clear the export data
+            sessionStorage.removeItem(PLAYGROUND_EXPORT_KEY);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to import from Playground:', e);
+        toast.error('Failed to import pipeline from Playground');
+      }
+
+      // Clean up URL params
+      navigate(`/pipelines/${pipelineId}`, { replace: true });
+    }
+  }, [searchParams, loadFromNirs4all, setPipelineName, navigate, pipelineId]);
 
   // Load samples on first dropdown open
   const handleLoadSamples = useCallback(async () => {

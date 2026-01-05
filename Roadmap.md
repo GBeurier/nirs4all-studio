@@ -7,7 +7,6 @@
 
 - Optuna model cannot finetune training params or set finetune training params (basically finetune is a finetuning + a training)
 
-- Set Pipeline Name visible (The text area border is white as well as the bg)
 
 
 **Global**

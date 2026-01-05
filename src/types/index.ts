@@ -6,4 +6,5 @@ import "./pywebview.d";
 export * from "./dashboard";
 export * from "./datasets";
 export * from "./pipelines";
+export * from "./playground";
 export * from "./runs";
