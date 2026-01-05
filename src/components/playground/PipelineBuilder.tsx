@@ -1,12 +1,33 @@
-import { useState } from 'react';
-import { Layers, Trash2 } from 'lucide-react';
-import { PipelineOperator } from '@/types/spectral';
-import { OperatorCard } from './OperatorCard';
+/**
+ * PipelineBuilder - Pipeline builder for unified operators
+ *
+ * Features:
+ * - Unified operator format (preprocessing + splitting)
+ * - Dynamic parameter definitions from backend
+ * - Visual distinction for splitters
+ * - Loading and error states
+ */
+
+import { useState, useMemo } from 'react';
+import { Layers, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { UnifiedOperatorCard } from './UnifiedOperatorCard';
+import { useOperatorRegistry } from '@/hooks/useOperatorRegistry';
+import type { UnifiedOperator, StepError } from '@/types/playground';
 
 interface PipelineBuilderProps {
-  operators: PipelineOperator[];
-  onUpdate: (id: string, updates: Partial<PipelineOperator>) => void;
+  operators: UnifiedOperator[];
+  isProcessing?: boolean;
+  stepErrors?: StepError[];
+  onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
+  onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
   onToggle: (id: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
@@ -15,7 +36,10 @@ interface PipelineBuilderProps {
 
 export function PipelineBuilder({
   operators,
+  isProcessing = false,
+  stepErrors = [],
   onUpdate,
+  onUpdateParams,
   onRemove,
   onToggle,
   onReorder,
@@ -23,6 +47,18 @@ export function PipelineBuilder({
 }: PipelineBuilderProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  // Get operator definitions for parameter info
+  const { getOperator } = useOperatorRegistry();
+
+  // Build error map for quick lookup
+  const errorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const err of stepErrors) {
+      map.set(err.step, err.error);
+    }
+    return map;
+  }, [stepErrors]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDragIndex(index);
@@ -44,6 +80,10 @@ export function PipelineBuilder({
     setDropIndex(null);
   };
 
+  // Count operator types
+  const preprocessingCount = operators.filter(op => op.type === 'preprocessing').length;
+  const splittingCount = operators.filter(op => op.type === 'splitting').length;
+
   if (operators.length === 0) {
     return (
       <div className="p-4">
@@ -63,39 +103,87 @@ export function PipelineBuilder({
   }
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <Layers className="w-4 h-4" />
-          Pipeline ({operators.length})
-        </h3>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-          onClick={onClear}
-          title="Clear pipeline"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
+    <TooltipProvider>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Layers className="w-4 h-4" />
+              Pipeline
+            </h3>
+            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              {preprocessingCount} prep
+            </span>
+            {splittingCount > 0 && (
+              <span className="text-[10px] text-orange-500 bg-orange-500/10 px-1.5 py-0.5 rounded">
+                {splittingCount} split
+              </span>
+            )}
+            {isProcessing && (
+              <Loader2 className="w-3 h-3 text-primary animate-spin" />
+            )}
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                onClick={onClear}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <div className="flex items-center gap-2">
+                <span>Clear pipeline</span>
+                <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded">Ctrl+Backspace</kbd>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
+      {/* Step errors alert */}
+      {stepErrors.length > 0 && (
+        <Alert variant="destructive" className="mb-3 py-2">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            {stepErrors.length} step{stepErrors.length > 1 ? 's' : ''} failed
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="space-y-2">
-        {operators.map((operator, index) => (
-          <OperatorCard
-            key={operator.id}
-            operator={operator}
-            index={index}
-            onUpdate={onUpdate}
-            onRemove={onRemove}
-            onToggle={onToggle}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-            isDragging={dragIndex === index}
-          />
-        ))}
+        {operators.map((operator, index) => {
+          const definition = getOperator(operator.name);
+          const hasError = errorMap.has(operator.id);
+
+          return (
+            <div key={operator.id} className="relative">
+              {hasError && (
+                <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-4 bg-destructive rounded-full" />
+              )}
+              <UnifiedOperatorCard
+                operator={operator}
+                index={index}
+                paramDefs={definition?.params}
+                description={definition?.description}
+                onUpdate={onUpdate}
+                onUpdateParams={onUpdateParams}
+                onRemove={onRemove}
+                onToggle={onToggle}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+                isDragging={dragIndex === index}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
+
+export default PipelineBuilder;
