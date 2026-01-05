@@ -6,10 +6,10 @@
 // ============= Unified Operator Format =============
 
 /**
- * Unified operator type supporting both preprocessing and splitting
+ * Unified operator type supporting preprocessing, augmentation, and splitting
  * This format is shared with the Pipeline Editor for consistency
  */
-export type UnifiedOperatorType = 'preprocessing' | 'splitting';
+export type UnifiedOperatorType = 'preprocessing' | 'augmentation' | 'splitting';
 
 /**
  * Unified operator format for playground pipeline steps
@@ -18,7 +18,7 @@ export type UnifiedOperatorType = 'preprocessing' | 'splitting';
 export interface UnifiedOperator {
   id: string;
   type: UnifiedOperatorType;
-  name: string;  // Class name e.g., "StandardNormalVariate", "KFold"
+  name: string;  // Class name e.g., "StandardNormalVariate", "KFold", "GaussianAdditiveNoise"
   params: Record<string, unknown>;
   enabled: boolean;
 }
@@ -50,7 +50,7 @@ export interface PlaygroundData {
  */
 export interface PlaygroundStep {
   id: string;
-  type: 'preprocessing' | 'splitting';
+  type: 'preprocessing' | 'augmentation' | 'splitting';
   name: string;
   params: Record<string, unknown>;
   enabled: boolean;
@@ -102,6 +102,9 @@ export interface SpectrumStats {
   max: number[];
   p5: number[];
   p95: number[];
+  median?: number[];
+  q1?: number[];
+  q3?: number[];
   global: {
     mean: number;
     std: number;
@@ -214,7 +217,7 @@ export interface OperatorDefinition {
   description: string;
   category: string;
   params: Record<string, OperatorParamInfo>;
-  type: 'preprocessing' | 'splitting';
+  type: 'preprocessing' | 'augmentation' | 'splitting';
   source?: string;
 }
 
@@ -224,6 +227,8 @@ export interface OperatorDefinition {
 export interface OperatorsResponse {
   preprocessing: OperatorDefinition[];
   preprocessing_by_category: Record<string, OperatorDefinition[]>;
+  augmentation: OperatorDefinition[];
+  augmentation_by_category: Record<string, OperatorDefinition[]>;
   splitting: OperatorDefinition[];
   splitting_by_category: Record<string, OperatorDefinition[]>;
   total: number;
@@ -232,10 +237,10 @@ export interface OperatorsResponse {
 // ============= Preset Types =============
 
 /**
- * A preset pipeline configuration
+ * A preset pipeline configuration step
  */
 export interface PresetStep {
-  type: 'preprocessing' | 'splitting';
+  type: 'preprocessing' | 'augmentation' | 'splitting';
   name: string;
   params: Record<string, unknown>;
 }

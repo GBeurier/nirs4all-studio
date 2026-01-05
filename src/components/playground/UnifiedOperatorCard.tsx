@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle } from 'lucide-react';
+import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -77,7 +77,7 @@ export function UnifiedOperatorCard({
           isSplitter ? 'border-orange-500/50' : 'border-border'
         )}
       >
-        <div className="flex items-center gap-2 p-2">
+        <div className="flex items-center gap-1 p-1.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="cursor-grab hover:text-primary">
@@ -109,61 +109,63 @@ export function UnifiedOperatorCard({
             </div>
           </div>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                onClick={() => onToggle(operator.id)}
-              >
-                {operator.enabled ? (
-                  <Eye className="w-3.5 h-3.5" />
-                ) : (
-                  <EyeOff className="w-3.5 h-3.5" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {operator.enabled ? 'Disable step' : 'Enable step'}
-            </TooltipContent>
-          </Tooltip>
-
-          {hasParams && (
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsExpanded(!isExpanded)}
+                  onClick={() => onToggle(operator.id)}
                 >
-                  {isExpanded ? (
-                    <ChevronUp className="w-3.5 h-3.5" />
+                  {operator.enabled ? (
+                    <Eye className="w-3.5 h-3.5" />
                   ) : (
-                    <ChevronDown className="w-3.5 h-3.5" />
+                    <EyeOff className="w-3.5 h-3.5" />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">
-                {isExpanded ? 'Hide parameters' : 'Show parameters'}
+                {operator.enabled ? 'Disable step' : 'Enable step'}
               </TooltipContent>
             </Tooltip>
-          )}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                onClick={() => onRemove(operator.id)}
-              >
-                <X className="w-3.5 h-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Remove step</TooltipContent>
-          </Tooltip>
+            {hasParams && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                  >
+                    {isExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isExpanded ? 'Hide parameters' : 'Show parameters'}
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => onRemove(operator.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Remove step</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         {isExpanded && hasParams && paramDefs && (

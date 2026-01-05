@@ -36,6 +36,8 @@ interface StepComparisonSliderProps {
   enabled: boolean;
   /** Callback when enabled state changes */
   onEnabledChange: (enabled: boolean) => void;
+  /** Notify parent that user started an interaction (for optimistic spinners) */
+  onInteractionStart?: () => void;
   /** Whether we're currently loading */
   isLoading?: boolean;
   /** Compact mode for smaller spaces */
@@ -48,6 +50,7 @@ export function StepComparisonSlider({
   onStepChange,
   enabled,
   onEnabledChange,
+  onInteractionStart,
   isLoading = false,
   compact = false,
 }: StepComparisonSliderProps) {
@@ -66,15 +69,31 @@ export function StepComparisonSlider({
     return enabledOperators[currentStep - 1]?.name ?? `Step ${currentStep}`;
   }, [currentStep, enabledOperators]);
 
+  const handleEnabledChange = useCallback((value: boolean) => {
+    onInteractionStart?.();
+    onEnabledChange(value);
+  }, [onEnabledChange, onInteractionStart]);
+
   // Step navigation
-  const goToStart = useCallback(() => onStepChange(0), [onStepChange]);
-  const goToEnd = useCallback(() => onStepChange(maxStep), [onStepChange, maxStep]);
+  const goToStart = useCallback(() => {
+    onInteractionStart?.();
+    onStepChange(0);
+  }, [onInteractionStart, onStepChange]);
+
+  const goToEnd = useCallback(() => {
+    onInteractionStart?.();
+    onStepChange(maxStep);
+  }, [onInteractionStart, onStepChange, maxStep]);
+
   const goToPrev = useCallback(() => {
+    onInteractionStart?.();
     onStepChange(Math.max(0, currentStep - 1));
-  }, [onStepChange, currentStep]);
+  }, [onInteractionStart, onStepChange, currentStep]);
+
   const goToNext = useCallback(() => {
+    onInteractionStart?.();
     onStepChange(Math.min(maxStep, currentStep + 1));
-  }, [onStepChange, currentStep, maxStep]);
+  }, [onInteractionStart, onStepChange, currentStep, maxStep]);
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -107,7 +126,8 @@ export function StepComparisonSlider({
                 <Switch
                   id="step-mode"
                   checked={enabled}
-                  onCheckedChange={onEnabledChange}
+                  onCheckedChange={handleEnabledChange}
+                  onMouseDown={onInteractionStart}
                   className="scale-75"
                 />
                 <Label htmlFor="step-mode" className="text-[10px] cursor-pointer">
@@ -127,6 +147,7 @@ export function StepComparisonSlider({
                 size="icon"
                 className="h-5 w-5"
                 onClick={goToPrev}
+                onMouseDown={onInteractionStart}
                 disabled={currentStep === 0 || isLoading}
               >
                 <ChevronLeft className="w-3 h-3" />
@@ -139,6 +160,7 @@ export function StepComparisonSlider({
                 size="icon"
                 className="h-5 w-5"
                 onClick={goToNext}
+                onMouseDown={onInteractionStart}
                 disabled={currentStep >= maxStep || isLoading}
               >
                 <ChevronRight className="w-3 h-3" />
@@ -171,7 +193,8 @@ export function StepComparisonSlider({
           <Switch
             id="step-comparison"
             checked={enabled}
-            onCheckedChange={onEnabledChange}
+            onCheckedChange={handleEnabledChange}
+            onMouseDown={onInteractionStart}
           />
           <Label
             htmlFor="step-comparison"
@@ -192,6 +215,7 @@ export function StepComparisonSlider({
             <Slider
               value={[currentStep]}
               onValueChange={([val]) => onStepChange(val)}
+              onPointerDown={onInteractionStart}
               min={0}
               max={maxStep}
               step={1}
@@ -214,6 +238,7 @@ export function StepComparisonSlider({
               size="icon"
               className="h-7 w-7"
               onClick={goToStart}
+              onMouseDown={onInteractionStart}
               disabled={currentStep === 0 || isLoading}
               title="Go to original (Home)"
             >
@@ -224,6 +249,7 @@ export function StepComparisonSlider({
               size="icon"
               className="h-7 w-7"
               onClick={goToPrev}
+              onMouseDown={onInteractionStart}
               disabled={currentStep === 0 || isLoading}
               title="Previous step (←)"
             >
@@ -234,6 +260,7 @@ export function StepComparisonSlider({
               size="icon"
               className="h-7 w-7"
               onClick={goToNext}
+              onMouseDown={onInteractionStart}
               disabled={currentStep >= maxStep || isLoading}
               title="Next step (→)"
             >
@@ -244,6 +271,7 @@ export function StepComparisonSlider({
               size="icon"
               className="h-7 w-7"
               onClick={goToEnd}
+              onMouseDown={onInteractionStart}
               disabled={currentStep >= maxStep || isLoading}
               title="Go to final (End)"
             >
@@ -257,6 +285,7 @@ export function StepComparisonSlider({
               <button
                 key={i}
                 onClick={() => onStepChange(i)}
+                onMouseDown={onInteractionStart}
                 className={cn(
                   'text-[9px] px-1 py-0.5 rounded transition-colors',
                   currentStep === i

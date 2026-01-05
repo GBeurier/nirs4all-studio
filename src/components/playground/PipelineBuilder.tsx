@@ -104,8 +104,8 @@ export function PipelineBuilder({
 
   return (
     <TooltipProvider>
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-3">
+      <div className="p-2">
+        <div className="flex items-center justify-between mb-2 px-1">
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <Layers className="w-4 h-4" />

@@ -30,6 +30,10 @@ export interface UseOperatorRegistryResult {
   preprocessing: OperatorDefinition[];
   /** Preprocessing operators grouped by category */
   preprocessingByCategory: Record<string, OperatorDefinition[]>;
+  /** All augmentation operators */
+  augmentation: OperatorDefinition[];
+  /** Augmentation operators grouped by category */
+  augmentationByCategory: Record<string, OperatorDefinition[]>;
   /** All splitting operators */
   splitting: OperatorDefinition[];
   /** Splitting operators grouped by category */
@@ -73,6 +77,7 @@ export function useOperatorRegistry(
   // Combine all operators for lookup
   const allOperators = [
     ...(data?.preprocessing ?? []),
+    ...(data?.augmentation ?? []),
     ...(data?.splitting ?? []),
   ];
 
@@ -86,6 +91,8 @@ export function useOperatorRegistry(
   return {
     preprocessing: data?.preprocessing ?? [],
     preprocessingByCategory: data?.preprocessing_by_category ?? {},
+    augmentation: data?.augmentation ?? [],
+    augmentationByCategory: data?.augmentation_by_category ?? {},
     splitting: data?.splitting ?? [],
     splittingByCategory: data?.splitting_by_category ?? {},
     allOperators,
@@ -170,6 +177,19 @@ export const PREPROCESSING_CATEGORY_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+export const AUGMENTATION_CATEGORY_LABELS: Record<string, string> = {
+  noise: 'Noise',
+  baseline_drift: 'Baseline Drift',
+  wavelength_distortion: 'Wavelength Distortion',
+  resolution: 'Resolution & Smoothing',
+  masking: 'Masking & Dropout',
+  artefacts: 'Artefacts',
+  mixing: 'Sample Mixing',
+  scatter_simulation: 'Scatter Simulation',
+  geometric: 'Geometric',
+  other: 'Other',
+};
+
 export const SPLITTING_CATEGORY_LABELS: Record<string, string> = {
   kfold: 'K-Fold',
   stratified: 'Stratified',
@@ -182,9 +202,12 @@ export const SPLITTING_CATEGORY_LABELS: Record<string, string> = {
 /**
  * Get a human-readable label for a category
  */
-export function getCategoryLabel(category: string, type: 'preprocessing' | 'splitting'): string {
+export function getCategoryLabel(category: string, type: 'preprocessing' | 'augmentation' | 'splitting'): string {
   if (type === 'splitting') {
     return SPLITTING_CATEGORY_LABELS[category] || category;
+  }
+  if (type === 'augmentation') {
+    return AUGMENTATION_CATEGORY_LABELS[category] || category;
   }
   return PREPROCESSING_CATEGORY_LABELS[category] || category;
 }

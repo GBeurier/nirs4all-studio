@@ -19,6 +19,8 @@ if str(nirs4all_path) not in sys.path:
 try:
     from nirs4all.operators import transforms
     from nirs4all.operators import splitters as nirs_splitters
+    from nirs4all.operators.augmentation import spectral as augmentation_spectral
+    from nirs4all.operators.augmentation import random as augmentation_random
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -26,6 +28,8 @@ except ImportError as e:
     NIRS4ALL_AVAILABLE = False
     transforms = None
     nirs_splitters = None
+    augmentation_spectral = None
+    augmentation_random = None
 
 
 # Mapping of frontend operator names to nirs4all/sklearn classes
@@ -410,6 +414,55 @@ def get_splitter_methods() -> List[Dict[str, Any]]:
     return methods
 
 
+def get_augmentation_methods() -> List[Dict[str, Any]]:
+    """Get list of available augmentation methods with metadata.
+
+    Augmentation methods generate synthetic variations of spectra for
+    training data augmentation (noise, baseline drift, wavelength shifts, etc.)
+
+    Returns:
+        List of method info dicts with name, display_name, category, params
+    """
+    if not NIRS4ALL_AVAILABLE:
+        return []
+
+    methods = []
+
+    # Scan augmentation modules
+    augmentation_modules = [
+        (augmentation_spectral, "spectral"),
+        (augmentation_random, "random"),
+    ]
+
+    for module, source in augmentation_modules:
+        if module is None:
+            continue
+
+        for name in dir(module):
+            if name.startswith("_"):
+                continue
+
+            obj = getattr(module, name)
+            if not inspect.isclass(obj):
+                continue
+
+            # Check if it's an augmenter (has augment or fit_transform method)
+            if not (hasattr(obj, "augment") or hasattr(obj, "fit_transform")):
+                continue
+
+            # Skip base classes
+            if name in ("Augmenter", "BaseEstimator", "TransformerMixin"):
+                continue
+
+            # Extract method info
+            method_info = _extract_method_info(obj, name, "augmentation")
+            if method_info:
+                method_info["source"] = f"nirs4all.{source}"
+                methods.append(method_info)
+
+    return methods
+
+
 def _extract_method_info(cls: Type, name: str, operator_type: str) -> Optional[Dict[str, Any]]:
     """Extract method info from a class.
 
@@ -494,6 +547,28 @@ def _categorize_operator(name: str, operator_type: str) -> str:
             return "kfold"
         if any(x in name_lower for x in ["kennard", "spxy", "distance"]):
             return "distance"
+        return "other"
+
+    elif operator_type == "augmentation":
+        # Augmentation categories
+        if any(x in name_lower for x in ["noise", "additive", "multiplicative"]):
+            return "noise"
+        if any(x in name_lower for x in ["baseline", "drift", "polynomial"]):
+            return "baseline_drift"
+        if any(x in name_lower for x in ["wavelength", "shift", "stretch", "warp"]):
+            return "wavelength_distortion"
+        if any(x in name_lower for x in ["smooth", "unsharp", "resolution", "jitter"]):
+            return "resolution"
+        if any(x in name_lower for x in ["mask", "dropout", "band"]):
+            return "masking"
+        if any(x in name_lower for x in ["spike", "clip", "artefact"]):
+            return "artefacts"
+        if any(x in name_lower for x in ["mixup", "mix"]):
+            return "mixing"
+        if any(x in name_lower for x in ["scatter", "msc"]):
+            return "scatter_simulation"
+        if any(x in name_lower for x in ["rotate", "translate", "random"]):
+            return "geometric"
         return "other"
 
     else:  # preprocessing

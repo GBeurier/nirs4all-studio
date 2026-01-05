@@ -41,6 +41,7 @@ from .shared.pipeline_service import (
     convert_frontend_step,
     get_preprocessing_methods,
     get_splitter_methods,
+    get_augmentation_methods,
     instantiate_operator,
     validate_step_params,
 )
@@ -792,17 +793,19 @@ async def execute_pipeline(request: ExecuteRequest):
 async def list_operators():
     """List all available operators for the playground.
 
-    Returns both preprocessing and splitting operators with their
+    Returns preprocessing, augmentation, and splitting operators with their
     metadata, parameters, and categories.
     """
     if not NIRS4ALL_AVAILABLE:
         return {
             "preprocessing": [],
+            "augmentation": [],
             "splitting": [],
             "total": 0
         }
 
     preprocessing = get_preprocessing_methods()
+    augmentation = get_augmentation_methods()
     splitting = get_splitter_methods()
 
     # Group by category
@@ -812,6 +815,13 @@ async def list_operators():
         if cat not in preprocessing_by_category:
             preprocessing_by_category[cat] = []
         preprocessing_by_category[cat].append(method)
+
+    augmentation_by_category = {}
+    for method in augmentation:
+        cat = method.get("category", "other")
+        if cat not in augmentation_by_category:
+            augmentation_by_category[cat] = []
+        augmentation_by_category[cat].append(method)
 
     splitting_by_category = {}
     for method in splitting:
@@ -823,9 +833,11 @@ async def list_operators():
     return {
         "preprocessing": preprocessing,
         "preprocessing_by_category": preprocessing_by_category,
+        "augmentation": augmentation,
+        "augmentation_by_category": augmentation_by_category,
         "splitting": splitting,
         "splitting_by_category": splitting_by_category,
-        "total": len(preprocessing) + len(splitting)
+        "total": len(preprocessing) + len(augmentation) + len(splitting)
     }
 
 

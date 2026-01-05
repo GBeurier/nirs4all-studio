@@ -17,7 +17,7 @@
  * - maxSamples prop limits rendered spectra lines
  */
 
-import { useState, useMemo, useCallback, memo } from 'react';
+import { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { FlaskConical, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -105,6 +105,17 @@ function ColorModeSelector({ colorConfig, onChange, hasFolds }: ColorModeSelecto
   );
 }
 
+function ChartLoadingOverlay({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+
+  return (
+    <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] flex items-center justify-center z-20 pointer-events-none">
+      <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
+      <span className="sr-only">Updating chart</span>
+    </div>
+  );
+}
+
 // ============= Main Component =============
 
 export function MainCanvas({
@@ -132,6 +143,43 @@ export function MainCanvas({
 
   // Color configuration
   const [colorConfig, setColorConfig] = useState<ExtendedColorConfig>({ mode: 'target' });
+
+  // Determine if we should show skeletons
+  const showSkeletons = isLoading && !result;
+
+  // Track user-triggered redraw intent so spinner starts on mousedown
+  const [interactionPending, setInteractionPending] = useState(false);
+  const interactionTimeoutRef = useRef<number | null>(null);
+
+  const triggerInteractionPending = useCallback(() => {
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
+    }
+    setInteractionPending(true);
+    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 1200);
+  }, []);
+
+  useEffect(() => () => {
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
+    }
+  }, []);
+
+  // Clear pending state once backend settles, but keep spinner during fetch
+  useEffect(() => {
+    if (isFetching || isLoading) {
+      setInteractionPending(true);
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+      return;
+    }
+
+    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 150);
+  }, [isFetching, isLoading]);
+
+  // Show a spinner on charts when a redraw is happening but we still have data to show
+  const chartRedrawing = ((isFetching || isLoading) && !!result && !showSkeletons) || interactionPending;
 
   // Check if we have folds
   const hasFolds = useMemo(() => {
@@ -181,7 +229,11 @@ export function MainCanvas({
 
   // Compute grid layout
   const visibleCount = effectiveVisibleCharts.size;
-  const gridCols = visibleCount <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2';
+  const gridCols = visibleCount === 1
+    ? 'grid-cols-1'
+    : visibleCount === 2
+      ? 'grid-cols-1 sm:grid-cols-2'
+      : 'grid-cols-2';
   const gridRows = visibleCount <= 2 ? 'grid-rows-1' : visibleCount <= 4 ? 'grid-rows-2' : 'grid-rows-3';
 
   // Step comparison handlers
@@ -195,6 +247,43 @@ export function MainCanvas({
   const handleActiveStepChange = useCallback((step: number) => {
     onActiveStepChange?.(step);
   }, [onActiveStepChange]);
+
+  // Determine if we should show skeletons
+  const showSkeletons = isLoading && !result;
+
+  // Track user-triggered redraw intent so spinner starts on mousedown
+  const [interactionPending, setInteractionPending] = useState(false);
+  const interactionTimeoutRef = useRef<number | null>(null);
+
+  const triggerInteractionPending = useCallback(() => {
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
+    }
+    setInteractionPending(true);
+    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 1200);
+  }, []);
+
+  useEffect(() => () => {
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
+    }
+  }, []);
+
+  // Clear pending state once backend settles, but keep spinner during fetch
+  useEffect(() => {
+    if (isFetching || isLoading) {
+      setInteractionPending(true);
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+      return;
+    }
+
+    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 150);
+  }, [isFetching, isLoading]);
+
+  // Show a spinner on charts when a redraw is happening but we still have data to show
+  const chartRedrawing = ((isFetching || isLoading) && !!result && !showSkeletons) || interactionPending;
 
   // Empty state - no data loaded
   if (!rawData) {
@@ -234,46 +323,6 @@ export function MainCanvas({
                 <li>• Combine & reorder</li>
               </ul>
             </div>
-          </div>
-
-          <div className="bg-muted/50 rounded-lg p-4 text-xs text-muted-foreground">
-            <p className="font-medium mb-2">Keyboard shortcuts:</p>
-            <div className="flex justify-center gap-4">
-              <span><kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px]">Ctrl+Z</kbd> Undo</span>
-              <span><kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px]">Ctrl+Shift+Z</kbd> Redo</span>
-              <span><kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px]">→</kbd> Step through</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Determine if we should show skeletons
-  const showSkeletons = isLoading && !result;
-
-  // Check if we have operators
-  const hasOperators = operators.length > 0;
-
-  // Helper: show "add operators" hint overlay when no operators
-  const NoOperatorsHint = () => (
-    <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
-      <div className="text-center max-w-sm px-6">
-        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-4">
-          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-        </div>
-        <h3 className="text-lg font-semibold mb-2">Add your first operator</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Select operators from the palette on the left to start building your preprocessing pipeline.
-        </p>
-        <div className="text-xs text-muted-foreground">
-          <p>Data loaded: <span className="font-medium text-foreground">{rawData?.spectra?.length ?? 0} samples × {rawData?.wavelengths?.length ?? 0} wavelengths</span></p>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden relative">
@@ -316,6 +365,7 @@ export function MainCanvas({
                   !isVisible && 'opacity-50',
                   isDisabled && 'cursor-not-allowed opacity-30'
                 )}
+                  onMouseDown={triggerInteractionPending}
                 onClick={() => !isDisabled && toggleChart(id)}
                 disabled={isDisabled}
                 title={isDisabled ? 'Add a splitter to see folds' : undefined}
@@ -341,6 +391,7 @@ export function MainCanvas({
               onStepChange={handleActiveStepChange}
               enabled={stepComparisonEnabled}
               onEnabledChange={handleStepComparisonEnabledChange}
+                onInteractionStart={triggerInteractionPending}
               isLoading={isFetching}
               compact
             />
@@ -349,7 +400,10 @@ export function MainCanvas({
           <span className="text-[10px] text-muted-foreground">Color:</span>
           <ColorModeSelector
             colorConfig={colorConfig}
-            onChange={setColorConfig}
+            onChange={(config) => {
+              triggerInteractionPending();
+              setColorConfig(config);
+            }}
             hasFolds={!!hasFolds}
           />
         </div>
@@ -367,10 +421,11 @@ export function MainCanvas({
         {/* Spectra Chart */}
         {effectiveVisibleCharts.has('spectra') && (
           <div
-            className="bg-card rounded-lg border border-border p-3 min-h-[250px]"
+            className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="Spectra chart showing original and processed spectral data"
           >
+            <ChartLoadingOverlay visible={chartRedrawing} />
             {showSkeletons ? (
               <ChartSkeleton type="spectra" />
             ) : result ? (
@@ -384,7 +439,9 @@ export function MainCanvas({
                   colorConfig={colorConfig}
                   selectedSample={selectedSample}
                   onSelectSample={handleSelectSample}
+                  onInteractionStart={triggerInteractionPending}
                   maxSamples={50}
+                  isLoading={chartRedrawing}
                 />
               </ChartErrorBoundary>
             ) : (
@@ -396,10 +453,11 @@ export function MainCanvas({
         {/* Y Histogram */}
         {effectiveVisibleCharts.has('histogram') && (
           <div
-            className="bg-card rounded-lg border border-border p-3 min-h-[250px]"
+            className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="Histogram of target Y values distribution"
           >
+            <ChartLoadingOverlay visible={chartRedrawing} />
             {showSkeletons ? (
               <ChartSkeleton type="histogram" />
             ) : yValues.length > 0 ? (
@@ -421,10 +479,11 @@ export function MainCanvas({
         {/* Fold Distribution */}
         {effectiveVisibleCharts.has('folds') && hasFolds && (
           <div
-            className="bg-card rounded-lg border border-border p-3 min-h-[250px]"
+            className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="Cross-validation fold distribution chart"
           >
+            <ChartLoadingOverlay visible={chartRedrawing} />
             {showSkeletons ? (
               <ChartSkeleton type="folds" />
             ) : (
@@ -440,10 +499,11 @@ export function MainCanvas({
         {/* PCA Plot */}
         {effectiveVisibleCharts.has('pca') && (
           <div
-            className="bg-card rounded-lg border border-border p-3 min-h-[250px]"
+            className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="PCA scatter plot showing principal component analysis"
           >
+            <ChartLoadingOverlay visible={chartRedrawing} />
             {showSkeletons ? (
               <ChartSkeleton type="pca" />
             ) : result?.pca ? (

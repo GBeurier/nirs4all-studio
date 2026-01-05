@@ -117,7 +117,7 @@ export function PlaygroundSidebar({
 
   return (
     <TooltipProvider>
-      <div className="w-72 bg-card border-r border-border flex flex-col h-full">
+      <div className="w-96 bg-card border-r border-border flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">

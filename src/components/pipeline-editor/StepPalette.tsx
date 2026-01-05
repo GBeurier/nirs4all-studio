@@ -189,7 +189,6 @@ const hiddenTypes = new Set<StepType>(["merge", "feature_augmentation", "concat_
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   // Try to use the registry if available (Phase 2 feature)
   const registryContext = useNodeRegistryOptional();
@@ -231,11 +230,11 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     [search, getOptionsForType]
   );
 
-  // When search changes, open all sections that have matches
+  // When search changes, update search state
   const handleSearchChange = (value: string) => {
     setSearch(value);
     if (value.trim()) {
-      // Open all sections that have matching results
+      // Open all sections that have matches
       const matchingSections = new Set<StepType>();
       stepTypeOrder.forEach((type) => {
         if (hiddenTypes.has(type)) return;
@@ -245,8 +244,6 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         }
       });
       setOpenSections(matchingSections);
-      // Expand all categories when searching
-      setExpandedCategories(new Set());
     }
   };
 
@@ -267,18 +264,6 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         return new Set<StepType>();
       }
       return new Set<StepType>([type]);
-    });
-  };
-
-  const toggleCategory = (categoryKey: string) => {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(categoryKey)) {
-        next.delete(categoryKey);
-      } else {
-        next.add(categoryKey);
-      }
-      return next;
     });
   };
 
@@ -358,8 +343,9 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                 key={type}
                 open={isExpanded}
                 onOpenChange={() => toggleSection(type)}
+                className="mb-1"
               >
-                <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-1.5 hover:bg-muted/50 rounded px-2 -mx-2 transition-colors">
+                <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-1.5 hover:bg-muted/50 rounded px-2 -mx-2 transition-colors group">
                   {isExpanded ? (
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   ) : (
@@ -376,42 +362,29 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                   </Badge>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-1">
-                  <div className="pl-5">
+                  <div className="pl-5 border-l ml-3.5 border-border/50 space-y-2">
                     {shouldShowSubcategories ? (
-                      // Render grouped by category with nested collapsibles
+                      // Render grouped by category
                       Array.from(groupedMap.entries()).map(([category, categoryItems]) => {
                         const categoryKey = `${type}-${category}`;
-                        const isCategoryExpanded = expandedCategories.has(categoryKey) || search.length > 0;
 
                         return (
-                          <Collapsible
-                            key={categoryKey}
-                            open={isCategoryExpanded}
-                            onOpenChange={() => toggleCategory(categoryKey)}
-                          >
-                            <CollapsibleTrigger className="flex items-center gap-1.5 w-full text-left py-1 px-1 hover:bg-muted/30 rounded transition-colors text-muted-foreground hover:text-foreground">
-                              {isCategoryExpanded ? (
-                                <ChevronDown className="h-3 w-3" />
-                              ) : (
-                                <ChevronRight className="h-3 w-3" />
-                              )}
-                              <span className="text-[10px] font-medium uppercase tracking-wide">{category}</span>
-                              <span className="text-[9px] text-muted-foreground ml-auto">{categoryItems.length}</span>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <div className="space-y-1 pl-2 pt-0.5 pb-1">
-                                {categoryItems.map(({ option, actualType }) => (
-                                  <DraggableStep
-                                    key={`${actualType}-${option.name}`}
-                                    stepType={actualType}
-                                    option={option}
-                                    onDoubleClick={() => onAddStep(actualType, option)}
-                                    isCompact={categoryItems.length > 8}
-                                  />
-                                ))}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
+                          <div key={categoryKey} className="mb-2">
+                            <div className="flex items-center gap-1.5 w-full text-left py-1 px-1 text-muted-foreground">
+                              <span className="text-[10px] font-medium uppercase tracking-wide opacity-70">{category}</span>
+                            </div>
+                            <div className="space-y-1 pl-1">
+                              {categoryItems.map(({ option, actualType }) => (
+                                <DraggableStep
+                                  key={`${actualType}-${option.name}`}
+                                  stepType={actualType}
+                                  option={option}
+                                  onDoubleClick={() => onAddStep(actualType, option)}
+                                  isCompact={categoryItems.length > 8}
+                                />
+                              ))}
+                            </div>
+                          </div>
                         );
                       })
                     ) : (

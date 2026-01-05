@@ -26,7 +26,7 @@ import {
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Eye, EyeOff, Layers, Download, BarChart3 } from 'lucide-react';
+import { Eye, EyeOff, Layers, Download, BarChart3, Loader2 } from 'lucide-react';
 import { exportChart } from '@/lib/chartExport';
 import {
   CHART_THEME,
@@ -38,6 +38,16 @@ import {
   type ExtendedColorConfig,
 } from './chartConfig';
 import type { DataSection, SpectrumStats, FoldsInfo } from '@/types/playground';
+
+// ============= Types =============
+
+interface HoveredLine {
+  displayIdx: number;
+  sampleIdx: number;
+  isOriginal: boolean;
+  value: number;
+  color: string;
+}
 
 // ============= Types =============
 
@@ -58,6 +68,8 @@ interface SpectraChartProps {
   selectedSample?: number | null;
   /** Callback when sample is selected */
   onSelectSample?: (index: number) => void;
+  /** Callback when the user triggers a chart interaction */
+  onInteractionStart?: () => void;
   /** Max samples to display (for performance) */
   maxSamples?: number;
   /** Whether chart is in loading state */
@@ -66,6 +78,39 @@ interface SpectraChartProps {
 
 type ViewMode = 'both' | 'original' | 'processed';
 type StatisticsMode = 'none' | 'mean' | 'std' | 'range';
+type DisplayMode = 'all' | 'mean' | 'median' | 'quantiles';
+
+function computeMedianPerWavelength(spectra: number[][]): number[] {
+  if (!spectra || spectra.length === 0 || spectra[0]?.length === undefined) {
+    return [];
+  }
+
+  const nWavelengths = spectra[0].length;
+  const medians = new Array<number>(nWavelengths).fill(0);
+
+  for (let w = 0; w < nWavelengths; w += 1) {
+    const column: number[] = [];
+    for (let s = 0; s < spectra.length; s += 1) {
+      const value = spectra[s]?.[w];
+      if (value !== undefined) {
+        column.push(value);
+      }
+    }
+
+    if (column.length === 0) {
+      medians[w] = 0;
+      continue;
+    }
+
+    column.sort((a, b) => a - b);
+    const mid = Math.floor(column.length / 2);
+    medians[w] = column.length % 2 === 0
+      ? (column[mid - 1] + column[mid]) / 2
+      : column[mid];
+  }
+
+  return medians;
+}
 
 // ============= Component =============
 
@@ -78,6 +123,7 @@ export function SpectraChart({
   colorConfig,
   selectedSample,
   onSelectSample,
+  onInteractionStart,
   maxSamples = 50,
   isLoading = false,
 }: SpectraChartProps) {
@@ -85,13 +131,34 @@ export function SpectraChart({
 
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('processed');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
   const [statisticsMode, setStatisticsMode] = useState<StatisticsMode>('none');
   const [brushDomain, setBrushDomain] = useState<[number, number] | null>(null);
 
-  // Get wavelengths (prefer processed, fallback to original)
-  const wavelengths = processed.wavelengths.length > 0
-    ? processed.wavelengths
-    : original.wavelengths;
+  // Hover state: track mouse Y position and the closest line
+  const [hoveredLine, setHoveredLine] = useState<HoveredLine | null>(null);
+  const [hoverWavelength, setHoverWavelength] = useState<number | null>(null);
+
+  const medianValues = useMemo(() => ({
+    processed: processed.statistics?.median?.length
+      ? processed.statistics.median
+      : computeMedianPerWavelength(processed.spectra),
+    original: original.statistics?.median?.length
+      ? original.statistics.median
+      : computeMedianPerWavelength(original.spectra),
+  }), [processed.statistics?.median, processed.spectra, original.statistics?.median, original.spectra]);
+
+  // Get wavelengths (match selected view)
+  const wavelengths = useMemo(() => {
+    if (viewMode === 'original') {
+      return original.wavelengths;
+    }
+
+    // processed or both
+    return processed.wavelengths.length > 0
+      ? processed.wavelengths
+      : original.wavelengths;
+  }, [viewMode, processed.wavelengths, original.wavelengths]);
 
   // Determine which sample indices to show
   const displayIndices = useMemo(() => {
@@ -111,39 +178,55 @@ export function SpectraChart({
 
   // Build chart data
   const chartData = useMemo(() => {
-    const showOriginal = viewMode === 'both' || viewMode === 'original';
-    const showProcessed = viewMode === 'both' || viewMode === 'processed';
+    const showLines = displayMode === 'all';
+    const showOriginalLines = showLines && (viewMode === 'both' || viewMode === 'original');
+    const showProcessedLines = showLines && (viewMode === 'both' || viewMode === 'processed');
+
+    const stats = viewMode === 'original' ? original.statistics : processed.statistics;
+    const medianSeries = viewMode === 'original' ? medianValues.original : medianValues.processed;
+
+    const shouldIncludeMean = displayMode === 'mean' || (displayMode === 'all' && statisticsMode !== 'none');
+    const shouldIncludeStd = displayMode === 'mean' || (displayMode === 'all' && statisticsMode === 'std');
+    const shouldIncludeP5P95 = displayMode === 'quantiles' || (displayMode === 'all' && statisticsMode === 'range');
+    const shouldIncludeMedian = displayMode === 'median' || displayMode === 'quantiles';
 
     return wavelengths.map((wavelength, wIdx) => {
       const point: Record<string, number> = { wavelength };
 
-      // Add spectrum lines
-      displayIndices.forEach((sIdx, displayIdx) => {
-        if (showProcessed && processed.spectra[sIdx]) {
-          point[`p${displayIdx}`] = processed.spectra[sIdx][wIdx];
-        }
-        if (showOriginal && original.spectra[sIdx]) {
-          point[`o${displayIdx}`] = original.spectra[sIdx][wIdx];
-        }
-      });
+      if (showProcessedLines || showOriginalLines) {
+        displayIndices.forEach((sIdx, displayIdx) => {
+          if (showProcessedLines && processed.spectra[sIdx]) {
+            point[`p${displayIdx}`] = processed.spectra[sIdx][wIdx];
+          }
+          if (showOriginalLines && original.spectra[sIdx]) {
+            point[`o${displayIdx}`] = original.spectra[sIdx][wIdx];
+          }
+        });
+      }
 
-      // Add statistics if requested
-      const stats = viewMode === 'original' ? original.statistics : processed.statistics;
-      if (stats && statisticsMode !== 'none') {
+      if (stats && shouldIncludeMean) {
         point.mean = stats.mean[wIdx];
-        if (statisticsMode === 'std' || statisticsMode === 'range') {
-          point.stdUpper = stats.mean[wIdx] + stats.std[wIdx];
-          point.stdLower = stats.mean[wIdx] - stats.std[wIdx];
-        }
-        if (statisticsMode === 'range') {
-          point.p5 = stats.p5?.[wIdx] ?? stats.min[wIdx];
-          point.p95 = stats.p95?.[wIdx] ?? stats.max[wIdx];
-        }
+      }
+
+      if (stats && shouldIncludeStd) {
+        point.stdUpper = stats.mean[wIdx] + stats.std[wIdx];
+        point.stdLower = stats.mean[wIdx] - stats.std[wIdx];
+        point.stdBand = point.stdUpper - point.stdLower;
+      }
+
+      if (stats && shouldIncludeP5P95) {
+        point.p5 = stats.p5?.[wIdx] ?? stats.min[wIdx];
+        point.p95 = stats.p95?.[wIdx] ?? stats.max[wIdx];
+        point.pBand = point.p95 - point.p5;
+      }
+
+      if (shouldIncludeMedian && medianSeries && medianSeries.length > wIdx) {
+        point.median = medianSeries[wIdx];
       }
 
       return point;
     });
-  }, [wavelengths, displayIndices, viewMode, statisticsMode, processed, original]);
+  }, [wavelengths, displayIndices, viewMode, displayMode, statisticsMode, processed, original, medianValues]);
 
   // Filter data by brush domain
   const filteredData = useMemo(() => {
@@ -195,15 +278,126 @@ export function SpectraChart({
       const startWl = chartData[domain.startIndex]?.wavelength;
       const endWl = chartData[domain.endIndex]?.wavelength;
       if (startWl !== undefined && endWl !== undefined) {
+        onInteractionStart?.();
         setBrushDomain([startWl, endWl]);
       }
     }
-  }, [chartData]);
+  }, [chartData, onInteractionStart]);
+
+  // Handle mouse move to find closest line
+  const handleMouseMove = useCallback((e: any) => {
+    if (!e || !e.activePayload || e.activePayload.length === 0) {
+      setHoveredLine(null);
+      setHoverWavelength(null);
+      return;
+    }
+
+    const wavelength = e.activeLabel as number;
+    setHoverWavelength(wavelength ?? null);
+
+    if (displayMode !== 'all') {
+      setHoveredLine(null);
+      return;
+    }
+
+    // Get Y coordinate from chart event
+    const chartY = e.chartY;
+    if (chartY === undefined) {
+      setHoveredLine(null);
+      return;
+    }
+
+    // Get the chart wrapper to calculate Y scale
+    const chartWrapper = e.activeCoordinate;
+    if (!chartWrapper) {
+      setHoveredLine(null);
+      return;
+    }
+
+    // Find the data point at this wavelength
+    const dataPoint = chartData.find(d => d.wavelength === wavelength);
+    if (!dataPoint) {
+      setHoveredLine(null);
+      return;
+    }
+
+    // Get all Y values from visible lines
+    const candidates: { key: string; value: number; displayIdx: number; isOriginal: boolean }[] = [];
+
+    const showOriginalLines = viewMode === 'both' || viewMode === 'original';
+    const showProcessedLines = viewMode === 'both' || viewMode === 'processed';
+
+    displayIndices.forEach((sIdx, displayIdx) => {
+      if (showProcessedLines) {
+        const key = `p${displayIdx}`;
+        const val = dataPoint[key];
+        if (val !== undefined) {
+          candidates.push({ key, value: val, displayIdx, isOriginal: false });
+        }
+      }
+      if (showOriginalLines) {
+        const key = `o${displayIdx}`;
+        const val = dataPoint[key];
+        if (val !== undefined) {
+          candidates.push({ key, value: val, displayIdx, isOriginal: true });
+        }
+      }
+    });
+
+    if (candidates.length === 0) {
+      setHoveredLine(null);
+      return;
+    }
+
+    // We need to convert mouse Y (pixel) to data Y to find closest line
+    // Use the yAxisMap from the event if available, otherwise estimate from payload
+    // Recharts provides activePayload with all values - we can compare pixel distance
+
+    // Get Y axis domain from the data
+    const allYValues = candidates.map(c => c.value);
+    const yMin = Math.min(...allYValues);
+    const yMax = Math.max(...allYValues);
+
+    // Estimate the mouse Y value in data coordinates
+    // chartY is in pixels from top of chart area
+    // We need to invert it: top = yMax, bottom = yMin
+    const chartHeight = e.height || 300; // fallback
+    const yRange = yMax - yMin || 1;
+    const mouseYValue = yMax - (chartY / chartHeight) * yRange;
+
+    // Find the closest line to the mouse Y value
+    let closest = candidates[0];
+    let minDist = Math.abs(closest.value - mouseYValue);
+
+    for (const c of candidates) {
+      const dist = Math.abs(c.value - mouseYValue);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = c;
+      }
+    }
+
+    const sampleIdx = displayIndices[closest.displayIdx];
+    setHoveredLine({
+      displayIdx: closest.displayIdx,
+      sampleIdx,
+      isOriginal: closest.isOriginal,
+      value: closest.value,
+      color: getColor(closest.displayIdx, closest.isOriginal),
+    });
+  }, [chartData, displayIndices, viewMode, getColor, displayMode]);
+
+  // Handle mouse leave
+  const handleMouseLeave = useCallback(() => {
+    setHoveredLine(null);
+    setHoverWavelength(null);
+  }, []);
 
   // Reset brush
   const handleResetBrush = useCallback(() => {
     setBrushDomain(null);
-  }, []);
+    onInteractionStart?.();
+  }, [onInteractionStart]);
 
   // Export chart
   const handleExport = useCallback(() => {
@@ -223,12 +417,26 @@ export function SpectraChart({
     exportChart(chartRef.current, exportData, 'spectra');
   }, [wavelengths, displayIndices, sampleIds, processed, original]);
 
+  const cycleStatisticsMode = useCallback(() => {
+    setStatisticsMode((prev) => {
+      if (prev === 'none') return 'std';
+      if (prev === 'std') return 'range';
+      return 'none';
+    });
+    onInteractionStart?.();
+  }, [onInteractionStart]);
+
   const totalSamples = processed.spectra.length || original.spectra.length;
-  const showOriginal = viewMode === 'both' || viewMode === 'original';
-  const showProcessed = viewMode === 'both' || viewMode === 'processed';
+  const showOriginal = displayMode === 'all' && (viewMode === 'both' || viewMode === 'original');
+  const showProcessed = displayMode === 'all' && (viewMode === 'both' || viewMode === 'processed');
+
+  const showMeanLine = displayMode === 'mean' || (displayMode === 'all' && statisticsMode !== 'none');
+  const showStdBand = displayMode === 'mean' || (displayMode === 'all' && statisticsMode === 'std');
+  const showP5P95Band = displayMode === 'quantiles' || (displayMode === 'all' && statisticsMode === 'range');
+  const showMedianLine = displayMode === 'median' || displayMode === 'quantiles';
 
   return (
-    <div className="h-full flex flex-col" ref={chartRef}>
+    <div className="h-full flex flex-col relative" ref={chartRef}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -238,7 +446,13 @@ export function SpectraChart({
 
         <div className="flex items-center gap-1.5">
           {/* View mode selector */}
-          <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+          <Select
+            value={viewMode}
+            onValueChange={(v) => {
+              onInteractionStart?.();
+              setViewMode(v as ViewMode);
+            }}
+          >
             <SelectTrigger className="h-7 w-24 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -249,13 +463,33 @@ export function SpectraChart({
             </SelectContent>
           </Select>
 
+          {/* Display selector */}
+          <Select
+            value={displayMode}
+            onValueChange={(v) => {
+              onInteractionStart?.();
+              setDisplayMode(v as DisplayMode);
+            }}
+          >
+            <SelectTrigger className="h-7 w-36 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All spectra</SelectItem>
+              <SelectItem value="mean">Mean ± std</SelectItem>
+              <SelectItem value="quantiles">Median + p5/p95</SelectItem>
+              <SelectItem value="median">Median only</SelectItem>
+            </SelectContent>
+          </Select>
+
           {/* Statistics mode */}
           <Button
-            variant={statisticsMode !== 'none' ? 'default' : 'ghost'}
+            variant={statisticsMode !== 'none' && displayMode === 'all' ? 'default' : 'ghost'}
             size="sm"
             className="h-7 px-2"
-            title="Show mean ± std"
-            onClick={() => setStatisticsMode(statisticsMode !== 'none' ? 'none' : 'std')}
+            title="Cycle statistics overlay (none → ±std → p5-p95)"
+            onClick={cycleStatisticsMode}
+            disabled={displayMode !== 'all'}
           >
             <BarChart3 className="w-3 h-3" />
           </Button>
@@ -279,13 +513,22 @@ export function SpectraChart({
         </div>
       </div>
 
+      {isLoading && (
+        <div className="absolute inset-0 bg-background/70 backdrop-blur-[1px] flex items-center justify-center z-20 pointer-events-none">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
+          <span className="sr-only">Updating spectra</span>
+        </div>
+      )}
+
       {/* Chart */}
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
-            data={chartData}
+            data={filteredData}
             margin={CHART_MARGINS.spectra}
             onClick={handleClick}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
           >
             <CartesianGrid
               strokeDasharray={CHART_THEME.gridDasharray}
@@ -312,50 +555,79 @@ export function SpectraChart({
               stroke="hsl(var(--primary))"
               fill="hsl(var(--muted))"
               onChange={handleBrushChange}
+              data={chartData}
             />
 
-            {/* Statistics bands */}
-            {statisticsMode === 'range' && (
+            {/* Statistics bands - p5/p95 envelope */}
+            {showP5P95Band && (
               <Area
+                type="monotone"
                 dataKey="p95"
                 stroke="none"
                 fill={STATISTICS_COLORS.p5p95}
                 fillOpacity={CHART_THEME.statisticsBandOpacity}
+                baseValue="dataMin"
                 {...ANIMATION_CONFIG}
+                tooltipType="none"
               />
             )}
-            {statisticsMode === 'range' && (
+            {showP5P95Band && (
               <Area
+                type="monotone"
                 dataKey="p5"
                 stroke="none"
-                fill="hsl(var(--background))"
+                fill="hsl(var(--card))"
+                fillOpacity={1}
+                baseValue="dataMin"
                 {...ANIMATION_CONFIG}
+                tooltipType="none"
               />
             )}
-            {(statisticsMode === 'std' || statisticsMode === 'range') && (
+
+            {/* Statistics bands - std envelope */}
+            {showStdBand && (
               <Area
+                type="monotone"
                 dataKey="stdUpper"
                 stroke="none"
                 fill={STATISTICS_COLORS.std}
                 fillOpacity={CHART_THEME.statisticsBandOpacity}
+                baseValue="dataMin"
                 {...ANIMATION_CONFIG}
+                tooltipType="none"
               />
             )}
-            {(statisticsMode === 'std' || statisticsMode === 'range') && (
+            {showStdBand && (
               <Area
+                type="monotone"
                 dataKey="stdLower"
                 stroke="none"
-                fill="hsl(var(--background))"
+                fill="hsl(var(--card))"
+                fillOpacity={1}
+                baseValue="dataMin"
                 {...ANIMATION_CONFIG}
+                tooltipType="none"
               />
             )}
 
             {/* Mean line */}
-            {statisticsMode !== 'none' && (
+            {showMeanLine && (
               <Line
                 type="monotone"
                 dataKey="mean"
                 stroke={STATISTICS_COLORS.mean}
+                strokeWidth={2}
+                dot={false}
+                {...ANIMATION_CONFIG}
+              />
+            )}
+
+            {/* Median line */}
+            {showMedianLine && (
+              <Line
+                type="monotone"
+                dataKey="median"
+                stroke={STATISTICS_COLORS.median}
                 strokeWidth={2}
                 dot={false}
                 {...ANIMATION_CONFIG}
@@ -397,26 +669,83 @@ export function SpectraChart({
               />
             ))}
 
+            {/* Custom tooltip showing only the closest line */}
             <Tooltip
-              contentStyle={{
-                backgroundColor: CHART_THEME.tooltipBg,
-                border: `1px solid ${CHART_THEME.tooltipBorder}`,
-                borderRadius: CHART_THEME.tooltipBorderRadius,
-                fontSize: CHART_THEME.tooltipFontSize,
-              }}
-              formatter={(value: number, name: string) => {
-                if (name === 'mean') return [value.toFixed(4), 'Mean'];
-                const match = name.match(/([po])(\d+)/);
-                if (match) {
-                  const displayIdx = parseInt(match[2], 10);
-                  const sampleIdx = displayIndices[displayIdx];
-                  const id = sampleIds?.[sampleIdx] ?? `Sample ${sampleIdx + 1}`;
-                  const type = match[1] === 'o' ? 'Orig' : 'Proc';
-                  return [value.toFixed(4), `${id} (${type})`];
+              content={(props: any) => {
+                const wavelength = (props?.label ?? hoverWavelength) as number | undefined;
+                if (wavelength === undefined || wavelength === null) return null;
+
+                // Aggregated modes: show summary values.
+                if (displayMode !== 'all') {
+                  const payloadItem = (props?.payload ?? []).find((p: any) => p && p.value !== undefined);
+                  const point: any = payloadItem?.payload;
+                  if (!point) return null;
+
+                  const rows: Array<{ label: string; value: number | undefined; color: string }> = [];
+                  if (displayMode === 'mean') {
+                    rows.push({ label: 'Mean', value: point.mean, color: STATISTICS_COLORS.mean });
+                    rows.push({ label: 'Std', value: point.stdUpper !== undefined && point.stdLower !== undefined ? (point.stdUpper - point.mean) : undefined, color: STATISTICS_COLORS.std });
+                  }
+                  if (displayMode === 'median') {
+                    rows.push({ label: 'Median', value: point.median, color: STATISTICS_COLORS.median });
+                  }
+                  if (displayMode === 'quantiles') {
+                    rows.push({ label: 'Median', value: point.median, color: STATISTICS_COLORS.median });
+                    rows.push({ label: 'p5', value: point.p5, color: STATISTICS_COLORS.p5p95 });
+                    rows.push({ label: 'p95', value: point.p95, color: STATISTICS_COLORS.p5p95 });
+                  }
+
+                  return (
+                    <div
+                      className="p-2 shadow-md text-xs"
+                      style={{
+                        backgroundColor: CHART_THEME.tooltipBg,
+                        border: `1px solid ${CHART_THEME.tooltipBorder}`,
+                        borderRadius: CHART_THEME.tooltipBorderRadius,
+                      }}
+                    >
+                      <p className="font-semibold mb-1">{`λ = ${wavelength} nm`}</p>
+                      <div className="space-y-1">
+                        {rows
+                          .filter(r => r.value !== undefined)
+                          .map((r) => (
+                            <div key={r.label} className="flex items-center justify-between gap-3">
+                              <span className="flex items-center gap-2 text-muted-foreground">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: r.color }} />
+                                {r.label}
+                              </span>
+                              <span className="font-mono">{Number(r.value).toFixed(4)}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  );
                 }
-                return [value.toFixed(4), name];
+
+                // All spectra mode: keep the “closest line” tooltip.
+                if (!hoveredLine) return null;
+
+                const id = sampleIds?.[hoveredLine.sampleIdx] ?? `Sample ${hoveredLine.sampleIdx + 1}`;
+                const type = hoveredLine.isOriginal ? 'Orig' : 'Proc';
+
+                return (
+                  <div
+                    className="p-2 shadow-md text-xs"
+                    style={{
+                      backgroundColor: CHART_THEME.tooltipBg,
+                      border: `1px solid ${CHART_THEME.tooltipBorder}`,
+                      borderRadius: CHART_THEME.tooltipBorderRadius,
+                    }}
+                  >
+                    <p className="font-semibold mb-1">{`λ = ${wavelength} nm`}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: hoveredLine.color }} />
+                      <span className="text-muted-foreground">{id} ({type}):</span>
+                      <span className="font-mono">{hoveredLine.value.toFixed(4)}</span>
+                    </div>
+                  </div>
+                );
               }}
-              labelFormatter={(label) => `λ = ${label} nm`}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -437,13 +766,28 @@ export function SpectraChart({
               Original
             </span>
           )}
-          {statisticsMode !== 'none' && (
+          {showMeanLine && (
             <span className="flex items-center gap-1">
-              <span
-                className="w-3 h-2 opacity-30"
-                style={{ backgroundColor: STATISTICS_COLORS.std }}
-              />
+              <span className="w-3 h-0.5" style={{ backgroundColor: STATISTICS_COLORS.mean }} />
+              Mean
+            </span>
+          )}
+          {showStdBand && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-2 opacity-30" style={{ backgroundColor: STATISTICS_COLORS.std }} />
               ±1 Std
+            </span>
+          )}
+          {showP5P95Band && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-2 opacity-30" style={{ backgroundColor: STATISTICS_COLORS.p5p95 }} />
+              p5–p95
+            </span>
+          )}
+          {showMedianLine && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5" style={{ backgroundColor: STATISTICS_COLORS.median }} />
+              Median
             </span>
           )}
         </div>

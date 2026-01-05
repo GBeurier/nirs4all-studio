@@ -119,6 +119,7 @@ export const STATISTICS_COLORS = {
   std: 'hsl(217, 70%, 50%)',
   p5p95: 'hsl(173, 60%, 50%)',
   minMax: 'hsl(280, 50%, 50%)',
+  median: 'hsl(278, 65%, 50%)',
   original: 'hsl(142, 60%, 45%)',
   processed: 'hsl(217, 70%, 50%)',
 } as const;
