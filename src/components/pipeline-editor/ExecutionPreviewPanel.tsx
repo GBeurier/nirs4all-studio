@@ -39,17 +39,24 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { PipelineStep, FinetuneConfig } from "./types";
 import { calculateStepVariants } from "./types";
 import { formatVariantCount, getVariantCountSeverity } from "@/hooks/useVariantCount";
 
 export interface ExecutionBreakdown {
   sweepVariants: number;
+  generatorVariants: number;
   finetuningTrials: number;
   cvFolds: number;
   totalFits: number;
   modelsWithFinetuning: number;
   modelsWithSweeps: number;
+  modelsWithGenerators: number;
 }
 
 export interface ExecutionPreviewPanelProps {
@@ -63,19 +70,38 @@ export interface ExecutionPreviewPanelProps {
 // Extract execution statistics from pipeline
 function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
   let sweepVariants = 1;
+  let generatorVariants = 1;
   let finetuningTrials = 0;
   let cvFolds = 5; // Default
   let modelsWithFinetuning = 0;
   let modelsWithSweeps = 0;
+  let modelsWithGenerators = 0;
 
   function processSteps(stepList: PipelineStep[]) {
     for (const step of stepList) {
-      // Count sweep variants
-      const stepVariants = calculateStepVariants(step);
-      if (stepVariants > 1) {
-        sweepVariants *= stepVariants;
-        if (step.type === "model") {
-          modelsWithSweeps++;
+      // Check if this is a generator step
+      if (step.type === "generator" && step.branches) {
+        const genVariants = calculateStepVariants(step);
+        if (genVariants > 1) {
+          generatorVariants *= genVariants;
+          modelsWithGenerators++;
+        }
+        // Process generator branches
+        for (const branch of step.branches) {
+          processSteps(branch);
+        }
+        continue;
+      }
+
+      // Count sweep variants (parameter sweeps)
+      const hasSweeps = (step.paramSweeps && Object.keys(step.paramSweeps).length > 0) || step.stepGenerator;
+      if (hasSweeps) {
+        const stepVariants = calculateStepVariants(step);
+        if (stepVariants > 1) {
+          sweepVariants *= stepVariants;
+          if (step.type === "model") {
+            modelsWithSweeps++;
+          }
         }
       }
 
@@ -93,8 +119,8 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
         modelsWithFinetuning++;
       }
 
-      // Process nested branches
-      if (step.branches) {
+      // Process nested branches (non-generator)
+      if (step.branches && step.type !== "generator") {
         for (const branch of step.branches) {
           processSteps(branch);
         }
@@ -105,16 +131,18 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
   processSteps(steps);
 
   // Calculate total fits
-  // Formula: sweepVariants × (finetuningTrials if any, else 1) × cvFolds
-  const totalFits = sweepVariants * Math.max(1, finetuningTrials) * cvFolds;
+  // Formula: sweepVariants × generatorVariants × (finetuningTrials if any, else 1) × cvFolds
+  const totalFits = sweepVariants * generatorVariants * Math.max(1, finetuningTrials) * cvFolds;
 
   return {
     sweepVariants,
+    generatorVariants,
     finetuningTrials,
     cvFolds,
     totalFits,
     modelsWithFinetuning,
     modelsWithSweeps,
+    modelsWithGenerators,
   };
 }
 
@@ -447,38 +475,82 @@ export function ExecutionPreviewCompact({
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge variant="outline" className="gap-1 cursor-help">
-            <Calculator className={`h-3 w-3 ${severityColor}`} />
+      <Popover>
+        <PopoverTrigger asChild>
+          <Badge
+            variant="outline"
+            className={`gap-1 cursor-pointer transition-colors hover:bg-accent ${
+              severity === "low"
+                ? "border-emerald-500/30 text-emerald-500"
+                : severity === "medium"
+                ? "border-amber-500/30 text-amber-500"
+                : severity === "high"
+                ? "border-orange-500/30 text-orange-500"
+                : "border-red-500/30 text-red-500"
+            }`}
+          >
+            <Calculator className="h-3 w-3" />
             <span>{formatVariantCount(breakdown.totalFits)} fits</span>
           </Badge>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-[280px]">
-          <div className="space-y-2">
-            <p className="font-medium">Execution Summary</p>
-            <div className="text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Sweep Variants:</span>
-                <span>{breakdown.sweepVariants}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Finetuning Trials:</span>
-                <span>{breakdown.finetuningTrials || "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">CV Folds:</span>
-                <span>{breakdown.cvFolds}</span>
-              </div>
-              <Separator className="my-1" />
-              <div className="flex justify-between font-medium">
-                <span>Total Fits:</span>
-                <span className={severityColor}>{breakdown.totalFits.toLocaleString()}</span>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 bg-popover">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Execution Summary</h4>
+              <span className={`text-lg font-bold ${severityColor}`}>
+                {breakdown.totalFits.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Breakdown:</p>
+              {breakdown.sweepVariants > 1 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <Repeat className="h-3 w-3" />
+                    Sweep Variants
+                  </span>
+                  <span className="font-mono">{breakdown.sweepVariants.toLocaleString()}</span>
+                </div>
+              )}
+              {breakdown.generatorVariants > 1 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3 w-3 text-orange-500" />
+                    Generator Variants
+                  </span>
+                  <span className="font-mono">{breakdown.generatorVariants.toLocaleString()}</span>
+                </div>
+              )}
+              {breakdown.finetuningTrials > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <Sparkles className="h-3 w-3 text-purple-500" />
+                    Finetuning Trials
+                  </span>
+                  <span className="font-mono">{breakdown.finetuningTrials.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Layers className="h-3 w-3" />
+                  CV Folds
+                </span>
+                <span className="font-mono">{breakdown.cvFolds}</span>
               </div>
             </div>
+
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                <Calculator className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                <span>
+                  Total model training operations when you run this pipeline.
+                </span>
+              </p>
+            </div>
           </div>
-        </TooltipContent>
-      </Tooltip>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

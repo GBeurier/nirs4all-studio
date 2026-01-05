@@ -3,145 +3,85 @@
  *
  * Provides an intuitive interface for configuring parameter sweeps with:
  * - Sweep type selection (range, log_range, choices)
+ * - Clear input layout with proper labels
  * - Interactive value preview
  * - Quick presets for common ranges
  * - Live variant count estimation
- * - Visual feedback for sweep status
+ *
+ * REDESIGNED for better readability and clarity.
  */
 
 import { useState, useMemo, useCallback } from "react";
 import {
   Repeat,
-  ChevronDown,
-  ChevronUp,
   X,
-  Info,
   Sparkles,
   TrendingUp,
   List,
-  Grid,
-  Zap,
   Check,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import type { ParameterSweep, SweepType } from "./types";
 import { calculateSweepVariants } from "./types";
 
 // Sweep type configurations
-const sweepTypes: {
-  type: SweepType;
-  label: string;
-  description: string;
-  icon: typeof Repeat;
-  color: string;
-}[] = [
-  {
-    type: "range",
-    label: "Range",
-    description: "Linear sequence of values",
+const sweepTypeConfig: Record<
+  SweepType,
+  { label: string; description: string; icon: typeof Repeat; color: string }
+> = {
+  range: {
+    label: "Linear Range",
+    description: "Values with fixed step",
     icon: TrendingUp,
-    color: "text-orange-500",
+    color: "text-blue-500",
   },
-  {
-    type: "log_range",
+  log_range: {
     label: "Log Range",
-    description: "Logarithmically spaced values",
+    description: "Logarithmically spaced",
     icon: Sparkles,
     color: "text-purple-500",
   },
-  {
-    type: "or",
-    label: "Choices",
-    description: "Pick from discrete options",
+  or: {
+    label: "Discrete",
+    description: "Specific values",
     icon: List,
-    color: "text-blue-500",
+    color: "text-green-500",
   },
-];
+  grid: {
+    label: "Grid",
+    description: "Grid search",
+    icon: List,
+    color: "text-orange-500",
+  },
+};
 
 // Quick presets for common parameter ranges
 interface Preset {
   label: string;
   sweep: ParameterSweep;
-  forParams?: string[]; // Parameter names this preset is suitable for
+  forParams?: string[];
 }
 
 const quickPresets: Preset[] = [
-  // n_components presets
-  {
-    label: "1-10",
-    sweep: { type: "range", from: 1, to: 10, step: 1 },
-    forParams: ["n_components", "n_splits"],
-  },
-  {
-    label: "1-20",
-    sweep: { type: "range", from: 1, to: 20, step: 1 },
-    forParams: ["n_components"],
-  },
-  {
-    label: "1-30",
-    sweep: { type: "range", from: 1, to: 30, step: 1 },
-    forParams: ["n_components"],
-  },
-  {
-    label: "5-25 (step 5)",
-    sweep: { type: "range", from: 5, to: 25, step: 5 },
-    forParams: ["n_components", "n_estimators"],
-  },
-  // Regularization presets
-  {
-    label: "α: 0.001-100 (log)",
-    sweep: { type: "log_range", from: 0.001, to: 100, count: 10 },
-    forParams: ["alpha", "C", "gamma"],
-  },
-  {
-    label: "α: 0.01-10 (log)",
-    sweep: { type: "log_range", from: 0.01, to: 10, count: 5 },
-    forParams: ["alpha", "C"],
-  },
-  // Learning rate presets
-  {
-    label: "LR: 0.0001-0.1",
-    sweep: { type: "log_range", from: 0.0001, to: 0.1, count: 5 },
-    forParams: ["learning_rate", "lr"],
-  },
-  // Window/order presets
-  {
-    label: "3-15 (odd)",
-    sweep: { type: "range", from: 3, to: 15, step: 2 },
-    forParams: ["window_length", "window", "window_size"],
-  },
-  {
-    label: "5-21 (odd)",
-    sweep: { type: "range", from: 5, to: 21, step: 2 },
-    forParams: ["window_length", "window"],
-  },
-  // Derivatives
-  {
-    label: "0, 1, 2",
-    sweep: { type: "or", choices: [0, 1, 2] },
-    forParams: ["deriv", "order", "polyorder"],
-  },
-  // Generic
-  {
-    label: "50-200 (step 50)",
-    sweep: { type: "range", from: 50, to: 200, step: 50 },
-    forParams: ["n_estimators", "epochs", "max_iter"],
-  },
+  { label: "1→10", sweep: { type: "range", from: 1, to: 10, step: 1 }, forParams: ["n_components", "n_splits"] },
+  { label: "1→20", sweep: { type: "range", from: 1, to: 20, step: 1 }, forParams: ["n_components"] },
+  { label: "1→30", sweep: { type: "range", from: 1, to: 30, step: 1 }, forParams: ["n_components"] },
+  { label: "5→25 step 5", sweep: { type: "range", from: 5, to: 25, step: 5 }, forParams: ["n_components", "n_estimators"] },
+  { label: "0.001→100 log", sweep: { type: "log_range", from: 0.001, to: 100, count: 10 }, forParams: ["alpha", "C", "gamma"] },
+  { label: "0.0001→0.1 log", sweep: { type: "log_range", from: 0.0001, to: 0.1, count: 5 }, forParams: ["learning_rate", "lr"] },
+  { label: "3→15 odd", sweep: { type: "range", from: 3, to: 15, step: 2 }, forParams: ["window_length", "window"] },
+  { label: "0, 1, 2", sweep: { type: "or", choices: [0, 1, 2] }, forParams: ["deriv", "order", "polyorder"] },
 ];
 
 interface SweepConfigPopoverProps {
@@ -183,7 +123,7 @@ export function SweepConfigPopover({
         const to = localSweep.to ?? 10;
         const step = localSweep.step ?? 1;
         const values: number[] = [];
-        for (let v = from; v <= to && values.length < 7; v += step) {
+        for (let v = from; v <= to && values.length < 8; v += step) {
           values.push(v);
         }
         return values;
@@ -196,19 +136,19 @@ export function SweepConfigPopover({
         const logTo = Math.log10(to);
         const logStep = (logTo - logFrom) / (count - 1);
         const values: number[] = [];
-        for (let i = 0; i < count && values.length < 7; i++) {
+        for (let i = 0; i < count && values.length < 8; i++) {
           values.push(Math.pow(10, logFrom + i * logStep));
         }
         return values;
       }
       case "or":
-        return (localSweep.choices ?? []).slice(0, 7);
+        return (localSweep.choices ?? []).slice(0, 8);
       default:
         return [];
     }
   }, [localSweep]);
 
-  // Get relevant presets for this parameter
+  // Get relevant presets
   const relevantPresets = useMemo(() => {
     return quickPresets.filter(
       (preset) =>
@@ -225,13 +165,12 @@ export function SweepConfigPopover({
   const handleEnableSweep = useCallback(() => {
     if (isNumeric) {
       const val = currentValue as number;
-      const defaultSweep: ParameterSweep = {
+      setLocalSweep({
         type: "range",
         from: Math.max(1, Math.floor(val * 0.5)),
         to: Math.ceil(val * 1.5) || val + 10,
         step: val >= 10 ? Math.ceil(val * 0.1) : 1,
-      };
-      setLocalSweep(defaultSweep);
+      });
     } else {
       setLocalSweep({
         type: "or",
@@ -262,7 +201,7 @@ export function SweepConfigPopover({
       } else if (type === "or") {
         setLocalSweep({
           type: "or",
-          choices: [currentValue],
+          choices: typeof currentValue === "number" ? [currentValue] : [currentValue as string | boolean],
         });
       }
     },
@@ -282,16 +221,6 @@ export function SweepConfigPopover({
     setIsOpen(false);
   }, [onSweepChange]);
 
-  // Apply preset
-  const handleApplyPreset = useCallback((preset: Preset) => {
-    setLocalSweep(preset.sweep);
-  }, []);
-
-  // Update when prop changes
-  useMemo(() => {
-    setLocalSweep(sweep);
-  }, [sweep]);
-
   // Sync local state when popover opens
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -306,6 +235,16 @@ export function SweepConfigPopover({
     [sweep, handleEnableSweep]
   );
 
+  // Format value for display
+  const formatValue = (val: unknown): string => {
+    if (typeof val === "number") {
+      if (val < 0.001 || val >= 10000) return val.toExponential(1);
+      if (val % 1 !== 0) return val.toPrecision(3);
+      return String(val);
+    }
+    return String(val);
+  };
+
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
@@ -314,7 +253,7 @@ export function SweepConfigPopover({
           size="sm"
           disabled={disabled}
           className={cn(
-            "h-7 px-2 text-xs gap-1.5 transition-all",
+            "h-7 px-2 text-xs gap-1.5 transition-all shrink-0",
             hasSweep
               ? "bg-orange-500 hover:bg-orange-600 text-white shadow-sm"
               : "hover:bg-orange-500/10 hover:text-orange-500",
@@ -322,74 +261,77 @@ export function SweepConfigPopover({
           )}
         >
           <Repeat className="h-3.5 w-3.5" />
-          {hasSweep ? (
-            <>
-              {variantCount} variant{variantCount !== 1 ? "s" : ""}
-            </>
-          ) : (
-            "Sweep"
-          )}
+          {hasSweep ? `${variantCount}×` : "Sweep"}
         </Button>
       </PopoverTrigger>
 
       <PopoverContent
         align="end"
         side="bottom"
-        className="w-80 bg-popover p-0 shadow-lg"
+        className="w-96 bg-popover p-0 shadow-xl"
+        sideOffset={4}
       >
-        <div className="p-4 space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-orange-500/10">
               <Repeat className="h-4 w-4 text-orange-500" />
-              <h4 className="font-medium text-sm">
-                Sweep: <span className="font-mono">{paramKey}</span>
-              </h4>
             </div>
-            {localSweep && (
-              <Badge
-                variant="secondary"
-                className="bg-orange-500/20 text-orange-600 text-xs"
-              >
-                {variantCount} variant{variantCount !== 1 ? "s" : ""}
-              </Badge>
-            )}
+            <div>
+              <h4 className="font-medium text-sm">Parameter Sweep</h4>
+              <p className="text-xs text-muted-foreground font-mono">{paramKey}</p>
+            </div>
           </div>
+          <Badge
+            variant="secondary"
+            className="bg-orange-500/10 text-orange-600 text-xs px-2"
+          >
+            {variantCount} value{variantCount !== 1 ? "s" : ""}
+          </Badge>
+        </div>
 
+        <div className="p-4 space-y-4">
           {/* Sweep Type Selection */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Sweep Type</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {sweepTypes
-                .filter((t) => t.type === "or" || isNumeric)
-                .map((typeConfig) => {
-                  const Icon = typeConfig.icon;
-                  const isActive = localSweep?.type === typeConfig.type;
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Sweep Type
+            </Label>
+            <div className="flex gap-2">
+              {(["range", "log_range", "or"] as SweepType[])
+                .filter((t) => t === "or" || isNumeric)
+                .map((type) => {
+                  const config = sweepTypeConfig[type];
+                  const Icon = config.icon;
+                  const isActive = localSweep?.type === type;
                   return (
                     <Button
-                      key={typeConfig.type}
+                      key={type}
                       variant={isActive ? "default" : "outline"}
                       size="sm"
-                      onClick={() => handleTypeChange(typeConfig.type)}
+                      onClick={() => handleTypeChange(type)}
                       className={cn(
-                        "h-auto py-2 flex flex-col items-center gap-1",
-                        isActive && "bg-orange-500 hover:bg-orange-600"
+                        "flex-1 h-9 gap-1.5",
+                        isActive
+                          ? "bg-orange-500 hover:bg-orange-600 text-white"
+                          : "hover:border-orange-500/50"
                       )}
                     >
-                      <Icon className="h-4 w-4" />
-                      <span className="text-xs">{typeConfig.label}</span>
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="text-xs">{config.label}</span>
                     </Button>
                   );
                 })}
             </div>
           </div>
 
-          {/* Configuration based on type */}
+          <Separator />
+
+          {/* Range Configuration */}
           {localSweep?.type === "range" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">From</Label>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Start</Label>
                   <Input
                     type="number"
                     value={localSweep.from ?? 0}
@@ -399,11 +341,11 @@ export function SweepConfigPopover({
                         from: parseFloat(e.target.value) || 0,
                       })
                     }
-                    className="h-8 text-xs font-mono"
+                    className="h-9 text-sm font-mono"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">To</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">End</Label>
                   <Input
                     type="number"
                     value={localSweep.to ?? 10}
@@ -413,48 +355,56 @@ export function SweepConfigPopover({
                         to: parseFloat(e.target.value) || 10,
                       })
                     }
-                    className="h-8 text-xs font-mono"
+                    className="h-9 text-sm font-mono"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Step</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Step</Label>
                   <Input
                     type="number"
                     value={localSweep.step ?? 1}
                     onChange={(e) =>
                       setLocalSweep({
                         ...localSweep,
-                        step: parseFloat(e.target.value) || 1,
+                        step: Math.max(0.001, parseFloat(e.target.value) || 1),
                       })
                     }
-                    className="h-8 text-xs font-mono"
-                    min={1}
+                    className="h-9 text-sm font-mono"
+                    min={0.001}
+                    step={0.1}
                   />
                 </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>
+                  {localSweep.from} → {localSweep.to} (step {localSweep.step})
+                </span>
               </div>
             </div>
           )}
 
+          {/* Log Range Configuration */}
           {localSweep?.type === "log_range" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">From</Label>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Min (10^x)</Label>
                   <Input
                     type="number"
                     value={localSweep.from ?? 0.001}
                     onChange={(e) =>
                       setLocalSweep({
                         ...localSweep,
-                        from: parseFloat(e.target.value) || 0.001,
+                        from: Math.max(0.0000001, parseFloat(e.target.value) || 0.001),
                       })
                     }
-                    className="h-8 text-xs font-mono"
+                    className="h-9 text-sm font-mono"
                     step={0.001}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">To</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Max (10^x)</Label>
                   <Input
                     type="number"
                     value={localSweep.to ?? 100}
@@ -464,87 +414,89 @@ export function SweepConfigPopover({
                         to: parseFloat(e.target.value) || 100,
                       })
                     }
-                    className="h-8 text-xs font-mono"
+                    className="h-9 text-sm font-mono"
                     step={0.001}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Count</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Count</Label>
                   <Input
                     type="number"
                     value={localSweep.count ?? 5}
                     onChange={(e) =>
                       setLocalSweep({
                         ...localSweep,
-                        count: parseInt(e.target.value) || 5,
+                        count: Math.max(2, Math.min(50, parseInt(e.target.value) || 5)),
                       })
                     }
-                    className="h-8 text-xs font-mono"
+                    className="h-9 text-sm font-mono"
                     min={2}
-                    max={20}
+                    max={50}
                   />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Info className="h-3 w-3" />
-                Values are logarithmically spaced (10^x)
-              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>
+                  {formatValue(localSweep.from)} → {formatValue(localSweep.to)} ({localSweep.count} values, log scale)
+                </span>
+              </div>
             </div>
           )}
 
+          {/* Discrete Choices Configuration */}
           {localSweep?.type === "or" && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                Choices (comma-separated)
-              </Label>
-              <Input
-                value={localSweep.choices?.join(", ") ?? ""}
-                onChange={(e) => {
-                  const choices = e.target.value
-                    .split(",")
-                    .map((s) => {
-                      const trimmed = s.trim();
-                      const num = parseFloat(trimmed);
-                      if (!isNaN(num) && isNumeric) return num;
-                      if (trimmed === "true") return true;
-                      if (trimmed === "false") return false;
-                      return trimmed;
-                    })
-                    .filter((v) => v !== "");
-                  setLocalSweep({ ...localSweep, choices });
-                }}
-                className="h-8 text-xs font-mono"
-                placeholder="value1, value2, value3"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Values (comma-separated)</Label>
+                <Input
+                  value={localSweep.choices?.join(", ") ?? ""}
+                  onChange={(e) => {
+                    const choices = e.target.value
+                      .split(",")
+                      .map((s) => {
+                        const trimmed = s.trim();
+                        if (trimmed === "") return null;
+                        const num = parseFloat(trimmed);
+                        if (!isNaN(num) && isNumeric) return num;
+                        if (trimmed === "true") return true;
+                        if (trimmed === "false") return false;
+                        return trimmed;
+                      })
+                      .filter((v): v is string | number | boolean => v !== null);
+                    setLocalSweep({ ...localSweep, choices });
+                  }}
+                  className="h-9 text-sm font-mono"
+                  placeholder="1, 2, 3 or value1, value2"
+                />
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <List className="h-3.5 w-3.5" />
+                <span>{localSweep.choices?.length || 0} discrete value(s)</span>
+              </div>
             </div>
           )}
 
           {/* Value Preview */}
           {previewValues.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Preview</Label>
-              <div className="flex flex-wrap gap-1">
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Preview
+              </Label>
+              <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-muted/50 border">
                 {previewValues.map((val, idx) => (
-                  <Badge
-                    key={idx}
-                    variant="outline"
-                    className="text-xs font-mono py-0.5 px-1.5"
-                  >
-                    {typeof val === "number"
-                      ? val < 0.01 || val >= 1000
-                        ? val.toExponential(2)
-                        : val % 1 === 0
-                        ? val
-                        : val.toFixed(3)
-                      : String(val)}
-                  </Badge>
+                  <span key={idx}>
+                    <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
+                      {formatValue(val)}
+                    </Badge>
+                    {idx < previewValues.length - 1 && idx < 6 && (
+                      <ArrowRight className="inline h-3 w-3 text-muted-foreground/50 mx-0.5" />
+                    )}
+                  </span>
                 ))}
-                {variantCount > 7 && (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs font-mono py-0.5 px-1.5"
-                  >
-                    +{variantCount - 7} more
+                {variantCount > 8 && (
+                  <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                    +{variantCount - 8} more
                   </Badge>
                 )}
               </div>
@@ -553,18 +505,18 @@ export function SweepConfigPopover({
 
           {/* Quick Presets */}
           {relevantPresets.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Quick Presets
               </Label>
               <div className="flex flex-wrap gap-1.5">
-                {relevantPresets.slice(0, 4).map((preset, idx) => (
+                {relevantPresets.slice(0, 6).map((preset, idx) => (
                   <Button
                     key={idx}
                     variant="outline"
                     size="sm"
-                    onClick={() => handleApplyPreset(preset)}
-                    className="h-6 px-2 text-xs hover:bg-orange-500/10 hover:text-orange-500"
+                    onClick={() => setLocalSweep(preset.sweep)}
+                    className="h-7 px-2.5 text-xs hover:bg-orange-500/10 hover:text-orange-600 hover:border-orange-500/50"
                   >
                     {preset.label}
                   </Button>
@@ -572,27 +524,27 @@ export function SweepConfigPopover({
               </div>
             </div>
           )}
+        </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-between pt-2 border-t border-border">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClear}
-              className="text-xs text-muted-foreground hover:text-destructive"
-            >
-              <X className="h-3.5 w-3.5 mr-1" />
-              Clear
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleApply}
-              className="bg-orange-500 hover:bg-orange-600 text-xs"
-            >
-              <Check className="h-3.5 w-3.5 mr-1" />
-              Apply Sweep
-            </Button>
-          </div>
+        {/* Footer Actions */}
+        <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClear}
+            className="h-8 px-3 text-xs text-muted-foreground hover:text-destructive"
+          >
+            <X className="h-3.5 w-3.5 mr-1.5" />
+            Clear Sweep
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleApply}
+            className="h-8 px-4 bg-orange-500 hover:bg-orange-600 text-xs font-medium"
+          >
+            <Check className="h-3.5 w-3.5 mr-1.5" />
+            Apply ({variantCount} values)
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -601,8 +553,6 @@ export function SweepConfigPopover({
 
 /**
  * SweepActivator - Inline hover icon for parameter sweep activation
- *
- * Shows a subtle icon on hover that can be clicked to open sweep config.
  */
 interface SweepActivatorProps {
   paramKey: string;
@@ -621,12 +571,6 @@ export function SweepActivator({
   disabled = false,
   className,
 }: SweepActivatorProps) {
-  const hasSweep = !!sweep;
-  const variantCount = useMemo(
-    () => (sweep ? calculateSweepVariants(sweep) : 0),
-    [sweep]
-  );
-
   return (
     <div className={cn("relative group", className)}>
       <SweepConfigPopover
@@ -662,7 +606,7 @@ export function SweepBadge({ sweep, onClick, className }: SweepBadgeProps) {
       )}
     >
       <Repeat className="h-3 w-3 mr-1" />
-      {variantCount} variant{variantCount !== 1 ? "s" : ""}
+      {variantCount}×
     </Badge>
   );
 }

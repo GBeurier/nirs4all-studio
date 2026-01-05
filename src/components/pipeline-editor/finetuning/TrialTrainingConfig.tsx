@@ -1,13 +1,14 @@
 /**
- * BestModelTrainingConfig - Fixed training params for final model training
+ * TrialTrainingConfig - Quick training params used during hyperparameter search trials
  *
- * After Optuna finds the best hyperparameters, these fixed values are used
- * for the full/final training run. Typically higher values than trial training
- * (e.g., 500 epochs instead of 50).
+ * These are fixed values (not ranges) used for each trial during Optuna search.
+ * Lower values (e.g., 50 epochs) speed up the search process.
+ * After finding the best hyperparameters, the "Best Model Training" params are used
+ * for final training with higher values (e.g., 500 epochs).
  */
 
 import { useState, useMemo, useCallback } from "react";
-import { Plus, Target, Hash, Trash2, Lightbulb } from "lucide-react";
+import { Plus, Timer, Hash, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,21 +19,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { PipelineStep } from "../types";
+import type { FinetuneConfig } from "../types";
 import { hasTrainParams, type StaticParamPreset } from "./types";
-import { staticTrainParamPresets } from "./presets";
+import { trialTrainParamPresets } from "./presets";
 
-interface BestModelTrainingConfigProps {
-  step: PipelineStep;
-  onUpdate: (updates: Partial<PipelineStep>) => void;
+interface TrialTrainingConfigProps {
+  config: FinetuneConfig;
+  onUpdate: (updates: Partial<FinetuneConfig>) => void;
   modelName: string;
 }
 
-export function BestModelTrainingConfig({
-  step,
+export function TrialTrainingConfig({
+  config,
   onUpdate,
   modelName,
-}: BestModelTrainingConfigProps) {
+}: TrialTrainingConfigProps) {
   const [showAddPopover, setShowAddPopover] = useState(false);
 
   // Only show for models that support training parameters
@@ -41,46 +42,40 @@ export function BestModelTrainingConfig({
     [modelName]
   );
 
-  // Get current training config
-  const trainingConfig = step.trainingConfig ?? { epochs: 100, batch_size: 32 };
+  // Get current trial training config
+  const trialConfig = config.trial_train_params ?? {};
 
   // Get used parameter names
   const usedParams = useMemo(() => {
-    const params = new Set<string>();
-    if (trainingConfig.epochs !== undefined) params.add("epochs");
-    if (trainingConfig.batch_size !== undefined) params.add("batch_size");
-    if (trainingConfig.learning_rate !== undefined) params.add("learning_rate");
-    if (trainingConfig.patience !== undefined) params.add("patience");
-    if (trainingConfig.verbose !== undefined) params.add("verbose");
-    return params;
-  }, [trainingConfig]);
+    return new Set(Object.keys(trialConfig));
+  }, [trialConfig]);
 
   const unusedPresets = useMemo(
-    () => staticTrainParamPresets.filter((p) => !usedParams.has(p.name)),
+    () => trialTrainParamPresets.filter((p) => !usedParams.has(p.name)),
     [usedParams]
   );
 
-  const handleUpdateTrainingConfig = useCallback(
+  const handleUpdateTrialConfig = useCallback(
     (key: string, value: number | undefined) => {
-      const newConfig = { ...trainingConfig, [key]: value };
+      const newConfig = { ...trialConfig, [key]: value };
       // Remove undefined values
       Object.keys(newConfig).forEach((k) => {
-        if (newConfig[k as keyof typeof newConfig] === undefined) {
-          delete newConfig[k as keyof typeof newConfig];
+        if (newConfig[k] === undefined) {
+          delete newConfig[k];
         }
       });
-      onUpdate({ trainingConfig: newConfig });
+      onUpdate({ trial_train_params: Object.keys(newConfig).length > 0 ? newConfig : undefined });
     },
-    [trainingConfig, onUpdate]
+    [trialConfig, onUpdate]
   );
 
   const handleAddParam = (preset: StaticParamPreset) => {
-    handleUpdateTrainingConfig(preset.name, preset.default);
+    handleUpdateTrialConfig(preset.name, preset.default);
     setShowAddPopover(false);
   };
 
   const handleRemoveParam = (paramName: string) => {
-    handleUpdateTrainingConfig(paramName, undefined);
+    handleUpdateTrialConfig(paramName, undefined);
   };
 
   // Don't render if model doesn't support training params
@@ -95,11 +90,11 @@ export function BestModelTrainingConfig({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <Label className="text-sm font-medium flex items-center gap-2">
-            <Target className="h-4 w-4 text-emerald-500" />
-            Best Model Training (Final)
+            <Timer className="h-4 w-4 text-sky-500" />
+            Trial Training (Quick)
           </Label>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Full training after tuning (e.g., 500 epochs)
+            Fast training per trial (e.g., 50 epochs)
           </p>
         </div>
         <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
@@ -107,7 +102,7 @@ export function BestModelTrainingConfig({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10 flex-shrink-0"
+              className="h-7 text-xs border-sky-500/50 text-sky-500 hover:bg-sky-500/10 flex-shrink-0"
               disabled={unusedPresets.length === 0}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
@@ -116,9 +111,9 @@ export function BestModelTrainingConfig({
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 bg-popover p-0">
             <div className="p-3 border-b border-border">
-              <h4 className="font-medium text-sm">Best Model Training</h4>
+              <h4 className="font-medium text-sm">Trial Training Params</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Fixed params for final training
+                Quick training for each search trial
               </p>
             </div>
             <ScrollArea className="max-h-64">
@@ -142,7 +137,7 @@ export function BestModelTrainingConfig({
                 ))}
                 {unusedPresets.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    All training parameters added
+                    All trial parameters added
                   </p>
                 )}
               </div>
@@ -152,24 +147,21 @@ export function BestModelTrainingConfig({
       </div>
 
       {!hasParams ? (
-        <div className="text-center py-3 rounded-lg border border-dashed border-emerald-500/30">
+        <div className="text-center py-3 rounded-lg border border-dashed border-sky-500/30">
           <p className="text-xs text-muted-foreground">
-            No fixed training parameters
+            Uses default trial training settings
           </p>
         </div>
       ) : (
         <div className="space-y-2">
           {Array.from(usedParams).map((paramName) => {
-            const preset = staticTrainParamPresets.find(
-              (p) => p.name === paramName
-            );
-            const value = trainingConfig[paramName as keyof typeof trainingConfig];
+            const value = trialConfig[paramName];
             return (
               <div
                 key={paramName}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/5"
               >
-                <Hash className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                <Hash className="h-4 w-4 text-sky-500 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <Label className="text-sm font-medium truncate block">{paramName}</Label>
                 </div>
@@ -177,7 +169,7 @@ export function BestModelTrainingConfig({
                   type="number"
                   value={value ?? ""}
                   onChange={(e) =>
-                    handleUpdateTrainingConfig(
+                    handleUpdateTrialConfig(
                       paramName,
                       parseFloat(e.target.value) || 0
                     )
@@ -195,6 +187,16 @@ export function BestModelTrainingConfig({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Info callout */}
+      {hasParams && (
+        <div className="flex items-start gap-2 p-2 rounded-lg bg-sky-500/5 border border-sky-500/20">
+          <Timer className="h-3.5 w-3.5 text-sky-500 flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-muted-foreground">
+            These values are used for quick training during each trial to speed up hyperparameter search.
+          </p>
         </div>
       )}
     </div>

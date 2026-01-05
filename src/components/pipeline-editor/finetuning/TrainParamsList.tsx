@@ -1,5 +1,8 @@
 /**
- * TrainParamsList - Training parameters for neural network models
+ * TrainParamsList - Training parameters to be finetuned (ranges for Optuna search)
+ *
+ * These are RANGES that Optuna will search through during hyperparameter optimization.
+ * Example: batch_size from 16 to 256, learning_rate from 0.0001 to 0.1
  */
 
 import { useState, useMemo } from "react";
@@ -15,7 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { FinetuneParamConfig } from "../types";
-import { isNeuralNetworkModel, type ParamPreset } from "./types";
+import { hasTrainParams, type ParamPreset } from "./types";
 import { trainParamPresets } from "./presets";
 import { FinetuneParamEditor } from "./FinetuneParamEditor";
 
@@ -32,9 +35,9 @@ export function TrainParamsList({
 }: TrainParamsListProps) {
   const [showAddPopover, setShowAddPopover] = useState(false);
 
-  // Only show for neural network models
-  const isNeuralNetwork = useMemo(
-    () => isNeuralNetworkModel(modelName),
+  // Only show for models that have training parameters (neural networks, boosting)
+  const supportsTrainParams = useMemo(
+    () => hasTrainParams(modelName),
     [modelName]
   );
 
@@ -70,34 +73,35 @@ export function TrainParamsList({
     onUpdate(params.filter((_, i) => i !== index));
   };
 
-  // Don't render if not a neural network model
-  if (!isNeuralNetwork) return null;
+  // Don't render if model doesn't support training params
+  if (!supportsTrainParams) return null;
 
   return (
-    <div className="space-y-3">
+    <>
       <Separator />
-      <div className="flex items-center justify-between">
-        <div>
-          <Label className="text-sm font-medium flex items-center gap-2">
-            <Zap className="h-4 w-4 text-amber-500" />
-            Training Parameters
-          </Label>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Tune training hyperparameters (epochs, batch_size, etc.)
-          </p>
-        </div>
-        <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
-              disabled={unusedPresets.length === 0}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              Add Training Param
-            </Button>
-          </PopoverTrigger>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <Zap className="h-4 w-4 text-amber-500" />
+              Training Params (Tunable Ranges)
+            </Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Optuna searches these ranges (e.g., batch: 16→256)
+            </p>
+          </div>
+          <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs border-amber-500/50 text-amber-500 hover:bg-amber-500/10 flex-shrink-0"
+                disabled={unusedPresets.length === 0}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
+            </PopoverTrigger>
           <PopoverContent align="end" className="w-64 bg-popover p-0">
             <div className="p-3 border-b border-border">
               <h4 className="font-medium text-sm">Training Parameters</h4>
@@ -136,12 +140,9 @@ export function TrainParamsList({
       </div>
 
       {params.length === 0 ? (
-        <div className="text-center py-4 rounded-lg border border-dashed">
-          <p className="text-sm text-muted-foreground">
+        <div className="text-center py-3 rounded-lg border border-dashed">
+          <p className="text-xs text-muted-foreground">
             No training parameters to tune
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Add epochs, batch_size, learning_rate, etc.
           </p>
         </div>
       ) : (
@@ -158,6 +159,7 @@ export function TrainParamsList({
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

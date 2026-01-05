@@ -21,6 +21,7 @@ import {
   FileJson,
   FolderOpen,
   Settings,
+  Workflow,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -447,13 +448,16 @@ export default function PipelineEditor() {
                   <TooltipContent>Back to Pipelines</TooltipContent>
                 </Tooltip>
 
-                <div>
-                  <Input
-                    value={pipelineName}
-                    onChange={(e) => setPipelineName(e.target.value)}
-                    className="text-lg font-semibold border-none bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 w-auto"
-                    style={{ minWidth: "200px" }}
-                  />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <Workflow className="h-5 w-5 text-muted-foreground" />
+                    <Input
+                      value={pipelineName}
+                      onChange={(e) => setPipelineName(e.target.value)}
+                      className="text-lg font-semibold bg-transparent px-2 py-1 h-auto border border-transparent hover:border-border/50 focus:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:ring-offset-0 rounded-md transition-colors w-auto"
+                      style={{ minWidth: "200px" }}
+                    />
+                  </div>
                   <div className="flex items-center gap-2 mt-1">
                     {stepCounts.preprocessing > 0 && (
                       <Badge

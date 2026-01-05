@@ -82,21 +82,21 @@ export function FinetuneParamEditor({
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between px-3 py-2 cursor-pointer"
+        className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center gap-2">
-          <TypeIcon className="h-4 w-4 text-purple-500" />
-          <span className="font-medium text-sm font-mono">{param.name}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <TypeIcon className="h-4 w-4 text-purple-500 flex-shrink-0" />
+          <span className="font-medium text-sm font-mono truncate">{param.name}</span>
           <Badge
             variant="outline"
-            className="text-[10px] border-purple-500/50 text-purple-500"
+            className="text-[10px] border-purple-500/50 text-purple-500 flex-shrink-0"
           >
             {formatParamType(param.type)}
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {validationError && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -105,9 +105,6 @@ export function FinetuneParamEditor({
               <TooltipContent>{validationError}</TooltipContent>
             </Tooltip>
           )}
-          <span className="text-xs text-muted-foreground font-mono">
-            {searchSpaceDisplay}
-          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -130,10 +127,10 @@ export function FinetuneParamEditor({
       {/* Configuration */}
       {isExpanded && (
         <div className="px-3 pb-3 pt-1 border-t border-border/30 space-y-3">
-          {/* Type selection */}
+          {/* Type selection - 2x2 grid for narrow panels */}
           <div className="space-y-2">
             <Label className="text-xs text-muted-foreground">Type</Label>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               {(
                 ["int", "float", "log_float", "categorical"] as FinetuneParamType[]
               ).map((type) => {
@@ -176,37 +173,39 @@ export function FinetuneParamEditor({
             </div>
           </div>
 
-          {/* Numeric configuration */}
+          {/* Numeric configuration - stacked for narrow panels */}
           {param.type !== "categorical" && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Low</Label>
-                <Input
-                  type="number"
-                  value={param.low ?? ""}
-                  onChange={(e) =>
-                    onUpdate({ low: parseFloat(e.target.value) || 0 })
-                  }
-                  className="h-8 text-xs font-mono"
-                  step={param.type === "int" ? 1 : 0.001}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">High</Label>
-                <Input
-                  type="number"
-                  value={param.high ?? ""}
-                  onChange={(e) =>
-                    onUpdate({ high: parseFloat(e.target.value) || 10 })
-                  }
-                  className="h-8 text-xs font-mono"
-                  step={param.type === "int" ? 1 : 0.001}
-                />
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Low</Label>
+                  <Input
+                    type="number"
+                    value={param.low ?? ""}
+                    onChange={(e) =>
+                      onUpdate({ low: parseFloat(e.target.value) || 0 })
+                    }
+                    className="h-8 text-xs font-mono"
+                    step={param.type === "int" ? 1 : 0.001}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">High</Label>
+                  <Input
+                    type="number"
+                    value={param.high ?? ""}
+                    onChange={(e) =>
+                      onUpdate({ high: parseFloat(e.target.value) || 10 })
+                    }
+                    className="h-8 text-xs font-mono"
+                    step={param.type === "int" ? 1 : 0.001}
+                  />
+                </div>
               </div>
               {param.type === "int" && (
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">
-                    Step <span className="text-muted-foreground/50">(opt)</span>
+                    Step <span className="text-muted-foreground/50">(optional)</span>
                   </Label>
                   <Input
                     type="number"

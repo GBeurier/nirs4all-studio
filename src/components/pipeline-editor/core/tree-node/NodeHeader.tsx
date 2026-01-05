@@ -2,7 +2,7 @@
  * NodeHeader - Step info display in tree node
  *
  * Extracted from TreeNode to provide the step icon, name, badges section.
- * Displays sweep indicators, finetuning badges, and parameter summary.
+ * Displays sweep indicators, finetuning badges, generator variants, and parameter summary.
  */
 
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Repeat, Sparkles, Package } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Repeat, Sparkles, Package, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PipelineStep } from "../../types";
 
@@ -37,6 +42,13 @@ interface NodeHeaderProps {
   isContainer: boolean;
   containerChildren: PipelineStep[];
   childLabel: string;
+  // Generator info
+  isGenerator?: boolean;
+  generatorKind?: "or" | "cartesian" | null;
+  generatorVariantCount?: number;
+  generatorOptionCount?: number;
+  generatorSelectionSummary?: string;
+  generatorOptionNames?: string[];
 }
 
 /**
@@ -57,6 +69,12 @@ export function NodeHeader({
   isContainer,
   containerChildren,
   childLabel,
+  isGenerator,
+  generatorKind,
+  generatorVariantCount,
+  generatorOptionCount,
+  generatorSelectionSummary,
+  generatorOptionNames,
 }: NodeHeaderProps) {
   return (
     <div className="flex-1 min-w-0 overflow-hidden">
@@ -69,45 +87,135 @@ export function NodeHeader({
           {step.type}
         </Badge>
 
-        {/* Sweep indicator */}
+        {/* Sweep indicator - with Popover for details */}
         {hasSweeps && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge className="text-[9px] px-1 py-0 h-4 bg-orange-500 hover:bg-orange-500 shrink-0 cursor-help">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Badge className="text-[9px] px-1 py-0 h-4 bg-orange-500 hover:bg-orange-600 shrink-0 cursor-pointer transition-colors">
                 <Repeat className="h-2.5 w-2.5 mr-0.5" />
                 {totalVariants}
               </Badge>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-[220px]">
-              <div className="text-xs">
-                <div className="font-semibold mb-1">Sweeps ({sweepCount})</div>
-                <pre className="text-muted-foreground whitespace-pre-wrap">
-                  {sweepSummary}
-                </pre>
+            </PopoverTrigger>
+            <PopoverContent side="right" align="start" className="w-64 p-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium flex items-center gap-1.5">
+                    <Repeat className="h-4 w-4 text-orange-500" />
+                    Sweeps
+                  </h4>
+                  <Badge variant="secondary" className="text-xs">
+                    {totalVariants} variant{totalVariants !== 1 ? "s" : ""}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {sweepCount} parameter{sweepCount !== 1 ? "s" : ""} with sweep configurations
+                </p>
+                {sweepSummary && (
+                  <div className="space-y-1 pt-2 border-t">
+                    <p className="text-xs font-medium text-muted-foreground">Parameters:</p>
+                    <pre className="text-xs text-foreground font-mono whitespace-pre-wrap">
+                      {sweepSummary}
+                    </pre>
+                  </div>
+                )}
               </div>
-            </TooltipContent>
-          </Tooltip>
+            </PopoverContent>
+          </Popover>
         )}
 
-        {/* Finetuning indicator */}
+        {/* Finetuning indicator - with Popover for details */}
         {hasFinetuning && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge className="text-[9px] px-1 py-0 h-4 bg-purple-500 hover:bg-purple-500 shrink-0 cursor-help">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Badge className="text-[9px] px-1 py-0 h-4 bg-purple-500 hover:bg-purple-600 shrink-0 cursor-pointer transition-colors">
                 <Sparkles className="h-2.5 w-2.5 mr-0.5" />
                 {finetuneTrials}
               </Badge>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-[220px]">
-              <div className="text-xs">
-                <div className="font-semibold mb-1">Optuna Finetuning</div>
-                <p className="text-muted-foreground">
-                  {finetuneTrials} trials, {finetuneParamCount} parameter
-                  {finetuneParamCount !== 1 ? "s" : ""}
+            </PopoverTrigger>
+            <PopoverContent side="right" align="start" className="w-64 p-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-purple-500" />
+                    Optuna Finetuning
+                  </h4>
+                  <Badge variant="secondary" className="text-xs">
+                    {finetuneTrials} trials
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {finetuneParamCount} parameter{finetuneParamCount !== 1 ? "s" : ""} to optimize
                 </p>
+                {step.finetuneConfig?.model_params && step.finetuneConfig.model_params.length > 0 && (
+                  <div className="space-y-1 pt-2 border-t">
+                    <p className="text-xs font-medium text-muted-foreground">Parameters:</p>
+                    {step.finetuneConfig.model_params.slice(0, 5).map((param, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="text-foreground font-mono">{param.name}</span>
+                        <span className="text-muted-foreground">
+                          {param.type === "categorical"
+                            ? `${param.choices?.length ?? 0} choices`
+                            : `${param.low} → ${param.high}`
+                          }
+                        </span>
+                      </div>
+                    ))}
+                    {step.finetuneConfig.model_params.length > 5 && (
+                      <p className="text-xs text-muted-foreground italic">
+                        +{step.finetuneConfig.model_params.length - 5} more...
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            </TooltipContent>
-          </Tooltip>
+            </PopoverContent>
+          </Popover>
+        )}
+
+        {/* Generator variants indicator - with Popover for option list */}
+        {isGenerator && generatorVariantCount !== undefined && generatorVariantCount > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Badge className="text-[9px] px-1 py-0 h-4 bg-orange-500 hover:bg-orange-600 shrink-0 cursor-pointer transition-colors">
+                <Layers className="h-2.5 w-2.5 mr-0.5" />
+                {generatorVariantCount}
+              </Badge>
+            </PopoverTrigger>
+            <PopoverContent side="right" align="start" className="w-64 p-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-orange-500" />
+                    {generatorKind === "cartesian" ? "Cartesian Product" : "Choose"}
+                  </h4>
+                  <Badge variant="secondary" className="text-xs">
+                    {generatorVariantCount} variant{generatorVariantCount !== 1 ? "s" : ""}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {generatorOptionCount} option{generatorOptionCount !== 1 ? "s" : ""} • {generatorSelectionSummary}
+                </p>
+                {generatorOptionNames && generatorOptionNames.length > 0 && (
+                  <div className="space-y-1 pt-2 border-t">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {generatorKind === "cartesian" ? "Stages:" : "Options:"}
+                    </p>
+                    {generatorOptionNames.slice(0, 8).map((name, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground w-4 text-right">{idx + 1}.</span>
+                        <span className="text-foreground truncate">{name}</span>
+                      </div>
+                    ))}
+                    {generatorOptionNames.length > 8 && (
+                      <p className="text-xs text-muted-foreground italic">
+                        +{generatorOptionNames.length - 8} more...
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
 
         {/* Container children indicator */}

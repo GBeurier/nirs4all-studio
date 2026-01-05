@@ -65,6 +65,18 @@ const ConcatTransformRenderer = lazy(() =>
   }))
 );
 
+const GeneratorRenderer = lazy(() =>
+  import("./GeneratorRenderer").then((m) => ({
+    default: m.GeneratorRenderer,
+  }))
+);
+
+const SequentialRenderer = lazy(() =>
+  import("./SequentialRenderer").then((m) => ({
+    default: m.SequentialRenderer,
+  }))
+);
+
 // Default renderer is not lazy-loaded as it's used frequently
 import { DefaultRenderer } from "./DefaultRenderer";
 
@@ -154,12 +166,17 @@ const RENDERER_REGISTRY: Record<StepType, RendererConfig> = {
     usesParameterProps: false,
     isLazy: true,
   },
+  sequential: {
+    component: SequentialRenderer,
+    usesParameterProps: false,
+    isLazy: true,
+  },
 
-  // Types that use DefaultRenderer
+  // Generator renderer
   generator: {
-    component: DefaultRenderer,
-    usesParameterProps: true,
-    isLazy: false,
+    component: GeneratorRenderer,
+    usesParameterProps: false,
+    isLazy: true,
   },
   branch: {
     component: DefaultRenderer,

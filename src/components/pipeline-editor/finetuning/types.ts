@@ -68,7 +68,7 @@ export function getParamTypeIcon(type: FinetuneParamType): LucideIcon {
 }
 
 /**
- * Neural network model names that support train_params
+ * Neural network model names that support train_params (Optuna tunable training parameters)
  */
 export const NEURAL_NETWORK_MODELS = [
   "Nicon",
@@ -76,16 +76,42 @@ export const NEURAL_NETWORK_MODELS = [
   "MLPClassifier",
   "DeepPLS",
   "TabPFN",
-  "XGBoost",
-  "LightGBM",
-  "CatBoost",
 ];
 
 /**
- * Check if a model is a neural network model
+ * Boosting models that support training parameters like n_estimators, learning_rate
+ */
+export const BOOSTING_MODELS = [
+  "XGBoost",
+  "LightGBM",
+  "CatBoost",
+  "GradientBoosting",
+  "HistGradientBoosting",
+  "AdaBoost",
+];
+
+/**
+ * All models that support training parameters
+ */
+export const MODELS_WITH_TRAIN_PARAMS = [
+  ...NEURAL_NETWORK_MODELS,
+  ...BOOSTING_MODELS,
+];
+
+/**
+ * Check if a model is a neural network model (supports epochs, batch_size, etc.)
  */
 export function isNeuralNetworkModel(modelName: string): boolean {
   return NEURAL_NETWORK_MODELS.some((m) =>
+    modelName.toLowerCase().includes(m.toLowerCase())
+  );
+}
+
+/**
+ * Check if a model supports training parameters (any model with tunable training)
+ */
+export function hasTrainParams(modelName: string): boolean {
+  return MODELS_WITH_TRAIN_PARAMS.some((m) =>
     modelName.toLowerCase().includes(m.toLowerCase())
   );
 }

@@ -1,5 +1,11 @@
 /**
  * FinetuneTab - Main tab content for model step finetuning
+ *
+ * Manages 3 distinct types of training parameters:
+ * 1. Model Params (Tunable) - Model hyperparameters to search (e.g., n_components: 1-30)
+ * 2. Training Params (Tunable) - Training hyperparameters to search (e.g., batch_size: 16-256)
+ * 3. Trial Training (Quick) - Fixed fast training params per trial (e.g., 50 epochs)
+ * 4. Best Model Training - Fixed final training params (e.g., 500 epochs)
  */
 
 import { useMemo, useCallback } from "react";
@@ -11,6 +17,7 @@ import { FinetuneEnableToggle } from "./FinetuneEnableToggle";
 import { FinetuneSearchConfig } from "./FinetuneSearchConfig";
 import { FinetuneParamList } from "./FinetuneParamList";
 import { TrainParamsList } from "./TrainParamsList";
+import { TrialTrainingConfig } from "./TrialTrainingConfig";
 import { BestModelTrainingConfig } from "./BestModelTrainingConfig";
 import { getPresetsForModel } from "./presets";
 
@@ -99,7 +106,7 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
   );
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-4 p-4">
       {/* Enable toggle */}
       <FinetuneEnableToggle
         enabled={config.enabled}
@@ -113,7 +120,7 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
           <Separator />
 
           {/* Search configuration */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             <Label className="text-sm font-medium flex items-center gap-2">
               <Settings2 className="h-4 w-4" />
               Search Configuration
@@ -131,14 +138,21 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
             availableParams={availableParams}
           />
 
-          {/* Training Parameters (for neural network models) */}
+          {/* Training Parameters to Tune (ranges for Optuna) */}
           <TrainParamsList
             params={config.train_params ?? []}
             onUpdate={(params) => handleConfigUpdate({ train_params: params })}
             modelName={step.name}
           />
 
-          {/* Best Model Training Parameters (static, for final training after tuning) */}
+          {/* Trial Training Config (quick fixed params during search) */}
+          <TrialTrainingConfig
+            config={config}
+            onUpdate={handleConfigUpdate}
+            modelName={step.name}
+          />
+
+          {/* Best Model Training Parameters (fixed final training after tuning) */}
           <BestModelTrainingConfig
             step={step}
             onUpdate={onUpdate}
@@ -150,22 +164,25 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
             (config.train_params && config.train_params.length > 0)) && (
             <>
               <Separator />
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-500/10 border border-purple-500/30">
-                <Sparkles className="h-5 w-5 text-purple-500 flex-shrink-0 mt-0.5" />
-                <div className="text-sm">
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/30">
+                <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                <div className="text-xs min-w-0 space-y-1">
                   <p className="font-medium text-foreground">
-                    Optuna will explore {config.n_trials} configurations
+                    {config.n_trials} trials will be explored
                   </p>
                   {config.model_params && config.model_params.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Model params ({config.model_params.length}):{" "}
-                      {config.model_params.map((p) => p.name).join(", ")}
+                    <p className="text-muted-foreground truncate">
+                      <span className="text-foreground/70">Tuning model:</span> {config.model_params.map((p) => p.name).join(", ")}
                     </p>
                   )}
                   {config.train_params && config.train_params.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Training params ({config.train_params.length}):{" "}
-                      {config.train_params.map((p) => p.name).join(", ")}
+                    <p className="text-muted-foreground truncate">
+                      <span className="text-foreground/70">Tuning training:</span> {config.train_params.map((p) => p.name).join(", ")}
+                    </p>
+                  )}
+                  {config.trial_train_params && Object.keys(config.trial_train_params).length > 0 && (
+                    <p className="text-muted-foreground truncate">
+                      <span className="text-foreground/70">Per-trial:</span> {Object.entries(config.trial_train_params).map(([k, v]) => `${k}=${v}`).join(", ")}
                     </p>
                   )}
                 </div>

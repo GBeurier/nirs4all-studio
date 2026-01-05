@@ -297,7 +297,7 @@ export function MergeRenderer({
 }
 
 // ============================================================================
-// SourcesTab - Advanced branch merge configuration
+// SourcesTab - Advanced branch merge configuration with toggle workflow
 // ============================================================================
 
 interface SourcesTabProps {
@@ -306,77 +306,132 @@ interface SourcesTabProps {
 }
 
 function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
+  // Track which sections are enabled
+  const predictionsEnabled = (mergeConfig.predictions?.length ?? 0) > 0 ||
+    mergeConfig.mode === "predictions" || mergeConfig.mode === "custom";
+  const featuresEnabled = (mergeConfig.features?.length ?? 0) > 0 ||
+    mergeConfig.mode === "features" || mergeConfig.mode === "custom";
+
+  const togglePredictions = () => {
+    if (predictionsEnabled) {
+      // Disable predictions - clear and update mode
+      const newMode = featuresEnabled ? "features" : "predictions";
+      onConfigChange({ ...mergeConfig, predictions: [], mode: newMode });
+    } else {
+      // Enable predictions - add default source
+      const newPredictions: MergePredictionSource[] = [{ branch: 0, select: "best" }];
+      onConfigChange({
+        ...mergeConfig,
+        predictions: newPredictions,
+        mode: featuresEnabled ? "custom" : "predictions"
+      });
+    }
+  };
+
+  const toggleFeatures = () => {
+    if (featuresEnabled) {
+      // Disable features - clear and update mode
+      const newMode = predictionsEnabled ? "predictions" : "predictions";
+      onConfigChange({ ...mergeConfig, features: [], mode: newMode });
+    } else {
+      // Enable features - add default branch
+      onConfigChange({
+        ...mergeConfig,
+        features: [0],
+        mode: predictionsEnabled ? "custom" : "features"
+      });
+    }
+  };
+
   return (
-    <div className="p-4 space-y-6">
-      {/* Mode Selection */}
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">Source Mode</Label>
-        <Select
-          value={mergeConfig.mode ?? "predictions"}
-          onValueChange={(value) =>
-            onConfigChange({ ...mergeConfig, mode: value })
-          }
+    <div className="p-4 space-y-4">
+      {/* Predictions Section with Toggle */}
+      <div className="rounded-lg border overflow-hidden">
+        <div
+          className={`flex items-center justify-between px-4 py-3 cursor-pointer transition-colors ${
+            predictionsEnabled
+              ? "bg-blue-500/10 border-b border-blue-500/20"
+              : "bg-muted/30 hover:bg-muted/50"
+          }`}
+          onClick={togglePredictions}
         >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="predictions">
-              <div className="flex flex-col">
-                <span className="font-medium">Predictions</span>
-                <span className="text-xs text-muted-foreground">
-                  Merge model predictions
-                </span>
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-5 rounded-full flex items-center p-0.5 transition-colors ${
+              predictionsEnabled ? "bg-blue-500 justify-end" : "bg-muted-foreground/30 justify-start"
+            }`}>
+              <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-blue-500" />
+                <span className="font-medium text-sm">Predictions</span>
+                {predictionsEnabled && (mergeConfig.predictions?.length ?? 0) > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-5 bg-blue-500/20 text-blue-600">
+                    {mergeConfig.predictions?.length} source{(mergeConfig.predictions?.length ?? 0) !== 1 ? "s" : ""}
+                  </Badge>
+                )}
               </div>
-            </SelectItem>
-            <SelectItem value="features">
-              <div className="flex flex-col">
-                <span className="font-medium">Features</span>
-                <span className="text-xs text-muted-foreground">
-                  Merge transformed features
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="concatenate">
-              <div className="flex flex-col">
-                <span className="font-medium">Concatenate</span>
-                <span className="text-xs text-muted-foreground">
-                  Concatenate all outputs
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="custom">
-              <div className="flex flex-col">
-                <span className="font-medium">Custom</span>
-                <span className="text-xs text-muted-foreground">
-                  Configure specific branches
-                </span>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+              <p className="text-xs text-muted-foreground">
+                Merge model predictions from branches
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {predictionsEnabled && (
+          <div className="p-4" onClick={(e) => e.stopPropagation()}>
+            <PredictionSourcesSection
+              predictions={mergeConfig.predictions ?? []}
+              onChange={(predictions) =>
+                onConfigChange({ ...mergeConfig, predictions })
+              }
+            />
+          </div>
+        )}
       </div>
 
-      <Separator />
+      {/* Features Section with Toggle */}
+      <div className="rounded-lg border overflow-hidden">
+        <div
+          className={`flex items-center justify-between px-4 py-3 cursor-pointer transition-colors ${
+            featuresEnabled
+              ? "bg-green-500/10 border-b border-green-500/20"
+              : "bg-muted/30 hover:bg-muted/50"
+          }`}
+          onClick={toggleFeatures}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-5 rounded-full flex items-center p-0.5 transition-colors ${
+              featuresEnabled ? "bg-green-500 justify-end" : "bg-muted-foreground/30 justify-start"
+            }`}>
+              <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <Layers className="h-4 w-4 text-green-500" />
+                <span className="font-medium text-sm">Features</span>
+                {featuresEnabled && (mergeConfig.features?.length ?? 0) > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-5 bg-green-500/20 text-green-600">
+                    {mergeConfig.features?.length} branch{(mergeConfig.features?.length ?? 0) !== 1 ? "es" : ""}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Merge transformed features from branches
+              </p>
+            </div>
+          </div>
+        </div>
 
-      {/* Predictions Configuration (when mode is custom or predictions) */}
-      {(mergeConfig.mode === "custom" ||
-        mergeConfig.mode === "predictions") && (
-        <PredictionSourcesSection
-          predictions={mergeConfig.predictions ?? []}
-          onChange={(predictions) =>
-            onConfigChange({ ...mergeConfig, predictions })
-          }
-        />
-      )}
-
-      {/* Features Configuration (when mode is custom or features) */}
-      {(mergeConfig.mode === "custom" || mergeConfig.mode === "features") && (
-        <FeatureSourcesSection
-          features={mergeConfig.features ?? []}
-          onChange={(features) => onConfigChange({ ...mergeConfig, features })}
-        />
-      )}
+        {featuresEnabled && (
+          <div className="p-4" onClick={(e) => e.stopPropagation()}>
+            <FeatureSourcesSection
+              features={mergeConfig.features ?? []}
+              onChange={(features) => onConfigChange({ ...mergeConfig, features })}
+            />
+          </div>
+        )}
+      </div>
 
       <Separator />
 
@@ -384,51 +439,53 @@ function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
       <div className="space-y-3">
         <Label className="text-sm font-medium">Output Options</Label>
 
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Output As</Label>
-          <Select
-            value={mergeConfig.output_as ?? "predictions"}
-            onValueChange={(value) =>
-              onConfigChange({
-                ...mergeConfig,
-                output_as: value as "features" | "predictions",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover">
-              <SelectItem value="predictions">Predictions</SelectItem>
-              <SelectItem value="features">Features</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Output As</Label>
+            <Select
+              value={mergeConfig.output_as ?? "predictions"}
+              onValueChange={(value) =>
+                onConfigChange({
+                  ...mergeConfig,
+                  output_as: value as "features" | "predictions",
+                })
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="predictions">Predictions</SelectItem>
+                <SelectItem value="features">Features</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">On Missing</Label>
-          <Select
-            value={mergeConfig.on_missing ?? "warn"}
-            onValueChange={(value) =>
-              onConfigChange({
-                ...mergeConfig,
-                on_missing: value as "warn" | "error" | "drop",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-popover">
-              <SelectItem value="warn">Warn</SelectItem>
-              <SelectItem value="error">Error</SelectItem>
-              <SelectItem value="drop">Drop</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            How to handle missing predictions from branches
-          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">On Missing</Label>
+            <Select
+              value={mergeConfig.on_missing ?? "warn"}
+              onValueChange={(value) =>
+                onConfigChange({
+                  ...mergeConfig,
+                  on_missing: value as "warn" | "error" | "drop",
+                })
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="warn">Warn</SelectItem>
+                <SelectItem value="error">Error</SelectItem>
+                <SelectItem value="drop">Drop</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground">
+          How to handle missing data from branches
+        </p>
       </div>
     </div>
   );

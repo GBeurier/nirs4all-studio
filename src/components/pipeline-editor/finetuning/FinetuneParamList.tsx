@@ -82,17 +82,17 @@ export function FinetuneParamList({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-sm font-medium">Parameters to Optimize</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm font-medium flex-shrink-0">Parameters to Optimize</Label>
         <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs border-purple-500/50 text-purple-500 hover:bg-purple-500/10"
+              className="h-7 text-xs border-purple-500/50 text-purple-500 hover:bg-purple-500/10 flex-shrink-0"
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              Add Parameter
+              Add
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 bg-popover p-0">

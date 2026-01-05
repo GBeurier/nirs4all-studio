@@ -24,4 +24,16 @@ export type {
 } from "./types";
 
 // Re-export utilities
-export { stepIcons, isContainerStep, hasChildren, getContainerChildLabel, isBranchableStep, getBranchLabel } from "./utils";
+export {
+  stepIcons,
+  isContainerStep,
+  hasChildren,
+  getContainerChildLabel,
+  isBranchableStep,
+  getBranchLabel,
+  computeSweepInfo,
+  computeFinetuneInfo,
+  computeGeneratorInfo,
+} from "./utils";
+
+export type { SweepInfo, FinetuneInfo, GeneratorInfo } from "./utils";

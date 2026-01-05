@@ -185,6 +185,156 @@ export function computeFinetuneInfo(step: PipelineStep): FinetuneInfo {
 }
 
 /**
+ * Computed generator information for a generator step
+ */
+export interface GeneratorInfo {
+  isGenerator: boolean;
+  generatorKind: "or" | "cartesian" | null;
+  optionCount: number;
+  variantCount: number;
+  hasPickArrange: boolean;
+  selectionSummary: string;
+  optionNames: string[];
+}
+
+/**
+ * Compute generator information for a step
+ */
+export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
+  if (step.type !== "generator") {
+    return {
+      isGenerator: false,
+      generatorKind: null,
+      optionCount: 0,
+      variantCount: 0,
+      hasPickArrange: false,
+      selectionSummary: "",
+      optionNames: [],
+    };
+  }
+
+  const generatorKind = step.generatorKind || "or";
+  const branches = step.branches || [];
+  const optionCount = branches.length;
+  const opts = step.generatorOptions || {};
+
+  // Check if pick/arrange is configured
+  const hasPickArrange = opts.pick !== undefined ||
+    opts.arrange !== undefined ||
+    opts.then_pick !== undefined ||
+    opts.then_arrange !== undefined;
+
+  // Calculate variant count using the same logic as calculateStepVariants
+  let variantCount = 1;
+
+  if (generatorKind === "or") {
+    let genVariants = optionCount;
+
+    // Primary selection
+    if (opts.arrange !== undefined) {
+      genVariants = calculateGenValue(optionCount, "arrange", opts.arrange);
+    } else if (opts.pick !== undefined) {
+      genVariants = calculateGenValue(optionCount, "pick", opts.pick);
+    }
+
+    // Second-order selection
+    if (opts.then_arrange !== undefined) {
+      genVariants = calculateGenValue(genVariants, "arrange", opts.then_arrange);
+    } else if (opts.then_pick !== undefined) {
+      genVariants = calculateGenValue(genVariants, "pick", opts.then_pick);
+    }
+
+    // Apply count limiter
+    if (opts.count && opts.count > 0 && genVariants > opts.count) {
+      genVariants = opts.count;
+    }
+
+    variantCount = genVariants;
+  } else if (generatorKind === "cartesian") {
+    // Cartesian: product of steps in each stage
+    variantCount = branches.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
+  }
+
+  // Build selection summary
+  const summaryParts: string[] = [];
+  if (opts.pick !== undefined) {
+    summaryParts.push(`pick ${formatPickArrangeValue(opts.pick)}`);
+  }
+  if (opts.arrange !== undefined) {
+    summaryParts.push(`arrange ${formatPickArrangeValue(opts.arrange)}`);
+  }
+  if (opts.then_pick !== undefined) {
+    summaryParts.push(`then pick ${formatPickArrangeValue(opts.then_pick)}`);
+  }
+  if (opts.then_arrange !== undefined) {
+    summaryParts.push(`then arrange ${formatPickArrangeValue(opts.then_arrange)}`);
+  }
+  if (opts.count !== undefined) {
+    summaryParts.push(`limit ${opts.count}`);
+  }
+
+  // Get option names from branches
+  const optionNames = branches.map((branch, idx) => {
+    if (branch.length === 0) return `Option ${idx + 1} (empty)`;
+    if (branch.length === 1) return branch[0].name;
+    return `${branch[0].name} + ${branch.length - 1} more`;
+  });
+
+  return {
+    isGenerator: true,
+    generatorKind,
+    optionCount,
+    variantCount,
+    hasPickArrange,
+    selectionSummary: summaryParts.join(" → ") || (generatorKind === "cartesian" ? "all combinations" : "try each"),
+    optionNames,
+  };
+}
+
+// Helper: Calculate generator value for pick/arrange
+function calculateGenValue(n: number, mode: "pick" | "arrange", value: number | [number, number]): number {
+  if (Array.isArray(value) && value.length === 2) {
+    const [from, to] = value;
+    let total = 0;
+    for (let k = from; k <= to; k++) {
+      total += mode === "pick" ? binomial(n, k) : perm(n, k);
+    }
+    return total;
+  }
+  const k = typeof value === "number" ? value : 1;
+  return mode === "pick" ? binomial(n, k) : perm(n, k);
+}
+
+// Helper: Binomial coefficient C(n, k)
+function binomial(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  if (k === 0 || k === n) return 1;
+  let result = 1;
+  for (let i = 0; i < k; i++) {
+    result = (result * (n - i)) / (i + 1);
+  }
+  return Math.round(result);
+}
+
+// Helper: Permutation P(n, k)
+function perm(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  let result = 1;
+  for (let i = 0; i < k; i++) {
+    result *= n - i;
+  }
+  return result;
+}
+
+// Helper: Format pick/arrange value for display
+function formatPickArrangeValue(value: number | [number, number]): string {
+  if (Array.isArray(value) && value.length === 2) {
+    return `[${value[0]}-${value[1]}]`;
+  }
+  return String(value);
+}
+
+/**
  * Get display parameters (non-swept params, formatted)
  */
 export function getDisplayParams(step: PipelineStep, sweepKeys: string[]): string {

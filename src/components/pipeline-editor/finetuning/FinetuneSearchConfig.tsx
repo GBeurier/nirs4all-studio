@@ -47,8 +47,8 @@ export function FinetuneSearchConfig({
 
   return (
     <div className="space-y-4">
-      {/* Primary settings */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Primary settings - stack vertically for narrow panels */}
+      <div className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Label className="text-sm">Number of Trials</Label>
@@ -56,9 +56,8 @@ export function FinetuneSearchConfig({
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
-              <TooltipContent className="max-w-[200px]">
-                How many configurations Optuna will try. More trials = better
-                results but longer runtime.
+              <TooltipContent className="max-w-48">
+                How many configurations Optuna will try.
               </TooltipContent>
             </Tooltip>
           </div>
@@ -72,7 +71,7 @@ export function FinetuneSearchConfig({
             max={1000}
             className="font-mono"
           />
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {[20, 50, 100, 200].map((n) => (
               <Button
                 key={n}
@@ -89,13 +88,13 @@ export function FinetuneSearchConfig({
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label className="text-sm">Timeout (seconds)</Label>
+            <Label className="text-sm">Timeout</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
               </TooltipTrigger>
-              <TooltipContent className="max-w-[200px]">
-                Maximum time for optimization. Leave empty for no limit.
+              <TooltipContent className="max-w-48">
+                Maximum time for optimization.
               </TooltipContent>
             </Tooltip>
           </div>
@@ -116,11 +115,11 @@ export function FinetuneSearchConfig({
             />
             <Timer className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {[
               { label: "1h", value: 3600 },
               { label: "2h", value: 7200 },
-              { label: "No limit", value: undefined },
+              { label: "None", value: undefined },
             ].map((opt) => (
               <Button
                 key={opt.label}
@@ -153,89 +152,79 @@ export function FinetuneSearchConfig({
           </Button>
         </CollapsibleTrigger>
 
-        <CollapsibleContent className="pt-3">
-          <div className="grid grid-cols-2 gap-4">
-            {/* Approach */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Optimization Approach</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[220px]">
-                    <p className="font-medium">Grouped</p>
-                    <p className="text-xs">
-                      Same parameters for all CV folds (faster)
-                    </p>
-                    <p className="font-medium mt-2">Individual</p>
-                    <p className="text-xs">
-                      Different parameters per fold (more flexible)
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Select
-                value={config.approach}
-                onValueChange={(value: "grouped" | "individual") =>
-                  onUpdate({ approach: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="grouped">
-                    <div className="flex items-center gap-2">
-                      <Target className="h-4 w-4" />
-                      <span>Grouped (recommended)</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="individual">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4" />
-                      <span>Individual</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+        <CollapsibleContent className="pt-3 space-y-4">
+          {/* Approach */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Optimization Approach</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-48">
+                  <p className="font-medium">Grouped</p>
+                  <p className="text-xs">Same params for all CV folds</p>
+                  <p className="font-medium mt-2">Individual</p>
+                  <p className="text-xs">Different params per fold</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
+            <Select
+              value={config.approach}
+              onValueChange={(value: "grouped" | "individual") =>
+                onUpdate({ approach: value })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="grouped">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    <span>Grouped</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="individual">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    <span>Individual</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            {/* Evaluation mode */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Evaluation Mode</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[220px]">
-                    <p className="font-medium">Best Score</p>
-                    <p className="text-xs">
-                      Use the best fold score to guide search
-                    </p>
-                    <p className="font-medium mt-2">Mean Score</p>
-                    <p className="text-xs">
-                      Use average across folds (more robust)
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Select
-                value={config.eval_mode}
-                onValueChange={(value: "best" | "mean") =>
-                  onUpdate({ eval_mode: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="best">Best Score</SelectItem>
-                  <SelectItem value="mean">Mean Score (robust)</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Evaluation mode */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Evaluation Mode</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-48">
+                  <p className="font-medium">Best Score</p>
+                  <p className="text-xs">Use best fold score</p>
+                  <p className="font-medium mt-2">Mean Score</p>
+                  <p className="text-xs">Average across folds</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
+            <Select
+              value={config.eval_mode}
+              onValueChange={(value: "best" | "mean") =>
+                onUpdate({ eval_mode: value })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="best">Best Score</SelectItem>
+                <SelectItem value="mean">Mean Score</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CollapsibleContent>
       </Collapsible>

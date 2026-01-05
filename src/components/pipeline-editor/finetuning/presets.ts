@@ -145,13 +145,24 @@ export const trainParamPresets: ParamPreset[] = [
 ];
 
 /**
- * Static training parameter presets (fixed values, not ranges)
+ * Static training parameter presets for final/best model (higher values)
  */
 export const staticTrainParamPresets: StaticParamPreset[] = [
-  { name: "epochs", default: 100, type: "number", description: "Training epochs" },
+  { name: "epochs", default: 500, type: "number", description: "Training epochs (full training)" },
   { name: "batch_size", default: 32, type: "number", description: "Batch size" },
   { name: "learning_rate", default: 0.001, type: "number", description: "Learning rate" },
-  { name: "patience", default: 20, type: "number", description: "Early stopping patience" },
+  { name: "patience", default: 50, type: "number", description: "Early stopping patience" },
+  { name: "verbose", default: 0, type: "number", description: "Verbosity level (0-2)" },
+];
+
+/**
+ * Trial training parameter presets (quick training during search)
+ * Lower values to speed up hyperparameter search
+ */
+export const trialTrainParamPresets: StaticParamPreset[] = [
+  { name: "epochs", default: 50, type: "number", description: "Quick training epochs per trial" },
+  { name: "batch_size", default: 64, type: "number", description: "Batch size for trials" },
+  { name: "patience", default: 10, type: "number", description: "Early stopping patience" },
   { name: "verbose", default: 0, type: "number", description: "Verbosity level (0-2)" },
 ];
 

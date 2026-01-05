@@ -46,6 +46,7 @@ import {
   getBranchLabel,
   computeSweepInfo,
   computeFinetuneInfo,
+  computeGeneratorInfo,
   getDisplayParams,
   getFoldLabel,
 } from "./utils";
@@ -116,6 +117,7 @@ export function TreeNode({
   // Use memoized computed values from utilities
   const sweepInfo = useMemo(() => computeSweepInfo(step), [step.paramSweeps, step.stepGenerator]);
   const finetuneInfo = useMemo(() => computeFinetuneInfo(step), [step.finetuneConfig]);
+  const generatorInfo = useMemo(() => computeGeneratorInfo(step), [step.type, step.generatorKind, step.generatorOptions, step.branches]);
   const displayParams = useMemo(() => getDisplayParams(step, sweepInfo.sweepKeys), [step.params, sweepInfo.sweepKeys]);
 
   // Determine if this node is foldable
@@ -197,6 +199,12 @@ export function TreeNode({
         isContainer={isContainer}
         containerChildren={containerChildren}
         childLabel={childLabel}
+        isGenerator={generatorInfo.isGenerator}
+        generatorKind={generatorInfo.generatorKind}
+        generatorVariantCount={generatorInfo.variantCount}
+        generatorOptionCount={generatorInfo.optionCount}
+        generatorSelectionSummary={generatorInfo.selectionSummary}
+        generatorOptionNames={generatorInfo.optionNames}
       />
 
       {/* Quick Actions */}

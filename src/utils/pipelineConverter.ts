@@ -117,6 +117,8 @@ export interface Nirs4allGeneratorStep {
   _grid_?: Record<string, unknown[]>;
   pick?: number | [number, number];
   arrange?: number | [number, number];
+  then_pick?: number | [number, number];
+  then_arrange?: number | [number, number];
   count?: number;
 }
 
@@ -1021,13 +1023,15 @@ function convertOrGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipeline
   return {
     id: generateStepId(),
     type: "generator",
-    name: "ChooseOne",
+    name: "Choose",
     params: {},
     branches: alternatives.map(alt => [convertStepToEditor(alt)]),
     generatorKind: "or",
     generatorOptions: {
       pick: step.pick,
       arrange: step.arrange,
+      then_pick: step.then_pick,
+      then_arrange: step.then_arrange,
       count: step.count,
     },
   };
@@ -1658,6 +1662,12 @@ function convertEditorGeneratorToNirs4all(step: EditorPipelineStep): Nirs4allSte
   }
   if (step.generatorOptions?.arrange) {
     result.arrange = step.generatorOptions.arrange;
+  }
+  if (step.generatorOptions?.then_pick) {
+    result.then_pick = step.generatorOptions.then_pick;
+  }
+  if (step.generatorOptions?.then_arrange) {
+    result.then_arrange = step.generatorOptions.then_arrange;
   }
   if (step.generatorOptions?.count) {
     result.count = step.generatorOptions.count;

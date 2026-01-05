@@ -25,6 +25,7 @@ export type StepType =
   | "feature_augmentation" // Container for feature_augmentation
   | "sample_filter"       // Container for sample_filter with filters
   | "concat_transform"    // Horizontal feature concatenation from multiple transforms
+  | "sequential"          // Sequential step group (equivalent to [...] in nirs4all)
   | "chart"               // Visualization steps (chart_2d, chart_y)
   | "comment";            // Non-functional comment step
 
@@ -71,8 +72,10 @@ export interface FinetuneConfig {
   sample?: "grid" | "random" | "hyperband"; // Sampling strategy
   verbose?: number;       // Verbosity level
   model_params: FinetuneParamConfig[];
-  // For neural network training parameters tuning (epochs, batch_size, etc.)
+  // Training params to be tuned (ranges): e.g., batch_size from 16 to 256
   train_params?: FinetuneParamConfig[];
+  // Fixed training params for each trial (quick training): e.g., 50 epochs
+  trial_train_params?: Record<string, number>;
 }
 
 // Step-level training parameters (defaults, not tunable)
@@ -122,6 +125,7 @@ export const CONTAINER_STEP_TYPES: StepType[] = [
   "feature_augmentation",
   "sample_filter",
   "concat_transform",
+  "sequential",
 ];
 
 // Sample augmentation configuration
@@ -213,6 +217,8 @@ export interface PipelineStep {
   generatorOptions?: {
     pick?: number | [number, number]; // Combinations
     arrange?: number | [number, number]; // Permutations
+    then_pick?: number | [number, number]; // Second-order combinations
+    then_arrange?: number | [number, number]; // Second-order permutations
     count?: number; // Limit variants
   };
   // Step-level generator (e.g., _range_ on a model step)
@@ -402,21 +408,75 @@ export function calculateStepVariants(step: PipelineStep): number {
   // Generator options (OR with pick/arrange) - for UI "Choose One" nodes
   if (step.generatorKind === "or" && step.branches) {
     const branchCount = step.branches.length;
-    const pick = step.generatorOptions?.pick;
+    const opts = step.generatorOptions || {};
 
-    if (typeof pick === "number" && pick > 0) {
-      // Combinations: C(n, k)
-      variants *= binomialCoefficient(branchCount, pick);
-    } else {
-      // Default: pick 1
-      variants *= branchCount;
+    let genVariants = branchCount; // Default: pick 1 = branchCount variants
+
+    // Primary selection: pick or arrange
+    if (opts.arrange !== undefined) {
+      genVariants = calculateGeneratorValue(branchCount, "arrange", opts.arrange);
+    } else if (opts.pick !== undefined) {
+      genVariants = calculateGeneratorValue(branchCount, "pick", opts.pick);
     }
+
+    // Second-order selection: then_pick or then_arrange
+    if (opts.then_arrange !== undefined) {
+      genVariants = calculateGeneratorValue(genVariants, "arrange", opts.then_arrange);
+    } else if (opts.then_pick !== undefined) {
+      genVariants = calculateGeneratorValue(genVariants, "pick", opts.then_pick);
+    }
+
+    // Apply count limiter
+    if (opts.count && opts.count > 0 && genVariants > opts.count) {
+      genVariants = opts.count;
+    }
+
+    variants *= genVariants;
   } else if (step.generatorKind === "cartesian" && step.branches) {
     // Cartesian: product of all stage options
     variants *= step.branches.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
   }
 
   return variants;
+}
+
+// Calculate generator variants for a pick/arrange value (single or range)
+function calculateGeneratorValue(
+  n: number,
+  mode: "pick" | "arrange",
+  value: number | [number, number]
+): number {
+  if (Array.isArray(value) && value.length === 2) {
+    // Range [from, to]: sum of all variants
+    const [from, to] = value;
+    let total = 0;
+    for (let k = from; k <= to; k++) {
+      if (mode === "pick") {
+        total += binomialCoefficient(n, k);
+      } else {
+        total += permutation(n, k);
+      }
+    }
+    return total;
+  } else {
+    // Single value
+    const k = typeof value === "number" ? value : 1;
+    if (mode === "pick") {
+      return binomialCoefficient(n, k);
+    } else {
+      return permutation(n, k);
+    }
+  }
+}
+
+// Calculate permutations P(n, k)
+function permutation(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  let result = 1;
+  for (let i = 0; i < k; i++) {
+    result *= n - i;
+  }
+  return result;
 }
 
 // Calculate binomial coefficient C(n, k) for pick combinations
@@ -665,18 +725,10 @@ export const stepOptions: Record<StepType, StepOption[]> = {
 
   generator: [
     {
-      name: "ChooseOne",
-      description: "Choose between step alternatives (_or_)",
+      name: "Choose",
+      description: "Choose step alternatives with pick/arrange (_or_)",
       defaultParams: {},
       defaultBranches: [[], [], []],
-      generatorKind: "or",
-      category: "Selection"
-    },
-    {
-      name: "ChooseN",
-      description: "Choose N options (combinations)",
-      defaultParams: { pick: 2 },
-      defaultBranches: [[], [], [], []],
       generatorKind: "or",
       category: "Selection"
     },
@@ -687,6 +739,14 @@ export const stepOptions: Record<StepType, StepOption[]> = {
       defaultBranches: [[], []],
       generatorKind: "cartesian",
       category: "Combination"
+    },
+    {
+      name: "Grid",
+      description: "Grid search over parameter values (_grid_)",
+      defaultParams: {},
+      defaultBranches: [[], []],
+      generatorKind: "cartesian",
+      category: "Search"
     },
   ],
 
@@ -754,6 +814,10 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "ConcatTransform", description: "Concatenate features from multiple transformation branches", defaultParams: {}, category: "Feature Fusion" },
   ],
 
+  sequential: [
+    { name: "Sequential", description: "Group steps to execute in sequence (equivalent to [...] in nirs4all)", defaultParams: {}, category: "Container" },
+  ],
+
   chart: [
     { name: "chart_2d", description: "2D spectrum visualization", defaultParams: {}, category: "Visualization" },
     { name: "chart_y", description: "Y distribution visualization", defaultParams: {}, category: "Visualization" },
@@ -778,6 +842,7 @@ export const stepTypeLabels: Record<StepType, string> = {
   feature_augmentation: "Feature Augmentation",
   sample_filter: "Sample Filter",
   concat_transform: "Concat Transform",
+  sequential: "Sequential Group",
   chart: "Charts",
   comment: "Comments",
 };
@@ -909,6 +974,15 @@ export const stepColors: Record<StepType, {
     active: "ring-teal-500 border-teal-500",
     gradient: "from-teal-500/20 to-teal-500/5",
   },
+  sequential: {
+    border: "border-lime-500/30",
+    bg: "bg-lime-500/5",
+    hover: "hover:bg-lime-500/10 hover:border-lime-500/50",
+    selected: "bg-lime-500/10 border-lime-500/100",
+    text: "text-lime-500",
+    active: "ring-lime-500 border-lime-500",
+    gradient: "from-lime-500/20 to-lime-500/5",
+  },
   chart: {
     border: "border-sky-500/30",
     bg: "bg-sky-500/5",
@@ -940,6 +1014,7 @@ const CHILDREN_CONTAINER_TYPES: StepType[] = [
   "feature_augmentation",
   "sample_filter",
   "concat_transform",
+  "sequential",
 ];
 
 // Utility to create a step from an option

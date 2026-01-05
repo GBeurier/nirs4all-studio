@@ -58,30 +58,34 @@ import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
 import { stepOptions, stepColors, createStepFromOption, cloneStep } from "./types";
 
-// Selection modes for OR generator
-type SelectionMode = "pick1" | "pickN" | "arrange" | "all";
+// Selection modes for OR generator - simplified to none/pick/arrange
+type SelectionMode = "none" | "pick" | "arrange";
+
+// Value can be a single number or a range [from, to]
+type SelectionValue = number | [number, number];
 
 interface SelectionConfig {
   mode: SelectionMode;
-  n?: number; // For pickN and arrange
+  value?: SelectionValue; // Single value or [from, to] range
+}
+
+// Check if value is a range
+function isRange(value: SelectionValue | undefined): value is [number, number] {
+  return Array.isArray(value) && value.length === 2;
 }
 
 const selectionModeLabels: Record<SelectionMode, { label: string; description: string }> = {
-  pick1: {
-    label: "Pick 1",
-    description: "Choose one option per run (default)",
+  none: {
+    label: "Try Each",
+    description: "Test each option individually",
   },
-  pickN: {
-    label: "Pick N",
-    description: "Choose N options (combinations, order doesn't matter)",
+  pick: {
+    label: "Pick",
+    description: "Choose options (combinations, order doesn't matter)",
   },
   arrange: {
-    label: "Arrange N",
-    description: "Choose N options (permutations, order matters)",
-  },
-  all: {
-    label: "All Combinations",
-    description: "Try all possible combinations",
+    label: "Arrange",
+    description: "Choose options (permutations, order matters)",
   },
 };
 
@@ -106,21 +110,46 @@ function permutations(n: number, k: number): number {
   return result;
 }
 
+// Calculate variants for a selection value (single or range)
+function calculateVariantsForValue(
+  optionCount: number,
+  mode: "pick" | "arrange",
+  value: SelectionValue
+): number {
+  if (isRange(value)) {
+    // Range [from, to]: sum of all variants from 'from' to 'to'
+    const [from, to] = value;
+    let total = 0;
+    for (let k = from; k <= to; k++) {
+      if (mode === "pick") {
+        total += combinations(optionCount, k);
+      } else {
+        total += permutations(optionCount, k);
+      }
+    }
+    return total;
+  } else {
+    // Single value
+    if (mode === "pick") {
+      return combinations(optionCount, value);
+    } else {
+      return permutations(optionCount, value);
+    }
+  }
+}
+
 // Calculate variant count based on selection mode
 function calculateOrVariants(
   optionCount: number,
   selection: SelectionConfig
 ): number {
   switch (selection.mode) {
-    case "pick1":
+    case "none":
       return optionCount;
-    case "pickN":
-      return combinations(optionCount, selection.n || 2);
+    case "pick":
+      return calculateVariantsForValue(optionCount, "pick", selection.value || 1);
     case "arrange":
-      return permutations(optionCount, selection.n || 2);
-    case "all":
-      // All possible non-empty subsets = 2^n - 1
-      return Math.pow(2, optionCount) - 1;
+      return calculateVariantsForValue(optionCount, "arrange", selection.value || 1);
     default:
       return optionCount;
   }
@@ -386,7 +415,7 @@ export function OrGeneratorContainer({
           </div>
           <div>
             <h4 className="font-medium text-sm text-orange-600">
-              Choose One (_or_)
+              Choose (_or_)
             </h4>
             <p className="text-xs text-muted-foreground">
               {options.length} option{options.length !== 1 ? "s" : ""} • {variantCount}{" "}
@@ -419,26 +448,60 @@ export function OrGeneratorContainer({
         )}
       </div>
 
-      {/* Pick N / Arrange N configuration */}
-      {(selection.mode === "pickN" || selection.mode === "arrange") && isEditing && (
+      {/* Pick / Arrange configuration */}
+      {(selection.mode === "pick" || selection.mode === "arrange") && isEditing && (
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-background/50">
-          <Label className="text-xs text-muted-foreground">Select</Label>
-          <Input
-            type="number"
-            min={1}
-            max={options.length}
-            value={selection.n || 2}
-            onChange={(e) =>
-              onSelectionChange?.({
-                ...selection,
-                n: Math.max(1, Math.min(options.length, parseInt(e.target.value) || 2)),
-              })
-            }
-            className="w-14 h-7 text-xs font-mono"
-          />
+          <Label className="text-xs text-muted-foreground">
+            {selection.mode === "pick" ? "Pick" : "Arrange"}
+          </Label>
+          {isRange(selection.value) ? (
+            <>
+              <Input
+                type="number"
+                min={1}
+                max={selection.value[1]}
+                value={selection.value[0]}
+                onChange={(e) =>
+                  onSelectionChange?.({
+                    ...selection,
+                    value: [Math.max(1, parseInt(e.target.value) || 1), selection.value[1]],
+                  })
+                }
+                className="w-12 h-7 text-xs font-mono"
+              />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input
+                type="number"
+                min={selection.value[0]}
+                max={options.length}
+                value={selection.value[1]}
+                onChange={(e) =>
+                  onSelectionChange?.({
+                    ...selection,
+                    value: [selection.value[0], Math.max(selection.value[0], Math.min(options.length, parseInt(e.target.value) || selection.value[0]))],
+                  })
+                }
+                className="w-12 h-7 text-xs font-mono"
+              />
+            </>
+          ) : (
+            <Input
+              type="number"
+              min={1}
+              max={options.length}
+              value={selection.value || 2}
+              onChange={(e) =>
+                onSelectionChange?.({
+                  ...selection,
+                  value: Math.max(1, Math.min(options.length, parseInt(e.target.value) || 2)),
+                })
+              }
+              className="w-14 h-7 text-xs font-mono"
+            />
+          )}
           <Label className="text-xs text-muted-foreground">
             of {options.length}{" "}
-            {selection.mode === "pickN" ? "(combinations)" : "(permutations)"}
+            {selection.mode === "pick" ? "(combinations)" : "(permutations)"}
           </Label>
           <Badge variant="secondary" className="ml-auto text-xs">
             {variantCount} variant{variantCount !== 1 ? "s" : ""}
@@ -580,7 +643,7 @@ export function WrapInOrGeneratorPopover({
   onOpenChange,
   trigger,
 }: WrapInOrGeneratorPopoverProps) {
-  const [selection, setSelection] = useState<SelectionConfig>({ mode: "pick1" });
+  const [selection, setSelection] = useState<SelectionConfig>({ mode: "none" });
 
   const variantCount = calculateOrVariants(selectedSteps.length, selection);
 
