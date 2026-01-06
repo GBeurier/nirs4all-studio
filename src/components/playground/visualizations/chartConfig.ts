@@ -74,15 +74,16 @@ export function getSampleColorByFold(
 
 /**
  * Common chart styling constants
+ * Using concrete color values for SVG compatibility
  */
 export const CHART_THEME = {
   // Grid
-  gridStroke: 'hsl(var(--border))',
+  gridStroke: '#3f3f46', // zinc-700
   gridOpacity: 0.3,
   gridDasharray: '3 3',
 
   // Axes
-  axisStroke: 'hsl(var(--muted-foreground))',
+  axisStroke: '#a1a1aa', // zinc-400
   axisFontSize: 10,
   axisLabelFontSize: 10,
 
@@ -93,7 +94,7 @@ export const CHART_THEME = {
   tooltipFontSize: 12,
 
   // Selection
-  selectedStroke: 'hsl(var(--foreground))',
+  selectedStroke: '#ffffff',
   selectedStrokeWidth: 2,
 
   // Lines

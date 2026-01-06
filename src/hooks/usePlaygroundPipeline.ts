@@ -9,13 +9,14 @@
  * - Supports step-by-step comparison mode
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import type {
   UnifiedOperator,
   OperatorDefinition,
   PlaygroundResult,
   SamplingOptions,
+  ExecuteOptions,
 } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 import { usePlaygroundQuery } from './usePlaygroundQuery';
@@ -64,6 +65,8 @@ function persistState(operators: UnifiedOperator[]): void {
 export interface UsePlaygroundPipelineOptions {
   /** Sampling options for backend execution */
   sampling?: Partial<SamplingOptions>;
+  /** Execution options (compute_pca, compute_umap, etc.) */
+  executeOptions?: ExecuteOptions;
   /** Whether to enable backend execution */
   enableBackend?: boolean;
 }
@@ -84,7 +87,7 @@ export interface UsePlaygroundPipelineResult {
 
   // Pipeline operations
   addOperator: (definition: OperatorDefinition) => void;
-  addOperatorByName: (name: string, type: 'preprocessing' | 'splitting', params?: Record<string, unknown>) => void;
+  addOperatorByName: (name: string, type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter', params?: Record<string, unknown>) => void;
   removeOperator: (id: string) => void;
   updateOperator: (id: string, updates: Partial<UnifiedOperator>) => void;
   updateOperatorParams: (id: string, params: Record<string, unknown>) => void;
@@ -109,6 +112,11 @@ export interface UsePlaygroundPipelineResult {
   activeStep: number;
   setActiveStep: (step: number) => void;
   maxSteps: number;
+
+  // UMAP computation
+  computeUmap: boolean;
+  setComputeUmap: (enabled: boolean) => void;
+  isUmapLoading: boolean;
 }
 
 /**
@@ -122,12 +130,15 @@ export function usePlaygroundPipeline(
   rawData: SpectralData | null,
   options: UsePlaygroundPipelineOptions = {}
 ): UsePlaygroundPipelineResult {
-  const { sampling, enableBackend = true } = options;
+  const { sampling, executeOptions: externalExecuteOptions, enableBackend = true } = options;
 
   // Pipeline state - initialize from sessionStorage
   const [operators, setOperatorsRaw] = useState<UnifiedOperator[]>(() => loadPersistedState());
   const [history, setHistory] = useState<UnifiedOperator[][]>(() => [loadPersistedState()]);
   const [historyIndex, setHistoryIndex] = useState(0);
+
+  // UMAP computation state
+  const [computeUmap, setComputeUmap] = useState(externalExecuteOptions?.compute_umap ?? false);
 
   // Wrapper to persist state on every change
   const setOperators = useCallback((newOperators: UnifiedOperator[]) => {
@@ -136,7 +147,7 @@ export function usePlaygroundPipeline(
   }, []);
 
   // Step comparison mode state
-  const [stepComparisonEnabled, setStepComparisonEnabled] = useState(false);
+  const [stepComparisonEnabled, setStepComparisonEnabledRaw] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
 
   // Count enabled operators for max steps
@@ -145,6 +156,22 @@ export function usePlaygroundPipeline(
     [operators]
   );
   const maxSteps = enabledOperators.length;
+
+  // Disable step comparison mode when no operators exist (raw data mode)
+  const setStepComparisonEnabled = useCallback((enabled: boolean) => {
+    // Only allow enabling if there are operators
+    if (enabled && maxSteps === 0) {
+      return;
+    }
+    setStepComparisonEnabledRaw(enabled);
+  }, [maxSteps]);
+
+  // Auto-disable step comparison if all operators are removed
+  useEffect(() => {
+    if (maxSteps === 0 && stepComparisonEnabled) {
+      setStepComparisonEnabledRaw(false);
+    }
+  }, [maxSteps, stepComparisonEnabled]);
 
   // Compute effective operators based on step comparison mode
   const effectiveOperators = useMemo(() => {
@@ -162,6 +189,12 @@ export function usePlaygroundPipeline(
     }));
   }, [operators, stepComparisonEnabled, activeStep, maxSteps, enabledOperators]);
 
+  // Build execute options with UMAP flag
+  const executeOptions: ExecuteOptions = useMemo(() => ({
+    ...externalExecuteOptions,
+    compute_umap: computeUmap,
+  }), [externalExecuteOptions, computeUmap]);
+
   // Backend execution (uses effective operators for step comparison)
   const {
     result,
@@ -173,7 +206,12 @@ export function usePlaygroundPipeline(
   } = usePlaygroundQuery(rawData, effectiveOperators, {
     enabled: enableBackend && rawData !== null,
     sampling,
+    executeOptions,
   });
+
+  // Determine if UMAP is currently loading
+  // UMAP is loading if we requested it and the query is still fetching
+  const isUmapLoading = computeUmap && isFetching;
 
   // Helper to save to history
   const saveToHistory = useCallback((newOperators: UnifiedOperator[]) => {
@@ -220,7 +258,7 @@ export function usePlaygroundPipeline(
   // Add operator by name (for presets and imports)
   const addOperatorByName = useCallback((
     name: string,
-    type: 'preprocessing' | 'splitting',
+    type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter',
     params: Record<string, unknown> = {}
   ) => {
     // Check single splitter constraint
@@ -353,5 +391,9 @@ export function usePlaygroundPipeline(
     activeStep,
     setActiveStep,
     maxSteps,
+    // UMAP computation
+    computeUmap,
+    setComputeUmap,
+    isUmapLoading,
   };
 }

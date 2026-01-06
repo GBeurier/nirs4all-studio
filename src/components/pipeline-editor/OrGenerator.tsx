@@ -455,35 +455,40 @@ export function OrGeneratorContainer({
             {selection.mode === "pick" ? "Pick" : "Arrange"}
           </Label>
           {isRange(selection.value) ? (
-            <>
-              <Input
-                type="number"
-                min={1}
-                max={selection.value[1]}
-                value={selection.value[0]}
-                onChange={(e) =>
-                  onSelectionChange?.({
-                    ...selection,
-                    value: [Math.max(1, parseInt(e.target.value) || 1), selection.value[1]],
-                  })
-                }
-                className="w-12 h-7 text-xs font-mono"
-              />
-              <span className="text-xs text-muted-foreground">to</span>
-              <Input
-                type="number"
-                min={selection.value[0]}
-                max={options.length}
-                value={selection.value[1]}
-                onChange={(e) =>
-                  onSelectionChange?.({
-                    ...selection,
-                    value: [selection.value[0], Math.max(selection.value[0], Math.min(options.length, parseInt(e.target.value) || selection.value[0]))],
-                  })
-                }
-                className="w-12 h-7 text-xs font-mono"
-              />
-            </>
+            (() => {
+              const rangeValue = selection.value as [number, number];
+              return (
+                <>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={rangeValue[1]}
+                    value={rangeValue[0]}
+                    onChange={(e) =>
+                      onSelectionChange?.({
+                        ...selection,
+                        value: [Math.max(1, parseInt(e.target.value) || 1), rangeValue[1]],
+                      })
+                    }
+                    className="w-12 h-7 text-xs font-mono"
+                  />
+                  <span className="text-xs text-muted-foreground">to</span>
+                  <Input
+                    type="number"
+                    min={rangeValue[0]}
+                    max={options.length}
+                    value={rangeValue[1]}
+                    onChange={(e) =>
+                      onSelectionChange?.({
+                        ...selection,
+                        value: [rangeValue[0], Math.max(rangeValue[0], Math.min(options.length, parseInt(e.target.value) || rangeValue[0]))],
+                      })
+                    }
+                    className="w-12 h-7 text-xs font-mono"
+                  />
+                </>
+              );
+            })()
           ) : (
             <Input
               type="number"

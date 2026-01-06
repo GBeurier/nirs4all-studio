@@ -4,7 +4,8 @@
  * Features:
  * - Supports processed Y values (for future y_processing support)
  * - Uses shared chart config
- * - Sample selection and highlighting
+ * - Sample selection and highlighting (Phase 1: SelectionContext integration)
+ * - Cross-chart selection highlighting
  * - Export functionality
  * - Statistics display
  */
@@ -29,6 +30,7 @@ import {
   ANIMATION_CONFIG,
   formatYValue,
 } from './chartConfig';
+import { useSelection } from '@/context/SelectionContext';
 
 // ============= Types =============
 
@@ -39,12 +41,14 @@ interface YHistogramProps {
   processedY?: number[];
   /** Number of bins */
   bins?: number;
-  /** Currently selected sample */
+  /** Currently selected sample (deprecated - use SelectionContext) */
   selectedSample?: number | null;
-  /** Callback when sample is selected (selects first sample in clicked bin) */
+  /** Callback when sample is selected (deprecated - use SelectionContext) */
   onSelectSample?: (index: number) => void;
   /** Whether chart is in loading state */
   isLoading?: boolean;
+  /** Enable SelectionContext integration for cross-chart highlighting */
+  useSelectionContext?: boolean;
 }
 
 interface BinData {
@@ -70,11 +74,22 @@ export function YHistogram({
   y,
   processedY,
   bins = 20,
-  selectedSample,
-  onSelectSample,
+  selectedSample: externalSelectedSample,
+  onSelectSample: externalOnSelectSample,
   isLoading = false,
+  useSelectionContext = true,
 }: YHistogramProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+
+  // SelectionContext integration for cross-chart highlighting
+  const selectionCtx = useSelectionContext ? useSelection() : null;
+
+  // Determine effective selection state - prefer context, fallback to props
+  const selectedSamples = useSelectionContext && selectionCtx
+    ? selectionCtx.selectedSamples
+    : new Set<number>(externalSelectedSample !== null && externalSelectedSample !== undefined ? [externalSelectedSample] : []);
+
+  const hoveredSample = selectionCtx?.hoveredSample ?? null;
 
   // Use processed Y if available, otherwise original Y
   const displayY = processedY && processedY.length === y.length ? processedY : y;
@@ -141,19 +156,54 @@ export function YHistogram({
     };
   }, [displayY]);
 
-  // Find which bin the selected sample is in
-  const selectedBin = selectedSample !== null && selectedSample !== undefined
-    ? sampleBins[selectedSample]
+  // Find which bins contain selected/hovered samples
+  const selectedBins = useMemo(() => {
+    const bins = new Set<number>();
+    selectedSamples.forEach(idx => {
+      if (sampleBins[idx] !== undefined) {
+        bins.add(sampleBins[idx]);
+      }
+    });
+    return bins;
+  }, [selectedSamples, sampleBins]);
+
+  const hoveredBin = hoveredSample !== null && sampleBins[hoveredSample] !== undefined
+    ? sampleBins[hoveredSample]
     : null;
 
-  // Handle bar click
-  const handleClick = useCallback((data: unknown) => {
+  // Handle bar click - select all samples in the bin
+  const handleClick = useCallback((data: unknown, _index: number, event?: React.MouseEvent) => {
     const binData = data as BinData;
-    if (binData?.samples?.length && onSelectSample) {
-      // Select first sample in the bin
-      onSelectSample(binData.samples[0]);
+    if (!binData?.samples?.length) return;
+
+    // Use SelectionContext if available
+    if (selectionCtx) {
+      // Determine selection mode based on modifiers
+      if (event?.shiftKey) {
+        selectionCtx.select(binData.samples, 'add');
+      } else if (event?.ctrlKey || event?.metaKey) {
+        selectionCtx.toggle(binData.samples);
+      } else {
+        selectionCtx.select(binData.samples, 'replace');
+      }
+    } else if (externalOnSelectSample) {
+      // Legacy: select first sample in the bin
+      externalOnSelectSample(binData.samples[0]);
     }
-  }, [onSelectSample]);
+  }, [selectionCtx, externalOnSelectSample]);
+
+  // Handle click on chart background (not on a bar) to clear selection
+  const handleChartBackgroundClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only clear if clicking directly on the chart container or SVG background
+    const target = e.target as HTMLElement;
+    const tagName = target.tagName.toLowerCase();
+    // Clear selection when clicking on svg, the background rect, or container divs
+    if (tagName === 'svg' || (tagName === 'rect' && target.classList.contains('recharts-cartesian-grid-bg')) || target.classList.contains('recharts-surface') || target.classList.contains('recharts-wrapper')) {
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
+      }
+    }
+  }, [selectionCtx]);
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -195,7 +245,7 @@ export function YHistogram({
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0" onClick={handleChartBackgroundClick}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={histogramData} margin={CHART_MARGINS.histogram}>
             <CartesianGrid
@@ -246,31 +296,56 @@ export function YHistogram({
               cursor="pointer"
               {...ANIMATION_CONFIG}
             >
-              {histogramData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={selectedBin === index ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.6)'}
-                />
-              ))}
+              {histogramData.map((entry, index) => {
+                const isSelected = selectedBins.has(index);
+                const isHovered = hoveredBin === index;
+                const hasSelection = selectedSamples.size > 0;
+
+                // Determine bar color
+                let fillColor = 'hsl(var(--primary) / 0.6)';
+                if (isHovered) {
+                  fillColor = 'hsl(var(--primary))';
+                } else if (isSelected) {
+                  fillColor = 'hsl(var(--primary))';
+                } else if (hasSelection) {
+                  fillColor = 'hsl(var(--primary) / 0.2)';
+                }
+
+                return (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={fillColor}
+                    stroke={isSelected || isHovered ? 'hsl(var(--primary))' : 'none'}
+                    strokeWidth={isSelected || isHovered ? 1 : 0}
+                  />
+                );
+              })}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Statistics footer */}
-      <div className="grid grid-cols-5 gap-1 mt-2 text-[10px]">
-        {[
-          { label: 'Mean', value: stats.mean },
-          { label: 'Med', value: stats.median },
-          { label: 'Std', value: stats.std },
-          { label: 'Min', value: stats.min },
-          { label: 'Max', value: stats.max },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-muted rounded p-1 text-center">
-            <div className="text-muted-foreground">{label}</div>
-            <div className="font-mono font-medium">{formatYValue(value, 1)}</div>
+      <div className="flex items-center justify-between mt-2">
+        <div className="grid grid-cols-5 gap-1 text-[10px] flex-1">
+          {[
+            { label: 'Mean', value: stats.mean },
+            { label: 'Med', value: stats.median },
+            { label: 'Std', value: stats.std },
+            { label: 'Min', value: stats.min },
+            { label: 'Max', value: stats.max },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-muted rounded p-1 text-center">
+              <div className="text-muted-foreground">{label}</div>
+              <div className="font-mono font-medium">{formatYValue(value, 1)}</div>
+            </div>
+          ))}
+        </div>
+        {selectedSamples.size > 0 && (
+          <div className="text-[10px] text-primary font-medium ml-2">
+            {selectedSamples.size} sel.
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

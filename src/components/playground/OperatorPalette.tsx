@@ -57,6 +57,9 @@ import {
   Ruler,
   HelpCircle,
   ExternalLink,
+  Filter,
+  XCircle,
+  Shield,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -95,6 +98,11 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   shuffle: Shuffle,
   grouped: Users,
   distance: Ruler,
+  // Filter
+  outlier: XCircle,
+  range: Filter,
+  metadata: Layers,
+  quality: Shield,
   other: GitBranch,
 };
 
@@ -116,7 +124,7 @@ export function OperatorPalette({
 }: OperatorPaletteProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'preprocessing' | 'augmentation' | 'splitting'>('preprocessing');
+  const [activeTab, setActiveTab] = useState<'preprocessing' | 'augmentation' | 'splitting' | 'filter'>('preprocessing');
   const [expandedCategory, setExpandedCategory] = useState<string | null>('scatter_correction');
   const searchButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -127,12 +135,14 @@ export function OperatorPalette({
     augmentationByCategory,
     splitting,
     splittingByCategory,
+    filter,
+    filterByCategory,
     isLoading,
     isError,
     error,
   } = useOperatorRegistry();
 
-  const totalCount = preprocessing.length + augmentation.length + splitting.length;
+  const totalCount = preprocessing.length + augmentation.length + splitting.length + filter.length;
 
   // ⌘K / Ctrl+K keyboard shortcut to open search
   useEffect(() => {
@@ -161,7 +171,7 @@ export function OperatorPalette({
   // Filter operators based on search
   const filteredOperators = useMemo(() => {
     if (!searchQuery.trim()) {
-      return { preprocessing, augmentation, splitting };
+      return { preprocessing, augmentation, splitting, filter };
     }
 
     const query = searchQuery.toLowerCase();
@@ -181,8 +191,13 @@ export function OperatorPalette({
               op.display_name.toLowerCase().includes(query) ||
               op.description.toLowerCase().includes(query)
       ),
+      filter: filter.filter(
+        op => op.name.toLowerCase().includes(query) ||
+              op.display_name.toLowerCase().includes(query) ||
+              op.description.toLowerCase().includes(query)
+      ),
     };
-  }, [preprocessing, augmentation, splitting, searchQuery]);
+  }, [preprocessing, augmentation, splitting, filter, searchQuery]);
 
   // Loading state
   if (isLoading) {
@@ -333,22 +348,51 @@ export function OperatorPalette({
                   })}
                 </CommandGroup>
               )}
+
+              {/* Filter results */}
+              {filteredOperators.filter.length > 0 && (
+                <CommandGroup heading="Filtering">
+                  {filteredOperators.filter.map(op => {
+                    const Icon = getOperatorIcon(op.category);
+                    return (
+                      <CommandItem
+                        key={op.name}
+                        value={`${op.name} ${op.description}`}
+                        onSelect={() => handleSelect(op)}
+                        className="gap-2 cursor-pointer"
+                      >
+                        <Icon className="w-4 h-4 text-red-500" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium">{op.display_name}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {op.description}
+                          </div>
+                        </div>
+                        <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
 
       {/* Tabbed category list */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'preprocessing' | 'augmentation' | 'splitting')}>
-        <TabsList className="grid w-full grid-cols-3 h-8">
-          <TabsTrigger value="preprocessing" className="text-xs">
-            Preprocessing ({preprocessing.length})
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'preprocessing' | 'augmentation' | 'splitting' | 'filter')}>
+        <TabsList className="grid w-full grid-cols-4 h-8">
+          <TabsTrigger value="preprocessing" className="text-[10px] px-1">
+            Preproc ({preprocessing.length})
           </TabsTrigger>
-          <TabsTrigger value="augmentation" className="text-xs">
-            Augmentation ({augmentation.length})
+          <TabsTrigger value="augmentation" className="text-[10px] px-1">
+            Augment ({augmentation.length})
           </TabsTrigger>
-          <TabsTrigger value="splitting" className="text-xs">
-            Splitting ({splitting.length})
+          <TabsTrigger value="splitting" className="text-[10px] px-1">
+            Split ({splitting.length})
+          </TabsTrigger>
+          <TabsTrigger value="filter" className="text-[10px] px-1">
+            Filter ({filter.length})
           </TabsTrigger>
         </TabsList>
 
@@ -411,6 +455,27 @@ export function OperatorPalette({
             </div>
           </ScrollArea>
         </TabsContent>
+
+        <TabsContent value="filter" className="mt-2">
+          <ScrollArea className="h-[300px] pr-3">
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1.5 rounded mb-2">
+                Filters remove samples from the dataset based on criteria
+              </div>
+              {Object.entries(filterByCategory).map(([category, ops]) => (
+                <CategorySection
+                  key={category}
+                  category={category}
+                  type="filter"
+                  operators={ops}
+                  isExpanded={expandedCategory === category}
+                  onToggle={() => toggleCategory(category)}
+                  onSelect={handleSelect}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -419,7 +484,7 @@ export function OperatorPalette({
 // Category section component
 interface CategorySectionProps {
   category: string;
-  type: 'preprocessing' | 'augmentation' | 'splitting';
+  type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter';
   operators: OperatorDefinition[];
   isExpanded: boolean;
   onToggle: () => void;
@@ -438,7 +503,7 @@ function CategorySection({
 }: CategorySectionProps) {
   const Icon = getOperatorIcon(category);
   const label = getCategoryLabel(category, type);
-  const accentColor = type === 'splitting' ? 'text-orange-500' : type === 'augmentation' ? 'text-blue-500' : 'text-primary';
+  const accentColor = type === 'filter' ? 'text-red-500' : type === 'splitting' ? 'text-orange-500' : type === 'augmentation' ? 'text-blue-500' : 'text-primary';
 
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>

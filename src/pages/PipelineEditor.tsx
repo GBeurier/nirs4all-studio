@@ -879,11 +879,11 @@ export default function PipelineEditor() {
           </header>
 
           {/* Main Content: 3-Panel Layout */}
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex z-0 min-h-0">
             {/* Left Panel: Step Palette */}
             <div
               ref={panelRefs.palette}
-              className="w-72 flex-shrink-0 relative"
+              className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
               onClick={() => setFocusedPanel("palette")}
             >
               <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
@@ -913,7 +913,7 @@ export default function PipelineEditor() {
             {/* Right Panel: Configuration */}
             <div
               ref={panelRefs.config}
-              className="w-80 flex-shrink-0 border-l border-border relative"
+              className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
               onClick={() => setFocusedPanel("config")}
             >
               <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />

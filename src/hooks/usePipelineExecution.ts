@@ -93,7 +93,7 @@ export function usePipelineExecution() {
     } else if (jobStatus === "completed") {
       setStatus("completed");
       if (jobResult) {
-        setResult(jobResult as ExecutionResult);
+        setResult(jobResult as unknown as ExecutionResult);
       }
     } else if (jobStatus === "failed") {
       setStatus("failed");

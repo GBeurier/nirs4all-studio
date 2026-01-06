@@ -2,12 +2,17 @@
  * MainCanvas - Visualization canvas for spectral data and analysis
  *
  * Features:
- * - Uses new chart components with backend data format
+ * - Uses Phase 3 V2 chart components with enhanced features
  * - Loading skeletons during execution
  * - Fold distribution chart when splitter is present
  * - Extended color mode options (including fold coloring)
- * - Cross-chart sample highlighting
+ * - Cross-chart sample highlighting via SelectionContext
  * - Step-by-step comparison mode
+ * - Raw Data Mode: Works without any operators (Phase 1 deliverable)
+ * - Partition filtering: Filter all charts by train/test/fold (Phase 3)
+ * - Enhanced PCA with UMAP support and 3D view option
+ * - Enhanced histogram with KDE, ridge plot, and multiple display modes
+ * - Phase 6: WebGL rendering, export system, saved selections
  *
  * Performance Optimizations:
  * - useMemo for computed values (hasFolds, yValues, gridLayout)
@@ -15,18 +20,39 @@
  * - Skeleton placeholders during loading
  * - Charts render only when visible (effectiveVisibleCharts)
  * - maxSamples prop limits rendered spectra lines
+ * - Render mode optimization (auto/canvas/webgl) based on data size
  */
 
-import { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
-import { FlaskConical, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import {
+  FlaskConical, Eye, EyeOff, Loader2, Info, Filter, Activity,
+  Download, Image, FileText, Zap, Monitor,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
   SpectraChart,
-  PCAPlot,
-  YHistogram,
-  FoldDistributionChart,
+  YHistogramV2,
+  DimensionReductionChart,
+  FoldDistributionChartV2,
+  RepetitionsChart,
   ChartSkeleton,
   ChartErrorBoundary,
   type ExtendedColorMode,
@@ -34,7 +60,26 @@ import {
 } from './visualizations';
 import { SampleDetails } from './SampleDetails';
 import { StepComparisonSlider } from './StepComparisonSlider';
-import type { PlaygroundResult, FoldsInfo, UnifiedOperator } from '@/types/playground';
+import { PartitionSelector, type PartitionFilter, getPartitionIndices } from './PartitionSelector';
+import { MetricsFilterPanel, type MetricFilter } from './MetricsFilterPanel';
+import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
+import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
+import { EmbeddingSelector } from './EmbeddingSelector';
+import { SavedSelections } from './SavedSelections';
+import { useSelection } from '@/context/SelectionContext';
+import {
+  useRenderOptimizer,
+  type RenderMode,
+} from '@/lib/playground/renderOptimizer';
+import {
+  exportToPng,
+  exportToSvg,
+  exportSpectraToCsv,
+  exportSelectionsToJson,
+  exportToJson,
+  batchExport,
+} from '@/lib/playground/export';
+import type { PlaygroundResult, UnifiedOperator, MetricsResult, OutlierResult, SimilarityResult } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 
 // ============= Types =============
@@ -62,14 +107,45 @@ interface MainCanvasProps {
   activeStep?: number;
   /** Callback when active step changes */
   onActiveStepChange?: (step: number) => void;
+  /** Callback when "Filter to Selection" is clicked - adds a sample index filter */
+  onFilterToSelection?: (selectedIndices: number[]) => void;
+  /** Whether UMAP computation is enabled */
+  computeUmap?: boolean;
+  /** Callback to enable/disable UMAP computation */
+  onComputeUmapChange?: (enabled: boolean) => void;
+  /** Whether UMAP is currently being computed */
+  isUmapLoading?: boolean;
+  // === Phase 5: Advanced Filtering & Metrics ===
+  /** Computed metrics for current dataset */
+  metrics?: MetricsResult | null;
+  /** Callback to detect outliers via API */
+  onDetectOutliers?: (method: OutlierMethod, threshold: number) => Promise<OutlierResult>;
+  /** Callback to find similar samples via API */
+  onFindSimilar?: (referenceIdx: number, metric: DistanceMetric, threshold?: number, topK?: number) => Promise<SimilarityResult>;
+  /** Active metric filters */
+  metricFilters?: MetricFilter[];
+  /** Callback when metric filters change */
+  onMetricFiltersChange?: (filters: MetricFilter[]) => void;
+  /** Whether to show embedding selector overlay */
+  showEmbeddingOverlay?: boolean;
+  /** Callback to toggle embedding overlay */
+  onToggleEmbeddingOverlay?: () => void;
+  // === Phase 6: Render Mode & Export ===
+  /** Forced render mode (auto, canvas, webgl) */
+  renderMode?: RenderMode;
+  /** Callback when render mode changes */
+  onRenderModeChange?: (mode: RenderMode) => void;
+  /** Dataset ID for saved selections */
+  datasetId?: string;
 }
 
-type ChartType = 'spectra' | 'histogram' | 'folds' | 'pca';
+type ChartType = 'spectra' | 'histogram' | 'folds' | 'pca' | 'repetitions';
 
 interface ChartConfig {
   id: ChartType;
   label: string;
   requiresFolds?: boolean;
+  requiresRepetitions?: boolean;
 }
 
 const CHART_CONFIG: ChartConfig[] = [
@@ -77,9 +153,10 @@ const CHART_CONFIG: ChartConfig[] = [
   { id: 'histogram', label: 'Y Hist' },
   { id: 'folds', label: 'Folds', requiresFolds: true },
   { id: 'pca', label: 'PCA' },
+  { id: 'repetitions', label: 'Reps', requiresRepetitions: true },
 ];
 
-// ============= Color Mode Selector =============
+// ============= Sub-Components =============
 
 interface ColorModeSelectorProps {
   colorConfig: ExtendedColorConfig;
@@ -116,6 +193,22 @@ function ChartLoadingOverlay({ visible }: { visible: boolean }) {
   );
 }
 
+/**
+ * Raw Data Mode banner - shown when no operators are in the pipeline
+ * This is a Phase 1 deliverable: Playground works without any pipeline operators
+ */
+function RawDataModeBanner() {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/20">
+      <Info className="w-4 h-4 text-blue-500 shrink-0" />
+      <span className="text-xs text-blue-700 dark:text-blue-300">
+        <strong>Raw Data Mode:</strong> Viewing original data without preprocessing.
+        Add operators from the palette to transform your spectra.
+      </span>
+    </div>
+  );
+}
+
 // ============= Main Component =============
 
 export function MainCanvas({
@@ -130,6 +223,22 @@ export function MainCanvas({
   onStepComparisonEnabledChange,
   activeStep = 0,
   onActiveStepChange,
+  onFilterToSelection,
+  computeUmap = false,
+  onComputeUmapChange,
+  isUmapLoading = false,
+  // Phase 5 props
+  metrics,
+  onDetectOutliers,
+  onFindSimilar,
+  metricFilters = [],
+  onMetricFiltersChange,
+  showEmbeddingOverlay = false,
+  onToggleEmbeddingOverlay,
+  // Phase 6 props
+  renderMode: externalRenderMode,
+  onRenderModeChange,
+  datasetId,
 }: MainCanvasProps) {
   // Chart visibility state
   const [visibleCharts, setVisibleCharts] = useState<Set<ChartType>>(
@@ -143,6 +252,35 @@ export function MainCanvas({
 
   // Color configuration
   const [colorConfig, setColorConfig] = useState<ExtendedColorConfig>({ mode: 'target' });
+
+  // Partition filtering (Phase 3) - applies to all charts
+  const [partitionFilter, setPartitionFilter] = useState<PartitionFilter>('all');
+
+  // Chart container refs for export (Phase 6)
+  const spectraChartRef = useRef<HTMLDivElement>(null);
+  const histogramChartRef = useRef<HTMLDivElement>(null);
+  const pcaChartRef = useRef<HTMLDivElement>(null);
+  const foldsChartRef = useRef<HTMLDivElement>(null);
+
+  // Render mode optimization (Phase 6)
+  const totalSamplesForRender = rawData?.spectra?.length ?? result?.processed?.spectra?.length ?? 0;
+  const wavelengthCountForRender = rawData?.wavelengths?.length ?? result?.processed?.wavelengths?.length ?? 0;
+
+  const { renderMode: effectiveMode, webglAvailable: isWebGL, setForceMode, forceMode } = useRenderOptimizer({
+    nSamples: totalSamplesForRender,
+    nWavelengths: wavelengthCountForRender,
+    hasOverlay: false,
+    has3DView: false,
+  });
+
+  // User-selected render mode (for the Select display) - null means 'auto'
+  const displayRenderMode: RenderMode = forceMode ?? 'auto';
+
+  // Handle render mode change
+  const handleRenderModeChange = useCallback((mode: RenderMode) => {
+    setForceMode(mode === 'auto' ? null : mode);
+    onRenderModeChange?.(mode);
+  }, [setForceMode, onRenderModeChange]);
 
   // Determine if we should show skeletons
   const showSkeletons = isLoading && !result;
@@ -181,19 +319,50 @@ export function MainCanvas({
   // Show a spinner on charts when a redraw is happening but we still have data to show
   const chartRedrawing = ((isFetching || isLoading) && !!result && !showSkeletons) || interactionPending;
 
+  // Check if pipeline has any operators (for Raw Data Mode)
+  const hasOperators = operators.length > 0;
+  const enabledOperatorCount = operators.filter(op => op.enabled).length;
+  const isRawDataMode = !hasOperators || enabledOperatorCount === 0;
+
+  // Get selection context for filter-to-selection functionality and exports
+  const {
+    selectedSamples,
+    selectedCount,
+    pinnedSamples: contextPinnedSamples,
+    clear: clearSelection,
+  } = useSelection();
+
+  // Handle filter to selection
+  const handleFilterToSelection = useCallback(() => {
+    if (onFilterToSelection && selectedCount > 0) {
+      const selectedIndices = Array.from(selectedSamples);
+      onFilterToSelection(selectedIndices);
+      // Clear selection after applying filter
+      clearSelection();
+    }
+  }, [onFilterToSelection, selectedCount, selectedSamples, clearSelection]);
+
   // Check if we have folds
   const hasFolds = useMemo(() => {
     return result?.folds && result.folds.n_folds > 0;
   }, [result?.folds]);
 
-  // Toggle folds visibility based on availability
+  // Check if we have repetitions (Phase 4)
+  const hasRepetitions = useMemo(() => {
+    return result?.repetitions?.has_repetitions ?? false;
+  }, [result?.repetitions]);
+
+  // Toggle folds/repetitions visibility based on availability
   const effectiveVisibleCharts = useMemo(() => {
     const visible = new Set(visibleCharts);
     if (!hasFolds && visible.has('folds')) {
       visible.delete('folds');
     }
+    if (!hasRepetitions && visible.has('repetitions')) {
+      visible.delete('repetitions');
+    }
     return visible;
-  }, [visibleCharts, hasFolds]);
+  }, [visibleCharts, hasFolds, hasRepetitions]);
 
   // Toggle chart visibility
   const toggleChart = useCallback((chart: ChartType) => {
@@ -227,6 +396,22 @@ export function MainCanvas({
     return rawData?.y ?? [];
   }, [result, rawData]);
 
+  // Total sample count
+  const totalSamples = useMemo(() => {
+    return rawData?.spectra?.length ?? result?.processed?.spectra?.length ?? 0;
+  }, [rawData, result]);
+
+  // Get partition-filtered indices (Phase 3)
+  const filteredIndices = useMemo(() => {
+    return getPartitionIndices(partitionFilter, result?.folds ?? null, totalSamples);
+  }, [partitionFilter, result?.folds, totalSamples]);
+
+  // Filter Y values based on partition
+  const filteredYValues = useMemo(() => {
+    if (partitionFilter === 'all') return yValues;
+    return filteredIndices.map(i => yValues[i]).filter(v => v !== undefined);
+  }, [partitionFilter, filteredIndices, yValues]);
+
   // Compute grid layout
   const visibleCount = effectiveVisibleCharts.size;
   const gridCols = visibleCount === 1
@@ -239,51 +424,108 @@ export function MainCanvas({
   // Step comparison handlers
   const handleStepComparisonEnabledChange = useCallback((enabled: boolean) => {
     onStepComparisonEnabledChange?.(enabled);
-    if (enabled && activeStep === 0 && operators.filter(op => op.enabled).length > 0) {
-      onActiveStepChange?.(operators.filter(op => op.enabled).length);
+    if (enabled && activeStep === 0 && enabledOperatorCount > 0) {
+      onActiveStepChange?.(enabledOperatorCount);
     }
-  }, [onStepComparisonEnabledChange, onActiveStepChange, activeStep, operators]);
+  }, [onStepComparisonEnabledChange, onActiveStepChange, activeStep, enabledOperatorCount]);
 
   const handleActiveStepChange = useCallback((step: number) => {
     onActiveStepChange?.(step);
   }, [onActiveStepChange]);
 
-  // Determine if we should show skeletons
-  const showSkeletons = isLoading && !result;
+  // ============= Phase 6: Export Handlers =============
 
-  // Track user-triggered redraw intent so spinner starts on mousedown
-  const [interactionPending, setInteractionPending] = useState(false);
-  const interactionTimeoutRef = useRef<number | null>(null);
+  // Export visible chart to PNG
+  const handleExportChartPng = useCallback(async (chartType: ChartType) => {
+    const refMap: Record<ChartType, React.RefObject<HTMLDivElement>> = {
+      spectra: spectraChartRef,
+      histogram: histogramChartRef,
+      pca: pcaChartRef,
+      folds: foldsChartRef,
+      repetitions: { current: null }, // Not yet implemented
+    };
 
-  const triggerInteractionPending = useCallback(() => {
-    if (interactionTimeoutRef.current) {
-      clearTimeout(interactionTimeoutRef.current);
-    }
-    setInteractionPending(true);
-    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 1200);
-  }, []);
-
-  useEffect(() => () => {
-    if (interactionTimeoutRef.current) {
-      clearTimeout(interactionTimeoutRef.current);
-    }
-  }, []);
-
-  // Clear pending state once backend settles, but keep spinner during fetch
-  useEffect(() => {
-    if (isFetching || isLoading) {
-      setInteractionPending(true);
-      if (interactionTimeoutRef.current) {
-        clearTimeout(interactionTimeoutRef.current);
-      }
+    const ref = refMap[chartType];
+    if (!ref?.current) {
+      toast.error('Chart not available');
       return;
     }
 
-    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 150);
-  }, [isFetching, isLoading]);
+    try {
+      await exportToPng(ref.current, `${chartType}-chart`);
+      toast.success('Chart exported', { description: `${chartType}.png saved` });
+    } catch (error) {
+      toast.error('Export failed', { description: (error as Error).message });
+    }
+  }, []);
 
-  // Show a spinner on charts when a redraw is happening but we still have data to show
-  const chartRedrawing = ((isFetching || isLoading) && !!result && !showSkeletons) || interactionPending;
+  // Export spectra data to CSV
+  const handleExportSpectraCsv = useCallback(async () => {
+    const spectra = result?.processed?.spectra ?? rawData?.spectra;
+    const wavelengths = result?.processed?.wavelengths ?? rawData?.wavelengths;
+
+    if (!spectra || !wavelengths) {
+      toast.error('No spectra data to export');
+      return;
+    }
+
+    try {
+      await exportSpectraToCsv(spectra, wavelengths, rawData?.sampleIds, 'processed-spectra');
+      toast.success('Data exported', {
+        description: `${spectra.length} samples × ${wavelengths.length} wavelengths saved to CSV`,
+      });
+    } catch (error) {
+      toast.error('Export failed', { description: (error as Error).message });
+    }
+  }, [result, rawData]);
+
+  // Export current selection to JSON
+  const handleExportSelectionsJson = useCallback(async () => {
+    const selections = Array.from(selectedSamples);
+    const pinned = Array.from(contextPinnedSamples);
+
+    try {
+      await exportSelectionsToJson(selections, pinned, 'playground-selections');
+      toast.success('Selections exported', {
+        description: `${selections.length} selected, ${pinned.length} pinned samples saved`,
+      });
+    } catch (error) {
+      toast.error('Export failed', { description: (error as Error).message });
+    }
+  }, [selectedSamples, contextPinnedSamples]);
+
+  // Batch export all charts
+  const handleBatchExport = useCallback(async () => {
+    const charts: Array<{ element: HTMLElement; filename: string }> = [];
+
+    if (spectraChartRef.current && effectiveVisibleCharts.has('spectra')) {
+      charts.push({ element: spectraChartRef.current, filename: 'spectra-chart' });
+    }
+    if (histogramChartRef.current && effectiveVisibleCharts.has('histogram')) {
+      charts.push({ element: histogramChartRef.current, filename: 'histogram-chart' });
+    }
+    if (pcaChartRef.current && effectiveVisibleCharts.has('pca')) {
+      charts.push({ element: pcaChartRef.current, filename: 'pca-chart' });
+    }
+    if (foldsChartRef.current && effectiveVisibleCharts.has('folds')) {
+      charts.push({ element: foldsChartRef.current, filename: 'folds-chart' });
+    }
+
+    if (charts.length === 0) {
+      toast.error('No charts to export');
+      return;
+    }
+
+    try {
+      const results = await batchExport(charts, 'png');
+      const successCount = results.filter(r => r.success).length;
+      toast.success('Batch export complete', {
+        description: `${successCount}/${charts.length} charts exported`,
+      });
+    } catch (error) {
+      toast.error('Batch export failed', { description: (error as Error).message });
+    }
+  }, [effectiveVisibleCharts]);
 
   // Empty state - no data loaded
   if (!rawData) {
@@ -323,6 +565,11 @@ export function MainCanvas({
                 <li>• Combine & reorder</li>
               </ul>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden relative">
@@ -342,6 +589,9 @@ export function MainCanvas({
           onClose={handleCloseSampleDetails}
         />
       )}
+
+      {/* Raw Data Mode banner - Phase 1 feature */}
+      {isRawDataMode && <RawDataModeBanner />}
 
       {/* Toolbar */}
       <div
@@ -365,7 +615,7 @@ export function MainCanvas({
                   !isVisible && 'opacity-50',
                   isDisabled && 'cursor-not-allowed opacity-30'
                 )}
-                  onMouseDown={triggerInteractionPending}
+                onMouseDown={triggerInteractionPending}
                 onClick={() => !isDisabled && toggleChart(id)}
                 disabled={isDisabled}
                 title={isDisabled ? 'Add a splitter to see folds' : undefined}
@@ -380,18 +630,107 @@ export function MainCanvas({
           {isFetching && (
             <Loader2 className="w-3 h-3 animate-spin text-primary ml-2" />
           )}
+
+          {/* Selection count and filter button */}
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
+                {selectedCount} selected
+              </Badge>
+              {onFilterToSelection && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-6 text-[10px] gap-1 px-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400"
+                        onClick={handleFilterToSelection}
+                      >
+                        <Filter className="w-3 h-3" />
+                        Filter to Selection
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      <p className="text-xs">
+                        Add a filter that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}.
+                        Other samples will be removed from the pipeline.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Step comparison slider (compact) */}
-          {operators.length > 0 && onStepComparisonEnabledChange && (
+          {/* Partition filter (Phase 3) */}
+          {hasFolds && (
+            <>
+              <span className="text-[10px] text-muted-foreground">View:</span>
+              <PartitionSelector
+                value={partitionFilter}
+                onChange={setPartitionFilter}
+                folds={result?.folds ?? null}
+                totalSamples={totalSamples}
+                compact
+              />
+            </>
+          )}
+
+          {/* Phase 5: Advanced Filtering & Metrics */}
+          {(metrics || onDetectOutliers || onFindSimilar) && (
+            <>
+              <Separator orientation="vertical" className="h-4" />
+              <div className="flex items-center gap-1.5">
+                <Activity className="w-3 h-3 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">Filter:</span>
+
+                {/* Metrics Filter Panel */}
+                {metrics && onMetricFiltersChange && (
+                  <MetricsFilterPanel
+                    metrics={metrics}
+                    activeFilters={metricFilters}
+                    onChange={onMetricFiltersChange}
+                    compact
+                  />
+                )}
+
+                {/* Outlier Selector */}
+                {onDetectOutliers && (
+                  <OutlierSelector
+                    onDetectOutliers={onDetectOutliers}
+                    totalSamples={totalSamples}
+                    useSelectionContext
+                    compact
+                  />
+                )}
+
+                {/* Similarity Filter */}
+                {onFindSimilar && (
+                  <SimilarityFilter
+                    onFindSimilar={onFindSimilar}
+                    selectedSample={selectedSample}
+                    sampleIds={rawData?.sampleIds}
+                    useSelectionContext
+                    totalSamples={totalSamples}
+                    compact
+                  />
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Step comparison slider (compact) - only show when there are operators */}
+          {hasOperators && onStepComparisonEnabledChange && (
             <StepComparisonSlider
               operators={operators}
               currentStep={activeStep}
               onStepChange={handleActiveStepChange}
               enabled={stepComparisonEnabled}
               onEnabledChange={handleStepComparisonEnabledChange}
-                onInteractionStart={triggerInteractionPending}
+              onInteractionStart={triggerInteractionPending}
               isLoading={isFetching}
               compact
             />
@@ -406,11 +745,104 @@ export function MainCanvas({
             }}
             hasFolds={!!hasFolds}
           />
+
+          {/* Phase 6: Render mode selector */}
+          <Separator orientation="vertical" className="h-4" />
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Select
+                  value={displayRenderMode}
+                  onValueChange={(value) => handleRenderModeChange(value as RenderMode)}
+                >
+                  <SelectTrigger className="h-6 w-20 text-[10px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">
+                      <div className="flex items-center gap-1.5">
+                        <Zap className="w-3 h-3" />
+                        Auto
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="canvas">
+                      <div className="flex items-center gap-1.5">
+                        <Monitor className="w-3 h-3" />
+                        Canvas
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="webgl">
+                      <div className="flex items-center gap-1.5">
+                        <Zap className="w-3 h-3 text-yellow-500" />
+                        WebGL
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">
+                  {displayRenderMode === 'auto'
+                    ? `Auto-selects best renderer based on data size (using ${effectiveMode})`
+                    : displayRenderMode === 'webgl' || displayRenderMode === 'webgl_aggregated'
+                      ? 'GPU-accelerated rendering for large datasets'
+                      : 'Standard canvas rendering'}
+                  {isWebGL && effectiveMode.startsWith('webgl') && ' (WebGL active)'}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Phase 6: Saved Selections */}
+          <SavedSelections compact datasetId={datasetId ?? 'playground'} />
+
+          {/* Phase 6: Export menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1">
+                <Download className="w-3 h-3" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => handleExportChartPng('spectra')}>
+                <Image className="w-4 h-4 mr-2" />
+                Spectra as PNG
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportChartPng('pca')}>
+                <Image className="w-4 h-4 mr-2" />
+                PCA Plot as PNG
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportChartPng('histogram')}>
+                <Image className="w-4 h-4 mr-2" />
+                Histogram as PNG
+              </DropdownMenuItem>
+              {hasFolds && (
+                <DropdownMenuItem onClick={() => handleExportChartPng('folds')}>
+                  <Image className="w-4 h-4 mr-2" />
+                  Folds as PNG
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleBatchExport}>
+                <Image className="w-4 h-4 mr-2" />
+                All Charts as PNG
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportSpectraCsv}>
+                <FileText className="w-4 h-4 mr-2" />
+                Spectra as CSV
+              </DropdownMenuItem>
+              {selectedCount > 0 && (
+                <DropdownMenuItem onClick={handleExportSelectionsJson}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Selection as JSON
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
-
-      {/* No operators hint overlay */}
-      {!hasOperators && <NoOperatorsHint />}
 
       {/* Charts grid */}
       <div
@@ -421,6 +853,7 @@ export function MainCanvas({
         {/* Spectra Chart */}
         {effectiveVisibleCharts.has('spectra') && (
           <div
+            ref={spectraChartRef}
             className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="Spectra chart showing original and processed spectral data"
@@ -444,15 +877,62 @@ export function MainCanvas({
                   isLoading={chartRedrawing}
                 />
               </ChartErrorBoundary>
+            ) : rawData ? (
+              // Raw data mode - show raw spectra without processing
+              <ChartErrorBoundary chartType="Spectra">
+                <SpectraChart
+                  original={{
+                    spectra: rawData.spectra,
+                    wavelengths: rawData.wavelengths,
+                    shape: [rawData.spectra.length, rawData.wavelengths.length],
+                  }}
+                  processed={{
+                    spectra: rawData.spectra,
+                    wavelengths: rawData.wavelengths,
+                    shape: [rawData.spectra.length, rawData.wavelengths.length],
+                  }}
+                  y={yValues}
+                  sampleIds={rawData.sampleIds}
+                  folds={undefined}
+                  colorConfig={colorConfig}
+                  selectedSample={selectedSample}
+                  onSelectSample={handleSelectSample}
+                  onInteractionStart={triggerInteractionPending}
+                  maxSamples={50}
+                  isLoading={chartRedrawing}
+                />
+              </ChartErrorBoundary>
             ) : (
               <ChartSkeleton type="spectra" />
+            )}
+
+            {/* Phase 5: Embedding Selector Overlay - mini PCA/UMAP for quick selection */}
+            {showEmbeddingOverlay && result?.pca && (
+              <div className="absolute top-10 right-3 z-30">
+                <EmbeddingSelector
+                  embedding={result.pca.coordinates}
+                  partitions={result.folds?.train_indices && result.folds?.test_indices
+                    ? Array.from({ length: totalSamples }, (_, i) =>
+                        result.folds?.train_indices?.includes(i) ? 'Train' : 'Test'
+                      )
+                    : undefined}
+                  targets={yValues}
+                  sampleIds={rawData?.sampleIds}
+                  embeddingMethod="pca"
+                  expanded={false}
+                  onToggleExpanded={onToggleEmbeddingOverlay}
+                  useSelectionContext
+                  visible={showEmbeddingOverlay}
+                />
+              </div>
             )}
           </div>
         )}
 
-        {/* Y Histogram */}
+        {/* Y Histogram - Using V2 with enhanced features */}
         {effectiveVisibleCharts.has('histogram') && (
           <div
+            ref={histogramChartRef}
             className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="Histogram of target Y values distribution"
@@ -460,12 +940,12 @@ export function MainCanvas({
             <ChartLoadingOverlay visible={chartRedrawing} />
             {showSkeletons ? (
               <ChartSkeleton type="histogram" />
-            ) : yValues.length > 0 ? (
+            ) : filteredYValues.length > 0 ? (
               <ChartErrorBoundary chartType="Histogram">
-                <YHistogram
-                  y={yValues}
-                  selectedSample={selectedSample}
-                  onSelectSample={handleSelectSample}
+                <YHistogramV2
+                  y={filteredYValues}
+                  folds={result?.folds}
+                  useSelectionContext
                 />
               </ChartErrorBoundary>
             ) : (
@@ -476,9 +956,10 @@ export function MainCanvas({
           </div>
         )}
 
-        {/* Fold Distribution */}
+        {/* Fold Distribution - Using V2 with enhanced features */}
         {effectiveVisibleCharts.has('folds') && hasFolds && (
           <div
+            ref={foldsChartRef}
             className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
             aria-label="Cross-validation fold distribution chart"
@@ -488,38 +969,68 @@ export function MainCanvas({
               <ChartSkeleton type="folds" />
             ) : (
               <ChartErrorBoundary chartType="Fold Distribution">
-                <FoldDistributionChart
+                <FoldDistributionChartV2
                   folds={result?.folds ?? null}
+                  y={yValues}
+                  useSelectionContext
                 />
               </ChartErrorBoundary>
             )}
           </div>
         )}
 
-        {/* PCA Plot */}
+        {/* PCA/UMAP Plot - Using DimensionReductionChart V2 with enhanced features */}
         {effectiveVisibleCharts.has('pca') && (
           <div
+            ref={pcaChartRef}
             className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
             role="img"
-            aria-label="PCA scatter plot showing principal component analysis"
+            aria-label="PCA/UMAP scatter plot showing dimensionality reduction"
           >
             <ChartLoadingOverlay visible={chartRedrawing} />
             {showSkeletons ? (
               <ChartSkeleton type="pca" />
             ) : result?.pca ? (
-              <ChartErrorBoundary chartType="PCA">
-                <PCAPlot
+              <ChartErrorBoundary chartType="Dimension Reduction">
+                <DimensionReductionChart
                   pca={result.pca}
-                  y={yValues}
+                  umap={result.umap}
+                  y={filteredYValues}
                   folds={result.folds}
                   sampleIds={rawData.sampleIds}
-                  colorConfig={colorConfig}
-                  selectedSample={selectedSample}
-                  onSelectSample={handleSelectSample}
+                  useSelectionContext
+                  onRequestUMAP={onComputeUmapChange ? () => onComputeUmapChange(true) : undefined}
+                  isUMAPLoading={isUmapLoading}
                 />
               </ChartErrorBoundary>
             ) : (
               <ChartSkeleton type="pca" />
+            )}
+          </div>
+        )}
+
+        {/* Repetitions Chart - Phase 4: Strip plot showing intra-sample variability */}
+        {effectiveVisibleCharts.has('repetitions') && hasRepetitions && (
+          <div
+            className="bg-card rounded-lg border border-border p-3 min-h-[250px] relative"
+            role="img"
+            aria-label="Repetitions variability chart showing intra-sample distances"
+          >
+            <ChartLoadingOverlay visible={chartRedrawing} />
+            {showSkeletons ? (
+              <ChartSkeleton type="histogram" />
+            ) : result?.repetitions ? (
+              <ChartErrorBoundary chartType="Repetitions">
+                <RepetitionsChart
+                  data={result.repetitions}
+                  y={yValues}
+                  useSelectionContext
+                />
+              </ChartErrorBoundary>
+            ) : (
+              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                No repetitions detected
+              </div>
             )}
           </div>
         )}

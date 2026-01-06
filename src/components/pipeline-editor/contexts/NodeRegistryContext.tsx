@@ -69,6 +69,8 @@ export interface NodeRegistryContextValue {
   isLoading: boolean;
   /** Any loading errors */
   error: Error | null;
+  /** Whether this registry uses JSON definitions (Phase 2) */
+  isJsonRegistry: boolean;
   /** Registry version info */
   version: {
     registry: string;
@@ -149,6 +151,7 @@ export function NodeRegistryProvider({
 
       isLoading: false,
       error: null,
+      isJsonRegistry: useJsonRegistry,
       version: {
         registry: "1.0.0-phase1",
       },

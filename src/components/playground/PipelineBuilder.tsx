@@ -20,12 +20,14 @@ import {
 } from '@/components/ui/tooltip';
 import { UnifiedOperatorCard } from './UnifiedOperatorCard';
 import { useOperatorRegistry } from '@/hooks/useOperatorRegistry';
-import type { UnifiedOperator, StepError } from '@/types/playground';
+import type { UnifiedOperator, StepError, FilterInfo } from '@/types/playground';
 
 interface PipelineBuilderProps {
   operators: UnifiedOperator[];
   isProcessing?: boolean;
   stepErrors?: StepError[];
+  /** Filter statistics from execution result */
+  filterInfo?: FilterInfo;
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
   onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
@@ -38,6 +40,7 @@ export function PipelineBuilder({
   operators,
   isProcessing = false,
   stepErrors = [],
+  filterInfo,
   onUpdate,
   onUpdateParams,
   onRemove,
@@ -59,6 +62,20 @@ export function PipelineBuilder({
     }
     return map;
   }, [stepErrors]);
+
+  // Build filter stats map by operator name
+  const filterStatsMap = useMemo(() => {
+    const map = new Map<string, { removed_count: number; reason?: string }>();
+    if (filterInfo?.filters_applied) {
+      for (const filter of filterInfo.filters_applied) {
+        map.set(filter.name, {
+          removed_count: filter.removed_count,
+          reason: filter.reason,
+        });
+      }
+    }
+    return map;
+  }, [filterInfo]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDragIndex(index);
@@ -82,6 +99,8 @@ export function PipelineBuilder({
 
   // Count operator types
   const preprocessingCount = operators.filter(op => op.type === 'preprocessing').length;
+  const augmentationCount = operators.filter(op => op.type === 'augmentation').length;
+  const filterCount = operators.filter(op => op.type === 'filter').length;
   const splittingCount = operators.filter(op => op.type === 'splitting').length;
 
   if (operators.length === 0) {
@@ -114,6 +133,16 @@ export function PipelineBuilder({
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               {preprocessingCount} prep
             </span>
+            {augmentationCount > 0 && (
+              <span className="text-[10px] text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                {augmentationCount} aug
+              </span>
+            )}
+            {filterCount > 0 && (
+              <span className="text-[10px] text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded">
+                {filterCount} filter
+              </span>
+            )}
             {splittingCount > 0 && (
               <span className="text-[10px] text-orange-500 bg-orange-500/10 px-1.5 py-0.5 rounded">
                 {splittingCount} split
@@ -157,6 +186,9 @@ export function PipelineBuilder({
         {operators.map((operator, index) => {
           const definition = getOperator(operator.name);
           const hasError = errorMap.has(operator.id);
+          const filterStats = operator.type === 'filter'
+            ? filterStatsMap.get(operator.name)
+            : undefined;
 
           return (
             <div key={operator.id} className="relative">
@@ -168,6 +200,7 @@ export function PipelineBuilder({
                 index={index}
                 paramDefs={definition?.params}
                 description={definition?.description}
+                filterStats={filterStats}
                 onUpdate={onUpdate}
                 onUpdateParams={onUpdateParams}
                 onRemove={onRemove}

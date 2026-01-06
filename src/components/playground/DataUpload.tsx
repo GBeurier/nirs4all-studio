@@ -112,59 +112,63 @@ export function DataUpload({
   // Data loaded view
   if (data) {
     return (
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sidebar-foreground">
-            {dataSource === 'workspace' ? (
-              <FolderOpen className="w-4 h-4 text-primary" />
-            ) : (
-              <Database className="w-4 h-4 text-primary" />
-            )}
-            <span className="text-sm font-medium">
-              {dataSource === 'workspace' && currentDatasetInfo
-                ? currentDatasetInfo.datasetName
-                : dataSource === 'demo'
-                  ? 'Demo Data'
-                  : 'Data Loaded'}
-            </span>
+      <div className="p-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-7 w-7 shrink-0 rounded bg-primary/10 flex items-center justify-center">
+              {dataSource === 'workspace' ? (
+                <FolderOpen className="h-3.5 w-3.5 text-primary" />
+              ) : (
+                <Database className="h-3.5 w-3.5 text-primary" />
+              )}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium truncate leading-tight" title={
+                dataSource === 'workspace' && currentDatasetInfo
+                  ? currentDatasetInfo.datasetName
+                  : undefined
+              }>
+                {dataSource === 'workspace' && currentDatasetInfo
+                  ? currentDatasetInfo.datasetName
+                  : dataSource === 'demo'
+                    ? 'Demo Data'
+                    : 'Uploaded File'}
+              </span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                 <span className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                  {dataSource === 'workspace' ? 'Workspace' : dataSource === 'demo' ? 'Example' : 'Local'}
+                </span>
+              </div>
+            </div>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive -mr-1"
             onClick={onClear}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        {/* Data source badge */}
-        {dataSource && (
-          <div className="text-xs text-muted-foreground capitalize">
-            Source: {dataSource}
-          </div>
-        )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-muted rounded-md p-2">
-            <div className="text-muted-foreground">Samples</div>
-            <div className="text-foreground font-mono font-semibold">
-              {data.spectra.length}
-            </div>
-          </div>
-          <div className="bg-muted rounded-md p-2">
-            <div className="text-muted-foreground">Wavelengths</div>
-            <div className="text-foreground font-mono font-semibold">
-              {data.wavelengths.length}
-            </div>
-          </div>
-          <div className="col-span-2 bg-muted rounded-md p-2">
-            <div className="text-muted-foreground">Range</div>
-            <div className="text-foreground font-mono font-semibold">
-              {data.wavelengths[0].toFixed(0)} - {data.wavelengths[data.wavelengths.length - 1].toFixed(0)} nm
-            </div>
-          </div>
+        {/* Compact Stats Container */}
+        <div className="bg-muted/30 rounded-md border border-border/40 divide-y divide-border/40">
+           <div className="grid grid-cols-2 divide-x divide-border/40">
+             <div className="p-2 pl-3 flex justify-between items-center gap-2">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Samples</span>
+                <span className="font-mono text-xs">{data.spectra.length}</span>
+             </div>
+             <div className="p-2 pr-3 flex justify-between items-center gap-2">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Points</span>
+                <span className="font-mono text-xs">{data.wavelengths.length}</span>
+             </div>
+           </div>
+           <div className="p-2 px-3 flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Range</span>
+              <span className="font-mono text-xs text-foreground">
+                 {data.wavelengths[0].toFixed(0)} - {data.wavelengths[data.wavelengths.length - 1].toFixed(0)} nm
+              </span>
+           </div>
         </div>
       </div>
     );

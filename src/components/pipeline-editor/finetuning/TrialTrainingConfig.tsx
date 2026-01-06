@@ -57,13 +57,19 @@ export function TrialTrainingConfig({
 
   const handleUpdateTrialConfig = useCallback(
     (key: string, value: number | undefined) => {
-      const newConfig = { ...trialConfig, [key]: value };
-      // Remove undefined values
-      Object.keys(newConfig).forEach((k) => {
-        if (newConfig[k] === undefined) {
-          delete newConfig[k];
+      const newConfig: Record<string, number> = {};
+      // Copy existing values
+      Object.entries(trialConfig).forEach(([k, v]) => {
+        if (v !== undefined) {
+          newConfig[k] = v;
         }
       });
+      // Update the key
+      if (value !== undefined) {
+        newConfig[key] = value;
+      } else {
+        delete newConfig[key];
+      }
       onUpdate({ trial_train_params: Object.keys(newConfig).length > 0 ? newConfig : undefined });
     },
     [trialConfig, onUpdate]

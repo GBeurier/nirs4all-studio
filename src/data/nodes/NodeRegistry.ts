@@ -425,7 +425,7 @@ export class NodeRegistry {
   /**
    * Get all category configurations
    */
-  getAllCategories(): Record<string, CategoryConfig> {
+  getAllCategories(): CategoryConfig[] {
     return getAllCategories();
   }
 

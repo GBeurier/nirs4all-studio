@@ -6,7 +6,8 @@
  * - Mean ± std band visualization
  * - Wavelength zoom brush
  * - Original/Processed toggle
- * - Sample selection and highlighting
+ * - Sample selection and highlighting (Phase 1: SelectionContext integration)
+ * - Cross-chart hover highlighting
  * - Chart export (PNG/CSV)
  * - Performance optimized (no animations, data sampling)
  */
@@ -21,12 +22,11 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Brush,
-  ReferenceArea,
   Tooltip,
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Eye, EyeOff, Layers, Download, BarChart3, Loader2 } from 'lucide-react';
+import { Layers, Download, Loader2 } from 'lucide-react';
 import { exportChart } from '@/lib/chartExport';
 import {
   CHART_THEME,
@@ -38,6 +38,7 @@ import {
   type ExtendedColorConfig,
 } from './chartConfig';
 import type { DataSection, SpectrumStats, FoldsInfo } from '@/types/playground';
+import { useSelection } from '@/context/SelectionContext';
 
 // ============= Types =============
 
@@ -64,9 +65,9 @@ interface SpectraChartProps {
   folds?: FoldsInfo;
   /** Color configuration */
   colorConfig?: ExtendedColorConfig;
-  /** Currently selected sample */
+  /** Currently selected sample (deprecated - use SelectionContext) */
   selectedSample?: number | null;
-  /** Callback when sample is selected */
+  /** Callback when sample is selected (deprecated - use SelectionContext) */
   onSelectSample?: (index: number) => void;
   /** Callback when the user triggers a chart interaction */
   onInteractionStart?: () => void;
@@ -74,10 +75,11 @@ interface SpectraChartProps {
   maxSamples?: number;
   /** Whether chart is in loading state */
   isLoading?: boolean;
+  /** Enable SelectionContext integration for cross-chart highlighting */
+  useSelectionContext?: boolean;
 }
 
 type ViewMode = 'both' | 'original' | 'processed';
-type StatisticsMode = 'none' | 'mean' | 'std' | 'range';
 type DisplayMode = 'all' | 'mean' | 'median' | 'quantiles';
 
 function computeMedianPerWavelength(spectra: number[][]): number[] {
@@ -121,18 +123,29 @@ export function SpectraChart({
   sampleIds,
   folds,
   colorConfig,
-  selectedSample,
-  onSelectSample,
+  selectedSample: externalSelectedSample,
+  onSelectSample: externalOnSelectSample,
   onInteractionStart,
   maxSamples = 50,
   isLoading = false,
+  useSelectionContext = true,
 }: SpectraChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+
+  // SelectionContext integration for cross-chart highlighting
+  const selectionCtx = useSelectionContext ? useSelection() : null;
+
+  // Determine effective selection state - prefer context, fallback to props
+  const selectedSamples = useSelectionContext && selectionCtx
+    ? selectionCtx.selectedSamples
+    : new Set<number>(externalSelectedSample !== null && externalSelectedSample !== undefined ? [externalSelectedSample] : []);
+
+  const hoveredSample = selectionCtx?.hoveredSample ?? null;
+  const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
 
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('processed');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
-  const [statisticsMode, setStatisticsMode] = useState<StatisticsMode>('none');
   const [brushDomain, setBrushDomain] = useState<[number, number] | null>(null);
 
   // Hover state: track mouse Y position and the closest line
@@ -182,13 +195,19 @@ export function SpectraChart({
     const showOriginalLines = showLines && (viewMode === 'both' || viewMode === 'original');
     const showProcessedLines = showLines && (viewMode === 'both' || viewMode === 'processed');
 
-    const stats = viewMode === 'original' ? original.statistics : processed.statistics;
+    // For 'both' mode, we need to show stats for both - use processed as primary, original as secondary
+    const procStats = processed.statistics;
+    const origStats = original.statistics;
+    const stats = viewMode === 'original' ? origStats : procStats;
     const medianSeries = viewMode === 'original' ? medianValues.original : medianValues.processed;
 
-    const shouldIncludeMean = displayMode === 'mean' || (displayMode === 'all' && statisticsMode !== 'none');
-    const shouldIncludeStd = displayMode === 'mean' || (displayMode === 'all' && statisticsMode === 'std');
-    const shouldIncludeP5P95 = displayMode === 'quantiles' || (displayMode === 'all' && statisticsMode === 'range');
+    const shouldIncludeMean = displayMode === 'mean';
+    const shouldIncludeStd = displayMode === 'mean';
+    const shouldIncludeP5P95 = displayMode === 'quantiles';
     const shouldIncludeMedian = displayMode === 'median' || displayMode === 'quantiles';
+
+    // In 'both' mode for aggregation views, include original stats too
+    const showBothStats = viewMode === 'both' && displayMode !== 'all';
 
     return wavelengths.map((wavelength, wIdx) => {
       const point: Record<string, number> = { wavelength };
@@ -204,29 +223,86 @@ export function SpectraChart({
         });
       }
 
-      if (stats && shouldIncludeMean) {
-        point.mean = stats.mean[wIdx];
+      // Processed/primary stats
+      if (procStats && shouldIncludeMean) {
+        point.mean = procStats.mean[wIdx];
       }
 
-      if (stats && shouldIncludeStd) {
-        point.stdUpper = stats.mean[wIdx] + stats.std[wIdx];
-        point.stdLower = stats.mean[wIdx] - stats.std[wIdx];
-        point.stdBand = point.stdUpper - point.stdLower;
+      if (procStats && shouldIncludeStd) {
+        point.stdUpper = procStats.mean[wIdx] + procStats.std[wIdx];
+        point.stdLower = procStats.mean[wIdx] - procStats.std[wIdx];
+        // Range format for Recharts Area component
+        (point as Record<string, unknown>).stdRange = [
+          procStats.mean[wIdx] - procStats.std[wIdx],
+          procStats.mean[wIdx] + procStats.std[wIdx],
+        ];
       }
 
-      if (stats && shouldIncludeP5P95) {
-        point.p5 = stats.p5?.[wIdx] ?? stats.min[wIdx];
-        point.p95 = stats.p95?.[wIdx] ?? stats.max[wIdx];
-        point.pBand = point.p95 - point.p5;
+      if (procStats && shouldIncludeP5P95) {
+        point.p5 = procStats.p5?.[wIdx] ?? procStats.min[wIdx];
+        point.p95 = procStats.p95?.[wIdx] ?? procStats.max[wIdx];
+        // Range format for Recharts Area component
+        (point as Record<string, unknown>).pRange = [
+          procStats.p5?.[wIdx] ?? procStats.min[wIdx],
+          procStats.p95?.[wIdx] ?? procStats.max[wIdx],
+        ];
       }
 
-      if (shouldIncludeMedian && medianSeries && medianSeries.length > wIdx) {
-        point.median = medianSeries[wIdx];
+      if (shouldIncludeMedian && medianValues.processed && medianValues.processed.length > wIdx) {
+        point.median = medianValues.processed[wIdx];
+      }
+
+      // Original stats for 'both' mode in aggregation views
+      if (showBothStats && origStats) {
+        if (shouldIncludeMean) {
+          point.origMean = origStats.mean[wIdx];
+        }
+        if (shouldIncludeStd) {
+          point.origStdUpper = origStats.mean[wIdx] + origStats.std[wIdx];
+          point.origStdLower = origStats.mean[wIdx] - origStats.std[wIdx];
+          // Range format for Recharts Area component
+          (point as Record<string, unknown>).origStdRange = [
+            origStats.mean[wIdx] - origStats.std[wIdx],
+            origStats.mean[wIdx] + origStats.std[wIdx],
+          ];
+        }
+        if (shouldIncludeP5P95) {
+          point.origP5 = origStats.p5?.[wIdx] ?? origStats.min[wIdx];
+          point.origP95 = origStats.p95?.[wIdx] ?? origStats.max[wIdx];
+          // Range format for Recharts Area component
+          (point as Record<string, unknown>).origPRange = [
+            origStats.p5?.[wIdx] ?? origStats.min[wIdx],
+            origStats.p95?.[wIdx] ?? origStats.max[wIdx],
+          ];
+        }
+        if (shouldIncludeMedian && medianValues.original && medianValues.original.length > wIdx) {
+          point.origMedian = medianValues.original[wIdx];
+        }
+      }
+
+      // When viewMode is 'original', use original stats as primary
+      if (viewMode === 'original' && origStats) {
+        if (shouldIncludeMean) {
+          point.mean = origStats.mean[wIdx];
+        }
+        if (shouldIncludeStd) {
+          point.stdUpper = origStats.mean[wIdx] + origStats.std[wIdx];
+          point.stdLower = origStats.mean[wIdx] - origStats.std[wIdx];
+          point.stdBand = point.stdUpper - point.stdLower;
+        }
+        if (shouldIncludeP5P95) {
+          point.p5 = origStats.p5?.[wIdx] ?? origStats.min[wIdx];
+          point.p95 = origStats.p95?.[wIdx] ?? origStats.max[wIdx];
+          point.pBand = point.p95 - point.p5;
+        }
+        if (shouldIncludeMedian && medianValues.original && medianValues.original.length > wIdx) {
+          point.median = medianValues.original[wIdx];
+        }
       }
 
       return point;
     });
-  }, [wavelengths, displayIndices, viewMode, displayMode, statisticsMode, processed, original, medianValues]);
+  }, [wavelengths, displayIndices, viewMode, displayMode, processed, original, medianValues]);
 
   // Filter data by brush domain
   const filteredData = useMemo(() => {
@@ -242,35 +318,90 @@ export function SpectraChart({
     const yValues = y ?? [];
     const foldLabels = folds?.fold_labels;
 
+    const isSelected = selectedSamples.has(sampleIdx);
+    const isHovered = hoveredSample === sampleIdx;
+    const isPinned = pinnedSamples.has(sampleIdx);
+    const hasSelection = selectedSamples.size > 0;
+
+    // Highlighted states
+    if (isHovered) {
+      return 'hsl(var(--primary))';
+    }
+    if (isSelected) {
+      return 'hsl(var(--primary))';
+    }
+    if (isPinned) {
+      return 'hsl(var(--accent-foreground))';
+    }
+
+    // Dim non-selected when there's a selection
+    const effectiveSelection = hasSelection ? sampleIdx : undefined;
+
     const baseColor = getExtendedSampleColor(
       sampleIdx,
       yValues,
       foldLabels,
       colorConfig,
-      selectedSample,
+      effectiveSelection,
       undefined
     );
 
+    // Dim non-selected samples
+    if (hasSelection) {
+      return `${baseColor}40`; // 25% opacity hex
+    }
+
     // Desaturate original spectra slightly when showing both
-    if (isOriginal && viewMode === 'both' && selectedSample !== sampleIdx) {
+    if (isOriginal && viewMode === 'both') {
       return baseColor.replace(/50%\)/, '60%)').replace(/70%/, '50%');
     }
     return baseColor;
-  }, [displayIndices, y, folds, colorConfig, selectedSample, viewMode]);
+  }, [displayIndices, y, folds, colorConfig, selectedSamples, hoveredSample, pinnedSamples, viewMode]);
 
   // Handle click on chart
-  const handleClick = useCallback((e: unknown) => {
-    const event = e as { activePayload?: Array<{ dataKey: string }> };
-    if (event?.activePayload?.[0]?.dataKey && onSelectSample) {
-      const key = event.activePayload[0].dataKey as string;
-      const match = key.match(/[po](\d+)/);
-      if (match) {
-        const displayIdx = parseInt(match[1], 10);
-        const sampleIdx = displayIndices[displayIdx];
-        onSelectSample(sampleIdx);
+  const handleClick = useCallback((e: unknown, event?: React.MouseEvent) => {
+    const chartEvent = e as { activePayload?: Array<{ dataKey: string }> };
+    if (!chartEvent?.activePayload?.[0]?.dataKey) {
+      // Clicked on chart but not on a line - clear selection
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
       }
+      return;
     }
-  }, [onSelectSample, displayIndices]);
+
+    const key = chartEvent.activePayload[0].dataKey as string;
+    const match = key.match(/[po](\d+)/);
+    if (!match) {
+      // Clicked on non-spectrum element (e.g., mean line) - clear selection
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
+      }
+      return;
+    }
+
+    const displayIdx = parseInt(match[1], 10);
+    const sampleIdx = displayIndices[displayIdx];
+
+    // Use SelectionContext if available
+    if (selectionCtx) {
+      // Determine selection mode based on modifiers
+      const mouseEvent = event as MouseEvent | undefined;
+      if (mouseEvent?.shiftKey) {
+        selectionCtx.select([sampleIdx], 'add');
+      } else if (mouseEvent?.ctrlKey || mouseEvent?.metaKey) {
+        selectionCtx.toggle([sampleIdx]);
+      } else {
+        // If clicking on already selected sample (and it's the only one), deselect it
+        if (selectedSamples.has(sampleIdx) && selectedSamples.size === 1) {
+          selectionCtx.clear();
+        } else {
+          selectionCtx.select([sampleIdx], 'replace');
+        }
+      }
+    } else if (externalOnSelectSample) {
+      externalOnSelectSample(sampleIdx);
+    }
+  }, [selectionCtx, externalOnSelectSample, displayIndices, selectedSamples]);
 
   // Handle brush change
   const handleBrushChange = useCallback((domain: { startIndex?: number; endIndex?: number }) => {
@@ -393,6 +524,19 @@ export function SpectraChart({
     setHoverWavelength(null);
   }, []);
 
+  // Handle click on chart background (not on a data element) to clear selection
+  const handleChartBackgroundClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only clear if clicking directly on the chart container or SVG background
+    const target = e.target as HTMLElement;
+    const tagName = target.tagName.toLowerCase();
+    // Clear selection when clicking on svg, the background rect, or container divs
+    if (tagName === 'svg' || (tagName === 'rect' && target.classList.contains('recharts-cartesian-grid-bg')) || target.classList.contains('recharts-surface') || target.classList.contains('recharts-wrapper')) {
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
+      }
+    }
+  }, [selectionCtx]);
+
   // Reset brush
   const handleResetBrush = useCallback(() => {
     setBrushDomain(null);
@@ -417,23 +561,16 @@ export function SpectraChart({
     exportChart(chartRef.current, exportData, 'spectra');
   }, [wavelengths, displayIndices, sampleIds, processed, original]);
 
-  const cycleStatisticsMode = useCallback(() => {
-    setStatisticsMode((prev) => {
-      if (prev === 'none') return 'std';
-      if (prev === 'std') return 'range';
-      return 'none';
-    });
-    onInteractionStart?.();
-  }, [onInteractionStart]);
-
   const totalSamples = processed.spectra.length || original.spectra.length;
   const showOriginal = displayMode === 'all' && (viewMode === 'both' || viewMode === 'original');
   const showProcessed = displayMode === 'all' && (viewMode === 'both' || viewMode === 'processed');
 
-  const showMeanLine = displayMode === 'mean' || (displayMode === 'all' && statisticsMode !== 'none');
-  const showStdBand = displayMode === 'mean' || (displayMode === 'all' && statisticsMode === 'std');
-  const showP5P95Band = displayMode === 'quantiles' || (displayMode === 'all' && statisticsMode === 'range');
+  const showMeanLine = displayMode === 'mean';
+  const showStdBand = displayMode === 'mean';
+  const showP5P95Band = displayMode === 'quantiles';
   const showMedianLine = displayMode === 'median' || displayMode === 'quantiles';
+  // Show original statistics when in 'both' mode for aggregation views
+  const showOriginalStats = viewMode === 'both' && displayMode !== 'all';
 
   return (
     <div className="h-full flex flex-col relative" ref={chartRef}>
@@ -482,18 +619,6 @@ export function SpectraChart({
             </SelectContent>
           </Select>
 
-          {/* Statistics mode */}
-          <Button
-            variant={statisticsMode !== 'none' && displayMode === 'all' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 px-2"
-            title="Cycle statistics overlay (none → ±std → p5-p95)"
-            onClick={cycleStatisticsMode}
-            disabled={displayMode !== 'all'}
-          >
-            <BarChart3 className="w-3 h-3" />
-          </Button>
-
           {/* Reset zoom */}
           {brushDomain && (
             <Button
@@ -521,7 +646,7 @@ export function SpectraChart({
       )}
 
       {/* Chart */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0" onClick={handleChartBackgroundClick}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={filteredData}
@@ -559,52 +684,53 @@ export function SpectraChart({
             />
 
             {/* Statistics bands - p5/p95 envelope */}
+            {/* Statistics bands - p5/p95 envelope using range area */}
             {showP5P95Band && (
               <Area
                 type="monotone"
-                dataKey="p95"
+                dataKey="pRange"
                 stroke="none"
                 fill={STATISTICS_COLORS.p5p95}
                 fillOpacity={CHART_THEME.statisticsBandOpacity}
-                baseValue="dataMin"
-                {...ANIMATION_CONFIG}
-                tooltipType="none"
-              />
-            )}
-            {showP5P95Band && (
-              <Area
-                type="monotone"
-                dataKey="p5"
-                stroke="none"
-                fill="hsl(var(--card))"
-                fillOpacity={1}
-                baseValue="dataMin"
                 {...ANIMATION_CONFIG}
                 tooltipType="none"
               />
             )}
 
-            {/* Statistics bands - std envelope */}
-            {showStdBand && (
+            {/* Original p5/p95 envelope (for 'both' mode) */}
+            {showOriginalStats && showP5P95Band && (
               <Area
                 type="monotone"
-                dataKey="stdUpper"
+                dataKey="origPRange"
                 stroke="none"
-                fill={STATISTICS_COLORS.std}
-                fillOpacity={CHART_THEME.statisticsBandOpacity}
-                baseValue="dataMin"
+                fill={STATISTICS_COLORS.original}
+                fillOpacity={CHART_THEME.statisticsBandOpacity * 0.6}
                 {...ANIMATION_CONFIG}
                 tooltipType="none"
               />
             )}
+
+            {/* Statistics bands - std envelope using range area */}
             {showStdBand && (
               <Area
                 type="monotone"
-                dataKey="stdLower"
+                dataKey="stdRange"
                 stroke="none"
-                fill="hsl(var(--card))"
-                fillOpacity={1}
-                baseValue="dataMin"
+                fill={STATISTICS_COLORS.std}
+                fillOpacity={CHART_THEME.statisticsBandOpacity}
+                {...ANIMATION_CONFIG}
+                tooltipType="none"
+              />
+            )}
+
+            {/* Original std envelope (for 'both' mode) */}
+            {showOriginalStats && showStdBand && (
+              <Area
+                type="monotone"
+                dataKey="origStdRange"
+                stroke="none"
+                fill={STATISTICS_COLORS.original}
+                fillOpacity={CHART_THEME.statisticsBandOpacity * 0.6}
                 {...ANIMATION_CONFIG}
                 tooltipType="none"
               />
@@ -622,6 +748,19 @@ export function SpectraChart({
               />
             )}
 
+            {/* Original Mean line (dashed, for 'both' mode) */}
+            {showOriginalStats && showMeanLine && (
+              <Line
+                type="monotone"
+                dataKey="origMean"
+                stroke={STATISTICS_COLORS.original}
+                strokeWidth={2}
+                strokeDasharray="4 2"
+                dot={false}
+                {...ANIMATION_CONFIG}
+              />
+            )}
+
             {/* Median line */}
             {showMedianLine && (
               <Line
@@ -634,40 +773,67 @@ export function SpectraChart({
               />
             )}
 
-            {/* Original spectra (dashed) */}
-            {showOriginal && displayIndices.map((_, displayIdx) => (
+            {/* Original Median line (dashed, for 'both' mode) */}
+            {showOriginalStats && showMedianLine && (
               <Line
-                key={`orig-${displayIdx}`}
                 type="monotone"
-                dataKey={`o${displayIdx}`}
-                stroke={getColor(displayIdx, true)}
-                strokeWidth={
-                  selectedSample === displayIndices[displayIdx]
-                    ? CHART_THEME.selectedLineStrokeWidth
-                    : CHART_THEME.lineStrokeWidth
-                }
-                strokeDasharray={viewMode === 'both' ? '4 2' : undefined}
+                dataKey="origMedian"
+                stroke={STATISTICS_COLORS.original}
+                strokeWidth={2}
+                strokeDasharray="4 2"
                 dot={false}
                 {...ANIMATION_CONFIG}
               />
-            ))}
+            )}
+
+            {/* Original spectra (dashed) */}
+            {showOriginal && displayIndices.map((sampleIdx, displayIdx) => {
+              const isSelected = selectedSamples.has(sampleIdx);
+              const isHovered = hoveredSample === sampleIdx;
+              const isPinned = pinnedSamples.has(sampleIdx);
+              const highlighted = isSelected || isHovered || isPinned;
+
+              return (
+                <Line
+                  key={`orig-${displayIdx}`}
+                  type="monotone"
+                  dataKey={`o${displayIdx}`}
+                  stroke={getColor(displayIdx, true)}
+                  strokeWidth={
+                    highlighted
+                      ? CHART_THEME.selectedLineStrokeWidth
+                      : CHART_THEME.lineStrokeWidth
+                  }
+                  strokeDasharray={viewMode === 'both' ? '4 2' : undefined}
+                  dot={false}
+                  {...ANIMATION_CONFIG}
+                />
+              );
+            })}
 
             {/* Processed spectra (solid) */}
-            {showProcessed && displayIndices.map((_, displayIdx) => (
-              <Line
-                key={`proc-${displayIdx}`}
-                type="monotone"
-                dataKey={`p${displayIdx}`}
-                stroke={getColor(displayIdx, false)}
-                strokeWidth={
-                  selectedSample === displayIndices[displayIdx]
-                    ? CHART_THEME.selectedLineStrokeWidth
-                    : CHART_THEME.lineStrokeWidth
-                }
-                dot={false}
-                {...ANIMATION_CONFIG}
-              />
-            ))}
+            {showProcessed && displayIndices.map((sampleIdx, displayIdx) => {
+              const isSelected = selectedSamples.has(sampleIdx);
+              const isHovered = hoveredSample === sampleIdx;
+              const isPinned = pinnedSamples.has(sampleIdx);
+              const highlighted = isSelected || isHovered || isPinned;
+
+              return (
+                <Line
+                  key={`proc-${displayIdx}`}
+                  type="monotone"
+                  dataKey={`p${displayIdx}`}
+                  stroke={getColor(displayIdx, false)}
+                  strokeWidth={
+                    highlighted
+                      ? CHART_THEME.selectedLineStrokeWidth
+                      : CHART_THEME.lineStrokeWidth
+                  }
+                  dot={false}
+                  {...ANIMATION_CONFIG}
+                />
+              );
+            })}
 
             {/* Custom tooltip showing only the closest line */}
             <Tooltip
@@ -788,6 +954,17 @@ export function SpectraChart({
             <span className="flex items-center gap-1">
               <span className="w-3 h-0.5" style={{ backgroundColor: STATISTICS_COLORS.median }} />
               Median
+            </span>
+          )}
+          {showOriginalStats && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 border-t border-dashed" style={{ borderColor: STATISTICS_COLORS.original }} />
+              Original
+            </span>
+          )}
+          {selectedSamples.size > 0 && (
+            <span className="text-primary font-medium">
+              • {selectedSamples.size} selected
             </span>
           )}
         </div>

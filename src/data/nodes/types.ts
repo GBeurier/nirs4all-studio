@@ -62,6 +62,7 @@ export type ParameterType =
   | "bool"
   | "string"
   | "select"
+  | "range"
   | "array"
   | "object";
 
@@ -283,6 +284,8 @@ export interface NodeDefinition {
   supportsFinetuning?: boolean;
   /** Can be wrapped in _or_ at step level */
   supportsStepGenerator?: boolean;
+  /** Is this node a generator type (_or_, _range_, etc.) */
+  isGenerator?: boolean;
 
   // === Container Behavior ===
   /** Has children (sample_augmentation, branch, etc.) */

@@ -109,6 +109,31 @@ export async function getPlaygroundPresets(): Promise<PresetsResponse> {
 }
 
 /**
+ * Response from the /api/playground/capabilities endpoint
+ */
+export interface PlaygroundCapabilities {
+  umap_available: boolean;
+  nirs4all_available: boolean;
+  features: {
+    pca: boolean;
+    umap: boolean;
+    filters: boolean;
+    preprocessing: boolean;
+    splitting: boolean;
+    augmentation: boolean;
+  };
+}
+
+/**
+ * Get playground capabilities (available features)
+ *
+ * @returns Capabilities including UMAP availability
+ */
+export async function getPlaygroundCapabilities(): Promise<PlaygroundCapabilities> {
+  return api.get<PlaygroundCapabilities>('/playground/capabilities');
+}
+
+/**
  * Validate a playground pipeline configuration
  *
  * @param steps - Pipeline steps to validate
@@ -134,6 +159,12 @@ export function buildExecuteRequest(params: {
   samplingMethod?: 'random' | 'stratified' | 'kmeans' | 'all';
   maxSamples?: number;
   computePca?: boolean;
+  computeUmap?: boolean;
+  umapParams?: {
+    n_neighbors?: number;
+    min_dist?: number;
+    n_components?: number;
+  };
   computeStatistics?: boolean;
   maxWavelengths?: number;
   splitIndex?: number;
@@ -154,6 +185,8 @@ export function buildExecuteRequest(params: {
     } : undefined,
     options: {
       compute_pca: params.computePca ?? true,
+      compute_umap: params.computeUmap ?? false,
+      umap_params: params.umapParams,
       compute_statistics: params.computeStatistics ?? true,
       max_wavelengths_returned: params.maxWavelengths,
       split_index: params.splitIndex,

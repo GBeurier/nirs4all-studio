@@ -141,7 +141,7 @@ describe("validateParameter", () => {
 
     it("should validate string type", () => {
       const step = createMockStep({ params: { kernel: "rbf" } });
-      const def = createParamDef({ name: "kernel", type: "str" });
+      const def = createParamDef({ name: "kernel", type: "string" });
 
       const issues = validateParameter("kernel", "rbf", def, step);
       expect(issues.length).toBe(0);

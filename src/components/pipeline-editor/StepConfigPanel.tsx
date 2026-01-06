@@ -58,6 +58,7 @@ const stepIcons: Record<StepType, typeof Waves> = {
   feature_augmentation: Layers,
   sample_filter: Filter,
   concat_transform: Combine,
+  sequential: Layers,
   chart: LineChart,
   comment: MessageSquare,
 };
@@ -184,14 +185,14 @@ export function StepConfigPanel({
     currentOption,
   };
 
-  const parameterProps = usesParameterProps
-    ? {
-        ...baseProps,
-        renderParamInput,
-        handleNameChange,
-        handleResetParams,
-      }
-    : baseProps;
+  // Build the props object - always include parameter props for consistency
+  // The renderer will use what it needs based on usesParameterProps
+  const parameterProps = {
+    ...baseProps,
+    renderParamInput,
+    handleNameChange,
+    handleResetParams,
+  };
 
   return (
     <div className="h-full flex flex-col bg-card">

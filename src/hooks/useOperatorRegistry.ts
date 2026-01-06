@@ -38,6 +38,10 @@ export interface UseOperatorRegistryResult {
   splitting: OperatorDefinition[];
   /** Splitting operators grouped by category */
   splittingByCategory: Record<string, OperatorDefinition[]>;
+  /** All filter operators */
+  filter: OperatorDefinition[];
+  /** Filter operators grouped by category */
+  filterByCategory: Record<string, OperatorDefinition[]>;
   /** All operators combined */
   allOperators: OperatorDefinition[];
   /** Total count */
@@ -79,6 +83,7 @@ export function useOperatorRegistry(
     ...(data?.preprocessing ?? []),
     ...(data?.augmentation ?? []),
     ...(data?.splitting ?? []),
+    ...(data?.filter ?? []),
   ];
 
   // Create lookup function
@@ -95,6 +100,8 @@ export function useOperatorRegistry(
     augmentationByCategory: data?.augmentation_by_category ?? {},
     splitting: data?.splitting ?? [],
     splittingByCategory: data?.splitting_by_category ?? {},
+    filter: data?.filter ?? [],
+    filterByCategory: data?.filter_by_category ?? {},
     allOperators,
     total: data?.total ?? 0,
     isLoading: query.isLoading,
@@ -199,15 +206,27 @@ export const SPLITTING_CATEGORY_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+export const FILTER_CATEGORY_LABELS: Record<string, string> = {
+  outlier: 'Outlier Detection',
+  range: 'Range Filtering',
+  metadata: 'Metadata Filtering',
+  quality: 'Quality Control',
+  distance: 'Distance-Based',
+  other: 'Other',
+};
+
 /**
  * Get a human-readable label for a category
  */
-export function getCategoryLabel(category: string, type: 'preprocessing' | 'augmentation' | 'splitting'): string {
+export function getCategoryLabel(category: string, type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter'): string {
   if (type === 'splitting') {
     return SPLITTING_CATEGORY_LABELS[category] || category;
   }
   if (type === 'augmentation') {
     return AUGMENTATION_CATEGORY_LABELS[category] || category;
+  }
+  if (type === 'filter') {
+    return FILTER_CATEGORY_LABELS[category] || category;
   }
   return PREPROCESSING_CATEGORY_LABELS[category] || category;
 }

@@ -24,6 +24,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sklearn.decomposition import PCA
 
+# Optional UMAP import - graceful degradation if not available
+try:
+    from umap import UMAP
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
+
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
@@ -45,6 +52,18 @@ from .shared.pipeline_service import (
     instantiate_operator,
     validate_step_params,
 )
+from .shared.filter_operators import (
+    get_filter_methods,
+    instantiate_filter,
+    BaseFilter,
+)
+from .shared.metrics_computer import (
+    MetricsComputer,
+    get_available_metrics,
+    FAST_METRICS,
+    ALL_METRICS,
+    CHEMOMETRIC_METRICS,
+)
 
 router = APIRouter(prefix="/playground", tags=["playground"])
 
@@ -56,7 +75,7 @@ class PlaygroundStep(BaseModel):
     """A single pipeline step in the playground."""
 
     id: str = Field(..., description="Unique step identifier")
-    type: str = Field(..., description="Step type: 'preprocessing' or 'splitting'")
+    type: str = Field(..., description="Step type: 'preprocessing', 'augmentation', 'splitting', or 'filter'")
     name: str = Field(..., description="Operator class name (e.g., 'StandardNormalVariate')")
     params: Dict[str, Any] = Field(default_factory=dict, description="Operator parameters")
     enabled: bool = Field(default=True, description="Whether the step is enabled")
@@ -140,9 +159,14 @@ class ExecuteResponse(BaseModel):
         description="Processed data: spectra subset, statistics"
     )
     pca: Optional[Dict[str, Any]] = Field(None, description="PCA projection if computed")
+    umap: Optional[Dict[str, Any]] = Field(None, description="UMAP projection if computed")
     folds: Optional[Dict[str, Any]] = Field(None, description="Fold information if splitter present")
+    filter_info: Optional[Dict[str, Any]] = Field(None, description="Filter results if filters applied")
+    repetitions: Optional[Dict[str, Any]] = Field(None, description="Repetition analysis if detected or configured")
+    metrics: Optional[Dict[str, Any]] = Field(None, description="Spectral metrics if computed (Phase 5)")
     execution_trace: List[StepTrace] = Field(default_factory=list, description="Per-step execution info")
     step_errors: List[Dict[str, Any]] = Field(default_factory=list, description="Any step-level errors")
+    is_raw_data: bool = Field(default=False, description="True if no operators were applied")
 
 
 # ============= PlaygroundExecutor =============
@@ -198,17 +222,32 @@ class PlaygroundExecutor:
         y = np.array(data.y, dtype=np.float64) if data.y else None
         wavelengths = data.wavelengths or list(range(X_original.shape[1]))
 
+        # Convert metadata to numpy arrays if provided
+        metadata = None
+        if data.metadata:
+            metadata = {k: np.array(v) for k, v in data.metadata.items()}
+
         # Apply sampling if needed
         sample_indices = self._apply_sampling(X_original, y, sampling)
         X_sampled = X_original[sample_indices]
         y_sampled = y[sample_indices] if y is not None else None
+        metadata_sampled = None
+        if metadata:
+            metadata_sampled = {k: v[sample_indices] for k, v in metadata.items()}
+
+        # Check if we have any enabled operators (raw data mode check)
+        enabled_steps = [s for s in steps if s.enabled]
+        is_raw_data = len(enabled_steps) == 0
 
         # Execute pipeline steps
         X_processed = X_sampled.copy()
         execution_trace: List[StepTrace] = []
         step_errors: List[Dict[str, Any]] = []
         fold_info = None
+        filter_info = None
         splitter_applied = False
+        total_filtered = 0
+        filter_mask = np.ones(X_sampled.shape[0], dtype=bool)
 
         for step in steps:
             if not step.enabled:
@@ -229,8 +268,37 @@ class PlaygroundExecutor:
                         success=True,
                         output_shape=None  # Splitters don't change data shape
                     )
+                elif step.type == "filter":
+                    # Handle filter operators
+                    step_mask, filter_result = self._execute_filter(
+                        step, X_processed, y_sampled, metadata_sampled
+                    )
+                    filter_mask &= step_mask
+                    removed_count = int(np.sum(~step_mask))
+                    total_filtered += removed_count
+
+                    trace = StepTrace(
+                        step_id=step.id,
+                        name=step.name,
+                        duration_ms=(time.perf_counter() - step_start) * 1000,
+                        success=True,
+                        output_shape=[int(np.sum(step_mask)), X_processed.shape[1]]
+                    )
+
+                    # Store filter info
+                    if filter_info is None:
+                        filter_info = {
+                            "filters_applied": [],
+                            "total_removed": 0,
+                            "final_mask": filter_mask.tolist(),
+                        }
+                    filter_info["filters_applied"].append({
+                        "name": step.name,
+                        "removed_count": removed_count,
+                        "reason": filter_result.get("reason", "Filtered"),
+                    })
                 else:
-                    # Handle preprocessing
+                    # Handle preprocessing / augmentation
                     X_processed = self._execute_preprocessing(step, X_processed)
                     trace = StepTrace(
                         step_id=step.id,
@@ -272,6 +340,59 @@ class PlaygroundExecutor:
             except Exception as e:
                 pca_result = {"error": str(e)}
 
+        # Compute UMAP (optional, can be expensive)
+        compute_umap = options.get("compute_umap", False)
+        umap_result = None
+        if compute_umap:
+            try:
+                umap_params = options.get("umap_params", {})
+                umap_result = self._compute_umap(
+                    X_processed,
+                    y_sampled,
+                    fold_info,
+                    n_neighbors=umap_params.get("n_neighbors", 15),
+                    min_dist=umap_params.get("min_dist", 0.1),
+                    n_components=umap_params.get("n_components", 2)
+                )
+            except Exception as e:
+                umap_result = {"error": str(e), "available": UMAP_AVAILABLE}
+
+        # Compute repetition analysis (Phase 4)
+        compute_repetitions = options.get("compute_repetitions", True)
+        repetition_result = None
+        if compute_repetitions:
+            try:
+                # Get sample IDs for the sampled subset
+                sampled_sample_ids = None
+                if data.sample_ids:
+                    sampled_sample_ids = [data.sample_ids[i] for i in sample_indices]
+
+                repetition_result = self._compute_repetition_analysis(
+                    X=X_processed,
+                    sample_ids=sampled_sample_ids,
+                    metadata=metadata_sampled,
+                    pca_result=pca_result,
+                    umap_result=umap_result,
+                    y=y_sampled,
+                    options=options
+                )
+            except Exception as e:
+                repetition_result = {"error": str(e), "has_repetitions": False}
+
+        # Compute spectral metrics (Phase 5)
+        compute_metrics = options.get("compute_metrics", True)
+        metrics_result = None
+        if compute_metrics:
+            try:
+                metrics_result = self._compute_metrics(
+                    X=X_processed,
+                    pca_result=pca_result,
+                    wavelengths=np.array(wavelengths),
+                    requested_metrics=options.get("metrics", None),  # None = fast metrics
+                )
+            except Exception as e:
+                metrics_result = {"error": str(e)}
+
         # Downsample wavelengths if requested
         max_wavelengths = options.get("max_wavelengths_returned")
         wavelengths_out = wavelengths
@@ -304,9 +425,14 @@ class PlaygroundExecutor:
                 "statistics": processed_stats,
             },
             pca=pca_result,
+            umap=umap_result,
             folds=fold_info,
+            filter_info=filter_info,
+            repetitions=repetition_result,
+            metrics=metrics_result,
             execution_trace=execution_trace,
-            step_errors=step_errors
+            step_errors=step_errors,
+            is_raw_data=is_raw_data
         )
 
         return response
@@ -423,6 +549,33 @@ class PlaygroundExecutor:
             raise ValueError(f"Unknown preprocessing operator: {step.name}")
 
         return operator.fit_transform(X)
+
+    def _execute_filter(
+        self,
+        step: PlaygroundStep,
+        X: np.ndarray,
+        y: Optional[np.ndarray],
+        metadata: Optional[Dict[str, np.ndarray]]
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Execute a filter step.
+
+        Args:
+            step: Step configuration
+            X: Input data
+            y: Target values
+            metadata: Sample metadata
+
+        Returns:
+            Tuple of (boolean mask, filter result info)
+        """
+        filter_op = instantiate_filter(step.name, step.params)
+        if filter_op is None:
+            raise ValueError(f"Unknown filter operator: {step.name}")
+
+        mask = filter_op.fit_predict(X, y, metadata)
+        reason = filter_op.get_removal_reason()
+
+        return mask, {"reason": reason, "kept": int(np.sum(mask)), "removed": int(np.sum(~mask))}
 
     def _execute_splitter(
         self,
@@ -561,6 +714,8 @@ class PlaygroundExecutor:
     ) -> Dict[str, Any]:
         """Compute PCA projection for visualization.
 
+        Computes enough components to explain 99.9% variance (up to 10 max).
+
         Args:
             X: Processed data
             y: Target values for coloring
@@ -569,19 +724,27 @@ class PlaygroundExecutor:
         Returns:
             PCA result dict
         """
-        n_components = min(3, X.shape[0], X.shape[1])
-        pca = PCA(n_components=n_components)
+        # First, compute with enough components to reach 99.9% variance
+        # Use min(10, n_samples, n_features) as upper limit for efficiency
+        max_components = min(10, X.shape[0], X.shape[1])
+        pca = PCA(n_components=max_components)
 
         try:
             X_pca = pca.fit_transform(X)
         except Exception as e:
             return {"error": str(e)}
 
+        # Determine how many components are needed for 99.9% variance
+        cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+        n_components_999 = np.searchsorted(cumulative_variance, 0.999) + 1
+        n_components_used = min(max(n_components_999, 3), max_components)  # At least 3, at most max_components
+
         result = {
-            "coordinates": X_pca.tolist(),
+            "coordinates": X_pca.tolist(),  # Return all computed components
             "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
             "explained_variance": pca.explained_variance_.tolist(),
-            "n_components": n_components,
+            "n_components": max_components,  # Actual number of components computed
+            "n_components_999": int(n_components_used),  # Components needed for 99.9% variance
         }
 
         # Add target values for coloring
@@ -593,6 +756,377 @@ class PlaygroundExecutor:
             result["fold_labels"] = fold_info.get("fold_labels")
 
         return result
+
+    def _compute_umap(
+        self,
+        X: np.ndarray,
+        y: Optional[np.ndarray],
+        fold_info: Optional[Dict[str, Any]],
+        n_neighbors: int = 15,
+        min_dist: float = 0.1,
+        n_components: int = 2
+    ) -> Dict[str, Any]:
+        """Compute UMAP projection for visualization.
+
+        UMAP (Uniform Manifold Approximation and Projection) is a dimension
+        reduction technique that preserves local and global data structure
+        better than PCA for non-linear relationships.
+
+        Args:
+            X: Processed data
+            y: Target values for coloring
+            fold_info: Fold assignments for coloring
+            n_neighbors: Number of neighbors for UMAP (default 15)
+            min_dist: Minimum distance parameter for UMAP (default 0.1)
+            n_components: Number of output dimensions (2 or 3)
+
+        Returns:
+            UMAP result dict with coordinates and parameters
+        """
+        if not UMAP_AVAILABLE:
+            return {
+                "error": "UMAP not available. Install with: pip install umap-learn",
+                "available": False
+            }
+
+        # Validate inputs
+        n_samples = X.shape[0]
+        if n_samples < 10:
+            return {
+                "error": f"UMAP requires at least 10 samples, got {n_samples}",
+                "available": True
+            }
+
+        # Clamp n_neighbors to valid range
+        n_neighbors = min(max(2, n_neighbors), n_samples - 1)
+        n_components = min(max(2, n_components), 3)
+
+        try:
+            umap_model = UMAP(
+                n_components=n_components,
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                random_state=42,
+                n_jobs=1  # Deterministic, avoid parallel issues
+            )
+            X_umap = umap_model.fit_transform(X)
+        except Exception as e:
+            return {
+                "error": str(e),
+                "available": True
+            }
+
+        result = {
+            "coordinates": X_umap.tolist(),
+            "n_components": n_components,
+            "params": {
+                "n_neighbors": n_neighbors,
+                "min_dist": min_dist
+            },
+            "available": True
+        }
+
+        # Add target values for coloring
+        if y is not None:
+            result["y"] = y.tolist()
+
+        # Add fold labels for coloring
+        if fold_info is not None:
+            result["fold_labels"] = fold_info.get("fold_labels")
+
+        return result
+
+    def _compute_repetition_analysis(
+        self,
+        X: np.ndarray,
+        sample_ids: Optional[List[str]],
+        metadata: Optional[Dict[str, np.ndarray]],
+        pca_result: Optional[Dict[str, Any]],
+        umap_result: Optional[Dict[str, Any]],
+        y: Optional[np.ndarray],
+        options: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Compute repetition variability metrics for biological sample repeats.
+
+        Identifies biological samples with multiple measurements (repetitions) and
+        computes the variability (distance) between repetitions in various metric
+        spaces (PCA, UMAP, Euclidean, Mahalanobis).
+
+        Args:
+            X: Processed spectral data (samples x features)
+            sample_ids: Optional sample identifiers
+            metadata: Optional metadata dict with arrays
+            pca_result: PCA projection result (for PCA distance)
+            umap_result: UMAP projection result (for UMAP distance)
+            y: Target values for coloring
+            options: Repetition configuration options:
+                - bio_sample_column: Metadata column containing bio sample ID
+                - bio_sample_pattern: Regex pattern to extract bio ID from sample_id
+                - distance_metric: 'pca', 'umap', 'euclidean', 'mahalanobis'
+                - auto_detect: If True, try to auto-detect repetitions
+
+        Returns:
+            Repetition analysis dict or None if no repetitions detected
+        """
+        import re
+        from collections import defaultdict
+
+        # Get configuration
+        bio_sample_column = options.get("bio_sample_column")
+        bio_sample_pattern = options.get("bio_sample_pattern")
+        auto_detect = options.get("auto_detect_repetitions", True)
+        distance_metric = options.get("distance_metric", "pca")
+
+        n_samples = X.shape[0]
+
+        # Generate sample IDs if not provided
+        if sample_ids is None:
+            sample_ids = [f"Sample_{i}" for i in range(n_samples)]
+
+        # Try to identify biological sample grouping
+        bio_sample_map: Dict[str, List[int]] = defaultdict(list)
+
+        if bio_sample_column and metadata and bio_sample_column in metadata:
+            # Use specified metadata column
+            bio_col = metadata[bio_sample_column]
+            for idx, bio_id in enumerate(bio_col):
+                bio_sample_map[str(bio_id)].append(idx)
+        elif bio_sample_pattern:
+            # Use regex pattern on sample IDs
+            try:
+                pattern = re.compile(bio_sample_pattern)
+                for idx, sample_id in enumerate(sample_ids):
+                    match = pattern.match(str(sample_id))
+                    if match:
+                        bio_id = match.group(1) if match.groups() else match.group(0)
+                        bio_sample_map[bio_id].append(idx)
+                    else:
+                        # Non-matching samples get their own group
+                        bio_sample_map[sample_id].append(idx)
+            except re.error:
+                return {"error": f"Invalid regex pattern: {bio_sample_pattern}"}
+        elif auto_detect:
+            # Try common patterns for repetition detection
+            # Pattern 1: SampleName_rep1, SampleName_rep2, etc.
+            # Pattern 2: SampleName_1, SampleName_2, etc.
+            # Pattern 3: SampleName-A, SampleName-B, etc.
+
+            patterns = [
+                r"^(.+?)[-_][Rr]ep\d+$",      # sample_rep1, sample-Rep2
+                r"^(.+?)[-_]\d+$",            # sample_1, sample-2
+                r"^(.+?)[-_][A-Za-z]$",       # sample_A, sample-b
+                r"^(.+?)\s*\(\d+\)$",         # sample (1), sample (2)
+            ]
+
+            best_pattern = None
+            best_groups = {}
+            best_rep_count = 0
+
+            for pattern in patterns:
+                try:
+                    compiled = re.compile(pattern)
+                    groups: Dict[str, List[int]] = defaultdict(list)
+
+                    for idx, sample_id in enumerate(sample_ids):
+                        match = compiled.match(str(sample_id))
+                        if match:
+                            bio_id = match.group(1)
+                            groups[bio_id].append(idx)
+                        else:
+                            groups[sample_id].append(idx)
+
+                    # Count samples with repetitions
+                    rep_count = sum(1 for indices in groups.values() if len(indices) >= 2)
+                    if rep_count > best_rep_count:
+                        best_rep_count = rep_count
+                        best_pattern = pattern
+                        best_groups = dict(groups)
+
+                except re.error:
+                    continue
+
+            if best_rep_count > 0:
+                bio_sample_map = best_groups
+            else:
+                # No repetitions detected
+                return {
+                    "has_repetitions": False,
+                    "n_bio_samples": n_samples,
+                    "n_with_reps": 0,
+                    "detected_pattern": None,
+                    "message": "No repetitions detected. Samples appear to be unique."
+                }
+
+        # Filter to only bio samples with repetitions
+        bio_samples_with_reps = {
+            bio_id: indices
+            for bio_id, indices in bio_sample_map.items()
+            if len(indices) >= 2
+        }
+
+        if not bio_samples_with_reps:
+            return {
+                "has_repetitions": False,
+                "n_bio_samples": len(bio_sample_map),
+                "n_with_reps": 0,
+                "detected_pattern": bio_sample_pattern,
+                "message": "No biological samples with repetitions found."
+            }
+
+        # Compute distances between repetitions
+        data_points = []
+
+        for bio_id, indices in bio_samples_with_reps.items():
+            # Get coordinates based on distance metric
+            if distance_metric == "pca" and pca_result and "coordinates" in pca_result:
+                coords = np.array([pca_result["coordinates"][i] for i in indices])
+            elif distance_metric == "umap" and umap_result and "coordinates" in umap_result:
+                coords = np.array([umap_result["coordinates"][i] for i in indices])
+            elif distance_metric == "mahalanobis":
+                # Use full spectral data with covariance
+                coords = X[indices]
+            else:
+                # Default: Euclidean in spectral space
+                coords = X[indices]
+
+            # Compute reference point and distances
+            if len(indices) == 2:
+                # Pairwise: first rep is reference (distance 0)
+                reference = coords[0]
+            else:
+                # Multiple reps: use mean as reference
+                reference = np.mean(coords, axis=0)
+
+            # Compute distances from reference
+            if distance_metric == "mahalanobis" and len(indices) > 2:
+                # Mahalanobis distance (requires covariance matrix)
+                try:
+                    from scipy.spatial.distance import mahalanobis
+                    cov = np.cov(coords, rowvar=False)
+                    # Add small regularization for numerical stability
+                    cov += np.eye(cov.shape[0]) * 1e-6
+                    cov_inv = np.linalg.inv(cov)
+                    distances = [mahalanobis(c, reference, cov_inv) for c in coords]
+                except Exception:
+                    # Fall back to Euclidean
+                    distances = [float(np.linalg.norm(c - reference)) for c in coords]
+            else:
+                distances = [float(np.linalg.norm(c - reference)) for c in coords]
+
+            # Get y values for this bio sample
+            y_values = [float(y[i]) for i in indices] if y is not None else None
+            y_mean = float(np.mean(y_values)) if y_values else None
+
+            for rep_idx, (sample_idx, dist) in enumerate(zip(indices, distances)):
+                data_points.append({
+                    "bio_sample": bio_id,
+                    "rep_index": rep_idx,
+                    "sample_index": sample_idx,
+                    "sample_id": sample_ids[sample_idx],
+                    "distance": dist,
+                    "y": float(y[sample_idx]) if y is not None else None,
+                    "y_mean": y_mean,
+                })
+
+        # Compute summary statistics
+        all_distances = [p["distance"] for p in data_points]
+        max_distance = max(all_distances) if all_distances else 0
+        mean_distance = float(np.mean(all_distances)) if all_distances else 0
+
+        # Identify high-variability samples (outliers)
+        if all_distances:
+            distance_threshold = np.percentile(all_distances, 95)
+            high_variability = [
+                p for p in data_points if p["distance"] > distance_threshold
+            ]
+        else:
+            high_variability = []
+
+        return {
+            "has_repetitions": True,
+            "n_bio_samples": len(bio_sample_map),
+            "n_with_reps": len(bio_samples_with_reps),
+            "n_singletons": len(bio_sample_map) - len(bio_samples_with_reps),
+            "total_repetitions": sum(len(indices) for indices in bio_samples_with_reps.values()),
+            "distance_metric": distance_metric,
+            "detected_pattern": bio_sample_pattern,
+            "data": data_points,
+            "statistics": {
+                "mean_distance": mean_distance,
+                "max_distance": max_distance,
+                "std_distance": float(np.std(all_distances)) if all_distances else 0,
+                "p95_distance": float(np.percentile(all_distances, 95)) if all_distances else 0,
+            },
+            "high_variability_samples": high_variability[:10],  # Top 10 high variability
+            "bio_sample_groups": {
+                bio_id: indices
+                for bio_id, indices in list(bio_samples_with_reps.items())[:50]  # Limit to 50 for response size
+            },
+        }
+
+    def _compute_metrics(
+        self,
+        X: np.ndarray,
+        pca_result: Optional[Dict[str, Any]] = None,
+        wavelengths: Optional[np.ndarray] = None,
+        requested_metrics: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Compute spectral metrics for each sample.
+
+        Phase 5 Implementation: Spectral Metrics System
+
+        Computes per-sample descriptors for filtering, coloring, and analysis.
+        Metrics are organized by category:
+        - Amplitude: global_min, global_max, dynamic_range, mean_intensity
+        - Energy: l2_norm, rms_energy, auc, abs_auc
+        - Shape: baseline_slope, baseline_offset, peak_count, peak_prominence_max
+        - Noise: hf_variance, snr_estimate, smoothness
+        - Quality: nan_count, inf_count, saturation_count, zero_count
+        - Chemometric: hotelling_t2, q_residual, leverage, distance_to_centroid, lof_score
+
+        Args:
+            X: Processed spectral data (samples x features)
+            pca_result: Pre-computed PCA result (for chemometric metrics)
+            wavelengths: Wavelength array (for proper AUC computation)
+            requested_metrics: List of specific metrics to compute. If None, computes fast metrics.
+
+        Returns:
+            Dict with computed metrics, statistics, and metadata
+        """
+        n_samples = X.shape[0]
+
+        # Create metrics computer
+        computer = MetricsComputer(
+            n_pca_components=min(5, n_samples - 1, X.shape[1]),
+            lof_n_neighbors=min(20, n_samples - 1),
+        )
+
+        # Compute metrics
+        metrics_to_compute = requested_metrics if requested_metrics else FAST_METRICS
+
+        # Compute the metrics
+        computed = computer.compute(
+            X=X,
+            metrics=metrics_to_compute,
+            pca_result=pca_result,
+            wavelengths=wavelengths,
+        )
+
+        # Convert numpy arrays to lists for JSON serialization
+        metrics_values = {k: v.tolist() for k, v in computed.items()}
+
+        # Compute statistics for each metric
+        metrics_stats = {}
+        for metric_name, values in computed.items():
+            metrics_stats[metric_name] = computer.get_metric_stats(values)
+
+        return {
+            "values": metrics_values,
+            "statistics": metrics_stats,
+            "computed_metrics": list(computed.keys()),
+            "available_metrics": list(get_available_metrics().keys()),
+            "n_samples": n_samples,
+        }
 
 
 # ============= Cache =============
@@ -793,7 +1327,7 @@ async def execute_pipeline(request: ExecuteRequest):
 async def list_operators():
     """List all available operators for the playground.
 
-    Returns preprocessing, augmentation, and splitting operators with their
+    Returns preprocessing, augmentation, splitting, and filter operators with their
     metadata, parameters, and categories.
     """
     if not NIRS4ALL_AVAILABLE:
@@ -801,12 +1335,14 @@ async def list_operators():
             "preprocessing": [],
             "augmentation": [],
             "splitting": [],
+            "filter": [],
             "total": 0
         }
 
     preprocessing = get_preprocessing_methods()
     augmentation = get_augmentation_methods()
     splitting = get_splitter_methods()
+    filters = get_filter_methods()
 
     # Group by category
     preprocessing_by_category = {}
@@ -830,6 +1366,13 @@ async def list_operators():
             splitting_by_category[cat] = []
         splitting_by_category[cat].append(method)
 
+    filter_by_category = {}
+    for method in filters:
+        cat = method.get("category", "other")
+        if cat not in filter_by_category:
+            filter_by_category[cat] = []
+        filter_by_category[cat].append(method)
+
     return {
         "preprocessing": preprocessing,
         "preprocessing_by_category": preprocessing_by_category,
@@ -837,7 +1380,9 @@ async def list_operators():
         "augmentation_by_category": augmentation_by_category,
         "splitting": splitting,
         "splitting_by_category": splitting_by_category,
-        "total": len(preprocessing) + len(augmentation) + len(splitting)
+        "filter": filters,
+        "filter_by_category": filter_by_category,
+        "total": len(preprocessing) + len(augmentation) + len(splitting) + len(filters)
     }
 
 
@@ -957,3 +1502,194 @@ async def get_presets():
     ]
 
     return {"presets": presets, "total": len(presets)}
+
+
+@router.get("/capabilities")
+async def get_capabilities():
+    """Get available playground capabilities.
+
+    Returns information about optional features like UMAP availability,
+    which depend on optional dependencies being installed.
+    """
+    return {
+        "umap_available": UMAP_AVAILABLE,
+        "nirs4all_available": NIRS4ALL_AVAILABLE,
+        "features": {
+            "pca": True,
+            "umap": UMAP_AVAILABLE,
+            "filters": True,
+            "preprocessing": NIRS4ALL_AVAILABLE,
+            "splitting": NIRS4ALL_AVAILABLE,
+            "augmentation": NIRS4ALL_AVAILABLE,
+            "metrics": True,  # Phase 5: Spectral metrics
+        }
+    }
+
+
+@router.get("/metrics")
+async def get_metrics_info():
+    """Get information about available spectral metrics.
+
+    Phase 5 Implementation: Returns all available metrics organized by category,
+    with descriptions and requirements (e.g., which metrics require PCA).
+    """
+    categories = get_available_metrics()
+
+    # Flatten for quick lookup
+    all_metrics = []
+    for category, metrics in categories.items():
+        for metric in metrics:
+            metric["category"] = category
+            all_metrics.append(metric)
+
+    return {
+        "categories": categories,
+        "all_metrics": all_metrics,
+        "fast_metrics": FAST_METRICS,
+        "chemometric_metrics": CHEMOMETRIC_METRICS,
+        "total": len(all_metrics),
+    }
+
+
+class MetricsRequest(BaseModel):
+    """Request model for computing specific metrics."""
+
+    data: PlaygroundData = Field(..., description="Spectral data")
+    metrics: List[str] = Field(..., description="List of metric names to compute")
+    pca_result: Optional[Dict[str, Any]] = Field(None, description="Pre-computed PCA result")
+
+
+class OutlierRequest(BaseModel):
+    """Request model for outlier detection."""
+
+    data: PlaygroundData = Field(..., description="Spectral data")
+    method: str = Field("hotelling_t2", description="Detection method: 'hotelling_t2', 'q_residual', 'lof', 'distance'")
+    threshold: float = Field(0.95, ge=0, le=1, description="Threshold for outlier detection (0-1)")
+    pca_result: Optional[Dict[str, Any]] = Field(None, description="Pre-computed PCA result")
+
+
+class SimilarityRequest(BaseModel):
+    """Request model for finding similar samples."""
+
+    data: PlaygroundData = Field(..., description="Spectral data")
+    reference_idx: int = Field(..., description="Index of reference sample")
+    metric: str = Field("euclidean", description="Distance metric: 'euclidean', 'cosine', 'correlation'")
+    threshold: Optional[float] = Field(None, description="Distance threshold")
+    top_k: Optional[int] = Field(None, description="Return top K similar samples")
+
+
+@router.post("/metrics/compute")
+async def compute_metrics(request: MetricsRequest):
+    """Compute specific spectral metrics on-demand.
+
+    Phase 5 Implementation: Allows computing any subset of metrics
+    without re-running the full pipeline.
+    """
+    # Convert data to numpy
+    X = np.array(request.data.x, dtype=np.float64)
+    wavelengths = np.array(request.data.wavelengths) if request.data.wavelengths else None
+
+    n_samples = X.shape[0]
+
+    # Create metrics computer
+    computer = MetricsComputer(
+        n_pca_components=min(5, n_samples - 1, X.shape[1]),
+        lof_n_neighbors=min(20, n_samples - 1),
+    )
+
+    # Compute requested metrics
+    try:
+        computed = computer.compute(
+            X=X,
+            metrics=request.metrics,
+            pca_result=request.pca_result,
+            wavelengths=wavelengths,
+        )
+
+        # Convert to JSON-serializable format
+        metrics_values = {k: v.tolist() for k, v in computed.items()}
+        metrics_stats = {k: computer.get_metric_stats(v) for k, v in computed.items()}
+
+        return {
+            "success": True,
+            "values": metrics_values,
+            "statistics": metrics_stats,
+            "n_samples": n_samples,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/metrics/outliers")
+async def detect_outliers(request: OutlierRequest):
+    """Detect outliers in spectral data.
+
+    Phase 5 Implementation: Returns a mask indicating which samples
+    are outliers based on the selected detection method.
+    """
+    # Convert data to numpy
+    X = np.array(request.data.x, dtype=np.float64)
+    n_samples = X.shape[0]
+
+    # Create metrics computer
+    computer = MetricsComputer(
+        n_pca_components=min(5, n_samples - 1, X.shape[1]),
+        lof_n_neighbors=min(20, n_samples - 1),
+    )
+
+    try:
+        mask, info = computer.get_outlier_mask(
+            X=X,
+            method=request.method,
+            threshold=request.threshold,
+            pca_result=request.pca_result,
+        )
+
+        return {
+            "success": True,
+            "inlier_mask": mask.tolist(),
+            "outlier_indices": np.where(~mask)[0].tolist(),
+            "n_outliers": int(np.sum(~mask)),
+            "n_inliers": int(np.sum(mask)),
+            **info,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/metrics/similar")
+async def find_similar_samples(request: SimilarityRequest):
+    """Find samples similar to a reference sample.
+
+    Phase 5 Implementation: Returns indices and distances of samples
+    similar to the reference based on the specified metric.
+    """
+    # Convert data to numpy
+    X = np.array(request.data.x, dtype=np.float64)
+    n_samples = X.shape[0]
+
+    if request.reference_idx < 0 or request.reference_idx >= n_samples:
+        raise HTTPException(status_code=400, detail=f"Invalid reference_idx: {request.reference_idx}")
+
+    # Create metrics computer
+    computer = MetricsComputer()
+
+    try:
+        indices, distances = computer.get_similar_samples(
+            X=X,
+            reference_idx=request.reference_idx,
+            metric=request.metric,
+            threshold=request.threshold,
+            top_k=request.top_k,
+        )
+
+        return {
+            "success": True,
+            "reference_idx": request.reference_idx,
+            "metric": request.metric,
+            "similar_indices": indices.tolist(),
+            "distances": distances.tolist(),
+            "n_similar": len(indices),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

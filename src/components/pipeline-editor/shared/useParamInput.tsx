@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { SweepConfigPopover } from "../SweepConfigPopover";
+import { useSelectWheel } from "./useSelectWheel";
 import type { ParameterSweep } from "../types";
 
 // Parameter info/tooltips for common parameters
@@ -258,25 +259,34 @@ function SelectParamInput({
 }: ParamInputBaseProps & { value: string | number | boolean }) {
   const options = selectOptions[paramKey] || [];
 
+  const handleWheel = useSelectWheel(
+    String(value),
+    (newValue) => onParamChange(paramKey, newValue),
+    options.map((opt) => ({ value: opt.value })),
+    !hasSweepActive && options.length > 0
+  );
+
   return (
     <div className="space-y-2">
       <ParamLabel paramKey={paramKey} info={info} hasSweepActive={hasSweepActive} />
-      <Select
-        value={String(value)}
-        onValueChange={(v) => onParamChange(paramKey, v)}
-        disabled={hasSweepActive}
-      >
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="bg-popover">
-          {options.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div onWheel={handleWheel}>
+        <Select
+          value={String(value)}
+          onValueChange={(v) => onParamChange(paramKey, v)}
+          disabled={hasSweepActive}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-popover">
+            {options.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <SweepConfigPopover
         paramKey={paramKey}
         currentValue={value}

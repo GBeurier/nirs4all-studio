@@ -53,45 +53,6 @@ export function DefaultRenderer({
     <>
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-6">
-          {/* Step Algorithm Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Algorithm</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-[200px]">
-                  <p>Select the algorithm for this {step.type} step</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Select value={step.name} onValueChange={handleNameChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover max-h-[300px]">
-                {stepOptions[step.type]?.map((opt) => (
-                  <SelectItem key={opt.name} value={opt.name}>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{opt.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {opt.description}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {currentOption && (
-              <p className="text-xs text-muted-foreground">
-                {currentOption.description}
-              </p>
-            )}
-          </div>
-
-          <Separator />
-
           {/* Parameters */}
           {Object.keys(step.params).length > 0 ? (
             <div className="space-y-4">

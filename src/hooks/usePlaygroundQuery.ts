@@ -74,10 +74,14 @@ function transformResponse(response: ExecuteResponse): PlaygroundResult {
     original: response.original,
     processed: response.processed,
     pca: response.pca,
+    umap: response.umap,
     folds: response.folds,
+    filterInfo: response.filter_info,
+    repetitions: response.repetitions,
     executionTimeMs: response.execution_time_ms,
     trace: response.execution_trace,
     errors: response.step_errors,
+    isRawData: response.is_raw_data,
   };
 }
 
@@ -183,6 +187,8 @@ export function usePlaygroundQuery(
       samplingMethod: sampling.method,
       maxSamples: sampling.n_samples,
       computePca: executeOptions?.compute_pca ?? true,
+      computeUmap: executeOptions?.compute_umap ?? false,
+      umapParams: executeOptions?.umap_params,
       computeStatistics: executeOptions?.compute_statistics ?? true,
       maxWavelengths: executeOptions?.max_wavelengths_returned,
       splitIndex: executeOptions?.split_index,

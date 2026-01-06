@@ -5,9 +5,11 @@
  * - Uses backend-computed PCA from ExecuteResponse.pca
  * - Fold coloring option when folds are available
  * - Variance explained display
- * - Sample selection and highlighting
+ * - Sample selection and highlighting (Phase 1: SelectionContext integration)
  * - Chart export (PNG/CSV)
  * - Color by Y value, fold, or metadata
+ * - Cross-chart hover highlighting via SelectionContext
+ * - Multi-sample selection support with lasso/box tools
  */
 
 import { useMemo, useRef, useCallback, useState } from 'react';
@@ -21,7 +23,6 @@ import {
   ZAxis,
   Cell,
   Tooltip,
-  Legend,
 } from 'recharts';
 import { Orbit, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,13 +33,13 @@ import {
   CHART_MARGINS,
   ANIMATION_CONFIG,
   getFoldColor,
-  getExtendedSampleColor,
   formatPercentage,
   formatFoldLabel,
-  type ExtendedColorConfig,
   type ExtendedColorMode,
 } from './chartConfig';
 import type { PCAResult, FoldsInfo } from '@/types/playground';
+import { useSelection } from '@/context/SelectionContext';
+import { cn } from '@/lib/utils';
 
 // ============= Types =============
 
@@ -51,14 +52,16 @@ interface PCAPlotProps {
   folds?: FoldsInfo;
   /** Sample IDs for labels */
   sampleIds?: string[];
-  /** Color configuration */
-  colorConfig?: ExtendedColorConfig;
-  /** Currently selected sample */
+  /** Initial color mode */
+  initialColorMode?: ExtendedColorMode;
+  /** Currently selected sample (deprecated - use SelectionContext) */
   selectedSample?: number | null;
-  /** Callback when sample is selected */
+  /** Callback when sample is selected (deprecated - use SelectionContext) */
   onSelectSample?: (index: number) => void;
   /** Whether chart is in loading state */
   isLoading?: boolean;
+  /** Enable SelectionContext integration for cross-chart highlighting */
+  useSelectionContext?: boolean;
 }
 
 interface PCADataPoint {
@@ -80,21 +83,27 @@ export function PCAPlot({
   y,
   folds,
   sampleIds,
-  colorConfig: externalColorConfig,
-  selectedSample,
-  onSelectSample,
+  initialColorMode = 'target',
+  selectedSample: externalSelectedSample,
+  onSelectSample: externalOnSelectSample,
   isLoading = false,
+  useSelectionContext = true,
 }: PCAPlotProps) {
   const chartRef = useRef<HTMLDivElement>(null);
 
+  // SelectionContext integration for cross-chart highlighting
+  const selectionCtx = useSelectionContext ? useSelection() : null;
+
+  // Determine effective selection state - prefer context, fallback to props
+  const selectedSamples = useSelectionContext && selectionCtx
+    ? selectionCtx.selectedSamples
+    : new Set<number>(externalSelectedSample !== null && externalSelectedSample !== undefined ? [externalSelectedSample] : []);
+
+  const hoveredSample = selectionCtx?.hoveredSample ?? null;
+  const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
+
   // Local color mode state
-  const [localColorMode, setLocalColorMode] = useState<ExtendedColorMode>(
-    externalColorConfig?.mode ?? 'target'
-  );
-  const colorConfig: ExtendedColorConfig = {
-    mode: localColorMode,
-    ...externalColorConfig,
-  };
+  const [localColorMode, setLocalColorMode] = useState<ExtendedColorMode>(initialColorMode);
 
   // Axis selection state
   const [xAxis, setXAxis] = useState<PCAxis>('pc1');
@@ -135,36 +144,87 @@ export function PCAPlot({
     return [...new Set(folds.fold_labels.filter(f => f >= 0))].sort((a, b) => a - b);
   }, [folds]);
 
-  // Get color for a point
+  // Get color for a point - vibrant colors based on mode
   const getPointColor = useCallback((point: PCADataPoint) => {
-    if (selectedSample === point.index) {
-      return 'hsl(var(--primary))';
-    }
-
-    const yValues = chartData.map(d => d.y ?? 0);
-
     // Handle fold coloring mode
     if (localColorMode === 'fold' && point.foldLabel !== undefined && point.foldLabel >= 0) {
       return getFoldColor(point.foldLabel);
     }
 
-    return getExtendedSampleColor(
-      point.index,
-      yValues,
-      chartData.map(d => d.foldLabel).filter((f): f is number => f !== undefined),
-      colorConfig,
-      selectedSample
-    );
-  }, [chartData, localColorMode, colorConfig, selectedSample]);
+    // For target (y) coloring mode
+    if (localColorMode === 'target') {
+      const yValues = chartData
+        .map(d => d.y)
+        .filter((v): v is number => v !== undefined && !isNaN(v));
 
-  // Handle click on point
-  const handleClick = useCallback((data: unknown) => {
+      if (yValues.length > 0 && point.y !== undefined && !isNaN(point.y)) {
+        const yMin = Math.min(...yValues);
+        const yMax = Math.max(...yValues);
+        const range = yMax - yMin;
+        const t = range > 0 ? (point.y - yMin) / range : 0.5;
+        const hue = 240 - t * 180; // Blue (240) to red (60) gradient
+        return `hsl(${hue}, 75%, 55%)`;
+      }
+    }
+
+    // Default: colorful gradient based on sample index
+    const t = chartData.length > 1 ? point.index / (chartData.length - 1) : 0.5;
+    const hue = 240 - t * 180; // Blue to red gradient
+    return `hsl(${hue}, 75%, 55%)`;
+  }, [chartData, localColorMode]);
+
+  // Handle click on point - Recharts Scatter onClick signature: (data, index, event)
+  const handleClick = useCallback((data: unknown, _index: number, event: React.MouseEvent) => {
     const point = data as { index?: number; payload?: PCADataPoint };
     const idx = point?.payload?.index ?? point?.index;
-    if (idx !== undefined && onSelectSample) {
-      onSelectSample(idx);
+    if (idx === undefined) return;
+
+    // Use SelectionContext if available
+    if (selectionCtx) {
+      // Determine selection mode based on modifiers
+      if (event?.shiftKey) {
+        selectionCtx.select([idx], 'add');
+      } else if (event?.ctrlKey || event?.metaKey) {
+        selectionCtx.toggle([idx]);
+      } else {
+        // If clicking on already selected sample (and it's the only one), deselect it
+        if (selectedSamples.has(idx) && selectedSamples.size === 1) {
+          selectionCtx.clear();
+        } else {
+          selectionCtx.select([idx], 'replace');
+        }
+      }
+    } else if (externalOnSelectSample) {
+      externalOnSelectSample(idx);
     }
-  }, [onSelectSample]);
+  }, [selectionCtx, externalOnSelectSample, selectedSamples]);
+
+  // Handle hover for cross-chart highlighting
+  const handleMouseEnter = useCallback((data: unknown) => {
+    const point = data as { index?: number; payload?: PCADataPoint };
+    const idx = point?.payload?.index ?? point?.index;
+    if (idx !== undefined && selectionCtx) {
+      selectionCtx.setHovered(idx);
+    }
+  }, [selectionCtx]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (selectionCtx) {
+      selectionCtx.setHovered(null);
+    }
+  }, [selectionCtx]);
+
+  // Handle click on chart background (not on a point) to clear selection
+  const handleChartClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only clear if clicking directly on the chart container (not on a point)
+    // Check if the click target is the chart area itself
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'svg' || target.classList.contains('recharts-surface')) {
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
+      }
+    }
+  }, [selectionCtx]);
 
   // Export chart
   const handleExport = useCallback(() => {
@@ -190,6 +250,15 @@ export function PCAPlot({
     if (axis === 'pc2') return point.pc2;
     return point.pc3 ?? 0;
   };
+
+  // Transform data for selected axes - use chartX/chartY to avoid collision with target y
+  const transformedData = useMemo(() => {
+    return chartData.map(d => ({
+      ...d,
+      chartX: getAxisValue(d, xAxis),
+      chartY: getAxisValue(d, yAxisSelected),
+    }));
+  }, [chartData, xAxis, yAxisSelected]);
 
   // Error state
   if (pca?.error) {
@@ -217,13 +286,6 @@ export function PCAPlot({
   }
 
   const hasPC3 = pca.n_components >= 3 && chartData.some(d => d.pc3 !== undefined);
-
-  // Transform data for selected axes
-  const transformedData = chartData.map(d => ({
-    ...d,
-    x: getAxisValue(d, xAxis),
-    y: getAxisValue(d, yAxisSelected),
-  }));
 
   return (
     <div className="h-full flex flex-col" ref={chartRef}>
@@ -284,7 +346,7 @@ export function PCAPlot({
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0" onClick={handleChartClick}>
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={CHART_MARGINS.pca}>
             <CartesianGrid
@@ -293,7 +355,7 @@ export function PCAPlot({
               opacity={CHART_THEME.gridOpacity}
             />
             <XAxis
-              dataKey="x"
+              dataKey="chartX"
               type="number"
               stroke={CHART_THEME.axisStroke}
               fontSize={CHART_THEME.axisFontSize}
@@ -306,7 +368,7 @@ export function PCAPlot({
               }}
             />
             <YAxis
-              dataKey="y"
+              dataKey="chartY"
               type="number"
               stroke={CHART_THEME.axisStroke}
               fontSize={CHART_THEME.axisFontSize}
@@ -359,23 +421,36 @@ export function PCAPlot({
             <Scatter
               data={transformedData}
               onClick={handleClick}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
               cursor="pointer"
               {...ANIMATION_CONFIG}
             >
-              {transformedData.map((entry) => (
-                <Cell
-                  key={`cell-${entry.index}`}
-                  fill={getPointColor(entry)}
-                  stroke={selectedSample === entry.index ? CHART_THEME.selectedStroke : 'none'}
-                  strokeWidth={selectedSample === entry.index ? CHART_THEME.selectedStrokeWidth : 0}
-                />
-              ))}
+              {transformedData.map((entry) => {
+                const isSelected = selectedSamples.has(entry.index);
+                const isHovered = hoveredSample === entry.index;
+                const isPinned = pinnedSamples.has(entry.index);
+                const highlighted = isSelected || isHovered || isPinned;
+
+                return (
+                  <Cell
+                    key={`cell-${entry.index}`}
+                    fill={getPointColor(entry)}
+                    stroke={highlighted ? CHART_THEME.selectedStroke : 'none'}
+                    strokeWidth={highlighted ? CHART_THEME.selectedStrokeWidth : 0}
+                    className={cn(
+                      'transition-all duration-150',
+                      isHovered && 'drop-shadow-md'
+                    )}
+                  />
+                );
+              })}
             </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Footer: Variance explained & Legend */}
+      {/* Footer: Variance explained, Selection count & Legend */}
       <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-2">
           <span>
@@ -383,6 +458,11 @@ export function PCAPlot({
             PC2={formatPercentage(varianceExplained.pc2)}
             {hasPC3 && `, PC3=${formatPercentage(varianceExplained.pc3)}`}
           </span>
+          {selectedSamples.size > 0 && (
+            <span className="text-primary font-medium">
+              • {selectedSamples.size} selected
+            </span>
+          )}
         </div>
 
         {/* Fold legend when coloring by fold */}

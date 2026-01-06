@@ -412,6 +412,7 @@ function getStepTypeLabel(type: StepType): string {
     feature_augmentation: "Feature Augmentation",
     sample_filter: "Sample Filter",
     concat_transform: "Concat Transform",
+    sequential: "Sequential",
     chart: "Chart",
     comment: "Comment",
   };

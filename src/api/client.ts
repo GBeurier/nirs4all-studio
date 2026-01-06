@@ -227,6 +227,12 @@ import type {
   DatasetStats,
   DatasetListResponse,
   ExportConfig,
+  DetectFilesRequest,
+  DetectFilesResponse,
+  DetectFormatRequest,
+  DetectFormatResponse,
+  PreviewDataRequest,
+  PreviewDataResponse,
 } from "@/types/datasets";
 
 export async function listDatasets(): Promise<DatasetListResponse> {
@@ -260,6 +266,33 @@ export async function exportDataset(
 
 export async function listGroups(): Promise<{ groups: DatasetGroup[] }> {
   return api.get("/workspace/groups");
+}
+
+/**
+ * Detect files in a folder for dataset loading
+ */
+export async function detectFiles(
+  request: DetectFilesRequest
+): Promise<DetectFilesResponse> {
+  return api.post("/datasets/detect-files", request);
+}
+
+/**
+ * Detect file format (delimiter, decimal, header, etc.)
+ */
+export async function detectFormat(
+  request: DetectFormatRequest
+): Promise<DetectFormatResponse> {
+  return api.post("/datasets/detect-format", request);
+}
+
+/**
+ * Preview dataset with current configuration
+ */
+export async function previewDataset(
+  request: PreviewDataRequest
+): Promise<PreviewDataResponse> {
+  return api.post("/datasets/preview", request);
 }
 
 // Pipeline API

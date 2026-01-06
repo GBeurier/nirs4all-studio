@@ -12,8 +12,11 @@
  * @see docs/_internals/implementation_roadmap.md Phase 5
  */
 
-import type { NodeDefinition, NodeType, ParameterDefinition, CustomNodesFile } from '../types';
+import type { NodeDefinition, NodeType, ParameterDefinition, ParameterType, CustomNodesFile } from '../types';
 import * as api from '@/api/client';
+
+// Re-export CustomNodesFile for consumers
+export type { CustomNodesFile } from '../types';
 
 // ============================================================================
 // Types
@@ -625,13 +628,16 @@ export class CustomNodeStorage {
       // Add workspace nodes with source tracking
       for (const node of response.nodes) {
         const tracked: TrackedNodeDefinition = {
-          ...node,
           id: node.id,
           name: node.label,
           type: node.stepType as NodeType,
           description: node.description || '',
           parameters: this.convertApiParameters(node.parameters || []),
           source: 'custom',
+          category: node.category,
+          classPath: node.classPath,
+          icon: node.icon,
+          // Don't copy color directly - it's a string in API but ColorScheme in NodeDefinition
           _storageSource: 'workspace',
           _lastSynced: new Date().toISOString(),
         };
@@ -676,14 +682,15 @@ export class CustomNodeStorage {
   private convertApiParameters(params: api.CustomNodeParameter[]): ParameterDefinition[] {
     return params.map(p => ({
       name: p.name,
-      type: p.type,
+      type: p.type as ParameterType,
       default: p.default,
       required: p.required,
       description: p.description,
       min: p.min,
       max: p.max,
       step: p.step,
-      options: p.options,
+      // Convert string[] to SelectOption[]
+      options: p.options?.map(opt => ({ value: opt, label: opt })),
     }));
   }
 
@@ -700,7 +707,8 @@ export class CustomNodeStorage {
       min: p.min,
       max: p.max,
       step: p.step,
-      options: p.options,
+      // Convert SelectOption[] to string[]
+      options: p.options?.map(opt => String(opt.value)),
     }));
   }
 
@@ -1016,4 +1024,4 @@ export function createParameterTemplate(): ParameterDefinition {
 // Exports
 // ============================================================================
 
-export { DEFAULT_ALLOWED_PACKAGES };
+// DEFAULT_ALLOWED_PACKAGES is already exported at declaration

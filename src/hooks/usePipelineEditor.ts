@@ -230,6 +230,7 @@ function countStepsRecursive(steps: PipelineStep[]): Record<StepType, number> {
     feature_augmentation: 0,
     sample_filter: 0,
     concat_transform: 0,
+    sequential: 0,
     chart: 0,
     comment: 0,
   };
@@ -767,8 +768,9 @@ export function usePipelineEditor(
     () => ({
       name: pipelineName,
       steps: JSON.parse(JSON.stringify(steps)),
+      config: pipelineConfig,
     }),
-    [pipelineName, steps]
+    [pipelineName, steps, pipelineConfig]
   );
 
   // Load from nirs4all canonical format

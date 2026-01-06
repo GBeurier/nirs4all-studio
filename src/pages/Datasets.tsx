@@ -33,6 +33,7 @@ import {
   AddDatasetModal,
   EditDatasetModal,
   GroupsModal,
+  DatasetWizard,
 } from "@/components/datasets";
 import {
   listDatasets,
@@ -83,6 +84,7 @@ export default function Datasets() {
 
   // Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
@@ -263,7 +265,7 @@ export default function Datasets() {
             <Tags className="mr-2 h-4 w-4" />
             Groups
           </Button>
-          <Button onClick={() => setAddModalOpen(true)}>
+          <Button onClick={() => setWizardOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Dataset
           </Button>
@@ -442,7 +444,7 @@ export default function Datasets() {
                       <FolderOpen className="mr-2 h-4 w-4" />
                       Select Workspace
                     </Button>
-                    <Button onClick={() => setAddModalOpen(true)}>
+                    <Button onClick={() => setWizardOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
                       Add Dataset
                     </Button>
@@ -497,6 +499,13 @@ export default function Datasets() {
       <AddDatasetModal
         open={addModalOpen}
         onOpenChange={setAddModalOpen}
+        onAdd={handleAddDataset}
+      />
+
+      {/* New Dataset Wizard */}
+      <DatasetWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
         onAdd={handleAddDataset}
       />
 

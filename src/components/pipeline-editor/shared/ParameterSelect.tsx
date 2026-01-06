@@ -42,6 +42,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "./InfoTooltip";
 import { formatParamLabel } from "./ParameterInput";
+import { useSelectWheel } from "./useSelectWheel";
 
 export type SelectOptionValue = string | number;
 
@@ -123,6 +124,13 @@ export function ParameterSelect({
   const displayLabel = label ?? formatParamLabel(paramKey);
   const normalizedOptions = options.map(normalizeOption);
 
+  const handleWheel = useSelectWheel(
+    value,
+    (newValue) => onChange(newValue as SelectOptionValue), // Cast needed because T in hook is generic
+    normalizedOptions.map(opt => ({ value: opt.value })),
+    !isDisabled
+  );
+
   return (
     <div className={cn("space-y-2", className)}>
       {showLabel && (
@@ -148,49 +156,51 @@ export function ParameterSelect({
         </div>
       )}
 
-      <Select
-        value={String(value)}
-        onValueChange={(v) => {
-          // Try to preserve the original type (number vs string)
-          const originalOption = normalizedOptions.find(
-            (opt) => String(opt.value) === v
-          );
-          onChange(originalOption?.value ?? v);
-        }}
-        disabled={isDisabled}
-      >
-        <SelectTrigger
-          className={cn(
-            size === "sm" && "h-8 text-xs",
-            error && "border-destructive focus:ring-destructive"
-          )}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${paramKey}-error` : undefined}
+      <div onWheel={handleWheel}>
+        <Select
+          value={String(value)}
+          onValueChange={(v) => {
+            // Try to preserve the original type (number vs string)
+            const originalOption = normalizedOptions.find(
+              (opt) => String(opt.value) === v
+            );
+            onChange(originalOption?.value ?? v);
+          }}
+          disabled={isDisabled}
         >
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent className="bg-popover">
-          {normalizedOptions.map((option) => (
-            <SelectItem
-              key={String(option.value)}
-              value={String(option.value)}
-              disabled={option.disabled}
-            >
-              <div className="flex items-center gap-2">
-                {option.icon}
-                <div className="flex flex-col">
-                  <span className="font-medium">{option.label}</span>
-                  {option.description && (
-                    <span className="text-xs text-muted-foreground">
-                      {option.description}
-                    </span>
-                  )}
+          <SelectTrigger
+            className={cn(
+              size === "sm" && "h-8 text-xs",
+              error && "border-destructive focus:ring-destructive"
+            )}
+            aria-invalid={!!error}
+            aria-describedby={error ? `${paramKey}-error` : undefined}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent className="bg-popover">
+            {normalizedOptions.map((option) => (
+              <SelectItem
+                key={String(option.value)}
+                value={String(option.value)}
+                disabled={option.disabled}
+              >
+                <div className="flex items-center gap-2">
+                  {option.icon}
+                  <div className="flex flex-col">
+                    <span className="font-medium">{option.label}</span>
+                    {option.description && (
+                      <span className="text-xs text-muted-foreground">
+                        {option.description}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {error && (
         <p id={`${paramKey}-error`} className="text-xs text-destructive">

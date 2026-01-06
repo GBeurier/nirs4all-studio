@@ -40,6 +40,7 @@ export const stepIcons: Record<StepType, typeof Waves> = {
   feature_augmentation: FlaskConical,
   sample_filter: Filter,
   concat_transform: Combine,
+  sequential: Layers,
   chart: LineChart,
   comment: MessageSquare,
 };
@@ -124,7 +125,7 @@ export interface SweepInfo {
  * Compute sweep information for a step
  */
 export function computeSweepInfo(step: PipelineStep): SweepInfo {
-  const hasParamSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+  const hasParamSweeps = !!(step.paramSweeps && Object.keys(step.paramSweeps).length > 0);
   const hasStepGenerator = !!step.stepGenerator;
   const hasSweeps = hasParamSweeps || hasStepGenerator;
   const totalVariants = calculateStepVariants(step);

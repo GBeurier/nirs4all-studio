@@ -32,7 +32,7 @@ import { OperatorPalette } from './OperatorPalette';
 import { PipelineBuilder } from './PipelineBuilder';
 import { ExecutionStatus } from './ExecutionStatus';
 import type { SpectralData } from '@/types/spectral';
-import type { UnifiedOperator, OperatorDefinition, StepError } from '@/types/playground';
+import type { UnifiedOperator, OperatorDefinition, StepError, FilterInfo } from '@/types/playground';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
 
 interface PlaygroundSidebarProps {
@@ -55,6 +55,8 @@ interface PlaygroundSidebarProps {
   isDebouncing: boolean;
   executionTimeMs?: number;
   stepErrors?: StepError[];
+  /** Filter statistics from execution result */
+  filterInfo?: FilterInfo;
 
   // Data handlers
   onLoadFile: (file: File) => void;
@@ -95,6 +97,7 @@ export function PlaygroundSidebar({
   isDebouncing,
   executionTimeMs,
   stepErrors = [],
+  filterInfo,
   onLoadFile,
   onLoadDemo,
   onLoadFromWorkspace,
@@ -235,6 +238,7 @@ export function PlaygroundSidebar({
               operators={operators}
               isProcessing={isProcessing || isFetching}
               stepErrors={stepErrors}
+              filterInfo={filterInfo}
               onUpdate={onUpdateOperator}
               onUpdateParams={onUpdateOperatorParams}
               onRemove={onRemoveOperator}

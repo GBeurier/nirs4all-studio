@@ -11,6 +11,70 @@ export interface DatasetFile {
   split: "train" | "test";
   source: number | null;
   detected?: boolean;
+  /** Per-file parsing overrides */
+  overrides?: Partial<ParsingOptions>;
+}
+
+/**
+ * Signal type for spectral data
+ */
+export type SignalType =
+  | "absorbance"
+  | "reflectance"
+  | "reflectance%"
+  | "transmittance"
+  | "transmittance%"
+  | "auto";
+
+/**
+ * Header unit for wavelength columns
+ */
+export type HeaderUnit = "nm" | "cm-1" | "text" | "none" | "index";
+
+/**
+ * NA handling policy
+ */
+export type NaPolicy = "drop" | "fill_mean" | "fill_median" | "fill_zero" | "error";
+
+/**
+ * Task type for the dataset
+ */
+export type TaskType = "auto" | "regression" | "binary_classification" | "multiclass_classification";
+
+/**
+ * Parsing options for CSV files
+ */
+export interface ParsingOptions {
+  delimiter: string;
+  decimal_separator: string;
+  has_header: boolean;
+  header_unit: HeaderUnit;
+  signal_type: SignalType;
+  na_policy: NaPolicy;
+  /** For Excel files */
+  sheet_name?: string;
+  /** Skip rows at start */
+  skip_rows?: number;
+}
+
+/**
+ * Target column configuration
+ */
+export interface TargetConfig {
+  column: string;
+  type: TaskType;
+  unit?: string;
+  classes?: string[];
+}
+
+/**
+ * Aggregation configuration
+ */
+export interface AggregationConfig {
+  enabled: boolean;
+  column?: string;
+  method: "mean" | "median" | "vote";
+  exclude_outliers: boolean;
 }
 
 /**
@@ -21,6 +85,9 @@ export interface DatasetConfig {
   decimal_separator: string;
   has_header: boolean;
   header_type?: "nm" | "cm-1" | "text" | "none";
+  header_unit?: HeaderUnit;
+  signal_type?: SignalType;
+  na_policy?: NaPolicy;
   files?: DatasetFile[];
   train_x?: string;
   train_y?: string;
@@ -28,6 +95,21 @@ export interface DatasetConfig {
   test_y?: string;
   train_group?: string;
   test_group?: string;
+  /** Global parsing params */
+  global_params?: Partial<ParsingOptions>;
+  /** Per-file params */
+  train_x_params?: Partial<ParsingOptions>;
+  train_y_params?: Partial<ParsingOptions>;
+  test_x_params?: Partial<ParsingOptions>;
+  test_y_params?: Partial<ParsingOptions>;
+  /** Target columns */
+  targets?: TargetConfig[];
+  /** Default target column name */
+  default_target?: string;
+  /** Task type */
+  task_type?: TaskType;
+  /** Aggregation settings */
+  aggregation?: AggregationConfig;
 }
 
 /**
@@ -170,3 +252,142 @@ export interface UpdateDatasetRequest {
   config?: Partial<DatasetConfig>;
   group_id?: string | null;
 }
+
+// ============= Wizard Types =============
+
+/**
+ * Source type for dataset wizard
+ */
+export type WizardSourceType = "folder" | "files" | "url" | "synthetic";
+
+/**
+ * Wizard step identifiers
+ */
+export type WizardStep = "source" | "files" | "parsing" | "targets" | "preview";
+
+/**
+ * Detected file info from backend
+ */
+export interface DetectedFile {
+  path: string;
+  filename: string;
+  type: "X" | "Y" | "metadata" | "unknown";
+  split: "train" | "test" | "unknown";
+  source: number | null;
+  format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet";
+  size_bytes: number;
+  confidence: number;
+  detected: boolean;
+}
+
+/**
+ * File detection request
+ */
+export interface DetectFilesRequest {
+  path: string;
+  recursive?: boolean;
+}
+
+/**
+ * File detection response
+ */
+export interface DetectFilesResponse {
+  files: DetectedFile[];
+  folder_name: string;
+  total_size_bytes: number;
+  has_standard_structure: boolean;
+}
+
+/**
+ * Format detection request
+ */
+export interface DetectFormatRequest {
+  path: string;
+  sample_rows?: number;
+}
+
+/**
+ * Format detection response
+ */
+export interface DetectFormatResponse {
+  format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet";
+  detected_delimiter?: string;
+  detected_decimal?: string;
+  has_header?: boolean;
+  num_rows?: number;
+  num_columns?: number;
+  sample_data?: string[][];
+  column_names?: string[];
+  sheet_names?: string[];
+}
+
+/**
+ * Preview data request
+ */
+export interface PreviewDataRequest {
+  path: string;
+  files: DatasetFile[];
+  parsing: Partial<ParsingOptions>;
+  max_samples?: number;
+}
+
+/**
+ * Preview data response
+ */
+export interface PreviewDataResponse {
+  success: boolean;
+  error?: string;
+  summary: {
+    num_samples: number;
+    num_features: number;
+    n_sources: number;
+    train_samples: number;
+    test_samples: number;
+    has_targets: boolean;
+    has_metadata: boolean;
+    target_columns?: string[];
+    metadata_columns?: string[];
+    signal_type?: SignalType;
+    header_unit?: HeaderUnit;
+  };
+  spectra_preview?: {
+    wavelengths: number[];
+    mean_spectrum: number[];
+    std_spectrum: number[];
+    min_spectrum: number[];
+    max_spectrum: number[];
+    sample_spectra: number[][];
+  };
+  target_distribution?: {
+    type: "regression" | "classification";
+    values?: number[];
+    min?: number;
+    max?: number;
+    mean?: number;
+    std?: number;
+    histogram?: { bin: number; count: number }[];
+    classes?: string[];
+    class_counts?: Record<string, number>;
+  };
+}
+
+/**
+ * Complete wizard state
+ */
+export interface WizardState {
+  step: WizardStep;
+  sourceType: WizardSourceType | null;
+  basePath: string;
+  datasetName: string;
+  files: DetectedFile[];
+  parsing: ParsingOptions;
+  perFileOverrides: Record<string, Partial<ParsingOptions>>;
+  targets: TargetConfig[];
+  defaultTarget: string;
+  taskType: TaskType;
+  aggregation: AggregationConfig;
+  preview: PreviewDataResponse | null;
+  isLoading: boolean;
+  errors: Record<string, string>;
+}
+

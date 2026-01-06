@@ -58,6 +58,7 @@ const stepIcons: Record<StepType, typeof Waves> = {
   feature_augmentation: Layers,
   sample_filter: Filter,
   concat_transform: Combine,
+  sequential: Layers,
   chart: LineChart,
   comment: MessageSquare,
 };
@@ -107,7 +108,6 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
           {...listeners}
           {...attributes}
           onDoubleClick={onDoubleClick}
-          layout
           initial={false}
           animate={{
             opacity: isDragging ? 0.4 : 1,
@@ -118,7 +118,7 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
           transition={{ duration: 0.15 }}
           className={`
             flex items-center gap-2 p-2 rounded-md border cursor-grab active:cursor-grabbing
-            transition-colors select-none overflow-hidden
+            transition-colors select-none overflow-hidden w-full border-box
             ${colors.border} ${colors.bg} ${colors.hover}
             ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
             ${option.isDeepLearning ? "border-l-2 border-l-violet-500" : ""}
@@ -128,7 +128,7 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
           <div className={`p-1 rounded ${colors.bg} ${colors.text} flex-shrink-0`}>
             <Icon className="h-3 w-3" />
           </div>
-          <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 w-0">
             <div className="flex items-center gap-1">
               <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
               {option.isDeepLearning && (
@@ -141,12 +141,24 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
           </div>
         </motion.div>
       </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[200px]">
-        <div className="space-y-1">
-          <p className="font-medium">{option.name}</p>
-          <p className="text-xs text-muted-foreground">{option.description}</p>
-          {option.category && (
-            <Badge variant="secondary" className="text-[10px]">{option.category}</Badge>
+      <TooltipContent
+        side="right"
+        sideOffset={10}
+        className="max-w-[260px] p-0 overflow-hidden bg-popover text-popover-foreground border-border shadow-xl z-50"
+      >
+        <div className="p-3 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-semibold text-sm">{option.name}</p>
+            {option.category && (
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0 font-normal">{option.category}</Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">{option.description}</p>
+          {option.isDeepLearning && (
+             <div className="flex items-center gap-1.5 pt-1">
+               <div className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+               <span className="text-[10px] text-muted-foreground">Deep Learning Model</span>
+             </div>
           )}
         </div>
       </TooltipContent>
@@ -308,7 +320,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
 
       {/* Step Categories */}
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-3">
+        <div className="pl-4 py-4 pr-5 space-y-3">
           {stepTypeOrder.map((type) => {
             // Skip hidden types (they're merged into other categories)
             if (hiddenTypes.has(type)) return null;
@@ -362,7 +374,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                   </Badge>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-1">
-                  <div className="pl-5 border-l ml-3.5 border-border/50 space-y-2">
+                  <div className="space-y-2">
                     {shouldShowSubcategories ? (
                       // Render grouped by category
                       Array.from(groupedMap.entries()).map(([category, categoryItems]) => {
@@ -373,7 +385,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                             <div className="flex items-center gap-1.5 w-full text-left py-1 px-1 text-muted-foreground">
                               <span className="text-[10px] font-medium uppercase tracking-wide opacity-70">{category}</span>
                             </div>
-                            <div className="space-y-1 pl-1">
+                            <div className="space-y-1">
                               {categoryItems.map(({ option, actualType }) => (
                                 <DraggableStep
                                   key={`${actualType}-${option.name}`}

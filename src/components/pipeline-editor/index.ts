@@ -88,7 +88,7 @@ export { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 export {
   ExecutionPreviewPanel,
   ExecutionPreviewCompact,
-  type ExecutionStats,
+  type ExecutionBreakdown,
 } from "./ExecutionPreviewPanel";
 export {
   FocusPanelRing,

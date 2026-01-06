@@ -93,7 +93,630 @@ class ExportConfig(BaseModel):
     partition: Optional[str] = None
 
 
-# ============= Dataset CRUD Operations =============
+# ============= Wizard Models =============
+
+
+class DetectedFile(BaseModel):
+    """Detected file info from folder scanning."""
+
+    path: str
+    filename: str
+    type: str = Field("unknown", description="File role: X, Y, metadata, unknown")
+    split: str = Field("unknown", description="Data split: train, test, unknown")
+    source: Optional[int] = None
+    format: str = Field("csv", description="File format")
+    size_bytes: int = 0
+    confidence: float = 0.0
+    detected: bool = True
+
+
+class DetectFilesRequest(BaseModel):
+    """Request to detect files in a folder."""
+
+    path: str = Field(..., description="Folder path to scan")
+    recursive: bool = Field(False, description="Scan subdirectories")
+
+
+class DetectFilesResponse(BaseModel):
+    """Response from file detection."""
+
+    files: List[DetectedFile]
+    folder_name: str
+    total_size_bytes: int
+    has_standard_structure: bool
+
+
+class DetectFormatRequest(BaseModel):
+    """Request to detect file format."""
+
+    path: str = Field(..., description="File path to analyze")
+    sample_rows: int = Field(10, description="Number of rows to sample")
+
+
+class DetectFormatResponse(BaseModel):
+    """Response from format detection."""
+
+    format: str
+    detected_delimiter: Optional[str] = None
+    detected_decimal: Optional[str] = None
+    has_header: Optional[bool] = None
+    num_rows: Optional[int] = None
+    num_columns: Optional[int] = None
+    sample_data: Optional[List[List[str]]] = None
+    column_names: Optional[List[str]] = None
+    sheet_names: Optional[List[str]] = None
+
+
+class DatasetFileConfig(BaseModel):
+    """File configuration for wizard."""
+
+    path: str
+    type: str
+    split: str
+    source: Optional[int] = None
+    overrides: Optional[Dict[str, Any]] = None
+
+
+class ParsingOptions(BaseModel):
+    """Parsing options."""
+
+    delimiter: str = ";"
+    decimal_separator: str = "."
+    has_header: bool = True
+    header_unit: str = "cm-1"
+    signal_type: str = "auto"
+    na_policy: str = "drop"
+    skip_rows: int = 0
+    sheet_name: Optional[str] = None
+
+
+class PreviewDataRequest(BaseModel):
+    """Request to preview dataset."""
+
+    path: str = Field(..., description="Base path")
+    files: List[DatasetFileConfig] = Field(..., description="File configurations")
+    parsing: ParsingOptions = Field(default_factory=ParsingOptions)
+    max_samples: int = Field(100, description="Max samples to preview")
+
+
+class PreviewDataResponse(BaseModel):
+    """Response from dataset preview."""
+
+    success: bool
+    error: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+    spectra_preview: Optional[Dict[str, Any]] = None
+    target_distribution: Optional[Dict[str, Any]] = None
+
+
+# ============= Wizard Endpoints =============
+
+
+@router.post("/datasets/detect-files", response_model=DetectFilesResponse)
+async def detect_files(request: DetectFilesRequest):
+    """Scan a folder and detect dataset files."""
+    try:
+        folder_path = Path(request.path)
+
+        if not folder_path.exists():
+            raise HTTPException(status_code=404, detail="Folder not found")
+
+        if not folder_path.is_dir():
+            raise HTTPException(status_code=400, detail="Path is not a directory")
+
+        # Patterns for detecting file types
+        # Note: check filename prefix patterns (xcal, xval, ycal, yval) as well as embedded patterns
+        x_patterns = ["x_", "_x", "spectra", "nir", "absorbance", "reflectance"]
+        y_patterns = ["y_", "_y", "target", "analyte", "reference"]
+        meta_patterns = ["m_", "_m", "meta", "group", "info"]
+        train_patterns = ["train", "calibration", "cal"]
+        test_patterns = ["test", "val", "validation", "prediction", "pred"]
+
+        files: List[DetectedFile] = []
+        total_size = 0
+
+        # Supported extensions (including compressed versions)
+        extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
+        compressed_extensions = {".gz", ".bz2", ".xz", ".zip"}
+
+        # Scan folder
+        glob_pattern = "**/*" if request.recursive else "*"
+        for file_path in folder_path.glob(glob_pattern):
+            if not file_path.is_file():
+                continue
+
+            # Handle compressed files (e.g., .csv.gz)
+            suffix = file_path.suffix.lower()
+            if suffix in compressed_extensions:
+                # Get the real extension (e.g., .csv from file.csv.gz)
+                stem = file_path.stem
+                actual_suffix = Path(stem).suffix.lower()
+                if actual_suffix and actual_suffix in extensions:
+                    suffix = actual_suffix
+                else:
+                    continue
+            elif suffix not in extensions:
+                continue
+
+            filename = file_path.name.lower()
+            size = file_path.stat().st_size
+            total_size += size
+
+            # Get filename stem without all extensions (e.g., "xcal" from "Xcal.csv.gz")
+            # We need to use the original suffix since it may have been changed above
+            original_suffix = file_path.suffix.lower()
+            stem = file_path.stem
+            if original_suffix in compressed_extensions:
+                stem = Path(stem).stem  # Remove inner extension too
+            stem_lower = stem.lower()
+
+            # Detect type
+            file_type = "unknown"
+            confidence = 0.3
+
+            # Check for X prefix (xcal, xval, x_train, etc.)
+            if stem_lower.startswith("x") and len(stem_lower) > 1 and not stem_lower[1].isalpha():
+                file_type = "X"
+                confidence = 0.95
+            elif stem_lower.startswith("x") and len(stem_lower) > 1:
+                # Check if second part is a known suffix (xcal, xval, xtrain, etc.)
+                rest = stem_lower[1:]
+                if any(p in rest for p in ["cal", "val", "train", "test"]):
+                    file_type = "X"
+                    confidence = 0.95
+
+            # Check for Y prefix (ycal, yval, y_train, etc.)
+            if file_type == "unknown":
+                if stem_lower.startswith("y") and len(stem_lower) > 1 and not stem_lower[1].isalpha():
+                    file_type = "Y"
+                    confidence = 0.95
+                elif stem_lower.startswith("y") and len(stem_lower) > 1:
+                    rest = stem_lower[1:]
+                    if any(p in rest for p in ["cal", "val", "train", "test"]):
+                        file_type = "Y"
+                        confidence = 0.95
+
+            # Check embedded patterns
+            if file_type == "unknown":
+                for pattern in x_patterns:
+                    if pattern in filename:
+                        file_type = "X"
+                        confidence = 0.9
+                        break
+
+            if file_type == "unknown":
+                for pattern in y_patterns:
+                    if pattern in filename:
+                        file_type = "Y"
+                        confidence = 0.9
+                        break
+
+            if file_type == "unknown":
+                for pattern in meta_patterns:
+                    if pattern in filename:
+                        file_type = "metadata"
+                        confidence = 0.8
+                        break
+
+            # Detect split
+            split = "unknown"
+            for pattern in train_patterns:
+                if pattern in filename:
+                    split = "train"
+                    break
+
+            if split == "unknown":
+                for pattern in test_patterns:
+                    if pattern in filename:
+                        split = "test"
+                        break
+
+            # Default to train if unknown
+            if split == "unknown":
+                split = "train"
+
+            # Detect source number for X files
+            source = None
+            if file_type == "X":
+                import re
+                source_match = re.search(r"(?:source|src|s)[\s_-]*(\d+)", filename)
+                source = int(source_match.group(1)) if source_match else 1
+
+            # Detect format
+            format_map = {
+                ".csv": "csv",
+                ".xlsx": "xlsx",
+                ".xls": "xls",
+                ".parquet": "parquet",
+                ".npy": "npy",
+                ".npz": "npz",
+                ".mat": "mat",
+            }
+
+            files.append(DetectedFile(
+                path=str(file_path),
+                filename=file_path.name,
+                type=file_type,
+                split=split,
+                source=source,
+                format=format_map.get(suffix, "csv"),
+                size_bytes=size,
+                confidence=confidence,
+                detected=True,
+            ))
+
+        # Check if folder has standard structure
+        has_x = any(f.type == "X" for f in files)
+        has_train = any(f.split == "train" for f in files)
+        has_standard_structure = has_x and has_train
+
+        return DetectFilesResponse(
+            files=files,
+            folder_name=folder_path.name,
+            total_size_bytes=total_size,
+            has_standard_structure=has_standard_structure,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to detect files: {str(e)}"
+        )
+
+
+@router.post("/datasets/detect-format", response_model=DetectFormatResponse)
+async def detect_format(request: DetectFormatRequest):
+    """Detect file format (delimiter, decimal, header, etc.)."""
+    try:
+        file_path = Path(request.path)
+
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        suffix = file_path.suffix.lower()
+
+        # Excel files
+        if suffix in (".xlsx", ".xls"):
+            try:
+                import pandas as pd
+                xl = pd.ExcelFile(file_path)
+                df = pd.read_excel(xl, sheet_name=0, nrows=request.sample_rows)
+
+                return DetectFormatResponse(
+                    format="xlsx" if suffix == ".xlsx" else "xls",
+                    has_header=True,
+                    num_rows=len(df),
+                    num_columns=len(df.columns),
+                    sample_data=[df.columns.tolist()] + df.astype(str).values.tolist()[:5],
+                    column_names=df.columns.tolist(),
+                    sheet_names=xl.sheet_names,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read Excel file: {e}")
+
+        # Parquet files
+        if suffix == ".parquet":
+            try:
+                import pandas as pd
+                df = pd.read_parquet(file_path)[:request.sample_rows]
+
+                return DetectFormatResponse(
+                    format="parquet",
+                    has_header=True,
+                    num_rows=len(df),
+                    num_columns=len(df.columns),
+                    sample_data=[df.columns.tolist()] + df.astype(str).values.tolist()[:5],
+                    column_names=df.columns.tolist(),
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read Parquet file: {e}")
+
+        # NumPy files
+        if suffix in (".npy", ".npz"):
+            try:
+                data = np.load(file_path, allow_pickle=True)
+                if suffix == ".npz":
+                    keys = list(data.keys())
+                    arr = data[keys[0]]
+                else:
+                    arr = data
+
+                return DetectFormatResponse(
+                    format="npz" if suffix == ".npz" else "npy",
+                    has_header=False,
+                    num_rows=arr.shape[0] if arr.ndim > 0 else 1,
+                    num_columns=arr.shape[1] if arr.ndim > 1 else 1,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read NumPy file: {e}")
+
+        # CSV files - detect delimiter and decimal
+        try:
+            # Read raw content
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = [f.readline() for _ in range(min(20, request.sample_rows + 5))]
+
+            content = "".join(lines)
+
+            # Detect delimiter
+            delimiters = [";", ",", "\t", "|", " "]
+            delimiter_counts = {d: content.count(d) for d in delimiters}
+            detected_delimiter = max(delimiter_counts, key=delimiter_counts.get)
+
+            # Detect decimal separator
+            # If comma is delimiter, decimal is likely dot
+            # If semicolon is delimiter, check for comma as decimal
+            detected_decimal = "."
+            if detected_delimiter == ";":
+                # Check if numbers have comma as decimal
+                import re
+                comma_decimal_pattern = r"\d+,\d+"
+                if re.search(comma_decimal_pattern, content):
+                    detected_decimal = ","
+
+            # Try to detect header
+            first_line = lines[0].strip().split(detected_delimiter)
+            has_header = True
+            try:
+                # If first line has mostly non-numeric values, it's likely a header
+                numeric_count = sum(1 for v in first_line if v.replace(".", "").replace(",", "").replace("-", "").isdigit())
+                has_header = numeric_count < len(first_line) / 2
+            except Exception:
+                pass
+
+            # Parse with detected settings
+            import pandas as pd
+            df = pd.read_csv(
+                file_path,
+                sep=detected_delimiter,
+                decimal=detected_decimal,
+                nrows=request.sample_rows,
+                header=0 if has_header else None,
+            )
+
+            return DetectFormatResponse(
+                format="csv",
+                detected_delimiter=detected_delimiter,
+                detected_decimal=detected_decimal,
+                has_header=has_header,
+                num_rows=len(df),
+                num_columns=len(df.columns),
+                sample_data=[
+                    [str(c) for c in df.columns.tolist()]
+                ] + df.astype(str).values.tolist()[:5],
+                column_names=[str(c) for c in df.columns.tolist()],
+            )
+
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read CSV file: {e}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to detect format: {str(e)}"
+        )
+
+
+@router.post("/datasets/preview", response_model=PreviewDataResponse)
+async def preview_dataset(request: PreviewDataRequest):
+    """Preview a dataset with current configuration."""
+    if not NIRS4ALL_AVAILABLE:
+        return PreviewDataResponse(
+            success=False,
+            error="nirs4all library not available",
+        )
+
+    try:
+        # Build config for nirs4all
+        # Note: signal_type and header_unit are X-specific params
+        # They should not be included in global_params to avoid passing them to Y loading
+        global_params = {
+            "delimiter": request.parsing.delimiter,
+            "decimal_separator": request.parsing.decimal_separator,
+            "has_header": request.parsing.has_header,
+        }
+
+        # X-specific params (signal_type, header_unit)
+        x_specific_params = {}
+        if request.parsing.header_unit:
+            x_specific_params["header_unit"] = request.parsing.header_unit
+        if request.parsing.signal_type and request.parsing.signal_type != "auto":
+            x_specific_params["signal_type"] = request.parsing.signal_type
+
+        config: Dict[str, Any] = {
+            "global_params": global_params
+        }
+
+        # Map files to config
+        for file_config in request.files:
+            file_key = None
+            if file_config.type == "X":
+                file_key = f"{file_config.split}_x"
+            elif file_config.type == "Y":
+                file_key = f"{file_config.split}_y"
+            elif file_config.type == "metadata":
+                file_key = f"{file_config.split}_group"
+
+            if file_key:
+                # Handle multi-source (list of X files for same split)
+                if file_key in config and file_config.type == "X":
+                    existing = config[file_key]
+                    if isinstance(existing, list):
+                        config[file_key].append(file_config.path)
+                    else:
+                        config[file_key] = [existing, file_config.path]
+                else:
+                    config[file_key] = file_config.path
+
+                # Per-file params (merge with x_specific_params for X files)
+                params_key = f"{file_key}_params"
+                if file_config.type == "X" and x_specific_params:
+                    # Add x-specific params to X file params
+                    if file_config.overrides:
+                        config[params_key] = {**x_specific_params, **file_config.overrides}
+                    else:
+                        config[params_key] = x_specific_params.copy()
+                elif file_config.overrides:
+                    config[params_key] = file_config.overrides
+
+        # Try to load with nirs4all
+        try:
+            from nirs4all.data import DatasetConfigs
+
+            dataset_configs = DatasetConfigs(config)
+            datasets = dataset_configs.get_datasets()
+
+            if not datasets:
+                return PreviewDataResponse(
+                    success=False,
+                    error="No data could be loaded from the provided files",
+                )
+
+            dataset = datasets[0]
+
+            # Get X data for spectra preview
+            X = dataset.x({"partition": "train"}, layout="2d")
+            if isinstance(X, list):
+                X = X[0]
+
+            # Limit samples for preview
+            if len(X) > request.max_samples:
+                indices = np.linspace(0, len(X) - 1, request.max_samples, dtype=int)
+                X = X[indices]
+
+            # Get wavelengths/headers
+            try:
+                wavelengths = dataset.headers(0)
+                if wavelengths is None or len(wavelengths) == 0:
+                    wavelengths = np.arange(X.shape[1])
+                wavelengths = np.array(wavelengths, dtype=float)
+            except Exception:
+                wavelengths = np.arange(X.shape[1])
+
+            # Spectra statistics
+            mean_spectrum = np.mean(X, axis=0).tolist()
+            std_spectrum = np.std(X, axis=0).tolist()
+            min_spectrum = np.min(X, axis=0).tolist()
+            max_spectrum = np.max(X, axis=0).tolist()
+
+            # Sample spectra (first 5)
+            sample_spectra = X[:5].tolist() if len(X) >= 5 else X.tolist()
+
+            spectra_preview = {
+                "wavelengths": wavelengths.tolist(),
+                "mean_spectrum": mean_spectrum,
+                "std_spectrum": std_spectrum,
+                "min_spectrum": min_spectrum,
+                "max_spectrum": max_spectrum,
+                "sample_spectra": sample_spectra,
+            }
+
+            # Target distribution
+            target_distribution = None
+            try:
+                y = dataset.y({"partition": "train"})
+                if y is not None and len(y) > 0:
+                    if dataset.is_regression:
+                        # Histogram for regression
+                        hist, bin_edges = np.histogram(y, bins=20)
+                        histogram = [
+                            {"bin": float(bin_edges[i]), "count": int(hist[i])}
+                            for i in range(len(hist))
+                        ]
+                        target_distribution = {
+                            "type": "regression",
+                            "min": float(np.min(y)),
+                            "max": float(np.max(y)),
+                            "mean": float(np.mean(y)),
+                            "std": float(np.std(y)),
+                            "histogram": histogram,
+                        }
+                    else:
+                        # Class counts for classification
+                        unique, counts = np.unique(y, return_counts=True)
+                        target_distribution = {
+                            "type": "classification",
+                            "classes": [str(c) for c in unique.tolist()],
+                            "class_counts": {str(k): int(v) for k, v in zip(unique.tolist(), counts.tolist())},
+                        }
+            except Exception:
+                pass
+
+            # Get metadata columns
+            metadata_columns = []
+            try:
+                metadata_columns = dataset.metadata_columns or []
+            except Exception:
+                pass
+
+            # Signal type
+            signal_type = None
+            try:
+                if dataset.signal_types:
+                    signal_type = dataset.signal_types[0].value
+            except Exception:
+                pass
+
+            # Header unit
+            header_unit = None
+            try:
+                header_unit = dataset.header_unit(0)
+            except Exception:
+                pass
+
+            # Train/test sample counts
+            train_samples = 0
+            test_samples = 0
+            try:
+                train_x = dataset.x({"partition": "train"}, layout="2d")
+                if isinstance(train_x, list):
+                    train_x = train_x[0]
+                train_samples = len(train_x) if train_x is not None else 0
+            except Exception:
+                pass
+
+            try:
+                test_x = dataset.x({"partition": "test"}, layout="2d")
+                if isinstance(test_x, list):
+                    test_x = test_x[0]
+                test_samples = len(test_x) if test_x is not None else 0
+            except Exception:
+                pass
+
+            summary = {
+                "num_samples": dataset.num_samples,
+                "num_features": dataset.num_features,
+                "n_sources": dataset.n_sources,
+                "train_samples": train_samples,
+                "test_samples": test_samples,
+                "has_targets": dataset._targets is not None,
+                "has_metadata": dataset._metadata.num_rows > 0 if dataset._metadata else False,
+                "target_columns": metadata_columns if dataset._targets else None,
+                "metadata_columns": metadata_columns,
+                "signal_type": signal_type,
+                "header_unit": header_unit,
+            }
+
+            return PreviewDataResponse(
+                success=True,
+                summary=summary,
+                spectra_preview=spectra_preview,
+                target_distribution=target_distribution,
+            )
+
+        except Exception as e:
+            return PreviewDataResponse(
+                success=False,
+                error=f"Failed to load dataset: {str(e)}",
+            )
+
+    except Exception as e:
+        return PreviewDataResponse(
+            success=False,
+            error=f"Preview failed: {str(e)}",
+        )
 
 
 @router.get("/datasets")

@@ -49,6 +49,7 @@ import {
 import { stepOptions, type PipelineStep } from "../../types";
 import { StepActions } from "./StepActions";
 import type { ParameterRendererProps } from "./types";
+import { useSelectWheel } from "../../shared/useSelectWheel";
 
 // Lazy load FinetuneTab with preload support
 // We store the import promise so we can trigger preloading on hover
@@ -166,55 +167,6 @@ export function ModelRenderer({
         <TabsContent value="parameters" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-6">
-              {/* Model Algorithm Selection */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Model</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="max-w-[200px]">
-                      <p>Select the model algorithm</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <Select value={step.name} onValueChange={handleNameChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover max-h-[300px]">
-                    {stepOptions.model.map((opt) => (
-                      <SelectItem key={opt.name} value={opt.name}>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{opt.name}</span>
-                            {opt.isDeepLearning && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] py-0 h-4"
-                              >
-                                DL
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {opt.description}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {currentOption && (
-                  <p className="text-xs text-muted-foreground">
-                    {currentOption.description}
-                  </p>
-                )}
-              </div>
-
-              <Separator />
-
               {/* Parameters */}
               {Object.keys(step.params).length > 0 ? (
                 <div className="space-y-4">
@@ -330,6 +282,17 @@ function TrainingTab({ step, onUpdate }: TrainingTabProps) {
     });
   };
 
+  const optimizerOptions = [
+    { value: "adam" }, { value: "sgd" }, { value: "rmsprop" }, { value: "adamw" }
+  ];
+
+  const handleOptimizerWheel = useSelectWheel(
+    config.optimizer ?? "adam",
+    (v) => handleUpdate({ optimizer: v as any }),
+    optimizerOptions as any,
+    true
+  );
+
   return (
     <div className="p-4 space-y-4">
       {/* Training Configuration */}
@@ -403,22 +366,24 @@ function TrainingTab({ step, onUpdate }: TrainingTabProps) {
 
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Optimizer</Label>
-            <Select
-              value={config.optimizer}
-              onValueChange={(value: "adam" | "sgd" | "rmsprop" | "adamw") =>
-                handleUpdate({ optimizer: value })
-              }
-            >
-              <SelectTrigger className="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                <SelectItem value="adam">Adam</SelectItem>
-                <SelectItem value="adamw">AdamW</SelectItem>
-                <SelectItem value="sgd">SGD</SelectItem>
-                <SelectItem value="rmsprop">RMSprop</SelectItem>
-              </SelectContent>
-            </Select>
+            <div onWheel={handleOptimizerWheel}>
+              <Select
+                value={config.optimizer}
+                onValueChange={(value: "adam" | "sgd" | "rmsprop" | "adamw") =>
+                  handleUpdate({ optimizer: value })
+                }
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="adam">Adam</SelectItem>
+                  <SelectItem value="adamw">AdamW</SelectItem>
+                  <SelectItem value="sgd">SGD</SelectItem>
+                  <SelectItem value="rmsprop">RMSprop</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>

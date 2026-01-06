@@ -59,6 +59,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { useSelectWheel } from "./shared/useSelectWheel";
 
 // Y-Processing configuration interface
 export interface YProcessingConfig {
@@ -449,6 +450,31 @@ function YProcessingParamInput({
   description,
   onChange,
 }: YProcessingParamInputProps) {
+  // Common wheel handler
+  const methodOptions = [{value: "yeo-johnson"}, {value: "box-cox"}];
+  const handleMethodWheel = useSelectWheel(
+    String(value),
+    (v) => onChange(v),
+    methodOptions,
+    true
+  );
+
+  const distOptions = [{value: "uniform"}, {value: "normal"}];
+  const handleDistWheel = useSelectWheel(
+    String(value),
+    (v) => onChange(v),
+    distOptions,
+    true
+  );
+
+  const stratOptions = [{value: "quantile"}, {value: "uniform"}, {value: "kmeans"}];
+  const handleStratWheel = useSelectWheel(
+    String(value),
+    (v) => onChange(v),
+    stratOptions,
+    true
+  );
+
   // Render appropriate input based on param type and known patterns
   if (paramKey === "method") {
     return (
@@ -466,15 +492,17 @@ function YProcessingParamInput({
             </Tooltip>
           )}
         </div>
-        <Select value={String(value)} onValueChange={onChange}>
-          <SelectTrigger className="h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="yeo-johnson">Yeo-Johnson</SelectItem>
-            <SelectItem value="box-cox">Box-Cox (positive only)</SelectItem>
-          </SelectContent>
-        </Select>
+        <div onWheel={handleMethodWheel}>
+          <Select value={String(value)} onValueChange={onChange}>
+            <SelectTrigger className="h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="yeo-johnson">Yeo-Johnson</SelectItem>
+              <SelectItem value="box-cox">Box-Cox (positive only)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     );
   }
@@ -495,15 +523,17 @@ function YProcessingParamInput({
             </Tooltip>
           )}
         </div>
-        <Select value={String(value)} onValueChange={onChange}>
-          <SelectTrigger className="h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="uniform">Uniform [0, 1]</SelectItem>
-            <SelectItem value="normal">Normal (Gaussian)</SelectItem>
-          </SelectContent>
-        </Select>
+        <div onWheel={handleDistWheel}>
+          <Select value={String(value)} onValueChange={onChange}>
+            <SelectTrigger className="h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="uniform">Uniform [0, 1]</SelectItem>
+              <SelectItem value="normal">Normal (Gaussian)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     );
   }
@@ -524,16 +554,18 @@ function YProcessingParamInput({
             </Tooltip>
           )}
         </div>
-        <Select value={String(value)} onValueChange={onChange}>
-          <SelectTrigger className="h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="quantile">Quantile (equal frequencies)</SelectItem>
-            <SelectItem value="uniform">Uniform (equal width)</SelectItem>
-            <SelectItem value="kmeans">K-Means clustering</SelectItem>
-          </SelectContent>
-        </Select>
+        <div onWheel={handleStratWheel}>
+          <Select value={String(value)} onValueChange={onChange}>
+            <SelectTrigger className="h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="quantile">Quantile (equal frequencies)</SelectItem>
+              <SelectItem value="uniform">Uniform (equal width)</SelectItem>
+              <SelectItem value="kmeans">K-Means clustering</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     );
   }

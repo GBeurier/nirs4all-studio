@@ -3,16 +3,18 @@
  *
  * Supports both preprocessing and splitting operators.
  * Uses dynamic parameter rendering based on operator definition.
+ * Shows filter statistics ("N samples removed") for filter operators.
  */
 
 import { useState, useCallback } from 'react';
-import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle, Trash2 } from 'lucide-react';
+import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle, Trash2, Filter, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import {
   Tooltip,
   TooltipContent,
@@ -21,13 +23,15 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useSliderWithCommit } from '@/lib/playground/debounce';
-import type { UnifiedOperator, OperatorParamInfo } from '@/types/playground';
+import type { UnifiedOperator, OperatorParamInfo, FilterResult } from '@/types/playground';
 
 interface UnifiedOperatorCardProps {
   operator: UnifiedOperator;
   index: number;
   paramDefs?: Record<string, OperatorParamInfo>;
   description?: string;
+  /** Filter statistics from execution result - name is optional since we key by operator name externally */
+  filterStats?: { removed_count: number; reason?: string };
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
   onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
@@ -43,6 +47,7 @@ export function UnifiedOperatorCard({
   index,
   paramDefs,
   description,
+  filterStats,
   onUpdate,
   onUpdateParams,
   onRemove,
@@ -55,13 +60,26 @@ export function UnifiedOperatorCard({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isSplitter = operator.type === 'splitting';
+  const isFilter = operator.type === 'filter';
+  const isAugmentation = operator.type === 'augmentation';
   const hasParams = paramDefs && Object.keys(paramDefs).length > 0;
+
+  // Filter statistics display
+  const hasFilterStats = isFilter && filterStats && filterStats.removed_count > 0;
 
   // Get display name (convert CamelCase to readable)
   const displayName = operator.name
     .replace(/([A-Z])/g, ' $1')
     .replace(/^./, str => str.toUpperCase())
     .trim();
+
+  // Get border color based on type
+  const getBorderColor = () => {
+    if (isFilter) return 'border-red-500/50';
+    if (isSplitter) return 'border-orange-500/50';
+    if (isAugmentation) return 'border-blue-500/50';
+    return 'border-border';
+  };
 
   return (
     <TooltipProvider>
@@ -74,7 +92,7 @@ export function UnifiedOperatorCard({
           'bg-muted rounded-lg border transition-all duration-200',
           isDragging && 'opacity-50 scale-95',
           !operator.enabled && 'opacity-60',
-          isSplitter ? 'border-orange-500/50' : 'border-border'
+          getBorderColor()
         )}
       >
         <div className="flex items-center gap-1 p-1.5">
@@ -90,6 +108,9 @@ export function UnifiedOperatorCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-mono text-muted-foreground">{index + 1}</span>
+              {isFilter && (
+                <Filter className="w-3 h-3 text-red-500" />
+              )}
               {isSplitter && (
                 <Grid3X3 className="w-3 h-3 text-orange-500" />
               )}
@@ -103,6 +124,26 @@ export function UnifiedOperatorCard({
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
                     <p className="text-xs">{description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {/* Filter statistics badge */}
+              {hasFilterStats && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="destructive"
+                      className="h-4 px-1.5 text-[10px] font-medium gap-0.5 cursor-help"
+                    >
+                      <AlertCircle className="w-2.5 h-2.5" />
+                      {filterStats.removed_count} removed
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    <p className="text-xs">
+                      {filterStats.removed_count} sample{filterStats.removed_count !== 1 ? 's' : ''} filtered out
+                      {filterStats.reason && `: ${filterStats.reason}`}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               )}

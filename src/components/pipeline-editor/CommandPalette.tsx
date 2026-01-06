@@ -77,6 +77,7 @@ const stepTypeIcons: Record<StepType, LucideIcon> = {
   feature_augmentation: Layers,
   sample_filter: Filter,
   concat_transform: Combine,
+  sequential: Layers,
   chart: LineChart,
   comment: MessageSquare,
 };
@@ -96,6 +97,7 @@ const stepTypeColors: Record<StepType, string> = {
   feature_augmentation: "text-fuchsia-500",
   sample_filter: "text-red-500",
   concat_transform: "text-teal-500",
+  sequential: "text-slate-500",
   chart: "text-sky-500",
   comment: "text-gray-500",
 };

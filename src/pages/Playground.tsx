@@ -9,15 +9,18 @@
  * - Export to Pipeline Editor and JSON/CSV
  * - Step comparison mode
  * - Fold visualization for cross-validation
+ * - Phase 6: Keyboard shortcuts, saved selections, render optimization
  */
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { PlaygroundSidebar, MainCanvas } from '@/components/playground';
+import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
+import { SelectionProvider } from '@/context/SelectionContext';
 import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
+import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import {
   exportToPipelineEditor,
   prepareExportToPipelineEditor,
@@ -76,6 +79,9 @@ export default function Playground() {
     activeStep,
     setActiveStep,
     maxSteps,
+    computeUmap,
+    setComputeUmap,
+    isUmapLoading,
   } = usePlaygroundPipeline(rawData, {
     enableBackend: true,
     sampling: {
@@ -247,48 +253,246 @@ export default function Playground() {
     }
   }, [searchParams, handleImportFromPipelineEditor, navigate]);
 
-  // ============= Keyboard Shortcuts =============
+  // ============= Keyboard Shortcuts (Phase 6) =============
 
-  // Keyboard shortcut handler
-  const handleKeyboardShortcuts = useCallback((e: KeyboardEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+  // State for shortcuts help dialog
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+
+  // Render mode state (Phase 6)
+  const [renderMode, setRenderMode] = useState<RenderMode>('auto');
+
+  // Chart visibility toggles for keyboard shortcuts
+  const [chartVisibility, setChartVisibility] = useState({
+    spectra: true,
+    histogram: true,
+    pca: true,
+    folds: true,
+    repetitions: false,
+  });
+
+  const toggleChartVisibility = useCallback((chart: keyof typeof chartVisibility) => {
+    setChartVisibility(prev => ({ ...prev, [chart]: !prev[chart] }));
+  }, []);
+
+  // Sample selection state for cross-chart highlighting (legacy - kept for backward compatibility)
+  const [selectedSample, setSelectedSample] = useState<number | null>(null);
+
+  // ============= Filter to Selection Handler =============
+
+  /**
+   * Handle "Filter to Selection" action from MainCanvas
+   * Adds a SampleIndexFilter operator that keeps only the selected sample indices
+   */
+  const handleFilterToSelection = useCallback((selectedIndices: number[]) => {
+    if (selectedIndices.length === 0) {
+      toast.warning('No samples selected', {
+        description: 'Select samples in a chart first, then click "Filter to Selection".',
+      });
       return;
     }
 
-    // Undo: Ctrl+Z
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      undo();
-    }
+    // Add a SampleIndexFilter operator with the selected indices
+    addOperatorByName('SampleIndexFilter', 'filter', {
+      indices: selectedIndices,
+      mode: 'keep',  // Keep only these indices (vs 'remove')
+    });
 
-    // Redo: Ctrl+Shift+Z or Ctrl+Y
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-      e.preventDefault();
-      redo();
-    }
+    toast.success('Filter applied', {
+      description: `Keeping ${selectedIndices.length} selected sample${selectedIndices.length !== 1 ? 's' : ''}`,
+    });
+  }, [addOperatorByName]);
 
-    // Clear pipeline: Ctrl+Backspace (with confirmation via toast)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Backspace' && operators.length > 0) {
-      e.preventDefault();
-      toast.warning(`Clear all ${operators.length} operators?`, {
-        action: {
-          label: 'Clear',
-          onClick: clearPipeline,
-        },
-        duration: 5000,
-      });
-    }
-  }, [undo, redo, clearPipeline, operators.length]);
+  return (
+    <SelectionProvider>
+      <PlaygroundContent
+        // Data
+        rawData={rawData}
+        dataLoading={dataLoading}
+        dataError={dataError}
+        dataSource={dataSource}
+        currentDatasetInfo={currentDatasetInfo}
+        // Data handlers
+        loadFile={loadFile}
+        loadDemoData={loadDemoData}
+        loadFromWorkspace={loadFromWorkspace}
+        clearData={clearData}
+        // Pipeline state
+        operators={operators}
+        result={result}
+        isProcessing={isProcessing}
+        isFetching={isFetching}
+        isDebouncing={isDebouncing}
+        hasSplitter={hasSplitter}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        // Pipeline handlers
+        addOperator={handleAddOperator}
+        updateOperator={updateOperator}
+        updateOperatorParams={updateOperatorParams}
+        removeOperator={removeOperator}
+        toggleOperator={toggleOperator}
+        reorderOperators={reorderOperators}
+        clearPipeline={clearPipeline}
+        undo={undo}
+        redo={redo}
+        // Step comparison
+        stepComparisonEnabled={stepComparisonEnabled}
+        setStepComparisonEnabled={setStepComparisonEnabled}
+        activeStep={activeStep}
+        setActiveStep={setActiveStep}
+        // UMAP
+        computeUmap={computeUmap}
+        setComputeUmap={setComputeUmap}
+        isUmapLoading={isUmapLoading}
+        // Export handlers
+        exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
+        exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
+        exportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
+        importPipeline={handleImportFromPipelineEditor}
+        // Filter
+        filterToSelection={handleFilterToSelection}
+        addOperatorByName={addOperatorByName}
+        // Shortcuts state
+        showShortcutsHelp={showShortcutsHelp}
+        setShowShortcutsHelp={setShowShortcutsHelp}
+        renderMode={renderMode}
+        setRenderMode={setRenderMode}
+        chartVisibility={chartVisibility}
+        toggleChartVisibility={toggleChartVisibility}
+        selectedSample={selectedSample}
+        setSelectedSample={setSelectedSample}
+      />
+    </SelectionProvider>
+  );
+}
 
-  // Register keyboard shortcuts
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyboardShortcuts);
-    return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
-  }, [handleKeyboardShortcuts]);
+// ============= Inner Component (uses SelectionContext) =============
 
-  // Sample selection state for cross-chart highlighting
-  const [selectedSample, setSelectedSample] = useState<number | null>(null);
+interface PlaygroundContentProps {
+  rawData: ReturnType<typeof useSpectralData>['rawData'];
+  dataLoading: boolean;
+  dataError: ReturnType<typeof useSpectralData>['error'];
+  dataSource: ReturnType<typeof useSpectralData>['dataSource'];
+  currentDatasetInfo: ReturnType<typeof useSpectralData>['currentDatasetInfo'];
+  loadFile: ReturnType<typeof useSpectralData>['loadFile'];
+  loadDemoData: ReturnType<typeof useSpectralData>['loadDemoData'];
+  loadFromWorkspace: ReturnType<typeof useSpectralData>['loadFromWorkspace'];
+  clearData: ReturnType<typeof useSpectralData>['clearData'];
+  operators: ReturnType<typeof usePlaygroundPipeline>['operators'];
+  result: ReturnType<typeof usePlaygroundPipeline>['result'];
+  isProcessing: boolean;
+  isFetching: boolean;
+  isDebouncing: boolean;
+  hasSplitter: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  addOperator: (definition: OperatorDefinition) => void;
+  updateOperator: ReturnType<typeof usePlaygroundPipeline>['updateOperator'];
+  updateOperatorParams: ReturnType<typeof usePlaygroundPipeline>['updateOperatorParams'];
+  removeOperator: ReturnType<typeof usePlaygroundPipeline>['removeOperator'];
+  toggleOperator: ReturnType<typeof usePlaygroundPipeline>['toggleOperator'];
+  reorderOperators: ReturnType<typeof usePlaygroundPipeline>['reorderOperators'];
+  clearPipeline: ReturnType<typeof usePlaygroundPipeline>['clearPipeline'];
+  undo: ReturnType<typeof usePlaygroundPipeline>['undo'];
+  redo: ReturnType<typeof usePlaygroundPipeline>['redo'];
+  stepComparisonEnabled: boolean;
+  setStepComparisonEnabled: (enabled: boolean) => void;
+  activeStep: number;
+  setActiveStep: (step: number) => void;
+  computeUmap: boolean;
+  setComputeUmap: (compute: boolean) => void;
+  isUmapLoading: boolean;
+  exportToPipelineEditor?: () => void;
+  exportPipelineJson?: () => void;
+  exportDataCsv?: () => void;
+  importPipeline: () => void;
+  filterToSelection: (indices: number[]) => void;
+  addOperatorByName: ReturnType<typeof usePlaygroundPipeline>['addOperatorByName'];
+  showShortcutsHelp: boolean;
+  setShowShortcutsHelp: (show: boolean) => void;
+  renderMode: RenderMode;
+  setRenderMode: (mode: RenderMode) => void;
+  chartVisibility: { spectra: boolean; histogram: boolean; pca: boolean; folds: boolean; repetitions: boolean };
+  toggleChartVisibility: (chart: 'spectra' | 'histogram' | 'pca' | 'folds' | 'repetitions') => void;
+  selectedSample: number | null;
+  setSelectedSample: (sample: number | null) => void;
+}
+
+import { usePlaygroundShortcuts } from '@/hooks/usePlaygroundShortcuts';
+
+function PlaygroundContent({
+  rawData,
+  dataLoading,
+  dataError,
+  dataSource,
+  currentDatasetInfo,
+  loadFile,
+  loadDemoData,
+  loadFromWorkspace,
+  clearData,
+  operators,
+  result,
+  isProcessing,
+  isFetching,
+  isDebouncing,
+  hasSplitter,
+  canUndo,
+  canRedo,
+  addOperator,
+  updateOperator,
+  updateOperatorParams,
+  removeOperator,
+  toggleOperator,
+  reorderOperators,
+  clearPipeline,
+  undo,
+  redo,
+  stepComparisonEnabled,
+  setStepComparisonEnabled,
+  activeStep,
+  setActiveStep,
+  computeUmap,
+  setComputeUmap,
+  isUmapLoading,
+  exportToPipelineEditor,
+  exportPipelineJson,
+  exportDataCsv,
+  importPipeline,
+  filterToSelection,
+  showShortcutsHelp,
+  setShowShortcutsHelp,
+  renderMode,
+  setRenderMode,
+  chartVisibility,
+  toggleChartVisibility,
+  selectedSample,
+  setSelectedSample,
+}: PlaygroundContentProps) {
+  // Use the centralized keyboard shortcuts hook (now inside SelectionProvider)
+  const { shortcutsByCategory } = usePlaygroundShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onClearPipeline: () => {
+      if (operators.length > 0) {
+        toast.warning(`Clear all ${operators.length} operators?`, {
+          action: { label: 'Clear', onClick: clearPipeline },
+          duration: 5000,
+        });
+      }
+    },
+    onSaveSelection: () => toast.info('Save Selection: Use toolbar button'),
+    onExportPng: () => toast.info('Export PNG: Use Export menu'),
+    onExportData: () => toast.info('Export Data: Use Export menu'),
+    onToggleChart: (index: number) => {
+      const charts = ['spectra', 'histogram', 'pca', 'folds', 'repetitions'] as const;
+      if (index >= 0 && index < charts.length) {
+        toggleChartVisibility(charts[index]);
+      }
+    },
+    onShowHelp: () => setShowShortcutsHelp(true),
+    canUndo,
+    canRedo,
+  });
 
   return (
     <div className="h-full flex -m-6">
@@ -312,6 +516,7 @@ export default function Playground() {
         isDebouncing={isDebouncing}
         executionTimeMs={result?.executionTimeMs}
         stepErrors={result?.errors}
+        filterInfo={result?.filterInfo}
 
         // Data handlers
         onLoadFile={loadFile}
@@ -320,7 +525,7 @@ export default function Playground() {
         onClearData={clearData}
 
         // Pipeline handlers
-        onAddOperator={handleAddOperator}
+        onAddOperator={addOperator}
         onUpdateOperator={updateOperator}
         onUpdateOperatorParams={updateOperatorParams}
         onRemoveOperator={removeOperator}
@@ -331,10 +536,10 @@ export default function Playground() {
         onRedo={redo}
 
         // Export handlers
-        onExportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
-        onExportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
-        onExportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
-        onImportPipeline={handleImportFromPipelineEditor}
+        onExportToPipelineEditor={exportToPipelineEditor}
+        onExportPipelineJson={exportPipelineJson}
+        onExportDataCsv={exportDataCsv}
+        onImportPipeline={importPipeline}
       />
       <MainCanvas
         rawData={rawData}
@@ -348,6 +553,21 @@ export default function Playground() {
         onStepComparisonEnabledChange={setStepComparisonEnabled}
         activeStep={activeStep}
         onActiveStepChange={setActiveStep}
+        onFilterToSelection={filterToSelection}
+        computeUmap={computeUmap}
+        onComputeUmapChange={setComputeUmap}
+        isUmapLoading={isUmapLoading}
+        // Phase 6 props
+        renderMode={renderMode}
+        onRenderModeChange={setRenderMode}
+        datasetId={currentDatasetInfo?.datasetId ?? 'playground'}
+      />
+
+      {/* Phase 6: Keyboard shortcuts help dialog */}
+      <KeyboardShortcutsHelp
+        open={showShortcutsHelp}
+        onOpenChange={setShowShortcutsHelp}
+        shortcutsByCategory={shortcutsByCategory}
       />
     </div>
   );

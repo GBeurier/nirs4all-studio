@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Zap,
   ArrowRight,
+  LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ const itemVariants = {
 interface QuickActionItem {
   title: string;
   description: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   path: string;
   color: QuickActionColor;
 }

@@ -60,6 +60,7 @@ const stepIcons: Record<StepType, typeof Waves> = {
   feature_augmentation: Layers,
   sample_filter: Filter,
   concat_transform: Combine,
+  sequential: Layers,
   chart: LineChart,
   comment: MessageSquare,
 };

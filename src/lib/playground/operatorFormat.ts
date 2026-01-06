@@ -39,7 +39,7 @@ export function unifiedToPlaygroundSteps(operators: UnifiedOperator[]): Playgrou
  */
 export interface PipelineEditorStep {
   id: string;
-  type: 'preprocessing' | 'splitting' | 'model' | 'branch' | 'generator';
+  type: 'preprocessing' | 'splitting' | 'model' | 'branch' | 'generator' | 'filter' | 'augmentation';
   name: string;
   params: Record<string, unknown>;
   branches?: PipelineEditorStep[][];
@@ -50,9 +50,15 @@ export interface PipelineEditorStep {
  * Convert UnifiedOperator to Pipeline Editor format
  */
 export function unifiedToEditorStep(operator: UnifiedOperator): PipelineEditorStep {
+  // Map UnifiedOperatorType to PipelineEditorStep type
+  const validTypes = ['preprocessing', 'splitting', 'model', 'branch', 'generator', 'filter', 'augmentation'] as const;
+  const type = validTypes.includes(operator.type as typeof validTypes[number])
+    ? operator.type as PipelineEditorStep['type']
+    : 'preprocessing';
+
   return {
     id: operator.id,
-    type: operator.type,
+    type,
     name: operator.name,
     params: operator.params,
   };

@@ -11,6 +11,7 @@
 
 import type { NodeRegistry } from '@/data/nodes/NodeRegistry';
 import type { StepType } from '@/components/pipeline-editor/types';
+import type { NodeType } from '@/data/nodes/types';
 
 /**
  * Options for creating a registry-based class path resolver
@@ -78,8 +79,8 @@ export function createClassPathResolver(
    * Resolve a node name and type to a class path
    */
   function resolveNameToClassPath(type: StepType, name: string): string | undefined {
-    // Try registry
-    const classPath = registry.resolveClassPath(type, name);
+    // Try registry - cast StepType to NodeType (they overlap for most cases)
+    const classPath = registry.resolveClassPath(type as NodeType, name);
     if (classPath) {
       return classPath;
     }
