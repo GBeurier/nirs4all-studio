@@ -79,11 +79,17 @@ import { SystemInfo } from "@/components/settings/SystemInfo";
 import { BackendStatus } from "@/components/settings/BackendStatus";
 import { ErrorLogViewer } from "@/components/settings/ErrorLogViewer";
 import { LanguageSelector } from "@/components/settings/LanguageSelector";
+import { N4AWorkspaceSelector } from "@/components/settings/N4AWorkspaceSelector";
+import { N4AWorkspaceList } from "@/components/settings/N4AWorkspaceList";
+import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscoveryPanel";
+import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import {
   getWorkspace,
   selectWorkspace,
+  getLinkedWorkspaces,
 } from "@/api/client";
 import type { UIDensity } from "@/types/settings";
+import type { LinkedWorkspace } from "@/types/linked-workspaces";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -106,11 +112,22 @@ export default function Settings() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
+  const [activeN4AWorkspaceId, setActiveN4AWorkspaceId] = useState<string | null>(null);
 
   // Load workspace info on mount
   useEffect(() => {
     loadWorkspace();
+    loadN4AWorkspaces();
   }, []);
+
+  const loadN4AWorkspaces = async () => {
+    try {
+      const response = await getLinkedWorkspaces();
+      setActiveN4AWorkspaceId(response.active_workspace_id);
+    } catch (error) {
+      console.error("Failed to load N4A workspaces:", error);
+    }
+  };
 
   const loadWorkspace = async () => {
     try {
@@ -180,9 +197,10 @@ export default function Settings() {
       {/* Tabs for organization */}
       <motion.div variants={itemVariants}>
         <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="general">{t("settings.tabs.general")}</TabsTrigger>
             <TabsTrigger value="workspace">{t("settings.tabs.workspace")}</TabsTrigger>
+            <TabsTrigger value="n4a">N4A Workspaces</TabsTrigger>
             <TabsTrigger value="data">{t("settings.tabs.data")}</TabsTrigger>
             <TabsTrigger value="advanced">{t("settings.tabs.advanced")}</TabsTrigger>
           </TabsList>
@@ -394,6 +412,60 @@ export default function Settings() {
             </Collapsible>
           </TabsContent>
 
+          {/* N4A Workspaces Tab */}
+          <TabsContent value="n4a" className="space-y-6">
+            {/* Link New Workspace */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FolderPlus className="h-5 w-5" />
+                  nirs4all Workspaces
+                </CardTitle>
+                <CardDescription>
+                  Link nirs4all workspaces to discover runs, exports, and predictions.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <N4AWorkspaceSelector onWorkspaceLinked={loadN4AWorkspaces} />
+                </div>
+
+                <Separator />
+
+                {/* Linked Workspaces List */}
+                <N4AWorkspaceList onWorkspaceChange={loadN4AWorkspaces} />
+              </CardContent>
+            </Card>
+
+            {/* Discovery Panel */}
+            {activeN4AWorkspaceId && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileArchive className="h-5 w-5" />
+                    Discovered Content
+                  </CardTitle>
+                  <CardDescription>
+                    Runs, exports, predictions, and templates from the active workspace.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WorkspaceDiscoveryPanel workspaceId={activeN4AWorkspaceId} />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Info Card */}
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">
+                  <strong>Note:</strong> Linking a workspace allows the app to discover and display
+                  runs, predictions, and exported pipelines. Your files remain in their original location.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Data Defaults Tab */}
           <TabsContent value="data" className="space-y-6">
             {workspacePath ? (
@@ -459,6 +531,9 @@ export default function Settings() {
 
             {/* Backend Status - Always visible */}
             <BackendStatus checkInterval={30} />
+
+            {/* Updates Section */}
+            <UpdatesSection />
 
             {/* Backend Settings */}
             <Card>

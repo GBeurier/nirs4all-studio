@@ -1,0 +1,458 @@
+/**
+ * Updates Section Component
+ *
+ * Displays update status and controls for:
+ * - Webapp updates (from GitHub Releases)
+ * - nirs4all library updates (from PyPI)
+ * - Managed virtual environment status
+ * - Update settings
+ */
+
+import { useState } from "react";
+import {
+  Download,
+  RefreshCw,
+  Package,
+  Settings2,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  ChevronDown,
+  Loader2,
+  FolderOpen,
+  HardDrive,
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useUpdateStatus,
+  useCheckForUpdates,
+  useUpdateSettings,
+  useUpdateUpdateSettings,
+  useVenvStatus,
+  useInstallNirs4all,
+  useCreateVenv,
+  formatBytes,
+} from "@/hooks/useUpdates";
+
+export function UpdatesSection() {
+  const { data: status, isLoading: statusLoading, error: statusError } = useUpdateStatus();
+  const { data: settings, isLoading: settingsLoading } = useUpdateSettings();
+  const { data: venvStatus, isLoading: venvLoading } = useVenvStatus();
+
+  const checkMutation = useCheckForUpdates();
+  const settingsMutation = useUpdateUpdateSettings();
+  const installMutation = useInstallNirs4all();
+  const createVenvMutation = useCreateVenv();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [venvOpen, setVenvOpen] = useState(false);
+  const [nirs4allDialogOpen, setNirs4allDialogOpen] = useState(false);
+  const [webappDialogOpen, setWebappDialogOpen] = useState(false);
+
+  const isLoading = statusLoading || settingsLoading;
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download className="h-5 w-5" />
+            Updates
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-8 w-32" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (statusError) {
+    return (
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <Download className="h-5 w-5" />
+            Updates
+          </CardTitle>
+          <CardDescription className="text-destructive">
+            Failed to check for updates
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => checkMutation.mutate()}
+            disabled={checkMutation.isPending}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${checkMutation.isPending ? "animate-spin" : ""}`} />
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const hasWebappUpdate = status?.webapp?.update_available ?? false;
+  const hasNirs4allUpdate = status?.nirs4all?.update_available ?? false;
+  const hasAnyUpdate = hasWebappUpdate || hasNirs4allUpdate;
+
+  const handleAutoCheckToggle = (checked: boolean) => {
+    settingsMutation.mutate({ auto_check: checked });
+  };
+
+  const handlePrereleaseToggle = (checked: boolean) => {
+    settingsMutation.mutate({ prerelease_channel: checked });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              Updates
+              {hasAnyUpdate && (
+                <Badge variant="default" className="ml-2">
+                  {(hasWebappUpdate ? 1 : 0) + (hasNirs4allUpdate ? 1 : 0)} available
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Check for webapp and library updates
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => checkMutation.mutate()}
+            disabled={checkMutation.isPending}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${checkMutation.isPending ? "animate-spin" : ""}`} />
+            Check Now
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Webapp Update */}
+        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              <span className="font-medium">nirs4all Webapp</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Current: <span className="font-mono">{status?.webapp?.current_version || "unknown"}</span>
+              {hasWebappUpdate && (
+                <>
+                  {" → "}
+                  <span className="font-mono text-primary">{status?.webapp?.latest_version}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasWebappUpdate ? (
+              <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
+                <Download className="mr-2 h-4 w-4" />
+                Update
+              </Button>
+            ) : (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                Up to date
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* nirs4all Library Update */}
+        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              <span className="font-medium">nirs4all Library</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {status?.nirs4all?.current_version ? (
+                <>
+                  Current: <span className="font-mono">{status?.nirs4all?.current_version}</span>
+                  {hasNirs4allUpdate && (
+                    <>
+                      {" → "}
+                      <span className="font-mono text-primary">{status?.nirs4all?.latest_version}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span className="text-amber-600">Not installed in managed venv</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasNirs4allUpdate ? (
+              <Button size="sm" onClick={() => setNirs4allDialogOpen(true)}>
+                <Download className="mr-2 h-4 w-4" />
+                Update
+              </Button>
+            ) : status?.nirs4all?.current_version ? (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                Up to date
+              </Badge>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setNirs4allDialogOpen(true)}>
+                Install
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Last Check Info */}
+        {status?.last_check && (
+          <p className="text-xs text-muted-foreground">
+            Last checked: {new Date(status.last_check).toLocaleString()}
+          </p>
+        )}
+
+        {/* Managed Venv Section */}
+        <Collapsible open={venvOpen} onOpenChange={setVenvOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+              <span className="text-sm font-medium flex items-center gap-2">
+                <HardDrive className="h-4 w-4" />
+                Managed Environment
+              </span>
+              <div className="flex items-center gap-2">
+                {venvStatus?.venv?.is_valid ? (
+                  <Badge variant="outline" className="text-green-600">Active</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-amber-600">Not configured</Badge>
+                )}
+                <ChevronDown className={`h-4 w-4 transition-transform ${venvOpen ? "rotate-180" : ""}`} />
+              </div>
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2 space-y-3">
+            {venvLoading ? (
+              <Skeleton className="h-20 w-full" />
+            ) : venvStatus?.venv?.is_valid ? (
+              <div className="space-y-2 p-3 bg-muted/30 rounded-lg text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Python:</span>
+                  <span className="font-mono">{venvStatus.venv.python_version}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Size:</span>
+                  <span>{formatBytes(venvStatus.venv.size_bytes)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Packages:</span>
+                  <span>{venvStatus.packages?.length || 0} installed</span>
+                </div>
+                <div className="flex justify-between items-start">
+                  <span className="text-muted-foreground">Path:</span>
+                  <span className="font-mono text-xs break-all text-right max-w-[60%]">
+                    {venvStatus.venv.path}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  The managed virtual environment is not configured. Create one to enable independent nirs4all updates.
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-4"
+                    onClick={() => createVenvMutation.mutate({ install_nirs4all: true })}
+                    disabled={createVenvMutation.isPending}
+                  >
+                    {createVenvMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <FolderOpen className="mr-2 h-4 w-4" />
+                    )}
+                    Create Environment
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Settings Section */}
+        <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+              <span className="text-sm font-medium flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                Update Settings
+              </span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="auto-check">Automatic update checks</Label>
+                <p className="text-xs text-muted-foreground">
+                  Check for updates on startup and periodically
+                </p>
+              </div>
+              <Switch
+                id="auto-check"
+                checked={settings?.auto_check ?? true}
+                onCheckedChange={handleAutoCheckToggle}
+                disabled={settingsMutation.isPending}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="prerelease">Include pre-releases</Label>
+                <p className="text-xs text-muted-foreground">
+                  Get notified about beta and preview versions
+                </p>
+              </div>
+              <Switch
+                id="prerelease"
+                checked={settings?.prerelease_channel ?? false}
+                onCheckedChange={handlePrereleaseToggle}
+                disabled={settingsMutation.isPending}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </CardContent>
+
+      {/* Webapp Update Dialog */}
+      <Dialog open={webappDialogOpen} onOpenChange={setWebappDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Webapp Update Available</DialogTitle>
+            <DialogDescription>
+              Version {status?.webapp?.latest_version} is available
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {status?.webapp?.release_notes && (
+              <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
+                <h4 className="font-medium mb-2">Release Notes</h4>
+                <div className="prose prose-sm dark:prose-invert">
+                  {status.webapp.release_notes}
+                </div>
+              </div>
+            )}
+            {status?.webapp?.download_size_bytes && (
+              <p className="text-sm text-muted-foreground">
+                Download size: {formatBytes(status.webapp.download_size_bytes)}
+              </p>
+            )}
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Webapp updates require downloading from GitHub and restarting the application.
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWebappDialogOpen(false)}>
+              Later
+            </Button>
+            {status?.webapp?.release_url && (
+              <Button asChild>
+                <a href={status.webapp.release_url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Download from GitHub
+                </a>
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* nirs4all Update Dialog */}
+      <Dialog open={nirs4allDialogOpen} onOpenChange={setNirs4allDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {status?.nirs4all?.current_version ? "Update nirs4all" : "Install nirs4all"}
+            </DialogTitle>
+            <DialogDescription>
+              {status?.nirs4all?.current_version
+                ? `Update from ${status.nirs4all.current_version} to ${status.nirs4all.latest_version}`
+                : `Install nirs4all ${status?.nirs4all?.latest_version} in the managed environment`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {status?.nirs4all?.release_notes && (
+              <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
+                <h4 className="font-medium mb-2">About this version</h4>
+                <p className="text-muted-foreground line-clamp-6">
+                  {status.nirs4all.release_notes.substring(0, 500)}...
+                </p>
+              </div>
+            )}
+            <p className="text-sm text-muted-foreground">
+              This will install/upgrade nirs4all in the managed virtual environment.
+              No application restart is required.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNirs4allDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                installMutation.mutate(
+                  { version: status?.nirs4all?.latest_version || undefined },
+                  {
+                    onSuccess: () => setNirs4allDialogOpen(false),
+                  }
+                );
+              }}
+              disabled={installMutation.isPending}
+            >
+              {installMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {status?.nirs4all?.current_version ? "Update" : "Install"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}

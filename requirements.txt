@@ -20,3 +20,9 @@ PyGObject>=3.48.0,<3.50.0  # 3.50+ requires girepository-2.0 (Ubuntu 24.04+)
 # Additional utilities
 python-multipart>=0.0.20
 aiofiles>=24.0.0
+
+# Update system
+httpx>=0.27.0
+pyyaml>=6.0
+packaging>=24.0
+platformdirs>=4.0.0

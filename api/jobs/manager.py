@@ -37,6 +37,11 @@ class JobType(str, Enum):
     AUTOML = "automl"
     EXPORT = "export"
     ANALYSIS = "analysis"
+    # Update-related jobs
+    UPDATE_DOWNLOAD = "update_download"
+    UPDATE_APPLY = "update_apply"
+    VENV_CREATE = "venv_create"
+    VENV_INSTALL = "venv_install"
 
 
 @dataclass

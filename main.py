@@ -33,6 +33,7 @@ from api.automl import router as automl_router
 from api.dashboard import router as dashboard_router
 from api.runs import router as runs_router
 from api.playground import router as playground_router
+from api.updates import router as updates_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -109,6 +110,39 @@ app.include_router(automl_router, prefix="/api", tags=["automl"])
 app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
 app.include_router(runs_router, prefix="/api", tags=["runs"])
 app.include_router(playground_router, prefix="/api", tags=["playground"])
+app.include_router(updates_router, prefix="/api", tags=["updates"])
+
+
+# ============= Startup Events =============
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on application startup."""
+    # Import here to avoid circular imports
+    from api.updates import update_manager
+
+    # Log startup
+    print("nirs4all webapp starting...")
+    print(f"Webapp version: {update_manager.get_webapp_version()}")
+
+    # Check for updates in background if auto-check is enabled
+    if update_manager.settings.auto_check:
+        import asyncio
+        asyncio.create_task(check_updates_background())
+
+
+async def check_updates_background():
+    """Background task to check for updates."""
+    try:
+        from api.updates import update_manager
+        status = await update_manager.get_update_status()
+        if status.webapp.update_available:
+            print(f"Webapp update available: {status.webapp.latest_version}")
+        if status.nirs4all.update_available:
+            print(f"nirs4all update available: {status.nirs4all.latest_version}")
+    except Exception as e:
+        print(f"Background update check failed: {e}")
 
 
 # ============= WebSocket Endpoints =============

@@ -988,3 +988,329 @@ export async function getErrorLogs(limit: number = 50): Promise<ErrorLogResponse
 export async function clearErrorLogs(): Promise<{ success: boolean; cleared: number }> {
   return api.delete("/system/errors");
 }
+
+// ============= Phase 7: nirs4all Workspace Management =============
+
+import type {
+  LinkedWorkspace,
+  LinkedWorkspaceCreateRequest,
+  LinkedWorkspaceListResponse,
+  LinkedWorkspaceScanResult,
+  LinkedWorkspaceDiscoveredRuns,
+  LinkedWorkspaceDiscoveredPredictions,
+  LinkedWorkspaceDiscoveredExports,
+  LinkedWorkspaceDiscoveredTemplates,
+  AppSettingsResponse,
+  AppSettingsUpdateRequest,
+  FavoriteAddRequest,
+} from "@/types/linked-workspaces";
+
+/**
+ * Get list of linked nirs4all workspaces
+ */
+export async function getLinkedWorkspaces(): Promise<LinkedWorkspaceListResponse> {
+  return api.get("/workspaces");
+}
+
+/**
+ * Link a nirs4all workspace
+ */
+export async function linkN4AWorkspace(
+  request: LinkedWorkspaceCreateRequest
+): Promise<{ success: boolean; workspace: LinkedWorkspace; message: string }> {
+  return api.post("/workspaces/link", request);
+}
+
+/**
+ * Unlink a nirs4all workspace (does not delete files)
+ */
+export async function unlinkN4AWorkspace(
+  workspaceId: string
+): Promise<{ success: boolean; message: string }> {
+  return api.delete(`/workspaces/${workspaceId}`);
+}
+
+/**
+ * Set a workspace as the active workspace
+ */
+export async function activateN4AWorkspace(
+  workspaceId: string
+): Promise<{ success: boolean; workspace: LinkedWorkspace; message: string }> {
+  return api.post(`/workspaces/${workspaceId}/activate`);
+}
+
+/**
+ * Trigger a scan of a linked workspace
+ */
+export async function scanN4AWorkspace(
+  workspaceId: string
+): Promise<LinkedWorkspaceScanResult> {
+  return api.post(`/workspaces/${workspaceId}/scan`);
+}
+
+/**
+ * Get discovered runs for a workspace
+ */
+export async function getN4AWorkspaceRuns(
+  workspaceId: string
+): Promise<LinkedWorkspaceDiscoveredRuns> {
+  return api.get(`/workspaces/${workspaceId}/runs`);
+}
+
+/**
+ * Get discovered predictions for a workspace
+ */
+export async function getN4AWorkspacePredictions(
+  workspaceId: string
+): Promise<LinkedWorkspaceDiscoveredPredictions> {
+  return api.get(`/workspaces/${workspaceId}/predictions`);
+}
+
+/**
+ * Get discovered exports for a workspace
+ */
+export async function getN4AWorkspaceExports(
+  workspaceId: string
+): Promise<LinkedWorkspaceDiscoveredExports> {
+  return api.get(`/workspaces/${workspaceId}/exports`);
+}
+
+/**
+ * Get discovered templates for a workspace
+ */
+export async function getN4AWorkspaceTemplates(
+  workspaceId: string
+): Promise<LinkedWorkspaceDiscoveredTemplates> {
+  return api.get(`/workspaces/${workspaceId}/templates`);
+}
+
+// ============= App Settings (webapp-specific) =============
+
+/**
+ * Get app settings
+ */
+export async function getAppSettings(): Promise<AppSettingsResponse> {
+  return api.get("/app/settings");
+}
+
+/**
+ * Update app settings
+ */
+export async function updateAppSettings(
+  settings: AppSettingsUpdateRequest
+): Promise<{ success: boolean; settings: AppSettingsResponse; message: string }> {
+  return api.put("/app/settings", settings);
+}
+
+/**
+ * Get favorite pipelines
+ */
+export async function getFavorites(): Promise<{ favorites: string[] }> {
+  return api.get("/app/favorites");
+}
+
+/**
+ * Add a favorite pipeline
+ */
+export async function addFavorite(
+  request: FavoriteAddRequest
+): Promise<{ success: boolean; favorites: string[]; message: string }> {
+  return api.post("/app/favorites", request);
+}
+
+/**
+ * Remove a favorite pipeline
+ */
+export async function removeFavorite(
+  pipelineId: string
+): Promise<{ success: boolean; favorites: string[]; message: string }> {
+  return api.delete(`/app/favorites/${pipelineId}`);
+}
+
+// ============= Updates API =============
+
+export interface UpdateSettings {
+  auto_check: boolean;
+  check_interval_hours: number;
+  prerelease_channel: boolean;
+  github_repo: string;
+  pypi_package: string;
+  dismissed_versions: string[];
+}
+
+export interface WebappUpdateInfo {
+  current_version: string;
+  latest_version: string | null;
+  update_available: boolean;
+  release_url: string | null;
+  release_notes: string | null;
+  published_at: string | null;
+  download_size_bytes: number | null;
+  download_url: string | null;
+  asset_name: string | null;
+  checksum_sha256: string | null;
+}
+
+export interface Nirs4allUpdateInfo {
+  current_version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+  pypi_url: string | null;
+  release_notes: string | null;
+  requires_restart: boolean;
+}
+
+export interface VenvInfo {
+  path: string;
+  exists: boolean;
+  is_valid: boolean;
+  python_version: string | null;
+  pip_version: string | null;
+  created_at: string | null;
+  last_updated: string | null;
+  size_bytes: number;
+}
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+  location: string | null;
+}
+
+export interface UpdateStatus {
+  webapp: WebappUpdateInfo;
+  nirs4all: Nirs4allUpdateInfo;
+  venv: VenvInfo;
+  last_check: string | null;
+  check_interval_hours: number;
+}
+
+export interface VenvStatus {
+  venv: VenvInfo;
+  packages: PackageInfo[];
+  nirs4all_version: string | null;
+}
+
+export interface VersionInfo {
+  webapp_version: string;
+  nirs4all_version: string | null;
+  python_version: string;
+  platform: string;
+  machine: string;
+}
+
+/**
+ * Get current update status for webapp and nirs4all
+ */
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  return api.get("/updates/status");
+}
+
+/**
+ * Force a fresh check for updates
+ */
+export async function checkForUpdates(): Promise<UpdateStatus> {
+  return api.post("/updates/check");
+}
+
+/**
+ * Get update settings
+ */
+export async function getUpdateSettings(): Promise<UpdateSettings> {
+  return api.get("/updates/settings");
+}
+
+/**
+ * Update settings
+ */
+export async function updateUpdateSettings(
+  settings: Partial<UpdateSettings>
+): Promise<UpdateSettings> {
+  return api.put("/updates/settings", settings);
+}
+
+/**
+ * Get managed venv status and installed packages
+ */
+export async function getVenvStatus(): Promise<VenvStatus> {
+  return api.get("/updates/venv/status");
+}
+
+/**
+ * Create the managed virtual environment
+ */
+export async function createVenv(options?: {
+  force?: boolean;
+  install_nirs4all?: boolean;
+  extras?: string[];
+}): Promise<{
+  success: boolean;
+  message: string;
+  already_existed?: boolean;
+  nirs4all_installed?: boolean;
+  install_message?: string;
+}> {
+  return api.post("/updates/venv/create", options || {});
+}
+
+/**
+ * Install or upgrade nirs4all in the managed venv
+ */
+export async function installNirs4all(options?: {
+  version?: string;
+  extras?: string[];
+}): Promise<{
+  success: boolean;
+  message: string;
+  version: string | null;
+  output: string[];
+}> {
+  return api.post("/updates/nirs4all/install", options || {});
+}
+
+/**
+ * Get webapp download information
+ */
+export async function getWebappDownloadInfo(): Promise<{
+  update_available: boolean;
+  current_version: string;
+  latest_version: string | null;
+  download_url?: string;
+  asset_name?: string;
+  download_size_bytes?: number;
+  release_notes?: string;
+  release_url?: string;
+}> {
+  return api.get("/updates/webapp/download-info");
+}
+
+/**
+ * Download the latest webapp update
+ */
+export async function downloadWebappUpdate(): Promise<{
+  status: string;
+  download_url: string;
+  asset_name: string;
+  version: string;
+  message: string;
+}> {
+  return api.post("/updates/webapp/download");
+}
+
+/**
+ * Request webapp restart
+ */
+export async function requestRestart(): Promise<{
+  success: boolean;
+  message: string;
+  restart_required: boolean;
+}> {
+  return api.post("/updates/webapp/restart");
+}
+
+/**
+ * Get current version information
+ */
+export async function getVersionInfo(): Promise<VersionInfo> {
+  return api.get("/updates/version");
+}

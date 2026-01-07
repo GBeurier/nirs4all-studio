@@ -39,5 +39,4 @@ Add drag n drop folder or files. Directly to create datasets, or into the datase
 **Settings**
 - Add chinese
 - Remove animation do not work (it's actually worse)
-- Scheduled backups is useless
--
+- Unify / clean / specify / distinguish nirs4all workspaces and app settings folder.

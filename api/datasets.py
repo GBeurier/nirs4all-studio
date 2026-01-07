@@ -1852,6 +1852,17 @@ async def refresh_dataset_version(dataset_id: str, request: RefreshDatasetReques
         old_version = dataset_info.get("version", 0)
         new_version = old_version + 1
 
+        # Update version history (Phase 7)
+        version_history = dataset_info.get("version_history", [])
+        if old_hash:
+            # Add previous version to history
+            version_history.append({
+                "version": old_version,
+                "hash": old_hash,
+                "timestamp": dataset_info.get("last_verified", now),
+            })
+        dataset_info["version_history"] = version_history
+
         # Update dataset info
         dataset_info["hash"] = new_hash
         dataset_info["version"] = new_version
@@ -2038,6 +2049,97 @@ async def get_dataset_version_status(dataset_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get version status: {str(e)}"
+        )
+
+
+@router.get("/datasets/{dataset_id}/run-compatibility")
+async def get_dataset_run_compatibility(dataset_id: str):
+    """
+    Check run compatibility for a dataset (Phase 7).
+
+    This endpoint checks which runs in linked workspaces were made with
+    which version of the dataset, and warns if the dataset has changed
+    since those runs were made.
+
+    Returns:
+        - current_version: Current dataset version
+        - current_hash: Current dataset hash
+        - runs: List of runs with their dataset version info
+        - warnings: List of warnings for runs made with old versions
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        dataset_name = dataset_info.get("name", "")
+        current_hash = dataset_info.get("hash")
+        current_version = dataset_info.get("version", 1)
+        version_history = dataset_info.get("version_history", [])
+
+        # Get linked workspaces and scan for runs using this dataset
+        compatible_runs = []
+        incompatible_runs = []
+        warnings = []
+
+        # Check active linked workspace for runs
+        from .workspace_manager import workspace_manager as wm, WorkspaceScanner
+        active_ws = wm.get_active_workspace()
+
+        if active_ws:
+            scanner = WorkspaceScanner(Path(active_ws.path))
+            runs = scanner.discover_runs()
+
+            for run in runs:
+                if run.get("dataset") != dataset_name:
+                    continue
+
+                run_dataset_info = run.get("dataset_info", {})
+                run_hash = run_dataset_info.get("hash")
+                run_version = run_dataset_info.get("version_at_run")
+
+                run_info = {
+                    "run_id": run.get("id"),
+                    "pipeline_id": run.get("pipeline_id"),
+                    "name": run.get("name"),
+                    "created_at": run.get("created_at"),
+                    "hash_at_run": run_hash,
+                    "version_at_run": run_version,
+                    "is_compatible": run_hash == current_hash if run_hash else True,
+                }
+
+                if run_hash and run_hash != current_hash:
+                    incompatible_runs.append(run_info)
+                    warnings.append({
+                        "run_id": run.get("id"),
+                        "message": f"Run '{run.get('name')}' was made with dataset version {run_version or '?'} (hash: {run_hash[:8]}...), current version is {current_version}",
+                    })
+                else:
+                    compatible_runs.append(run_info)
+
+        return {
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "current_version": current_version,
+            "current_hash": current_hash,
+            "version_history": version_history,
+            "compatible_runs": compatible_runs,
+            "incompatible_runs": incompatible_runs,
+            "warnings": warnings,
+            "total_runs": len(compatible_runs) + len(incompatible_runs),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to check run compatibility: {str(e)}"
         )
 
 

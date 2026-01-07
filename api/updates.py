@@ -1,0 +1,707 @@
+"""
+Update management API for nirs4all webapp.
+
+This module provides API endpoints for:
+- Checking for updates (webapp via GitHub, nirs4all via PyPI)
+- Managing the managed virtual environment
+- Downloading and applying webapp updates
+- Installing/upgrading nirs4all in the managed venv
+"""
+
+import asyncio
+import hashlib
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import aiofiles
+import platformdirs
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
+
+from .venv_manager import venv_manager, VenvInfo
+
+# Try to import httpx for async HTTP requests, fall back to urllib
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    import urllib.request
+    import urllib.error
+
+
+router = APIRouter(prefix="/updates", tags=["updates"])
+
+
+# App identification
+APP_NAME = "nirs4all-webapp"
+APP_AUTHOR = "nirs4all"
+
+# Default configuration
+DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-webapp"
+DEFAULT_PYPI_PACKAGE = "nirs4all"
+DEFAULT_CHECK_INTERVAL_HOURS = 24
+
+
+# ============= Data Models =============
+
+
+class UpdateSettings(BaseModel):
+    """Update settings configuration."""
+    auto_check: bool = True
+    check_interval_hours: int = DEFAULT_CHECK_INTERVAL_HOURS
+    prerelease_channel: bool = False
+    github_repo: str = DEFAULT_GITHUB_REPO
+    pypi_package: str = DEFAULT_PYPI_PACKAGE
+    dismissed_versions: List[str] = []
+
+
+class WebappUpdateInfo(BaseModel):
+    """Information about a webapp update."""
+    current_version: str
+    latest_version: Optional[str] = None
+    update_available: bool = False
+    release_url: Optional[str] = None
+    release_notes: Optional[str] = None
+    published_at: Optional[str] = None
+    download_size_bytes: Optional[int] = None
+    download_url: Optional[str] = None
+    asset_name: Optional[str] = None
+    checksum_sha256: Optional[str] = None
+
+
+class Nirs4allUpdateInfo(BaseModel):
+    """Information about a nirs4all library update."""
+    current_version: Optional[str] = None
+    latest_version: Optional[str] = None
+    update_available: bool = False
+    pypi_url: Optional[str] = None
+    release_notes: Optional[str] = None
+    requires_restart: bool = False
+
+
+class UpdateStatus(BaseModel):
+    """Combined update status for webapp and nirs4all."""
+    webapp: WebappUpdateInfo
+    nirs4all: Nirs4allUpdateInfo
+    venv: Dict[str, Any]
+    last_check: Optional[str] = None
+    check_interval_hours: int = DEFAULT_CHECK_INTERVAL_HOURS
+
+
+class InstallRequest(BaseModel):
+    """Request to install/upgrade a package."""
+    version: Optional[str] = None
+    extras: Optional[List[str]] = None
+
+
+class VenvCreateRequest(BaseModel):
+    """Request to create managed venv."""
+    force: bool = False
+    install_nirs4all: bool = True
+    extras: Optional[List[str]] = None
+
+
+# ============= Update Manager =============
+
+
+class UpdateManager:
+    """
+    Manages update checking and installation.
+
+    Handles:
+    - Querying GitHub API for webapp releases
+    - Querying PyPI API for nirs4all versions
+    - Caching results to reduce API calls
+    - Managing update settings
+    """
+
+    SETTINGS_FILE = "update_settings.yaml"
+    CACHE_FILE = "update_cache.json"
+    VERSION_FILE = "version.json"
+
+    def __init__(self):
+        """Initialize the update manager."""
+        self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        self._settings_path = self._app_data_dir / self.SETTINGS_FILE
+        self._cache_path = self._app_data_dir / self.CACHE_FILE
+        self._settings: Optional[UpdateSettings] = None
+        self._cache: Dict[str, Any] = {}
+        self._load_settings()
+        self._load_cache()
+
+    def _load_settings(self) -> None:
+        """Load settings from file."""
+        if self._settings_path.exists():
+            try:
+                import yaml
+                with open(self._settings_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                self._settings = UpdateSettings(**data)
+            except Exception as e:
+                print(f"Warning: Could not load update settings: {e}")
+                self._settings = UpdateSettings()
+        else:
+            self._settings = UpdateSettings()
+
+    def _save_settings(self) -> None:
+        """Save settings to file."""
+        self._app_data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            import yaml
+            with open(self._settings_path, "w", encoding="utf-8") as f:
+                yaml.dump(self._settings.model_dump(), f)
+        except Exception as e:
+            print(f"Warning: Could not save update settings: {e}")
+
+    def _load_cache(self) -> None:
+        """Load cache from file."""
+        if self._cache_path.exists():
+            try:
+                with open(self._cache_path, "r", encoding="utf-8") as f:
+                    self._cache = json.load(f)
+            except Exception:
+                self._cache = {}
+        else:
+            self._cache = {}
+
+    def _save_cache(self) -> None:
+        """Save cache to file."""
+        self._app_data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(self._cache_path, "w", encoding="utf-8") as f:
+                json.dump(self._cache, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save update cache: {e}")
+
+    @property
+    def settings(self) -> UpdateSettings:
+        """Get current settings."""
+        if self._settings is None:
+            self._load_settings()
+        return self._settings
+
+    def update_settings(self, new_settings: UpdateSettings) -> None:
+        """Update settings."""
+        self._settings = new_settings
+        self._save_settings()
+
+    def get_webapp_version(self) -> str:
+        """Get the current webapp version."""
+        # Try to find version.json in app directory
+        version_paths = [
+            Path(__file__).parent.parent / self.VERSION_FILE,
+            Path(getattr(sys, "_MEIPASS", ".")) / self.VERSION_FILE,
+            Path(".") / self.VERSION_FILE,
+        ]
+
+        for path in version_paths:
+            if path.exists():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        return data.get("version", "unknown")
+                except Exception:
+                    continue
+
+        # Fallback to package.json if available
+        package_json = Path(__file__).parent.parent / "package.json"
+        if package_json.exists():
+            try:
+                with open(package_json, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("version", "unknown")
+            except Exception:
+                pass
+
+        return "unknown"
+
+    def get_nirs4all_version(self) -> Optional[str]:
+        """Get the installed nirs4all version from managed venv."""
+        return venv_manager.get_nirs4all_version()
+
+    async def _fetch_url(self, url: str, headers: Optional[Dict[str, str]] = None) -> Tuple[int, str]:
+        """Fetch a URL and return (status_code, content)."""
+        if HTTPX_AVAILABLE:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers, timeout=30.0)
+                return response.status_code, response.text
+        else:
+            # Fallback to synchronous urllib
+            req = urllib.request.Request(url, headers=headers or {})
+            try:
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    return response.status, response.read().decode("utf-8")
+            except urllib.error.HTTPError as e:
+                return e.code, ""
+
+    async def check_github_release(self, force: bool = False) -> WebappUpdateInfo:
+        """
+        Check GitHub for the latest webapp release.
+
+        Args:
+            force: If True, bypass cache
+
+        Returns:
+            WebappUpdateInfo with latest release details
+        """
+        current_version = self.get_webapp_version()
+        info = WebappUpdateInfo(current_version=current_version)
+
+        # Check cache
+        cache_key = "github_release"
+        if not force and cache_key in self._cache:
+            cached = self._cache[cache_key]
+            cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
+            if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
+                # Use cached data
+                info.latest_version = cached.get("latest_version")
+                info.release_url = cached.get("release_url")
+                info.release_notes = cached.get("release_notes")
+                info.published_at = cached.get("published_at")
+                info.download_url = cached.get("download_url")
+                info.asset_name = cached.get("asset_name")
+                info.download_size_bytes = cached.get("download_size_bytes")
+                info.update_available = self._compare_versions(
+                    current_version, info.latest_version
+                )
+                return info
+
+        # Fetch from GitHub API
+        repo = self.settings.github_repo
+        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+
+        headers = {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": f"{APP_NAME}/{current_version}",
+        }
+
+        try:
+            status, content = await self._fetch_url(api_url, headers)
+
+            if status == 404:
+                # No releases yet
+                return info
+
+            if status != 200:
+                print(f"GitHub API returned status {status}")
+                return info
+
+            data = json.loads(content)
+
+            # Parse release info
+            info.latest_version = data.get("tag_name", "").lstrip("v")
+            info.release_url = data.get("html_url")
+            info.release_notes = data.get("body", "")
+            info.published_at = data.get("published_at")
+
+            # Find appropriate asset for this platform
+            assets = data.get("assets", [])
+            platform_asset = self._find_platform_asset(assets)
+            if platform_asset:
+                info.download_url = platform_asset.get("browser_download_url")
+                info.asset_name = platform_asset.get("name")
+                info.download_size_bytes = platform_asset.get("size")
+
+            # Check if update available
+            info.update_available = self._compare_versions(
+                current_version, info.latest_version
+            )
+
+            # Cache results
+            self._cache[cache_key] = {
+                "cached_at": datetime.now().isoformat(),
+                "latest_version": info.latest_version,
+                "release_url": info.release_url,
+                "release_notes": info.release_notes,
+                "published_at": info.published_at,
+                "download_url": info.download_url,
+                "asset_name": info.asset_name,
+                "download_size_bytes": info.download_size_bytes,
+            }
+            self._save_cache()
+
+        except Exception as e:
+            print(f"Error checking GitHub releases: {e}")
+
+        return info
+
+    def _find_platform_asset(self, assets: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Find the release asset matching the current platform."""
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        # Platform keywords to match in asset names
+        platform_keywords = {
+            "windows": ["windows", "win64", "win32", ".exe", ".msi"],
+            "darwin": ["macos", "darwin", "osx", ".dmg", ".app"],
+            "linux": ["linux", ".appimage", ".deb", ".tar.gz"],
+        }
+
+        keywords = platform_keywords.get(system, [])
+
+        # Also consider architecture
+        arch_keywords = []
+        if machine in ("x86_64", "amd64"):
+            arch_keywords = ["x64", "x86_64", "amd64"]
+        elif machine in ("aarch64", "arm64"):
+            arch_keywords = ["arm64", "aarch64"]
+
+        for asset in assets:
+            name = asset.get("name", "").lower()
+            # Check if any platform keyword matches
+            if any(kw in name for kw in keywords):
+                # If architecture keywords exist, prefer matching arch
+                if arch_keywords:
+                    if any(ak in name for ak in arch_keywords):
+                        return asset
+                else:
+                    return asset
+
+        # Fallback: return first matching platform keyword without arch check
+        for asset in assets:
+            name = asset.get("name", "").lower()
+            if any(kw in name for kw in keywords):
+                return asset
+
+        return None
+
+    async def check_pypi_release(self, force: bool = False) -> Nirs4allUpdateInfo:
+        """
+        Check PyPI for the latest nirs4all release.
+
+        Args:
+            force: If True, bypass cache
+
+        Returns:
+            Nirs4allUpdateInfo with latest release details
+        """
+        current_version = self.get_nirs4all_version()
+        info = Nirs4allUpdateInfo(current_version=current_version)
+
+        # Check cache
+        cache_key = "pypi_release"
+        if not force and cache_key in self._cache:
+            cached = self._cache[cache_key]
+            cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
+            if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
+                info.latest_version = cached.get("latest_version")
+                info.pypi_url = cached.get("pypi_url")
+                info.release_notes = cached.get("release_notes")
+                if current_version and info.latest_version:
+                    info.update_available = self._compare_versions(
+                        current_version, info.latest_version
+                    )
+                return info
+
+        # Fetch from PyPI API
+        package = self.settings.pypi_package
+        api_url = f"https://pypi.org/pypi/{package}/json"
+
+        try:
+            status, content = await self._fetch_url(api_url)
+
+            if status == 404:
+                # Package not found
+                return info
+
+            if status != 200:
+                print(f"PyPI API returned status {status}")
+                return info
+
+            data = json.loads(content)
+            pkg_info = data.get("info", {})
+
+            info.latest_version = pkg_info.get("version")
+            info.pypi_url = pkg_info.get("project_url") or f"https://pypi.org/project/{package}/"
+            info.release_notes = pkg_info.get("description", "")[:2000]  # Truncate
+
+            if current_version and info.latest_version:
+                info.update_available = self._compare_versions(
+                    current_version, info.latest_version
+                )
+
+            # Cache results
+            self._cache[cache_key] = {
+                "cached_at": datetime.now().isoformat(),
+                "latest_version": info.latest_version,
+                "pypi_url": info.pypi_url,
+                "release_notes": info.release_notes,
+            }
+            self._save_cache()
+
+        except Exception as e:
+            print(f"Error checking PyPI releases: {e}")
+
+        return info
+
+    def _compare_versions(self, current: str, latest: Optional[str]) -> bool:
+        """
+        Compare version strings to determine if an update is available.
+
+        Returns True if latest > current.
+        """
+        if not latest or not current or current == "unknown":
+            return False
+
+        try:
+            from packaging import version
+            return version.parse(latest) > version.parse(current)
+        except ImportError:
+            # Fallback: simple string comparison
+            return latest != current and latest > current
+
+    async def get_update_status(self, force: bool = False) -> UpdateStatus:
+        """
+        Get combined update status for webapp and nirs4all.
+
+        Args:
+            force: If True, bypass cache and fetch fresh data
+
+        Returns:
+            UpdateStatus with all update information
+        """
+        # Check both in parallel
+        webapp_task = asyncio.create_task(self.check_github_release(force))
+        nirs4all_task = asyncio.create_task(self.check_pypi_release(force))
+
+        webapp_info = await webapp_task
+        nirs4all_info = await nirs4all_task
+
+        # Get venv info
+        venv_info = venv_manager.get_venv_info()
+
+        return UpdateStatus(
+            webapp=webapp_info,
+            nirs4all=nirs4all_info,
+            venv=venv_info.to_dict(),
+            last_check=datetime.now().isoformat(),
+            check_interval_hours=self.settings.check_interval_hours,
+        )
+
+
+# Global update manager instance
+update_manager = UpdateManager()
+
+
+# ============= API Endpoints =============
+
+
+@router.get("/status")
+async def get_update_status() -> UpdateStatus:
+    """
+    Get current update status for webapp and nirs4all.
+
+    Returns cached results if available and not expired.
+    """
+    return await update_manager.get_update_status()
+
+
+@router.post("/check")
+async def check_for_updates() -> UpdateStatus:
+    """
+    Force a fresh check for updates.
+
+    Bypasses cache and queries GitHub/PyPI directly.
+    """
+    return await update_manager.get_update_status(force=True)
+
+
+@router.get("/settings")
+async def get_update_settings() -> UpdateSettings:
+    """Get current update settings."""
+    return update_manager.settings
+
+
+@router.put("/settings")
+async def update_settings(settings: UpdateSettings) -> UpdateSettings:
+    """Update settings."""
+    update_manager.update_settings(settings)
+    return update_manager.settings
+
+
+@router.get("/venv/status")
+async def get_venv_status() -> Dict[str, Any]:
+    """
+    Get managed venv status and installed packages.
+    """
+    venv_info = venv_manager.get_venv_info()
+    packages = venv_manager.get_installed_packages()
+
+    return {
+        "venv": venv_info.to_dict(),
+        "packages": [p.to_dict() for p in packages],
+        "nirs4all_version": venv_manager.get_nirs4all_version(),
+    }
+
+
+@router.post("/venv/create")
+async def create_venv(
+    request: VenvCreateRequest,
+    background_tasks: BackgroundTasks,
+) -> Dict[str, Any]:
+    """
+    Create the managed virtual environment.
+
+    This is an async operation. Poll /venv/status to check progress.
+    """
+    # Check if already exists and valid
+    if not request.force and venv_manager.get_venv_info().is_valid:
+        return {
+            "success": True,
+            "message": "Virtual environment already exists",
+            "already_existed": True,
+        }
+
+    # Create venv synchronously for now (could be made async with job system)
+    success, message = venv_manager.create_venv(force=request.force)
+
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
+
+    result = {
+        "success": True,
+        "message": message,
+        "already_existed": False,
+    }
+
+    # Install nirs4all if requested
+    if request.install_nirs4all and success:
+        install_success, install_msg, _ = venv_manager.install_package(
+            "nirs4all",
+            extras=request.extras,
+        )
+        result["nirs4all_installed"] = install_success
+        result["install_message"] = install_msg
+
+    return result
+
+
+@router.post("/nirs4all/install")
+async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
+    """
+    Install or upgrade nirs4all in the managed venv.
+
+    Args:
+        request: Installation parameters (version, extras)
+
+    Returns:
+        Installation result with status and output
+    """
+    # Ensure venv exists
+    if not venv_manager.get_venv_info().is_valid:
+        # Try to create it
+        success, message = venv_manager.create_venv()
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create virtual environment: {message}"
+            )
+
+    # Install nirs4all
+    success, message, output = venv_manager.install_package(
+        "nirs4all",
+        version=request.version,
+        extras=request.extras,
+        upgrade=True,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
+
+    return {
+        "success": True,
+        "message": message,
+        "version": venv_manager.get_nirs4all_version(),
+        "output": output[-50:],  # Last 50 lines
+    }
+
+
+@router.get("/webapp/download-info")
+async def get_webapp_download_info() -> Dict[str, Any]:
+    """
+    Get information needed to download a webapp update.
+    """
+    webapp_info = await update_manager.check_github_release()
+
+    if not webapp_info.update_available:
+        return {
+            "update_available": False,
+            "current_version": webapp_info.current_version,
+            "latest_version": webapp_info.latest_version,
+        }
+
+    return {
+        "update_available": True,
+        "current_version": webapp_info.current_version,
+        "latest_version": webapp_info.latest_version,
+        "download_url": webapp_info.download_url,
+        "asset_name": webapp_info.asset_name,
+        "download_size_bytes": webapp_info.download_size_bytes,
+        "release_notes": webapp_info.release_notes,
+        "release_url": webapp_info.release_url,
+    }
+
+
+@router.post("/webapp/download")
+async def download_webapp_update(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """
+    Download the latest webapp update.
+
+    This initiates a background download. Poll /webapp/download-status for progress.
+    """
+    webapp_info = await update_manager.check_github_release()
+
+    if not webapp_info.update_available:
+        raise HTTPException(status_code=400, detail="No update available")
+
+    if not webapp_info.download_url:
+        raise HTTPException(status_code=400, detail="No download URL available for this platform")
+
+    # For now, return info for manual download
+    # Full download implementation would use job manager for background task
+    return {
+        "status": "ready",
+        "download_url": webapp_info.download_url,
+        "asset_name": webapp_info.asset_name,
+        "version": webapp_info.latest_version,
+        "message": "Download URL ready. Full auto-download coming in future update.",
+    }
+
+
+@router.post("/webapp/restart")
+async def restart_webapp() -> Dict[str, Any]:
+    """
+    Request webapp restart.
+
+    Note: This endpoint signals the intention to restart.
+    Actual restart must be handled by the launcher/frontend.
+    """
+    return {
+        "success": True,
+        "message": "Restart requested. Please close and reopen the application.",
+        "restart_required": True,
+    }
+
+
+@router.get("/version")
+async def get_versions() -> Dict[str, Any]:
+    """
+    Get current version information.
+    """
+    return {
+        "webapp_version": update_manager.get_webapp_version(),
+        "nirs4all_version": update_manager.get_nirs4all_version(),
+        "python_version": sys.version,
+        "platform": platform.system(),
+        "machine": platform.machine(),
+    }

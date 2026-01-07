@@ -21,7 +21,7 @@ from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager, WorkspaceConfig
+from .workspace_manager import workspace_manager, WorkspaceConfig, LinkedWorkspace, WorkspaceScanner
 
 
 # ============= Request/Response Models =============
@@ -1252,4 +1252,312 @@ async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to update workspace: {str(e)}"
+        )
+
+
+# ============================================================================
+# Phase 7: Linked Workspaces and App Settings API
+# ============================================================================
+
+# ============= Request/Response Models for Linked Workspaces =============
+
+
+class LinkWorkspaceRequest(BaseModel):
+    """Request model for linking a nirs4all workspace."""
+    path: str = Field(..., description="Path to the nirs4all workspace")
+    name: Optional[str] = Field(None, description="Display name (defaults to directory name)")
+
+
+class LinkedWorkspaceResponse(BaseModel):
+    """Response model for a linked workspace."""
+    id: str
+    path: str
+    name: str
+    is_active: bool
+    linked_at: str
+    last_scanned: Optional[str]
+    discovered: Dict[str, Any]
+
+
+class LinkedWorkspacesListResponse(BaseModel):
+    """Response model for listing linked workspaces."""
+    workspaces: List[LinkedWorkspaceResponse]
+    active_workspace_id: Optional[str]
+
+
+class WorkspaceScanResponse(BaseModel):
+    """Response model for workspace scan results."""
+    scanned_at: str
+    summary: Dict[str, int]
+    runs: List[Dict[str, Any]]
+    predictions: List[Dict[str, Any]]
+    exports: List[Dict[str, Any]]
+    templates: List[Dict[str, Any]]
+    datasets: List[Dict[str, Any]]
+
+
+class AppSettingsResponse(BaseModel):
+    """Response model for app settings."""
+    version: str
+    linked_workspaces_count: int
+    favorite_pipelines: List[str]
+    ui_preferences: Dict[str, Any]
+
+
+class UpdateAppSettingsRequest(BaseModel):
+    """Request model for updating app settings."""
+    ui_preferences: Optional[Dict[str, Any]] = None
+
+
+class FavoritePipelineRequest(BaseModel):
+    """Request model for adding/removing favorite pipelines."""
+    pipeline_id: str
+
+
+# ============= Linked Workspaces Endpoints =============
+
+
+@router.get("/workspaces", response_model=LinkedWorkspacesListResponse)
+async def list_linked_workspaces():
+    """List all linked nirs4all workspaces."""
+    try:
+        workspaces = workspace_manager.get_linked_workspaces()
+        active = workspace_manager.get_active_workspace()
+
+        return LinkedWorkspacesListResponse(
+            workspaces=[
+                LinkedWorkspaceResponse(
+                    id=ws.id,
+                    path=ws.path,
+                    name=ws.name,
+                    is_active=ws.is_active,
+                    linked_at=ws.linked_at,
+                    last_scanned=ws.last_scanned,
+                    discovered=ws.discovered,
+                )
+                for ws in workspaces
+            ],
+            active_workspace_id=active.id if active else None,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list workspaces: {str(e)}"
+        )
+
+
+@router.post("/workspaces/link", response_model=LinkedWorkspaceResponse)
+async def link_workspace(request: LinkWorkspaceRequest):
+    """Link a nirs4all workspace for discovery."""
+    try:
+        linked_ws = workspace_manager.link_workspace(request.path, request.name)
+        return LinkedWorkspaceResponse(
+            id=linked_ws.id,
+            path=linked_ws.path,
+            name=linked_ws.name,
+            is_active=linked_ws.is_active,
+            linked_at=linked_ws.linked_at,
+            last_scanned=linked_ws.last_scanned,
+            discovered=linked_ws.discovered,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to link workspace: {str(e)}"
+        )
+
+
+@router.delete("/workspaces/{workspace_id}")
+async def unlink_workspace(workspace_id: str):
+    """Unlink a nirs4all workspace (doesn't delete files)."""
+    try:
+        success = workspace_manager.unlink_workspace(workspace_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return {"success": True, "message": "Workspace unlinked"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to unlink workspace: {str(e)}"
+        )
+
+
+@router.post("/workspaces/{workspace_id}/activate", response_model=LinkedWorkspaceResponse)
+async def activate_workspace(workspace_id: str):
+    """Set a linked workspace as active."""
+    try:
+        activated = workspace_manager.activate_workspace(workspace_id)
+        if not activated:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        return LinkedWorkspaceResponse(
+            id=activated.id,
+            path=activated.path,
+            name=activated.name,
+            is_active=activated.is_active,
+            linked_at=activated.linked_at,
+            last_scanned=activated.last_scanned,
+            discovered=activated.discovered,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to activate workspace: {str(e)}"
+        )
+
+
+@router.post("/workspaces/{workspace_id}/scan", response_model=WorkspaceScanResponse)
+async def scan_workspace(workspace_id: str):
+    """Trigger a scan of a linked workspace to discover runs, exports, etc."""
+    try:
+        scan_result = workspace_manager.scan_workspace(workspace_id)
+        return WorkspaceScanResponse(
+            scanned_at=scan_result["scanned_at"],
+            summary=scan_result["summary"],
+            runs=scan_result["runs"],
+            predictions=scan_result["predictions"],
+            exports=scan_result["exports"],
+            templates=scan_result["templates"],
+            datasets=scan_result["datasets"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to scan workspace: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/runs")
+async def get_workspace_runs(workspace_id: str):
+    """Get discovered runs from a linked workspace."""
+    try:
+        runs = workspace_manager.get_workspace_runs(workspace_id)
+        return {"runs": runs, "count": len(runs)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get runs: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/predictions")
+async def get_workspace_predictions(workspace_id: str):
+    """Get discovered predictions from a linked workspace."""
+    try:
+        predictions = workspace_manager.get_workspace_predictions(workspace_id)
+        return {"predictions": predictions, "count": len(predictions)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get predictions: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/exports")
+async def get_workspace_exports(workspace_id: str):
+    """Get discovered exports from a linked workspace."""
+    try:
+        exports = workspace_manager.get_workspace_exports(workspace_id)
+        return {"exports": exports, "count": len(exports)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get exports: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/templates")
+async def get_workspace_templates(workspace_id: str):
+    """Get discovered library templates from a linked workspace."""
+    try:
+        templates = workspace_manager.get_workspace_templates(workspace_id)
+        return {"templates": templates, "count": len(templates)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get templates: {str(e)}"
+        )
+
+
+# ============= App Settings Endpoints =============
+
+
+@router.get("/app/settings", response_model=AppSettingsResponse)
+async def get_app_settings():
+    """Get app settings (webapp-specific, separate from workspace settings)."""
+    try:
+        settings = workspace_manager.get_app_settings()
+        linked_workspaces = workspace_manager.get_linked_workspaces()
+        return AppSettingsResponse(
+            version=settings.get("version", "1.0"),
+            linked_workspaces_count=len(linked_workspaces),
+            favorite_pipelines=settings.get("favorite_pipelines", []),
+            ui_preferences=settings.get("ui_preferences", {}),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get app settings: {str(e)}"
+        )
+
+
+@router.put("/app/settings")
+async def update_app_settings(request: UpdateAppSettingsRequest):
+    """Update app settings."""
+    try:
+        updates = {}
+        if request.ui_preferences is not None:
+            updates["ui_preferences"] = request.ui_preferences
+
+        success = workspace_manager.save_app_settings(updates)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save app settings")
+
+        return {"success": True, "message": "App settings updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update app settings: {str(e)}"
+        )
+
+
+@router.get("/app/favorites")
+async def get_favorite_pipelines():
+    """Get list of favorite pipeline IDs."""
+    try:
+        favorites = workspace_manager.get_favorite_pipelines()
+        return {"favorites": favorites, "count": len(favorites)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get favorites: {str(e)}"
+        )
+
+
+@router.post("/app/favorites")
+async def add_favorite_pipeline(request: FavoritePipelineRequest):
+    """Add a pipeline to favorites."""
+    try:
+        added = workspace_manager.add_favorite_pipeline(request.pipeline_id)
+        return {
+            "success": True,
+            "added": added,
+            "message": "Added to favorites" if added else "Already in favorites",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to add favorite: {str(e)}"
+        )
+
+
+@router.delete("/app/favorites/{pipeline_id}")
+async def remove_favorite_pipeline(pipeline_id: str):
+    """Remove a pipeline from favorites."""
+    try:
+        removed = workspace_manager.remove_favorite_pipeline(pipeline_id)
+        return {
+            "success": True,
+            "removed": removed,
+            "message": "Removed from favorites" if removed else "Not in favorites",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to remove favorite: {str(e)}"
         )

@@ -8,13 +8,20 @@ Phase 6 Implementation:
 - Recent workspaces tracking
 - Workspace export utilities
 - Enhanced configuration management
+
+Phase 7 Implementation:
+- Clear separation between App Settings and nirs4all Workspaces
+- WorkspaceScanner for auto-discovery of runs, exports, predictions
+- LinkedWorkspace management for multiple nirs4all workspaces
+- Dataset versioning with run-compatibility tracking
 """
 
 import json
 import os
 import sys
+import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 import platformdirs
@@ -34,6 +41,506 @@ except ImportError as e:
     parse_config = None
     handle_data = None
     NIRS4ALL_AVAILABLE = False
+
+
+# ============================================================================
+# Phase 7: Linked Workspace and Scanner classes
+# ============================================================================
+
+@dataclass
+class LinkedWorkspace:
+    """A nirs4all workspace linked to the webapp for discovery."""
+    id: str
+    path: str
+    name: str
+    is_active: bool = False
+    linked_at: str = ""
+    last_scanned: Optional[str] = None
+    discovered: Dict[str, Any] = field(default_factory=lambda: {
+        "runs_count": 0,
+        "datasets_count": 0,
+        "exports_count": 0,
+        "templates_count": 0,
+    })
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "LinkedWorkspace":
+        return cls(
+            id=data.get("id", ""),
+            path=data.get("path", ""),
+            name=data.get("name", ""),
+            is_active=data.get("is_active", False),
+            linked_at=data.get("linked_at", ""),
+            last_scanned=data.get("last_scanned"),
+            discovered=data.get("discovered", {
+                "runs_count": 0,
+                "datasets_count": 0,
+                "exports_count": 0,
+                "templates_count": 0,
+            }),
+        )
+
+
+class WorkspaceScanner:
+    """Scans and discovers content from nirs4all workspaces.
+
+    This class handles auto-discovery of:
+    - Runs (from workspace/runs/<dataset>/NNNN_xxx/manifest.yaml)
+    - Predictions (from <dataset>.meta.parquet files)
+    - Exports (from workspace/exports/<dataset>/)
+    - Library templates (from workspace/library/)
+    """
+
+    def __init__(self, workspace_path: Path):
+        """Initialize scanner for a nirs4all workspace.
+
+        Args:
+            workspace_path: Root path of the nirs4all workspace (contains workspace/ subdirectory)
+        """
+        self.workspace_path = Path(workspace_path)
+        self.workspace_dir = self.workspace_path / "workspace"
+
+    def is_valid_workspace(self) -> Tuple[bool, str]:
+        """Check if the path is a valid nirs4all workspace.
+
+        Returns:
+            Tuple of (is_valid, reason)
+        """
+        if not self.workspace_path.exists():
+            return False, "Path does not exist"
+
+        if not self.workspace_path.is_dir():
+            return False, "Path is not a directory"
+
+        # Check for workspace subdirectory or direct workspace structure
+        has_workspace_dir = self.workspace_dir.exists()
+        has_runs = (self.workspace_dir / "runs").exists() if has_workspace_dir else False
+        has_exports = (self.workspace_dir / "exports").exists() if has_workspace_dir else False
+        has_predictions = any(self.workspace_path.glob("*.meta.parquet"))
+
+        if not (has_runs or has_exports or has_predictions):
+            return False, "No runs/, exports/, or prediction files found"
+
+        return True, "Valid nirs4all workspace"
+
+    def scan(self) -> Dict[str, Any]:
+        """Perform a full scan of the workspace.
+
+        Returns:
+            Dict with discovered runs, predictions, exports, templates, and datasets
+        """
+        result = {
+            "scanned_at": datetime.now().isoformat(),
+            "runs": [],
+            "predictions": [],
+            "exports": [],
+            "templates": [],
+            "datasets": [],
+            "summary": {
+                "runs_count": 0,
+                "predictions_count": 0,
+                "exports_count": 0,
+                "templates_count": 0,
+                "datasets_count": 0,
+            }
+        }
+
+        # Scan runs
+        result["runs"] = self.discover_runs()
+        result["summary"]["runs_count"] = len(result["runs"])
+
+        # Scan predictions
+        result["predictions"] = self.discover_predictions()
+        result["summary"]["predictions_count"] = len(result["predictions"])
+
+        # Scan exports
+        result["exports"] = self.discover_exports()
+        result["summary"]["exports_count"] = len(result["exports"])
+
+        # Scan library templates
+        result["templates"] = self.discover_templates()
+        result["summary"]["templates_count"] = len(result["templates"])
+
+        # Extract unique datasets from runs
+        result["datasets"] = self.extract_datasets(result["runs"])
+        result["summary"]["datasets_count"] = len(result["datasets"])
+
+        return result
+
+    def discover_runs(self) -> List[Dict[str, Any]]:
+        """Discover all runs by parsing manifest.yaml files.
+
+        Returns:
+            List of run information dictionaries
+        """
+        runs = []
+        runs_dir = self.workspace_dir / "runs"
+
+        if not runs_dir.exists():
+            return runs
+
+        # Iterate through dataset directories
+        for dataset_dir in runs_dir.iterdir():
+            if not dataset_dir.is_dir() or dataset_dir.name.startswith("_"):
+                continue
+
+            dataset_name = dataset_dir.name
+
+            # Find all pipeline directories (NNNN_xxx format)
+            for pipeline_dir in dataset_dir.iterdir():
+                if not pipeline_dir.is_dir() or pipeline_dir.name.startswith("_"):
+                    continue
+
+                manifest_file = pipeline_dir / "manifest.yaml"
+                if not manifest_file.exists():
+                    continue
+
+                try:
+                    run_info = self._parse_manifest(manifest_file, dataset_name, pipeline_dir.name)
+                    if run_info:
+                        runs.append(run_info)
+                except Exception as e:
+                    print(f"Failed to parse manifest {manifest_file}: {e}")
+
+        return runs
+
+    def _parse_manifest(self, manifest_file: Path, dataset_name: str, pipeline_id: str) -> Optional[Dict[str, Any]]:
+        """Parse a manifest.yaml file and extract run information.
+
+        Args:
+            manifest_file: Path to manifest.yaml
+            dataset_name: Name of the dataset
+            pipeline_id: Pipeline directory name (NNNN_xxx)
+
+        Returns:
+            Dict with run information or None if parsing fails
+        """
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                manifest = yaml.safe_load(f)
+        except Exception:
+            return None
+
+        if not manifest:
+            return None
+
+        # Extract dataset info for version tracking
+        dataset_info = manifest.get("dataset_info", {})
+
+        # Count artifacts
+        artifacts = manifest.get("artifacts", {})
+        if isinstance(artifacts, dict):
+            # V2 format
+            artifact_count = len(artifacts.get("items", []))
+        else:
+            # V1 format (list)
+            artifact_count = len(artifacts) if isinstance(artifacts, list) else 0
+
+        return {
+            "id": manifest.get("uid", pipeline_id),
+            "pipeline_id": pipeline_id,
+            "name": manifest.get("name", pipeline_id),
+            "dataset": dataset_name,
+            "created_at": manifest.get("created_at", ""),
+            "schema_version": manifest.get("schema_version", "1.0"),
+            "artifact_count": artifact_count,
+            "predictions_count": len(manifest.get("predictions", [])),
+            "dataset_info": dataset_info,
+            "manifest_path": str(manifest_file),
+        }
+
+    def discover_predictions(self) -> List[Dict[str, Any]]:
+        """Discover prediction databases (.meta.parquet files).
+
+        Returns:
+            List of prediction database information
+        """
+        predictions = []
+
+        # Look for .meta.parquet files in workspace root
+        for parquet_file in self.workspace_path.glob("*.meta.parquet"):
+            dataset_name = parquet_file.stem.replace(".meta", "")
+            predictions.append({
+                "dataset": dataset_name,
+                "path": str(parquet_file),
+                "format": "parquet",
+                "size_bytes": parquet_file.stat().st_size,
+            })
+
+        # Also check for legacy .json prediction files
+        for json_file in self.workspace_path.glob("*.json"):
+            # Skip workspace.json and other config files
+            if json_file.stem in ["workspace", "config", "settings"]:
+                continue
+            # Check if it looks like a predictions file
+            if not json_file.stem.endswith("_predictions"):
+                continue
+            dataset_name = json_file.stem.replace("_predictions", "")
+            predictions.append({
+                "dataset": dataset_name,
+                "path": str(json_file),
+                "format": "json",
+                "size_bytes": json_file.stat().st_size,
+            })
+
+        return predictions
+
+    def discover_exports(self) -> List[Dict[str, Any]]:
+        """Discover all exports (n4a bundles, pipeline.json, summary.json, predictions.csv).
+
+        Returns:
+            List of export information dictionaries
+        """
+        exports = []
+        exports_dir = self.workspace_dir / "exports"
+
+        if not exports_dir.exists():
+            return exports
+
+        # Iterate through dataset export directories
+        for dataset_dir in exports_dir.iterdir():
+            if not dataset_dir.is_dir():
+                # Check for .n4a bundles at exports root
+                if dataset_dir.suffix == ".n4a":
+                    exports.append(self._parse_n4a_bundle(dataset_dir))
+                continue
+
+            dataset_name = dataset_dir.name
+
+            # Find all export files in this dataset directory
+            for export_file in dataset_dir.iterdir():
+                if not export_file.is_file():
+                    continue
+
+                export_info = None
+                if export_file.suffix == ".n4a":
+                    export_info = self._parse_n4a_bundle(export_file, dataset_name)
+                elif export_file.name.endswith("_pipeline.json"):
+                    export_info = self._parse_pipeline_json(export_file, dataset_name)
+                elif export_file.name.endswith("_summary.json"):
+                    export_info = self._parse_summary_json(export_file, dataset_name)
+                elif export_file.name.endswith("_predictions.csv"):
+                    export_info = {
+                        "type": "predictions_csv",
+                        "dataset": dataset_name,
+                        "model_name": export_file.stem.replace("_predictions", ""),
+                        "path": str(export_file),
+                        "size_bytes": export_file.stat().st_size,
+                    }
+
+                if export_info:
+                    exports.append(export_info)
+
+        return exports
+
+    def _parse_n4a_bundle(self, bundle_path: Path, dataset_name: str = "") -> Dict[str, Any]:
+        """Parse an .n4a bundle (ZIP file with manifest.json).
+
+        Args:
+            bundle_path: Path to the .n4a file
+            dataset_name: Optional dataset name
+
+        Returns:
+            Export information dict
+        """
+        import zipfile
+
+        export_info = {
+            "type": "n4a_bundle",
+            "name": bundle_path.stem,
+            "dataset": dataset_name,
+            "path": str(bundle_path),
+            "size_bytes": bundle_path.stat().st_size,
+        }
+
+        try:
+            with zipfile.ZipFile(bundle_path, "r") as zf:
+                if "manifest.json" in zf.namelist():
+                    manifest_data = json.loads(zf.read("manifest.json"))
+                    export_info["bundle_format_version"] = manifest_data.get("bundle_format_version")
+                    export_info["nirs4all_version"] = manifest_data.get("nirs4all_version")
+                    export_info["pipeline_uid"] = manifest_data.get("pipeline_uid")
+        except Exception as e:
+            print(f"Failed to read n4a bundle {bundle_path}: {e}")
+
+        return export_info
+
+    def _parse_pipeline_json(self, pipeline_file: Path, dataset_name: str) -> Dict[str, Any]:
+        """Parse a pipeline.json export file.
+
+        Args:
+            pipeline_file: Path to the *_pipeline.json file
+            dataset_name: Dataset name
+
+        Returns:
+            Export information dict
+        """
+        export_info = {
+            "type": "pipeline_json",
+            "model_name": pipeline_file.stem.replace("_pipeline", ""),
+            "dataset": dataset_name,
+            "path": str(pipeline_file),
+            "size_bytes": pipeline_file.stat().st_size,
+        }
+
+        try:
+            with open(pipeline_file, "r", encoding="utf-8") as f:
+                pipeline_data = json.load(f)
+                if isinstance(pipeline_data, list):
+                    export_info["steps_count"] = len(pipeline_data)
+        except Exception:
+            pass
+
+        return export_info
+
+    def _parse_summary_json(self, summary_file: Path, dataset_name: str) -> Dict[str, Any]:
+        """Parse a summary.json export file.
+
+        Args:
+            summary_file: Path to the *_summary.json file
+            dataset_name: Dataset name
+
+        Returns:
+            Export information dict
+        """
+        export_info = {
+            "type": "summary_json",
+            "model_name": summary_file.stem.replace("_summary", ""),
+            "dataset": dataset_name,
+            "path": str(summary_file),
+        }
+
+        try:
+            with open(summary_file, "r", encoding="utf-8") as f:
+                summary_data = json.load(f)
+                export_info["test_score"] = summary_data.get("test_score")
+                export_info["val_score"] = summary_data.get("val_score")
+                export_info["export_date"] = summary_data.get("export_date")
+                export_info["export_mode"] = summary_data.get("export_mode")
+        except Exception:
+            pass
+
+        return export_info
+
+    def discover_templates(self) -> List[Dict[str, Any]]:
+        """Discover library templates.
+
+        Returns:
+            List of template information dictionaries
+        """
+        templates = []
+        library_dir = self.workspace_dir / "library"
+
+        if not library_dir.exists():
+            return templates
+
+        # Check templates directory
+        templates_dir = library_dir / "templates"
+        if templates_dir.exists():
+            for template_file in templates_dir.glob("*.json"):
+                templates.append(self._parse_template(template_file, "template"))
+
+        # Check trained/pipeline directory
+        trained_pipeline_dir = library_dir / "trained" / "pipeline"
+        if trained_pipeline_dir.exists():
+            for pipeline_dir in trained_pipeline_dir.iterdir():
+                if pipeline_dir.is_dir():
+                    pipeline_json = pipeline_dir / "pipeline.json"
+                    if pipeline_json.exists():
+                        templates.append(self._parse_template(pipeline_json, "trained_pipeline"))
+
+        # Check trained/filtered directory
+        trained_filtered_dir = library_dir / "trained" / "filtered"
+        if trained_filtered_dir.exists():
+            for pipeline_dir in trained_filtered_dir.iterdir():
+                if pipeline_dir.is_dir():
+                    pipeline_json = pipeline_dir / "pipeline.json"
+                    if pipeline_json.exists():
+                        templates.append(self._parse_template(pipeline_json, "filtered"))
+
+        return templates
+
+    def _parse_template(self, template_file: Path, template_type: str) -> Dict[str, Any]:
+        """Parse a template file.
+
+        Args:
+            template_file: Path to the template JSON file
+            template_type: Type of template (template, trained_pipeline, filtered)
+
+        Returns:
+            Template information dict
+        """
+        template_info = {
+            "type": template_type,
+            "name": template_file.parent.name if template_type != "template" else template_file.stem,
+            "path": str(template_file),
+        }
+
+        try:
+            with open(template_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if template_type == "template":
+                    template_info["description"] = data.get("description", "")
+                    template_info["created_at"] = data.get("created_at", "")
+                else:
+                    # For pipeline configs
+                    if isinstance(data, list):
+                        template_info["steps_count"] = len(data)
+        except Exception:
+            pass
+
+        return template_info
+
+    def extract_datasets(self, runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Extract unique datasets from discovered runs.
+
+        Args:
+            runs: List of discovered run information
+
+        Returns:
+            List of unique dataset information with version tracking
+        """
+        datasets_map: Dict[str, Dict[str, Any]] = {}
+
+        for run in runs:
+            dataset_name = run.get("dataset", "")
+            if not dataset_name:
+                continue
+
+            dataset_info = run.get("dataset_info", {})
+            dataset_path = dataset_info.get("path", "")
+
+            if dataset_name not in datasets_map:
+                datasets_map[dataset_name] = {
+                    "name": dataset_name,
+                    "path": dataset_path,
+                    "runs_count": 0,
+                    "versions_seen": set(),
+                    "hashes_seen": set(),
+                }
+
+            datasets_map[dataset_name]["runs_count"] += 1
+
+            if dataset_info.get("version_at_run"):
+                datasets_map[dataset_name]["versions_seen"].add(dataset_info["version_at_run"])
+            if dataset_info.get("hash"):
+                datasets_map[dataset_name]["hashes_seen"].add(dataset_info["hash"])
+
+        # Convert sets to lists for JSON serialization
+        result = []
+        for dataset_name, info in datasets_map.items():
+            result.append({
+                "name": info["name"],
+                "path": info["path"],
+                "runs_count": info["runs_count"],
+                "versions_seen": list(info["versions_seen"]),
+                "hashes_seen": list(info["hashes_seen"]),
+            })
+
+        return result
 
 
 @dataclass
@@ -852,6 +1359,346 @@ class WorkspaceManager:
         settings = self.get_workspace_settings()
         settings["data_loading_defaults"] = defaults
         return self.save_workspace_settings(settings)
+
+    # ----------------------- Linked Workspaces Management (Phase 7) -----------------------
+
+    def _get_app_settings_path(self) -> Path:
+        """Get the path to the app settings file."""
+        return self.app_data_dir / "app_settings.json"
+
+    def _load_app_settings(self) -> Dict[str, Any]:
+        """Load app settings from persistent storage."""
+        settings_path = self._get_app_settings_path()
+        if settings_path.exists():
+            try:
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Failed to load app settings: {e}")
+        return self._default_app_settings()
+
+    def _save_app_settings(self, settings: Dict[str, Any]) -> None:
+        """Save app settings to persistent storage."""
+        settings_path = self._get_app_settings_path()
+        try:
+            settings["last_updated"] = datetime.now().isoformat()
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save app settings: {e}")
+
+    def _default_app_settings(self) -> Dict[str, Any]:
+        """Get default app settings."""
+        return {
+            "version": "2.0",
+            "linked_workspaces": [],
+            "favorite_pipelines": [],
+            "ui_preferences": {
+                "theme": "system",
+                "density": "comfortable",
+                "language": "en",
+            },
+        }
+
+    def get_app_settings(self) -> Dict[str, Any]:
+        """Get app settings (webapp-specific, not workspace-specific)."""
+        return self._load_app_settings()
+
+    def save_app_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save app settings."""
+        try:
+            current = self._load_app_settings()
+            merged = self._deep_merge(current, settings)
+            self._save_app_settings(merged)
+            return True
+        except Exception as e:
+            print(f"Failed to save app settings: {e}")
+            return False
+
+    def get_linked_workspaces(self) -> List[LinkedWorkspace]:
+        """Get all linked nirs4all workspaces."""
+        settings = self._load_app_settings()
+        workspaces_data = settings.get("linked_workspaces", [])
+        return [LinkedWorkspace.from_dict(ws) for ws in workspaces_data]
+
+    def get_active_workspace(self) -> Optional[LinkedWorkspace]:
+        """Get the currently active linked workspace."""
+        workspaces = self.get_linked_workspaces()
+        for ws in workspaces:
+            if ws.is_active:
+                return ws
+        return None
+
+    def link_workspace(self, path: str, name: Optional[str] = None) -> LinkedWorkspace:
+        """Link a nirs4all workspace for discovery.
+
+        Args:
+            path: Path to the nirs4all workspace
+            name: Optional display name (defaults to directory name)
+
+        Returns:
+            The created LinkedWorkspace
+
+        Raises:
+            ValueError: If path is invalid or already linked
+        """
+        workspace_path = Path(path).resolve()
+
+        # Validate workspace
+        scanner = WorkspaceScanner(workspace_path)
+        is_valid, reason = scanner.is_valid_workspace()
+        if not is_valid:
+            raise ValueError(f"Invalid nirs4all workspace: {reason}")
+
+        # Check if already linked
+        settings = self._load_app_settings()
+        workspaces = settings.get("linked_workspaces", [])
+        for ws in workspaces:
+            if ws.get("path") == str(workspace_path):
+                raise ValueError("Workspace already linked")
+
+        # Create linked workspace entry
+        now = datetime.now().isoformat()
+        linked_ws = LinkedWorkspace(
+            id=f"ws_{int(datetime.now().timestamp())}_{len(workspaces)}",
+            path=str(workspace_path),
+            name=name or workspace_path.name,
+            is_active=len(workspaces) == 0,  # First workspace is active by default
+            linked_at=now,
+        )
+
+        # Perform initial scan
+        scan_result = scanner.scan()
+        linked_ws.last_scanned = now
+        linked_ws.discovered = {
+            "runs_count": scan_result["summary"]["runs_count"],
+            "datasets_count": scan_result["summary"]["datasets_count"],
+            "exports_count": scan_result["summary"]["exports_count"],
+            "templates_count": scan_result["summary"]["templates_count"],
+        }
+
+        # Save
+        workspaces.append(linked_ws.to_dict())
+        settings["linked_workspaces"] = workspaces
+        self._save_app_settings(settings)
+
+        return linked_ws
+
+    def unlink_workspace(self, workspace_id: str) -> bool:
+        """Unlink a nirs4all workspace (doesn't delete files).
+
+        Args:
+            workspace_id: ID of the workspace to unlink
+
+        Returns:
+            True if workspace was unlinked
+        """
+        settings = self._load_app_settings()
+        workspaces = settings.get("linked_workspaces", [])
+        original_len = len(workspaces)
+
+        was_active = False
+        for ws in workspaces:
+            if ws.get("id") == workspace_id and ws.get("is_active"):
+                was_active = True
+                break
+
+        workspaces = [ws for ws in workspaces if ws.get("id") != workspace_id]
+
+        if len(workspaces) == original_len:
+            return False
+
+        # If we removed the active workspace, activate another one
+        if was_active and workspaces:
+            workspaces[0]["is_active"] = True
+
+        settings["linked_workspaces"] = workspaces
+        self._save_app_settings(settings)
+        return True
+
+    def activate_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
+        """Set a linked workspace as active.
+
+        Args:
+            workspace_id: ID of the workspace to activate
+
+        Returns:
+            The activated LinkedWorkspace or None if not found
+        """
+        settings = self._load_app_settings()
+        workspaces = settings.get("linked_workspaces", [])
+
+        found = None
+        for ws in workspaces:
+            if ws.get("id") == workspace_id:
+                ws["is_active"] = True
+                found = LinkedWorkspace.from_dict(ws)
+            else:
+                ws["is_active"] = False
+
+        if found:
+            settings["linked_workspaces"] = workspaces
+            self._save_app_settings(settings)
+
+        return found
+
+    def scan_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Trigger a scan of a linked workspace.
+
+        Args:
+            workspace_id: ID of the workspace to scan
+
+        Returns:
+            Scan results dict
+
+        Raises:
+            ValueError: If workspace not found
+        """
+        settings = self._load_app_settings()
+        workspaces = settings.get("linked_workspaces", [])
+
+        for ws in workspaces:
+            if ws.get("id") == workspace_id:
+                scanner = WorkspaceScanner(Path(ws["path"]))
+                is_valid, reason = scanner.is_valid_workspace()
+                if not is_valid:
+                    raise ValueError(f"Workspace no longer valid: {reason}")
+
+                scan_result = scanner.scan()
+                now = datetime.now().isoformat()
+
+                ws["last_scanned"] = now
+                ws["discovered"] = {
+                    "runs_count": scan_result["summary"]["runs_count"],
+                    "datasets_count": scan_result["summary"]["datasets_count"],
+                    "exports_count": scan_result["summary"]["exports_count"],
+                    "templates_count": scan_result["summary"]["templates_count"],
+                }
+
+                settings["linked_workspaces"] = workspaces
+                self._save_app_settings(settings)
+
+                return scan_result
+
+        raise ValueError(f"Workspace not found: {workspace_id}")
+
+    def get_workspace_runs(self, workspace_id: str) -> List[Dict[str, Any]]:
+        """Get discovered runs from a linked workspace.
+
+        Args:
+            workspace_id: ID of the workspace
+
+        Returns:
+            List of run information dicts
+        """
+        ws = self._find_linked_workspace(workspace_id)
+        if not ws:
+            return []
+
+        scanner = WorkspaceScanner(Path(ws.path))
+        return scanner.discover_runs()
+
+    def get_workspace_predictions(self, workspace_id: str) -> List[Dict[str, Any]]:
+        """Get discovered predictions from a linked workspace.
+
+        Args:
+            workspace_id: ID of the workspace
+
+        Returns:
+            List of prediction database info
+        """
+        ws = self._find_linked_workspace(workspace_id)
+        if not ws:
+            return []
+
+        scanner = WorkspaceScanner(Path(ws.path))
+        return scanner.discover_predictions()
+
+    def get_workspace_exports(self, workspace_id: str) -> List[Dict[str, Any]]:
+        """Get discovered exports from a linked workspace.
+
+        Args:
+            workspace_id: ID of the workspace
+
+        Returns:
+            List of export information dicts
+        """
+        ws = self._find_linked_workspace(workspace_id)
+        if not ws:
+            return []
+
+        scanner = WorkspaceScanner(Path(ws.path))
+        return scanner.discover_exports()
+
+    def get_workspace_templates(self, workspace_id: str) -> List[Dict[str, Any]]:
+        """Get discovered templates from a linked workspace.
+
+        Args:
+            workspace_id: ID of the workspace
+
+        Returns:
+            List of template information dicts
+        """
+        ws = self._find_linked_workspace(workspace_id)
+        if not ws:
+            return []
+
+        scanner = WorkspaceScanner(Path(ws.path))
+        return scanner.discover_templates()
+
+    def _find_linked_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
+        """Find a linked workspace by ID."""
+        for ws in self.get_linked_workspaces():
+            if ws.id == workspace_id:
+                return ws
+        return None
+
+    # ----------------------- Favorite Pipelines (Phase 7) -----------------------
+
+    def get_favorite_pipelines(self) -> List[str]:
+        """Get list of favorite pipeline IDs."""
+        settings = self._load_app_settings()
+        return settings.get("favorite_pipelines", [])
+
+    def add_favorite_pipeline(self, pipeline_id: str) -> bool:
+        """Add a pipeline to favorites.
+
+        Args:
+            pipeline_id: ID of the pipeline to favorite
+
+        Returns:
+            True if added (False if already favorited)
+        """
+        settings = self._load_app_settings()
+        favorites = settings.get("favorite_pipelines", [])
+
+        if pipeline_id in favorites:
+            return False
+
+        favorites.append(pipeline_id)
+        settings["favorite_pipelines"] = favorites
+        self._save_app_settings(settings)
+        return True
+
+    def remove_favorite_pipeline(self, pipeline_id: str) -> bool:
+        """Remove a pipeline from favorites.
+
+        Args:
+            pipeline_id: ID of the pipeline to unfavorite
+
+        Returns:
+            True if removed
+        """
+        settings = self._load_app_settings()
+        favorites = settings.get("favorite_pipelines", [])
+
+        if pipeline_id not in favorites:
+            return False
+
+        favorites.remove(pipeline_id)
+        settings["favorite_pipelines"] = favorites
+        self._save_app_settings(settings)
+        return True
 
 
 # Global workspace manager instance

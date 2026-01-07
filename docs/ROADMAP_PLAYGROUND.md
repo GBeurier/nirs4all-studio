@@ -252,6 +252,9 @@ The `SelectionContext` already provides:
 > Spectra should have many modes of visualization: with quantile area, selected, median, median per quantile, per group, per metadata column, etc.
 > Colored by y / metadata / partitions, selection, outliers, before/after, etc.
 > The spectra should have a complex popup settings for choice of visualization.
+> WebGL and canvas should be seemlessly identical. Same way to zoom / scroll, same background, same size EXACTLY, same colors (it's the case), etc.
+In particular interactions and size, background is really optionnal.
+
 
 **Tasks:**
 
