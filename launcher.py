@@ -13,6 +13,20 @@ import threading
 import time
 from pathlib import Path
 
+# WebGL Configuration for Desktop App
+# Use GTK/WebKit2 backend on Linux for better WebGL support
+os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
+
+# For Qt/Chromium fallback: enable software WebGL via SwiftShader/ANGLE
+# These flags enable WebGL even without hardware GPU acceleration
+os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
+    "--enable-webgl "
+    "--ignore-gpu-blocklist "
+    "--enable-gpu-rasterization "
+    "--use-gl=angle "
+    "--use-angle=swiftshader "
+)
+
 
 # Store window reference for API methods
 window = None

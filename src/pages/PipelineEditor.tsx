@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { usePipelineEditor } from "@/hooks/usePipelineEditor";
+import { useDatasetBinding } from "@/hooks/useDatasetBinding";
 import { listPipelineSamples, getPipelineSample } from "@/api/client";
 import type { PipelineSampleInfo } from "@/api/client";
 import {
@@ -79,7 +80,9 @@ import {
   ExecutionPreviewCompact,
   FocusPanelRing,
   NavigationStatusBar,
+  DatasetBinding,
 } from "@/components/pipeline-editor";
+import { DatasetBindingProvider } from "@/components/pipeline-editor/contexts";
 import { useKeyboardNavigation, KEYBOARD_SHORTCUTS, formatShortcut } from "@/hooks/useKeyboardNavigation";
 import type { DragData, DropIndicator } from "@/components/pipeline-editor/types";
 import type { PipelineStep } from "@/types/pipelines";
@@ -168,6 +171,48 @@ export default function PipelineEditor() {
     pipelineId: pipelineId,
     persistState: true,
   });
+
+  // Dataset binding for shape-aware validation (Phase 4)
+  const {
+    boundDataset,
+    datasets,
+    isLoading: isDatasetsLoading,
+    bindDataset,
+    clearBinding,
+    selectTarget,
+    refreshDatasets,
+  } = useDatasetBinding({
+    pipelineId,
+    persistBinding: true,
+  });
+
+  // Calculate dimension warnings from bound dataset
+  const dimensionWarnings = useMemo(() => {
+    if (!boundDataset) return [];
+
+    const warnings: string[] = [];
+    const maxFeatures = boundDataset.shape.features;
+    const maxSamples = boundDataset.shape.samples;
+
+    // Check all steps for n_components > features
+    const checkStep = (step: EditorPipelineStep) => {
+      const nComponents = step.params?.n_components as number | undefined;
+      if (nComponents && nComponents > maxFeatures) {
+        warnings.push(`${step.name}: n_components (${nComponents}) exceeds features (${maxFeatures})`);
+      }
+      const nSplits = step.params?.n_splits as number | undefined;
+      if (nSplits && nSplits > maxSamples) {
+        warnings.push(`${step.name}: n_splits (${nSplits}) exceeds samples (${maxSamples})`);
+      }
+      // Check branches
+      step.branches?.forEach(branch => branch.forEach(checkStep));
+      // Check children
+      step.children?.forEach(checkStep);
+    };
+
+    steps.forEach(checkStep);
+    return warnings;
+  }, [boundDataset, steps]);
 
   // Handle import from Playground via sessionStorage
   useEffect(() => {
@@ -634,6 +679,21 @@ export default function PipelineEditor() {
                         variantCount={variantCount}
                       />
                     )}
+                    {/* Dataset Binding for shape-aware validation (Phase 4) */}
+                    <DatasetBinding
+                      boundDataset={boundDataset}
+                      datasets={datasets}
+                      isLoading={isDatasetsLoading}
+                      onBind={bindDataset}
+                      onClear={clearBinding}
+                      onSelectTarget={selectTarget}
+                      onRefresh={refreshDatasets}
+                      hasWarnings={dimensionWarnings.length > 0}
+                      warningMessage={dimensionWarnings.length > 0
+                        ? `${dimensionWarnings.length} step${dimensionWarnings.length > 1 ? 's' : ''} may exceed dataset dimensions`
+                        : undefined
+                      }
+                    />
                     {isDirty && (
                       <Badge variant="secondary" className="text-xs">
                         Unsaved
@@ -879,55 +939,61 @@ export default function PipelineEditor() {
           </header>
 
           {/* Main Content: 3-Panel Layout */}
-          <div className="flex-1 flex z-0 min-h-0">
-            {/* Left Panel: Step Palette */}
-            <div
-              ref={panelRefs.palette}
-              className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
-              onClick={() => setFocusedPanel("palette")}
-            >
-              <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
-              <StepPalette onAddStep={addStep} />
-            </div>
+          <DatasetBindingProvider
+            steps={steps}
+            boundDataset={boundDataset}
+            stepShapes={undefined} // Will use internal calculation from useShapePropagation
+          >
+            <div className="flex-1 flex z-0 min-h-0">
+              {/* Left Panel: Step Palette */}
+              <div
+                ref={panelRefs.palette}
+                className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
+                onClick={() => setFocusedPanel("palette")}
+              >
+                <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
+                <StepPalette onAddStep={addStep} />
+              </div>
 
-            {/* Center: Pipeline Tree */}
-            <div
-              ref={panelRefs.tree}
-              className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
-              onClick={() => setFocusedPanel("tree")}
-            >
-              <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
-              <PipelineTree
-                steps={steps}
-                selectedStepId={selectedStepId}
-                onSelectStep={setSelectedStepId}
-                onRemoveStep={removeStep}
-                onDuplicateStep={duplicateStep}
-                onAddBranch={addBranch}
-                onRemoveBranch={removeBranch}
-                onAddChild={addChild}
-                onRemoveChild={removeChild}
-              />
-            </div>
+              {/* Center: Pipeline Tree */}
+              <div
+                ref={panelRefs.tree}
+                className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
+                onClick={() => setFocusedPanel("tree")}
+              >
+                <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
+                <PipelineTree
+                  steps={steps}
+                  selectedStepId={selectedStepId}
+                  onSelectStep={setSelectedStepId}
+                  onRemoveStep={removeStep}
+                  onDuplicateStep={duplicateStep}
+                  onAddBranch={addBranch}
+                  onRemoveBranch={removeBranch}
+                  onAddChild={addChild}
+                  onRemoveChild={removeChild}
+                />
+              </div>
 
-            {/* Right Panel: Configuration */}
-            <div
-              ref={panelRefs.config}
-              className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
-              onClick={() => setFocusedPanel("config")}
-            >
-              <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />
-              <StepConfigPanel
-                step={selectedStep}
-                onUpdate={updateStep}
-                onRemove={removeStep}
-                onDuplicate={duplicateStep}
-                onSelectStep={setSelectedStepId}
-                onAddChild={addChild}
-                onRemoveChild={removeChild}
-              />
+              {/* Right Panel: Configuration */}
+              <div
+                ref={panelRefs.config}
+                className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
+                onClick={() => setFocusedPanel("config")}
+              >
+                <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />
+                <StepConfigPanel
+                  step={selectedStep}
+                  onUpdate={updateStep}
+                  onRemove={removeStep}
+                  onDuplicate={duplicateStep}
+                  onSelectStep={setSelectedStepId}
+                  onAddChild={addChild}
+                  onRemoveChild={removeChild}
+                />
+              </div>
             </div>
-          </div>
+          </DatasetBindingProvider>
 
           {/* Navigation Status Bar */}
           <footer className="border-t border-border bg-card/50 px-4 py-2 flex-shrink-0">

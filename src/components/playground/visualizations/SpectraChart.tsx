@@ -10,6 +10,7 @@
  * - Cross-chart hover highlighting
  * - Chart export (PNG/CSV)
  * - Performance optimized (no animations, data sampling)
+ * - Phase 6: WebGL rendering for large datasets (2k+ samples)
  */
 
 import { useMemo, useRef, useState, useCallback } from 'react';
@@ -26,7 +27,7 @@ import {
 } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Layers, Download, Loader2 } from 'lucide-react';
+import { Layers, Download, Loader2, Zap } from 'lucide-react';
 import { exportChart } from '@/lib/chartExport';
 import {
   CHART_THEME,
@@ -37,6 +38,8 @@ import {
   formatWavelength,
   type ExtendedColorConfig,
 } from './chartConfig';
+import { SpectraWebGL } from './SpectraWebGL';
+import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { DataSection, SpectrumStats, FoldsInfo } from '@/types/playground';
 import { useSelection } from '@/context/SelectionContext';
 
@@ -77,6 +80,8 @@ interface SpectraChartProps {
   isLoading?: boolean;
   /** Enable SelectionContext integration for cross-chart highlighting */
   useSelectionContext?: boolean;
+  /** Render mode: 'canvas' for Recharts, 'webgl' for GPU-accelerated Three.js */
+  renderMode?: RenderMode;
 }
 
 type ViewMode = 'both' | 'original' | 'processed';
@@ -129,6 +134,7 @@ export function SpectraChart({
   maxSamples = 50,
   isLoading = false,
   useSelectionContext = true,
+  renderMode = 'canvas',
 }: SpectraChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
 
@@ -645,7 +651,26 @@ export function SpectraChart({
         </div>
       )}
 
-      {/* Chart */}
+      {/* WebGL Chart - for large datasets */}
+      {(renderMode === 'webgl' || renderMode === 'webgl_aggregated') ? (
+        <div className="flex-1 min-h-0 relative">
+          {/* WebGL indicator */}
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded text-[10px] font-medium">
+            <Zap className="w-3 h-3" />
+            WebGL
+          </div>
+          <SpectraWebGL
+            spectra={viewMode === 'original' ? original.spectra : processed.spectra}
+            originalSpectra={viewMode === 'both' ? original.spectra : undefined}
+            wavelengths={wavelengths}
+            y={y}
+            useSelectionContext={useSelectionContext}
+            isLoading={isLoading}
+            className="w-full h-full"
+          />
+        </div>
+      ) : (
+      /* Canvas/SVG Chart - Recharts */
       <div className="flex-1 min-h-0" onClick={handleChartBackgroundClick}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
@@ -916,6 +941,7 @@ export function SpectraChart({
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      )}
 
       {/* Legend */}
       <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">

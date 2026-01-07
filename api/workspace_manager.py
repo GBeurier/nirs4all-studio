@@ -222,29 +222,94 @@ class WorkspaceManager:
         if not Path(dataset_path).exists():
             raise ValueError(f"Dataset path does not exist: {dataset_path}")
 
+        # Check if already linked
+        for existing in self._workspace_config.datasets:
+            if existing["path"] == dataset_path:
+                raise ValueError("Dataset already linked")
+
+        # Compute hash for integrity tracking (Phase 2)
+        dataset_hash = self._compute_dataset_hash(Path(dataset_path))
+        dataset_stats = self._compute_dataset_stats(Path(dataset_path))
+        now = datetime.now().isoformat()
+
         # Create dataset info
         dataset_info = {
             "id": f"dataset_{len(self._workspace_config.datasets) + 1}_{int(datetime.now().timestamp())}",
             "name": Path(dataset_path).name,
             "path": dataset_path,
-            "linked_at": datetime.now().isoformat(),
+            "linked_at": now,
             "num_samples": 0,
             "num_features": 0,
             "num_targets": 0,
             "config": config or {},
+            # Phase 2: Versioning fields
+            "hash": dataset_hash,
+            "version": 1,
+            "version_status": "current",
+            "last_verified": now,
+            "_stats": dataset_stats,
         }
-
-        # Check if already linked
-        for existing in self._workspace_config.datasets:
-            if existing["path"] == dataset_info["path"]:
-                raise ValueError("Dataset already linked")
 
         # Add to workspace
         self._workspace_config.datasets.append(dataset_info)
-        self._workspace_config.last_accessed = datetime.now().isoformat()
+        self._workspace_config.last_accessed = now
         self._save_workspace_config()
 
         return dataset_info
+
+    def _compute_dataset_hash(self, dataset_path: Path) -> str:
+        """Compute SHA-256 hash of dataset files for integrity checking."""
+        import hashlib
+
+        hasher = hashlib.sha256()
+        extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
+        compressed = {".gz", ".bz2", ".xz", ".zip"}
+
+        if dataset_path.is_file():
+            hasher.update(dataset_path.read_bytes())
+        elif dataset_path.is_dir():
+            for file in sorted(dataset_path.rglob("*")):
+                if not file.is_file():
+                    continue
+                suffix = file.suffix.lower()
+                if suffix in compressed:
+                    inner_suffix = Path(file.stem).suffix.lower()
+                    if inner_suffix and inner_suffix in extensions:
+                        hasher.update(file.read_bytes())
+                elif suffix in extensions:
+                    hasher.update(file.read_bytes())
+
+        return hasher.hexdigest()[:16]
+
+    def _compute_dataset_stats(self, dataset_path: Path) -> Dict[str, Any]:
+        """Compute basic statistics about a dataset for change detection."""
+        stats = {
+            "file_count": 0,
+            "total_size_bytes": 0,
+            "files": [],
+        }
+        extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
+        compressed = {".gz", ".bz2", ".xz", ".zip"}
+
+        if dataset_path.is_file():
+            stats["file_count"] = 1
+            stats["total_size_bytes"] = dataset_path.stat().st_size
+            stats["files"] = [dataset_path.name]
+        elif dataset_path.is_dir():
+            for file in sorted(dataset_path.rglob("*")):
+                if not file.is_file():
+                    continue
+                suffix = file.suffix.lower()
+                is_data_file = suffix in extensions
+                if suffix in compressed:
+                    inner_suffix = Path(file.stem).suffix.lower()
+                    is_data_file = inner_suffix in extensions
+                if is_data_file:
+                    stats["file_count"] += 1
+                    stats["total_size_bytes"] += file.stat().st_size
+                    stats["files"].append(str(file.relative_to(dataset_path)))
+
+        return stats
 
     def unlink_dataset(self, dataset_id: str) -> bool:
         """Unlink a dataset from the current workspace."""
@@ -686,6 +751,112 @@ class WorkspaceManager:
             "requireApproval": False,
             "allowUserNodes": True,
         }
+
+    # ----------------------- Workspace Settings (Phase 5) -----------------------
+
+    def get_settings_path(self) -> Optional[Path]:
+        """Get the path to the workspace settings file."""
+        if not self._current_workspace_path:
+            return None
+        workspace_path = Path(self._current_workspace_path)
+        nirs4all_dir = workspace_path / ".nirs4all"
+        nirs4all_dir.mkdir(exist_ok=True)
+        return nirs4all_dir / "settings.json"
+
+    def get_workspace_settings(self) -> Dict[str, Any]:
+        """Get workspace settings including data loading defaults."""
+        settings_path = self.get_settings_path()
+        if not settings_path or not settings_path.exists():
+            return self._default_workspace_settings()
+
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Merge with defaults to ensure all fields exist
+                defaults = self._default_workspace_settings()
+                return self._deep_merge(defaults, data)
+        except Exception as e:
+            print(f"Failed to load workspace settings: {e}")
+            return self._default_workspace_settings()
+
+    @staticmethod
+    def _deep_merge(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep-merge two dicts.
+
+        Values from overrides take precedence. Nested dicts are merged recursively.
+        This is important for partial settings updates (e.g. updating general.language
+        should not overwrite other general.* fields).
+        """
+
+        merged: Dict[str, Any] = dict(base)
+        for key, value in overrides.items():
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[key] = WorkspaceManager._deep_merge(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    def save_workspace_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save workspace settings."""
+        settings_path = self.get_settings_path()
+        if not settings_path:
+            return False
+
+        try:
+            # Merge with existing settings (deep merge to avoid overwriting nested dicts)
+            existing = self.get_workspace_settings()
+            merged = self._deep_merge(existing, settings)
+            merged["last_updated"] = datetime.now().isoformat()
+
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(merged, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Failed to save workspace settings: {e}")
+            return False
+
+    def _default_workspace_settings(self) -> Dict[str, Any]:
+        """Get default workspace settings."""
+        return {
+            "data_loading_defaults": {
+                "delimiter": ";",
+                "decimal_separator": ".",
+                "has_header": True,
+                "header_unit": "nm",
+                "signal_type": "auto",
+                "na_policy": "drop",
+                "auto_detect": True,
+            },
+            "developer_mode": False,
+            "cache_enabled": True,
+            "backup_enabled": False,
+            "backup_interval_hours": 24,
+            "backup_max_count": 5,
+            "backup_include_results": True,
+            "backup_include_models": True,
+            "general": {
+                "theme": "system",
+                "ui_density": "comfortable",
+                "reduce_animations": False,
+                "sidebar_collapsed": False,
+                "language": "en",
+            },
+        }
+
+    def get_data_loading_defaults(self) -> Dict[str, Any]:
+        """Get default data loading settings for the wizard."""
+        settings = self.get_workspace_settings()
+        return settings.get("data_loading_defaults", self._default_workspace_settings()["data_loading_defaults"])
+
+    def save_data_loading_defaults(self, defaults: Dict[str, Any]) -> bool:
+        """Save data loading default settings."""
+        settings = self.get_workspace_settings()
+        settings["data_loading_defaults"] = defaults
+        return self.save_workspace_settings(settings)
 
 
 # Global workspace manager instance

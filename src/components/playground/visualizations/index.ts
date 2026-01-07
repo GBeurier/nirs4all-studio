@@ -14,7 +14,7 @@ export { ChartSkeleton } from './ChartSkeleton';
 
 // Phase 6: WebGL Renderers for high-performance visualization
 export { SpectraWebGL } from './SpectraWebGL';
-export type { SpectraWebGLProps } from './SpectraWebGL';
+export type { SpectraWebGLProps, QualityMode } from './SpectraWebGL';
 export { ScatterWebGL } from './ScatterWebGL';
 export type { ScatterWebGLProps } from './ScatterWebGL';
 

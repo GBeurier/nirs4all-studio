@@ -9,10 +9,11 @@ Phase 5: WebSocket support for real-time updates.
 Phase 6: Workspace management and AutoML search.
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import traceback
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi import HTTPException
 import uvicorn
 from pathlib import Path
@@ -21,7 +22,7 @@ from api.workspace import router as workspace_router
 from api.datasets import router as datasets_router
 from api.pipelines import router as pipelines_router
 from api.predictions import router as predictions_router
-from api.system import router as system_router
+from api.system import router as system_router, log_error
 from api.spectra import router as spectra_router
 from api.preprocessing import router as preprocessing_router
 from api.training import router as training_router
@@ -40,6 +41,43 @@ app = FastAPI(
     description="API for nirs4all unified NIRS analysis desktop application",
     version="1.0.0",
 )
+
+
+# ============= Exception Handlers for Error Logging =============
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Log HTTP exceptions and return JSON response."""
+    # Only log 5xx errors (server errors)
+    if exc.status_code >= 500:
+        log_error(
+            endpoint=str(request.url.path),
+            message=str(exc.detail),
+            level="error",
+            details=f"Status code: {exc.status_code}",
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Log unexpected exceptions and return JSON response."""
+    log_error(
+        endpoint=str(request.url.path),
+        message=str(exc),
+        level="critical",
+        details=f"Unhandled exception: {type(exc).__name__}",
+        exc=exc,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
 
 # Add CORS middleware for development
 app.add_middleware(
@@ -224,12 +262,6 @@ async def serve_spa_routes(full_path: str):
     if index_file.exists():
         return FileResponse(str(index_file))
     return {"message": "dist/index.html not found. Run: npm run build"}
-
-
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "dist_exists": dist_path.exists()}
 
 
 if __name__ == "__main__":

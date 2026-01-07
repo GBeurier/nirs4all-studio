@@ -2,18 +2,22 @@
  * Step 4: Target & Metadata Configuration
  *
  * Configure:
- * - Target columns (Y)
- * - Task type (regression/classification)
+ * - Target columns (Y) with multi-select
+ * - Task type per target (regression/classification)
+ * - Unit per target
  * - Aggregation settings
  * - Default target selection
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Target,
   Layers,
   Settings,
   AlertCircle,
   Info,
+  Loader2,
+  RefreshCw,
+  Pencil,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,7 +38,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useWizard } from "./WizardContext";
+import { detectFormat } from "@/api/client";
 import type { TaskType, TargetConfig } from "@/types/datasets";
 
 const TASK_TYPE_OPTIONS: { value: TaskType; label: string; description: string }[] = [
@@ -66,7 +76,20 @@ const AGGREGATION_METHOD_OPTIONS = [
   { value: "vote", label: "Vote", description: "Majority voting (classification)" },
 ];
 
-// Mock detected columns - in real implementation this would come from preview
+const COMMON_UNITS = [
+  "%",
+  "mg/L",
+  "g/L",
+  "ppm",
+  "ppb",
+  "mg/kg",
+  "g/100g",
+  "°Brix",
+  "pH",
+  "mS/cm",
+];
+
+// Detected column from Y file
 interface DetectedColumn {
   name: string;
   type: "numeric" | "categorical" | "text";
@@ -74,6 +97,10 @@ interface DetectedColumn {
   sample_values?: (string | number)[];
   is_target_candidate: boolean;
   is_metadata_candidate: boolean;
+  min?: number;
+  max?: number;
+  mean?: number;
+  classes?: string[];
 }
 
 export function TargetsStep() {
@@ -81,40 +108,95 @@ export function TargetsStep() {
   const [showAggregation, setShowAggregation] = useState(
     state.aggregation.enabled
   );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Simulated detected columns (would come from backend in real implementation)
+  // Detected columns from Y files
   const [detectedColumns, setDetectedColumns] = useState<DetectedColumn[]>([]);
 
-  useEffect(() => {
-    // Simulate column detection from Y files
-    if (state.files.some((f) => f.type === "Y")) {
-      // Mock columns - in production, this would be fetched
-      setDetectedColumns([
-        {
-          name: "protein",
-          type: "numeric",
-          is_target_candidate: true,
-          is_metadata_candidate: false,
-          sample_values: [12.3, 14.5, 11.2],
-        },
-        {
-          name: "moisture",
-          type: "numeric",
-          is_target_candidate: true,
-          is_metadata_candidate: false,
-          sample_values: [8.1, 9.2, 7.8],
-        },
-        {
-          name: "quality",
-          type: "categorical",
-          unique_values: 3,
-          is_target_candidate: true,
-          is_metadata_candidate: true,
-          sample_values: ["A", "B", "C"],
-        },
-      ]);
+  // Load target columns from Y file
+  const loadTargetColumns = useCallback(async () => {
+    // Find Y files
+    const yFiles = state.files.filter((f) => f.type === "Y");
+    if (yFiles.length === 0) {
+      setDetectedColumns([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get the first Y file for detection
+      const yFile = yFiles[0];
+      const result = await detectFormat({
+        path: yFile.path,
+        sample_rows: 100,
+      });
+
+      if (result.column_names && result.sample_data) {
+        const columns: DetectedColumn[] = result.column_names.map((colName, idx) => {
+          // Get sample values for this column
+          const sampleValues = result.sample_data
+            ?.slice(1)
+            .map((row) => row[idx])
+            .filter((v) => v !== null && v !== undefined && v !== "");
+
+          // Detect column type
+          const numericValues = sampleValues?.filter((v) => !isNaN(parseFloat(v)));
+          const isNumeric = numericValues && numericValues.length > sampleValues!.length * 0.8;
+          const uniqueCount = new Set(sampleValues).size;
+
+          let colType: "numeric" | "categorical" | "text" = "text";
+          let classes: string[] | undefined;
+          let min: number | undefined;
+          let max: number | undefined;
+          let mean: number | undefined;
+
+          if (isNumeric) {
+            colType = "numeric";
+            const nums = numericValues!.map((v) => parseFloat(v));
+            min = Math.min(...nums);
+            max = Math.max(...nums);
+            mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+          } else if (uniqueCount <= 10) {
+            colType = "categorical";
+            classes = [...new Set(sampleValues)] as string[];
+          }
+
+          return {
+            name: String(colName),
+            type: colType,
+            unique_values: uniqueCount,
+            sample_values: sampleValues?.slice(0, 5) as (string | number)[],
+            is_target_candidate: colType !== "text",
+            is_metadata_candidate: colType === "text" || colType === "categorical",
+            min,
+            max,
+            mean,
+            classes,
+          };
+        });
+
+        setDetectedColumns(columns);
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to detect columns";
+      setError(message);
+    } finally {
+      setLoading(false);
     }
   }, [state.files]);
+
+  // Load columns when Y files change
+  useEffect(() => {
+    const yFiles = state.files.filter((f) => f.type === "Y");
+    if (yFiles.length > 0) {
+      loadTargetColumns();
+    } else {
+      setDetectedColumns([]);
+    }
+  }, [state.files, loadTargetColumns]);
 
   // Initialize targets from detected columns if empty
   useEffect(() => {
@@ -125,12 +207,15 @@ export function TargetsStep() {
       if (targetCandidates.length === 1) {
         // Auto-select single target
         const col = targetCandidates[0];
+        const taskType: TaskType = col.type === "numeric" ? "regression" : "multiclass_classification";
         dispatch({
           type: "SET_TARGETS",
           payload: [
             {
               column: col.name,
-              type: col.type === "numeric" ? "regression" : "multiclass_classification",
+              type: taskType,
+              classes: col.classes,
+              is_default: true,
             },
           ],
         });
@@ -150,10 +235,12 @@ export function TargetsStep() {
       }
     } else {
       // Add target
+      const taskType: TaskType = column.type === "numeric" ? "regression" : "multiclass_classification";
       const newTarget: TargetConfig = {
         column: column.name,
-        type: column.type === "numeric" ? "regression" : "multiclass_classification",
-        classes: column.type === "categorical" ? column.sample_values as string[] : undefined,
+        type: taskType,
+        classes: column.classes,
+        is_default: state.targets.length === 0,
       };
       dispatch({ type: "SET_TARGETS", payload: [...state.targets, newTarget] });
       if (state.targets.length === 0) {
@@ -171,13 +258,34 @@ export function TargetsStep() {
     });
   };
 
+  const handleTargetUnitChange = (column: string, unit: string) => {
+    dispatch({
+      type: "SET_TARGETS",
+      payload: state.targets.map((t) =>
+        t.column === column ? { ...t, unit } : t
+      ),
+    });
+  };
+
+  const handleSetDefaultTarget = (column: string) => {
+    dispatch({ type: "SET_DEFAULT_TARGET", payload: column });
+    dispatch({
+      type: "SET_TARGETS",
+      payload: state.targets.map((t) => ({
+        ...t,
+        is_default: t.column === column,
+      })),
+    });
+  };
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col gap-4 py-2">
       {/* Task Type */}
       <div className="border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-4">
           <Target className="h-4 w-4 text-muted-foreground" />
-          <Label className="text-base font-medium">Task Type</Label>
+          <Label className="text-base font-medium">Global Task Type</Label>
+          <Badge variant="outline" className="text-xs">Optional</Badge>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -210,15 +318,59 @@ export function TargetsStep() {
             <Layers className="h-4 w-4 text-muted-foreground" />
             <Label className="text-base font-medium">Target Columns</Label>
           </div>
-          {state.targets.length > 1 && (
-            <Badge variant="outline">
-              {state.targets.length} targets selected
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {state.targets.length > 1 && (
+              <Badge variant="outline">
+                {state.targets.length} targets selected
+              </Badge>
+            )}
+            {state.files.some((f) => f.type === "Y") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadTargetColumns}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
         </div>
 
         <ScrollArea className="flex-1">
-          {detectedColumns.length > 0 ? (
+          {loading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">
+                Detecting columns...
+              </span>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="p-4">
+              <div className="flex items-center gap-2 text-amber-600 mb-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm font-medium">Detection failed</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{error}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={loadTargetColumns}
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Retry
+              </Button>
+            </div>
+          )}
+
+          {!loading && !error && detectedColumns.length > 0 && (
             <div className="divide-y">
               {detectedColumns
                 .filter((c) => c.is_target_candidate)
@@ -233,15 +385,16 @@ export function TargetsStep() {
                   return (
                     <div
                       key={column.name}
-                      className="p-3 hover:bg-muted/30 flex items-center gap-3"
+                      className="p-3 hover:bg-muted/30 flex items-start gap-3"
                     >
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => handleTargetToggle(column)}
+                        className="mt-1"
                       />
 
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm">
                             {column.name}
                           </span>
@@ -254,71 +407,154 @@ export function TargetsStep() {
                             {column.type}
                           </Badge>
                           {state.defaultTarget === column.name && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge variant="outline" className="text-xs bg-primary/10">
                               Default
                             </Badge>
                           )}
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {column.sample_values?.slice(0, 3).join(", ")}
-                          {column.unique_values && ` (${column.unique_values} unique)`}
+                        <div className="text-xs text-muted-foreground mt-1 space-x-2">
+                          {column.type === "numeric" && column.min !== undefined && (
+                            <span>
+                              Range: {column.min.toFixed(2)} - {column.max?.toFixed(2)}
+                            </span>
+                          )}
+                          {column.type === "categorical" && column.classes && (
+                            <span>
+                              Classes: {column.classes.slice(0, 3).join(", ")}
+                              {column.classes.length > 3 && ` (+${column.classes.length - 3})`}
+                            </span>
+                          )}
+                          {column.unique_values && (
+                            <span>({column.unique_values} unique)</span>
+                          )}
                         </div>
+
+                        {/* Target configuration row when selected */}
+                        {isSelected && targetConfig && (
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            {/* Task type selector */}
+                            <Select
+                              value={targetConfig.type}
+                              onValueChange={(v) =>
+                                handleTargetTypeChange(column.name, v as TaskType)
+                              }
+                            >
+                              <SelectTrigger className="w-[140px] h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="regression">Regression</SelectItem>
+                                <SelectItem value="binary_classification">
+                                  Binary
+                                </SelectItem>
+                                <SelectItem value="multiclass_classification">
+                                  Multiclass
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            {/* Unit input with suggestions */}
+                            {targetConfig.type === "regression" && (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs gap-1"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    {targetConfig.unit || "Add unit"}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-48 p-2" align="start">
+                                  <div className="space-y-2">
+                                    <Input
+                                      value={targetConfig.unit || ""}
+                                      onChange={(e) =>
+                                        handleTargetUnitChange(column.name, e.target.value)
+                                      }
+                                      placeholder="e.g., %, mg/L"
+                                      className="h-8 text-xs"
+                                    />
+                                    <div className="flex flex-wrap gap-1">
+                                      {COMMON_UNITS.map((unit) => (
+                                        <Button
+                                          key={unit}
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 px-2 text-xs"
+                                          onClick={() =>
+                                            handleTargetUnitChange(column.name, unit)
+                                          }
+                                        >
+                                          {unit}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
+
+                            {/* Set as default button */}
+                            {state.targets.length > 1 && (
+                              <Button
+                                variant={state.defaultTarget === column.name ? "secondary" : "ghost"}
+                                size="sm"
+                                className="h-8 text-xs"
+                                onClick={() => handleSetDefaultTarget(column.name)}
+                                disabled={state.defaultTarget === column.name}
+                              >
+                                {state.defaultTarget === column.name ? "✓ Default" : "Set Default"}
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
-
-                      {isSelected && targetConfig && (
-                        <Select
-                          value={targetConfig.type}
-                          onValueChange={(v) =>
-                            handleTargetTypeChange(column.name, v as TaskType)
-                          }
-                        >
-                          <SelectTrigger className="w-[160px] h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="regression">Regression</SelectItem>
-                            <SelectItem value="binary_classification">
-                              Binary
-                            </SelectItem>
-                            <SelectItem value="multiclass_classification">
-                              Multiclass
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-
-                      {isSelected && state.targets.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() =>
-                            dispatch({
-                              type: "SET_DEFAULT_TARGET",
-                              payload: column.name,
-                            })
-                          }
-                          disabled={state.defaultTarget === column.name}
-                        >
-                          Set Default
-                        </Button>
-                      )}
                     </div>
                   );
                 })}
             </div>
-          ) : (
+          )}
+
+          {!loading && !error && detectedColumns.length === 0 && (
             <div className="p-8 text-center">
               <div className="flex items-center justify-center gap-2 text-muted-foreground mb-2">
                 <Info className="h-4 w-4" />
                 <span>No target columns detected</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Target columns will be detected when you load the dataset preview.
+                {state.files.some((f) => f.type === "Y")
+                  ? "Unable to detect columns from the Y file. Targets will be configured when the dataset is loaded."
+                  : "Map at least one file as type 'Y' (Targets) in the previous step to configure target columns."}
               </p>
             </div>
           )}
         </ScrollArea>
+
+        {/* Selected targets summary */}
+        {state.targets.length > 0 && (
+          <div className="p-3 border-t bg-muted/30">
+            <div className="text-xs text-muted-foreground mb-2">
+              Selected targets:
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {state.targets.map((target) => (
+                <Badge
+                  key={target.column}
+                  variant={target.is_default ? "default" : "outline"}
+                  className="text-xs"
+                >
+                  {target.column}
+                  {target.unit && ` (${target.unit})`}
+                  <span className="ml-1 opacity-60">
+                    • {target.type === "regression" ? "reg" : "cls"}
+                  </span>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Aggregation Settings */}

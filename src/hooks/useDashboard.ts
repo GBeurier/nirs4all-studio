@@ -5,6 +5,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import type { DashboardData, DashboardStats, RecentRun } from "@/types";
+// Re-export formatRelativeTime for backward compatibility
+export { formatRelativeTime } from "@/utils/formatters";
 
 /**
  * Fetch dashboard statistics and recent runs
@@ -55,31 +57,4 @@ export function useRecentRuns(limit: number = 6) {
     staleTime: 15 * 1000, // More frequent updates for recent runs
     refetchInterval: 30 * 1000,
   });
-}
-
-/**
- * Format relative time from ISO date string
- */
-export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSeconds = Math.floor(diffMs / 1000);
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSeconds < 60) {
-    return "Just now";
-  } else if (diffMinutes < 60) {
-    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
-  } else if (diffHours < 24) {
-    return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-  } else if (diffDays === 1) {
-    return "Yesterday";
-  } else if (diffDays < 7) {
-    return `${diffDays} days ago`;
-  } else {
-    return date.toLocaleDateString();
-  }
 }

@@ -2282,3 +2282,212 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: List[Dict[str,
         "original_step_count": len(original_steps),
         "editor_step_count": len(editor_steps),
     }
+
+
+# ============================================================================
+# Phase 4: Shape Propagation API
+# ============================================================================
+
+
+class ShapePropagationRequest(BaseModel):
+    """Request model for shape propagation calculation."""
+    steps: List[Dict[str, Any]]
+    input_shape: Dict[str, int]  # {samples: N, features: M}
+
+
+class ShapeAtStep(BaseModel):
+    """Shape at a specific pipeline step."""
+    step_id: str
+    step_name: str
+    input_shape: Dict[str, int]
+    output_shape: Dict[str, int]
+    warnings: List[Dict[str, Any]] = []
+
+
+class ShapePropagationResponse(BaseModel):
+    """Response model for shape propagation calculation."""
+    shapes: List[ShapeAtStep]
+    warnings: List[Dict[str, Any]]
+    output_shape: Dict[str, int]
+    is_valid: bool
+
+
+# Operator shape effects mapping
+SHAPE_TRANSFORMS = {
+    # Preprocessing that preserves shape
+    "StandardNormalVariate": lambda inp, params: inp,
+    "SNV": lambda inp, params: inp,
+    "MultiplicativeScatterCorrection": lambda inp, params: inp,
+    "MSC": lambda inp, params: inp,
+    "StandardScaler": lambda inp, params: inp,
+    "MinMaxScaler": lambda inp, params: inp,
+    "RobustScaler": lambda inp, params: inp,
+    "Normalize": lambda inp, params: inp,
+    "LogTransform": lambda inp, params: inp,
+    "Detrend": lambda inp, params: inp,
+    "Baseline": lambda inp, params: inp,
+    "ASLSBaseline": lambda inp, params: inp,
+    "AirPLS": lambda inp, params: inp,
+    "ArPLS": lambda inp, params: inp,
+    "SNIP": lambda inp, params: inp,
+    "Gaussian": lambda inp, params: inp,
+    "ReflectanceToAbsorbance": lambda inp, params: inp,
+    "ToAbsorbance": lambda inp, params: inp,
+    "FromAbsorbance": lambda inp, params: inp,
+    "FirstDerivative": lambda inp, params: inp,
+    "SecondDerivative": lambda inp, params: inp,
+    "SavitzkyGolay": lambda inp, params: inp,
+
+    # Feature reduction
+    "PLSRegression": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
+    },
+    "PCA": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": min(params.get("n_components", inp["features"]), inp["features"], inp["samples"]),
+    },
+    "IKPLS": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
+    },
+    "OPLS": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
+    },
+
+    # Resampling
+    "ResampleTransformer": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": params.get("n_features", params.get("target_points", inp["features"])),
+    },
+    "Resampler": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": params.get("n_features", params.get("target_points", inp["features"])),
+    },
+    "CropTransformer": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": max(1, params.get("end", inp["features"]) - params.get("start", 0)),
+    },
+
+    # Wavelets
+    "Wavelet": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": inp["features"] // (2 ** params.get("level", 1)),
+    },
+    "Haar": lambda inp, params: {
+        "samples": inp["samples"],
+        "features": inp["features"] // (2 ** params.get("level", 1)),
+    },
+}
+
+# Parameters that should be checked against dimensions
+DIMENSION_PARAMS = {
+    "n_components": "features",
+    "n_splits": "samples",
+    "window_length": "features",
+    "start": "features",
+    "end": "features",
+    "n_features": "features",
+    "target_points": "features",
+}
+
+
+def _propagate_shape(step: Dict[str, Any], input_shape: Dict[str, int]) -> tuple:
+    """Calculate output shape for a single step."""
+    step_name = step.get("name", "")
+    params = step.get("params", {})
+    warnings = []
+
+    # Check dimension parameters
+    for param_name, dim_source in DIMENSION_PARAMS.items():
+        param_value = params.get(param_name)
+        if param_value is not None and isinstance(param_value, (int, float)):
+            max_value = input_shape.get(dim_source, float("inf"))
+            if param_value > max_value:
+                warnings.append({
+                    "type": "param_exceeds_dimension",
+                    "step_id": step.get("id", ""),
+                    "step_name": step_name,
+                    "message": f"Parameter '{param_name}' ({int(param_value)}) exceeds {dim_source} ({int(max_value)})",
+                    "param_name": param_name,
+                    "param_value": int(param_value),
+                    "max_value": int(max_value),
+                    "severity": "error" if param_name == "n_components" else "warning",
+                })
+
+    # Calculate output shape
+    transform = SHAPE_TRANSFORMS.get(step_name)
+    if transform:
+        output_shape = transform(input_shape, params)
+    else:
+        # Unknown operator - preserve shape, add warning
+        output_shape = input_shape.copy()
+        step_type = step.get("type", "")
+        if step_type in ("preprocessing", "model"):
+            warnings.append({
+                "type": "unknown_transform",
+                "step_id": step.get("id", ""),
+                "step_name": step_name,
+                "message": f"Unknown operator '{step_name}' - shape change cannot be predicted",
+                "severity": "warning",
+            })
+
+    return output_shape, warnings
+
+
+@router.post("/pipelines/propagate-shape", response_model=ShapePropagationResponse)
+async def propagate_shape(request: ShapePropagationRequest):
+    """
+    Calculate shape propagation through a pipeline.
+
+    Given an input shape and a list of pipeline steps, calculates how
+    the data shape changes at each step and reports any dimension warnings.
+
+    This is used by the Pipeline Editor to:
+    - T4.5: Show shape at each step
+    - T4.6: Display shape changes in the tree
+    - T4.7: Warn when parameters exceed data dimensions
+    """
+    shapes = []
+    all_warnings = []
+    current_shape = request.input_shape.copy()
+    is_valid = True
+
+    for step in request.steps:
+        input_shape = current_shape.copy()
+        output_shape, step_warnings = _propagate_shape(step, input_shape)
+
+        shapes.append(ShapeAtStep(
+            step_id=step.get("id", ""),
+            step_name=step.get("name", ""),
+            input_shape=input_shape,
+            output_shape=output_shape,
+            warnings=step_warnings,
+        ))
+
+        all_warnings.extend(step_warnings)
+        if any(w.get("severity") == "error" for w in step_warnings):
+            is_valid = False
+
+        current_shape = output_shape
+
+        # Handle branches recursively (simplified - just check first branch)
+        branches = step.get("branches", [])
+        children = step.get("children", [])
+        for branch in branches + children:
+            if isinstance(branch, list):
+                for child_step in branch:
+                    _, child_warnings = _propagate_shape(child_step, input_shape)
+                    all_warnings.extend(child_warnings)
+            elif isinstance(branch, dict):
+                _, child_warnings = _propagate_shape(branch, input_shape)
+                all_warnings.extend(child_warnings)
+
+    return ShapePropagationResponse(
+        shapes=shapes,
+        warnings=all_warnings,
+        output_shape=current_shape,
+        is_valid=is_valid,
+    )
+

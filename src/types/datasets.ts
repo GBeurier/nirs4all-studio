@@ -65,6 +65,12 @@ export interface TargetConfig {
   type: TaskType;
   unit?: string;
   classes?: string[];
+  /** Whether this is the default target when multiple are available */
+  is_default?: boolean;
+  /** Display label for the target (optional, defaults to column name) */
+  label?: string;
+  /** Description of what this target represents */
+  description?: string;
 }
 
 /**
@@ -123,6 +129,12 @@ export interface Dataset {
   status?: "available" | "missing" | "loading" | "error";
   group_id?: string;
 
+  // Version & Integrity (Phase 2)
+  hash?: string;
+  last_verified?: string;
+  version?: number;
+  version_status?: DatasetVersionStatus;
+
   // Computed fields (from loading the dataset)
   num_samples?: number;
   num_features?: number;
@@ -138,6 +150,12 @@ export interface Dataset {
 
   // Configuration
   config?: DatasetConfig;
+
+  // Multi-target support (Phase 3)
+  /** Available target columns with their configurations */
+  targets?: TargetConfig[];
+  /** Name of the default target column */
+  default_target?: string;
 
   // UI state
   load_warning?: string;
@@ -218,6 +236,23 @@ export interface ExportConfig {
   include_metadata?: boolean;
   include_targets?: boolean;
   partition?: string;
+}
+
+/**
+ * Dataset version status for integrity tracking (Phase 2)
+ */
+export type DatasetVersionStatus = "current" | "modified" | "missing" | "unchecked";
+
+/**
+ * Dataset change summary for refresh confirmation
+ */
+export interface DatasetChangeSummary {
+  samples_added: number;
+  samples_removed: number;
+  files_changed: string[];
+  size_change_bytes: number;
+  old_hash: string;
+  new_hash: string;
 }
 
 /**
@@ -389,5 +424,66 @@ export interface WizardState {
   preview: PreviewDataResponse | null;
   isLoading: boolean;
   errors: Record<string, string>;
+}
+
+// ============= Phase 2: Versioning & Integrity Types =============
+
+/**
+ * Verify dataset response
+ */
+export interface VerifyDatasetResponse {
+  success: boolean;
+  dataset_id: string;
+  version_status: DatasetVersionStatus;
+  current_hash: string;
+  stored_hash: string | null;
+  is_modified: boolean;
+  change_summary?: DatasetChangeSummary;
+  verified_at: string;
+}
+
+/**
+ * Refresh dataset request (to accept changes)
+ */
+export interface RefreshDatasetRequest {
+  accept_changes: boolean;
+}
+
+/**
+ * Refresh dataset response
+ */
+export interface RefreshDatasetResponse {
+  success: boolean;
+  dataset_id: string;
+  old_hash: string | null;
+  new_hash: string;
+  version: number;
+  change_summary: DatasetChangeSummary;
+  refreshed_at: string;
+}
+
+/**
+ * Relink dataset request
+ */
+export interface RelinkDatasetRequest {
+  new_path: string;
+  force: boolean;
+}
+
+/**
+ * Relink dataset response
+ */
+export interface RelinkDatasetResponse {
+  success: boolean;
+  dataset_id: string;
+  old_path: string;
+  new_path: string;
+  validation: {
+    structure_matches: boolean;
+    file_count_matches: boolean;
+    warnings: string[];
+  };
+  new_hash: string;
+  relinked_at: string;
 }
 

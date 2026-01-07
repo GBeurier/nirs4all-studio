@@ -8,3 +8,4 @@ export * from "./datasets";
 export * from "./pipelines";
 export * from "./playground";
 export * from "./runs";
+export * from "./settings";

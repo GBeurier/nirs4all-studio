@@ -69,6 +69,55 @@
     --sidebar-accent-foreground: 222 47% 11%;
     --sidebar-border: 214 32% 91%;
     --sidebar-ring: 173 80% 35%;
+
+    /* UI Density - Default (comfortable) */
+    --density-spacing-xs: 0.25rem;
+    --density-spacing-sm: 0.5rem;
+    --density-spacing-md: 1rem;
+    --density-spacing-lg: 1.5rem;
+    --density-spacing-xl: 2rem;
+    --density-padding-card: 1.5rem;
+    --density-padding-button: 0.5rem 1rem;
+    --density-gap: 1rem;
+    --density-font-size: 0.875rem;
+    --density-line-height: 1.5;
+  }
+
+  /* UI Density: Compact */
+  .density-compact {
+    --density-spacing-xs: 0.125rem;
+    --density-spacing-sm: 0.25rem;
+    --density-spacing-md: 0.5rem;
+    --density-spacing-lg: 0.75rem;
+    --density-spacing-xl: 1rem;
+    --density-padding-card: 0.75rem;
+    --density-padding-button: 0.25rem 0.5rem;
+    --density-gap: 0.5rem;
+    --density-font-size: 0.8125rem;
+    --density-line-height: 1.4;
+  }
+
+  /* UI Density: Spacious */
+  .density-spacious {
+    --density-spacing-xs: 0.5rem;
+    --density-spacing-sm: 0.75rem;
+    --density-spacing-md: 1.5rem;
+    --density-spacing-lg: 2rem;
+    --density-spacing-xl: 3rem;
+    --density-padding-card: 2rem;
+    --density-padding-button: 0.75rem 1.5rem;
+    --density-gap: 1.5rem;
+    --density-font-size: 1rem;
+    --density-line-height: 1.6;
+  }
+
+  /* Reduce Motion - disable animations and transitions */
+  .reduce-motion,
+  .reduce-motion * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 
   .dark {

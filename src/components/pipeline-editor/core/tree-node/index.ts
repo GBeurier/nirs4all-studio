@@ -12,6 +12,18 @@ export { BranchNode } from "./BranchNode";
 export { BranchDropZone } from "./BranchDropZone";
 export { ContainerChildrenNode, ContainerChildItem } from "./ContainerChildren";
 
+// Phase 4: Pipeline-Dataset Integration
+export {
+  StepShapeIndicator,
+  ShapeBadge,
+  ShapeFlow,
+} from "./StepShapeIndicator";
+export type {
+  StepShapeIndicatorProps,
+  ShapeBadgeProps,
+  ShapeFlowProps,
+} from "./StepShapeIndicator";
+
 // Re-export types
 export type {
   TreeNodeProps,

@@ -113,5 +113,19 @@ export {
   type OperatorHelp,
 } from "./HelpSystem";
 
+// Phase 4 (Roadmap): Pipeline-Dataset Integration
+export {
+  DatasetBinding,
+  DatasetShapeDisplay,
+  ShapeChangeIndicator,
+  DimensionWarningBadge,
+  type BoundDataset,
+  type DataShape,
+  type DatasetBindingProps,
+  type DatasetShapeDisplayProps,
+  type ShapeChangeIndicatorProps,
+  type DimensionWarningBadgeProps,
+} from "./DatasetBinding";
+
 // Types and utilities
 export * from "./types";

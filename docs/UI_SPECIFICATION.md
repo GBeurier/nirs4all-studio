@@ -228,7 +228,7 @@ Each view has specifities but all the view are connected to the same selection m
 
 DEtails on views:
 - Spectra: can be seen before and after. Before is by defaut raw but can be any step in the pipeline. After is the last step active. Spectra can display one or the other or both (check).
-Spectra should have many mode of visualization (described in docs I think): with quantile area, selected, median, median per quantile, per group, per metadata column, etc.... and colored by y / metadata / partitions, selection, outliers, etc. The spectra should have a complex popup settings for choice of visualization
+Spectra should have many mode of visualization (described in docs I think): with quantile area, selected, median, median per quantile, per group, per metadata column, etc.... and colored by y / metadata / partitions, selection, outliers, before/after, etc. The spectra should have a complex popup settings for choice of visualization
 - target is an histogram that disaply Y in many ways. It can also disaply folds and partitions, color by metadata, etc. Same as spectra.
 - PCA/UMP display the projection of either before/after/both in PCA(99.9) or UMAP. User can choose the components visibles (2 in 2D view, 3 in 3D view). Coloring and display is the same as others (selected, metadata, y, outliers, etc.)
 - Fold is stacked bar plot or bar plot or ridged that shows paritions train/test/val/fold_val/fold_train etc.... Coloration same as others. No before after, just the result of the split

@@ -25,3 +25,14 @@ export {
   type NodeRegistryContextValue,
   type NodeRegistryProviderProps,
 } from "./NodeRegistryContext";
+
+// Phase 4: Pipeline Integration
+export {
+  DatasetBindingProvider,
+  useDatasetBindingContext,
+  useDatasetBindingOptional,
+  useStepShape,
+  useStepDimensionWarnings,
+  type DatasetBindingContextValue,
+  type DatasetBindingProviderProps,
+} from "./DatasetBindingContext";

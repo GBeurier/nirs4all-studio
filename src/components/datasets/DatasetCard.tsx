@@ -11,6 +11,8 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Link2,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { Dataset, DatasetGroup } from "@/types/datasets";
+import { DatasetStatusBadge } from "./DatasetStatusBadge";
+import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";
 
 interface DatasetCardProps {
   dataset: Dataset;
@@ -38,6 +41,8 @@ interface DatasetCardProps {
   onDelete?: (dataset: Dataset) => void;
   onExport?: (dataset: Dataset) => void;
   onRefresh?: (dataset: Dataset) => void;
+  onVerify?: (dataset: Dataset) => void;
+  onRelink?: (dataset: Dataset) => void;
   onAssignGroup?: (dataset: Dataset, groupId: string | null) => void;
 }
 
@@ -97,15 +102,23 @@ export function DatasetCard({
   onDelete,
   onExport,
   onRefresh,
+  onVerify,
+  onRelink,
   onAssignGroup,
 }: DatasetCardProps) {
   const status = getStatusIndicator(dataset.status);
   const StatusIcon = status.icon;
+  const versionStatus = (dataset.version_status || "unchecked") as DatasetVersionStatus;
 
   // Find assigned group
   const assignedGroup = groups.find((g) =>
     g.dataset_ids.includes(dataset.id)
   );
+
+  // Determine if versioning actions should be shown
+  const showVerifyAction = versionStatus === "unchecked" || versionStatus === "current";
+  const showRefreshAction = versionStatus === "modified";
+  const showRelinkAction = versionStatus === "missing" || dataset.status === "missing";
 
   return (
     <motion.div variants={itemVariants}>
@@ -122,14 +135,12 @@ export function DatasetCard({
                   <h3 className="font-semibold text-foreground truncate">
                     {dataset.name}
                   </h3>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <StatusIcon className={`h-4 w-4 ${status.color}`} />
-                      </TooltipTrigger>
-                      <TooltipContent>{status.label}</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  {/* Version status badge (Phase 2) */}
+                  <DatasetStatusBadge
+                    status={versionStatus}
+                    lastVerified={dataset.last_verified}
+                    hash={dataset.hash}
+                  />
                 </div>
                 <p className="text-sm text-muted-foreground truncate" title={dataset.path}>
                   {getRelativeTime(dataset.linked_at)}
@@ -157,12 +168,29 @@ export function DatasetCard({
                     Edit Config
                   </DropdownMenuItem>
                 )}
-                {onRefresh && (
-                  <DropdownMenuItem onClick={() => onRefresh(dataset)}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
+
+                {/* Version management actions (Phase 2) */}
+                <DropdownMenuSeparator />
+                {showVerifyAction && onVerify && (
+                  <DropdownMenuItem onClick={() => onVerify(dataset)}>
+                    <ShieldCheck className="h-4 w-4 mr-2" />
+                    Verify Integrity
                   </DropdownMenuItem>
                 )}
+                {showRefreshAction && onRefresh && (
+                  <DropdownMenuItem onClick={() => onRefresh(dataset)}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Accept Changes
+                  </DropdownMenuItem>
+                )}
+                {showRelinkAction && onRelink && (
+                  <DropdownMenuItem onClick={() => onRelink(dataset)}>
+                    <Link2 className="h-4 w-4 mr-2" />
+                    Relink Path
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+
                 {onExport && (
                   <DropdownMenuItem onClick={() => onExport(dataset)}>
                     <Download className="h-4 w-4 mr-2" />
@@ -253,6 +281,25 @@ export function DatasetCard({
             {/* Classification classes */}
             {dataset.task_type === "classification" && dataset.num_classes && (
               <Badge variant="outline">{dataset.num_classes} classes</Badge>
+            )}
+
+            {/* Multi-target indicator (Phase 3) */}
+            {dataset.targets && dataset.targets.length > 1 && (
+              <Badge variant="outline" className="bg-primary/5">
+                {dataset.targets.length} targets
+              </Badge>
+            )}
+
+            {/* Default target (Phase 3) */}
+            {dataset.default_target && (
+              <Badge variant="outline" className="text-xs">
+                Target: {dataset.default_target}
+                {dataset.targets?.find((t) => t.column === dataset.default_target)?.unit && (
+                  <span className="ml-1 opacity-70">
+                    ({dataset.targets.find((t) => t.column === dataset.default_target)?.unit})
+                  </span>
+                )}
+              </Badge>
             )}
 
             {/* Multi-source indicator */}

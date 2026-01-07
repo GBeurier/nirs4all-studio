@@ -10,6 +10,7 @@ import {
   List,
   Filter,
   Tags,
+  FlaskConical,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,9 @@ import {
   EditDatasetModal,
   GroupsModal,
   DatasetWizard,
+  SyntheticDataDialog,
 } from "@/components/datasets";
+import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import {
   listDatasets,
   linkDataset,
@@ -70,6 +73,9 @@ type ViewMode = "grid" | "list";
 type FilterGroup = "all" | string;
 
 export default function Datasets() {
+  // Developer mode
+  const isDeveloperMode = useIsDeveloperMode();
+
   // Data state
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [groups, setGroups] = useState<DatasetGroup[]>([]);
@@ -85,6 +91,7 @@ export default function Datasets() {
   // Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [syntheticDialogOpen, setSyntheticDialogOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
@@ -265,6 +272,25 @@ export default function Datasets() {
             <Tags className="mr-2 h-4 w-4" />
             Groups
           </Button>
+          {isDeveloperMode && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSyntheticDialogOpen(true)}
+                    className="border-primary/30 hover:border-primary/50"
+                  >
+                    <FlaskConical className="mr-2 h-4 w-4" />
+                    Generate
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Generate synthetic dataset (Dev Mode)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <Button onClick={() => setWizardOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Dataset
@@ -525,6 +551,13 @@ export default function Datasets() {
         onRenameGroup={handleRenameGroup}
         onDeleteGroup={handleDeleteGroup}
         onRemoveDatasetFromGroup={handleRemoveDatasetFromGroup}
+      />
+
+      {/* Synthetic Data Dialog (Developer Mode) */}
+      <SyntheticDataDialog
+        open={syntheticDialogOpen}
+        onOpenChange={setSyntheticDialogOpen}
+        onDatasetGenerated={() => loadData()}
       />
     </motion.div>
   );

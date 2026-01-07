@@ -1,7 +1,9 @@
 /**
  * Wizard Context - State management for the Dataset Loading Wizard
+ *
+ * Phase 5: Added support for loading workspace defaults for parsing options
  */
-import React, { createContext, useContext, useReducer, useCallback } from "react";
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from "react";
 import type {
   WizardState,
   WizardStep,
@@ -13,9 +15,11 @@ import type {
   AggregationConfig,
   PreviewDataResponse,
 } from "@/types/datasets";
+import { getDataLoadingDefaults } from "@/api/client";
+import type { DataLoadingDefaults } from "@/types/settings";
 
-// Default parsing options
-const DEFAULT_PARSING: ParsingOptions = {
+// System default parsing options (fallback)
+const SYSTEM_DEFAULT_PARSING: ParsingOptions = {
   delimiter: ";",
   decimal_separator: ".",
   has_header: true,
@@ -24,6 +28,18 @@ const DEFAULT_PARSING: ParsingOptions = {
   na_policy: "drop",
 };
 
+// Convert DataLoadingDefaults to ParsingOptions
+function convertDefaultsToParsing(defaults: DataLoadingDefaults): ParsingOptions {
+  return {
+    delimiter: defaults.delimiter,
+    decimal_separator: defaults.decimal_separator,
+    has_header: defaults.has_header,
+    header_unit: defaults.header_unit as ParsingOptions["header_unit"],
+    signal_type: defaults.signal_type as ParsingOptions["signal_type"],
+    na_policy: defaults.na_policy as ParsingOptions["na_policy"],
+  };
+}
+
 // Default aggregation
 const DEFAULT_AGGREGATION: AggregationConfig = {
   enabled: false,
@@ -31,14 +47,14 @@ const DEFAULT_AGGREGATION: AggregationConfig = {
   exclude_outliers: false,
 };
 
-// Initial state
-const initialState: WizardState = {
+// Initial state factory (needs defaults parameter)
+const createInitialState = (parsing: ParsingOptions): WizardState => ({
   step: "source",
   sourceType: null,
   basePath: "",
   datasetName: "",
   files: [],
-  parsing: { ...DEFAULT_PARSING },
+  parsing: { ...parsing },
   perFileOverrides: {},
   targets: [],
   defaultTarget: "",
@@ -47,7 +63,10 @@ const initialState: WizardState = {
   preview: null,
   isLoading: false,
   errors: {},
-};
+});
+
+// Initial state (uses system defaults, will be updated when workspace defaults load)
+const initialState: WizardState = createInitialState(SYSTEM_DEFAULT_PARSING);
 
 // Action types
 type WizardAction =
@@ -68,7 +87,8 @@ type WizardAction =
   | { type: "SET_PREVIEW"; payload: PreviewDataResponse | null }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: { key: string; message: string | null } }
-  | { type: "RESET" };
+  | { type: "APPLY_DEFAULTS"; payload: ParsingOptions }
+  | { type: "RESET"; payload?: ParsingOptions };
 
 // Reducer
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -155,8 +175,14 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         errors: { ...state.errors, [action.payload.key]: action.payload.message },
       };
 
+    case "APPLY_DEFAULTS":
+      // Only apply defaults if parsing hasn't been modified from initial state
+      return { ...state, parsing: { ...action.payload } };
+
     case "RESET":
-      return { ...initialState };
+      return action.payload
+        ? createInitialState(action.payload)
+        : { ...initialState };
 
     default:
       return state;
@@ -173,6 +199,10 @@ interface WizardContextType {
   prevStep: () => void;
   reset: () => void;
   canProceed: () => boolean;
+  // Phase 5: Defaults
+  workspaceDefaults: ParsingOptions | null;
+  isLoadingDefaults: boolean;
+  reloadDefaults: () => Promise<void>;
 }
 
 const WizardContext = createContext<WizardContextType | null>(null);
@@ -183,6 +213,30 @@ const STEP_ORDER: WizardStep[] = ["source", "files", "parsing", "targets", "prev
 // Provider
 export function WizardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
+  const [workspaceDefaults, setWorkspaceDefaults] = useState<ParsingOptions | null>(null);
+  const [isLoadingDefaults, setIsLoadingDefaults] = useState(true);
+
+  // Load workspace defaults on mount
+  const loadDefaults = useCallback(async () => {
+    try {
+      setIsLoadingDefaults(true);
+      const defaults = await getDataLoadingDefaults();
+      const parsingDefaults = convertDefaultsToParsing(defaults);
+      setWorkspaceDefaults(parsingDefaults);
+      // Apply defaults to state if wizard is at initial state
+      dispatch({ type: "APPLY_DEFAULTS", payload: parsingDefaults });
+    } catch (error) {
+      // Workspace may not be selected, use system defaults
+      console.log("Using system defaults for parsing options");
+      setWorkspaceDefaults(SYSTEM_DEFAULT_PARSING);
+    } finally {
+      setIsLoadingDefaults(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDefaults();
+  }, [loadDefaults]);
 
   const goToStep = useCallback((step: WizardStep) => {
     dispatch({ type: "SET_STEP", payload: step });
@@ -203,8 +257,9 @@ export function WizardProvider({ children }: { children: React.ReactNode }) {
   }, [state.step]);
 
   const reset = useCallback(() => {
-    dispatch({ type: "RESET" });
-  }, []);
+    // Reset with workspace defaults if available
+    dispatch({ type: "RESET", payload: workspaceDefaults || SYSTEM_DEFAULT_PARSING });
+  }, [workspaceDefaults]);
 
   const canProceed = useCallback(() => {
     switch (state.step) {
@@ -225,7 +280,18 @@ export function WizardProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WizardContext.Provider
-      value={{ state, dispatch, goToStep, nextStep, prevStep, reset, canProceed }}
+      value={{
+        state,
+        dispatch,
+        goToStep,
+        nextStep,
+        prevStep,
+        reset,
+        canProceed,
+        workspaceDefaults,
+        isLoadingDefaults,
+        reloadDefaults: loadDefaults,
+      }}
     >
       {children}
     </WizardContext.Provider>
@@ -242,4 +308,4 @@ export function useWizard() {
 }
 
 // Export defaults for reuse
-export { DEFAULT_PARSING, DEFAULT_AGGREGATION, STEP_ORDER };
+export { SYSTEM_DEFAULT_PARSING as DEFAULT_PARSING, DEFAULT_AGGREGATION, STEP_ORDER };

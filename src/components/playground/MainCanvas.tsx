@@ -875,6 +875,7 @@ export function MainCanvas({
                   onInteractionStart={triggerInteractionPending}
                   maxSamples={50}
                   isLoading={chartRedrawing}
+                  renderMode={effectiveMode}
                 />
               </ChartErrorBoundary>
             ) : rawData ? (
@@ -900,6 +901,7 @@ export function MainCanvas({
                   onInteractionStart={triggerInteractionPending}
                   maxSamples={50}
                   isLoading={chartRedrawing}
+                  renderMode={effectiveMode}
                 />
               </ChartErrorBoundary>
             ) : (

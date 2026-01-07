@@ -5,8 +5,10 @@ This module provides FastAPI routes for dataset operations including:
 - Listing, loading, and managing datasets
 - Dataset info and statistics
 - Dataset export, split, filter, and merge operations
+- Phase 2: Dataset versioning and integrity (hash, verify, relink)
 """
 
+import hashlib
 import json
 import sys
 from datetime import datetime
@@ -91,6 +93,200 @@ class ExportConfig(BaseModel):
     include_metadata: bool = True
     include_targets: bool = True
     partition: Optional[str] = None
+
+
+# ============= Phase 2: Versioning & Integrity Models =============
+
+
+class VerifyDatasetResponse(BaseModel):
+    """Response from dataset verification."""
+
+    success: bool
+    dataset_id: str
+    version_status: str = Field(description="current, modified, missing, or unchecked")
+    current_hash: Optional[str] = None
+    stored_hash: Optional[str] = None
+    is_modified: bool = False
+    change_summary: Optional[Dict[str, Any]] = None
+    verified_at: str
+
+
+class RefreshDatasetRequest(BaseModel):
+    """Request to accept dataset changes."""
+
+    accept_changes: bool = True
+
+
+class RefreshDatasetResponse(BaseModel):
+    """Response from dataset refresh."""
+
+    success: bool
+    dataset_id: str
+    old_hash: Optional[str] = None
+    new_hash: str
+    version: int
+    change_summary: Dict[str, Any]
+    refreshed_at: str
+
+
+class RelinkDatasetRequest(BaseModel):
+    """Request to relink a dataset to a new path."""
+
+    new_path: str = Field(..., description="New path to the dataset")
+    force: bool = Field(False, description="Force relink even if structure doesn't match")
+
+
+class RelinkDatasetResponse(BaseModel):
+    """Response from dataset relink."""
+
+    success: bool
+    dataset_id: str
+    old_path: str
+    new_path: str
+    validation: Dict[str, Any]
+    new_hash: str
+    relinked_at: str
+
+
+# ============= Phase 3: Multi-Target Support Models =============
+
+
+class TargetConfig(BaseModel):
+    """Configuration for a single target column."""
+
+    column: str = Field(..., description="Name of the target column")
+    type: str = Field("regression", description="Task type: regression, binary_classification, multiclass_classification")
+    unit: Optional[str] = Field(None, description="Unit of measurement (e.g., %, mg/L)")
+    classes: Optional[List[str]] = Field(None, description="Class names for classification tasks")
+    is_default: bool = Field(False, description="Whether this is the default target")
+    label: Optional[str] = Field(None, description="Display label for the target")
+    description: Optional[str] = Field(None, description="Description of the target")
+
+
+class UpdateDatasetTargetsRequest(BaseModel):
+    """Request to update dataset targets configuration."""
+
+    targets: List[TargetConfig] = Field(..., description="List of target configurations")
+    default_target: Optional[str] = Field(None, description="Column name of default target")
+
+
+class UpdateDatasetTargetsResponse(BaseModel):
+    """Response from updating dataset targets."""
+
+    success: bool
+    dataset_id: str
+    targets: List[Dict[str, Any]]
+    default_target: Optional[str]
+    updated_at: str
+
+
+# ============= Hash Computation Utilities =============
+
+
+def compute_dataset_hash(dataset_path: Path) -> str:
+    """
+    Compute a SHA-256 hash of dataset files for integrity checking.
+
+    Args:
+        dataset_path: Path to dataset folder or file
+
+    Returns:
+        Short hash string (first 16 characters of SHA-256)
+    """
+    hasher = hashlib.sha256()
+
+    if dataset_path.is_file():
+        # Single file dataset
+        hasher.update(dataset_path.read_bytes())
+    elif dataset_path.is_dir():
+        # Folder dataset - hash all relevant data files
+        extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
+        compressed = {".gz", ".bz2", ".xz", ".zip"}
+
+        for file in sorted(dataset_path.rglob("*")):
+            if not file.is_file():
+                continue
+
+            suffix = file.suffix.lower()
+            # Check for compressed extensions
+            if suffix in compressed:
+                inner_suffix = Path(file.stem).suffix.lower()
+                if inner_suffix and inner_suffix in extensions:
+                    hasher.update(file.read_bytes())
+            elif suffix in extensions:
+                hasher.update(file.read_bytes())
+
+    return hasher.hexdigest()[:16]
+
+
+def compute_dataset_stats(dataset_path: Path) -> Dict[str, Any]:
+    """
+    Compute basic statistics about a dataset for change detection.
+
+    Returns file count, total size, and list of files.
+    """
+    stats = {
+        "file_count": 0,
+        "total_size_bytes": 0,
+        "files": [],
+    }
+
+    extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
+    compressed = {".gz", ".bz2", ".xz", ".zip"}
+
+    if dataset_path.is_file():
+        stats["file_count"] = 1
+        stats["total_size_bytes"] = dataset_path.stat().st_size
+        stats["files"] = [dataset_path.name]
+    elif dataset_path.is_dir():
+        for file in sorted(dataset_path.rglob("*")):
+            if not file.is_file():
+                continue
+
+            suffix = file.suffix.lower()
+            is_data_file = suffix in extensions
+            if suffix in compressed:
+                inner_suffix = Path(file.stem).suffix.lower()
+                is_data_file = inner_suffix in extensions
+
+            if is_data_file:
+                stats["file_count"] += 1
+                stats["total_size_bytes"] += file.stat().st_size
+                stats["files"].append(str(file.relative_to(dataset_path)))
+
+    return stats
+
+
+def compute_change_summary(
+    old_stats: Optional[Dict[str, Any]],
+    new_stats: Dict[str, Any],
+    old_hash: Optional[str],
+    new_hash: str,
+) -> Dict[str, Any]:
+    """
+    Compute a summary of changes between two dataset states.
+    """
+    if old_stats is None:
+        old_stats = {"file_count": 0, "total_size_bytes": 0, "files": []}
+
+    old_files = set(old_stats.get("files", []))
+    new_files = set(new_stats.get("files", []))
+
+    added = new_files - old_files
+    removed = old_files - new_files
+    # Files that exist in both but may have changed
+    common = old_files & new_files
+
+    return {
+        "samples_added": 0,  # Would need to load data to know this
+        "samples_removed": 0,
+        "files_added": list(added),
+        "files_removed": list(removed),
+        "files_changed": list(common) if old_hash != new_hash else [],
+        "size_change_bytes": new_stats["total_size_bytes"] - old_stats.get("total_size_bytes", 0),
+        "old_hash": old_hash,
+        "new_hash": new_hash,
+    }
 
 
 # ============= Wizard Models =============
@@ -720,29 +916,151 @@ async def preview_dataset(request: PreviewDataRequest):
 
 
 @router.get("/datasets")
-async def list_datasets():
-    """List all datasets in the current workspace."""
+async def list_datasets(verify_integrity: bool = False):
+    """
+    List all datasets in the current workspace.
+
+    Args:
+        verify_integrity: If True, verify hash integrity for all datasets (slower).
+                         If False, use cached version_status.
+    """
     try:
         workspace = workspace_manager.get_current_workspace()
         if not workspace:
             return {"datasets": [], "total": 0}
 
         datasets = []
+        needs_save = False
+
         for ds in workspace.datasets:
             # Add computed fields if not present
             dataset_info = dict(ds)
-            if "status" not in dataset_info:
-                # Check if dataset is still accessible
-                path = Path(ds.get("path", ""))
-                dataset_info["status"] = "available" if path.exists() else "missing"
+            path = Path(ds.get("path", ""))
+
+            # Check accessibility
+            if not path.exists():
+                dataset_info["status"] = "missing"
+                dataset_info["version_status"] = "missing"
+            else:
+                dataset_info["status"] = "available"
+
+                # Verify integrity if requested
+                if verify_integrity:
+                    try:
+                        current_hash = compute_dataset_hash(path)
+                        stored_hash = ds.get("hash")
+
+                        if stored_hash is None:
+                            dataset_info["version_status"] = "unchecked"
+                        elif current_hash == stored_hash:
+                            dataset_info["version_status"] = "current"
+                        else:
+                            dataset_info["version_status"] = "modified"
+
+                        # Update in workspace if changed
+                        if dataset_info["version_status"] != ds.get("version_status"):
+                            ds["version_status"] = dataset_info["version_status"]
+                            ds["last_verified"] = datetime.now().isoformat()
+                            needs_save = True
+                    except Exception:
+                        dataset_info["version_status"] = ds.get("version_status", "unchecked")
+                else:
+                    # Use cached status
+                    dataset_info["version_status"] = ds.get("version_status", "unchecked")
 
             datasets.append(dataset_info)
+
+        # Save if any statuses were updated
+        if needs_save:
+            workspace_manager._save_workspace_config()
 
         return {"datasets": datasets, "total": len(datasets)}
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to list datasets: {str(e)}"
         )
+
+
+# ============= Synthetic Presets (must be before {dataset_id} routes) =============
+
+
+class SyntheticPresetInfo(BaseModel):
+    """Information about a synthetic dataset preset."""
+
+    id: str
+    name: str
+    description: str
+    task_type: str
+    n_samples: int
+    complexity: str
+    icon: str
+
+
+@router.get("/datasets/synthetic-presets")
+async def get_synthetic_presets() -> Dict[str, List[SyntheticPresetInfo]]:
+    """
+    Get available presets for synthetic data generation.
+
+    Returns a list of pre-configured generation options for quick setup.
+    """
+    presets = [
+        SyntheticPresetInfo(
+            id="regression_small",
+            name="Regression (Small)",
+            description="250 samples for quick testing",
+            task_type="regression",
+            n_samples=250,
+            complexity="simple",
+            icon="activity",
+        ),
+        SyntheticPresetInfo(
+            id="regression_medium",
+            name="Regression (Medium)",
+            description="1000 samples for model development",
+            task_type="regression",
+            n_samples=1000,
+            complexity="realistic",
+            icon="trending-up",
+        ),
+        SyntheticPresetInfo(
+            id="regression_large",
+            name="Regression (Large)",
+            description="2500 samples for full experiments",
+            task_type="regression",
+            n_samples=2500,
+            complexity="realistic",
+            icon="bar-chart-3",
+        ),
+        SyntheticPresetInfo(
+            id="classification_binary",
+            name="Binary Classification",
+            description="500 samples, 2 classes",
+            task_type="binary_classification",
+            n_samples=500,
+            complexity="simple",
+            icon="git-branch",
+        ),
+        SyntheticPresetInfo(
+            id="classification_multi",
+            name="Multiclass Classification",
+            description="750 samples, 3 classes",
+            task_type="multiclass_classification",
+            n_samples=750,
+            complexity="simple",
+            icon="layers",
+        ),
+        SyntheticPresetInfo(
+            id="complex_realistic",
+            name="Complex Realistic",
+            description="1500 samples with noise and batch effects",
+            task_type="regression",
+            n_samples=1500,
+            complexity="complex",
+            icon="cpu",
+        ),
+    ]
+
+    return {"presets": presets}
 
 
 @router.get("/datasets/{dataset_id}")
@@ -1399,4 +1717,805 @@ async def export_dataset(dataset_id: str, config: ExportConfig):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to export dataset: {str(e)}"
+        )
+
+
+# ============= Phase 2: Versioning & Integrity Endpoints =============
+
+
+@router.post("/datasets/{dataset_id}/verify", response_model=VerifyDatasetResponse)
+async def verify_dataset(dataset_id: str):
+    """
+    Verify dataset integrity by comparing current hash with stored hash.
+
+    Returns the version status:
+    - current: Hash matches stored hash
+    - modified: Hash differs from stored hash
+    - missing: Path not accessible
+    - unchecked: Never verified (no stored hash)
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        # Find dataset
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        dataset_path = Path(dataset_info.get("path", ""))
+        now = datetime.now().isoformat()
+
+        # Check if path exists
+        if not dataset_path.exists():
+            # Update status in workspace
+            dataset_info["version_status"] = "missing"
+            dataset_info["last_verified"] = now
+            workspace_manager._save_workspace_config()
+
+            return VerifyDatasetResponse(
+                success=True,
+                dataset_id=dataset_id,
+                version_status="missing",
+                current_hash=None,
+                stored_hash=dataset_info.get("hash"),
+                is_modified=False,
+                verified_at=now,
+            )
+
+        # Compute current hash
+        current_hash = compute_dataset_hash(dataset_path)
+        stored_hash = dataset_info.get("hash")
+
+        # Determine version status
+        if stored_hash is None:
+            version_status = "unchecked"
+            is_modified = False
+        elif current_hash == stored_hash:
+            version_status = "current"
+            is_modified = False
+        else:
+            version_status = "modified"
+            is_modified = True
+
+        # Compute change summary if modified
+        change_summary = None
+        if is_modified and stored_hash:
+            old_stats = dataset_info.get("_stats")
+            new_stats = compute_dataset_stats(dataset_path)
+            change_summary = compute_change_summary(old_stats, new_stats, stored_hash, current_hash)
+
+        # Update dataset info
+        dataset_info["version_status"] = version_status
+        dataset_info["last_verified"] = now
+        workspace_manager._save_workspace_config()
+
+        return VerifyDatasetResponse(
+            success=True,
+            dataset_id=dataset_id,
+            version_status=version_status,
+            current_hash=current_hash,
+            stored_hash=stored_hash,
+            is_modified=is_modified,
+            change_summary=change_summary,
+            verified_at=now,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to verify dataset: {str(e)}"
+        )
+
+
+@router.post("/datasets/{dataset_id}/refresh", response_model=RefreshDatasetResponse)
+async def refresh_dataset_version(dataset_id: str, request: RefreshDatasetRequest = RefreshDatasetRequest()):
+    """
+    Refresh dataset by accepting changes and updating the stored hash.
+
+    This should be called after verifying a dataset shows as "modified"
+    and the user wants to accept the new version.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        # Find dataset
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        dataset_path = Path(dataset_info.get("path", ""))
+
+        if not dataset_path.exists():
+            raise HTTPException(status_code=404, detail="Dataset path not found")
+
+        now = datetime.now().isoformat()
+        old_hash = dataset_info.get("hash")
+        old_stats = dataset_info.get("_stats")
+
+        # Compute new hash and stats
+        new_hash = compute_dataset_hash(dataset_path)
+        new_stats = compute_dataset_stats(dataset_path)
+
+        # Compute change summary
+        change_summary = compute_change_summary(old_stats, new_stats, old_hash, new_hash)
+
+        # Increment version
+        old_version = dataset_info.get("version", 0)
+        new_version = old_version + 1
+
+        # Update dataset info
+        dataset_info["hash"] = new_hash
+        dataset_info["version"] = new_version
+        dataset_info["version_status"] = "current"
+        dataset_info["last_verified"] = now
+        dataset_info["last_refreshed"] = now
+        dataset_info["_stats"] = new_stats  # Store stats for future comparison
+
+        # Clear dataset cache to force reload
+        try:
+            from .spectra import _clear_dataset_cache
+            _clear_dataset_cache(dataset_id)
+        except Exception:
+            pass
+
+        workspace_manager._save_workspace_config()
+
+        return RefreshDatasetResponse(
+            success=True,
+            dataset_id=dataset_id,
+            old_hash=old_hash,
+            new_hash=new_hash,
+            version=new_version,
+            change_summary=change_summary,
+            refreshed_at=now,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to refresh dataset: {str(e)}"
+        )
+
+
+@router.post("/datasets/{dataset_id}/relink", response_model=RelinkDatasetResponse)
+async def relink_dataset(dataset_id: str, request: RelinkDatasetRequest):
+    """
+    Relink a dataset to a new path.
+
+    This is useful when:
+    - Moving datasets between machines
+    - Renaming dataset folders
+    - Fixing broken paths
+
+    The operation validates that the new path has a compatible structure
+    unless force=True is specified.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        # Find dataset
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        old_path = dataset_info.get("path", "")
+        new_path = Path(request.new_path).resolve()
+
+        if not new_path.exists():
+            raise HTTPException(status_code=404, detail=f"New path not found: {request.new_path}")
+
+        now = datetime.now().isoformat()
+
+        # Validate structure matches (if not forcing)
+        validation = {
+            "structure_matches": True,
+            "file_count_matches": True,
+            "warnings": [],
+        }
+
+        old_stats = dataset_info.get("_stats", {})
+        new_stats = compute_dataset_stats(new_path)
+
+        old_file_count = old_stats.get("file_count", 0)
+        new_file_count = new_stats.get("file_count", 0)
+
+        if old_file_count != new_file_count:
+            validation["file_count_matches"] = False
+            validation["warnings"].append(
+                f"File count differs: {old_file_count} -> {new_file_count}"
+            )
+
+        # Check for expected file patterns
+        old_files = set(old_stats.get("files", []))
+        new_files = set(new_stats.get("files", []))
+        if old_files and new_files:
+            # Check if filenames match (ignoring path differences)
+            old_names = {Path(f).name for f in old_files}
+            new_names = {Path(f).name for f in new_files}
+            if old_names != new_names:
+                validation["structure_matches"] = False
+                missing = old_names - new_names
+                extra = new_names - old_names
+                if missing:
+                    validation["warnings"].append(f"Missing files: {missing}")
+                if extra:
+                    validation["warnings"].append(f"Extra files: {extra}")
+
+        # Block if validation fails and not forcing
+        if not request.force and (not validation["structure_matches"] or not validation["file_count_matches"]):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Structure validation failed. Use force=True to override. Warnings: {validation['warnings']}"
+            )
+
+        # Compute new hash
+        new_hash = compute_dataset_hash(new_path)
+
+        # Update dataset info
+        dataset_info["path"] = str(new_path)
+        dataset_info["hash"] = new_hash
+        dataset_info["version_status"] = "current"
+        dataset_info["last_verified"] = now
+        dataset_info["_stats"] = new_stats
+
+        # Clear dataset cache
+        try:
+            from .spectra import _clear_dataset_cache
+            _clear_dataset_cache(dataset_id)
+        except Exception:
+            pass
+
+        workspace_manager._save_workspace_config()
+
+        return RelinkDatasetResponse(
+            success=True,
+            dataset_id=dataset_id,
+            old_path=old_path,
+            new_path=str(new_path),
+            validation=validation,
+            new_hash=new_hash,
+            relinked_at=now,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to relink dataset: {str(e)}"
+        )
+
+
+@router.get("/datasets/{dataset_id}/version-status")
+async def get_dataset_version_status(dataset_id: str):
+    """
+    Get the current version status of a dataset without full verification.
+
+    This is a quick check that returns cached version status.
+    Use /verify for a full integrity check.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        # Quick path check
+        dataset_path = Path(dataset_info.get("path", ""))
+        if not dataset_path.exists():
+            status = "missing"
+        else:
+            status = dataset_info.get("version_status", "unchecked")
+
+        return {
+            "dataset_id": dataset_id,
+            "version_status": status,
+            "hash": dataset_info.get("hash"),
+            "version": dataset_info.get("version", 1),
+            "last_verified": dataset_info.get("last_verified"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get version status: {str(e)}"
+        )
+
+
+# ============= Phase 3: Multi-Target Support Endpoints =============
+
+
+@router.get("/datasets/{dataset_id}/targets")
+async def get_dataset_targets(dataset_id: str):
+    """
+    Get the configured targets for a dataset.
+
+    Returns the list of target configurations and the default target.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        # Get targets from dataset config
+        config = dataset_info.get("config", {})
+        targets = config.get("targets", [])
+        default_target = config.get("default_target")
+
+        # If no targets configured, try to detect from the loaded dataset
+        if not targets and NIRS4ALL_AVAILABLE:
+            try:
+                from .spectra import _load_dataset
+                ds = _load_dataset(dataset_id)
+                if ds and ds._targets is not None:
+                    # Single target detected
+                    task_type = "regression" if ds.is_regression else "multiclass_classification"
+                    targets = [{
+                        "column": "target",
+                        "type": task_type,
+                        "is_default": True,
+                    }]
+                    default_target = "target"
+            except Exception:
+                pass
+
+        return {
+            "dataset_id": dataset_id,
+            "targets": targets,
+            "default_target": default_target,
+            "num_targets": len(targets),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get dataset targets: {str(e)}"
+        )
+
+
+@router.put("/datasets/{dataset_id}/targets", response_model=UpdateDatasetTargetsResponse)
+async def update_dataset_targets(dataset_id: str, request: UpdateDatasetTargetsRequest):
+    """
+    Update the target configuration for a dataset.
+
+    This allows setting multiple targets with their types, units, and classes.
+    One target should be marked as default or specified in default_target.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        now = datetime.now().isoformat()
+
+        # Convert targets to dict format
+        targets_list = [t.model_dump() for t in request.targets]
+
+        # Determine default target
+        default_target = request.default_target
+        if not default_target and targets_list:
+            # Use first target marked as default, or first target if none marked
+            default_marked = next((t for t in targets_list if t.get("is_default")), None)
+            if default_marked:
+                default_target = default_marked["column"]
+            else:
+                default_target = targets_list[0]["column"]
+
+        # Ensure default target is marked in the list
+        for target in targets_list:
+            target["is_default"] = target["column"] == default_target
+
+        # Update config
+        if "config" not in dataset_info:
+            dataset_info["config"] = {}
+        dataset_info["config"]["targets"] = targets_list
+        dataset_info["config"]["default_target"] = default_target
+
+        # Also store at top level for easy access
+        dataset_info["targets"] = targets_list
+        dataset_info["default_target"] = default_target
+
+        workspace_manager._save_workspace_config()
+
+        return UpdateDatasetTargetsResponse(
+            success=True,
+            dataset_id=dataset_id,
+            targets=targets_list,
+            default_target=default_target,
+            updated_at=now,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update dataset targets: {str(e)}"
+        )
+
+
+@router.post("/datasets/{dataset_id}/detect-targets")
+async def detect_dataset_targets(dataset_id: str, y_file_path: Optional[str] = None):
+    """
+    Detect available target columns from a dataset's Y file.
+
+    Analyzes the Y file to identify columns that can be used as targets,
+    along with their detected types (regression vs classification).
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        import pandas as pd
+
+        # Get Y file path
+        if y_file_path:
+            y_path = Path(y_file_path)
+        else:
+            # Try to find Y file from config
+            config = dataset_info.get("config", {})
+            train_y = config.get("train_y")
+            if train_y:
+                base_path = Path(dataset_info.get("path", ""))
+                if base_path.is_dir():
+                    y_path = base_path / train_y
+                else:
+                    y_path = Path(train_y)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No Y file path provided and none found in config"
+                )
+
+        if not y_path.exists():
+            raise HTTPException(status_code=404, detail=f"Y file not found: {y_path}")
+
+        # Get parsing options
+        global_params = config.get("global_params", {})
+        delimiter = global_params.get("delimiter", ",")
+        decimal = global_params.get("decimal_separator", ".")
+
+        # Read Y file
+        try:
+            df = pd.read_csv(y_path, sep=delimiter, decimal=decimal, nrows=1000)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read Y file: {e}")
+
+        detected_targets = []
+        for col in df.columns:
+            series = df[col]
+            col_info = {
+                "column": str(col),
+                "type": "regression",
+                "unique_values": int(series.nunique()),
+                "sample_values": series.dropna().head(5).tolist(),
+                "is_target_candidate": True,
+                "is_metadata_candidate": False,
+            }
+
+            # Detect if classification or regression
+            if series.dtype == 'object' or series.nunique() <= 10:
+                # Likely classification
+                col_info["type"] = "multiclass_classification" if series.nunique() > 2 else "binary_classification"
+                col_info["classes"] = [str(c) for c in series.unique().tolist() if pd.notna(c)]
+            else:
+                # Numeric - likely regression
+                col_info["type"] = "regression"
+                col_info["min"] = float(series.min()) if not pd.isna(series.min()) else None
+                col_info["max"] = float(series.max()) if not pd.isna(series.max()) else None
+                col_info["mean"] = float(series.mean()) if not pd.isna(series.mean()) else None
+
+            detected_targets.append(col_info)
+
+        return {
+            "dataset_id": dataset_id,
+            "y_file": str(y_path),
+            "detected_columns": detected_targets,
+            "num_columns": len(detected_targets),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to detect targets: {str(e)}"
+        )
+
+
+@router.post("/datasets/{dataset_id}/set-default-target")
+async def set_default_target(dataset_id: str, target_column: str):
+    """
+    Set the default target column for a dataset.
+
+    This is a convenience endpoint to quickly change the default target
+    without updating all target configurations.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        config = dataset_info.get("config", {})
+        targets = config.get("targets", [])
+
+        # Verify the target exists
+        target_columns = [t.get("column") for t in targets]
+        if targets and target_column not in target_columns:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Target column '{target_column}' not found. Available: {target_columns}"
+            )
+
+        # Update is_default flags
+        for target in targets:
+            target["is_default"] = target["column"] == target_column
+
+        # Update default_target
+        if "config" not in dataset_info:
+            dataset_info["config"] = {}
+        dataset_info["config"]["default_target"] = target_column
+        dataset_info["config"]["targets"] = targets
+        dataset_info["default_target"] = target_column
+        dataset_info["targets"] = targets
+
+        workspace_manager._save_workspace_config()
+
+        return {
+            "success": True,
+            "dataset_id": dataset_id,
+            "default_target": target_column,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set default target: {str(e)}"
+        )
+
+
+# ============= Phase 6: Synthetic Data Generation =============
+
+
+class GenerateSyntheticRequest(BaseModel):
+    """Request model for synthetic dataset generation."""
+
+    task_type: str = Field("regression", description="Task type: regression, binary_classification, multiclass_classification")
+    n_samples: int = Field(500, ge=50, le=10000, description="Number of samples to generate")
+    complexity: str = Field("simple", description="Complexity level: simple, realistic, complex")
+    n_classes: int = Field(3, ge=2, le=20, description="Number of classes for classification tasks")
+    target_range: Optional[List[float]] = Field(None, description="Target value range [min, max] for regression")
+    train_ratio: float = Field(0.8, ge=0.5, le=0.95, description="Proportion of samples for training")
+
+    # Advanced options (Phase 6.5)
+    include_metadata: bool = Field(True, description="Include metadata columns (sample_id, batch, etc.)")
+    include_repetitions: bool = Field(False, description="Add sample repetitions for variability analysis")
+    repetitions_per_sample: int = Field(3, ge=2, le=10, description="Number of repetitions per sample")
+    noise_level: float = Field(0.05, ge=0.0, le=0.5, description="Noise level (0 = no noise, 0.5 = high noise)")
+    add_batch_effects: bool = Field(False, description="Add batch-to-batch variation")
+    n_batches: int = Field(3, ge=2, le=10, description="Number of batches if batch effects enabled")
+    wavelength_range: Optional[List[float]] = Field(None, description="Wavelength range [start, end] in nm")
+
+    # Naming
+    name: Optional[str] = Field(None, description="Dataset name (auto-generated if not provided)")
+    auto_link: bool = Field(True, description="Automatically link to workspace after generation")
+
+
+class GenerateSyntheticResponse(BaseModel):
+    """Response model for synthetic dataset generation."""
+
+    success: bool
+    dataset_id: Optional[str] = None
+    name: str
+    path: str
+    summary: Dict[str, Any]
+    linked: bool = False
+    message: str
+
+
+@router.post("/datasets/generate-synthetic", response_model=GenerateSyntheticResponse)
+async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
+    """
+    Generate a synthetic NIRS dataset using nirs4all.generate.
+
+    This endpoint creates a synthetic dataset for testing and development purposes.
+    The dataset is saved to the workspace and optionally linked for immediate use.
+
+    Features:
+    - Regression or classification tasks
+    - Configurable complexity (simple, realistic, complex)
+    - Optional metadata, repetitions, and batch effects
+    - Automatic linking to workspace
+
+    Developer mode feature: This endpoint is intended for development and testing.
+    """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available. Cannot generate synthetic data."
+        )
+
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
+
+    try:
+        import nirs4all
+        from nirs4all.data.synthetic import SyntheticDatasetBuilder
+
+        # Generate dataset name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if request.name:
+            dataset_name = request.name
+        else:
+            task_prefix = "reg" if request.task_type == "regression" else f"cls{request.n_classes}"
+            dataset_name = f"synthetic_{task_prefix}_{request.n_samples}_{timestamp}"
+
+        # Prepare output directory
+        workspace_path = Path(workspace.path)
+        datasets_dir = workspace_path / "datasets" / "synthetic"
+        datasets_dir.mkdir(parents=True, exist_ok=True)
+        output_path = datasets_dir / dataset_name
+
+        # Build generation parameters using the builder pattern
+        random_state = int(datetime.now().timestamp()) % 2**31
+
+        builder = SyntheticDatasetBuilder(
+            n_samples=request.n_samples,
+            random_state=random_state,
+            name=dataset_name,
+        )
+
+        # Configure features
+        feature_kwargs: Dict[str, Any] = {"complexity": request.complexity}
+        if request.wavelength_range and len(request.wavelength_range) == 2:
+            feature_kwargs["wavelength_range"] = tuple(request.wavelength_range)
+        builder.with_features(**feature_kwargs)
+
+        # Configure targets based on task type
+        if request.task_type == "regression":
+            if request.target_range and len(request.target_range) == 2:
+                builder.with_targets(range=tuple(request.target_range))
+        else:
+            # Classification
+            builder.with_classification(
+                n_classes=request.n_classes,
+                separation=1.0,  # Standard separation
+            )
+
+        # Configure partitions
+        builder.with_partitions(train_ratio=request.train_ratio)
+
+        # Export to folder
+        output_path = builder.export(str(output_path), format="standard")
+
+        # Create summary
+        summary = {
+            "task_type": request.task_type,
+            "n_samples": request.n_samples,
+            "complexity": request.complexity,
+            "train_ratio": request.train_ratio,
+            "n_classes": request.n_classes if request.task_type != "regression" else None,
+            "target_range": request.target_range,
+            "wavelength_range": request.wavelength_range,
+            "include_metadata": request.include_metadata,
+            "include_repetitions": request.include_repetitions,
+            "noise_level": request.noise_level,
+            "add_batch_effects": request.add_batch_effects,
+            "generated_at": datetime.now().isoformat(),
+        }
+
+        # Try to get actual dimensions from generated files
+        try:
+            import pandas as pd
+            x_train_file = output_path / "Xcal.csv"
+            if x_train_file.exists():
+                df = pd.read_csv(x_train_file, nrows=5)
+                summary["num_features"] = len(df.columns)
+                # Count all rows
+                summary["train_samples"] = sum(1 for _ in open(x_train_file)) - 1
+
+            x_test_file = output_path / "Xval.csv"
+            if x_test_file.exists():
+                summary["test_samples"] = sum(1 for _ in open(x_test_file)) - 1
+        except Exception:
+            pass
+
+        # Auto-link to workspace if requested
+        linked = False
+        dataset_id = None
+
+        if request.auto_link:
+            try:
+                # Build config for the dataset
+                link_config = {
+                    "synthetic": True,
+                    "generated_at": datetime.now().isoformat(),
+                    "generation_params": {
+                        "task_type": request.task_type,
+                        "n_samples": request.n_samples,
+                        "complexity": request.complexity,
+                    },
+                    "targets": [{
+                        "column": "target",
+                        "type": request.task_type,
+                        "is_default": True,
+                    }],
+                    "default_target": "target",
+                }
+
+                dataset_info = workspace_manager.link_dataset(
+                    str(output_path),
+                    config=link_config
+                )
+                linked = True
+                dataset_id = dataset_info.get("id")
+            except Exception as e:
+                # Linking failed, but dataset was still created
+                summary["link_error"] = str(e)
+
+        return GenerateSyntheticResponse(
+            success=True,
+            dataset_id=dataset_id,
+            name=dataset_name,
+            path=str(output_path),
+            summary=summary,
+            linked=linked,
+            message=f"Synthetic dataset '{dataset_name}' generated successfully"
+            + (" and linked to workspace" if linked else ""),
+        )
+
+    except ImportError as e:
+        raise HTTPException(
+            status_code=501,
+            detail=f"nirs4all.generate not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate synthetic dataset: {str(e)}"
         )

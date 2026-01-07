@@ -11,11 +11,12 @@ import {
   ArrowRight,
   LucideIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { StatsCard, QuickAction, RecentProject } from "@/components/dashboard";
+import { StatsCard, QuickAction, RecentProject, DeveloperQuickStart } from "@/components/dashboard";
 import { useDashboard, formatRelativeTime } from "@/hooks/useDashboard";
+import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import type { QuickActionColor } from "@/components/dashboard";
 
 const containerVariants = {
@@ -74,6 +75,8 @@ const quickActions: QuickActionItem[] = [
 
 export default function Dashboard() {
   const { data, isLoading, error } = useDashboard();
+  const isDeveloperMode = useIsDeveloperMode();
+  const navigate = useNavigate();
 
   const stats = data?.stats ?? {
     datasets: 0,
@@ -161,6 +164,19 @@ export default function Dashboard() {
           ))}
         </div>
       </motion.div>
+
+      {/* Developer Quick Start - Only shown in developer mode */}
+      {isDeveloperMode && (
+        <motion.div variants={itemVariants}>
+          <DeveloperQuickStart
+            onDatasetGenerated={(datasetId) => {
+              if (datasetId) {
+                navigate("/datasets");
+              }
+            }}
+          />
+        </motion.div>
+      )}
 
       {/* Recent Projects / Runs */}
       <motion.div variants={itemVariants}>

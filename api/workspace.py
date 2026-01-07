@@ -621,6 +621,95 @@ async def remove_workspace_from_list(path: str):
         )
 
 
+# ----------------------- Workspace Import (Phase 3) -----------------------
+
+
+class ImportWorkspaceRequest(BaseModel):
+    """Request model for importing a workspace from archive."""
+    archive_path: str = Field(..., description="Path to the archive file")
+    destination_path: str = Field(..., description="Path where workspace will be extracted")
+    workspace_name: Optional[str] = Field(None, description="Name for the imported workspace")
+
+
+@router.post("/workspace/import")
+async def import_workspace(request: ImportWorkspaceRequest):
+    """
+    Import a workspace from a zip archive.
+
+    Extracts the archive to the specified destination and registers
+    the workspace.
+    """
+    try:
+        archive_path = Path(request.archive_path)
+        if not archive_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Archive file not found: {request.archive_path}",
+            )
+
+        if not zipfile.is_zipfile(archive_path):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid archive file format",
+            )
+
+        destination_path = Path(request.destination_path)
+        destination_path.mkdir(parents=True, exist_ok=True)
+
+        # Extract archive
+        items_imported = 0
+        with zipfile.ZipFile(archive_path, "r") as zf:
+            for item in zf.namelist():
+                zf.extract(item, destination_path)
+                items_imported += 1
+
+        # Load workspace config if exists, or create one
+        config_file = destination_path / "workspace.json"
+        workspace_name = request.workspace_name or destination_path.name
+        now = datetime.now().isoformat()
+
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                workspace_name = config.get("name", workspace_name)
+                # Update path to new location
+                config["path"] = str(destination_path.resolve())
+                config["last_accessed"] = now
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+        else:
+            # Create a new workspace config
+            config = {
+                "path": str(destination_path.resolve()),
+                "name": workspace_name,
+                "created_at": now,
+                "last_accessed": now,
+                "datasets": [],
+                "pipelines": [],
+                "groups": [],
+            }
+            with open(config_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+
+        # Add to recent workspaces
+        workspace_manager.add_to_recent(str(destination_path.resolve()), workspace_name)
+
+        return {
+            "success": True,
+            "workspace_path": str(destination_path.resolve()),
+            "workspace_name": workspace_name,
+            "items_imported": items_imported,
+            "message": f"Imported {items_imported} items to {destination_path}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to import workspace: {str(e)}"
+        )
+
+
 # ----------------------- Custom Nodes API (Phase 5) -----------------------
 
 
@@ -810,4 +899,441 @@ async def update_custom_node_settings(request: CustomNodeSettingsRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to update custom node settings: {str(e)}"
+        )
+
+
+# ----------------------- Workspace Statistics & Cache (Phase 5) -----------------------
+
+
+class SpaceUsageItem(BaseModel):
+    """Space usage for a category."""
+    name: str = Field(..., description="Category name (results, models, etc.)")
+    size_bytes: int = Field(0, description="Size in bytes")
+    file_count: int = Field(0, description="Number of files")
+    percentage: float = Field(0.0, description="Percentage of total workspace size")
+
+
+class WorkspaceStatsResponse(BaseModel):
+    """Response model for workspace statistics."""
+    path: str = Field(..., description="Workspace path")
+    name: str = Field(..., description="Workspace name")
+    total_size_bytes: int = Field(0, description="Total workspace size in bytes")
+    space_usage: List[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
+    linked_datasets_count: int = Field(0, description="Number of linked datasets")
+    linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
+    last_backup: Optional[str] = Field(None, description="Last backup timestamp")
+    created_at: str = Field(..., description="Workspace creation time")
+    last_accessed: str = Field(..., description="Last access time")
+
+
+class CleanCacheRequest(BaseModel):
+    """Request model for cleaning cache."""
+    clean_temp: bool = Field(True, description="Clean temporary files")
+    clean_orphan_results: bool = Field(False, description="Clean results without associated runs")
+    clean_old_predictions: bool = Field(False, description="Clean predictions older than threshold")
+    days_threshold: int = Field(30, description="Age threshold for cleaning old files")
+
+
+class CleanCacheResponse(BaseModel):
+    """Response model for clean cache operation."""
+    success: bool
+    files_removed: int = Field(0, description="Number of files removed")
+    bytes_freed: int = Field(0, description="Bytes freed")
+    categories_cleaned: List[str] = Field(default_factory=list, description="Categories that were cleaned")
+
+
+class DataLoadingDefaults(BaseModel):
+    """Default settings for data loading."""
+    delimiter: str = Field(";", description="Default CSV delimiter")
+    decimal_separator: str = Field(".", description="Default decimal separator")
+    has_header: bool = Field(True, description="Default header setting")
+    header_unit: str = Field("nm", description="Default header unit (nm, cm-1, text, none, index)")
+    signal_type: str = Field("auto", description="Default signal type")
+    na_policy: str = Field("drop", description="Default NA handling policy")
+    auto_detect: bool = Field(True, description="Enable auto-detection")
+
+
+class GeneralSettings(BaseModel):
+    """General UI settings."""
+    theme: str = Field("system", description="Theme: light, dark, or system")
+    ui_density: str = Field("comfortable", description="UI density: compact, comfortable, or spacious")
+    reduce_animations: bool = Field(False, description="Reduce motion for accessibility")
+    sidebar_collapsed: bool = Field(False, description="Whether sidebar is collapsed")
+    language: str = Field("en", description="Interface language: en, fr, or de")
+
+
+class WorkspaceSettingsResponse(BaseModel):
+    """Response model for workspace settings."""
+    data_loading_defaults: DataLoadingDefaults
+    developer_mode: bool = Field(False, description="Developer mode enabled")
+    cache_enabled: bool = Field(True, description="Cache enabled")
+    backup_enabled: bool = Field(False, description="Automatic backup enabled")
+    backup_interval_hours: int = Field(24, description="Backup interval in hours")
+    backup_max_count: int = Field(5, description="Maximum number of backups to keep")
+    backup_include_results: bool = Field(True, description="Include results in backup")
+    backup_include_models: bool = Field(True, description="Include models in backup")
+    general: Optional[GeneralSettings] = Field(None, description="General UI settings")
+
+
+def _compute_directory_size(directory: Path) -> tuple[int, int]:
+    """Compute total size and file count for a directory."""
+    total_size = 0
+    file_count = 0
+    if directory.exists() and directory.is_dir():
+        for file in directory.rglob("*"):
+            if file.is_file():
+                try:
+                    total_size += file.stat().st_size
+                    file_count += 1
+                except (OSError, PermissionError):
+                    pass
+    return total_size, file_count
+
+
+@router.get("/workspace/stats", response_model=WorkspaceStatsResponse)
+async def get_workspace_stats():
+    """
+    Get workspace statistics including space usage breakdown.
+
+    Returns detailed statistics about the workspace storage usage,
+    broken down by category (results, models, predictions, pipelines).
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+
+        # Define categories and their directories
+        categories = [
+            ("results", workspace_path / "results"),
+            ("models", workspace_path / "models"),
+            ("predictions", workspace_path / "predictions"),
+            ("pipelines", workspace_path / "pipelines"),
+            ("cache", workspace_path / ".cache"),
+            ("temp", workspace_path / ".tmp"),
+        ]
+
+        space_usage: List[SpaceUsageItem] = []
+        total_workspace_size = 0
+
+        # Compute size for each category
+        for name, directory in categories:
+            size_bytes, file_count = _compute_directory_size(directory)
+            space_usage.append(SpaceUsageItem(
+                name=name,
+                size_bytes=size_bytes,
+                file_count=file_count,
+                percentage=0.0,  # Will be calculated after total is known
+            ))
+            total_workspace_size += size_bytes
+
+        # Add workspace.json and other root files
+        for file in workspace_path.iterdir():
+            if file.is_file():
+                try:
+                    total_workspace_size += file.stat().st_size
+                except (OSError, PermissionError):
+                    pass
+
+        # Calculate percentages
+        if total_workspace_size > 0:
+            for item in space_usage:
+                item.percentage = round((item.size_bytes / total_workspace_size) * 100, 1)
+
+        # Calculate external dataset sizes
+        external_datasets_size = 0
+        for dataset in workspace.datasets:
+            dataset_path = Path(dataset.get("path", ""))
+            if dataset_path.exists():
+                size, _ = _compute_directory_size(dataset_path)
+                external_datasets_size += size
+
+        # Check for backup timestamp
+        last_backup = None
+        backup_file = workspace_path / ".nirs4all" / "last_backup.json"
+        if backup_file.exists():
+            try:
+                with open(backup_file, "r", encoding="utf-8") as f:
+                    backup_data = json.load(f)
+                    last_backup = backup_data.get("timestamp")
+            except Exception:
+                pass
+
+        return WorkspaceStatsResponse(
+            path=str(workspace_path),
+            name=workspace.name,
+            total_size_bytes=total_workspace_size,
+            space_usage=space_usage,
+            linked_datasets_count=len(workspace.datasets),
+            linked_datasets_external_size=external_datasets_size,
+            last_backup=last_backup,
+            created_at=workspace.created_at,
+            last_accessed=workspace.last_accessed,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get workspace stats: {str(e)}"
+        )
+
+
+@router.post("/workspace/clean-cache", response_model=CleanCacheResponse)
+async def clean_cache(request: CleanCacheRequest):
+    """
+    Clean workspace cache and temporary files.
+
+    Options:
+    - clean_temp: Remove temporary files from .tmp directory
+    - clean_orphan_results: Remove result files without associated runs
+    - clean_old_predictions: Remove predictions older than threshold
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+        files_removed = 0
+        bytes_freed = 0
+        categories_cleaned: List[str] = []
+
+        # Clean temporary files
+        if request.clean_temp:
+            temp_dirs = [workspace_path / ".tmp", workspace_path / ".cache"]
+            for temp_dir in temp_dirs:
+                if temp_dir.exists():
+                    for file in temp_dir.rglob("*"):
+                        if file.is_file():
+                            try:
+                                bytes_freed += file.stat().st_size
+                                file.unlink()
+                                files_removed += 1
+                            except (OSError, PermissionError):
+                                pass
+                    categories_cleaned.append(temp_dir.name)
+
+        # Clean old predictions
+        if request.clean_old_predictions:
+            predictions_dir = workspace_path / "predictions"
+            if predictions_dir.exists():
+                threshold = datetime.now().timestamp() - (request.days_threshold * 24 * 60 * 60)
+                for file in predictions_dir.rglob("*"):
+                    if file.is_file():
+                        try:
+                            if file.stat().st_mtime < threshold:
+                                bytes_freed += file.stat().st_size
+                                file.unlink()
+                                files_removed += 1
+                        except (OSError, PermissionError):
+                            pass
+                if files_removed > 0:
+                    categories_cleaned.append("old_predictions")
+
+        # Clean orphan results (results without matching run in workspace.json)
+        if request.clean_orphan_results:
+            results_dir = workspace_path / "results"
+            if results_dir.exists():
+                # Get list of known run IDs from workspace
+                known_runs = set()
+                runs_file = workspace_path / "runs.json"
+                if runs_file.exists():
+                    try:
+                        with open(runs_file, "r", encoding="utf-8") as f:
+                            runs_data = json.load(f)
+                            for run in runs_data.get("runs", []):
+                                known_runs.add(run.get("id"))
+                    except Exception:
+                        pass
+
+                # Remove results not in known runs
+                for item in results_dir.iterdir():
+                    if item.is_dir() and item.name not in known_runs:
+                        try:
+                            size, _ = _compute_directory_size(item)
+                            bytes_freed += size
+                            shutil.rmtree(item)
+                            files_removed += 1
+                        except (OSError, PermissionError):
+                            pass
+
+                if files_removed > 0:
+                    categories_cleaned.append("orphan_results")
+
+        return CleanCacheResponse(
+            success=True,
+            files_removed=files_removed,
+            bytes_freed=bytes_freed,
+            categories_cleaned=categories_cleaned,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to clean cache: {str(e)}"
+        )
+
+
+@router.post("/workspace/backup")
+async def backup_workspace(output_path: Optional[str] = None):
+    """
+    Create a backup of the current workspace.
+
+    If output_path is not provided, creates backup in the workspace's .backups directory.
+    """
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+
+        # Determine backup path
+        if output_path:
+            backup_path = Path(output_path)
+        else:
+            backups_dir = workspace_path / ".backups"
+            backups_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = backups_dir / f"backup_{timestamp}.zip"
+
+        # Create backup archive
+        exported_items = 0
+        with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Include workspace.json
+            config_file = workspace_path / "workspace.json"
+            if config_file.exists():
+                zf.write(config_file, "workspace.json")
+                exported_items += 1
+
+            # Include pipelines
+            for directory in ["pipelines", "results", "models", "predictions"]:
+                dir_path = workspace_path / directory
+                if dir_path.exists():
+                    for file in dir_path.rglob("*"):
+                        if file.is_file():
+                            arcname = str(file.relative_to(workspace_path))
+                            zf.write(file, arcname)
+                            exported_items += 1
+
+        # Record backup timestamp
+        nirs4all_dir = workspace_path / ".nirs4all"
+        nirs4all_dir.mkdir(exist_ok=True)
+        backup_record = nirs4all_dir / "last_backup.json"
+        with open(backup_record, "w", encoding="utf-8") as f:
+            json.dump({
+                "timestamp": datetime.now().isoformat(),
+                "path": str(backup_path),
+                "items_count": exported_items,
+            }, f, indent=2)
+
+        return {
+            "success": True,
+            "backup_path": str(backup_path),
+            "size_bytes": backup_path.stat().st_size,
+            "items_exported": exported_items,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to backup workspace: {str(e)}"
+        )
+
+
+@router.get("/workspace/settings", response_model=WorkspaceSettingsResponse)
+async def get_workspace_settings():
+    """Get workspace settings including data loading defaults."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        settings = workspace_manager.get_workspace_settings()
+        return WorkspaceSettingsResponse(**settings)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get workspace settings: {str(e)}"
+        )
+
+
+@router.put("/workspace/settings")
+async def update_workspace_settings(settings: Dict[str, Any]):
+    """Update workspace settings."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        success = workspace_manager.save_workspace_settings(settings)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save settings")
+
+        return {
+            "success": True,
+            "message": "Settings updated successfully",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update workspace settings: {str(e)}"
+        )
+
+
+@router.get("/workspace/data-defaults", response_model=DataLoadingDefaults)
+async def get_data_loading_defaults():
+    """Get default settings for data loading in dataset wizard."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            # Return system defaults if no workspace
+            return DataLoadingDefaults()
+
+        settings = workspace_manager.get_workspace_settings()
+        defaults = settings.get("data_loading_defaults", {})
+        return DataLoadingDefaults(**defaults) if defaults else DataLoadingDefaults()
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get data loading defaults: {str(e)}"
+        )
+
+
+@router.put("/workspace/data-defaults")
+async def update_data_loading_defaults(defaults: DataLoadingDefaults):
+    """Update default settings for data loading."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        settings = workspace_manager.get_workspace_settings()
+        settings["data_loading_defaults"] = defaults.model_dump()
+        success = workspace_manager.save_workspace_settings(settings)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save defaults")
+
+        return {
+            "success": True,
+            "message": "Data loading defaults updated",
+            "defaults": defaults.model_dump(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update data loading defaults: {str(e)}"
         )

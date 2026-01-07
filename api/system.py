@@ -6,11 +6,65 @@ This module provides FastAPI routes for system health and information.
 
 import platform
 import sys
+import traceback
+import uuid
+from collections import deque
+from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter
-from typing import Dict, Any
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 
 router = APIRouter()
+
+# ============= Error Log Storage =============
+
+class ErrorLogEntry(BaseModel):
+    """Single error log entry."""
+    id: str
+    timestamp: str
+    level: str  # "error", "warning", "critical"
+    endpoint: str
+    message: str
+    details: Optional[str] = None
+    traceback: Optional[str] = None
+
+
+# In-memory storage for error logs (thread-safe deque)
+_error_log: deque[dict] = deque(maxlen=100)
+
+
+def log_error(
+    endpoint: str,
+    message: str,
+    level: str = "error",
+    details: Optional[str] = None,
+    exc: Optional[Exception] = None,
+) -> None:
+    """Log an error to the in-memory store."""
+    entry = {
+        "id": str(uuid.uuid4())[:8],
+        "timestamp": datetime.now().isoformat(),
+        "level": level,
+        "endpoint": endpoint,
+        "message": message,
+        "details": details,
+        "traceback": traceback.format_exc() if exc else None,
+    }
+    _error_log.appendleft(entry)
+
+
+def get_error_log_entries(limit: int = 50) -> List[dict]:
+    """Get recent error log entries."""
+    return list(_error_log)[:limit]
+
+
+def clear_error_log() -> int:
+    """Clear all error log entries. Returns count of cleared entries."""
+    count = len(_error_log)
+    _error_log.clear()
+    return count
 
 
 def _get_nirs4all_version() -> str:
@@ -186,3 +240,26 @@ async def system_paths():
         paths["predictions"] = workspace_manager.get_predictions_path()
 
     return {"paths": paths}
+
+
+# ============= Error Log Endpoints =============
+
+@router.get("/system/errors")
+async def get_errors(limit: int = Query(default=50, ge=1, le=200)):
+    """Get recent error logs for debugging."""
+    errors = get_error_log_entries(limit)
+    return {
+        "errors": errors,
+        "total": len(_error_log),
+        "max_stored": _error_log.maxlen or 100,
+    }
+
+
+@router.delete("/system/errors")
+async def delete_errors():
+    """Clear all error logs."""
+    count = clear_error_log()
+    return {
+        "success": True,
+        "cleared": count,
+    }

@@ -1,3 +1,7 @@
+**Global**
+- App Icon
+- Add nirs4all logo
+
 **Dashboard**
 - think it as settings more than dashboard or simply remove
 
@@ -10,6 +14,7 @@
 
 
 **Datasets**
+Add drag n drop folder or files. Directly to create datasets, or into the dataset wizard.
 
 **Pipeline Builder**
 - REFACTOR THE COMPONENTS. LOT LOT LOT OF REDONDANCIES
@@ -31,5 +36,8 @@
 - operators all over (augmentations op in preprocessings)
 - refresh when options are change make the app crash if option is empty. Refresh after enter or getting out with different value.
 
-**Global**
-- Add locales (fr, de, en, ci)
+**Settings**
+- Add chinese
+- Remove animation do not work (it's actually worse)
+- Scheduled backups is useless
+-
