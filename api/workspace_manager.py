@@ -833,11 +833,6 @@ class WorkspaceManager:
             },
             "developer_mode": False,
             "cache_enabled": True,
-            "backup_enabled": False,
-            "backup_interval_hours": 24,
-            "backup_max_count": 5,
-            "backup_include_results": True,
-            "backup_include_models": True,
             "general": {
                 "theme": "system",
                 "ui_density": "comfortable",

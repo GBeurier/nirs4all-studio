@@ -281,7 +281,13 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
     }
   };
 
-
+  const handleBackup = async () => {
+    // TODO: Implement backup functionality when backend API is available
+    setLastAction({
+      type: "backup",
+      message: "Backup feature coming soon",
+    });
+  };
 
   if (isLoading) {
     return (

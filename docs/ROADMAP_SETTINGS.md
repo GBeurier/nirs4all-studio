@@ -67,7 +67,6 @@ api/
 ├── workspace.py              # Workspace & settings endpoints
 │   ├── GET /workspace/stats          # Space usage breakdown
 │   ├── POST /workspace/clean-cache   # Clean temp files
-│   ├── POST /workspace/backup        # Create backup
 │   ├── GET /workspace/settings       # Workspace settings
 │   ├── PUT /workspace/settings       # Update settings
 │   ├── GET /workspace/data-defaults  # Data loading defaults
@@ -107,7 +106,6 @@ src/
 │       ├── SpaceUsageItem
 │       ├── WorkspaceStatsResponse
 │       ├── CleanCacheRequest/Response
-│       ├── BackupWorkspaceResponse
 │       ├── DataLoadingDefaults
 │       └── WorkspaceSettings
 │
@@ -115,7 +113,6 @@ src/
     └── client.ts             # API client functions
         ├── getWorkspaceStats()
         ├── cleanWorkspaceCache()
-        ├── backupWorkspace()
         ├── getWorkspaceSettings()
         ├── updateWorkspaceSettings()
         ├── getDataLoadingDefaults()
@@ -133,8 +130,7 @@ src/
 ├── workspace.json                     # Workspace config (datasets, pipelines)
 └── .nirs4all/
     ├── settings.json                  # Workspace-specific settings
-    ├── custom_nodes.json              # Custom operator definitions
-    └── last_backup.json               # Backup timestamp
+    └── custom_nodes.json              # Custom operator definitions
 ```
 
 ---
@@ -156,7 +152,6 @@ This phase was completed as part of the Datasets & Workspace roadmap. Key delive
    - Space usage breakdown by category
    - Progress bar visualization
    - Clean cache with options dialog
-   - Backup creation
    - Refresh button
 
 3. **DataLoadingDefaultsForm Component**
@@ -173,7 +168,6 @@ This phase was completed as part of the Datasets & Workspace roadmap. Key delive
    - Full workspace settings CRUD
    - Space statistics calculation
    - Cache cleaning with options
-   - Backup creation
 
 ---
 
@@ -361,33 +355,12 @@ Enhance the export functionality with better UI feedback.
 - [x] **T3.3.3**: Add workspace import feature ✅ *Import tab in dialog*
 - [x] **T3.3.4**: Validate import compatibility ✅ *Backend validates archive structure*
 
-### 3.4 Scheduled Backups
-
-Allow scheduling automatic backups.
-
-```typescript
-interface BackupSettings {
-  enabled: boolean;
-  interval_hours: number;  // e.g., 24
-  max_backups: number;     // Keep last N backups
-  include_results: boolean;
-  include_models: boolean;
-}
-```
-
-**Tasks**:
-- [x] **T3.4.1**: Add backup settings to workspace settings schema ✅ *Extended WorkspaceSettings*
-- [x] **T3.4.2**: Create backup settings form ✅ *BackupSettings.tsx component*
-- [x] **T3.4.3**: Backend: Implement scheduled backup check ✅ *Settings stored, check on startup*
-- [x] **T3.4.4**: Backend: Auto-cleanup old backups ✅ *max_backups setting honored*
-
 > **Phase 3 Implementation Summary** (2026-01-08):
 >
 > **Frontend Components Created**:
 > - `src/components/settings/RecentWorkspacesList.tsx` - Recent workspaces display with open/remove actions
 > - `src/components/settings/CreateWorkspaceDialog.tsx` - Wizard dialog for new workspace creation
 > - `src/components/settings/ExportImportDialog.tsx` - Tabbed export/import with progress indicators
-> - `src/components/settings/BackupSettings.tsx` - Scheduled backup configuration form
 >
 > **Shared Utilities Created**:
 > - `src/utils/formatters.ts` - Shared formatting functions:
@@ -400,25 +373,19 @@ interface BackupSettings {
 > - `WorkspaceListResponse` - API response for workspace listing
 > - `CreateWorkspaceRequest`, `ExportWorkspaceRequest/Response`
 > - `ImportWorkspaceRequest`, `ImportWorkspaceResponse`
-> - `BackupSettings` interface with `DEFAULT_BACKUP_SETTINGS`
-> - Extended `WorkspaceSettings` with `backup_max_count`, `backup_include_results`, `backup_include_models`
 >
 > **API Client Functions Added (src/api/client.ts)**:
 > - `getRecentWorkspaces()`, `listWorkspaces()`
 > - `createWorkspace()`, `removeWorkspaceFromList()`
 > - `exportWorkspace()`, `importWorkspace()`
-> - `getBackupSettings()`, `updateBackupSettings()`
 >
 > **Backend Updates (api/workspace.py, api/workspace_manager.py)**:
 > - `ImportWorkspaceRequest` Pydantic model
 > - `POST /workspace/import` endpoint
-> - Extended `WorkspaceSettingsResponse` with backup fields
-> - Updated `_default_workspace_settings()` with backup defaults
 >
 > **Settings.tsx Integration**:
 > - Added Create Workspace button (FolderPlus icon)
 > - Added Export/Import button (FileArchive icon)
-> - Integrated BackupSettings component in Workspace tab
 > - Replaced placeholder with RecentWorkspacesList component
 >
 > **Refactoring**:
@@ -852,7 +819,6 @@ src/
 | `/workspace/recent` | GET | Recent workspaces | 3 |
 | `/workspace/stats` | GET | Space usage | 1 |
 | `/workspace/clean-cache` | POST | Clean cache | 1 |
-| `/workspace/backup` | POST | Create backup | 1 |
 | `/workspace/settings` | GET/PUT | Workspace settings | 1 |
 | `/workspace/data-defaults` | GET/PUT | Data loading defaults | 1 |
 
@@ -878,7 +844,6 @@ src/components/settings/
 ├── RecentWorkspacesList.tsx     # ✅ Recent workspaces display (Phase 3)
 ├── CreateWorkspaceDialog.tsx    # ✅ New workspace wizard (Phase 3)
 ├── ExportImportDialog.tsx       # ✅ Tabbed export/import (Phase 3)
-├── BackupSettings.tsx           # ✅ Scheduled backup config (Phase 3)
 ├── SystemInfo.tsx               # ✅ System information panel (Phase 5)
 ├── BackendStatus.tsx            # ✅ Connection status (Phase 5)
 ├── ErrorLogViewer.tsx           # ✅ Error log display (Phase 5)
@@ -948,13 +913,6 @@ interface WorkspaceSettings {
 
   // Developer
   developer_mode: boolean;
-
-  // Backup
-  backup_enabled: boolean;
-  backup_interval_hours: number;
-  backup_max_count: number;
-  backup_include_results: boolean;
-  backup_include_models: boolean;
 
   // Cache
   cache_enabled: boolean;

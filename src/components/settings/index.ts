@@ -11,7 +11,6 @@ export { KeyboardShortcuts } from "./KeyboardShortcuts";
 export { RecentWorkspacesList } from "./RecentWorkspacesList";
 export { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 export { ExportImportDialog } from "./ExportImportDialog";
-export { BackupSettings } from "./BackupSettings";
 export { SystemInfo } from "./SystemInfo";
 export { BackendStatus } from "./BackendStatus";
 export { ErrorLogViewer } from "./ErrorLogViewer";

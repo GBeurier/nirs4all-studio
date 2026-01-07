@@ -431,81 +431,6 @@ async def get_recent_workspaces(limit: int = 10):
         )
 
 
-@router.get("/workspace/{workspace_id}", response_model=WorkspaceInfo)
-async def get_workspace_info(workspace_id: str):
-    """
-    Get workspace information by ID.
-
-    The workspace_id can be the base64-encoded path or the workspace name.
-    """
-    try:
-        import base64
-
-        # Try to decode workspace_id as base64 path
-        try:
-            workspace_path = base64.urlsafe_b64decode(workspace_id.encode()).decode()
-        except Exception:
-            # Not base64 - try to find by name
-            workspace_path = workspace_manager.find_workspace_by_name(workspace_id)
-
-        if not workspace_path:
-            raise HTTPException(status_code=404, detail="Workspace not found")
-
-        config = workspace_manager.load_workspace_config(workspace_path)
-        if not config:
-            raise HTTPException(status_code=404, detail="Workspace configuration not found")
-
-        return WorkspaceInfo(
-            path=config.get("path", workspace_path),
-            name=config.get("name", Path(workspace_path).name),
-            created_at=config.get("created_at", ""),
-            last_accessed=config.get("last_accessed", ""),
-            num_datasets=len(config.get("datasets", [])),
-            num_pipelines=len(config.get("pipelines", [])),
-            description=config.get("description"),
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get workspace info: {str(e)}"
-        )
-
-
-@router.put("/workspace/{workspace_id}")
-async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
-    """
-    Update workspace configuration.
-
-    Allows updating the name, description, and other metadata.
-    """
-    try:
-        import base64
-
-        # Try to decode workspace_id as base64 path
-        try:
-            workspace_path = base64.urlsafe_b64decode(workspace_id.encode()).decode()
-        except Exception:
-            workspace_path = workspace_manager.find_workspace_by_name(workspace_id)
-
-        if not workspace_path:
-            raise HTTPException(status_code=404, detail="Workspace not found")
-
-        success = workspace_manager.update_workspace_config(workspace_path, updates)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to update workspace")
-
-        return {"success": True, "message": "Workspace updated"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update workspace: {str(e)}"
-        )
-
-
 @router.post("/workspace/export")
 async def export_workspace(request: ExportWorkspaceRequest):
     """
@@ -921,7 +846,6 @@ class WorkspaceStatsResponse(BaseModel):
     space_usage: List[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
     linked_datasets_count: int = Field(0, description="Number of linked datasets")
     linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
-    last_backup: Optional[str] = Field(None, description="Last backup timestamp")
     created_at: str = Field(..., description="Workspace creation time")
     last_accessed: str = Field(..., description="Last access time")
 
@@ -967,11 +891,6 @@ class WorkspaceSettingsResponse(BaseModel):
     data_loading_defaults: DataLoadingDefaults
     developer_mode: bool = Field(False, description="Developer mode enabled")
     cache_enabled: bool = Field(True, description="Cache enabled")
-    backup_enabled: bool = Field(False, description="Automatic backup enabled")
-    backup_interval_hours: int = Field(24, description="Backup interval in hours")
-    backup_max_count: int = Field(5, description="Maximum number of backups to keep")
-    backup_include_results: bool = Field(True, description="Include results in backup")
-    backup_include_models: bool = Field(True, description="Include models in backup")
     general: Optional[GeneralSettings] = Field(None, description="General UI settings")
 
 
@@ -1050,17 +969,6 @@ async def get_workspace_stats():
                 size, _ = _compute_directory_size(dataset_path)
                 external_datasets_size += size
 
-        # Check for backup timestamp
-        last_backup = None
-        backup_file = workspace_path / ".nirs4all" / "last_backup.json"
-        if backup_file.exists():
-            try:
-                with open(backup_file, "r", encoding="utf-8") as f:
-                    backup_data = json.load(f)
-                    last_backup = backup_data.get("timestamp")
-            except Exception:
-                pass
-
         return WorkspaceStatsResponse(
             path=str(workspace_path),
             name=workspace.name,
@@ -1068,7 +976,6 @@ async def get_workspace_stats():
             space_usage=space_usage,
             linked_datasets_count=len(workspace.datasets),
             linked_datasets_external_size=external_datasets_size,
-            last_backup=last_backup,
             created_at=workspace.created_at,
             last_accessed=workspace.last_accessed,
         )
@@ -1178,75 +1085,6 @@ async def clean_cache(request: CleanCacheRequest):
         )
 
 
-@router.post("/workspace/backup")
-async def backup_workspace(output_path: Optional[str] = None):
-    """
-    Create a backup of the current workspace.
-
-    If output_path is not provided, creates backup in the workspace's .backups directory.
-    """
-    try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
-        workspace_path = Path(workspace.path)
-
-        # Determine backup path
-        if output_path:
-            backup_path = Path(output_path)
-        else:
-            backups_dir = workspace_path / ".backups"
-            backups_dir.mkdir(exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = backups_dir / f"backup_{timestamp}.zip"
-
-        # Create backup archive
-        exported_items = 0
-        with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Include workspace.json
-            config_file = workspace_path / "workspace.json"
-            if config_file.exists():
-                zf.write(config_file, "workspace.json")
-                exported_items += 1
-
-            # Include pipelines
-            for directory in ["pipelines", "results", "models", "predictions"]:
-                dir_path = workspace_path / directory
-                if dir_path.exists():
-                    for file in dir_path.rglob("*"):
-                        if file.is_file():
-                            arcname = str(file.relative_to(workspace_path))
-                            zf.write(file, arcname)
-                            exported_items += 1
-
-        # Record backup timestamp
-        nirs4all_dir = workspace_path / ".nirs4all"
-        nirs4all_dir.mkdir(exist_ok=True)
-        backup_record = nirs4all_dir / "last_backup.json"
-        with open(backup_record, "w", encoding="utf-8") as f:
-            json.dump({
-                "timestamp": datetime.now().isoformat(),
-                "path": str(backup_path),
-                "items_count": exported_items,
-            }, f, indent=2)
-
-        return {
-            "success": True,
-            "backup_path": str(backup_path),
-            "size_bytes": backup_path.stat().st_size,
-            "items_exported": exported_items,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to backup workspace: {str(e)}"
-        )
-
-
 @router.get("/workspace/settings", response_model=WorkspaceSettingsResponse)
 async def get_workspace_settings():
     """Get workspace settings including data loading defaults."""
@@ -1336,4 +1174,82 @@ async def update_data_loading_defaults(defaults: DataLoadingDefaults):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to update data loading defaults: {str(e)}"
+        )
+
+
+# ----------------------- Workspace by ID routes (must be last due to path parameter) -----------------------
+
+
+@router.get("/workspace/{workspace_id}", response_model=WorkspaceInfo)
+async def get_workspace_info(workspace_id: str):
+    """
+    Get workspace information by ID.
+
+    The workspace_id can be the base64-encoded path or the workspace name.
+    """
+    try:
+        import base64
+
+        # Try to decode workspace_id as base64 path
+        try:
+            workspace_path = base64.urlsafe_b64decode(workspace_id.encode()).decode()
+        except Exception:
+            # Not base64 - try to find by name
+            workspace_path = workspace_manager.find_workspace_by_name(workspace_id)
+
+        if not workspace_path:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        config = workspace_manager.load_workspace_config(workspace_path)
+        if not config:
+            raise HTTPException(status_code=404, detail="Workspace configuration not found")
+
+        return WorkspaceInfo(
+            path=config.get("path", workspace_path),
+            name=config.get("name", Path(workspace_path).name),
+            created_at=config.get("created_at", ""),
+            last_accessed=config.get("last_accessed", ""),
+            num_datasets=len(config.get("datasets", [])),
+            num_pipelines=len(config.get("pipelines", [])),
+            description=config.get("description"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get workspace info: {str(e)}"
+        )
+
+
+@router.put("/workspace/{workspace_id}")
+async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
+    """
+    Update workspace configuration.
+
+    Allows updating the name, description, and other metadata.
+    """
+    try:
+        import base64
+
+        # Try to decode workspace_id as base64 path
+        try:
+            workspace_path = base64.urlsafe_b64decode(workspace_id.encode()).decode()
+        except Exception:
+            workspace_path = workspace_manager.find_workspace_by_name(workspace_id)
+
+        if not workspace_path:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        success = workspace_manager.update_workspace_config(workspace_path, updates)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update workspace")
+
+        return {"success": True, "message": "Workspace updated"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update workspace: {str(e)}"
         )
