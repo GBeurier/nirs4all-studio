@@ -1,9 +1,13 @@
 /**
  * Chart loading skeleton component
  *
+ * Phase 1 Refactoring: Performance Optimizations
+ *
  * Provides consistent loading states for visualization charts.
+ * Wrapped with React.memo for optimal performance.
  */
 
+import { memo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +16,7 @@ interface ChartSkeletonProps {
   className?: string;
 }
 
-export function ChartSkeleton({ type = 'default', className }: ChartSkeletonProps) {
+export const ChartSkeleton = memo(function ChartSkeleton({ type = 'default', className }: ChartSkeletonProps) {
   return (
     <div className={cn('w-full h-full min-h-[200px] flex flex-col p-4', className)}>
       {/* Title skeleton */}
@@ -31,7 +35,7 @@ export function ChartSkeleton({ type = 'default', className }: ChartSkeletonProp
       </div>
     </div>
   );
-}
+});
 
 function SpectraChartSkeleton() {
   return (

@@ -25,6 +25,61 @@ export type OverlayStyle = 'opacity' | 'dashed' | 'desaturated';
  */
 export type SubsetMode = 'all' | 'sampled' | 'selected' | 'filtered';
 
+/**
+ * Display mode for individual spectra vs aggregated
+ */
+export type SpectraDisplayMode = 'individual' | 'selected_only' | 'aggregated' | 'grouped';
+
+/**
+ * Color mode for spectra visualization
+ */
+export type SpectraColorMode = 'target' | 'fold' | 'partition' | 'metadata' | 'selection' | 'outlier';
+
+/**
+ * Coloring configuration for spectra
+ */
+export interface SpectraColorConfig {
+  /** Primary color mode */
+  mode: SpectraColorMode;
+  /** Metadata column key for 'metadata' mode */
+  metadataKey?: string;
+  /** Custom color palette name */
+  palette?: string;
+  /** Opacity for non-highlighted samples */
+  unselectedOpacity: number;
+  /** Whether to show pinned samples with distinct style */
+  highlightPinned: boolean;
+}
+
+/**
+ * Default spectra color configuration
+ */
+export const DEFAULT_SPECTRA_COLOR_CONFIG: SpectraColorConfig = {
+  mode: 'target',
+  unselectedOpacity: 0.25,
+  highlightPinned: true,
+};
+
+/**
+ * Reference step configuration for "before" view
+ */
+export interface ReferenceStepConfig {
+  /** Step index (0 = raw, 1 = after first operator, etc.) */
+  stepIndex: number;
+  /** Step label for display */
+  label: string;
+}
+
+/**
+ * Current step configuration for "after" view
+ */
+export interface CurrentStepConfig {
+  /** Step index (-1 = final output, or specific step) */
+  stepIndex: number;
+  /** Step label for display */
+  label: string;
+}
+
 // ============= Sampling Strategy Types =============
 
 /**
@@ -73,6 +128,8 @@ export interface AggregationConfig {
   quantileRange?: [number, number];
   /** Group by metadata field for grouped aggregates */
   groupBy?: string;
+  /** Whether to show individual lines behind aggregation */
+  showIndividualLines?: boolean;
 }
 
 /**
@@ -82,6 +139,7 @@ export const DEFAULT_AGGREGATION_CONFIG: AggregationConfig = {
   mode: 'none',
   autoThreshold: 200,
   quantileRange: [0.05, 0.95],
+  showIndividualLines: false,
 };
 
 // ============= Wavelength Focus Types =============
@@ -186,6 +244,15 @@ export interface SpectraChartConfig {
   viewMode: SpectraViewMode;
   overlayStyle: OverlayStyle;
 
+  // Display mode (individual vs aggregated)
+  displayMode: SpectraDisplayMode;
+
+  // Color configuration
+  colorConfig: SpectraColorConfig;
+
+  // Reference step for "before" view (when in 'both' or 'difference' mode)
+  referenceStep: ReferenceStepConfig;
+
   // Subset selection
   subsetMode: SubsetMode;
   sampling: SamplingConfig;
@@ -212,6 +279,9 @@ export interface SpectraChartConfig {
 export const DEFAULT_SPECTRA_CHART_CONFIG: SpectraChartConfig = {
   viewMode: 'processed',
   overlayStyle: 'dashed',
+  displayMode: 'individual',
+  colorConfig: DEFAULT_SPECTRA_COLOR_CONFIG,
+  referenceStep: { stepIndex: 0, label: 'Original' },
   subsetMode: 'all',
   sampling: DEFAULT_SAMPLING_CONFIG,
   aggregation: DEFAULT_AGGREGATION_CONFIG,

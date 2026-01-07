@@ -29,6 +29,8 @@ import {
   ReferenceLine,
   ComposedChart,
   Line,
+  Brush,
+  ReferenceArea,
 } from 'recharts';
 import {
   BarChart3,
@@ -237,6 +239,13 @@ export function YHistogramV2({
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<HistogramConfig>(DEFAULT_CONFIG);
 
+  // Range selection state for brush selection on Y axis
+  const [rangeSelection, setRangeSelection] = useState<{
+    start: number | null;
+    end: number | null;
+    isSelecting: boolean;
+  }>({ start: null, end: null, isSelecting: false });
+
   // SelectionContext integration for cross-chart highlighting
   const selectionCtx = useSelectionContext ? useSelection() : null;
 
@@ -425,6 +434,60 @@ export function YHistogramV2({
       }
     }
   }, [selectionCtx]);
+
+  // Handle range selection on X axis (Y value range)
+  const handleMouseDown = useCallback((e: any) => {
+    if (!e?.activeLabel) return;
+    const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
+    if (!isNaN(yValue)) {
+      setRangeSelection({ start: yValue, end: yValue, isSelecting: true });
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: any) => {
+    if (!rangeSelection.isSelecting || !e?.activeLabel) return;
+    const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
+    if (!isNaN(yValue)) {
+      setRangeSelection(prev => ({ ...prev, end: yValue }));
+    }
+  }, [rangeSelection.isSelecting]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!rangeSelection.isSelecting || rangeSelection.start === null || rangeSelection.end === null) {
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+      return;
+    }
+
+    const minY = Math.min(rangeSelection.start, rangeSelection.end);
+    const maxY = Math.max(rangeSelection.start, rangeSelection.end);
+
+    // Only process if there's a meaningful range (not just a click)
+    const binWidth = histogramData.length > 0
+      ? histogramData[0].binEnd - histogramData[0].binStart
+      : 0;
+
+    if (Math.abs(maxY - minY) > binWidth * 0.5) {
+      // Find all samples within the Y range
+      const samplesInRange: number[] = [];
+      displayY.forEach((yVal, idx) => {
+        if (yVal >= minY && yVal <= maxY) {
+          samplesInRange.push(idx);
+        }
+      });
+
+      if (samplesInRange.length > 0 && selectionCtx) {
+        if (e.shiftKey) {
+          selectionCtx.select(samplesInRange, 'add');
+        } else if (e.ctrlKey || e.metaKey) {
+          selectionCtx.toggle(samplesInRange);
+        } else {
+          selectionCtx.select(samplesInRange, 'replace');
+        }
+      }
+    }
+
+    setRangeSelection({ start: null, end: null, isSelecting: false });
+  }, [rangeSelection, displayY, histogramData, selectionCtx]);
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -745,9 +808,25 @@ export function YHistogramV2({
       };
     });
 
+    // Calculate range selection bounds for ReferenceArea
+    const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
+      ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
+      : null;
+
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={mergedData} margin={CHART_MARGINS.histogram}>
+        <ComposedChart
+          data={mergedData}
+          margin={CHART_MARGINS.histogram}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={() => {
+            if (rangeSelection.isSelecting) {
+              setRangeSelection({ start: null, end: null, isSelecting: false });
+            }
+          }}
+        >
           <CartesianGrid
             strokeDasharray={CHART_THEME.gridDasharray}
             stroke={CHART_THEME.gridStroke}
@@ -811,6 +890,20 @@ export function YHistogramV2({
                 strokeOpacity={0.5}
               />
             </>
+          )}
+
+          {/* Range selection overlay */}
+          {rangeSelectionBounds && (
+            <ReferenceArea
+              x1={rangeSelectionBounds.min}
+              x2={rangeSelectionBounds.max}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.15}
+              stroke="hsl(var(--primary))"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="4 2"
+            />
           )}
 
           {/* Mean reference line */}

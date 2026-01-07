@@ -1,6 +1,8 @@
 /**
  * MainCanvas - Visualization canvas for spectral data and analysis
  *
+ * Phase 1 Refactoring: Component Modularization
+ *
  * Features:
  * - Uses Phase 3 V2 chart components with enhanced features
  * - Loading skeletons during execution
@@ -21,64 +23,38 @@
  * - Charts render only when visible (effectiveVisibleCharts)
  * - maxSamples prop limits rendered spectra lines
  * - Render mode optimization (auto/canvas/webgl) based on data size
+ * - React.memo on sub-components
  */
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import {
-  FlaskConical, Eye, EyeOff, Loader2, Info, Filter, Activity,
-  Download, Image, FileText, Zap, Monitor,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
+import { FlaskConical, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  SpectraChart,
+  SpectraChartV2,
   YHistogramV2,
   DimensionReductionChart,
   FoldDistributionChartV2,
   RepetitionsChart,
   ChartSkeleton,
-  ChartErrorBoundary,
-  type ExtendedColorMode,
-  type ExtendedColorConfig,
 } from './visualizations';
+import type { ExtendedColorConfig } from './visualizations/chartConfig';
 import { SampleDetails } from './SampleDetails';
-import { StepComparisonSlider } from './StepComparisonSlider';
 import { PartitionSelector, type PartitionFilter, getPartitionIndices } from './PartitionSelector';
-import { MetricsFilterPanel, type MetricFilter } from './MetricsFilterPanel';
-import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
-import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
+import type { MetricFilter } from './MetricsFilterPanel';
+import type { OutlierMethod } from './OutlierSelector';
+import type { DistanceMetric } from './SimilarityFilter';
 import { EmbeddingSelector } from './EmbeddingSelector';
-import { SavedSelections } from './SavedSelections';
 import { useSelection } from '@/context/SelectionContext';
 import {
   useRenderOptimizer,
   type RenderMode,
 } from '@/lib/playground/renderOptimizer';
-import {
-  exportToPng,
-  exportToSvg,
-  exportSpectraToCsv,
-  exportSelectionsToJson,
-  exportToJson,
-  batchExport,
-} from '@/lib/playground/export';
+
+// Phase 1: Extracted components
+import { CanvasToolbar, type ChartType } from './CanvasToolbar';
+import { ChartPanel, ChartLoadingOverlay, ChartErrorBoundary } from './ChartPanel';
+import { usePlaygroundExport, type ChartRefs } from './hooks/usePlaygroundExport';
+
 import type { PlaygroundResult, UnifiedOperator, MetricsResult, OutlierResult, SimilarityResult } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 
@@ -137,67 +113,17 @@ interface MainCanvasProps {
   onRenderModeChange?: (mode: RenderMode) => void;
   /** Dataset ID for saved selections */
   datasetId?: string;
+  /** Last outlier detection result - from operators */
+  lastOutlierResult?: OutlierResult | null;
 }
-
-type ChartType = 'spectra' | 'histogram' | 'folds' | 'pca' | 'repetitions';
-
-interface ChartConfig {
-  id: ChartType;
-  label: string;
-  requiresFolds?: boolean;
-  requiresRepetitions?: boolean;
-}
-
-const CHART_CONFIG: ChartConfig[] = [
-  { id: 'spectra', label: 'Spectra' },
-  { id: 'histogram', label: 'Y Hist' },
-  { id: 'folds', label: 'Folds', requiresFolds: true },
-  { id: 'pca', label: 'PCA' },
-  { id: 'repetitions', label: 'Reps', requiresRepetitions: true },
-];
 
 // ============= Sub-Components =============
-
-interface ColorModeSelectorProps {
-  colorConfig: ExtendedColorConfig;
-  onChange: (config: ExtendedColorConfig) => void;
-  hasFolds: boolean;
-}
-
-function ColorModeSelector({ colorConfig, onChange, hasFolds }: ColorModeSelectorProps) {
-  return (
-    <Select
-      value={colorConfig.mode}
-      onValueChange={(mode) => onChange({ ...colorConfig, mode: mode as ExtendedColorMode })}
-    >
-      <SelectTrigger className="h-6 w-24 text-[10px]">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="target">By Y Value</SelectItem>
-        {hasFolds && <SelectItem value="fold">By Fold</SelectItem>}
-        <SelectItem value="dataset">By Dataset</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
-
-function ChartLoadingOverlay({ visible }: { visible: boolean }) {
-  if (!visible) return null;
-
-  return (
-    <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] flex items-center justify-center z-20 pointer-events-none">
-      <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
-      <span className="sr-only">Updating chart</span>
-    </div>
-  );
-}
 
 /**
  * Raw Data Mode banner - shown when no operators are in the pipeline
  * This is a Phase 1 deliverable: Playground works without any pipeline operators
  */
-function RawDataModeBanner() {
+const RawDataModeBanner = memo(function RawDataModeBanner() {
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/20">
       <Info className="w-4 h-4 text-blue-500 shrink-0" />
@@ -207,7 +133,7 @@ function RawDataModeBanner() {
       </span>
     </div>
   );
-}
+});
 
 // ============= Main Component =============
 
@@ -239,6 +165,7 @@ export function MainCanvas({
   renderMode: externalRenderMode,
   onRenderModeChange,
   datasetId,
+  lastOutlierResult,
 }: MainCanvasProps) {
   // Chart visibility state
   const [visibleCharts, setVisibleCharts] = useState<Set<ChartType>>(
@@ -433,99 +360,38 @@ export function MainCanvas({
     onActiveStepChange?.(step);
   }, [onActiveStepChange]);
 
-  // ============= Phase 6: Export Handlers =============
+  // ============= Phase 1 Refactoring: Use extracted export hook =============
 
-  // Export visible chart to PNG
-  const handleExportChartPng = useCallback(async (chartType: ChartType) => {
-    const refMap: Record<ChartType, React.RefObject<HTMLDivElement>> = {
-      spectra: spectraChartRef,
-      histogram: histogramChartRef,
-      pca: pcaChartRef,
-      folds: foldsChartRef,
-      repetitions: { current: null }, // Not yet implemented
-    };
+  // Chart refs for export
+  const repetitionsChartRef = useRef<HTMLDivElement>(null);
+  const chartRefs: ChartRefs = useMemo(() => ({
+    spectra: spectraChartRef,
+    histogram: histogramChartRef,
+    pca: pcaChartRef,
+    folds: foldsChartRef,
+    repetitions: repetitionsChartRef,
+  }), []);
 
-    const ref = refMap[chartType];
-    if (!ref?.current) {
-      toast.error('Chart not available');
-      return;
-    }
+  // Export data
+  const exportData = useMemo(() => ({
+    spectra: result?.processed?.spectra ?? rawData?.spectra ?? null,
+    wavelengths: result?.processed?.wavelengths ?? rawData?.wavelengths ?? null,
+    sampleIds: rawData?.sampleIds,
+    selectedSamples,
+    pinnedSamples: contextPinnedSamples,
+  }), [result, rawData, selectedSamples, contextPinnedSamples]);
 
-    try {
-      await exportToPng(ref.current, `${chartType}-chart`);
-      toast.success('Chart exported', { description: `${chartType}.png saved` });
-    } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
-    }
-  }, []);
-
-  // Export spectra data to CSV
-  const handleExportSpectraCsv = useCallback(async () => {
-    const spectra = result?.processed?.spectra ?? rawData?.spectra;
-    const wavelengths = result?.processed?.wavelengths ?? rawData?.wavelengths;
-
-    if (!spectra || !wavelengths) {
-      toast.error('No spectra data to export');
-      return;
-    }
-
-    try {
-      await exportSpectraToCsv(spectra, wavelengths, rawData?.sampleIds, 'processed-spectra');
-      toast.success('Data exported', {
-        description: `${spectra.length} samples × ${wavelengths.length} wavelengths saved to CSV`,
-      });
-    } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
-    }
-  }, [result, rawData]);
-
-  // Export current selection to JSON
-  const handleExportSelectionsJson = useCallback(async () => {
-    const selections = Array.from(selectedSamples);
-    const pinned = Array.from(contextPinnedSamples);
-
-    try {
-      await exportSelectionsToJson(selections, pinned, 'playground-selections');
-      toast.success('Selections exported', {
-        description: `${selections.length} selected, ${pinned.length} pinned samples saved`,
-      });
-    } catch (error) {
-      toast.error('Export failed', { description: (error as Error).message });
-    }
-  }, [selectedSamples, contextPinnedSamples]);
-
-  // Batch export all charts
-  const handleBatchExport = useCallback(async () => {
-    const charts: Array<{ element: HTMLElement; filename: string }> = [];
-
-    if (spectraChartRef.current && effectiveVisibleCharts.has('spectra')) {
-      charts.push({ element: spectraChartRef.current, filename: 'spectra-chart' });
-    }
-    if (histogramChartRef.current && effectiveVisibleCharts.has('histogram')) {
-      charts.push({ element: histogramChartRef.current, filename: 'histogram-chart' });
-    }
-    if (pcaChartRef.current && effectiveVisibleCharts.has('pca')) {
-      charts.push({ element: pcaChartRef.current, filename: 'pca-chart' });
-    }
-    if (foldsChartRef.current && effectiveVisibleCharts.has('folds')) {
-      charts.push({ element: foldsChartRef.current, filename: 'folds-chart' });
-    }
-
-    if (charts.length === 0) {
-      toast.error('No charts to export');
-      return;
-    }
-
-    try {
-      const results = await batchExport(charts, 'png');
-      const successCount = results.filter(r => r.success).length;
-      toast.success('Batch export complete', {
-        description: `${successCount}/${charts.length} charts exported`,
-      });
-    } catch (error) {
-      toast.error('Batch export failed', { description: (error as Error).message });
-    }
-  }, [effectiveVisibleCharts]);
+  // Use extracted export hook
+  const {
+    exportChartPng,
+    exportSpectraCsv,
+    exportSelectionsJson,
+    batchExportCharts,
+  } = usePlaygroundExport({
+    chartRefs,
+    exportData,
+    visibleCharts: effectiveVisibleCharts,
+  });
 
   // Empty state - no data loaded
   if (!rawData) {
@@ -593,256 +459,48 @@ export function MainCanvas({
       {/* Raw Data Mode banner - Phase 1 feature */}
       {isRawDataMode && <RawDataModeBanner />}
 
-      {/* Toolbar */}
-      <div
-        className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border bg-card/50"
-        role="toolbar"
-        aria-label="Chart controls"
-      >
-        <div className="flex items-center gap-1.5" role="group" aria-label="Chart visibility toggles">
-          <span className="text-[10px] text-muted-foreground mr-1">Show:</span>
-          {CHART_CONFIG.map(({ id, label, requiresFolds }) => {
-            const isVisible = effectiveVisibleCharts.has(id);
-            const isDisabled = requiresFolds && !hasFolds;
-
-            return (
-              <Button
-                key={id}
-                variant={isVisible ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn(
-                  'h-6 text-[10px] gap-1 px-2',
-                  !isVisible && 'opacity-50',
-                  isDisabled && 'cursor-not-allowed opacity-30'
-                )}
-                onMouseDown={triggerInteractionPending}
-                onClick={() => !isDisabled && toggleChart(id)}
-                disabled={isDisabled}
-                title={isDisabled ? 'Add a splitter to see folds' : undefined}
-              >
-                {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                {label}
-              </Button>
-            );
-          })}
-
-          {/* Loading indicator */}
-          {isFetching && (
-            <Loader2 className="w-3 h-3 animate-spin text-primary ml-2" />
-          )}
-
-          {/* Selection count and filter button */}
-          {selectedCount > 0 && (
-            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
-                {selectedCount} selected
-              </Badge>
-              {onFilterToSelection && (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-6 text-[10px] gap-1 px-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400"
-                        onClick={handleFilterToSelection}
-                      >
-                        <Filter className="w-3 h-3" />
-                        Filter to Selection
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs">
-                      <p className="text-xs">
-                        Add a filter that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}.
-                        Other samples will be removed from the pipeline.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Partition filter (Phase 3) */}
-          {hasFolds && (
-            <>
-              <span className="text-[10px] text-muted-foreground">View:</span>
-              <PartitionSelector
-                value={partitionFilter}
-                onChange={setPartitionFilter}
-                folds={result?.folds ?? null}
-                totalSamples={totalSamples}
-                compact
-              />
-            </>
-          )}
-
-          {/* Phase 5: Advanced Filtering & Metrics */}
-          {(metrics || onDetectOutliers || onFindSimilar) && (
-            <>
-              <Separator orientation="vertical" className="h-4" />
-              <div className="flex items-center gap-1.5">
-                <Activity className="w-3 h-3 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground">Filter:</span>
-
-                {/* Metrics Filter Panel */}
-                {metrics && onMetricFiltersChange && (
-                  <MetricsFilterPanel
-                    metrics={metrics}
-                    activeFilters={metricFilters}
-                    onChange={onMetricFiltersChange}
-                    compact
-                  />
-                )}
-
-                {/* Outlier Selector */}
-                {onDetectOutliers && (
-                  <OutlierSelector
-                    onDetectOutliers={onDetectOutliers}
-                    totalSamples={totalSamples}
-                    useSelectionContext
-                    compact
-                  />
-                )}
-
-                {/* Similarity Filter */}
-                {onFindSimilar && (
-                  <SimilarityFilter
-                    onFindSimilar={onFindSimilar}
-                    selectedSample={selectedSample}
-                    sampleIds={rawData?.sampleIds}
-                    useSelectionContext
-                    totalSamples={totalSamples}
-                    compact
-                  />
-                )}
-              </div>
-            </>
-          )}
-
-          {/* Step comparison slider (compact) - only show when there are operators */}
-          {hasOperators && onStepComparisonEnabledChange && (
-            <StepComparisonSlider
-              operators={operators}
-              currentStep={activeStep}
-              onStepChange={handleActiveStepChange}
-              enabled={stepComparisonEnabled}
-              onEnabledChange={handleStepComparisonEnabledChange}
-              onInteractionStart={triggerInteractionPending}
-              isLoading={isFetching}
-              compact
-            />
-          )}
-
-          <span className="text-[10px] text-muted-foreground">Color:</span>
-          <ColorModeSelector
-            colorConfig={colorConfig}
-            onChange={(config) => {
-              triggerInteractionPending();
-              setColorConfig(config);
-            }}
-            hasFolds={!!hasFolds}
-          />
-
-          {/* Phase 6: Render mode selector */}
-          <Separator orientation="vertical" className="h-4" />
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Select
-                  value={displayRenderMode}
-                  onValueChange={(value) => handleRenderModeChange(value as RenderMode)}
-                >
-                  <SelectTrigger className="h-6 w-20 text-[10px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">
-                      <div className="flex items-center gap-1.5">
-                        <Zap className="w-3 h-3" />
-                        Auto
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="canvas">
-                      <div className="flex items-center gap-1.5">
-                        <Monitor className="w-3 h-3" />
-                        Canvas
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="webgl">
-                      <div className="flex items-center gap-1.5">
-                        <Zap className="w-3 h-3 text-yellow-500" />
-                        WebGL
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">
-                  {displayRenderMode === 'auto'
-                    ? `Auto-selects best renderer based on data size (using ${effectiveMode})`
-                    : displayRenderMode === 'webgl' || displayRenderMode === 'webgl_aggregated'
-                      ? 'GPU-accelerated rendering for large datasets'
-                      : 'Standard canvas rendering'}
-                  {isWebGL && effectiveMode.startsWith('webgl') && ' (WebGL active)'}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Phase 6: Saved Selections */}
-          <SavedSelections compact datasetId={datasetId ?? 'playground'} />
-
-          {/* Phase 6: Export menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1">
-                <Download className="w-3 h-3" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => handleExportChartPng('spectra')}>
-                <Image className="w-4 h-4 mr-2" />
-                Spectra as PNG
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportChartPng('pca')}>
-                <Image className="w-4 h-4 mr-2" />
-                PCA Plot as PNG
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportChartPng('histogram')}>
-                <Image className="w-4 h-4 mr-2" />
-                Histogram as PNG
-              </DropdownMenuItem>
-              {hasFolds && (
-                <DropdownMenuItem onClick={() => handleExportChartPng('folds')}>
-                  <Image className="w-4 h-4 mr-2" />
-                  Folds as PNG
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleBatchExport}>
-                <Image className="w-4 h-4 mr-2" />
-                All Charts as PNG
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleExportSpectraCsv}>
-                <FileText className="w-4 h-4 mr-2" />
-                Spectra as CSV
-              </DropdownMenuItem>
-              {selectedCount > 0 && (
-                <DropdownMenuItem onClick={handleExportSelectionsJson}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Selection as JSON
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      {/* Phase 1 Refactoring: Extracted Toolbar Component */}
+      <CanvasToolbar
+        visibleCharts={visibleCharts}
+        effectiveVisibleCharts={effectiveVisibleCharts}
+        onToggleChart={toggleChart}
+        hasFolds={!!hasFolds}
+        hasRepetitions={hasRepetitions}
+        isFetching={isFetching}
+        selectedCount={selectedCount}
+        onFilterToSelection={onFilterToSelection ? handleFilterToSelection : undefined}
+        partitionFilter={partitionFilter}
+        onPartitionFilterChange={setPartitionFilter}
+        folds={result?.folds ?? null}
+        totalSamples={totalSamples}
+        metadata={rawData?.metadata}
+        metrics={metrics}
+        metricFilters={metricFilters}
+        onMetricFiltersChange={onMetricFiltersChange}
+        onDetectOutliers={onDetectOutliers}
+        onFindSimilar={onFindSimilar}
+        selectedSample={selectedSample}
+        sampleIds={rawData?.sampleIds}
+        hasOperators={hasOperators}
+        operators={operators}
+        stepComparisonEnabled={stepComparisonEnabled}
+        onStepComparisonEnabledChange={onStepComparisonEnabledChange}
+        activeStep={activeStep}
+        onActiveStepChange={handleActiveStepChange}
+        enabledOperatorCount={enabledOperatorCount}
+        colorConfig={colorConfig}
+        onColorConfigChange={setColorConfig}
+        displayRenderMode={displayRenderMode}
+        effectiveRenderMode={effectiveMode}
+        isWebGLActive={isWebGL}
+        onRenderModeChange={handleRenderModeChange}
+        datasetId={datasetId}
+        onExportChartPng={exportChartPng}
+        onExportSpectraCsv={exportSpectraCsv}
+        onExportSelectionsJson={exportSelectionsJson}
+        onBatchExport={batchExportCharts}
+        onInteractionStart={triggerInteractionPending}
+      />
 
       {/* Charts grid */}
       <div
@@ -863,25 +521,25 @@ export function MainCanvas({
               <ChartSkeleton type="spectra" />
             ) : result ? (
               <ChartErrorBoundary chartType="Spectra">
-                <SpectraChart
+                <SpectraChartV2
                   original={result.original}
                   processed={result.processed}
                   y={yValues}
                   sampleIds={rawData.sampleIds}
                   folds={result.folds}
-                  colorConfig={colorConfig}
-                  selectedSample={selectedSample}
-                  onSelectSample={handleSelectSample}
                   onInteractionStart={triggerInteractionPending}
-                  maxSamples={50}
                   isLoading={chartRedrawing}
+                  operators={operators}
+                  metadata={rawData.metadata as Record<string, unknown[]> | undefined}
+                  metadataColumns={rawData.metadata ? Object.keys(rawData.metadata) : undefined}
                   renderMode={effectiveMode}
+                  outlierIndices={lastOutlierResult ? new Set(lastOutlierResult.outlier_indices) : undefined}
                 />
               </ChartErrorBoundary>
             ) : rawData ? (
               // Raw data mode - show raw spectra without processing
               <ChartErrorBoundary chartType="Spectra">
-                <SpectraChart
+                <SpectraChartV2
                   original={{
                     spectra: rawData.spectra,
                     wavelengths: rawData.wavelengths,
@@ -895,12 +553,11 @@ export function MainCanvas({
                   y={yValues}
                   sampleIds={rawData.sampleIds}
                   folds={undefined}
-                  colorConfig={colorConfig}
-                  selectedSample={selectedSample}
-                  onSelectSample={handleSelectSample}
                   onInteractionStart={triggerInteractionPending}
-                  maxSamples={50}
                   isLoading={chartRedrawing}
+                  operators={operators}
+                  metadata={rawData.metadata as Record<string, unknown[]> | undefined}
+                  metadataColumns={rawData.metadata ? Object.keys(rawData.metadata) : undefined}
                   renderMode={effectiveMode}
                 />
               </ChartErrorBoundary>

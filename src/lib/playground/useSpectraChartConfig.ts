@@ -20,7 +20,12 @@ import {
   type AggregationMode,
   type SamplingStrategy,
   type PartitionFilter,
+  type SpectraDisplayMode,
+  type SpectraColorConfig,
+  type SpectraColorMode,
+  type ReferenceStepConfig,
   DEFAULT_SPECTRA_CHART_CONFIG,
+  DEFAULT_SPECTRA_COLOR_CONFIG,
   serializeConfig,
   deserializeConfig,
 } from './spectraConfig';
@@ -54,6 +59,17 @@ export interface UseSpectraChartConfigResult {
   setViewMode: (mode: SpectraViewMode) => void;
   setOverlayStyle: (style: OverlayStyle) => void;
 
+  // Display mode
+  setDisplayMode: (mode: SpectraDisplayMode) => void;
+
+  // Color configuration
+  setColorMode: (mode: SpectraColorMode) => void;
+  setColorMetadataKey: (key: string | undefined) => void;
+  updateColorConfig: (updates: Partial<SpectraColorConfig>) => void;
+
+  // Reference step
+  setReferenceStep: (stepIndex: number, label?: string) => void;
+
   // Subset mode
   setSubsetMode: (mode: SubsetMode) => void;
 
@@ -65,6 +81,7 @@ export interface UseSpectraChartConfigResult {
   // Aggregation
   setAggregationMode: (mode: AggregationMode) => void;
   setAutoThreshold: (threshold: number) => void;
+  setGroupBy: (field: string | undefined) => void;
   updateAggregation: (updates: Partial<AggregationConfig>) => void;
 
   // Wavelength focus
@@ -211,10 +228,55 @@ export function useSpectraChartConfig(
     }));
   }, []);
 
+  const setGroupBy = useCallback((field: string | undefined) => {
+    setConfig(prev => ({
+      ...prev,
+      aggregation: { ...prev.aggregation, groupBy: field },
+    }));
+  }, []);
+
   const updateAggregation = useCallback((updates: Partial<AggregationConfig>) => {
     setConfig(prev => ({
       ...prev,
       aggregation: { ...prev.aggregation, ...updates },
+    }));
+  }, []);
+
+  // Display mode setter
+  const setDisplayMode = useCallback((mode: SpectraDisplayMode) => {
+    setConfig(prev => ({ ...prev, displayMode: mode }));
+  }, []);
+
+  // Color configuration setters
+  const setColorMode = useCallback((mode: SpectraColorMode) => {
+    setConfig(prev => ({
+      ...prev,
+      colorConfig: { ...prev.colorConfig, mode },
+    }));
+  }, []);
+
+  const setColorMetadataKey = useCallback((key: string | undefined) => {
+    setConfig(prev => ({
+      ...prev,
+      colorConfig: { ...prev.colorConfig, metadataKey: key },
+    }));
+  }, []);
+
+  const updateColorConfig = useCallback((updates: Partial<SpectraColorConfig>) => {
+    setConfig(prev => ({
+      ...prev,
+      colorConfig: { ...prev.colorConfig, ...updates },
+    }));
+  }, []);
+
+  // Reference step setter
+  const setReferenceStep = useCallback((stepIndex: number, label?: string) => {
+    setConfig(prev => ({
+      ...prev,
+      referenceStep: {
+        stepIndex,
+        label: label ?? (stepIndex === 0 ? 'Original' : `Step ${stepIndex}`),
+      },
     }));
   }, []);
 
@@ -313,12 +375,18 @@ export function useSpectraChartConfig(
     resetConfig,
     setViewMode,
     setOverlayStyle,
+    setDisplayMode,
+    setColorMode,
+    setColorMetadataKey,
+    updateColorConfig,
+    setReferenceStep,
     setSubsetMode,
     setSamplingStrategy,
     setSampleCount,
     updateSampling,
     setAggregationMode,
     setAutoThreshold,
+    setGroupBy,
     updateAggregation,
     setWavelengthRange,
     setDerivative,
@@ -339,12 +407,18 @@ export function useSpectraChartConfig(
     resetConfig,
     setViewMode,
     setOverlayStyle,
+    setDisplayMode,
+    setColorMode,
+    setColorMetadataKey,
+    updateColorConfig,
+    setReferenceStep,
     setSubsetMode,
     setSamplingStrategy,
     setSampleCount,
     updateSampling,
     setAggregationMode,
     setAutoThreshold,
+    setGroupBy,
     updateAggregation,
     setWavelengthRange,
     setDerivative,

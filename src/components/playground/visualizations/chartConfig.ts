@@ -1,9 +1,183 @@
 /**
  * Shared chart configuration for Playground visualizations
  *
+ * Phase 1 Refactoring: Type Safety Improvements
+ *
  * Provides consistent colors, themes, and helper functions across all charts.
  * This ensures visual consistency and simplifies maintenance.
+ *
+ * Also includes discriminated union types for chart state management.
  */
+
+// ============= Discriminated Union Types for Chart State =============
+
+/**
+ * Base state for all charts when loading
+ */
+export interface ChartLoadingState {
+  readonly status: 'loading';
+}
+
+/**
+ * Base state for all charts when there's an error
+ */
+export interface ChartErrorState {
+  readonly status: 'error';
+  readonly error: string;
+}
+
+/**
+ * Base state for all charts when there's no data
+ */
+export interface ChartEmptyState {
+  readonly status: 'empty';
+  readonly message?: string;
+}
+
+/**
+ * Generic data-ready state for charts
+ */
+export interface ChartDataState<T> {
+  readonly status: 'ready';
+  readonly data: T;
+}
+
+/**
+ * Discriminated union for chart state
+ * Use this to handle all possible chart states in a type-safe way
+ */
+export type ChartState<T> =
+  | ChartLoadingState
+  | ChartErrorState
+  | ChartEmptyState
+  | ChartDataState<T>;
+
+/**
+ * Helper to create a loading state
+ */
+export function chartLoading(): ChartLoadingState {
+  return { status: 'loading' };
+}
+
+/**
+ * Helper to create an error state
+ */
+export function chartError(error: string): ChartErrorState {
+  return { status: 'error', error };
+}
+
+/**
+ * Helper to create an empty state
+ */
+export function chartEmpty(message?: string): ChartEmptyState {
+  return { status: 'empty', message };
+}
+
+/**
+ * Helper to create a data-ready state
+ */
+export function chartReady<T>(data: T): ChartDataState<T> {
+  return { status: 'ready', data };
+}
+
+/**
+ * Type guard for loading state
+ */
+export function isChartLoading<T>(state: ChartState<T>): state is ChartLoadingState {
+  return state.status === 'loading';
+}
+
+/**
+ * Type guard for error state
+ */
+export function isChartError<T>(state: ChartState<T>): state is ChartErrorState {
+  return state.status === 'error';
+}
+
+/**
+ * Type guard for empty state
+ */
+export function isChartEmpty<T>(state: ChartState<T>): state is ChartEmptyState {
+  return state.status === 'empty';
+}
+
+/**
+ * Type guard for data-ready state
+ */
+export function isChartReady<T>(state: ChartState<T>): state is ChartDataState<T> {
+  return state.status === 'ready';
+}
+
+// ============= Chart Data Types =============
+
+/**
+ * Spectra chart data
+ */
+export interface SpectraChartData {
+  spectra: number[][];
+  wavelengths: number[];
+  y: number[];
+  sampleIds?: string[];
+  foldLabels?: number[];
+}
+
+/**
+ * Histogram chart data
+ */
+export interface HistogramChartData {
+  values: number[];
+  bins?: number;
+  foldLabels?: number[];
+}
+
+/**
+ * Scatter chart data (PCA/UMAP)
+ */
+export interface ScatterChartData {
+  coordinates: number[][];
+  y: number[];
+  sampleIds?: string[];
+  foldLabels?: number[];
+  explainedVariance?: number[];
+}
+
+/**
+ * Fold distribution chart data
+ */
+export interface FoldDistributionData {
+  folds: Array<{
+    foldIndex: number;
+    trainCount: number;
+    testCount: number;
+    trainIndices: number[];
+    testIndices: number[];
+  }>;
+  nFolds: number;
+  y?: number[];
+}
+
+/**
+ * Repetitions chart data
+ */
+export interface RepetitionsChartData {
+  hasRepetitions: boolean;
+  nBioSamples: number;
+  data: Array<{
+    bioSample: string;
+    repIndex: number;
+    sampleIndex: number;
+    distance: number;
+    y?: number;
+  }>;
+}
+
+// ============= Typed Chart State Types =============
+
+export type SpectraChartState = ChartState<SpectraChartData>;
+export type HistogramChartState = ChartState<HistogramChartData>;
+export type ScatterChartState = ChartState<ScatterChartData>;
+export type FoldDistributionState = ChartState<FoldDistributionData>;
+export type RepetitionsChartState = ChartState<RepetitionsChartData>;
 
 // ============= Color Palettes =============
 
@@ -93,22 +267,119 @@ export const CHART_THEME = {
   tooltipBorderRadius: 8,
   tooltipFontSize: 12,
 
-  // Selection
+  // Selection - Enhanced for Phase 2
   selectedStroke: '#ffffff',
   selectedStrokeWidth: 2,
+  selectedGlow: '0 0 8px hsl(var(--primary))',
+
+  // Hover state
+  hoveredStroke: '#ffffff',
+  hoveredStrokeWidth: 3,
+  hoveredOpacity: 1,
+
+  // Pinned state
+  pinnedStroke: 'hsl(45, 90%, 50%)', // Gold
+  pinnedStrokeWidth: 2,
+  pinnedDashArray: '4 2',
+
+  // Unselected when selection exists
+  unselectedOpacity: 0.25,
 
   // Lines
   lineStrokeWidth: 1,
   selectedLineStrokeWidth: 2.5,
+  hoveredLineStrokeWidth: 3,
+  pinnedLineStrokeWidth: 2,
 
   // Points
   pointRadius: 5,
   selectedPointRadius: 8,
+  hoveredPointRadius: 9,
+  pinnedPointRadius: 7,
 
   // Statistics band
   statisticsBandOpacity: 0.2,
   statisticsLineOpacity: 0.8,
 } as const;
+
+// ============= Selection Colors =============
+
+/**
+ * Colors for selection states - Phase 2 Enhancement
+ */
+export const SELECTION_COLORS = {
+  // Primary selection
+  selected: 'hsl(var(--primary))',
+  selectedBg: 'hsl(var(--primary) / 0.15)',
+  selectedStroke: '#ffffff',
+
+  // Hover state
+  hovered: 'hsl(var(--primary) / 0.8)',
+  hoveredBg: 'hsl(var(--primary) / 0.1)',
+
+  // Pinned state (gold/amber)
+  pinned: 'hsl(45, 90%, 50%)',
+  pinnedBg: 'hsl(45, 90%, 50% / 0.15)',
+
+  // Unselected when there's an active selection
+  unselected: 'hsl(var(--muted-foreground) / 0.3)',
+
+  // Range selection overlay
+  rangeOverlay: 'hsl(var(--primary) / 0.15)',
+  rangeStroke: 'hsl(var(--primary) / 0.5)',
+} as const;
+
+/**
+ * Get selection state color for a sample
+ */
+export function getSelectionStateColor(
+  index: number,
+  selectedSamples: Set<number>,
+  pinnedSamples: Set<number>,
+  hoveredSample: number | null,
+  baseColor: string
+): { fill: string; stroke?: string; strokeWidth?: number; opacity?: number } {
+  const isSelected = selectedSamples.has(index);
+  const isPinned = pinnedSamples.has(index);
+  const isHovered = hoveredSample === index;
+  const hasSelection = selectedSamples.size > 0;
+
+  if (isHovered) {
+    return {
+      fill: SELECTION_COLORS.selected,
+      stroke: SELECTION_COLORS.selectedStroke,
+      strokeWidth: CHART_THEME.hoveredStrokeWidth,
+      opacity: 1,
+    };
+  }
+
+  if (isSelected) {
+    return {
+      fill: SELECTION_COLORS.selected,
+      stroke: SELECTION_COLORS.selectedStroke,
+      strokeWidth: CHART_THEME.selectedStrokeWidth,
+      opacity: 1,
+    };
+  }
+
+  if (isPinned) {
+    return {
+      fill: baseColor,
+      stroke: SELECTION_COLORS.pinned,
+      strokeWidth: CHART_THEME.pinnedStrokeWidth,
+      opacity: 1,
+    };
+  }
+
+  if (hasSelection) {
+    return {
+      fill: baseColor,
+      opacity: CHART_THEME.unselectedOpacity,
+    };
+  }
+
+  return { fill: baseColor };
+}
 
 // ============= Statistics Colors =============
 

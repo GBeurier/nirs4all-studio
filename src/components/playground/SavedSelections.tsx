@@ -55,7 +55,12 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useSelection, type SavedSelection } from '@/context/SelectionContext';
-import { exportSelectionsToJson, importSelectionsFromJson } from '@/lib/playground/export';
+import {
+  exportSelectionsToJson,
+  exportSelectionToCsv,
+  importSelectionsFromJson,
+  importSelectionFromCsv,
+} from '@/lib/playground/export';
 import { toast } from 'sonner';
 
 // ============= Types =============
@@ -65,6 +70,8 @@ export interface SavedSelectionsProps {
   compact?: boolean;
   /** Class name for container */
   className?: string;
+  /** Sample IDs for export with names (not just indices) */
+  sampleIds?: string[];
   /** Callback when selection is loaded */
   onSelectionLoaded?: (selection: SavedSelection) => void;
 }
@@ -267,6 +274,7 @@ function SelectionItem({ selection, isActive, onLoad, onDelete }: SelectionItemP
 export function SavedSelections({
   compact = false,
   className,
+  sampleIds,
   onSelectionLoaded,
 }: SavedSelectionsProps) {
   const {
@@ -276,6 +284,7 @@ export function SavedSelections({
     saveSelection,
     loadSelection,
     deleteSavedSelection,
+    select,
   } = useSelection();
 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -317,14 +326,14 @@ export function SavedSelections({
     [deleteSavedSelection]
   );
 
-  // Handle export
-  const handleExport = useCallback(() => {
+  // Handle export all selections to JSON
+  const handleExportJson = useCallback(() => {
     if (savedSelections.length === 0) {
       toast.warning('No selections to export');
       return;
     }
 
-    const result = exportSelectionsToJson(savedSelections);
+    const result = exportSelectionsToJson(savedSelections, { sampleIds });
     if (result.success) {
       toast.success('Selections exported', {
         description: `${savedSelections.length} selection(s) saved to ${result.filename}`,
@@ -334,7 +343,30 @@ export function SavedSelections({
         description: result.error,
       });
     }
-  }, [savedSelections]);
+  }, [savedSelections, sampleIds]);
+
+  // Handle export current selection to CSV
+  const handleExportCurrentCsv = useCallback(() => {
+    if (selectedCount === 0) {
+      toast.warning('No samples selected');
+      return;
+    }
+
+    const result = exportSelectionToCsv(Array.from(selectedSamples), {
+      sampleIds,
+      includeBoth: true,
+      filename: 'current-selection',
+    });
+    if (result.success) {
+      toast.success('Selection exported', {
+        description: `${selectedCount} sample(s) saved to ${result.filename}`,
+      });
+    } else {
+      toast.error('Export failed', {
+        description: result.error,
+      });
+    }
+  }, [selectedSamples, selectedCount, sampleIds]);
 
   // Handle import
   const handleImport = useCallback(() => {
@@ -348,20 +380,53 @@ export function SavedSelections({
 
       try {
         const text = await file.text();
-        const { selections, warnings } = importSelectionsFromJson(text);
+        const isJson = file.name.endsWith('.json');
+        const isCsv = file.name.endsWith('.csv');
 
-        // Save each imported selection
-        selections.forEach((s) => {
-          saveSelection(s.name, s.color);
-        });
+        if (isJson) {
+          // Import saved selections from JSON
+          const { selections, warnings, unmappedCount } = importSelectionsFromJson(text, sampleIds);
 
-        if (warnings.length > 0) {
-          toast.warning('Import completed with warnings', {
-            description: warnings[0],
+          // Save each imported selection
+          selections.forEach((s) => {
+            saveSelection(s.name, s.color);
           });
+
+          if (warnings.length > 0 || unmappedCount > 0) {
+            toast.warning('Import completed with warnings', {
+              description: warnings[0] || `${unmappedCount} sample IDs could not be mapped`,
+            });
+          } else {
+            toast.success('Selections imported', {
+              description: `${selections.length} selection(s) added`,
+            });
+          }
+        } else if (isCsv) {
+          // Import single selection from CSV
+          const { indices, warnings, unmappedCount } = importSelectionFromCsv(text, sampleIds);
+
+          if (indices.length === 0) {
+            toast.error('Import failed', {
+              description: 'No valid samples found in CSV',
+            });
+            return;
+          }
+
+          // Apply the imported selection
+          select(indices, 'replace');
+
+          if (warnings.length > 0 || unmappedCount > 0) {
+            toast.warning('Selection imported with warnings', {
+              description: `${indices.length} samples loaded, ${unmappedCount} unmapped`,
+            });
+          } else {
+            toast.success('Selection imported', {
+              description: `${indices.length} samples selected`,
+            });
+          }
         } else {
-          toast.success('Selections imported', {
-            description: `${selections.length} selection(s) added`,
+          toast.error('Invalid file format', {
+            description: 'Please use .json or .csv files',
           });
         }
       } catch (error) {
@@ -373,7 +438,7 @@ export function SavedSelections({
       // Reset input
       e.target.value = '';
     },
-    [saveSelection]
+    [saveSelection, select, sampleIds]
   );
 
   // Check if current selection matches any saved
@@ -426,13 +491,18 @@ export function SavedSelections({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleExport}>
+                    <DropdownMenuItem onClick={handleExportCurrentCsv} disabled={selectedCount === 0}>
                       <Download className="w-3.5 h-3.5 mr-2" />
-                      Export all
+                      Export current (CSV)
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportJson} disabled={savedSelections.length === 0}>
+                      <Download className="w-3.5 h-3.5 mr-2" />
+                      Export all (JSON)
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleImport}>
                       <Upload className="w-3.5 h-3.5 mr-2" />
-                      Import
+                      Import (CSV/JSON)
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -465,7 +535,7 @@ export function SavedSelections({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json"
+          accept=".json,.csv"
           className="hidden"
           onChange={handleFileChange}
         />
@@ -509,13 +579,18 @@ export function SavedSelections({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleExport} disabled={savedSelections.length === 0}>
+              <DropdownMenuItem onClick={handleExportCurrentCsv} disabled={selectedCount === 0}>
                 <Download className="w-4 h-4 mr-2" />
-                Export all
+                Export current selection (CSV)
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportJson} disabled={savedSelections.length === 0}>
+                <Download className="w-4 h-4 mr-2" />
+                Export all saved (JSON)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleImport}>
                 <Upload className="w-4 h-4 mr-2" />
-                Import from file
+                Import from file (CSV/JSON)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -571,7 +646,7 @@ export function SavedSelections({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json"
+        accept=".json,.csv"
         className="hidden"
         onChange={handleFileChange}
       />

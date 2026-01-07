@@ -50,6 +50,8 @@ export interface SpectraWebGLProps {
   selectedIndices?: number[];
   /** Manually provided pinned indices */
   pinnedIndices?: number[];
+  /** Custom colors per sample index (overrides y-coloring) */
+  sampleColors?: string[];
   /** Callback when sample is clicked */
   onSampleClick?: (index: number, event: MouseEvent) => void;
   /** Container class name */
@@ -1035,6 +1037,8 @@ export function SpectraWebGL({
         color = pinnedCol;
       } else if (isSelected) {
         color = selectedCol;
+      } else if (sampleColors && sampleColors[idx]) {
+        color = parseColor(sampleColors[idx]);
       } else if (y && y[idx] !== undefined) {
         color = getTargetColor(y[idx], yTargetMin, yTargetMax);
       } else {
@@ -1099,7 +1103,7 @@ export function SpectraWebGL({
   }, [
     spectra, originalSpectra, wavelengths, effectiveVisibleIndices,
     selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
-    baseColor, originalColor, selectedColor, pinnedColor,
+    baseColor, originalColor, selectedColor, pinnedColor, sampleColors,
     xViewRange, yRange, qualityConfig.maxPointsPerSpectrum,
   ]);
 
@@ -1108,15 +1112,6 @@ export function SpectraWebGL({
     setXViewRange(range);
   }, []);
 
-  // WebGL not supported fallback
-  if (!capabilities.webglSupported) {
-    return (
-      <div ref={containerRef} className={cn('relative w-full h-full', className)}>
-        <WebGLNotSupported />
-      </div>
-    );
-  }
-
   // Compute zoom level for display
   const zoomLevel = useMemo(() => {
     const fullRange = xRange[1] - xRange[0];
@@ -1124,8 +1119,17 @@ export function SpectraWebGL({
     return fullRange / viewedRange;
   }, [xRange, xViewRange]);
 
+  // WebGL not supported fallback
+  if (!capabilities.webglSupported) {
+    return (
+      <div ref={containerRef} className={cn('relative', className)}>
+        <WebGLNotSupported />
+      </div>
+    );
+  }
+
   return (
-    <div ref={containerRef} className={cn('relative w-full h-full min-h-0', className)} style={{ flex: '1 1 auto' }}>
+    <div ref={containerRef} className={cn('relative', className)}>
       {isLoading && (
         <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
           <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
@@ -1145,7 +1149,7 @@ export function SpectraWebGL({
         }}
         gl={{ antialias: qualityConfig.antialias, alpha: true }}
         dpr={Math.min(window.devicePixelRatio, qualityConfig.maxDpr)}
-        style={{ background: 'transparent', width: '100%', height: '100%' }}
+        style={{ background: 'transparent' }}
         resize={{ scroll: false, debounce: { scroll: 50, resize: 50 } }}
       >
         <SpectraScene

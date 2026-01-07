@@ -1,3 +1,9 @@
+/**
+ * Playground Components
+ *
+ * Phase 1 Refactoring: Component Modularization
+ */
+
 // Core components
 export { PlaygroundSidebar } from './PlaygroundSidebar';
 export { MainCanvas } from './MainCanvas';
@@ -7,6 +13,15 @@ export { PipelineBuilder } from './PipelineBuilder';
 export { UnifiedOperatorCard } from './UnifiedOperatorCard';
 export { ExecutionStatus, ExecutionTrace, ErrorDisplay } from './ExecutionStatus';
 export { StepComparisonSlider } from './StepComparisonSlider';
+
+// Phase 1: Extracted components for better modularity
+export { CanvasToolbar, CHART_CONFIG } from './CanvasToolbar';
+export type { ChartType, ChartConfig as ToolbarChartConfig, CanvasToolbarProps } from './CanvasToolbar';
+export { ChartPanel, ChartLoadingOverlay } from './ChartPanel';
+export type { ChartPanelProps } from './ChartPanel';
+
+// Phase 1: Extracted hooks
+export * from './hooks';
 
 // Selection components
 export {
