@@ -1,0 +1,32 @@
+{
+  "curated": {
+    "total": 114,
+    "byType": {
+      "augmentation": 5,
+      "branch": 2,
+      "merge": 2,
+      "sample_augmentation": 1,
+      "feature_augmentation": 1,
+      "sample_filter": 1,
+      "concat_transform": 1,
+      "filter": 5,
+      "generator": 4,
+      "chart": 1,
+      "comment": 1,
+      "model": 33,
+      "preprocessing": 37,
+      "splitting": 15,
+      "y_processing": 5
+    }
+  },
+  "extended": {
+    "total": 253,
+    "byType": {
+      "model": 130,
+      "preprocessing": 92,
+      "splitting": 21,
+      "augmentation": 8,
+      "y_processing": 2
+    }
+  }
+}

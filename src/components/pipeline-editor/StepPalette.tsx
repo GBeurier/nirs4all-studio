@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import {
   Waves,
@@ -43,6 +43,8 @@ import {
   type StepOption,
 } from "./types";
 import { useNodeRegistryOptional, type NodeDefinition } from "./contexts/NodeRegistryContext";
+import { usePipelineEditorPreferencesOptional } from "./contexts/PipelineEditorPreferencesContext";
+import { parametersToDefaultParams } from "@/data/nodes";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
@@ -70,7 +72,7 @@ function nodeDefToStepOption(node: NodeDefinition): StepOption {
   return {
     name: node.name,
     description: node.description,
-    defaultParams: node.defaultParams,
+    defaultParams: parametersToDefaultParams(node.parameters ?? []),
     category: node.category,
     isDeepLearning: node.isDeepLearning,
     isAdvanced: node.isAdvanced,
@@ -196,11 +198,50 @@ const mergedCategories: Partial<Record<StepType, { types: StepType[]; label: str
 // Types that should be hidden because they're merged into another category
 const hiddenTypes = new Set<StepType>(["merge", "feature_augmentation", "concat_transform", "sample_filter"]);
 
+const EXTENDED_MODE_STORAGE_KEY = "pipelineEditor.extendedMode";
+
+function readLocalStorageBoolean(key: string, fallback: boolean): boolean {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalStorageBoolean(key: string, value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value ? "true" : "false");
+  } catch {
+    // ignore
+  }
+}
+
 
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
+  const prefs = usePipelineEditorPreferencesOptional();
+  const [extendedModeFallback, setExtendedModeFallback] = useState<boolean>(() =>
+    readLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, false)
+  );
+
+  const extendedMode = prefs?.extendedMode ?? extendedModeFallback;
+  const setExtendedMode = useCallback(
+    (value: boolean) => {
+      if (prefs) {
+        prefs.setExtendedMode(value);
+        return;
+      }
+      setExtendedModeFallback(value);
+      writeLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, value);
+    },
+    [prefs]
+  );
 
   // Try to use the registry if available (Phase 2 feature)
   const registryContext = useNodeRegistryOptional();
@@ -234,13 +275,28 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       const allOptions = getOptionsForType(type);
       return allOptions.filter(
         ({ option: opt }) =>
-          opt.name.toLowerCase().includes(search.toLowerCase()) ||
-          opt.description.toLowerCase().includes(search.toLowerCase()) ||
-          (opt.category?.toLowerCase().includes(search.toLowerCase()) ?? false)
+          (extendedMode || !opt.isAdvanced) &&
+          (
+            opt.name.toLowerCase().includes(search.toLowerCase()) ||
+            opt.description.toLowerCase().includes(search.toLowerCase()) ||
+            (opt.category?.toLowerCase().includes(search.toLowerCase()) ?? false)
+          )
       );
     },
-    [search, getOptionsForType]
+    [search, getOptionsForType, extendedMode]
   );
+
+  // Keep the open sections consistent when toggling extended mode during an active search.
+  useEffect(() => {
+    if (!search.trim()) return;
+    const matchingSections = new Set<StepType>();
+    stepTypeOrder.forEach((type) => {
+      if (hiddenTypes.has(type)) return;
+      const matches = filteredOptions(type);
+      if (matches.length > 0) matchingSections.add(type);
+    });
+    setOpenSections(matchingSections);
+  }, [extendedMode, search, filteredOptions]);
 
   // When search changes, update search state
   const handleSearchChange = (value: string) => {
@@ -297,25 +353,52 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   return (
     <div className="h-full flex flex-col bg-card border-r border-border">
       {/* Header */}
-      <div className="p-4 border-b border-border space-y-3">
+      <div className="p-3 border-b border-border space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-foreground">Components</h2>
-          <Badge variant="secondary" className="text-xs">
-            {totalSteps} steps
-          </Badge>
+          <h2 className="font-semibold text-sm text-foreground">Components</h2>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+              {totalSteps}
+            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setExtendedMode(!extendedMode)}
+                  className={`text-[9px] font-medium px-1.5 py-0.5 rounded transition-colors ${
+                    extendedMode
+                      ? "bg-primary/20 text-primary hover:bg-primary/30"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {extendedMode ? "EXT" : "STD"}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-[200px]">
+                {extendedMode
+                  ? "Extended mode: all sklearn, nirs4all, and TensorFlow operators"
+                  : "Standard mode: curated operators only"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
+
+        {extendedMode && registryContext?.isLoading && (
+          <div className="text-[10px] text-muted-foreground/70">Loading extended…</div>
+        )}
+        {registryContext?.error && (
+          <div className="text-[10px] text-destructive">{registryContext.error.message}</div>
+        )}
+
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search steps..."
+            placeholder="Search..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
+            className="pl-8 h-8 text-sm"
           />
         </div>
-        <p className="text-xs text-muted-foreground">
-          Drag to canvas or double-click to add
-        </p>
       </div>
 
       {/* Step Categories */}

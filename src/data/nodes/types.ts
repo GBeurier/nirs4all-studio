@@ -31,6 +31,7 @@ export type NodeType =
   | "feature_augmentation"
   | "sample_filter"
   | "concat_transform"
+  | "sequential"
   | "chart"
   | "comment";
 
@@ -48,6 +49,29 @@ export type ContainerType = "branches" | "children";
  * Source of node definition.
  */
 export type NodeSource = "nirs4all" | "sklearn" | "custom";
+
+/**
+ * Container organization types.
+ *
+ * Note: this needs to match what is used by the JSON definitions under
+ * src/data/nodes/definitions/** (e.g. wrappers/generators).
+ */
+export type ContainerTypeExtended =
+  | ContainerType
+  | "augmentation"
+  | "feature_ops"
+  | "filters"
+  | "transforms"
+  | "source_branches"
+  | "list"
+  | "nested_list";
+
+/**
+ * Source of node definition.
+ *
+ * "editor" is used for UI-only nodes like comments.
+ */
+export type NodeSourceExtended = NodeSource | "editor";
 
 // ============================================================================
 // Parameter Types
@@ -291,14 +315,42 @@ export interface NodeDefinition {
   /** Has children (sample_augmentation, branch, etc.) */
   isContainer?: boolean;
   /** How children are organized */
-  containerType?: ContainerType;
+  containerType?: ContainerTypeExtended;
   /** Initial branch count for container nodes */
   defaultBranches?: number;
   /** For generator nodes */
   generatorKind?: GeneratorKind;
 
+  /** Generator subtype used by some generator definitions (e.g. choose_one, cartesian). */
+  generatorType?: string;
+
+  /** Whether this container accepts child steps in the editor. */
+  acceptsChildren?: boolean;
+
+  /** Allowed child node types for this container (editor hint). */
+  childTypes?: NodeType[];
+
+  /** Training-only container (e.g. sample augmentation / sample filter). */
+  trainOnlyContainer?: boolean;
+
+  /** Optional layout hints for the editor. */
+  layout?: {
+    orientation?: "horizontal" | "vertical";
+    label?: string;
+    showBranchLabels?: boolean;
+    showSourceLabels?: boolean;
+    [key: string]: unknown;
+  };
+
+  /** Optional execution hint for UI-only nodes. */
+  executionMode?: string;
+
+  /** Convenience flags for UI rendering. */
+  isVisualization?: boolean;
+  isComment?: boolean;
+
   // === Versioning & Migration ===
-  source: NodeSource;
+  source: NodeSourceExtended;
   /** Minimum nirs4all version required */
   version?: string;
   /** Maximum supported version (for deprecated) */

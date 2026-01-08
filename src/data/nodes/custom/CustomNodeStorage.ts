@@ -410,7 +410,7 @@ export class CustomNodeStorage {
     if (!param.type) {
       errors.push(`${prefix}: type is required`);
     } else {
-      const validTypes = ['int', 'float', 'bool', 'string', 'select', 'array', 'object'];
+      const validTypes = ['int', 'float', 'bool', 'string', 'select', 'range', 'array', 'object'];
       if (!validTypes.includes(param.type)) {
         errors.push(`${prefix}: invalid type "${param.type}". Valid: ${validTypes.join(', ')}`);
       }

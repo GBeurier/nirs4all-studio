@@ -154,6 +154,7 @@ export const nodesByType: Record<NodeType, NodeDefinition[]> = {
   feature_augmentation: getNodesByType('feature_augmentation'),
   sample_filter: getNodesByType('sample_filter'),
   concat_transform: getNodesByType('concat_transform'),
+  sequential: getNodesByType('sequential'),
   chart: getNodesByType('chart'),
   comment: getNodesByType('comment'),
 };

@@ -26,6 +26,13 @@ export {
   type NodeRegistryProviderProps,
 } from "./NodeRegistryContext";
 
+export {
+  PipelineEditorPreferencesProvider,
+  usePipelineEditorPreferences,
+  usePipelineEditorPreferencesOptional,
+  type PipelineEditorPreferences,
+} from "./PipelineEditorPreferencesContext";
+
 // Phase 4: Pipeline Integration
 export {
   DatasetBindingProvider,

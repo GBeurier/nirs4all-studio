@@ -20,13 +20,15 @@
  * }
  */
 
-import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from "react";
 import { stepOptions, type StepType, type StepOption } from "../types";
+import { usePipelineEditorPreferencesOptional } from "./PipelineEditorPreferencesContext";
 
 // Import from the new node registry system
 import {
   NodeRegistry,
   createNodeRegistry,
+  CustomNodeStorage,
   type NodeDefinition as JsonNodeDefinition,
   type ParameterDefinition,
   type NodeType,
@@ -40,10 +42,11 @@ import {
 /**
  * Feature flag to enable JSON-based node registry.
  * Set via environment variable or prop.
+ * Defaults to TRUE since Phase 2 is fully implemented.
  */
 export const USE_NODE_REGISTRY =
-  import.meta.env.VITE_USE_NODE_REGISTRY === 'true' ||
-  import.meta.env.VITE_USE_NODE_REGISTRY === true;
+  import.meta.env.VITE_USE_NODE_REGISTRY !== 'false' &&
+  import.meta.env.VITE_USE_NODE_REGISTRY !== false;
 
 // ============================================================================
 // Types
@@ -62,8 +65,8 @@ export interface NodeDefinition {
   type: StepType;
   /** Human-readable description */
   description: string;
-  /** Default parameter values */
-  defaultParams: Record<string, string | number | boolean>;
+  /** Parameter definitions (Phase 2) */
+  parameters?: ParameterDefinition[];
   /** Optional subcategory for palette organization */
   category?: string;
   /** Whether this is a deep learning model */
@@ -75,11 +78,9 @@ export interface NodeDefinition {
   /** Full class path for nirs4all */
   classPath?: string;
   /** Source of the definition */
-  source?: "builtin" | "custom" | "nirs4all" | "sklearn";
+  source?: "builtin" | "custom" | "nirs4all" | "sklearn" | "editor";
   /** Legacy class paths for backwards compatibility */
   legacyClassPaths?: string[];
-  /** Parameter definitions (new in Phase 2) */
-  parameters?: ParameterDefinition[];
   /** Whether this is a container node */
   isContainer?: boolean;
   /** Whether this is a generator node */
@@ -151,7 +152,6 @@ function stepOptionToNodeDefinition(type: StepType, option: StepOption): NodeDef
     name: option.name,
     type,
     description: option.description,
-    defaultParams: option.defaultParams,
     category: option.category,
     isDeepLearning: option.isDeepLearning,
     isAdvanced: option.isAdvanced,
@@ -164,20 +164,11 @@ function stepOptionToNodeDefinition(type: StepType, option: StepOption): NodeDef
  * Convert JsonNodeDefinition to unified NodeDefinition format.
  */
 function jsonNodeToNodeDefinition(node: JsonNodeDefinition): NodeDefinition {
-  // Build defaultParams from parameters array
-  const defaultParams: Record<string, string | number | boolean> = {};
-  for (const param of node.parameters) {
-    if (param.default !== undefined) {
-      defaultParams[param.name] = param.default as string | number | boolean;
-    }
-  }
-
   return {
     id: node.id,
     name: node.name,
     type: node.type as StepType,
     description: node.description,
-    defaultParams,
     category: node.category,
     isDeepLearning: node.isDeepLearning,
     isAdvanced: node.isAdvanced,
@@ -224,29 +215,140 @@ export function NodeRegistryProvider({
   const [error, setError] = useState<Error | null>(null);
   const [registry, setRegistry] = useState<NodeRegistry | null>(null);
 
-  // Initialize registry when using JSON mode
-  useEffect(() => {
-    if (useJsonRegistry) {
-      setIsLoading(true);
-      try {
-        const newRegistry = createNodeRegistry({
-          validateOnLoad: import.meta.env.DEV, // Validate in dev mode
-          warnOnDuplicates: true,
-        });
-        setRegistry(newRegistry);
-        setError(null);
+  const preferences = usePipelineEditorPreferencesOptional();
+  const extendedMode = preferences?.extendedMode ?? false;
 
-        if (import.meta.env.DEV) {
-          console.log('[NodeRegistry] Initialized with JSON definitions:', newRegistry.getStats());
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e : new Error('Failed to load node registry'));
-        console.error('[NodeRegistry] Failed to initialize:', e);
-      } finally {
-        setIsLoading(false);
-      }
+  const baseRegistryRef = useRef<NodeRegistry | null>(null);
+  const [customNodes, setCustomNodes] = useState<JsonNodeDefinition[]>([]);
+
+  const [extendedNodes, setExtendedNodes] = useState<JsonNodeDefinition[] | null>(null);
+  const [isLoadingExtended, setIsLoadingExtended] = useState(false);
+  const [extendedError, setExtendedError] = useState<Error | null>(null);
+
+  // Ref to track if a fetch is in progress (avoids stale closure issues)
+  const isFetchingExtendedRef = useRef(false);
+
+  // If the user disables Extended mode, drop the cached extended registry.
+  // This lets users toggle off/on to re-fetch after regenerating extended.json
+  // while the app is running.
+  useEffect(() => {
+    if (!useJsonRegistry) return;
+    if (extendedMode) return;
+    setExtendedNodes(null);
+    setExtendedError(null);
+  }, [useJsonRegistry, extendedMode]);
+
+  // Initialize base registry and subscribe to custom node updates.
+  useEffect(() => {
+    if (!useJsonRegistry) return;
+
+    setIsLoading(true);
+    try {
+      const baseRegistry = createNodeRegistry({
+        validateOnLoad: import.meta.env.DEV, // Validate in dev mode
+        warnOnDuplicates: true,
+      });
+
+      baseRegistryRef.current = baseRegistry;
+
+      const storage = CustomNodeStorage.getInstance();
+      setCustomNodes(storage.getAllMerged());
+
+      const unsubscribe = storage.subscribe(() => {
+        setCustomNodes(storage.getAllMerged());
+      });
+
+      setError(null);
+      return unsubscribe;
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Failed to load node registry"));
+      console.error("[NodeRegistry] Failed to initialize:", e);
+      baseRegistryRef.current = null;
+    } finally {
+      setIsLoading(false);
     }
+
+    return;
   }, [useJsonRegistry]);
+
+  // Lazy-load extended registry when Extended mode is enabled.
+  useEffect(() => {
+    if (!useJsonRegistry) return;
+    if (!extendedMode) return;
+    if (extendedNodes !== null) return;
+    if (isFetchingExtendedRef.current) return;
+
+    isFetchingExtendedRef.current = true;
+    const abort = new AbortController();
+    const load = async () => {
+      setIsLoadingExtended(true);
+      setExtendedError(null);
+      try {
+        const res = await fetch("/node-registry/extended.json", {
+          signal: abort.signal,
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to load extended registry: ${res.status} ${res.statusText}`);
+        }
+
+        const data: unknown = await res.json();
+        if (!Array.isArray(data)) {
+          throw new Error("Extended registry JSON must be an array of node definitions");
+        }
+
+        setExtendedNodes(data as JsonNodeDefinition[]);
+      } catch (e) {
+        if (abort.signal.aborted) return;
+        const err = e instanceof Error ? e : new Error("Failed to load extended registry");
+        setExtendedError(err);
+        console.error("[NodeRegistry] Failed to load extended registry:", err);
+      } finally {
+        if (!abort.signal.aborted) {
+          setIsLoadingExtended(false);
+          isFetchingExtendedRef.current = false;
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      abort.abort();
+      isFetchingExtendedRef.current = false;
+    };
+  }, [useJsonRegistry, extendedMode, extendedNodes]);
+
+  // Build the merged registry whenever base/custom/extended nodes change.
+  useEffect(() => {
+    if (!useJsonRegistry) return;
+    const baseRegistry = baseRegistryRef.current;
+    if (!baseRegistry) return;
+
+    // Merge ordering (first wins on duplicate IDs): base > custom > extended
+    const mergedNodes: JsonNodeDefinition[] = [
+      ...baseRegistry.getAll(),
+      ...customNodes,
+      ...(extendedMode ? (extendedNodes ?? []) : []),
+    ];
+
+    const mergedRegistry = new NodeRegistry(mergedNodes, {
+      validateOnLoad: import.meta.env.DEV,
+      warnOnDuplicates: true,
+    });
+
+    setRegistry(mergedRegistry);
+
+    if (import.meta.env.DEV) {
+      console.log(
+        "[NodeRegistry] Built (merged)",
+        { extendedMode, extendedCount: extendedNodes?.length ?? 0, customCount: customNodes.length },
+        mergedRegistry.getStats()
+      );
+    }
+  }, [useJsonRegistry, customNodes, extendedMode, extendedNodes]);
 
   const value = useMemo<NodeRegistryContextValue>(() => {
     if (useJsonRegistry && registry) {
@@ -302,8 +404,8 @@ export function NodeRegistryProvider({
         getCategoryConfig: (type: StepType) =>
           registry.getCategoryConfig(type as NodeType),
 
-        isLoading,
-        error,
+        isLoading: isLoading || isLoadingExtended,
+        error: error ?? (extendedMode ? extendedError : null),
         isJsonRegistry: true,
         version: {
           registry: registry.version,
@@ -395,7 +497,15 @@ export function NodeRegistryProvider({
       },
       registry: null,
     };
-  }, [useJsonRegistry, registry, isLoading, error]);
+  }, [
+    useJsonRegistry,
+    registry,
+    isLoading,
+    error,
+    isLoadingExtended,
+    extendedMode,
+    extendedError,
+  ]);
 
   return (
     <NodeRegistryContext.Provider value={value}>

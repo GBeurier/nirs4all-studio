@@ -19,6 +19,19 @@
 const fs = require('fs');
 const path = require('path');
 
+function safeGet(obj, pathParts, fallback) {
+  let cur = obj;
+  for (const p of pathParts) {
+    if (!cur || typeof cur !== 'object' || !(p in cur)) return fallback;
+    cur = cur[p];
+  }
+  return cur ?? fallback;
+}
+
+function asStringArray(value) {
+  return Array.isArray(value) && value.every((x) => typeof x === 'string') ? value : null;
+}
+
 // Simple JSON Schema validator (basic implementation)
 // For production, consider using 'ajv' package
 
@@ -49,6 +62,11 @@ function validateAgainstSchema(data, schema, filePath) {
 function validateNode(node, schema) {
   const errors = [];
 
+  const schemaTypeEnum = asStringArray(safeGet(schema, ['definitions', 'NodeType', 'enum'], null));
+  const schemaSourceEnum = asStringArray(safeGet(schema, ['properties', 'source', 'enum'], null));
+  const schemaContainerTypeEnum = asStringArray(safeGet(schema, ['properties', 'containerType', 'enum'], null));
+  const schemaIdPattern = safeGet(schema, ['properties', 'id', 'pattern'], null);
+
   // Required fields
   const requiredFields = ['id', 'name', 'type', 'description', 'parameters', 'source'];
   for (const field of requiredFields) {
@@ -59,25 +77,51 @@ function validateNode(node, schema) {
 
   // Validate id format
   if (node.id && typeof node.id === 'string') {
-    if (!/^[a-z_]+\.[a-z0-9_]+$/.test(node.id)) {
+    const pattern = typeof schemaIdPattern === 'string' && schemaIdPattern.length > 0
+      ? new RegExp(schemaIdPattern)
+      : /^[a-z_]+\.[a-z0-9_]+$/;
+
+    if (!pattern.test(node.id)) {
       errors.push(`Invalid id format: ${node.id} (expected: type.snake_case)`);
     }
   }
 
   // Validate type
-  const validTypes = [
+  const validTypes = schemaTypeEnum || [
     'preprocessing', 'y_processing', 'splitting', 'model', 'generator',
     'branch', 'merge', 'filter', 'augmentation', 'sample_augmentation',
-    'feature_augmentation', 'sample_filter', 'concat_transform', 'chart', 'comment'
+    'feature_augmentation', 'sample_filter', 'concat_transform', 'sequential', 'chart', 'comment'
   ];
   if (node.type && !validTypes.includes(node.type)) {
     errors.push(`Invalid type: ${node.type}`);
   }
 
   // Validate source
-  const validSources = ['sklearn', 'nirs4all', 'editor', 'custom'];
+  const validSources = schemaSourceEnum || ['sklearn', 'nirs4all', 'custom', 'editor'];
   if (node.source && !validSources.includes(node.source)) {
     errors.push(`Invalid source: ${node.source}`);
+  }
+
+  // Validate containerType when present
+  if (node.containerType !== undefined) {
+    if (typeof node.containerType !== 'string') {
+      errors.push('containerType must be a string');
+    } else if (schemaContainerTypeEnum && !schemaContainerTypeEnum.includes(node.containerType)) {
+      errors.push(`Invalid containerType: ${node.containerType}`);
+    }
+  }
+
+  // Validate childTypes when present
+  if (node.childTypes !== undefined) {
+    if (!Array.isArray(node.childTypes)) {
+      errors.push('childTypes must be an array');
+    } else {
+      node.childTypes.forEach((t, idx) => {
+        if (typeof t !== 'string' || !validTypes.includes(t)) {
+          errors.push(`childTypes[${idx}] invalid: ${String(t)}`);
+        }
+      });
+    }
   }
 
   // Validate parameters array
@@ -111,6 +155,9 @@ function validateNode(node, schema) {
 function validateParameter(param) {
   const errors = [];
 
+  // Load parameter schema lazily (resolved once in main)
+  const validParamTypes = globalThis.__N4A_VALID_PARAM_TYPES || ['int', 'float', 'bool', 'string', 'select', 'range', 'array', 'object'];
+
   // Required fields
   if (!param.name || typeof param.name !== 'string') {
     errors.push('Missing or invalid name');
@@ -121,7 +168,6 @@ function validateParameter(param) {
   }
 
   // Validate type
-  const validParamTypes = ['int', 'float', 'bool', 'string', 'select', 'array', 'object'];
   if (param.type && !validParamTypes.includes(param.type)) {
     errors.push(`Invalid parameter type: ${param.type}`);
   }
@@ -179,6 +225,7 @@ function main() {
   const nodesDir = path.join(__dirname, '..', 'src', 'data', 'nodes');
   const definitionsDir = path.join(nodesDir, 'definitions');
   const schemaPath = path.join(nodesDir, 'schema', 'node.schema.json');
+  const paramSchemaPath = path.join(nodesDir, 'schema', 'parameter.schema.json');
 
   // Check if directories exist
   if (!fs.existsSync(definitionsDir)) {
@@ -193,6 +240,17 @@ function main() {
     console.log('📋 Loaded schema from:', path.relative(process.cwd(), schemaPath));
   } else {
     console.warn('⚠️  Schema file not found, using basic validation');
+  }
+
+  // Load parameter schema (for param.type enum)
+  if (fs.existsSync(paramSchemaPath)) {
+    const paramSchema = JSON.parse(fs.readFileSync(paramSchemaPath, 'utf-8'));
+    const enumList = safeGet(paramSchema, ['properties', 'type', 'enum'], null);
+    const parsed = asStringArray(enumList);
+    if (parsed) {
+      globalThis.__N4A_VALID_PARAM_TYPES = parsed;
+    }
+    console.log('📋 Loaded parameter schema from:', path.relative(process.cwd(), paramSchemaPath));
   }
 
   // Find all JSON files

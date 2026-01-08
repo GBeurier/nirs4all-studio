@@ -17,7 +17,7 @@
     },
     "type": {
       "type": "string",
-      "enum": ["int", "float", "bool", "string", "select", "array", "object"],
+      "enum": ["int", "float", "bool", "string", "select", "range", "array", "object"],
       "description": "Parameter value type"
     },
     "required": {

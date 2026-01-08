@@ -17,6 +17,7 @@
 
 import type { NodeDefinition, NodeType, ParameterDefinition, CategoryConfig } from './types';
 import { getCategoryConfig, getAllCategories, getColorScheme } from './categories';
+import { allNodes } from './definitions';
 
 /**
  * Options for creating a NodeRegistry instance
@@ -494,8 +495,6 @@ export class NodeRegistry {
  * Create a NodeRegistry from the built-in node definitions
  */
 export function createNodeRegistry(options?: NodeRegistryOptions): NodeRegistry {
-  // Dynamic import to avoid circular dependencies
-  const { allNodes } = require('./definitions');
   return new NodeRegistry(allNodes, options);
 }
 
