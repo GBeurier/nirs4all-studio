@@ -82,7 +82,7 @@ import {
   NavigationStatusBar,
   DatasetBinding,
 } from "@/components/pipeline-editor";
-import { DatasetBindingProvider } from "@/components/pipeline-editor/contexts";
+import { DatasetBindingProvider, NodeRegistryProvider, PipelineEditorPreferencesProvider } from "@/components/pipeline-editor/contexts";
 import { useKeyboardNavigation, KEYBOARD_SHORTCUTS, formatShortcut } from "@/hooks/useKeyboardNavigation";
 import type { DragData, DropIndicator } from "@/components/pipeline-editor/types";
 import type { PipelineStep } from "@/types/pipelines";
@@ -939,61 +939,65 @@ export default function PipelineEditor() {
           </header>
 
           {/* Main Content: 3-Panel Layout */}
-          <DatasetBindingProvider
-            steps={steps}
-            boundDataset={boundDataset}
-            stepShapes={undefined} // Will use internal calculation from useShapePropagation
-          >
-            <div className="flex-1 flex z-0 min-h-0">
-              {/* Left Panel: Step Palette */}
-              <div
-                ref={panelRefs.palette}
-                className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
-                onClick={() => setFocusedPanel("palette")}
+          <PipelineEditorPreferencesProvider>
+            <NodeRegistryProvider useJsonRegistry>
+              <DatasetBindingProvider
+                steps={steps}
+                boundDataset={boundDataset}
+                stepShapes={undefined} // Will use internal calculation from useShapePropagation
               >
-                <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
-                <StepPalette onAddStep={addStep} />
-              </div>
+                <div className="flex-1 flex z-0 min-h-0">
+                {/* Left Panel: Step Palette */}
+                <div
+                  ref={panelRefs.palette}
+                  className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
+                  onClick={() => setFocusedPanel("palette")}
+                >
+                  <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
+                  <StepPalette onAddStep={addStep} />
+                </div>
 
-              {/* Center: Pipeline Tree */}
-              <div
-                ref={panelRefs.tree}
-                className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
-                onClick={() => setFocusedPanel("tree")}
-              >
-                <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
-                <PipelineTree
-                  steps={steps}
-                  selectedStepId={selectedStepId}
-                  onSelectStep={setSelectedStepId}
-                  onRemoveStep={removeStep}
-                  onDuplicateStep={duplicateStep}
-                  onAddBranch={addBranch}
-                  onRemoveBranch={removeBranch}
-                  onAddChild={addChild}
-                  onRemoveChild={removeChild}
-                />
-              </div>
+                {/* Center: Pipeline Tree */}
+                <div
+                  ref={panelRefs.tree}
+                  className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
+                  onClick={() => setFocusedPanel("tree")}
+                >
+                  <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
+                  <PipelineTree
+                    steps={steps}
+                    selectedStepId={selectedStepId}
+                    onSelectStep={setSelectedStepId}
+                    onRemoveStep={removeStep}
+                    onDuplicateStep={duplicateStep}
+                    onAddBranch={addBranch}
+                    onRemoveBranch={removeBranch}
+                    onAddChild={addChild}
+                    onRemoveChild={removeChild}
+                  />
+                </div>
 
-              {/* Right Panel: Configuration */}
-              <div
-                ref={panelRefs.config}
-                className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
-                onClick={() => setFocusedPanel("config")}
-              >
-                <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />
-                <StepConfigPanel
-                  step={selectedStep}
-                  onUpdate={updateStep}
-                  onRemove={removeStep}
-                  onDuplicate={duplicateStep}
-                  onSelectStep={setSelectedStepId}
-                  onAddChild={addChild}
-                  onRemoveChild={removeChild}
-                />
-              </div>
-            </div>
-          </DatasetBindingProvider>
+                {/* Right Panel: Configuration */}
+                <div
+                  ref={panelRefs.config}
+                  className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
+                  onClick={() => setFocusedPanel("config")}
+                >
+                  <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />
+                  <StepConfigPanel
+                    step={selectedStep}
+                    onUpdate={updateStep}
+                    onRemove={removeStep}
+                    onDuplicateStep={duplicateStep}
+                    onSelectStep={setSelectedStepId}
+                    onAddChild={addChild}
+                    onRemoveChild={removeChild}
+                  />
+                </div>
+                </div>
+              </DatasetBindingProvider>
+            </NodeRegistryProvider>
+          </PipelineEditorPreferencesProvider>
 
           {/* Navigation Status Bar */}
           <footer className="border-t border-border bg-card/50 px-4 py-2 flex-shrink-0">
