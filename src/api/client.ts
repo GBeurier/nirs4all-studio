@@ -257,11 +257,18 @@ export async function getDataset(datasetId: string): Promise<{ dataset: Dataset 
   return api.get(`/datasets/${datasetId}`);
 }
 
+export interface UpdateDatasetRequest {
+  name?: string;
+  description?: string;
+  config?: Partial<DatasetConfig>;
+  default_target?: string;
+}
+
 export async function updateDatasetConfig(
   datasetId: string,
-  config: Partial<DatasetConfig>
+  updates: UpdateDatasetRequest
 ): Promise<{ success: boolean; dataset: Dataset }> {
-  return api.put(`/datasets/${datasetId}`, { config });
+  return api.put(`/datasets/${datasetId}`, updates);
 }
 
 export async function getDatasetStats(

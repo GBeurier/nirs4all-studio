@@ -1198,6 +1198,52 @@ async def get_dataset(dataset_id: str):
         )
 
 
+class UpdateDatasetRequest(BaseModel):
+    """Request body for updating a dataset."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    targets: Optional[List[Dict[str, Any]]] = None
+    default_target: Optional[str] = None
+
+
+@router.put("/datasets/{dataset_id}")
+async def update_dataset(dataset_id: str, request: UpdateDatasetRequest):
+    """Update a dataset's configuration."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        # Build updates dict from non-None fields
+        updates = {}
+        if request.name is not None:
+            updates["name"] = request.name
+        if request.description is not None:
+            updates["description"] = request.description
+        if request.config is not None:
+            updates["config"] = request.config
+        if request.targets is not None:
+            updates["targets"] = request.targets
+        if request.default_target is not None:
+            updates["default_target"] = request.default_target
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        updated_dataset = workspace_manager.update_dataset(dataset_id, updates)
+        if not updated_dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        return {"success": True, "dataset": updated_dataset}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update dataset: {str(e)}"
+        )
+
+
 @router.get("/datasets/{dataset_id}/preview", response_model=PreviewDataResponse)
 async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
     """

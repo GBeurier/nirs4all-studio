@@ -84,7 +84,6 @@ export function DatasetCard({
 
   return (
     <motion.div
-      whileHover={{ scale: 1.002 }}
       className={`
         flex items-center gap-4 p-4 rounded-lg border bg-card cursor-pointer transition-colors
         ${selected ? "border-primary/50 bg-primary/5" : "border-border hover:border-primary/30"}

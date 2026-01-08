@@ -850,6 +850,35 @@ class WorkspaceManager:
         self._save_workspace_config()
         return True
 
+    def update_dataset(self, dataset_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a dataset's configuration in the current workspace."""
+        if not self._workspace_config:
+            raise RuntimeError("No workspace selected")
+
+        dataset_info = next(
+            (d for d in self._workspace_config.datasets if d.get("id") == dataset_id),
+            None,
+        )
+        if not dataset_info:
+            return None
+
+        # Update allowed fields
+        allowed_fields = {"name", "description", "config", "targets", "default_target"}
+        for key, value in updates.items():
+            if key in allowed_fields:
+                dataset_info[key] = value
+            elif key == "config" and isinstance(value, dict):
+                # Merge config updates
+                if "config" not in dataset_info:
+                    dataset_info["config"] = {}
+                dataset_info["config"].update(value)
+
+        dataset_info["last_updated"] = datetime.now().isoformat()
+        self._workspace_config.last_accessed = datetime.now().isoformat()
+        self._save_workspace_config()
+
+        return dataset_info
+
     def refresh_dataset(self, dataset_id: str) -> Optional[Dict[str, Any]]:
         """Refresh dataset information."""
         if not self._workspace_config:

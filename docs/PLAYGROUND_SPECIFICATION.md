@@ -20,9 +20,8 @@
 7. [Pipeline Editor Integration](#7-pipeline-editor-integration)
 8. [Export Capabilities](#8-export-capabilities)
 9. [Keyboard Shortcuts](#9-keyboard-shortcuts)
-10. [Accessibility](#10-accessibility)
-11. [Tooltips & Contextual Help](#11-tooltips--contextual-help)
-12. [Performance Considerations](#12-performance-considerations)
+10. [Tooltips & Contextual Help](#10-tooltips--contextual-help)
+11. [Performance Considerations](#11-performance-considerations)
 
 ---
 
@@ -44,17 +43,45 @@ The Playground operates on a **dual-dataset comparison model**:
 
 | Dataset | Description |
 |---------|-------------|
-| **Reference Dataset** | The output of any selected pipeline step (default: raw data, step 0) |
+| **Reference Dataset** | The output of any selected pipeline step (default: raw data, step 0), OR another dataset with the same pipeline applied |
 | **Final Dataset** | The output of the last enabled step in the pipeline |
 
-This allows users to observe how data transforms through the pipeline by comparing any intermediate state against the final result.
+This allows users to observe how data transforms through the pipeline by comparing any intermediate state against the final result, or to compare two different datasets processed through the same pipeline.
 
-### 1.3 Key Principles
+### 1.3 Reference Modes
+
+The Playground supports two distinct reference modes:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Step Reference** | Reference is a specific pipeline step output from the same dataset | Analyzing pipeline transformation effects |
+| **Dataset Reference** | Reference is another dataset with the same pipeline applied | Comparing two acquisitions, calibration transfer, batch effects |
+
+When **Dataset Reference** mode is active:
+- Step reference selection in the Pipeline Editor is disabled
+- Both datasets are processed through the full pipeline
+- Comparison views show Final vs Final (each from their respective dataset)
+- Views that depend on metadata (Metadata coloration, Partitions) use the primary dataset's information
+- The reference dataset adopts a default coloration (typically INDEX or a neutral gray gradient)
+
+### 1.4 Key Principles
 
 - **Synchronized Views**: All views share the same selection, coloration, and filtering state
 - **Non-Destructive Exploration**: All operations are visual; original data remains unchanged
 - **Performance-Aware**: WebGL rendering option for large datasets
 - **Scientific Rigor**: All visualizations follow best practices for spectroscopic data analysis
+
+### 1.5 Regression vs Classification Mode
+
+The Playground automatically adapts its behavior based on the dataset's target type:
+
+| Aspect | Regression | Classification |
+|--------|------------|----------------|
+| **Target Histogram** | Continuous bins | Discrete class bars |
+| **Target Coloration** | Gradient colormap | Qualitative colormap |
+| **Default Colormap** | Sequential (viridis) | Categorical (tab10) |
+| **Statistical Overlays** | Mean, std, KDE | Class counts, proportions |
+| **Legend** | Gradient bar | Class swatches |
 
 ---
 
@@ -83,7 +110,7 @@ Each view can be in one of the following states:
 | `VISIBLE` | Normal display within the grid |
 | `HIDDEN` | View is deactivated, not rendered |
 | `MAXIMIZED` | View takes full playground area, others temporarily hidden |
-| `MINIMIZED` | View collapsed to header bar only (optional enhancement) |
+| `MINIMIZED` | View collapsed to header bar only |
 
 ### 2.2 View Container Structure
 
@@ -128,7 +155,21 @@ A set of toggle buttons to activate/deactivate each view:
 | 📋 | Partitions | Active |
 | 📐 | Differences | Hidden |
 
-#### 3.1.2 Colormap Selector
+#### 3.1.2 Reference Mode Selector
+
+Toggle between reference modes:
+
+| Mode | Icon | Description |
+|------|------|-------------|
+| **Step Reference** | 🔗 | Use a pipeline step as reference (default) |
+| **Dataset Reference** | 📁 | Use another dataset as reference |
+
+When Dataset Reference is selected:
+- A dataset picker dropdown appears to select the reference dataset
+- Only compatible datasets are shown (same wavelength range recommended)
+- The reference dataset selector in the Pipeline Editor becomes disabled
+
+#### 3.1.3 Colormap Selector
 
 Dropdown or palette picker for selecting the color gradient:
 
@@ -154,7 +195,7 @@ Dropdown or palette picker for selecting the color gradient:
 - `tab10`
 - `tab20`
 
-#### 3.1.3 Coloration Logic Selector
+#### 3.1.4 Coloration Logic Selector
 
 Icon grid for selecting the coloration source (see [Section 4](#4-coloration-system)):
 
@@ -162,12 +203,14 @@ Icon grid for selecting the coloration source (see [Section 4](#4-coloration-sys
 |------|------|-------------|
 | 🎯 | `TARGET` | Color by Y values |
 | 📂 | `PARTITION` | Color by train/test/fold |
-| 📋 | `METADATA` | Color by metadata column |
+| 📋 | `METADATA` | Color by metadata column (user selects column via sub-menu) |
 | ✓ | `SELECTION` | Color by selection state |
 | ⚠️ | `OUTLIER` | Highlight outliers |
-| 🔢 | `INDEX` | Color by sample index (enhancement) |
+| 🔢 | `INDEX` | Color by sample index |
 
-#### 3.1.4 Display Filtering
+*Note*: In **Dataset Reference** mode, the reference dataset uses a default coloration (INDEX or neutral gradient) since its metadata, partitions, and targets may differ from the primary dataset.
+
+#### 3.1.5 Display Filtering
 
 Controls to filter which samples are displayed:
 
@@ -176,25 +219,26 @@ Controls to filter which samples are displayed:
 | **Partition Filter** | All, Train Only, Test Only, Specific Fold |
 | **Outlier Filter** | All, Hide Outliers, Outliers Only |
 | **Selection Filter** | All, Selected Only, Unselected Only |
-| **Metadata Filter** | Filter by metadata column values |
+| **Metadata Filter** | Filter by metadata column values | ← user can choose the column and value
 
-#### 3.1.5 Rendering Mode
+#### 3.1.6 Rendering Mode
 
-Toggle between rendering engines:
+Toggle between rendering engines (applies to views that support it: Spectra, PCA/UMAP, Differences):
 
 | Mode | Use Case |
 |------|----------|
 | `CANVAS` | Standard rendering, full feature support |
 | `WEBGL` | High-performance for large datasets (>1000 samples) |
 
-#### 3.1.6 Global Actions
+#### 3.1.7 Global Actions
 
 | Action | Icon | Description |
 |--------|------|-------------|
 | Reset View | 🔄 | Reset all views to default state |
 | Clear Selection | ✕ | Deselect all samples |
 | Invert Selection | ⇄ | Select unselected, deselect selected |
-| Export All | 📥 | Export all views as a combined report |
+| Export All Views | 📄 | Export all views as a combined report (PNG/PDF) |
+| Export Selected Data | 📤 | Export selected samples data to CSV |
 
 ---
 
@@ -260,7 +304,7 @@ Highlights samples flagged as outliers.
 
 *Important*: In **all other coloration modes**, outliers are **always overlaid in red** regardless of their assigned color. This ensures outliers remain visible.
 
-#### 4.1.6 INDEX Mode (Enhancement)
+#### 4.1.6 INDEX Mode
 
 Colors samples by their dataset index position.
 
@@ -341,7 +385,7 @@ Area selection behavior per view:
 | Select All | Ctrl+A | Select all visible samples |
 | Deselect All | Escape | Clear selection |
 | Invert Selection | Ctrl+I | Invert current selection |
-| Delete Selection | - | Mark selected as outliers (enhancement) |
+| Mark as Outliers | Ctrl+O | Mark selected samples as outliers (adds outlier flag to pipeline context) |
 
 ---
 
@@ -351,16 +395,28 @@ Area selection behavior per view:
 
 The primary view for spectral data visualization.
 
+#### 6.1.0 View Menu Bar
+
+The Spectra Chart has a dedicated menu bar with the following controls:
+
+| Control | Type | Options |
+|---------|------|---------|
+| **Display Mode** | Toggle Group | Lines, Mean±Std, Quantiles, Repetition Means |
+| **Dataset** | Toggle Group | Reference, Final, Both, Difference |
+| **Line Limit** | Dropdown | 50, 100, 250, 500, 1000, All, Per-Quantile (10%, 25%, 50%, 75%, 90%), Extrema (min/max only) |
+| **Rendering** | Toggle | Canvas / WebGL |
+| **More Options** | Menu | Grid, Labels, Line Style, Width, Area Opacity |
+
 #### 6.1.1 Display Modes
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | `INDIVIDUAL_LINES` | Each spectrum as a separate line | Small datasets, detailed inspection |
 | `MEAN_STD` | Mean line with ±1 standard deviation area | Distribution overview |
-| `MEAN_QUANTILES` | Mean line with quantile bands (25%, 50%, 75%, 95%) | Robust distribution view |
+| `MEAN_QUANTILES` | Mean line with configurable quantile bands (default: 25%, 50%, 75%, 95%) + optional extrema | Robust distribution view |
 | `REPETITION_MEANS` | Mean per biological sample (repetition groups) | Reduce replicate noise |
 
-#### 6.1.2 Display Configuration
+#### 6.1.2 Display Configuration for reference and final data
 
 | Setting | Options | Default |
 |---------|---------|---------|
@@ -380,7 +436,7 @@ The primary view for spectral data visualization.
 | Both (Overlay) | Show both with visual distinction |
 | Side-by-Side | Split view with reference left, final right (enhancement) |
 
-*Visual Distinction for Both Mode*:
+*Visual Distinction for Both Mode* (default):
 - Reference: Solid lines
 - Final: Dashed lines or different saturation
 
@@ -391,7 +447,7 @@ The primary view for spectral data visualization.
 | **X-Axis (Wavelength)** | Zoom: mousewheel, Pan: drag |
 | **Y-Axis (Absorbance)** | Auto-scale or fixed range |
 
-*Enhancement*: Double-click to reset zoom to full extent.
+Double-click to reset zoom to full extent.
 
 #### 6.1.5 Selection Behavior
 
@@ -407,7 +463,9 @@ The primary view for spectral data visualization.
 | Mode | Capabilities | Performance |
 |------|--------------|-------------|
 | `CANVAS` | Full styling, export to PNG/SVG | Good for <500 lines |
-| `WEBGL` | Hardware-accelerated | Excellent for 500+ lines |
+| `WEBGL` | Hardware-accelerated, identical visual output to Canvas | Excellent for 500+ lines |
+
+*Note*: WebGL rendering must produce visually identical results to Canvas mode (same colors, saturation, brightness).
 
 #### 6.1.7 WebGL-Specific Features
 
@@ -415,6 +473,7 @@ The primary view for spectral data visualization.
 - Line thickness (GPU-rendered)
 - Smooth zoom/pan at 60fps
 - Fallback to Canvas if WebGL unavailable
+- Rendering quality selector: Low, Medium, High, Full (Full displays all points without decimation)
 
 ---
 
@@ -422,9 +481,33 @@ The primary view for spectral data visualization.
 
 Displays the distribution of target values (Y).
 
+#### 6.2.0 View Menu Bar
+
+| Control | Type | Options |
+|---------|------|---------|
+| **Dataset Source** | Toggle | Primary / Reference (Dataset Reference mode only) |
+| **Bin Count** | Dropdown/Slider | 5-50, Auto |
+| **Y-Axis Mode** | Toggle Group | Count, Density, Frequency |
+| **Overlays** | Multi-toggle | KDE, Mean, Median, 1σ, 2σ, 3σ |
+| **Orientation** | Toggle | Vertical / Horizontal |
+
 #### 6.2.1 Independence from Pipeline
 
-**Important**: The Target Histogram is **not affected** by reference/final dataset selection. Target values remain constant regardless of preprocessing steps.
+**Important**: The Target Histogram is **not affected** by reference/final dataset selection in Step Reference mode. Target values remain constant regardless of preprocessing steps.
+
+#### 6.2.2 Dataset Reference Mode Behavior
+
+In **Dataset Reference** mode, the Target Histogram gains a **Dataset Source** toggle:
+
+| Source | Displays |
+|--------|----------|
+| **Primary** | Target distribution of the primary (final) dataset |
+| **Reference** | Target distribution of the reference dataset |
+
+When displaying the reference dataset's targets:
+- Coloration defaults to INDEX mode (gradient by sample position)
+- METADATA and PARTITION coloration are disabled (reference dataset may have different structure)
+- TARGET coloration uses the reference dataset's own target values
 
 #### 6.2.2 Histogram Configuration
 
@@ -446,8 +529,9 @@ Toggleable overlays for statistical reference:
 | **Median** | Vertical line at median | Dashed line |
 | **1σ Range** | Mean ± 1 standard deviation | Shaded region |
 | **2σ Range** | Mean ± 2 standard deviations | Lighter shaded region |
+| **3σ Range** | Mean ± 3 standard deviations | Lightest shaded region |
 | **Min/Max** | Vertical lines at extremes | Dotted lines |
-| **Quartiles** | Q1, Q2, Q3 vertical lines (enhancement) | Thin lines |
+| **Quartiles** | Q1, Q2, Q3 vertical lines | Thin lines |
 
 #### 6.2.4 Stacked Bar Coloration
 
@@ -461,7 +545,7 @@ Bars represent **stacked segments** colored according to the global coloration m
 | SELECTION | Two segments: selected and unselected |
 | OUTLIER | Segment for outliers, segment for normal |
 
-*Visual*: Each bar is composed of horizontal strips, each strip colored by the sample it represents.
+*Visual*: Each bar is composed of horizontal strips, each strip colored by the sample it represents but grouped for optimal display.
 
 #### 6.2.5 Selection Behavior
 
@@ -471,12 +555,25 @@ Bars represent **stacked segments** colored according to the global coloration m
 | Click on segment | Select samples in that specific segment |
 | Shift+Click | Add bar/segment samples to selection |
 | Drag across bars | Select all samples in touched bins |
+| Ctrl+Click | Toggle selection |
 
 ---
 
 ### 6.3 PCA/UMAP Projection
 
 2D or 3D scatter plot of dimensionally-reduced data.
+
+#### 6.3.0 View Menu Bar
+
+| Control | Type | Options |
+|---------|------|---------|
+| **Method** | Toggle | PCA / UMAP |
+| **Dimensions** | Toggle | 2D / 3D |
+| **X Component** | Dropdown | PC1-PCn or UMAP1 |
+| **Y Component** | Dropdown | PC1-PCn or UMAP2 |
+| **Z Component** | Dropdown | PC1-PCn (visible in 3D mode only) |
+| **Dataset** | Toggle Group | Reference, Final, Both |
+| **Settings** | Menu | Point size, opacity, variance threshold, UMAP params |
 
 #### 6.3.1 Projection Methods
 
@@ -502,7 +599,7 @@ Bars represent **stacked segments** colored according to the global coloration m
 |---------|---------|---------|
 | **Variance Threshold** | 90%, 95%, 99%, 99.9%, 100% | 99.9% |
 | **Scaling** | None, Standard, Robust | Standard |
-| **Show Loadings** | On/Off (enhancement) | Off |
+| **Show Loadings** | On/Off | Off |
 | **Show Variance %** | In axis labels | On |
 
 *Display*: Axis labels show "PC1 (45.2%)" indicating explained variance.
@@ -527,9 +624,9 @@ Bars represent **stacked segments** colored according to the global coloration m
 *Visual Distinction for Both Mode*:
 - Reference points: Circles with light fill
 - Final points: Circles with dark fill, or different shape (squares)
-- Optional: Lines connecting same sample in both projections (enhancement)
+- Optional: Lines connecting same sample in both projections
 
-#### 6.3.6 Point Styling
+#### 6.3.6 Point Styling for reference and final
 
 | Setting | Options | Default |
 |---------|---------|---------|
@@ -543,8 +640,8 @@ Bars represent **stacked segments** colored according to the global coloration m
 - Orbit rotation: Drag to rotate
 - Zoom: Mousewheel
 - Pan: Right-drag or Shift+drag
-- Reset view button
-- Auto-rotation toggle (enhancement)
+- Reset view button (or on double click)
+- Auto-rotation toggle
 
 #### 6.3.8 Selection Behavior
 
@@ -554,7 +651,7 @@ Bars represent **stacked segments** colored according to the global coloration m
 | Shift+Click | Add to selection |
 | Ctrl+Click | Toggle selection |
 | Drag (2D) | Rectangle selection |
-| Lasso tool (enhancement) | Freeform selection area |
+| Lasso tool | Freeform selection area |
 
 #### 6.3.9 Rendering Modes
 
@@ -563,11 +660,21 @@ Bars represent **stacked segments** colored according to the global coloration m
 | `CANVAS` | Full 2D, export support |
 | `WEBGL` | Required for 3D, better for >500 points |
 
+*Note*: WebGL rendering produces visually identical results to Canvas mode.
+
 ---
 
 ### 6.4 Partitions Chart
 
 Displays the distribution of samples across data partitions.
+
+#### 6.4.0 View Menu Bar
+
+| Control | Type | Options |
+|---------|------|---------|
+| **Orientation** | Toggle | Vertical / Horizontal |
+| **Labels** | Multi-toggle | Count, Percentage |
+| **Sort** | Dropdown | Default, By Size, Alphabetical |
 
 #### 6.4.1 Partition Types
 
@@ -604,7 +711,7 @@ Like the Target Histogram, bars are **stacked** by the global coloration mode:
 |---------|-------------|
 | **Count Labels** | Show count on or above each bar |
 | **Percentage Labels** | Show percentage of total |
-| **Target Mean** | Show mean target value per partition (enhancement) |
+| **Target Mean** | Show mean target value per partition |
 
 #### 6.4.5 Selection Behavior
 
@@ -613,12 +720,26 @@ Like the Target Histogram, bars are **stacked** by the global coloration mode:
 | Click bar | Select all samples in that partition |
 | Click segment | Select samples in that segment |
 | Shift+Click | Add to selection |
+| Ctrl+Click | Toggle selection |
+| Drag across bars | Select all samples in touched bins |
 
 ---
 
 ### 6.5 Differences Chart
 
 Visualizes distances between samples under different conditions.
+
+#### 6.5.0 View Menu Bar
+
+| Control | Type | Options |
+|---------|------|---------|
+| **Mode** | Toggle | Reference vs Final / Repetition Variance |
+| **Dataset Source** | Toggle | Primary / Reference (Dataset Reference mode, Rep. Variance only) |
+| **Metric** | Dropdown | Euclidean, Manhattan, Mahalanobis, Cosine, PCA, Spectral Angle, Correlation |
+| **Plot Type** | Toggle | Scatter, Line, Bar |
+| **Quantiles** | Multi-toggle | 50%, 75%, 90%, 95% |
+| **Reference (Rep. mode)** | Dropdown | Group Mean, Leave-One-Out, First, Selected |
+| **Scale** | Toggle | Linear / Log |
 
 #### 6.5.1 Analysis Modes
 
@@ -628,6 +749,20 @@ Visualizes distances between samples under different conditions.
 | **Repetition Variance** | Distance among repetitions of the same biological sample |
 
 *Switch via top-bar toggle icons.*
+
+#### 6.5.2 Dataset Reference Mode Behavior
+
+In **Dataset Reference** mode, the Differences chart behavior changes:
+
+| Mode | Step Reference Behavior | Dataset Reference Behavior |
+|------|------------------------|---------------------------|
+| **Reference vs Final** | Distance between pipeline step output and final | Distance between same sample in two different datasets (both at final pipeline output) |
+| **Repetition Variance** | Repetition variance within the primary dataset | Dataset Source toggle allows switching between primary and reference dataset analysis |
+
+When analyzing the reference dataset's repetition variance:
+- Coloration defaults to INDEX mode
+- METADATA and PARTITION coloration are disabled
+- Selection still syncs globally (by sample index where applicable)
 
 #### 6.5.2 X-Axis Configuration
 
@@ -694,11 +829,15 @@ When enabled, horizontal lines display distribution thresholds:
 
 #### 6.5.8 Scientific Enhancements
 
-| Enhancement | Description |
-|-------------|-------------|
-| **Hotelling's T²** | Show T² control limit for multivariate outlier detection |
-| **Q Residual** | Show Q statistic for model-based outlier detection |
-| **Highlight High Distance** | Auto-highlight samples above a threshold |
+Advanced statistical overlays for outlier detection and quality control:
+
+| Enhancement | Description | Configuration |
+|-------------|-------------|---------------|
+| **Hotelling's T²** | Multivariate control limit based on T² statistic; samples exceeding this limit are potential multivariate outliers | Confidence level (95%, 99%) |
+| **Q Residual** | Residual statistic measuring distance from the PCA model; high Q indicates samples not well-represented by the model | Number of PCs, confidence level |
+| **High Distance Threshold** | Horizontal line marking a user-defined or auto-computed threshold; samples above are highlighted | Threshold value (percentile or absolute) |
+
+These overlays integrate as horizontal reference lines in the chart. Samples exceeding thresholds can be optionally auto-selected or marked.
 
 ---
 
@@ -716,8 +855,11 @@ Each pipeline step displays an icon/action to designate it as the **reference st
 |------------|---------|
 | ○ (empty) | Not reference |
 | ● (filled) | Current reference step |
+| — (disabled) | Dataset Reference mode active (step reference unavailable) |
 
-*Behavior*: Clicking the reference icon on a step sets that step's output as the reference dataset for all views.
+*Behavior*: Clicking the reference icon on a step sets that step's output as the reference dataset for all views and unsets any other reference step.
+
+**Note**: When **Dataset Reference** mode is active in the global menu, the reference step selection is disabled. The reference becomes the other dataset processed through the full pipeline.
 
 ### 7.3 Step Controls
 
@@ -727,7 +869,9 @@ Each pipeline step displays an icon/action to designate it as the **reference st
 | **Move Up/Down** | Reorder step in pipeline |
 | **Delete** | Remove step from pipeline |
 | **Configure** | Open step parameter editor |
-| **Set as Reference** | Make this step the reference for comparison |
+| **Set as Reference** | Make this step the reference for comparison (Step Reference mode only) |
+
+Steps are draggable and droppable.
 
 ### 7.4 Visual Feedback
 
@@ -759,7 +903,7 @@ Each view can be exported individually via its header menu.
 |--------|--------------|-------------|
 | **PNG** | All views | Raster image at configurable resolution |
 | **SVG** | Canvas views | Vector graphics, editable |
-| **PDF** | All views (enhancement) | Vector with metadata |
+| **PDF** | All views | Vector with metadata |
 
 #### 8.1.2 Export Options
 
@@ -779,7 +923,7 @@ Each view can be exported individually via its header menu.
 | **Pipeline Configuration** | JSON, YAML | Current pipeline definition |
 | **Full Report** | PDF, HTML | All views + statistics + pipeline info |
 
-### 8.3 Report Generation (Enhancement)
+### 8.3 Report Generation
 
 Automated report including:
 
@@ -818,30 +962,58 @@ Automated report including:
 
 ---
 
-## 10. Accessibility
+## 10. Tooltips & Contextual Help
 
-### 10.1 Color Vision Support
+### 10.1 Hover Tooltips
 
-| Feature | Implementation |
-|---------|----------------|
-| **Colorblind-safe palettes** | Alternative colormaps optimized for deuteranopia, protanopia, tritanopia |
-| **Pattern fills** | Optional patterns in addition to color for categorical data |
-| **High contrast mode** | Increased contrast for all UI elements |
+Interactive elements display contextual information on hover:
 
-### 10.2 Screen Reader Support
+| Element | Tooltip Content |
+|---------|-----------------|
+| **Spectrum line** | Single tooltip on hover (one line at a time): Sample ID, target value, metadata summary, min/max absorbance values |
+| **PCA/UMAP point** | Sample ID, coordinates, target, distance to centroid |
+| **Histogram bar** | Bin range, count, percentage, sample list preview |
+| **Partition bar** | Partition name, count, percentage, target mean/std |
+| **Difference point** | Sample ID, distance value, percentile rank |
 
-| Element | Accessible Label |
-|---------|------------------|
-| Views | Descriptive titles and current state |
-| Charts | Summary of data distribution |
-| Selection | Announcement of selection changes |
-| Controls | Clear action descriptions |
+### 10.2 Metric Explanations
 
-### 10.3 Keyboard Navigation
+Each distance metric and statistical measure includes an info icon (ⓘ) that displays:
 
-- Full keyboard navigation for all controls
-- Focus indicators clearly visible
-- Logical tab order through views and controls
+- Brief mathematical description
+- When to use this metric
+- Interpretation guidance
+
+---
+
+## 11. Performance Considerations
+
+### 11.1 Sample Count Thresholds
+
+| Sample Count | Recommended Settings |
+|--------------|---------------------|
+| < 100 | All features available, Canvas rendering |
+| 100-500 | Canvas or WebGL, full line display |
+| 500-2000 | WebGL recommended, limit visible lines to 500 |
+| 2000-10000 | WebGL required, limit visible lines to 250, use aggregation modes |
+| > 10000 | WebGL required, aggregation modes only, sampling for selections |
+
+Auto-optimization can be toggled on/off in settings. When enabled, the system automatically applies the recommended settings based on sample count.
+
+### 11.2 Automatic Optimizations
+
+- **Progressive rendering**: Large datasets render incrementally
+- **Level-of-detail**: Reduced point sizes when zoomed out (depends on display quality setting)
+- **Viewport culling**: Only render visible elements
+- **Debounced updates**: Selection and filter changes debounced during rapid interactions
+- **Loading indicator**: Rotating spinner shown during long computations (pipeline execution, complex display changes)
+
+### 11.3 Memory Management
+
+- Computed projections (PCA, UMAP) are cached until pipeline changes
+- Distance computations (Differences chart) are cached until reference/final datasets change
+- Color arrays are shared across views
+- WebGL contexts are reused when possible
 
 ---
 
@@ -893,7 +1065,16 @@ RenderingMode {
 }
 ```
 
-### A.5 Spectra Display Modes
+### A.5 Reference Modes
+
+```
+ReferenceMode {
+  STEP      // Reference is a pipeline step output
+  DATASET   // Reference is another dataset
+}
+```
+
+### A.6 Spectra Display Modes
 
 ```
 SpectraDisplayMode {
@@ -904,7 +1085,7 @@ SpectraDisplayMode {
 }
 ```
 
-### A.6 Histogram Y-Axis Modes
+### A.7 Histogram Y-Axis Modes
 
 ```
 HistogramYMode {
@@ -914,7 +1095,7 @@ HistogramYMode {
 }
 ```
 
-### A.7 Projection Methods
+### A.8 Projection Methods
 
 ```
 ProjectionMethod {
@@ -923,7 +1104,7 @@ ProjectionMethod {
 }
 ```
 
-### A.8 Difference Modes
+### A.9 Difference Modes
 
 ```
 DifferenceMode {
@@ -932,7 +1113,7 @@ DifferenceMode {
 }
 ```
 
-### A.9 Distance Metrics
+### A.10 Distance Metrics
 
 ```
 DistanceMetric {
@@ -946,7 +1127,7 @@ DistanceMetric {
 }
 ```
 
-### A.10 Repetition Reference Types
+### A.11 Repetition Reference Types
 
 ```
 RepetitionReference {
@@ -965,6 +1146,10 @@ RepetitionReference {
 Playground
 ├── GlobalMenuBar
 │   ├── ViewToggles
+│   ├── ReferenceModeSelector
+│   │   ├── StepReferenceToggle
+│   │   ├── DatasetReferenceToggle
+│   │   └── DatasetPicker (when Dataset Reference active)
 │   ├── ColormapSelector
 │   ├── ColorationLogicSelector
 │   ├── DisplayFilters
@@ -987,7 +1172,7 @@ Playground
 │       │   └── StepItem (×N)
 │       │       ├── StepIcon
 │       │       ├── StepLabel
-│       │       ├── ReferenceToggle
+│       │       ├── ReferenceToggle (disabled in Dataset Reference mode)
 │       │       ├── EnableToggle
 │       │       └── StepActions
 │       └── AddStepButton
@@ -1002,9 +1187,14 @@ Playground
 
 ```
 PlaygroundState {
-  // Dataset
-  referenceStepIndex: number
-  referenceDataset: Dataset
+  // Reference Mode
+  referenceMode: ReferenceMode           // STEP or DATASET
+  referenceStepIndex: number             // Used in Step Reference mode
+  referenceDatasetId: string | null      // Used in Dataset Reference mode
+
+  // Datasets
+  primaryDataset: Dataset
+  referenceDataset: Dataset              // Pipeline step output OR external dataset
   finalDataset: Dataset
 
   // Display
@@ -1033,6 +1223,63 @@ PlaygroundState {
 ### C.2 Per-View State
 
 Each view maintains its own configuration state that persists across sessions.
+
+---
+
+## Appendix D: Interaction Patterns Summary
+
+### D.1 Mouse Interactions
+
+| Action | Global Behavior |
+|--------|-----------------|
+| **Click** | Select single element (clears previous selection) |
+| **Shift+Click** | Add element to selection |
+| **Ctrl+Click** | Toggle element selection |
+| **Drag** | Area/rectangle selection or pan (view-dependent) |
+| **Mousewheel** | Zoom (Spectra: X-axis, PCA 3D: distance) |
+| **Double-click** | Reset zoom / view to default |
+| **Right-click** | Context menu (export, reset, info) |
+
+---
+
+## Appendix E: View Feature Matrix
+
+| Feature | Spectra | Histogram | PCA/UMAP | Partitions | Differences |
+|---------|---------|-----------|----------|------------|-------------|
+| Affected by Reference/Final | ✓ | ✗ | ✓ | ✗ | ✓ |
+| Dataset Source Toggle (Dataset Ref. mode) | ✗ | ✓ | ✗ | ✗ | ✓ (Rep. mode) |
+| Supports WebGL | ✓ | ✗ | ✓ | ✗ | ✓ |
+| Area Selection | ✓ | ✓ (bars) | ✓ | ✓ (bars) | ✓ |
+| Zoom/Pan | ✓ (X) | ✗ | ✓ (3D) | ✗ | ✓ |
+| 3D Mode | ✗ | ✗ | ✓ | ✗ | ✗ |
+| SVG Export | ✓ | ✓ | ✓ (2D/3D) | ✓ | ✓ |
+| Stacked Coloration | ✗ | ✓ | ✗ | ✓ | ✗ |
+| Statistical Overlays | ✓ | ✓ | ✗ | ✓ | ✓ |
+
+---
+
+## Appendix F: Data Requirements
+
+### F.1 Minimum Dataset Requirements
+
+| Requirement | Value | Behavior When Missing |
+|-------------|-------|----------------------|
+| Minimum samples | 2 | Required |
+| Minimum wavelengths | 1 | Required |
+| Target values | Optional | Target Histogram hidden, TARGET coloration disabled |
+| Metadata | Optional | METADATA coloration disabled |
+| Repetitions | Optional | Repetition features disabled |
+| Folds | Optional | Fold-specific partitions disabled |
+
+### F.2 Optional Data for Enhanced Features
+
+| Data | Enables |
+|------|---------|
+| **Repetition IDs** | Repetition variance analysis, aggregated spectra |
+| **Fold assignments** | Fold-aware partition visualization |
+| **Metadata columns** | Metadata coloration mode |
+| **Outlier flags** | Outlier coloration mode, highlighting |
+| **Wavelength labels** | Meaningful X-axis labels in spectra |
 
 ---
 

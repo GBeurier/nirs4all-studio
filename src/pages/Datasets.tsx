@@ -44,6 +44,7 @@ import {
   unlinkDataset,
   refreshDataset,
   updateDatasetConfig,
+  type UpdateDatasetRequest,
   listGroups,
   createGroup,
   renameGroup,
@@ -135,13 +136,6 @@ export default function Datasets() {
     loadData();
   }, [loadData]);
 
-  // Debug: Log datasets when they change
-  useEffect(() => {
-    if (datasets.length > 0) {
-      console.log("Datasets loaded:", JSON.stringify(datasets, null, 2));
-      console.log("Filter state - searchQuery:", JSON.stringify(searchQuery), "filterGroup:", JSON.stringify(filterGroup));
-    }
-  }, [datasets, searchQuery, filterGroup]);
 
   // Normalize datasets to ensure they have required fields
   const normalizedDatasets = datasets.map((ds, index) => {
@@ -204,13 +198,6 @@ export default function Datasets() {
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
-  // Debug: Log filtered results
-  useEffect(() => {
-    console.log(`Filtered: ${filteredDatasets.length} of ${normalizedDatasets.length} datasets (raw: ${datasets.length})`);
-    if (normalizedDatasets.length > 0 && filteredDatasets.length === 0) {
-      console.warn("All datasets were filtered out! Check filter criteria.");
-    }
-  }, [filteredDatasets, normalizedDatasets, datasets]);
 
   // Stats
   const totalSamples = normalizedDatasets.reduce(
@@ -259,9 +246,9 @@ export default function Datasets() {
 
   const handleSaveDatasetConfig = async (
     datasetId: string,
-    config: Partial<DatasetConfig>
+    updates: UpdateDatasetRequest
   ) => {
-    await updateDatasetConfig(datasetId, config);
+    await updateDatasetConfig(datasetId, updates);
     await loadData();
   };
 

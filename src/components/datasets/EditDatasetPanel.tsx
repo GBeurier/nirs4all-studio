@@ -36,13 +36,14 @@ import {
   Check,
   AlertCircle,
 } from "lucide-react";
-import type { Dataset, DatasetConfig } from "@/types/datasets";
+import type { Dataset } from "@/types/datasets";
+import type { UpdateDatasetRequest } from "@/api/client";
 
 interface EditDatasetPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dataset: Dataset | null;
-  onSave: (datasetId: string, config: Partial<DatasetConfig>) => Promise<void>;
+  onSave: (datasetId: string, updates: UpdateDatasetRequest) => Promise<void>;
   onRefresh?: (datasetId: string) => Promise<void>;
   onVerify?: (datasetId: string) => Promise<void>;
 }
@@ -108,17 +109,22 @@ export function EditDatasetPanel({
 
     setSaving(true);
     try {
-      const config: Partial<DatasetConfig> = {
-        // Note: name and description may need to be added to DatasetConfig type
-        // For now, we pass them and let the backend handle
-      };
+      // Build update payload with changed fields
+      const updates: UpdateDatasetRequest = {};
 
-      // Include the metadata fields that the backend supports
-      await onSave(dataset.id, {
-        ...config,
-        // These fields should be supported by the backend
-        default_target: defaultTarget || undefined,
-      });
+      if (name && name !== dataset.name) {
+        updates.name = name;
+      }
+      if (description !== (dataset.description || "")) {
+        updates.description = description;
+      }
+      if (defaultTarget !== (dataset.default_target || "")) {
+        updates.default_target = defaultTarget || undefined;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await onSave(dataset.id, updates);
+      }
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save dataset config:", error);

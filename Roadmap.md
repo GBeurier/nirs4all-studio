@@ -15,6 +15,7 @@
 
 **Datasets**
 Add drag n drop folder or files. Directly to create datasets, or into the dataset wizard.
+ScrollBar in list of files in wizard
 
 **Pipeline Builder**
 - REFACTOR THE COMPONENTS. LOT LOT LOT OF REDONDANCIES
@@ -40,3 +41,11 @@ Add drag n drop folder or files. Directly to create datasets, or into the datase
 - Add chinese
 - Remove animation do not work (it's actually worse)
 - Unify / clean / specify / distinguish nirs4all workspaces and app settings folder.
+
+**Spectra_chart**
+- organize menus
+- Webgl > full mode, 1 point per point.  Smooth ?
+-
+**Folds**
+-Should be either two bar: train / test with coloration depending on global
+ or N+1 bars. train_fold_0, train_val_0....train_fold_1,train_val_1, test
