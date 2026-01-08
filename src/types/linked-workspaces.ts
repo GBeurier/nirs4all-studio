@@ -58,6 +58,11 @@ export interface DiscoveredRun {
   predictions_count: number;
   dataset_info: Record<string, unknown>;
   manifest_path: string;
+  // Extended fields from parquet-derived data
+  pipeline_count?: number;
+  models?: string[];
+  best_val_score?: number | null;
+  best_test_score?: number | null;
 }
 
 export interface LinkedWorkspaceDiscoveredRuns {
@@ -77,6 +82,49 @@ export interface LinkedWorkspaceDiscoveredPredictions {
   workspace_id: string;
   predictions: DiscoveredPrediction[];
   total: number;
+}
+
+/**
+ * A single prediction record from a .meta.parquet file.
+ * Contains metadata about a model's predictions on a dataset.
+ */
+export interface PredictionRecord {
+  id: string;
+  source_dataset: string;
+  source_file: string;
+  dataset_name: string;
+  config_name?: string;
+  pipeline_uid?: string;
+  step_idx?: number;
+  op_counter?: number;
+  model_name: string;
+  model_classname?: string;
+  fold_id?: string;
+  partition: string;
+  val_score?: number | null;
+  test_score?: number | null;
+  train_score?: number | null;
+  metric?: string;
+  task_type?: string;
+  n_samples?: number;
+  n_features?: number;
+  preprocessings?: string;
+  best_params?: Record<string, unknown>;
+  scores?: Record<string, Record<string, number>>;
+  branch_id?: number | null;
+  branch_name?: string | null;
+  exclusion_count?: number | null;
+  exclusion_rate?: number | null;
+  model_artifact_id?: string | null;
+  trace_id?: string | null;
+}
+
+export interface PredictionDataResponse {
+  records: PredictionRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 }
 
 export interface DiscoveredExport {

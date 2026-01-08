@@ -928,7 +928,7 @@ export default function PipelineEditor() {
                 </Button>
 
                 {/* Use in Experiment */}
-                <Link to="/runs">
+                <Link to="/runs/new">
                   <Button size="sm" disabled={totalSteps === 0}>
                     <Play className="h-4 w-4 mr-2" />
                     Use in Experiment

@@ -1516,10 +1516,78 @@ async def scan_workspace(workspace_id: str):
 
 @router.get("/workspaces/{workspace_id}/runs")
 async def get_workspace_runs(workspace_id: str):
-    """Get discovered runs from a linked workspace."""
+    """Get discovered runs from a linked workspace.
+
+    This endpoint extracts run information from prediction parquet files,
+    which is much faster than scanning individual manifest.yaml files.
+    """
     try:
-        runs = workspace_manager.get_workspace_runs(workspace_id)
-        return {"runs": runs, "count": len(runs)}
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        import pandas as pd
+        from pathlib import Path
+
+        workspace_path = Path(ws.path)
+        all_runs = []
+        seen_runs = set()
+
+        # Extract run info from .meta.parquet files (much faster than scanning manifests)
+        parquet_files = list(workspace_path.glob("*.meta.parquet"))
+
+        for parquet_file in parquet_files:
+            try:
+                # Read only the columns we need - use the actual column names from schema
+                df = pd.read_parquet(parquet_file, columns=[
+                    "dataset_name", "config_name", "pipeline_uid",
+                    "model_name", "preprocessings", "partition",
+                    "val_score", "test_score", "n_samples"
+                ])
+
+                # Group by config_name (run) to extract run info
+                if "config_name" in df.columns:
+                    for config_name in df["config_name"].dropna().unique():
+                        if config_name in seen_runs:
+                            continue
+                        seen_runs.add(config_name)
+
+                        run_df = df[df["config_name"] == config_name]
+                        dataset_name = parquet_file.stem.replace(".meta", "")
+
+                        # Get unique pipelines in this run
+                        pipeline_count = run_df["pipeline_uid"].nunique() if "pipeline_uid" in run_df.columns else 1
+
+                        # Get best scores
+                        val_score = run_df["val_score"].max() if "val_score" in run_df.columns else None
+                        test_score = run_df["test_score"].max() if "test_score" in run_df.columns else None
+
+                        # Get model names
+                        models = run_df["model_name"].dropna().unique().tolist() if "model_name" in run_df.columns else []
+
+                        all_runs.append({
+                            "id": str(config_name),
+                            "pipeline_id": str(config_name),
+                            "name": str(config_name),
+                            "dataset": dataset_name,
+                            "created_at": None,  # Not available in parquet
+                            "schema_version": "derived",
+                            "artifact_count": 0,
+                            "predictions_count": len(run_df),
+                            "pipeline_count": pipeline_count,
+                            "models": models[:5],  # Limit to first 5
+                            "best_val_score": float(val_score) if pd.notna(val_score) else None,
+                            "best_test_score": float(test_score) if pd.notna(test_score) else None,
+                            "dataset_info": {},
+                            "manifest_path": "",
+                        })
+            except Exception as e:
+                print(f"Failed to read {parquet_file}: {e}")
+                continue
+
+        return {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get runs: {str(e)}"
@@ -1535,6 +1603,98 @@ async def get_workspace_predictions(workspace_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get predictions: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/predictions/data")
+async def get_workspace_predictions_data(
+    workspace_id: str,
+    limit: int = 500,
+    offset: int = 0,
+    dataset: Optional[str] = None,
+):
+    """Get actual prediction data from parquet files.
+
+    Reads the .meta.parquet files and returns the prediction records
+    with all metadata (but without loading the heavy y_true/y_pred arrays).
+    """
+    try:
+        import pandas as pd
+
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        workspace_path = Path(ws.path)
+        all_records = []
+
+        # Find all .meta.parquet files
+        parquet_files = list(workspace_path.glob("*.meta.parquet"))
+
+        # Filter by dataset if specified
+        if dataset:
+            parquet_files = [f for f in parquet_files if f.stem.replace(".meta", "") == dataset]
+
+        for parquet_file in parquet_files:
+            try:
+                df = pd.read_parquet(parquet_file)
+                dataset_name = parquet_file.stem.replace(".meta", "")
+
+                # Convert to records, excluding large array columns
+                # The parquet stores array references (IDs), not the actual arrays
+                columns_to_include = [
+                    "id", "dataset_name", "config_name", "pipeline_uid",
+                    "step_idx", "op_counter", "model_name", "model_classname",
+                    "fold_id", "partition", "val_score", "test_score", "train_score",
+                    "metric", "task_type", "n_samples", "n_features",
+                    "preprocessings", "best_params", "scores",
+                    "branch_id", "branch_name", "exclusion_count", "exclusion_rate",
+                    "model_artifact_id", "trace_id"
+                ]
+
+                # Only include columns that exist in the DataFrame
+                available_columns = [c for c in columns_to_include if c in df.columns]
+
+                for _, row in df[available_columns].iterrows():
+                    record = row.to_dict()
+                    record["source_dataset"] = dataset_name
+                    record["source_file"] = str(parquet_file)
+
+                    # Parse JSON fields
+                    for json_field in ["best_params", "scores"]:
+                        if json_field in record and record[json_field]:
+                            try:
+                                if isinstance(record[json_field], str):
+                                    record[json_field] = json.loads(record[json_field])
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                    # Handle NaN values
+                    for key, value in record.items():
+                        if pd.isna(value):
+                            record[key] = None
+
+                    all_records.append(record)
+            except Exception as e:
+                # Log but continue with other files
+                print(f"Error reading {parquet_file}: {e}")
+                continue
+
+        total = len(all_records)
+        paginated = all_records[offset:offset + limit]
+
+        return {
+            "records": paginated,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to read predictions data: {str(e)}"
         )
 
 

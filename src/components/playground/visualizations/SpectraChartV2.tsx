@@ -257,8 +257,15 @@ export function SpectraChartV2({
     });
   }, [focusedData.spectra, config.sampling, config.displayMode, selectedSamples, y]);
 
-  // Get display indices
-  const displayIndices = samplingResult.indices;
+  // Get display indices (apply display filter if active)
+  const displayIndices = useMemo(() => {
+    const indices = samplingResult.indices;
+    // Phase 4: Filter by displayFilteredIndices if present
+    if (colorContext?.displayFilteredIndices) {
+      return indices.filter(i => colorContext.displayFilteredIndices!.has(i));
+    }
+    return indices;
+  }, [samplingResult.indices, colorContext?.displayFilteredIndices]);
   const displayedSamples = displayIndices.length;
   const totalSamples = samplingResult.totalSamples;
 
@@ -622,14 +629,36 @@ export function SpectraChartV2({
   }, []);
 
   const handleRangeMouseMove = useCallback((e: unknown) => {
+    const chartEvent = e as { activeLabel?: number; activePayload?: Array<{ dataKey: string }> };
+
+    // Handle hover detection for SelectionContext
+    if (selectionCtx && chartEvent?.activePayload?.[0]?.dataKey) {
+      const key = chartEvent.activePayload[0].dataKey as string;
+      const match = key.match(/[po](\d+)/);
+      if (match) {
+        const displayIdx = parseInt(match[1], 10);
+        const sampleIdx = displayIndices[displayIdx];
+        if (sampleIdx !== undefined && selectionCtx.hoveredSample !== sampleIdx) {
+          selectionCtx.setHovered(sampleIdx);
+        }
+      }
+    }
+
+    // Handle range selection
     if (!rangeSelection.isSelecting) return;
-    const chartEvent = e as { activeLabel?: number };
     if (!chartEvent?.activeLabel) return;
     const wl = chartEvent.activeLabel;
     if (!isNaN(wl)) {
       setRangeSelection(prev => ({ ...prev, endWavelength: wl }));
     }
-  }, [rangeSelection.isSelecting]);
+  }, [rangeSelection.isSelecting, selectionCtx, displayIndices]);
+
+  // Clear hover when mouse leaves chart
+  const handleMouseLeave = useCallback(() => {
+    if (selectionCtx) {
+      selectionCtx.setHovered(null);
+    }
+  }, [selectionCtx]);
 
   const handleRangeMouseUp = useCallback((e: React.MouseEvent) => {
     if (!rangeSelection.isSelecting || rangeSelection.startWavelength === null || rangeSelection.endWavelength === null) {
@@ -925,6 +954,7 @@ export function SpectraChartV2({
               onClick={handleClick}
               onMouseDown={handleRangeMouseDown}
               onMouseMove={handleRangeMouseMove}
+              onMouseLeave={handleMouseLeave}
             >
               <CartesianGrid
                 strokeDasharray={CHART_THEME.gridDasharray}
@@ -1005,6 +1035,7 @@ export function SpectraChartV2({
                         strokeWidth={1}
                         strokeDasharray="2 2"
                         dot={false}
+                        activeDot={false}
                         {...ANIMATION_CONFIG}
                       />
                       <Line
@@ -1014,6 +1045,7 @@ export function SpectraChartV2({
                         strokeWidth={1}
                         strokeDasharray="2 2"
                         dot={false}
+                        activeDot={false}
                         {...ANIMATION_CONFIG}
                       />
                     </>
@@ -1026,6 +1058,7 @@ export function SpectraChartV2({
                     stroke={groupColor}
                     strokeWidth={2}
                     dot={false}
+                    activeDot={false}
                     {...ANIMATION_CONFIG}
                   />
                 </React.Fragment>
@@ -1055,6 +1088,7 @@ export function SpectraChartV2({
                   strokeWidth={highlighted ? CHART_THEME.selectedLineStrokeWidth : CHART_THEME.lineStrokeWidth}
                   strokeDasharray={config.viewMode === 'both' ? '4 2' : undefined}
                   dot={false}
+                  activeDot={false}
                   {...ANIMATION_CONFIG}
                 />
               );
@@ -1075,6 +1109,7 @@ export function SpectraChartV2({
                   stroke={getColor(displayIdx, false)}
                   strokeWidth={highlighted ? CHART_THEME.selectedLineStrokeWidth : CHART_THEME.lineStrokeWidth}
                   dot={false}
+                  activeDot={false}
                   {...ANIMATION_CONFIG}
                 />
               );
@@ -1082,6 +1117,7 @@ export function SpectraChartV2({
 
             <Tooltip
               content={() => null}
+              cursor={false}
             />
           </ComposedChart>
         </ResponsiveContainer>

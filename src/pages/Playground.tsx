@@ -12,11 +12,13 @@
  * - Phase 6: Keyboard shortcuts, saved selections, render optimization
  */
 
-import { useCallback, useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
 import { SelectionProvider } from '@/context/SelectionContext';
+import { PlaygroundViewProvider } from '@/context/PlaygroundViewContext';
+import { FilterProvider } from '@/context/FilterContext';
 import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
@@ -27,7 +29,6 @@ import {
   importFromPipelineEditor,
   getPlaygroundExportData,
   clearPlaygroundExportData,
-  PLAYGROUND_EXPORT_KEY,
 } from '@/lib/playground/operatorFormat';
 import type { OperatorDefinition } from '@/types/playground';
 
@@ -45,7 +46,6 @@ export default function Playground() {
     error: dataError,
     dataSource,
     currentDatasetInfo,
-    loadFile,
     loadDemoData,
     loadFromWorkspace,
     clearData,
@@ -303,66 +303,69 @@ export default function Playground() {
   }, [addOperatorByName]);
 
   return (
-    <SelectionProvider>
-      <PlaygroundContent
-        // Data
-        rawData={rawData}
-        dataLoading={dataLoading}
-        dataError={dataError}
-        dataSource={dataSource}
-        currentDatasetInfo={currentDatasetInfo}
-        // Data handlers
-        loadFile={loadFile}
-        loadDemoData={loadDemoData}
-        loadFromWorkspace={loadFromWorkspace}
-        clearData={clearData}
-        // Pipeline state
-        operators={operators}
-        result={result}
-        isProcessing={isProcessing}
-        isFetching={isFetching}
-        isDebouncing={isDebouncing}
-        hasSplitter={hasSplitter}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        // Pipeline handlers
-        addOperator={handleAddOperator}
-        updateOperator={updateOperator}
-        updateOperatorParams={updateOperatorParams}
-        removeOperator={removeOperator}
-        toggleOperator={toggleOperator}
-        reorderOperators={reorderOperators}
-        clearPipeline={clearPipeline}
-        undo={undo}
-        redo={redo}
-        // Step comparison
-        stepComparisonEnabled={stepComparisonEnabled}
-        setStepComparisonEnabled={setStepComparisonEnabled}
-        activeStep={activeStep}
-        setActiveStep={setActiveStep}
-        // UMAP
-        computeUmap={computeUmap}
-        setComputeUmap={setComputeUmap}
-        isUmapLoading={isUmapLoading}
-        // Export handlers
-        exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
-        exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
-        exportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
-        importPipeline={handleImportFromPipelineEditor}
-        // Filter
-        filterToSelection={handleFilterToSelection}
-        addOperatorByName={addOperatorByName}
-        // Shortcuts state
-        showShortcutsHelp={showShortcutsHelp}
-        setShowShortcutsHelp={setShowShortcutsHelp}
-        renderMode={renderMode}
-        setRenderMode={setRenderMode}
-        chartVisibility={chartVisibility}
-        toggleChartVisibility={toggleChartVisibility}
-        selectedSample={selectedSample}
-        setSelectedSample={setSelectedSample}
-      />
-    </SelectionProvider>
+    <PlaygroundViewProvider>
+      <SelectionProvider>
+        <FilterProvider>
+          <PlaygroundContent
+            // Data
+            rawData={rawData}
+            dataLoading={dataLoading}
+            dataError={dataError}
+            dataSource={dataSource}
+            currentDatasetInfo={currentDatasetInfo}
+            // Data handlers
+            loadDemoData={loadDemoData}
+            loadFromWorkspace={loadFromWorkspace}
+            clearData={clearData}
+            // Pipeline state
+            operators={operators}
+            result={result}
+            isProcessing={isProcessing}
+            isFetching={isFetching}
+            isDebouncing={isDebouncing}
+            hasSplitter={hasSplitter}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            // Pipeline handlers
+            addOperator={handleAddOperator}
+            updateOperator={updateOperator}
+            updateOperatorParams={updateOperatorParams}
+            removeOperator={removeOperator}
+            toggleOperator={toggleOperator}
+            reorderOperators={reorderOperators}
+            clearPipeline={clearPipeline}
+            undo={undo}
+            redo={redo}
+            // Step comparison
+            stepComparisonEnabled={stepComparisonEnabled}
+            setStepComparisonEnabled={setStepComparisonEnabled}
+            activeStep={activeStep}
+            setActiveStep={setActiveStep}
+            // UMAP
+            computeUmap={computeUmap}
+            setComputeUmap={setComputeUmap}
+            isUmapLoading={isUmapLoading}
+            // Export handlers
+            exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
+            exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
+            exportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
+            importPipeline={handleImportFromPipelineEditor}
+            // Filter
+            filterToSelection={handleFilterToSelection}
+            addOperatorByName={addOperatorByName}
+            // Shortcuts state
+            showShortcutsHelp={showShortcutsHelp}
+            setShowShortcutsHelp={setShowShortcutsHelp}
+            renderMode={renderMode}
+            setRenderMode={setRenderMode}
+            chartVisibility={chartVisibility}
+            toggleChartVisibility={toggleChartVisibility}
+            selectedSample={selectedSample}
+            setSelectedSample={setSelectedSample}
+          />
+        </FilterProvider>
+      </SelectionProvider>
+    </PlaygroundViewProvider>
   );
 }
 
@@ -374,7 +377,6 @@ interface PlaygroundContentProps {
   dataError: ReturnType<typeof useSpectralData>['error'];
   dataSource: ReturnType<typeof useSpectralData>['dataSource'];
   currentDatasetInfo: ReturnType<typeof useSpectralData>['currentDatasetInfo'];
-  loadFile: ReturnType<typeof useSpectralData>['loadFile'];
   loadDemoData: ReturnType<typeof useSpectralData>['loadDemoData'];
   loadFromWorkspace: ReturnType<typeof useSpectralData>['loadFromWorkspace'];
   clearData: ReturnType<typeof useSpectralData>['clearData'];
@@ -426,7 +428,6 @@ function PlaygroundContent({
   dataError,
   dataSource,
   currentDatasetInfo,
-  loadFile,
   loadDemoData,
   loadFromWorkspace,
   clearData,
@@ -520,7 +521,6 @@ function PlaygroundContent({
         filterInfo={result?.filterInfo}
 
         // Data handlers
-        onLoadFile={loadFile}
         onLoadDemo={loadDemoData}
         onLoadFromWorkspace={loadFromWorkspace}
         onClearData={clearData}

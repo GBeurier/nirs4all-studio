@@ -78,6 +78,7 @@ import {
   computeYBins,
   getYBinIndex,
 } from '@/lib/playground/colorConfig';
+import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
 import { useSelection } from '@/context/SelectionContext';
 import type { FoldsInfo, FoldData, YStats } from '@/types/playground';
 import { cn } from '@/lib/utils';
@@ -216,11 +217,19 @@ export function FoldDistributionChartV2({
   // Determine effective color mode (global or internal)
   const effectiveColorMode = globalColorConfig?.mode ?? 'partition';
 
-  // Compute Y bins for target mode
+  // Phase 5: Detect if target is classification
+  const isClassificationMode = useMemo(() => {
+    return colorContext?.targetType && isCategoricalTarget(colorContext.targetType);
+  }, [colorContext?.targetType]);
+
+  // Get class labels for classification mode
+  const classLabels = colorContext?.classLabels ?? [];
+
+  // Compute Y bins for target mode (regression)
   const yBins = useMemo(() => {
-    if (!y || y.length === 0) return [];
+    if (!y || y.length === 0 || isClassificationMode) return [];
     return computeYBins(y, 3); // Low, Medium, High
-  }, [y]);
+  }, [y, isClassificationMode]);
 
   // Get unique metadata values for metadata mode
   const metadataCategories = useMemo(() => {
@@ -268,8 +277,16 @@ export function FoldDistributionChartV2({
           break;
 
         case 'target':
-          // Count samples in each Y bin
-          if (y && yBins.length > 0) {
+          // Phase 5: Classification mode - count by class
+          if (isClassificationMode && classLabels.length > 0 && y) {
+            classLabels.forEach((label, i) => {
+              segments[`class_${i}`] = allIndices.filter(idx => {
+                const yVal = y[idx];
+                return yVal !== undefined && String(yVal) === label;
+              }).length;
+            });
+          } else if (y && yBins.length > 0) {
+            // Regression mode - count samples in each Y bin
             yBins.forEach((bin, i) => {
               segments[`bin_${i}`] = allIndices.filter(idx => {
                 const yVal = y[idx];
@@ -337,7 +354,7 @@ export function FoldDistributionChartV2({
         segments,
       };
     });
-  }, [folds, y, effectiveColorMode, yBins, colorContext, selectedSamples, globalColorConfig?.metadataKey, metadataCategories]);
+  }, [folds, y, effectiveColorMode, yBins, colorContext, selectedSamples, globalColorConfig?.metadataKey, metadataCategories, isClassificationMode, classLabels]);
 
   // Transform fold data for Y distribution visualization
   const yData = useMemo<FoldYData[]>(() => {
@@ -397,6 +414,10 @@ export function FoldDistributionChartV2({
       case 'partition':
         return ['train', 'test'];
       case 'target':
+        // Phase 5: Classification mode uses class keys
+        if (isClassificationMode && classLabels.length > 0) {
+          return classLabels.map((_, i) => `class_${i}`);
+        }
         return yBins.map((_, i) => `bin_${i}`);
       case 'fold':
         return ['total'];
@@ -409,7 +430,7 @@ export function FoldDistributionChartV2({
       default:
         return ['train', 'test'];
     }
-  }, [effectiveColorMode, yBins, metadataCategories]);
+  }, [effectiveColorMode, yBins, metadataCategories, isClassificationMode, classLabels]);
 
   // Get color for a segment based on color mode
   const getSegmentColor = useCallback((segmentKey: string, entry: FoldCountData): string => {
@@ -426,7 +447,12 @@ export function FoldDistributionChartV2({
         return isSelected ? testColor : testColorLight;
 
       case 'target': {
-        // Color by Y bin using continuous palette
+        // Phase 5: Classification mode - use categorical palette
+        if (segmentKey.startsWith('class_')) {
+          const classIdx = parseInt(segmentKey.replace('class_', ''), 10);
+          return getCategoricalColor(classIdx, catPalette);
+        }
+        // Regression mode - color by Y bin using continuous palette
         const binIdx = parseInt(segmentKey.replace('bin_', ''), 10);
         const t = yBins.length > 1 ? binIdx / (yBins.length - 1) : 0.5;
         return getContinuousColor(t, palette);
@@ -467,6 +493,12 @@ export function FoldDistributionChartV2({
       case 'partition':
         return segmentKey === 'train' ? 'Train' : 'Test';
       case 'target': {
+        // Phase 5: Classification mode - return class label
+        if (segmentKey.startsWith('class_')) {
+          const classIdx = parseInt(segmentKey.replace('class_', ''), 10);
+          return classLabels[classIdx] ?? `Class ${classIdx + 1}`;
+        }
+        // Regression mode - Y bin labels
         const binIdx = parseInt(segmentKey.replace('bin_', ''), 10);
         const labels = ['Low Y', 'Medium Y', 'High Y'];
         return labels[binIdx] ?? `Bin ${binIdx + 1}`;
@@ -485,7 +517,7 @@ export function FoldDistributionChartV2({
       default:
         return segmentKey;
     }
-  }, [effectiveColorMode, metadataCategories]);
+  }, [effectiveColorMode, metadataCategories, classLabels]);
 
   // Legacy color functions for backward compatibility
   const getTrainColor = useCallback((entry: FoldCountData) => {
@@ -993,20 +1025,40 @@ export function FoldDistributionChartV2({
         </div>
       )}
 
-      {/* Color mode gradient legend for target mode */}
+      {/* Color mode legend for target mode */}
       {effectiveColorMode === 'target' && y && y.length > 0 && !compact && (
-        <div className="flex items-center gap-2 mt-1 text-[10px]">
-          <span className="text-muted-foreground">Y Value:</span>
-          <div className="flex items-center gap-0.5">
-            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(0, globalColorConfig?.continuousPalette ?? 'blue_red') }} />
-            <span>Low</span>
+        isClassificationMode ? (
+          // Phase 5: Classification mode - show class swatches
+          <div className="flex items-center gap-2 mt-1 text-[10px]">
+            <span className="text-muted-foreground">Class:</span>
+            {classLabels.slice(0, 6).map((label, idx) => (
+              <div key={label} className="flex items-center gap-0.5">
+                <span
+                  className="w-3 h-2 rounded-sm"
+                  style={{ backgroundColor: getCategoricalColor(idx, globalColorConfig?.categoricalPalette ?? 'default') }}
+                />
+                <span className="truncate max-w-[50px]">{label}</span>
+              </div>
+            ))}
+            {classLabels.length > 6 && (
+              <span className="text-muted-foreground">+{classLabels.length - 6} more</span>
+            )}
           </div>
-          <div className="w-12 h-2 rounded-sm bg-gradient-to-r from-blue-500 via-cyan-500 to-red-500" />
-          <div className="flex items-center gap-0.5">
-            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(1, globalColorConfig?.continuousPalette ?? 'blue_red') }} />
-            <span>High</span>
+        ) : (
+          // Regression mode - gradient legend
+          <div className="flex items-center gap-2 mt-1 text-[10px]">
+            <span className="text-muted-foreground">Y Value:</span>
+            <div className="flex items-center gap-0.5">
+              <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(0, globalColorConfig?.continuousPalette ?? 'blue_red') }} />
+              <span>Low</span>
+            </div>
+            <div className="w-12 h-2 rounded-sm bg-gradient-to-r from-blue-500 via-cyan-500 to-red-500" />
+            <div className="flex items-center gap-0.5">
+              <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(1, globalColorConfig?.continuousPalette ?? 'blue_red') }} />
+              <span>High</span>
+            </div>
           </div>
-        </div>
+        )
       )}
     </div>
   );

@@ -225,7 +225,7 @@ export default function Dashboard() {
                     ? { name: run.metric_name, value: run.metric_value }
                     : undefined
                 }
-                href={`/runs/${run.id}`}
+                href={`/results?dataset=${encodeURIComponent(run.dataset_name || '')}`}
               />
             ))}
           </div>

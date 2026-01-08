@@ -12,92 +12,13 @@ export function useSpectralData() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Track the source of the current data
-  const [dataSource, setDataSource] = useState<'file' | 'workspace' | 'demo' | null>(null);
+  const [dataSource, setDataSource] = useState<'workspace' | 'demo' | null>(null);
   const [currentDatasetInfo, setCurrentDatasetInfo] = useState<WorkspaceDatasetInfo | null>(null);
 
-  const parseCSV = useCallback((content: string): SpectralData => {
-    const lines = content.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
-
-    // Find wavelength columns (numeric headers) and Y column
-    const wavelengthIndices: number[] = [];
-    const wavelengths: number[] = [];
-    let yIndex = -1;
-
-    headers.forEach((header, idx) => {
-      const num = parseFloat(header);
-      if (!isNaN(num) && num > 100) { // Assume wavelengths > 100nm
-        wavelengthIndices.push(idx);
-        wavelengths.push(num);
-      } else if (header.toLowerCase() === 'y' || header.toLowerCase() === 'target' || header.toLowerCase() === 'reference') {
-        yIndex = idx;
-      }
-    });
-
-    // If no Y column found, check last column
-    if (yIndex === -1) {
-      if (!wavelengthIndices.includes(headers.length - 1)) {
-        yIndex = headers.length - 1;
-      }
-    }
-
-    const spectra: number[][] = [];
-    const y: number[] = [];
-    const sampleIds: string[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      if (values.length < wavelengthIndices.length) continue;
-
-      const spectrum = wavelengthIndices.map(idx => parseFloat(values[idx]) || 0);
-      spectra.push(spectrum);
-
-      if (yIndex >= 0 && values[yIndex]) {
-        y.push(parseFloat(values[yIndex]) || 0);
-      } else {
-        y.push(i); // Use row index as placeholder
-      }
-
-      // First column as sample ID if not a wavelength
-      if (!wavelengthIndices.includes(0)) {
-        sampleIds.push(values[0]);
-      } else {
-        sampleIds.push(`Sample ${i}`);
-      }
-    }
-
-    return { wavelengths, spectra, y, sampleIds };
-  }, []);
-
-  const loadFile = useCallback(async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const extension = file.name.split('.').pop()?.toLowerCase();
-
-      if (extension === 'csv') {
-        const content = await file.text();
-        const data = parseCSV(content);
-        setRawData(data);
-        setDataSource('file');
-        setCurrentDatasetInfo(null);
-      } else {
-        throw new Error('Unsupported file format. Please use CSV files.');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to parse file');
-      setRawData(null);
-      setDataSource(null);
-      setCurrentDatasetInfo(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [parseCSV]);
-
   const loadDemoData = useCallback(() => {
-    // Generate synthetic NIR spectra
-    const numSamples = 100;
+    // Generate synthetic NIR spectra with repetitions for testing all charts
+    // 35 biological samples with 2-4 repetitions each = ~100 total measurements
+    const numBioSamples = 35;
     const numWavelengths = 200;
     const startWavelength = 1100;
     const endWavelength = 2500;
@@ -111,26 +32,42 @@ export function useSpectralData() {
     const y: number[] = [];
     const sampleIds: string[] = [];
 
-    for (let i = 0; i < numSamples; i++) {
-      const concentration = Math.random() * 100;
-      y.push(concentration);
-      sampleIds.push(`Sample_${i + 1}`);
+    // Create biological samples with repetitions
+    for (let bioIdx = 0; bioIdx < numBioSamples; bioIdx++) {
+      // Each sample has a true concentration value
+      const trueConcentration = Math.random() * 100;
 
-      // Generate spectrum with peaks related to concentration
-      const spectrum = wavelengths.map((w) => {
-        const baseline = 0.5 + 0.3 * Math.sin(w / 500);
-        const noise = (Math.random() - 0.5) * 0.02;
-        const scatter = 0.1 * Math.pow((w - 1800) / 1000, 2);
+      // Number of repetitions varies: 2-4 per biological sample
+      const numReps = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4 reps
 
-        // Absorption peaks
-        const peak1 = 0.3 * concentration / 100 * Math.exp(-Math.pow((w - 1450) / 50, 2));
-        const peak2 = 0.2 * concentration / 100 * Math.exp(-Math.pow((w - 1940) / 80, 2));
-        const peak3 = 0.15 * (1 - concentration / 100) * Math.exp(-Math.pow((w - 2100) / 60, 2));
+      for (let rep = 0; rep < numReps; rep++) {
+        // Small variation in measured concentration between repetitions
+        const measuredConcentration = trueConcentration + (Math.random() - 0.5) * 5;
+        y.push(Math.max(0, Math.min(100, measuredConcentration)));
 
-        return baseline + scatter + peak1 + peak2 + peak3 + noise;
-      });
+        // Sample ID format: Sample_XX_rY (e.g., Sample_01_r1, Sample_01_r2)
+        const bioId = String(bioIdx + 1).padStart(2, '0');
+        sampleIds.push(`Sample_${bioId}_r${rep + 1}`);
 
-      spectra.push(spectrum);
+        // Generate spectrum with peaks related to concentration
+        // Add slight random variation between repetitions
+        const repVariation = (Math.random() - 0.5) * 0.01;
+
+        const spectrum = wavelengths.map((w) => {
+          const baseline = 0.5 + 0.3 * Math.sin(w / 500);
+          const noise = (Math.random() - 0.5) * 0.02;
+          const scatter = 0.1 * Math.pow((w - 1800) / 1000, 2);
+
+          // Absorption peaks related to true concentration
+          const peak1 = 0.3 * trueConcentration / 100 * Math.exp(-Math.pow((w - 1450) / 50, 2));
+          const peak2 = 0.2 * trueConcentration / 100 * Math.exp(-Math.pow((w - 1940) / 80, 2));
+          const peak3 = 0.15 * (1 - trueConcentration / 100) * Math.exp(-Math.pow((w - 2100) / 60, 2));
+
+          return baseline + scatter + peak1 + peak2 + peak3 + noise + repVariation;
+        });
+
+        spectra.push(spectrum);
+      }
     }
 
     setRawData({ wavelengths, spectra, y, sampleIds });
@@ -171,7 +108,6 @@ export function useSpectralData() {
     error,
     dataSource,
     currentDatasetInfo,
-    loadFile,
     loadDemoData,
     loadFromWorkspace,
     clearData,

@@ -64,9 +64,15 @@ const CAMERA_DISTANCE = 4;
 
 /**
  * Normalize data to fit within [-1, 1] range for each axis
+ * Filters out points with NaN/Infinity coordinates to prevent Three.js errors
  */
 function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { min: THREE.Vector3; max: THREE.Vector3; scale: THREE.Vector3 } } {
-  if (data.length === 0) {
+  // Filter out invalid data points (NaN or Infinity)
+  const validData = data.filter(d =>
+    Number.isFinite(d.x) && Number.isFinite(d.y) && Number.isFinite(d.z ?? 0)
+  );
+
+  if (validData.length === 0) {
     return {
       normalized: [],
       bounds: {
@@ -77,9 +83,9 @@ function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { 
     };
   }
 
-  const xs = data.map(d => d.x);
-  const ys = data.map(d => d.y);
-  const zs = data.map(d => d.z ?? 0);
+  const xs = validData.map(d => d.x);
+  const ys = validData.map(d => d.y);
+  const zs = validData.map(d => d.z ?? 0);
 
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
@@ -92,8 +98,8 @@ function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { 
   const rangeY = maxY - minY || 1;
   const rangeZ = maxZ - minZ || 1;
 
-  // Normalize to [-1, 1]
-  const normalized = data.map(d => ({
+  // Normalize to [-1, 1], only include valid points
+  const normalized = validData.map(d => ({
     ...d,
     x: ((d.x - minX) / rangeX) * 2 - 1,
     y: ((d.y - minY) / rangeY) * 2 - 1,

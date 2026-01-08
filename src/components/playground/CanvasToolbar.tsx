@@ -25,11 +25,8 @@ import {
   Download,
   Image,
   FileText,
-  Zap,
-  Monitor,
   Palette,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -47,9 +44,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuLabel,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
@@ -68,18 +62,22 @@ import {
   type GlobalColorMode,
   type ContinuousPalette,
   type CategoricalPalette,
-  CONTINUOUS_PALETTES,
+  type ColorContext,
   CATEGORICAL_PALETTES,
   getContinuousPaletteLabel,
   getCategoricalPaletteLabel,
   getColorModeLabel,
   getContinuousPaletteGradient,
   isContinuousMode,
+  getEffectiveTargetType,
 } from '@/lib/playground/colorConfig';
+import { type TargetType, isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
+import { ColorLegend } from './ColorLegend';
+import { DisplayFilters } from './DisplayFilters';
+import { type ChartType } from '@/context/PlaygroundViewContext';
 
-// ============= Types =============
-
-export type ChartType = 'spectra' | 'histogram' | 'folds' | 'pca' | 'repetitions';
+// Re-export ChartType for consumers
+export type { ChartType };
 
 export interface ChartConfig {
   id: ChartType;
@@ -98,7 +96,6 @@ export const CHART_CONFIG: ChartConfig[] = [
 
 export interface CanvasToolbarProps {
   // Chart visibility
-  visibleCharts: Set<ChartType>;
   effectiveVisibleCharts: Set<ChartType>;
   onToggleChart: (chart: ChartType) => void;
   hasFolds: boolean;
@@ -142,15 +139,16 @@ export interface CanvasToolbarProps {
   onColorConfigChange: (config: GlobalColorConfig) => void;
   /** Whether outliers have been detected (enables outlier color mode) */
   hasOutliers?: boolean;
+  /** Number of outliers detected */
+  outlierCount?: number;
+  /** Color context for legend display */
+  colorContext?: ColorContext;
 
   // Render mode
   displayRenderMode: RenderMode;
   effectiveRenderMode: RenderMode;
   isWebGLActive: boolean;
   onRenderModeChange: (mode: RenderMode) => void;
-
-  // Saved selections
-  datasetId?: string;
 
   // Export handlers
   onExportChartPng: (chartType: ChartType) => Promise<void>;
@@ -171,6 +169,8 @@ interface ColorModeSelectorProps {
   hasPartition: boolean;
   hasOutliers: boolean;
   metadataColumns: string[];
+  /** Color context for Phase 5 target type info */
+  colorContext?: ColorContext;
 }
 
 const ColorModeSelector = memo(function ColorModeSelector({
@@ -180,9 +180,21 @@ const ColorModeSelector = memo(function ColorModeSelector({
   hasPartition,
   hasOutliers,
   metadataColumns,
+  colorContext,
 }: ColorModeSelectorProps) {
   const hasMetadata = metadataColumns.length > 0;
-  const showContinuousPalette = isContinuousMode(colorConfig.mode, colorConfig.metadataType);
+
+  // Phase 5: Get effective target type considering override
+  const detectedTargetType = colorContext?.targetType;
+  const effectiveTargetType = getEffectiveTargetType(detectedTargetType, colorConfig.targetTypeOverride);
+  const isClassificationMode = effectiveTargetType && isCategoricalTarget(effectiveTargetType);
+
+  const showContinuousPalette = isContinuousMode(
+    colorConfig.mode,
+    colorConfig.metadataType,
+    detectedTargetType,
+    colorConfig.targetTypeOverride
+  );
 
   // Palette preview colors
   const continuousPaletteOptions: ContinuousPalette[] = ['blue_red', 'viridis', 'plasma', 'inferno', 'coolwarm', 'spectral'];
@@ -190,7 +202,8 @@ const ColorModeSelector = memo(function ColorModeSelector({
 
   return (
     <div className="flex items-center gap-1">
-      {/* Mode selector */}
+      {/* Mode selector with icon */}
+      <Palette className="w-3 h-3 text-muted-foreground" />
       <Select
         value={colorConfig.mode}
         onValueChange={(mode) => onChange({
@@ -200,16 +213,16 @@ const ColorModeSelector = memo(function ColorModeSelector({
           metadataKey: mode === 'metadata' ? colorConfig.metadataKey : undefined,
         })}
       >
-        <SelectTrigger className="h-6 w-24 text-[10px]">
+        <SelectTrigger className="h-6 w-28 text-[10px]">
           <SelectValue>{getColorModeLabel(colorConfig.mode)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="target">By Y Value</SelectItem>
-          {hasPartition && <SelectItem value="partition">By Partition</SelectItem>}
-          {hasFolds && <SelectItem value="fold">By Fold</SelectItem>}
-          {hasMetadata && <SelectItem value="metadata">By Metadata</SelectItem>}
+          <SelectItem value="index">By Index</SelectItem>
+          <SelectItem value="partition" disabled={!hasPartition}>By Partition</SelectItem>
+          <SelectItem value="fold" disabled={!hasFolds}>By Fold</SelectItem>
+          <SelectItem value="metadata" disabled={!hasMetadata}>By Metadata</SelectItem>
           <SelectItem value="selection">By Selection</SelectItem>
-          {hasOutliers && <SelectItem value="outlier">By Outlier</SelectItem>}
         </SelectContent>
       </Select>
 
@@ -237,7 +250,42 @@ const ColorModeSelector = memo(function ColorModeSelector({
             <Palette className="w-3 h-3" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent align="end" className="w-52">
+          {/* Phase 5: Target type override when in target mode */}
+          {colorConfig.mode === 'target' && (
+            <>
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                Target Type
+                {detectedTargetType && (
+                  <span className="ml-1 text-muted-foreground/70">
+                    (detected: {detectedTargetType})
+                  </span>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={colorConfig.targetTypeOverride ?? 'auto'}
+                onValueChange={(value) => onChange({
+                  ...colorConfig,
+                  targetTypeOverride: value as TargetType | 'auto',
+                })}
+              >
+                <DropdownMenuRadioItem value="auto">
+                  <span className="text-xs">Auto-detect</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="regression">
+                  <span className="text-xs">Force Regression (continuous)</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="classification">
+                  <span className="text-xs">Force Classification (categorical)</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="ordinal">
+                  <span className="text-xs">Force Ordinal (rating scale)</span>
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
+
           {showContinuousPalette ? (
             <>
               <DropdownMenuLabel className="text-[10px] text-muted-foreground">
@@ -293,7 +341,6 @@ const ColorModeSelector = memo(function ColorModeSelector({
 // ============= Main Component =============
 
 export const CanvasToolbar = memo(function CanvasToolbar({
-  visibleCharts,
   effectiveVisibleCharts,
   onToggleChart,
   hasFolds,
@@ -323,11 +370,12 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   colorConfig,
   onColorConfigChange,
   hasOutliers = false,
+  outlierCount = 0,
+  colorContext,
   displayRenderMode,
   effectiveRenderMode,
   isWebGLActive,
   onRenderModeChange,
-  datasetId,
   onExportChartPng,
   onExportSpectraCsv,
   onExportSelectionsJson,
@@ -458,6 +506,15 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           </>
         )}
 
+        {/* Display Filters (Phase 4) */}
+        <DisplayFilters
+          hasOutliers={hasOutliers}
+          outlierCount={outlierCount}
+          selectedCount={selectedCount}
+          totalSamples={totalSamples}
+          compact
+        />
+
         {/* Phase 5: Advanced Filtering & Metrics */}
         {(metrics || onDetectOutliers || onFindSimilar) && (
           <>
@@ -516,7 +573,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           />
         )}
 
-        <span className="text-[10px] text-muted-foreground">Color:</span>
         <ColorModeSelector
           colorConfig={colorConfig}
           onChange={handleColorConfigChange}
@@ -524,54 +580,18 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           hasPartition={hasPartition}
           hasOutliers={hasOutliers}
           metadataColumns={metadataColumns}
+          colorContext={colorContext}
         />
 
-        {/* Phase 6: Render mode selector */}
-        <Separator orientation="vertical" className="h-4" />
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Select
-                value={displayRenderMode}
-                onValueChange={(value) => onRenderModeChange(value as RenderMode)}
-              >
-                <SelectTrigger className="h-6 w-20 text-[10px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">
-                    <div className="flex items-center gap-1.5">
-                      <Zap className="w-3 h-3" />
-                      Auto
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="canvas">
-                    <div className="flex items-center gap-1.5">
-                      <Monitor className="w-3 h-3" />
-                      Canvas
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="webgl">
-                    <div className="flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-yellow-500" />
-                      WebGL
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">
-                {displayRenderMode === 'auto'
-                  ? `Auto-selects best renderer based on data size (using ${effectiveRenderMode})`
-                  : displayRenderMode === 'webgl' || displayRenderMode === 'webgl_aggregated'
-                    ? 'GPU-accelerated rendering for large datasets'
-                    : 'Standard canvas rendering'}
-                {isWebGLActive && effectiveRenderMode.startsWith('webgl') && ' (WebGL active)'}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {/* Color Legend (inline) */}
+        {colorContext && (
+          <ColorLegend
+            config={colorConfig}
+            context={colorContext}
+            collapsed={false}
+            className="border-0 shadow-none bg-transparent min-w-0 max-w-none"
+          />
+        )}
 
         {/* Phase 6: Saved Selections */}
         <SavedSelections compact sampleIds={sampleIds} />

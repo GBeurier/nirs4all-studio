@@ -28,10 +28,8 @@ ScrollBar in list of files in wizard
 - Enhance drop zone at last place of nested list. It's difficult.
 - Seed is misplaced. Shouldn't be in settings but somewhere else
 
-
 **Pipelines**
 - Update to see saved / presets / etc.
-
 
 **Playground**
 - operators all over (augmentations op in preprocessings)
@@ -47,5 +45,9 @@ ScrollBar in list of files in wizard
 - Webgl > full mode, 1 point per point.  Smooth ?
 -
 **Folds**
--Should be either two bar: train / test with coloration depending on global
+- Should be either two bar: train / test with coloration depending on global
  or N+1 bars. train_fold_0, train_val_0....train_fold_1,train_val_1, test
+
+
+**Runs / Results**
+- Design role of both and what to focus on.

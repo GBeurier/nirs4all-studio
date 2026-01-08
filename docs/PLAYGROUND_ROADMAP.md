@@ -407,14 +407,14 @@ if (isOutlier && config.mode !== 'outlier' && config.showOutlierOverlay !== fals
 
 ### Success Criteria
 
-- [ ] INDEX mode in color picker, colors samples by position
-- [ ] ColorLegend component renders correctly for all modes
-- [ ] Legend updates when color mode changes
-- [ ] Legend collapsible via toggle
-- [ ] Outliers have red border/overlay in all modes (when enabled)
-- [ ] Toggle to disable outlier overlay in settings
-- [ ] **Single ColorModeSelector implementation** *(new)*
-- [ ] **No deprecated type references remain** *(new)*
+- [x] INDEX mode in color picker, colors samples by position
+- [x] ColorLegend component renders correctly for all modes
+- [x] Legend updates when color mode changes
+- [x] Legend collapsible via toggle
+- [x] Outliers have red border/overlay in all modes (when enabled)
+- [x] Toggle to disable outlier overlay in settings
+- [x] **Single ColorModeSelector implementation** *(new)*
+- [x] **No deprecated type references remain** *(new)*
 
 ---
 
@@ -422,21 +422,45 @@ if (isOutlier && config.mode !== 'outlier' && config.showOutlierOverlay !== fals
 
 ### Reviewed: January 8, 2026
 
-**Status**: Not Started
+**Status**: COMPLETED
 
-**Issues Found**:
-- GlobalColorMode missing 'index' option
-- No legend component exists
-- Outlier overlay only applies in outlier mode
-- **Duplicate ColorModeSelector implementations**
-- **Deprecated types still in codebase**
+**Implementation Summary**:
+- Added 'index' to GlobalColorMode type with handler in colorConfig.ts
+- Added totalSamples to ColorContext interface
+- Added showOutlierOverlay toggle to GlobalColorConfig (default: true)
+- Created ColorLegend component with gradient/swatch modes
+- Integrated ColorLegend in MainCanvas (bottom-right, collapsible)
+- Added INDEX option to color picker in CanvasToolbar
+- Implemented outlier overlay (red stroke) for all modes except 'outlier' mode
+- Removed old ColorModeSelector.tsx component
+- Removed deprecated ExtendedColorMode/ExtendedColorConfig from chartConfig.ts
+- Removed unused PCAPlot.tsx component
+- Removed unused colorUtils.ts and useColorMode.ts hook
+- Cleaned up unused imports and props in CanvasToolbar and MainCanvas
 
-**Decisions Made**:
-- Add INDEX mode with continuous gradient
-- Create reusable ColorLegend component
-- Add red stroke/border for outliers in all modes
-- Consolidate to single ColorModeSelector
-- Clean up deprecated types
+**Files Changed**:
+- `src/lib/playground/colorConfig.ts` - Added 'index' mode, totalSamples, showOutlierOverlay
+- `src/components/playground/ColorLegend.tsx` - New component
+- `src/components/playground/MainCanvas.tsx` - Integrated ColorLegend
+- `src/components/playground/CanvasToolbar.tsx` - Added INDEX option, cleaned imports
+- `src/components/playground/visualizations/DimensionReductionChart.tsx` - Removed deprecated colorConfig prop
+- `src/components/playground/visualizations/chartConfig.ts` - Removed deprecated types
+- `src/components/playground/visualizations/index.ts` - Removed PCAPlot export
+- `src/components/playground/hooks/index.ts` - Removed useColorMode export
+- `src/components/playground/index.ts` - Updated exports
+- `src/types/spectral.ts` - Removed unused ColorMode/ColorConfig types
+
+**Files Deleted**:
+- `src/components/playground/ColorModeSelector.tsx`
+- `src/components/playground/visualizations/PCAPlot.tsx`
+- `src/components/playground/hooks/useColorMode.ts`
+- `src/lib/colorUtils.ts`
+
+**Issues Resolved**:
+- Outlier overlay now applies in all modes (red stroke when showOutlierOverlay=true)
+- Consolidated to single ColorModeSelector in CanvasToolbar
+- All deprecated types removed from codebase
+- Dead code cleaned up (colorUtils.ts, useColorMode.ts, PCAPlot.tsx)
 
 ---
 
@@ -522,14 +546,14 @@ function getFilteredIndices(allIndices: number[], context: FilterContext): numbe
 
 ### Success Criteria
 
-- [ ] FilterContext created and provided in Playground
-- [ ] Can hide outliers from all views
-- [ ] Can show only selected samples
-- [ ] Can filter by metadata column + specific values
-- [ ] Filter badge shows count of active filters (e.g., "2 filters")
-- [ ] Clear all filters button resets to defaults
-- [ ] All charts respect active filters
-- [ ] **Existing filter components integrated** (not duplicated) *(new)*
+- [x] FilterContext created and provided in Playground
+- [x] Can hide outliers from all views
+- [x] Can show only selected samples
+- [ ] Can filter by metadata column + specific values *(deferred - needs MetadataFilter UI)*
+- [x] Filter badge shows count of active filters (e.g., "2 filters")
+- [x] Clear all filters button resets to defaults
+- [x] All charts respect active filters
+- [x] **Existing filter components integrated** (not duplicated) *(new)*
 
 ---
 
@@ -537,55 +561,92 @@ function getFilteredIndices(allIndices: number[], context: FilterContext): numbe
 
 ### Reviewed: January 8, 2026
 
-**Status**: Not Started
+**Status**: COMPLETED
 
-**Issues Found**:
-- PartitionSelector works in isolation, needs integration with unified filter system
-- **Substantial filtering code already exists** (2000+ lines across 5 files)
-- No unified context to coordinate filters
+**Implementation Summary**:
+- Created `FilterContext` (`src/context/FilterContext.tsx`) with:
+  - Partition filter (All/Train/Test/Fold) - integrated with existing PartitionSelector
+  - Outlier filter (All/Hide Outliers/Outliers Only)
+  - Selection filter (All/Selected Only/Unselected Only)
+  - Metadata filter interface (ready for UI)
+  - AND logic for combining filters
+  - Active filter count and clear all functionality
+- Created `DisplayFilters` component (`src/components/playground/DisplayFilters.tsx`):
+  - Compact toolbar controls for outlier and selection filtering
+  - Filter badge showing active count
+  - Clear all button with tooltip
+- Updated `colorConfig.ts`:
+  - Added `displayFilteredIndices` to `ColorContext`
+  - Added `hidden` property to `ColorResult`
+  - `getUnifiedSampleColor` returns hidden=true for filtered samples
+- Updated charts to respect display filtering:
+  - `SpectraChartV2` - filters displayIndices
+  - `YHistogramV2` - filters bins and stats computation
+  - `DimensionReductionChart` - hides filtered cells
+- Integrated FilterProvider in Playground.tsx
 
-**Decisions Made**:
-- Create FilterContext to unify all filtering
-- **Extend existing components** rather than creating parallel systems
-- OutlierSelector already handles detection - add display filtering mode
+**Files Created**:
+- `src/context/FilterContext.tsx` - Centralized filter state management
+- `src/components/playground/DisplayFilters.tsx` - Filter toolbar controls
+
+**Files Modified**:
+- `src/pages/Playground.tsx` - Added FilterProvider wrapper
+- `src/components/playground/MainCanvas.tsx` - Uses FilterContext, builds filterDataContext
+- `src/components/playground/CanvasToolbar.tsx` - Added DisplayFilters, outlierCount prop
+- `src/components/playground/index.ts` - Export DisplayFilters
+- `src/lib/playground/colorConfig.ts` - Added displayFilteredIndices, hidden property
+- `src/components/playground/visualizations/SpectraChartV2.tsx` - Filter by displayFilteredIndices
+- `src/components/playground/visualizations/YHistogramV2.tsx` - Filter bins/stats
+- `src/components/playground/visualizations/DimensionReductionChart.tsx` - Hide filtered cells
+
+**Deferred**:
+- Metadata filter UI (MetadataFilter component) - backend support exists, needs UI
 
 ---
 
-## Phase 5: Classification Mode Support
+## Phase 5: Classification Mode Support ✅ COMPLETED
 
 **Priority**: MEDIUM
 **Estimated Effort**: 3-4 days
+**Actual Effort**: Completed January 8, 2026
 **Goal**: Support classification datasets alongside regression
 **Dependencies**: Phase 3 (for categorical colormap), Phase 4 (for class filtering)
 
-### Current State
+### Implementation Summary
 
-**No classification mode detection** - verified by searching for `targetType`, `isClassification`, `isRegression` (no matches).
+Classification mode support has been fully implemented with the following features:
 
-- All visualizations assume continuous target values
-- YHistogramV2 always uses continuous binning
-- Colormaps don't auto-switch based on target type
-- Legend doesn't adapt to classification
+1. **Target Type Detection** (`src/lib/playground/targetTypeDetection.ts`)
+   - Automatic detection of regression, classification, and ordinal targets
+   - Edge case handling: percentages, boolean-like values, small datasets
+   - Confidence scoring and override suggestions
 
-**Existing categorical support**:
-- `getCategoricalColor()` and `CATEGORICAL_PALETTES` exist in colorConfig.ts
-- ScatterWebGL has `labels?: string[]` prop for categorical coloring
-- But nothing triggers these based on dataset target type
+2. **ColorContext Integration** (`src/lib/playground/colorConfig.ts`)
+   - Added `targetType`, `classLabels`, `classLabelMap` to ColorContext
+   - Added `targetTypeOverride` to GlobalColorConfig for manual override
+   - Updated `isContinuousMode()` and `getBaseColor()` for classification support
+
+3. **Component Updates**:
+   - **YHistogramV2**: Classification histogram with discrete class bars
+   - **ColorLegend**: Class-based swatches with proper labels
+   - **FoldDistributionChartV2**: Stack by class within partitions
+   - **CanvasToolbar**: Target type override UI in palette dropdown
+   - **DimensionReductionChart**: Automatic class coloring via unified system
 
 ### Tasks
 
-| ID | Task | Component | Notes |
-|----|------|-----------|-------|
-| 5.1 | **Create target type detection** | New utility | Analyze Y values to determine regression vs classification |
-| 5.2 | **Add targetType to PlaygroundContext** | Context | `targetType: 'regression' \| 'classification' \| 'ordinal'` |
-| 5.3 | **Store class labels** | Context | `classLabels?: string[]` for classification |
-| 5.4 | **Classification histogram mode** | YHistogramV2 | Discrete bars per class instead of continuous bins |
-| 5.5 | **Auto-select qualitative colormap** | colorConfig | When classification detected, use categorical palette |
-| 5.6 | **Class-based color legend** | ColorLegend | Swatches with class labels |
-| 5.7 | **Update DimensionReductionChart** | DimensionReductionChart | Pass labels to ScatterWebGL for class coloring |
-| 5.8 | **Update FoldDistributionChart** | FoldDistributionChartV2 | Stack by class within partitions |
-| 5.9 | **Manual override toggle** | Settings | Allow forcing regression/classification mode |
-| 5.10 | **Handle edge cases** | targetTypeDetection | Binary regression, ordinal, percentages |
+| ID | Task | Component | Status |
+|----|------|-----------|--------|
+| 5.1 | **Create target type detection** | targetTypeDetection.ts | ✅ |
+| 5.2 | **Add targetType to ColorContext** | colorConfig.ts | ✅ |
+| 5.3 | **Store class labels** | ColorContext | ✅ |
+| 5.4 | **Classification histogram mode** | YHistogramV2 | ✅ |
+| 5.5 | **Auto-select qualitative colormap** | colorConfig | ✅ |
+| 5.6 | **Class-based color legend** | ColorLegend | ✅ |
+| 5.7 | **Update DimensionReductionChart** | DimensionReductionChart | ✅ |
+| 5.8 | **Update FoldDistributionChart** | FoldDistributionChartV2 | ✅ |
+| 5.9 | **Manual override toggle** | CanvasToolbar | ✅ |
+| 5.10 | **Handle edge cases** | targetTypeDetection | ✅ |
 
 ### Target Type Detection
 

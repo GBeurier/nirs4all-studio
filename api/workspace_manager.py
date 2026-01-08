@@ -99,9 +99,23 @@ class WorkspaceScanner:
 
         Args:
             workspace_path: Root path of the nirs4all workspace (contains workspace/ subdirectory)
+                           OR the workspace directory itself (contains runs/, exports/, etc.)
         """
         self.workspace_path = Path(workspace_path)
-        self.workspace_dir = self.workspace_path / "workspace"
+
+        # Support both structures:
+        # 1. Parent directory containing a workspace/ subdirectory
+        # 2. The workspace directory itself (contains runs/, exports/, etc.)
+        potential_workspace_dir = self.workspace_path / "workspace"
+        if potential_workspace_dir.exists() and potential_workspace_dir.is_dir():
+            # Structure 1: workspace_path/workspace/runs/
+            self.workspace_dir = potential_workspace_dir
+        elif (self.workspace_path / "runs").exists() or (self.workspace_path / "exports").exists():
+            # Structure 2: workspace_path is already the workspace dir (runs/ is direct child)
+            self.workspace_dir = self.workspace_path
+        else:
+            # Default to the nested structure
+            self.workspace_dir = potential_workspace_dir
 
     def is_valid_workspace(self) -> Tuple[bool, str]:
         """Check if the path is a valid nirs4all workspace.

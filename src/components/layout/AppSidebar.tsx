@@ -42,10 +42,10 @@ const workflowNavItems: NavItem[] = [
   { title: "Pipelines", href: "/pipelines", icon: GitBranch },
   { title: "New Pipeline", href: "/pipelines/new", icon: Plus },
   { title: "Runs", href: "/runs", icon: Play },
+  { title: "Results", href: "/results", icon: BarChart3 },
 ];
 
 const analysisNavItems: NavItem[] = [
-  { title: "Results", href: "/results", icon: BarChart3 },
   { title: "Predictions", href: "/predictions", icon: Target },
   { title: "Analysis", href: "/analysis", icon: Beaker },
 ];

@@ -1378,13 +1378,71 @@ async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
                             folder_config = json.load(f)
                             config.update(folder_config)
                     else:
-                        # Try to find CSV files
+                        # Try to detect standard nirs4all folder structure (Xtrain.csv, Ytrain.csv, etc.)
                         csv_files = list(folder_path.glob("*.csv"))
-                        if csv_files:
-                            # Simple heuristic: first CSV is X
-                            config["train_x"] = str(csv_files[0])
+                        csv_lower_map = {f.name.lower(): f for f in csv_files}
+
+                        # Look for X files: Xtrain.csv, X_train.csv, xcal.csv, x_cal.csv
+                        x_train_names = ["xtrain.csv", "x_train.csv", "xcal.csv", "x_cal.csv"]
+                        x_test_names = ["xtest.csv", "x_test.csv", "xval.csv", "x_val.csv"]
+                        y_train_names = ["ytrain.csv", "y_train.csv", "ycal.csv", "y_cal.csv"]
+                        y_test_names = ["ytest.csv", "y_test.csv", "yval.csv", "y_val.csv"]
+
+                        # Check for standard X/Y file structure
+                        detected_x_file = None
+                        for name in x_train_names:
+                            if name in csv_lower_map:
+                                detected_x_file = csv_lower_map[name]
+                                config["train_x"] = str(detected_x_file)
+                                if x_specific_params:
+                                    config["train_x_params"] = x_specific_params.copy()
+                                break
+
+                        for name in x_test_names:
+                            if name in csv_lower_map:
+                                config["test_x"] = str(csv_lower_map[name])
+                                if x_specific_params:
+                                    config["test_x_params"] = x_specific_params.copy()
+                                break
+
+                        for name in y_train_names:
+                            if name in csv_lower_map:
+                                config["train_y"] = str(csv_lower_map[name])
+                                break
+
+                        for name in y_test_names:
+                            if name in csv_lower_map:
+                                config["test_y"] = str(csv_lower_map[name])
+                                break
+
+                        # If no standard structure found, fall back to first CSV as X
+                        if "train_x" not in config and csv_files:
+                            detected_x_file = csv_files[0]
+                            config["train_x"] = str(detected_x_file)
                             if x_specific_params:
                                 config["train_x_params"] = x_specific_params
+
+                        # Auto-detect delimiter from detected X file
+                        if detected_x_file and detected_x_file.exists():
+                            try:
+                                with open(detected_x_file, "r", encoding="utf-8") as f:
+                                    first_line = f.readline()
+                                    # Count delimiters to find the most likely one
+                                    semicolon_count = first_line.count(";")
+                                    comma_count = first_line.count(",")
+                                    tab_count = first_line.count("\t")
+
+                                    if semicolon_count > comma_count and semicolon_count > tab_count:
+                                        detected_delimiter = ";"
+                                    elif tab_count > comma_count and tab_count > semicolon_count:
+                                        detected_delimiter = "\t"
+                                    else:
+                                        detected_delimiter = ","
+
+                                    # Update global_params with detected delimiter
+                                    config["global_params"]["delimiter"] = detected_delimiter
+                            except Exception:
+                                pass  # Keep default delimiter
 
         # Load dataset using nirs4all
         try:

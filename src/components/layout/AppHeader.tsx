@@ -20,8 +20,8 @@ const searchItems = [
   { label: "Playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
   { label: "Pipelines", path: "/pipelines", keywords: ["workflow", "ml", "model"] },
   { label: "Pipeline Editor", path: "/pipelines/new", keywords: ["create", "build", "new"] },
-  { label: "Runs", path: "/runs", keywords: ["experiment", "train", "execute"] },
-  { label: "Results", path: "/results", keywords: ["metrics", "performance", "evaluate"] },
+  { label: "Runs", path: "/runs", keywords: ["experiment", "train", "execute", "monitor", "progress"] },
+  { label: "Results", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "history"] },
   { label: "Predictions", path: "/predictions", keywords: ["predict", "inference"] },
   { label: "Analysis", path: "/analysis", keywords: ["pca", "importance", "explore"] },
   { label: "Settings", path: "/settings", keywords: ["config", "preferences", "options"] },
@@ -67,7 +67,7 @@ export function AppHeader() {
       <div className="flex items-center gap-4">
         {/* Mobile menu trigger */}
         <MobileSidebar />
-        
+
         {/* Breadcrumbs - hidden on mobile */}
         <div className="hidden md:block">
           <Breadcrumbs />

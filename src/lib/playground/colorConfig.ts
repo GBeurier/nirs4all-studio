@@ -3,7 +3,14 @@
  *
  * Provides a single, global coloration system that applies consistently
  * across all charts (Spectra, Histogram, PCA/UMAP, Folds, Reps).
+ *
+ * Phase 5: Classification Support
+ * - Detects regression vs classification targets
+ * - Auto-selects categorical palette for classification
+ * - Supports ordinal scales
  */
+
+import { type TargetType } from './targetTypeDetection';
 
 // ============= Type Definitions =============
 
@@ -16,7 +23,8 @@ export type GlobalColorMode =
   | 'fold'        // Categorical by fold index
   | 'metadata'    // Continuous or categorical based on column type
   | 'selection'   // Selected=primary, unselected=grey
-  | 'outlier';    // Outliers=red (front), non-outliers=grey
+  | 'outlier'     // Outliers=red (front), non-outliers=grey
+  | 'index';      // Continuous gradient by sample position (0 to N-1)
 
 /**
  * Palette types for continuous coloring
@@ -66,6 +74,16 @@ export interface GlobalColorConfig {
 
   /** Whether selection always overrides base color */
   selectionOverride: boolean;
+
+  /** Whether to show red border/stroke for outliers in all color modes (except outlier mode) */
+  showOutlierOverlay?: boolean;
+
+  /**
+   * Phase 5: Manual override for target type detection
+   * When set, overrides the auto-detected target type
+   * 'auto' means use detected type
+   */
+  targetTypeOverride?: TargetType | 'auto';
 }
 
 /**
@@ -77,6 +95,8 @@ export interface ColorResult {
   stroke?: string;
   strokeWidth?: number;
   zIndex?: number;
+  /** Phase 4: Whether the sample should be hidden from display */
+  hidden?: boolean;
 }
 
 /**
@@ -101,10 +121,24 @@ export interface ColorContext {
   // For outlier mode
   outlierIndices?: Set<number>;
 
+  // For index mode
+  totalSamples?: number;
+
   // Selection state
   selectedSamples?: Set<number>;
   pinnedSamples?: Set<number>;
   hoveredSample?: number | null;
+
+  // Display filtering (Phase 4)
+  displayFilteredIndices?: Set<number>;
+
+  // Phase 5: Classification support
+  /** Detected target type (regression, classification, ordinal) */
+  targetType?: TargetType;
+  /** Class labels for classification/ordinal targets */
+  classLabels?: string[];
+  /** Map of Y value to class index for efficient lookup */
+  classLabelMap?: Map<string, number>;
 }
 
 // ============= Default Configuration =============
@@ -119,6 +153,7 @@ export const DEFAULT_GLOBAL_COLOR_CONFIG: GlobalColorConfig = {
   unselectedOpacity: 0.25,
   highlightPinned: true,
   selectionOverride: true,
+  showOutlierOverlay: true,
 };
 
 // ============= Palette Definitions =============
@@ -296,10 +331,38 @@ export function normalizeValue(value: number, min: number, max: number): number 
 }
 
 /**
- * Determine if a mode uses continuous or categorical coloring
+ * Get the effective target type considering manual override
+ * Phase 5: Helper function for determining actual target type
  */
-export function isContinuousMode(mode: GlobalColorMode, metadataType?: 'categorical' | 'continuous'): boolean {
-  if (mode === 'target') return true;
+export function getEffectiveTargetType(
+  detectedType: TargetType | undefined,
+  override: TargetType | 'auto' | undefined
+): TargetType | undefined {
+  if (override && override !== 'auto') {
+    return override;
+  }
+  return detectedType;
+}
+
+/**
+ * Determine if a mode uses continuous or categorical coloring
+ * Phase 5: Now considers targetType for 'target' mode
+ */
+export function isContinuousMode(
+  mode: GlobalColorMode,
+  metadataType?: 'categorical' | 'continuous',
+  targetType?: TargetType,
+  targetTypeOverride?: TargetType | 'auto'
+): boolean {
+  if (mode === 'target') {
+    // Phase 5: Check override first, then detected type
+    const effectiveType = getEffectiveTargetType(targetType, targetTypeOverride);
+    if (effectiveType === 'classification' || effectiveType === 'ordinal') {
+      return false;
+    }
+    return true;
+  }
+  if (mode === 'index') return true;
   if (mode === 'metadata' && metadataType === 'continuous') return true;
   return false;
 }
@@ -342,6 +405,28 @@ export function getBaseColor(
       if (!y || yMin === undefined || yMax === undefined) {
         return HIGHLIGHT_COLORS.unselected;
       }
+
+      // Phase 5: Classification mode - use categorical colors
+      // Check for manual override first, then use detected type
+      const { targetType: detectedType, classLabels, classLabelMap } = context;
+      const effectiveTargetType = config.targetTypeOverride && config.targetTypeOverride !== 'auto'
+        ? config.targetTypeOverride
+        : detectedType;
+
+      if (effectiveTargetType === 'classification' || effectiveTargetType === 'ordinal') {
+        if (classLabels && classLabels.length > 0) {
+          const yValue = y[sampleIndex];
+          const classIdx = classLabelMap
+            ? classLabelMap.get(String(yValue)) ?? -1
+            : classLabels.indexOf(String(yValue));
+          if (classIdx >= 0) {
+            return getCategoricalColor(classIdx, config.categoricalPalette);
+          }
+        }
+        return HIGHLIGHT_COLORS.unselected;
+      }
+
+      // Regression mode - continuous gradient
       const t = normalizeValue(y[sampleIndex], yMin, yMax);
       return getContinuousColor(t, config.continuousPalette);
     }
@@ -401,6 +486,12 @@ export function getBaseColor(
       return isOutlier ? HIGHLIGHT_COLORS.outlier : HIGHLIGHT_COLORS.unselected;
     }
 
+    case 'index': {
+      const totalSamples = context.totalSamples ?? (y?.length || 1);
+      const t = sampleIndex / Math.max(1, totalSamples - 1);
+      return getContinuousColor(t, config.continuousPalette);
+    }
+
     default:
       return HIGHLIGHT_COLORS.unselected;
   }
@@ -415,8 +506,17 @@ export function getUnifiedSampleColor(
   context: ColorContext
 ): ColorResult {
   const {
-    selectedSamples, pinnedSamples, hoveredSample, outlierIndices,
+    selectedSamples, pinnedSamples, hoveredSample, outlierIndices, displayFilteredIndices,
   } = context;
+
+  // Phase 4: Display filtering - hide samples not in the filter
+  if (displayFilteredIndices && !displayFilteredIndices.has(sampleIndex)) {
+    return {
+      color: 'transparent',
+      opacity: 0,
+      hidden: true,
+    };
+  }
 
   const isSelected = selectedSamples?.has(sampleIndex) ?? false;
   const isPinned = pinnedSamples?.has(sampleIndex) ?? false;
@@ -429,7 +529,7 @@ export function getUnifiedSampleColor(
     return {
       color: HIGHLIGHT_COLORS.hovered,
       opacity: 1,
-      stroke: '#ffffff',
+      stroke: 'hsl(var(--foreground))',
       strokeWidth: 3,
       zIndex: 1000,
     };
@@ -441,7 +541,7 @@ export function getUnifiedSampleColor(
       return {
         color: HIGHLIGHT_COLORS.selected,
         opacity: 1,
-        stroke: '#ffffff',
+        stroke: 'hsl(var(--foreground))',
         strokeWidth: 2,
         zIndex: 100,
       };
@@ -472,7 +572,7 @@ export function getUnifiedSampleColor(
     return {
       color: HIGHLIGHT_COLORS.selected,
       opacity: 1,
-      stroke: '#ffffff',
+      stroke: 'hsl(var(--foreground))',
       strokeWidth: 2,
       zIndex: 100,
     };
@@ -497,6 +597,17 @@ export function getUnifiedSampleColor(
   const opacity = hasSelection && !isSelected && !isPinned
     ? config.unselectedOpacity
     : 1;
+
+  // Apply outlier overlay (red border) in all modes except 'outlier' mode
+  // Note: 'outlier' mode already returned above, so we don't need to check for it here
+  if (isOutlier && config.showOutlierOverlay !== false) {
+    return {
+      color: baseColor,
+      opacity,
+      stroke: HIGHLIGHT_COLORS.outlier,
+      strokeWidth: 2,
+    };
+  }
 
   return { color: baseColor, opacity };
 }
@@ -599,6 +710,7 @@ export function getColorModeLabel(mode: GlobalColorMode): string {
     metadata: 'By Metadata',
     selection: 'By Selection',
     outlier: 'By Outlier',
+    index: 'By Index',
   };
   return labels[mode];
 }

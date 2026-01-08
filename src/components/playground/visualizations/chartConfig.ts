@@ -413,68 +413,15 @@ export const CHART_MARGINS = {
   boxplot: { top: 5, right: 20, left: 10, bottom: 20 },
 } as const;
 
-// ============= Color Mode =============
-// DEPRECATED: Use GlobalColorConfig from '@/lib/playground/colorConfig' instead
-
-/**
- * Extended color modes including fold-based coloring
- * @deprecated Use GlobalColorMode from '@/lib/playground/colorConfig' instead
- */
-export type ExtendedColorMode = 'target' | 'dataset' | 'metadata' | 'fold';
-
-/**
- * @deprecated Use GlobalColorConfig from '@/lib/playground/colorConfig' instead
- */
-export interface ExtendedColorConfig {
-  mode: ExtendedColorMode;
-  metadataKey?: string;
-  showFolds?: boolean;
-}
-
-/**
- * Get sample color based on extended color configuration
- * @deprecated Use getUnifiedSampleColor from '@/lib/playground/colorConfig' instead
- */
-export function getExtendedSampleColor(
-  index: number,
-  y: number[],
-  foldLabels?: number[],
-  colorConfig?: ExtendedColorConfig,
-  selectedSample?: number | null,
-  datasetSource?: string[]
-): string {
-  // Selected sample always highlighted
-  if (selectedSample === index) {
-    return 'hsl(var(--primary))';
-  }
-
-  const mode = colorConfig?.mode ?? 'target';
-
-  // Fold coloring mode
-  if (mode === 'fold' && foldLabels && foldLabels[index] !== undefined) {
-    return getSampleColorByFold(foldLabels[index]);
-  }
-
-  // Dataset coloring mode
-  if (mode === 'dataset' && datasetSource) {
-    const sources = [...new Set(datasetSource)];
-    const sourceIndex = sources.indexOf(datasetSource[index]);
-    const hue = sourceIndex === 0 ? 217 : sourceIndex === 1 ? 142 : (sourceIndex * 60) % 360;
-    return `hsl(${hue}, 70%, 50%)`;
-  }
-
-  // Target (Y) coloring mode (default)
-  const yMin = Math.min(...y);
-  const yMax = Math.max(...y);
-  return getSampleColorByY(y[index], yMin, yMax);
-}
-
 // ============= Formatting Functions =============
 
 /**
  * Format wavelength for display
  */
 export function formatWavelength(value: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return String(value);
+  }
   return value.toFixed(0);
 }
 

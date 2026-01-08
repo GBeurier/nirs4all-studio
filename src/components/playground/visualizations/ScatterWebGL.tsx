@@ -479,7 +479,7 @@ export function ScatterWebGL({
   baseColor = '#3b82f6',
   selectedColor = '#f59e0b',
   pinnedColor = '#ef4444',
-  useSelectionContext = false,
+  useSelectionContext = true,
   selectedIndices: manualSelectedIndices,
   pinnedIndices: manualPinnedIndices,
   onClick,
@@ -493,12 +493,13 @@ export function ScatterWebGL({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(1);
 
-  // Selection context
+  // Selection context - get full context for hover/click dispatching
+  const selectionCtx = useSelection();
   const {
     selectedSamples: contextSelectedSamples,
     pinnedSamples: contextPinnedSamples,
     setHovered,
-  } = useSelection();
+  } = selectionCtx;
 
   const selectedIndicesSet = useMemo(() => {
     if (useSelectionContext) return contextSelectedSamples;
@@ -513,17 +514,29 @@ export function ScatterWebGL({
   // Check WebGL support
   const capabilities = useMemo(() => detectDeviceCapabilities(), []);
 
-  // Calculate ranges
+  // Calculate ranges (filtering out NaN/Infinity values)
   const { xRange, yRange } = useMemo(() => {
     let xMin = Infinity, xMax = -Infinity;
     let yMin = Infinity, yMax = -Infinity;
 
     points.forEach(([x, y]) => {
+      // Skip invalid values
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       if (x < xMin) xMin = x;
       if (x > xMax) xMax = x;
       if (y < yMin) yMin = y;
       if (y > yMax) yMax = y;
     });
+
+    // Handle case where all points are invalid
+    if (!Number.isFinite(xMin) || !Number.isFinite(xMax)) {
+      xMin = -1;
+      xMax = 1;
+    }
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+      yMin = -1;
+      yMax = 1;
+    }
 
     // Add padding
     const xPad = (xMax - xMin) * 0.05 || 0.5;
@@ -535,25 +548,31 @@ export function ScatterWebGL({
     };
   }, [points]);
 
-  // Value range for coloring
+  // Value range for coloring (filter out NaN/Infinity)
   const { valueMin, valueMax } = useMemo(() => {
     if (!values || values.length === 0) return { valueMin: 0, valueMax: 1 };
+    const validValues = values.filter(v => Number.isFinite(v));
+    if (validValues.length === 0) return { valueMin: 0, valueMax: 1 };
     return {
-      valueMin: Math.min(...values),
-      valueMax: Math.max(...values),
+      valueMin: Math.min(...validValues),
+      valueMax: Math.max(...validValues),
     };
   }, [values]);
 
   // Label set for categorical coloring
   const labelSet = useMemo(() => new Set(labels ?? []), [labels]);
 
-  // Prepare point data
+  // Prepare point data (filter out invalid points)
   const pointData = useMemo<PointData[]>(() => {
     const baseCol = parseColor(baseColor);
     const selectedCol = parseColor(selectedColor);
     const pinnedCol = parseColor(pinnedColor);
+    const result: PointData[] = [];
 
-    return points.map(([x, y], i) => {
+    points.forEach(([x, y], i) => {
+      // Skip invalid coordinates
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
       const idx = indices?.[i] ?? i;
       const isSelected = selectedIndicesSet.has(idx);
       const isPinned = pinnedIndicesSet.has(idx);
@@ -566,7 +585,7 @@ export function ScatterWebGL({
         color = selectedCol;
       } else if (labels && labels[i]) {
         color = getCategoryColor(labels[i], labelSet);
-      } else if (values && values[i] !== undefined) {
+      } else if (values && values[i] !== undefined && Number.isFinite(values[i])) {
         const t = normalizeValue(values[i], valueMin, valueMax);
         color = getValueColor(t);
       } else {
@@ -580,15 +599,17 @@ export function ScatterWebGL({
       // Determine size
       const size = isPinned || isSelected ? selectedPointSize / 100 : pointSize / 100;
 
-      return {
+      result.push({
         position: new THREE.Vector3(normX, normY, isPinned ? 0.2 : isSelected ? 0.1 : 0),
         color,
         size,
         index: idx,
         isSelected,
         isPinned,
-      };
+      });
     });
+
+    return result;
   }, [
     points,
     indices,
@@ -619,12 +640,26 @@ export function ScatterWebGL({
     [useSelectionContext, setHovered]
   );
 
-  // Handle click
+  // Handle click - dispatch to SelectionContext
   const handleClick = useCallback(
     (index: number, event: MouseEvent) => {
+      if (useSelectionContext) {
+        if (event.shiftKey) {
+          selectionCtx.select([index], 'add');
+        } else if (event.ctrlKey || event.metaKey) {
+          selectionCtx.toggle([index]);
+        } else {
+          // Toggle selection if clicking the same sample
+          if (selectionCtx.selectedSamples.has(index) && selectionCtx.selectedSamples.size === 1) {
+            selectionCtx.clear();
+          } else {
+            selectionCtx.select([index], 'replace');
+          }
+        }
+      }
       onClick?.(index, event);
     },
-    [onClick]
+    [useSelectionContext, selectionCtx, onClick]
   );
 
   if (!capabilities.webglSupported) {

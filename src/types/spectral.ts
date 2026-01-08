@@ -21,10 +21,3 @@ export interface ProcessedData extends SpectralData {
 }
 
 export type SubsetMode = 'all' | 'random' | 'quantiles' | 'kmeans';
-
-export type ColorMode = 'target' | 'dataset' | 'metadata';
-
-export interface ColorConfig {
-  mode: ColorMode;
-  metadataKey?: string;
-}

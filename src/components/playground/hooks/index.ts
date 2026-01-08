@@ -11,9 +11,3 @@ export type {
   UsePlaygroundExportOptions,
   UsePlaygroundExportResult,
 } from './usePlaygroundExport';
-
-export { useColorMode } from './useColorMode';
-export type {
-  UseColorModeOptions,
-  UseColorModeResult,
-} from './useColorMode';

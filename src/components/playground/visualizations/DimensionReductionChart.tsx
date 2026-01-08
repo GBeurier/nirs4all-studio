@@ -67,12 +67,9 @@ import {
   CHART_MARGINS,
   ANIMATION_CONFIG,
   getFoldColor,
-  getExtendedSampleColor,
   formatPercentage,
   formatFoldLabel,
   formatYValue,
-  type ExtendedColorConfig,
-  type ExtendedColorMode,
   FOLD_COLORS,
 } from './chartConfig';
 import {
@@ -127,8 +124,6 @@ interface DimensionReductionChartProps {
   metadata?: Record<string, unknown[]>;
   /** Spectral metrics for coloring */
   spectralMetrics?: Record<string, number[]>;
-  /** Color configuration (legacy) */
-  colorConfig?: ExtendedColorConfig;
   /** Global color configuration (unified system) */
   globalColorConfig?: GlobalColorConfig;
   /** Color context data for unified color system */
@@ -206,7 +201,6 @@ export function DimensionReductionChart({
   sampleIds,
   metadata,
   spectralMetrics,
-  colorConfig: externalColorConfig,
   globalColorConfig,
   colorContext: externalColorContext,
   selectedSample: externalSelectedSample,
@@ -239,8 +233,8 @@ export function DimensionReductionChart({
   const hoveredSample = selectionCtx?.hoveredSample ?? null;
   const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
 
-  // Get active result based on method
-  const activeResult = config.method === 'umap' && umap ? umap : pca;
+  // Get active result based on method (don't fall back to PCA when UMAP is selected)
+  const activeResult = config.method === 'umap' ? umap : pca;
   // UMAP is available if it has coordinates with data and no error
   const hasUMAP = !!umap && !umap.error && Array.isArray(umap.coordinates) && umap.coordinates.length > 0;
   const hasPCA = !!pca && !pca.error && Array.isArray(pca.coordinates) && pca.coordinates.length > 0;
@@ -859,6 +853,10 @@ export function DimensionReductionChart({
             // Use unified color system when globalColorConfig is provided
             if (globalColorConfig) {
               const colorResult = getUnifiedSampleColor(entry.index, globalColorConfig, computedColorContext);
+              // Phase 4: Skip hidden samples (from display filtering)
+              if (colorResult.hidden) {
+                return <Cell key={`cell-${entry.index}`} fill="transparent" fillOpacity={0} />;
+              }
               return (
                 <Cell
                   key={`cell-${entry.index}`}
@@ -881,7 +879,7 @@ export function DimensionReductionChart({
               <Cell
                 key={`cell-${entry.index}`}
                 fill={pointColor}
-                stroke={highlighted ? '#ffffff' : undefined}
+                stroke={highlighted ? 'hsl(var(--foreground))' : undefined}
                 strokeWidth={highlighted ? 2 : 0}
               />
             );
@@ -918,7 +916,7 @@ export function DimensionReductionChart({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="pca" disabled={!hasPCA}>PCA</SelectItem>
-              <SelectItem value="umap" disabled={!hasUMAP}>UMAP</SelectItem>
+              <SelectItem value="umap">UMAP</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1016,6 +1014,7 @@ export function DimensionReductionChart({
             enabled={selectionTool !== 'click'}
             onSelectionComplete={handleSelectionComplete}
             onPointClick={() => {}} // Point clicks handled by Recharts onClick
+            className="h-full w-full"
           >
             <div onClick={handleChartClick} className="h-full w-full">
               {render2DView()}

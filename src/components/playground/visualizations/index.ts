@@ -20,7 +20,6 @@ export { FoldDistributionChartV2 } from './FoldDistributionChartV2';
 export { DimensionReductionChart } from './DimensionReductionChart';
 export { RepetitionsChart } from './RepetitionsChart';
 export type { RepetitionColorMode, DistanceMetric } from './RepetitionsChart';
-export { PCAPlot } from './PCAPlot';
 export { ScatterPlot3D } from './ScatterPlot3D';
 
 // ============= Utility Components =============

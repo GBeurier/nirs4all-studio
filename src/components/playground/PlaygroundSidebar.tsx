@@ -40,7 +40,7 @@ interface PlaygroundSidebarProps {
   data: SpectralData | null;
   isLoading: boolean;
   error: string | null;
-  dataSource: 'file' | 'workspace' | 'demo' | null;
+  dataSource: 'workspace' | 'demo' | null;
   currentDatasetInfo: WorkspaceDatasetInfo | null;
 
   // Pipeline state
@@ -59,7 +59,6 @@ interface PlaygroundSidebarProps {
   filterInfo?: FilterInfo;
 
   // Data handlers
-  onLoadFile: (file: File) => void;
   onLoadDemo: () => void;
   onLoadFromWorkspace: (datasetId: string, datasetName: string) => void;
   onClearData: () => void;
@@ -98,7 +97,6 @@ export function PlaygroundSidebar({
   executionTimeMs,
   stepErrors = [],
   filterInfo,
-  onLoadFile,
   onLoadDemo,
   onLoadFromWorkspace,
   onClearData,
@@ -217,7 +215,6 @@ export function PlaygroundSidebar({
           error={error}
           dataSource={dataSource}
           currentDatasetInfo={currentDatasetInfo}
-          onLoadFile={onLoadFile}
           onLoadDemo={onLoadDemo}
           onLoadFromWorkspace={onLoadFromWorkspace}
           onClear={onClearData}

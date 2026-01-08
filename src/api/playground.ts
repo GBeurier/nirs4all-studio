@@ -258,10 +258,29 @@ export async function loadWorkspaceDataset(
   // Request Y values along with spectra
   const response = await getDatasetSpectra(datasetId, { includeY: true });
 
-  // Convert wavelengths to numbers
-  const wavelengths = response.wavelengths.map(w =>
-    typeof w === 'number' ? w : parseFloat(w)
-  );
+  // Convert wavelengths to numbers with robust handling
+  // Backend may return numbers, strings, or edge cases like empty/null
+  let wavelengths: number[];
+  let rawWavelengths = response.wavelengths;
+
+  // Handle nested array case (e.g., [[w1, w2, ...]] instead of [w1, w2, ...])
+  if (rawWavelengths?.length === 1 && Array.isArray(rawWavelengths[0])) {
+    rawWavelengths = rawWavelengths[0] as (number | string)[];
+  }
+
+  if (!rawWavelengths || rawWavelengths.length === 0) {
+    // Fallback to indices if no wavelengths
+    wavelengths = Array.from({ length: response.num_features }, (_, i) => i);
+  } else {
+    wavelengths = rawWavelengths.map((w, i) => {
+      if (typeof w === 'number' && Number.isFinite(w)) {
+        return w;
+      }
+      const parsed = typeof w === 'string' ? parseFloat(w) : NaN;
+      // Fall back to index if parsing fails
+      return Number.isFinite(parsed) ? parsed : i;
+    });
+  }
 
   // Generate sample IDs if not provided
   const sampleIds = response.spectra.map((_, i) =>

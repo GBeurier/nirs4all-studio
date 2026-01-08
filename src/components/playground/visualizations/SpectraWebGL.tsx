@@ -44,8 +44,10 @@ export interface SpectraWebGLProps {
   selectedColor?: string;
   /** Pinned sample color */
   pinnedColor?: string;
-  /** Use SelectionContext for highlighting */
+  /** Use SelectionContext for highlighting and selection (default: true) */
   useSelectionContext?: boolean;
+  /** Callback when hovered sample changes (for components without context) */
+  onHover?: (index: number | null) => void;
   /** Manually provided selected indices */
   selectedIndices?: number[];
   /** Manually provided pinned indices */
@@ -737,6 +739,119 @@ function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
 
 // ============= Main Scene =============
 
+interface SpectraInteractionControllerProps {
+  lines: LineData[];
+  onHover: (index: number | null) => void;
+  onClick: (index: number, event: MouseEvent) => void;
+}
+
+/**
+ * Handles mouse hover and click detection for spectrum lines
+ * Uses proximity-based detection in screen space
+ */
+function SpectraInteractionController({ lines, onHover, onClick }: SpectraInteractionControllerProps) {
+  const { gl } = useThree();
+  const hoveredRef = useRef<number | null>(null);
+  const linesRef = useRef(lines);
+
+  // Keep refs updated
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  useEffect(() => {
+    const domElement = gl.domElement;
+
+    // Camera margins (must match Canvas camera prop)
+    const camLeft = -0.06;
+    const camRight = 1.02;
+    const camBottom = -0.12;
+    const camTop = 1.04;
+    const camWidth = camRight - camLeft;
+    const camHeight = camTop - camBottom;
+
+    // Find the closest spectrum line to the mouse position
+    const findClosestSpectrum = (mouseX: number, mouseY: number): number | null => {
+      const rect = domElement.getBoundingClientRect();
+      // Convert mouse to normalized screen coordinates [0,1]
+      const screenX = (mouseX - rect.left) / rect.width;
+      const screenY = 1 - (mouseY - rect.top) / rect.height; // Invert Y (0=bottom, 1=top)
+
+      // Convert screen coordinates to chart/data coordinates
+      // Chart coords: camLeft to camRight (X), camBottom to camTop (Y)
+      // Data space: [0,1] for both X and Y (line points are normalized)
+      const chartX = camLeft + screenX * camWidth;
+      const chartY = camBottom + screenY * camHeight;
+
+      let closestIndex: number | null = null;
+      let closestDistance = Infinity;
+      const threshold = 0.08; // 8% of data height for detection
+
+      // Only check non-original lines (processed spectra)
+      for (const line of linesRef.current) {
+        if (line.isOriginal) continue;
+
+        // Sample points along the line to find closest
+        const points = line.points;
+        const nPoints = line.pointCount;
+
+        for (let i = 0; i < nPoints; i++) {
+          const px = points[i * 2];  // Line point X in [0,1] data space
+          const py = points[i * 2 + 1];  // Line point Y in [0,1] data space
+
+          // Check if point is near the mouse X position
+          if (Math.abs(px - chartX) < 0.03) {
+            const dist = Math.abs(py - chartY);
+            if (dist < closestDistance && dist < threshold) {
+              closestDistance = dist;
+              closestIndex = line.index;
+            }
+          }
+        }
+      }
+
+      return closestIndex;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const closest = findClosestSpectrum(e.clientX, e.clientY);
+      if (closest !== hoveredRef.current) {
+        hoveredRef.current = closest;
+        onHover(closest);
+      }
+    };
+
+    const handleMouseClick = (e: MouseEvent) => {
+      // Don't handle clicks during drag operations
+      if (e.detail === 0) return; // Ignore synthetic clicks
+
+      const closest = findClosestSpectrum(e.clientX, e.clientY);
+      if (closest !== null) {
+        onClick(closest, e);
+      }
+    };
+
+    const handleMouseLeave = () => {
+      if (hoveredRef.current !== null) {
+        hoveredRef.current = null;
+        onHover(null);
+      }
+    };
+
+    domElement.addEventListener('mousemove', handleMouseMove);
+    domElement.addEventListener('click', handleMouseClick);
+    domElement.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      domElement.removeEventListener('mousemove', handleMouseMove);
+      domElement.removeEventListener('click', handleMouseClick);
+      domElement.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [gl, onHover, onClick]);
+
+  return null;
+}
+
 interface SpectraSceneProps {
   lines: LineData[];
   xRange: [number, number];
@@ -745,6 +860,8 @@ interface SpectraSceneProps {
   onXViewRangeChange: (range: [number, number]) => void;
   qualityConfig: QualityConfig;
   showGrid: boolean;
+  onHover: (index: number | null) => void;
+  onClick: (index: number, event: MouseEvent) => void;
 }
 
 /**
@@ -798,7 +915,7 @@ function ResponsiveCamera() {
   return null;
 }
 
-function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid }: SpectraSceneProps) {
+function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick }: SpectraSceneProps) {
   const { camera } = useThree();
 
   // Setup orthographic camera on mount
@@ -815,6 +932,7 @@ function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, q
     <>
       <ResponsiveCamera />
       <XZoomController xRange={xRange} onXViewRangeChange={onXViewRangeChange} />
+      <SpectraInteractionController lines={lines} onHover={onHover} onClick={onClick} />
       <Axes yRange={yRange} xViewRange={xViewRange} showGrid={showGrid} />
       <SpectraLines lines={lines} qualityConfig={qualityConfig} />
     </>
@@ -846,11 +964,12 @@ export function SpectraWebGL({
   originalColor = '#888888',
   selectedColor = '#f59e0b',
   pinnedColor = '#ef4444',
-  useSelectionContext = false,
+  useSelectionContext = true,
   selectedIndices: manualSelectedIndices,
   pinnedIndices: manualPinnedIndices,
   sampleColors,
   onSampleClick,
+  onHover,
   className,
   yRange: propYRange,
   isLoading = false,
@@ -872,8 +991,39 @@ export function SpectraWebGL({
   // Track previous wavelengths to detect actual data changes (not just re-renders)
   const prevWavelengthsRef = useRef<number[] | null>(null);
 
-  // Selection context
-  const { selectedSamples: contextSelectedSamples, pinnedSamples: contextPinnedSamples } = useSelection();
+  // Selection context - get full context for hover/click dispatching
+  const selectionCtx = useSelection();
+  const { selectedSamples: contextSelectedSamples, pinnedSamples: contextPinnedSamples, hoveredSample: contextHoveredSample } = selectionCtx;
+
+  // Local hovered state is synced to context
+  const hoveredSampleIdx = contextHoveredSample;
+
+  // Handle hover - dispatch to SelectionContext and callback
+  const handleHover = useCallback((index: number | null) => {
+    if (useSelectionContext) {
+      selectionCtx.setHovered(index);
+    }
+    onHover?.(index);
+  }, [useSelectionContext, selectionCtx, onHover]);
+
+  // Handle click - dispatch to SelectionContext or use callback
+  const handleClick = useCallback((index: number, event: MouseEvent) => {
+    if (useSelectionContext) {
+      if (event.shiftKey) {
+        selectionCtx.select([index], 'add');
+      } else if (event.ctrlKey || event.metaKey) {
+        selectionCtx.toggle([index]);
+      } else {
+        // Toggle selection if clicking the same sample
+        if (selectionCtx.selectedSamples.has(index) && selectionCtx.selectedSamples.size === 1) {
+          selectionCtx.clear();
+        } else {
+          selectionCtx.select([index], 'replace');
+        }
+      }
+    }
+    onSampleClick?.(index, event);
+  }, [useSelectionContext, selectionCtx, onSampleClick]);
 
   // Determine which indices to use
   const selectedIndicesSet = useMemo(() => {
@@ -1053,6 +1203,7 @@ export function SpectraWebGL({
     const origCol = parseColor(originalColor);
     const selectedCol = parseColor(selectedColor);
     const pinnedCol = parseColor(pinnedColor);
+    const hoveredCol = parseColor('#ffffff'); // White for hovered
 
     const result: LineData[] = [];
     const maxPoints = qualityConfig.maxPointsPerSpectrum;
@@ -1064,10 +1215,13 @@ export function SpectraWebGL({
 
       const isSelected = selectedIndicesSet.has(idx);
       const isPinned = pinnedIndicesSet.has(idx);
+      const isHovered = hoveredSampleIdx === idx;
 
-      // Calculate color
+      // Calculate color - hovered takes precedence for visibility
       let color: THREE.Color;
-      if (isPinned) {
+      if (isHovered) {
+        color = hoveredCol;
+      } else if (isPinned) {
         color = pinnedCol;
       } else if (isSelected) {
         color = selectedCol;
@@ -1136,7 +1290,7 @@ export function SpectraWebGL({
     return result;
   }, [
     spectra, originalSpectra, wavelengths, effectiveVisibleIndices,
-    selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
+    selectedIndicesSet, pinnedIndicesSet, hoveredSampleIdx, y, yTargetMin, yTargetMax,
     baseColor, originalColor, selectedColor, pinnedColor, sampleColors,
     xViewRange, yRange, qualityConfig.maxPointsPerSpectrum,
   ]);
@@ -1202,6 +1356,8 @@ export function SpectraWebGL({
           onXViewRangeChange={handleXViewRangeChange}
           qualityConfig={qualityConfig}
           showGrid={showGrid ?? true}
+          onHover={handleHover}
+          onClick={handleClick}
         />
       </Canvas>
 

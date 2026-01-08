@@ -1025,6 +1025,7 @@ import type {
   LinkedWorkspaceDiscoveredPredictions,
   LinkedWorkspaceDiscoveredExports,
   LinkedWorkspaceDiscoveredTemplates,
+  PredictionDataResponse,
   AppSettingsResponse,
   AppSettingsUpdateRequest,
   FavoriteAddRequest,
@@ -1089,6 +1090,27 @@ export async function getN4AWorkspacePredictions(
   workspaceId: string
 ): Promise<LinkedWorkspaceDiscoveredPredictions> {
   return api.get(`/workspaces/${workspaceId}/predictions`);
+}
+
+/**
+ * Get prediction records data from parquet files.
+ * Reads the actual prediction metadata (without heavy arrays).
+ */
+export async function getN4AWorkspacePredictionsData(
+  workspaceId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+    dataset?: string;
+  }
+): Promise<PredictionDataResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.offset) params.set("offset", String(options.offset));
+  if (options?.dataset) params.set("dataset", options.dataset);
+
+  const query = params.toString();
+  return api.get(`/workspaces/${workspaceId}/predictions/data${query ? `?${query}` : ""}`);
 }
 
 /**

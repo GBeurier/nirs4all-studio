@@ -17,7 +17,7 @@ export { StepComparisonSlider } from './StepComparisonSlider';
 // Phase 1: Extracted components for better modularity
 export { CanvasToolbar, CHART_CONFIG } from './CanvasToolbar';
 export type { ChartType, ChartConfig as ToolbarChartConfig, CanvasToolbarProps } from './CanvasToolbar';
-export { ChartPanel, ChartLoadingOverlay } from './ChartPanel';
+export { ChartPanel, ChartLoadingOverlay, ChartErrorBoundary } from './ChartPanel';
 export type { ChartPanelProps } from './ChartPanel';
 
 // Phase 1: Extracted hooks
@@ -38,8 +38,8 @@ export {
 } from './SelectionTools';
 
 // Utility components
-export { ColorModeSelector } from './ColorModeSelector';
 export { SampleDetails } from './SampleDetails';
+export { ColorLegend } from './ColorLegend';
 
 // Phase 4: Repetitions and Chart Registry
 export { RepetitionSetupDialog } from './RepetitionSetupDialog';
@@ -57,6 +57,10 @@ export type {
   ChartVisibility,
   BaseChartProps,
 } from './ChartRegistry';
+
+// Phase 4: Display Filtering System
+export { DisplayFilters } from './DisplayFilters';
+export type { DisplayFiltersProps } from './DisplayFilters';
 
 // Phase 6: Performance & Polish components
 export { SavedSelections } from './SavedSelections';

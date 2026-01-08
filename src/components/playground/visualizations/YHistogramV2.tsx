@@ -13,7 +13,7 @@
  * - Export functionality (PNG, CSV)
  */
 
-import { useMemo, useRef, useCallback, useState } from 'react';
+import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import {
   BarChart,
   Bar,
@@ -80,6 +80,7 @@ import {
   PARTITION_COLORS,
   HIGHLIGHT_COLORS,
 } from '@/lib/playground/colorConfig';
+import { type TargetType } from '@/lib/playground/targetTypeDetection';
 import { useSelection } from '@/context/SelectionContext';
 import type { FoldsInfo } from '@/types/playground';
 import { cn } from '@/lib/utils';
@@ -129,6 +130,17 @@ interface BinData {
   foldSamples?: Record<number, number[]>;
 }
 
+// Phase 5: Classification mode data
+interface ClassBarData {
+  classLabel: string;
+  classIndex: number;
+  count: number;
+  samples: number[];
+  // For fold-based modes
+  foldCounts?: Record<number, number>;
+  foldSamples?: Record<number, number[]>;
+}
+
 interface YStats {
   mean: number;
   median: number;
@@ -152,6 +164,12 @@ interface HistogramConfig {
   yAxisType: 'count' | 'frequency' | 'density';
   metadataKey?: string;
   metricKey?: string;
+}
+
+// Recharts mouse event type for histogram interactions
+interface RechartsMouseEvent {
+  activeLabel?: number | string;
+  activePayload?: Array<{ payload?: BinData }>;
 }
 
 // ============= KDE Calculation =============
@@ -262,16 +280,18 @@ export function YHistogramV2({
   }>({ start: null, end: null, isSelecting: false });
 
   // SelectionContext integration for cross-chart highlighting
-  const selectionCtx = useSelectionContext ? useSelection() : null;
+  // Always call hook unconditionally, then conditionally use the result
+  const fullSelectionCtx = useSelection();
+  const selectionCtx = useSelectionContext ? fullSelectionCtx : null;
 
   // Determine effective selection state
-  const selectedSamples = useSelectionContext && selectionCtx
-    ? selectionCtx.selectedSamples
+  const selectedSamples = useSelectionContext
+    ? fullSelectionCtx.selectedSamples
     : new Set<number>(externalSelectedSample !== null && externalSelectedSample !== undefined
       ? [externalSelectedSample]
       : []);
 
-  const hoveredSample = selectionCtx?.hoveredSample ?? null;
+  const hoveredSample = useSelectionContext ? fullSelectionCtx.hoveredSample : null;
 
   // Use processed Y if available
   const displayY = processedY && processedY.length === y.length ? processedY : y;
@@ -289,6 +309,9 @@ export function YHistogramV2({
     if (!displayY || displayY.length === 0) {
       return { histogramData: [], sampleBins: [] };
     }
+
+    // Phase 4: Get display filter from colorContext
+    const displayFilter = colorContext?.displayFilteredIndices;
 
     const values = displayY;
     const min = Math.min(...values);
@@ -311,6 +334,11 @@ export function YHistogramV2({
     const foldLabels = folds?.fold_labels ?? [];
 
     values.forEach((v, idx) => {
+      // Phase 4: Skip samples not in display filter
+      if (displayFilter && !displayFilter.has(idx)) {
+        return;
+      }
+
       let binIndex = Math.floor((v - min) / binWidth);
       if (binIndex >= effectiveBinCount) binIndex = effectiveBinCount - 1;
       if (binIndex < 0) binIndex = 0;
@@ -333,13 +361,83 @@ export function YHistogramV2({
     });
 
     return { histogramData: histogram, sampleBins: sampleToBin };
-  }, [displayY, effectiveBinCount, folds]);
+  }, [displayY, effectiveBinCount, folds, colorContext?.displayFilteredIndices]);
+
+  // Phase 5: Determine if we're in classification mode
+  const isClassificationMode = useMemo(() => {
+    const targetType = colorContext?.targetType;
+    return targetType === 'classification' || targetType === 'ordinal';
+  }, [colorContext?.targetType]);
+
+  // Phase 5: Compute class bar data for classification mode
+  const classBarData = useMemo<ClassBarData[]>(() => {
+    if (!isClassificationMode) return [];
+
+    const classLabels = colorContext?.classLabels;
+    if (!classLabels || classLabels.length === 0) return [];
+
+    const displayFilter = colorContext?.displayFilteredIndices;
+    const foldLabels = folds?.fold_labels ?? [];
+
+    // Initialize class bars
+    const classBars: ClassBarData[] = classLabels.map((label, idx) => ({
+      classLabel: label,
+      classIndex: idx,
+      count: 0,
+      samples: [],
+      foldCounts: {},
+      foldSamples: {},
+    }));
+
+    // Count samples per class
+    displayY.forEach((yVal, idx) => {
+      // Skip samples not in display filter
+      if (displayFilter && !displayFilter.has(idx)) {
+        return;
+      }
+
+      const classIdx = classLabels.indexOf(String(yVal));
+      if (classIdx >= 0) {
+        classBars[classIdx].count++;
+        classBars[classIdx].samples.push(idx);
+
+        // Track fold distribution within class
+        if (foldLabels.length > 0 && foldLabels[idx] !== undefined) {
+          const foldIdx = foldLabels[idx];
+          if (foldIdx >= 0) {
+            classBars[classIdx].foldCounts![foldIdx] =
+              (classBars[classIdx].foldCounts![foldIdx] || 0) + 1;
+            if (!classBars[classIdx].foldSamples![foldIdx]) {
+              classBars[classIdx].foldSamples![foldIdx] = [];
+            }
+            classBars[classIdx].foldSamples![foldIdx].push(idx);
+          }
+        }
+      }
+    });
+
+    return classBars;
+  }, [isClassificationMode, colorContext?.classLabels, colorContext?.displayFilteredIndices, displayY, folds]);
+
+  // Phase 5: Map samples to their class index for selection highlighting
+  const sampleToClass = useMemo(() => {
+    if (!isClassificationMode) return [];
+    const classLabels = colorContext?.classLabels ?? [];
+    return displayY.map(yVal => classLabels.indexOf(String(yVal)));
+  }, [isClassificationMode, colorContext?.classLabels, displayY]);
 
   // Compute statistics
   const stats = useMemo<YStats | null>(() => {
     if (!displayY || displayY.length === 0) return null;
 
-    const values = displayY;
+    // Phase 4: Filter values based on display filter
+    const displayFilter = colorContext?.displayFilteredIndices;
+    const values = displayFilter
+      ? displayY.filter((_, idx) => displayFilter.has(idx))
+      : displayY;
+
+    if (values.length === 0) return null;
+
     const n = values.length;
     const sorted = [...values].sort((a, b) => a - b);
     const sum = values.reduce((a, b) => a + b, 0);
@@ -362,7 +460,7 @@ export function YHistogramV2({
       q1,
       q3,
     };
-  }, [displayY]);
+  }, [displayY, colorContext?.displayFilteredIndices]);
 
   // Compute KDE data
   const kdeData = useMemo(() => {
@@ -421,10 +519,36 @@ export function YHistogramV2({
     ? sampleBins[hoveredSample]
     : null;
 
+  // Phase 5: Find which classes contain selected/hovered samples
+  const selectedClasses = useMemo(() => {
+    if (!isClassificationMode) return new Set<number>();
+    const classes = new Set<number>();
+    selectedSamples.forEach(idx => {
+      const classIdx = sampleToClass[idx];
+      if (classIdx !== undefined && classIdx >= 0) {
+        classes.add(classIdx);
+      }
+    });
+    return classes;
+  }, [isClassificationMode, selectedSamples, sampleToClass]);
+
+  const hoveredClass = useMemo(() => {
+    if (!isClassificationMode || hoveredSample === null) return null;
+    const classIdx = sampleToClass[hoveredSample];
+    return classIdx !== undefined && classIdx >= 0 ? classIdx : null;
+  }, [isClassificationMode, hoveredSample, sampleToClass]);
+
   // Handle bar click - select all samples in the bin
+  // Recharts Bar onClick passes: (data, index, event) where data contains payload property
   const handleClick = useCallback((data: unknown, _index: number, event?: React.MouseEvent) => {
-    const binData = data as BinData;
-    if (!binData?.samples?.length) return;
+    // Recharts wraps the data - extract payload if present
+    const rawData = data as { payload?: BinData } | BinData;
+    const binData = 'payload' in rawData && rawData.payload ? rawData.payload : rawData as BinData;
+
+    if (!binData?.samples?.length) {
+      console.warn('YHistogramV2: No samples in clicked bin', binData);
+      return;
+    }
 
     if (selectionCtx) {
       if (event?.shiftKey) {
@@ -451,7 +575,7 @@ export function YHistogramV2({
   }, [selectionCtx]);
 
   // Handle range selection on X axis (Y value range)
-  const handleMouseDown = useCallback((e: any) => {
+  const handleMouseDown = useCallback((e: RechartsMouseEvent) => {
     if (!e?.activeLabel) return;
     const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
     if (!isNaN(yValue)) {
@@ -459,15 +583,44 @@ export function YHistogramV2({
     }
   }, []);
 
-  const handleMouseMove = useCallback((e: any) => {
+  const handleMouseMove = useCallback((e: RechartsMouseEvent) => {
+    // Handle hover detection for SelectionContext
+    if (selectionCtx && e?.activePayload?.[0]?.payload) {
+      const binData = e.activePayload[0].payload as BinData;
+      if (binData?.samples?.length > 0) {
+        // Hover the first sample in the bin
+        const sampleToHover = binData.samples[0];
+        if (selectionCtx.hoveredSample !== sampleToHover) {
+          selectionCtx.setHovered(sampleToHover);
+        }
+      }
+    }
+
+    // Handle range selection
     if (!rangeSelection.isSelecting || !e?.activeLabel) return;
     const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
     if (!isNaN(yValue)) {
       setRangeSelection(prev => ({ ...prev, end: yValue }));
     }
-  }, [rangeSelection.isSelecting]);
+  }, [rangeSelection.isSelecting, selectionCtx]);
 
-  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+  // Recharts provides CategoricalChartState, but we need native event for modifiers
+  // Store last native event for use in Recharts handler
+  const lastMouseEventRef = useRef<MouseEvent | null>(null);
+
+  // Track native mouse events for modifier keys
+  useEffect(() => {
+    const handleNativeMouseUp = (e: MouseEvent) => {
+      lastMouseEventRef.current = e;
+    };
+    window.addEventListener('mouseup', handleNativeMouseUp, { capture: true });
+    return () => {
+      window.removeEventListener('mouseup', handleNativeMouseUp, { capture: true });
+    };
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    const e = lastMouseEventRef.current;
     if (!rangeSelection.isSelecting || rangeSelection.start === null || rangeSelection.end === null) {
       setRangeSelection({ start: null, end: null, isSelecting: false });
       return;
@@ -491,9 +644,9 @@ export function YHistogramV2({
       });
 
       if (samplesInRange.length > 0 && selectionCtx) {
-        if (e.shiftKey) {
+        if (e?.shiftKey) {
           selectionCtx.select(samplesInRange, 'add');
-        } else if (e.ctrlKey || e.metaKey) {
+        } else if (e?.ctrlKey || e?.metaKey) {
           selectionCtx.toggle(samplesInRange);
         } else {
           selectionCtx.select(samplesInRange, 'replace');
@@ -890,6 +1043,10 @@ export function YHistogramV2({
             if (rangeSelection.isSelecting) {
               setRangeSelection({ start: null, end: null, isSelecting: false });
             }
+            // Clear hover when mouse leaves chart
+            if (selectionCtx) {
+              selectionCtx.setHovered(null);
+            }
           }}
         >
           <CartesianGrid
@@ -1040,8 +1197,149 @@ export function YHistogramV2({
     );
   };
 
+  // Phase 5: Render classification bar chart
+  const renderClassificationChart = () => {
+    if (!isClassificationMode || classBarData.length === 0) {
+      return renderSimpleChart();
+    }
+
+    const totalCount = classBarData.reduce((sum, d) => sum + d.count, 0);
+
+    // Get class bar color
+    const getClassBarColor = (entry: ClassBarData, _index: number) => {
+      const isSelected = selectedClasses.has(entry.classIndex);
+      const isHovered = hoveredClass === entry.classIndex;
+      const hasSelection = selectedSamples.size > 0;
+
+      if (isHovered) return 'hsl(var(--primary))';
+      if (isSelected) return 'hsl(var(--primary))';
+      if (hasSelection) return 'hsl(var(--primary) / 0.2)';
+
+      // Use categorical color for each class
+      if (globalColorConfig) {
+        return getCategoricalColor(entry.classIndex, globalColorConfig.categoricalPalette);
+      }
+      return getCategoricalColor(entry.classIndex, 'default');
+    };
+
+    // Handle class bar click
+    const handleClassClick = (data: unknown, _index: number, event?: React.MouseEvent) => {
+      const rawData = data as { payload?: ClassBarData } | ClassBarData;
+      const barData = 'payload' in rawData && rawData.payload ? rawData.payload : rawData as ClassBarData;
+
+      if (!barData?.samples?.length) return;
+
+      if (selectionCtx) {
+        if (event?.shiftKey) {
+          selectionCtx.select(barData.samples, 'add');
+        } else if (event?.ctrlKey || event?.metaKey) {
+          selectionCtx.toggle(barData.samples);
+        } else {
+          selectionCtx.select(barData.samples, 'replace');
+        }
+      } else if (externalOnSelectSample) {
+        externalOnSelectSample(barData.samples[0]);
+      }
+    };
+
+    const chartData = classBarData.map(bar => ({
+      ...bar,
+      displayCount: config.yAxisType === 'frequency'
+        ? (bar.count / totalCount) * 100
+        : bar.count,
+    }));
+
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={chartData}
+          margin={CHART_MARGINS.histogram}
+          onMouseLeave={() => {
+            if (selectionCtx) {
+              selectionCtx.setHovered(null);
+            }
+          }}
+        >
+          <CartesianGrid
+            strokeDasharray={CHART_THEME.gridDasharray}
+            stroke={CHART_THEME.gridStroke}
+            opacity={CHART_THEME.gridOpacity}
+          />
+          <XAxis
+            dataKey="classLabel"
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            interval={0}
+            tick={{ fontSize: 10 }}
+          />
+          <YAxis
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            width={35}
+            allowDecimals={config.yAxisType !== 'count'}
+            label={{
+              value: yAxisLabel,
+              angle: -90,
+              position: 'insideLeft',
+              fontSize: 9,
+            }}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: CHART_THEME.tooltipBg,
+              border: `1px solid ${CHART_THEME.tooltipBorder}`,
+              borderRadius: CHART_THEME.tooltipBorderRadius,
+              fontSize: CHART_THEME.tooltipFontSize,
+            }}
+            content={({ payload }) => {
+              if (!payload || payload.length === 0) return null;
+              const data = payload[0]?.payload as ClassBarData & { displayCount: number };
+              if (!data) return null;
+
+              return (
+                <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
+                  <p className="font-medium">Class: {data.classLabel}</p>
+                  <p className="text-muted-foreground">
+                    {yAxisLabel}: {data.displayCount.toFixed(config.yAxisType === 'count' ? 0 : 1)}
+                    {config.yAxisType === 'count' && ` (${((data.count / totalCount) * 100).toFixed(1)}%)`}
+                  </p>
+                </div>
+              );
+            }}
+          />
+          <Bar
+            dataKey="displayCount"
+            radius={[4, 4, 0, 0]}
+            onClick={handleClassClick}
+            cursor="pointer"
+            onMouseEnter={(data: { payload?: ClassBarData }) => {
+              if (selectionCtx && data.payload?.samples?.length) {
+                selectionCtx.setHovered(data.payload.samples[0]);
+              }
+            }}
+            {...ANIMATION_CONFIG}
+          >
+            {chartData.map((entry, index) => (
+              <Cell
+                key={`class-cell-${index}`}
+                fill={getClassBarColor(entry, index)}
+                stroke={selectedClasses.has(entry.classIndex) || hoveredClass === entry.classIndex ? 'hsl(var(--primary))' : 'none'}
+                strokeWidth={selectedClasses.has(entry.classIndex) || hoveredClass === entry.classIndex ? 1 : 0}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  };
+
   // Select renderer based on display mode
   const renderChart = () => {
+    // Phase 5: Use classification chart for categorical targets
+    if (isClassificationMode && classBarData.length > 0) {
+      return renderClassificationChart();
+    }
+
     switch (config.displayMode) {
       case 'ridge':
         return hasFolds ? renderRidgePlot() : renderSimpleChart();
@@ -1060,9 +1358,14 @@ export function YHistogramV2({
       <div className="flex items-center justify-between mb-2 gap-1 flex-wrap">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-primary" />
-          Y Distribution
+          {isClassificationMode ? 'Class Distribution' : 'Y Distribution'}
           {isProcessed && (
             <span className="text-[10px] text-muted-foreground font-normal">(processed)</span>
+          )}
+          {isClassificationMode && (
+            <span className="text-[10px] text-muted-foreground font-normal">
+              ({colorContext?.classLabels?.length ?? 0} classes)
+            </span>
           )}
         </h3>
 
@@ -1144,26 +1447,56 @@ export function YHistogramV2({
       {/* Statistics footer */}
       {!compact && (
         <div className="flex items-center justify-between mt-2">
-          <div className="grid grid-cols-5 gap-1 text-[10px] flex-1">
-            {[
-              { label: 'Mean', value: stats.mean, highlight: config.showMean },
-              { label: 'Med', value: stats.median, highlight: config.showMedian },
-              { label: 'Std', value: stats.std },
-              { label: 'Min', value: stats.min },
-              { label: 'Max', value: stats.max },
-            ].map(({ label, value, highlight }) => (
-              <div
-                key={label}
-                className={cn(
-                  'bg-muted rounded p-1 text-center',
-                  highlight && 'ring-1 ring-primary/50'
-                )}
-              >
-                <div className="text-muted-foreground">{label}</div>
-                <div className="font-mono font-medium">{formatYValue(value, 1)}</div>
-              </div>
-            ))}
-          </div>
+          {isClassificationMode ? (
+            // Phase 5: Class distribution stats
+            <div className="flex items-center gap-3 text-[10px] flex-1 overflow-x-auto">
+              {classBarData.slice(0, 6).map((bar, idx) => (
+                <div
+                  key={bar.classLabel}
+                  className={cn(
+                    'flex items-center gap-1.5 shrink-0',
+                    selectedClasses.has(idx) && 'font-medium'
+                  )}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-sm shrink-0"
+                    style={{
+                      backgroundColor: globalColorConfig
+                        ? getCategoricalColor(idx, globalColorConfig.categoricalPalette)
+                        : getCategoricalColor(idx, 'default'),
+                    }}
+                  />
+                  <span className="text-muted-foreground truncate max-w-[60px]">{bar.classLabel}</span>
+                  <span className="font-mono">{bar.count}</span>
+                </div>
+              ))}
+              {classBarData.length > 6 && (
+                <span className="text-muted-foreground">+{classBarData.length - 6} more</span>
+              )}
+            </div>
+          ) : (
+            // Regression stats
+            <div className="grid grid-cols-5 gap-1 text-[10px] flex-1">
+              {[
+                { label: 'Mean', value: stats?.mean ?? 0, highlight: config.showMean },
+                { label: 'Med', value: stats?.median ?? 0, highlight: config.showMedian },
+                { label: 'Std', value: stats?.std ?? 0 },
+                { label: 'Min', value: stats?.min ?? 0 },
+                { label: 'Max', value: stats?.max ?? 0 },
+              ].map(({ label, value, highlight }) => (
+                <div
+                  key={label}
+                  className={cn(
+                    'bg-muted rounded p-1 text-center',
+                    highlight && 'ring-1 ring-primary/50'
+                  )}
+                >
+                  <div className="text-muted-foreground">{label}</div>
+                  <div className="font-mono font-medium">{formatYValue(value, 1)}</div>
+                </div>
+              ))}
+            </div>
+          )}
           {selectedSamples.size > 0 && (
             <div className="text-[10px] text-primary font-medium ml-2">
               {selectedSamples.size} sel.
