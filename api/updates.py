@@ -652,12 +652,256 @@ async def get_webapp_download_info() -> Dict[str, Any]:
     }
 
 
+@router.post("/webapp/download-start")
+async def start_webapp_download() -> Dict[str, Any]:
+    """
+    Start downloading the webapp update in the background.
+
+    Returns a job ID for tracking progress via WebSocket or polling.
+    """
+    from api.jobs.manager import job_manager, JobType
+
+    webapp_info = await update_manager.check_github_release()
+
+    if not webapp_info.update_available:
+        raise HTTPException(status_code=400, detail="No update available")
+
+    if not webapp_info.download_url:
+        raise HTTPException(status_code=400, detail="No download URL available for this platform")
+
+    # Create download job
+    job = job_manager.create_job(
+        JobType.UPDATE_DOWNLOAD,
+        config={
+            "version": webapp_info.latest_version,
+            "download_url": webapp_info.download_url,
+            "asset_name": webapp_info.asset_name,
+            "expected_size": webapp_info.download_size_bytes or 0,
+            "checksum": webapp_info.checksum_sha256,
+        },
+    )
+
+    # Submit job for execution
+    job_manager.submit_job(job.id, _execute_download_job)
+
+    return {
+        "job_id": job.id,
+        "status": "started",
+        "version": webapp_info.latest_version,
+        "asset_name": webapp_info.asset_name,
+        "message": f"Downloading {webapp_info.asset_name}...",
+    }
+
+
+def _execute_download_job(job_id: str, progress_callback: Callable[[float, str], None]) -> Dict[str, Any]:
+    """Execute the download job (runs in thread pool)."""
+    from api.jobs.manager import job_manager
+    from api.update_downloader import download_and_stage_update
+
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise Exception("Job not found")
+
+    def _progress_wrapper(progress: float, message: str) -> bool:
+        """Wrap progress callback to check for cancellation."""
+        if job.cancellation_requested:
+            return False
+        progress_callback(progress, message)
+        return True
+
+    # Run the async download in a new event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        success, message, staging_path = loop.run_until_complete(
+            download_and_stage_update(
+                download_url=job.config["download_url"],
+                expected_size=job.config.get("expected_size", 0),
+                expected_checksum=job.config.get("checksum"),
+                progress_callback=_progress_wrapper,
+            )
+        )
+    finally:
+        loop.close()
+
+    if not success:
+        raise Exception(message)
+
+    return {
+        "staging_path": str(staging_path) if staging_path else None,
+        "version": job.config["version"],
+        "ready_to_apply": True,
+    }
+
+
+@router.get("/webapp/download-status/{job_id}")
+async def get_download_status(job_id: str) -> Dict[str, Any]:
+    """Get the status of an update download job."""
+    from api.jobs.manager import job_manager
+
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "progress": job.progress,
+        "message": job.progress_message,
+        "result": job.result,
+        "error": job.error,
+    }
+
+
+@router.post("/webapp/download-cancel/{job_id}")
+async def cancel_download(job_id: str) -> Dict[str, Any]:
+    """Cancel an in-progress download."""
+    from api.jobs.manager import job_manager
+
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job_manager.cancel_job(job_id)
+
+    return {
+        "success": True,
+        "message": "Cancellation requested",
+    }
+
+
+class ApplyUpdateRequest(BaseModel):
+    """Request to apply a staged update."""
+    confirm: bool = True
+
+
+@router.post("/webapp/apply")
+async def apply_webapp_update(request: ApplyUpdateRequest) -> Dict[str, Any]:
+    """
+    Apply the staged webapp update.
+
+    This will:
+    1. Create an updater script
+    2. Launch the updater script
+    3. Signal the app to exit
+
+    The updater script will:
+    1. Wait for this app to exit
+    2. Backup the current installation
+    3. Copy new files from staging
+    4. Launch the new version
+    """
+    from updater import create_updater_script, launch_updater, get_staging_dir
+
+    if not request.confirm:
+        raise HTTPException(status_code=400, detail="Update not confirmed")
+
+    staging_dir = get_staging_dir()
+    if not staging_dir.exists() or not any(staging_dir.iterdir()):
+        raise HTTPException(
+            status_code=400,
+            detail="No staged update found. Download an update first.",
+        )
+
+    try:
+        # Create the updater script
+        script_path, _ = create_updater_script(staging_dir)
+
+        # Launch the updater (it will wait for us to exit)
+        success = launch_updater(script_path)
+
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to launch updater script",
+            )
+
+        return {
+            "success": True,
+            "message": "Update will be applied after app restart. Please close the application.",
+            "restart_required": True,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply update: {str(e)}",
+        )
+
+
+@router.get("/webapp/staged-update")
+async def get_staged_update_info() -> Dict[str, Any]:
+    """Get information about any staged update."""
+    from updater import get_staging_dir
+
+    staging_dir = get_staging_dir()
+
+    if not staging_dir.exists() or not any(staging_dir.iterdir()):
+        return {
+            "has_staged_update": False,
+        }
+
+    # Try to find version info in staged update
+    version_file = None
+    for item in staging_dir.iterdir():
+        if item.is_dir():
+            possible_version = item / "version.json"
+            if possible_version.exists():
+                version_file = possible_version
+                break
+        elif item.name == "version.json":
+            version_file = item
+            break
+
+    version = None
+    if version_file and version_file.exists():
+        try:
+            with open(version_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                version = data.get("version")
+        except Exception:
+            pass
+
+    return {
+        "has_staged_update": True,
+        "staging_path": str(staging_dir),
+        "version": version,
+    }
+
+
+@router.delete("/webapp/staged-update")
+async def cancel_staged_update() -> Dict[str, Any]:
+    """Cancel/remove a staged update."""
+    from updater import get_staging_dir
+
+    staging_dir = get_staging_dir()
+
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        return {"success": True, "message": "Staged update removed"}
+
+    return {"success": True, "message": "No staged update to remove"}
+
+
+@router.post("/webapp/cleanup")
+async def cleanup_updates() -> Dict[str, Any]:
+    """Clean up old update artifacts."""
+    from updater import cleanup_old_updates
+
+    cleanup_old_updates()
+    return {"success": True, "message": "Cleanup complete"}
+
+
 @router.post("/webapp/download")
 async def download_webapp_update(background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """
-    Download the latest webapp update.
+    Download the latest webapp update (legacy endpoint).
 
-    This initiates a background download. Poll /webapp/download-status for progress.
+    Use /webapp/download-start for the new job-based download.
     """
     webapp_info = await update_manager.check_github_release()
 
@@ -667,14 +911,12 @@ async def download_webapp_update(background_tasks: BackgroundTasks) -> Dict[str,
     if not webapp_info.download_url:
         raise HTTPException(status_code=400, detail="No download URL available for this platform")
 
-    # For now, return info for manual download
-    # Full download implementation would use job manager for background task
     return {
         "status": "ready",
         "download_url": webapp_info.download_url,
         "asset_name": webapp_info.asset_name,
         "version": webapp_info.latest_version,
-        "message": "Download URL ready. Full auto-download coming in future update.",
+        "message": "Use /webapp/download-start for automatic download.",
     }
 
 

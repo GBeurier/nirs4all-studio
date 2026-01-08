@@ -161,6 +161,14 @@ export async function selectWorkspace(
   return api.post("/workspace/select", { path, persist_global: persistGlobal });
 }
 
+export async function reloadWorkspace(): Promise<{
+  success: boolean;
+  message: string;
+  workspace: WorkspaceResponse["workspace"];
+}> {
+  return api.post("/workspace/reload");
+}
+
 export async function linkDataset(
   path: string,
   config?: Record<string, unknown>
@@ -1285,7 +1293,7 @@ export async function getWebappDownloadInfo(): Promise<{
 }
 
 /**
- * Download the latest webapp update
+ * Download the latest webapp update (legacy)
  */
 export async function downloadWebappUpdate(): Promise<{
   status: string;
@@ -1295,6 +1303,102 @@ export async function downloadWebappUpdate(): Promise<{
   message: string;
 }> {
   return api.post("/updates/webapp/download");
+}
+
+// ============= Auto-Update API =============
+
+export interface DownloadJobResponse {
+  job_id: string;
+  status: string;
+  version: string;
+  asset_name: string;
+  message: string;
+}
+
+export interface DownloadStatusResponse {
+  job_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  message: string;
+  result?: {
+    staging_path: string;
+    version: string;
+    ready_to_apply: boolean;
+  };
+  error?: string;
+}
+
+export interface StagedUpdateInfo {
+  has_staged_update: boolean;
+  staging_path?: string;
+  version?: string;
+}
+
+export interface ApplyUpdateResponse {
+  success: boolean;
+  message: string;
+  restart_required?: boolean;
+}
+
+/**
+ * Start downloading the webapp update in the background
+ */
+export async function startWebappDownload(): Promise<DownloadJobResponse> {
+  return api.post("/updates/webapp/download-start");
+}
+
+/**
+ * Get download job status
+ */
+export async function getDownloadStatus(
+  jobId: string
+): Promise<DownloadStatusResponse> {
+  return api.get(`/updates/webapp/download-status/${jobId}`);
+}
+
+/**
+ * Cancel an in-progress download
+ */
+export async function cancelDownload(
+  jobId: string
+): Promise<{ success: boolean; message: string }> {
+  return api.post(`/updates/webapp/download-cancel/${jobId}`);
+}
+
+/**
+ * Get information about any staged update
+ */
+export async function getStagedUpdateInfo(): Promise<StagedUpdateInfo> {
+  return api.get("/updates/webapp/staged-update");
+}
+
+/**
+ * Apply the staged update
+ */
+export async function applyWebappUpdate(
+  confirm: boolean = true
+): Promise<ApplyUpdateResponse> {
+  return api.post("/updates/webapp/apply", { confirm });
+}
+
+/**
+ * Cancel/remove a staged update
+ */
+export async function cancelStagedUpdate(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return api.delete("/updates/webapp/staged-update");
+}
+
+/**
+ * Clean up old update artifacts
+ */
+export async function cleanupUpdates(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return api.post("/updates/webapp/cleanup");
 }
 
 /**

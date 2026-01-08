@@ -1,0 +1,490 @@
+# Build and Release workflow
+# Triggered when a version tag is pushed (v*)
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., v1.2.0)'
+        required: true
+        type: string
+
+env:
+  APP_NAME: nirs4all-webapp
+  NODE_VERSION: '22'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Prepare: Extract version, build frontend, update version.json
+  # ═══════════════════════════════════════════════════════════════════════════
+  prepare:
+    name: Prepare Build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+
+          # Check if prerelease (contains hyphen, e.g., 1.0.0-beta.1)
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+
+          echo "Building:"
+          echo "  Tag: $TAG"
+          echo "  Version: $VERSION"
+          echo "  Prerelease: $PRERELEASE"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Update version.json
+        run: |
+          cat > version.json << EOF
+          {
+            "version": "${{ steps.version.outputs.version }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
+          cat version.json
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: |
+            dist/
+            version.json
+            public/
+          retention-days: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Build Linux (x64)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-linux:
+    name: Build Linux x64
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository1.0-dev \
+            libcairo2-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            upx-ucl
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+
+      - name: Create tarball
+        run: |
+          cd dist
+          tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz nirs4all-webapp/
+
+      - name: Generate checksum
+        run: |
+          sha256sum ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz > \
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-build
+          path: |
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz.sha256
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Build Windows (x64)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-windows:
+    name: Build Windows x64
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+
+      # Optional: Code signing (when certificate is configured)
+      - name: Sign executable
+        if: ${{ env.WINDOWS_CERT_BASE64 != '' }}
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          # Decode certificate
+          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64)
+          [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+
+          # Find signtool
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" |
+            Where-Object { $_.FullName -like "*x64*" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if ($signtool) {
+            & $signtool.FullName sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD `
+              /tr http://timestamp.digicert.com /td sha256 /fd sha256 `
+              dist/nirs4all-webapp/nirs4all-webapp.exe
+            echo "Executable signed successfully"
+          } else {
+            echo "::warning::signtool not found, skipping signing"
+          }
+
+          Remove-Item cert.pfx -ErrorAction SilentlyContinue
+
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/nirs4all-webapp -DestinationPath "${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip"
+
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash "${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip" | Out-File -FilePath "${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip.sha256" -Encoding ascii -NoNewline
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-build
+          path: |
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip.sha256
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Build macOS (Intel x64)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-macos-x64:
+    name: Build macOS Intel
+    needs: prepare
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+
+      - name: Create tarball
+        run: |
+          cd dist
+          # Include both the folder and the .app bundle if present
+          if [ -d "nirs4all-webapp.app" ]; then
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz nirs4all-webapp.app nirs4all-webapp
+          else
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz nirs4all-webapp
+          fi
+
+      - name: Generate checksum
+        run: |
+          shasum -a 256 ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz > \
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64-build
+          path: |
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz.sha256
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Build macOS (Apple Silicon arm64)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-macos-arm64:
+    name: Build macOS Apple Silicon
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+
+      - name: Create tarball
+        run: |
+          cd dist
+          # Include both the folder and the .app bundle if present
+          if [ -d "nirs4all-webapp.app" ]; then
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz nirs4all-webapp.app nirs4all-webapp
+          else
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz nirs4all-webapp
+          fi
+
+      - name: Generate checksum
+        run: |
+          shasum -a 256 ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz > \
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-build
+          path: |
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz
+            ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz.sha256
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Build Windows Installer (NSIS)
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-windows-installer:
+    name: Build Windows Installer
+    needs: [prepare, build-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-x64-build
+          path: release-zip
+
+      - name: Extract Windows build
+        shell: pwsh
+        run: |
+          Expand-Archive -Path "release-zip/${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip" -DestinationPath dist
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          # Add NSIS to PATH for this session
+          $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
+          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Process)
+
+      - name: Create release directory
+        run: mkdir release
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
+          makensis /DVERSION="${{ needs.prepare.outputs.version }}" installer/nsis/nirs4all-webapp.nsi
+
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash "release/${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe" | Out-File -FilePath "release/${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe.sha256" -Encoding ascii -NoNewline
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: |
+            release/${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe
+            release/${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe.sha256
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Create GitHub Release
+  # ═══════════════════════════════════════════════════════════════════════════
+  release:
+    name: Create Release
+    needs: [prepare, build-linux, build-windows, build-windows-installer, build-macos-x64, build-macos-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec mv {} release/ \;
+          echo "Release assets:"
+          ls -la release/
+
+      - name: Generate release notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          ## nirs4all-webapp ${{ needs.prepare.outputs.version }}
+
+          ### Downloads
+
+          | Platform | Architecture | Download |
+          |----------|-------------|----------|
+          | Linux | x64 (Intel/AMD) | `${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz` |
+          | Windows | x64 (Intel/AMD) | `${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip` (portable) |
+          | Windows | x64 (Intel/AMD) | `${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64-setup.exe` (installer) |
+          | macOS | Intel (x64) | `${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz` |
+          | macOS | Apple Silicon (arm64) | `${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz` |
+
+          ### Checksums
+
+          SHA256 checksums are provided as `.sha256` files for each download.
+          Verify your download:
+          ```bash
+          # Linux/macOS
+          sha256sum -c ${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz.sha256
+
+          # Windows (PowerShell)
+          (Get-FileHash .\${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip).Hash -eq (Get-Content .\${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip.sha256).Split()[0]
+          ```
+
+          ### Installation
+
+          #### Windows Installer (Recommended)
+          1. Download the `.exe` installer
+          2. Run the installer and follow the prompts
+          3. Launch from Start Menu or Desktop shortcut
+
+          #### Portable / Manual Installation
+          1. Download the appropriate archive for your platform
+          2. Extract the archive:
+             - **Linux/macOS**: `tar -xzf nirs4all-webapp-*.tar.gz`
+             - **Windows**: Extract the ZIP file
+          3. Run the application:
+             - **Linux**: `./nirs4all-webapp/nirs4all-webapp`
+             - **macOS**: Open `nirs4all-webapp.app` or run `./nirs4all-webapp/nirs4all-webapp`
+             - **Windows**: Run `nirs4all-webapp\nirs4all-webapp.exe`
+
+          ### First Run
+
+          On first launch, the application will:
+          1. Create a managed Python environment
+          2. Install the nirs4all library from PyPI
+          3. This may take a few minutes depending on your connection
+
+          ### Auto-Updates
+
+          The application includes an auto-update feature. When a new version is available,
+          you'll be notified in Settings → Updates.
+
+          ---
+          *Built from commit: ${{ github.sha }}*
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: nirs4all-webapp ${{ needs.prepare.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag**: ${{ needs.prepare.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Prerelease**: ${{ needs.prepare.outputs.prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Assets" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          ls -1 release/ | while read f; do echo "- \`$f\`" >> $GITHUB_STEP_SUMMARY; done

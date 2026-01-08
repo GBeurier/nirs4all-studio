@@ -720,3 +720,10 @@ nirs4all update available: 0.7.0
 4. **Code Signing**: Windows Authenticode, macOS notarization
 5. **Rollback UI**: User-triggered rollback to previous version
 6. **ML Backend Selection**: First-launch wizard for TensorFlow/PyTorch/JAX
+
+---
+
+## See Also
+
+- [PACKAGING.md](PACKAGING.md) - How the webapp is built, packaged, and released
+- [GitHub Actions Workflows](../.github/workflows/) - CI/CD pipeline configuration
