@@ -2,7 +2,7 @@
  * Updates Section Component
  *
  * Displays update status and controls for:
- * - Webapp updates (from GitHub Releases)
+ * - Webapp updates (from GitHub Releases) with download/apply flow
  * - nirs4all library updates (from PyPI)
  * - Managed virtual environment status
  * - Update settings
@@ -21,6 +21,8 @@ import {
   Loader2,
   FolderOpen,
   HardDrive,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 import {
   Card,
@@ -35,6 +37,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import {
   Collapsible,
   CollapsibleContent,
@@ -56,6 +59,8 @@ import {
   useVenvStatus,
   useInstallNirs4all,
   useCreateVenv,
+  useUpdateDownload,
+  useStagedUpdate,
   formatBytes,
 } from "@/hooks/useUpdates";
 
@@ -69,10 +74,15 @@ export function UpdatesSection() {
   const installMutation = useInstallNirs4all();
   const createVenvMutation = useCreateVenv();
 
+  // Auto-update download/apply state
+  const updateDownload = useUpdateDownload();
+  const { data: stagedUpdate } = useStagedUpdate();
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [venvOpen, setVenvOpen] = useState(false);
   const [nirs4allDialogOpen, setNirs4allDialogOpen] = useState(false);
   const [webappDialogOpen, setWebappDialogOpen] = useState(false);
+  const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
 
   const isLoading = statusLoading || settingsLoading;
 
@@ -172,21 +182,43 @@ export function UpdatesSection() {
             </div>
             <div className="text-sm text-muted-foreground">
               Current: <span className="font-mono">{status?.webapp?.current_version || "unknown"}</span>
-              {hasWebappUpdate && (
+              {(hasWebappUpdate || stagedUpdate?.has_staged_update) && (
                 <>
                   {" → "}
-                  <span className="font-mono text-primary">{status?.webapp?.latest_version}</span>
+                  <span className="font-mono text-primary">
+                    {stagedUpdate?.version || status?.webapp?.latest_version}
+                  </span>
                 </>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {hasWebappUpdate ? (
+            {/* Show downloading state */}
+            {updateDownload.isDownloading && (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Downloading {Math.round(updateDownload.downloadProgress)}%
+              </Badge>
+            )}
+
+            {/* Show ready to apply state */}
+            {(updateDownload.readyToApply || stagedUpdate?.has_staged_update) && !updateDownload.isDownloading && (
+              <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Apply Update
+              </Button>
+            )}
+
+            {/* Show update available */}
+            {hasWebappUpdate && !updateDownload.readyToApply && !stagedUpdate?.has_staged_update && !updateDownload.isDownloading && (
               <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
                 <Download className="mr-2 h-4 w-4" />
                 Update
               </Button>
-            ) : (
+            )}
+
+            {/* Show up to date */}
+            {!hasWebappUpdate && !updateDownload.readyToApply && !stagedUpdate?.has_staged_update && !updateDownload.isDownloading && (
               <Badge variant="outline" className="flex items-center gap-1">
                 <CheckCircle2 className="h-3 w-3 text-green-500" />
                 Up to date
@@ -356,47 +388,224 @@ export function UpdatesSection() {
       </CardContent>
 
       {/* Webapp Update Dialog */}
-      <Dialog open={webappDialogOpen} onOpenChange={setWebappDialogOpen}>
+      <Dialog
+        open={webappDialogOpen}
+        onOpenChange={(open) => {
+          // Don't allow closing during download or if ready to apply
+          if (!open && (updateDownload.isDownloading || updateDownload.readyToApply)) {
+            return;
+          }
+          setWebappDialogOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Webapp Update Available</DialogTitle>
+            <DialogTitle>
+              {updateDownload.readyToApply
+                ? "Update Ready to Apply"
+                : updateDownload.isDownloading
+                  ? "Downloading Update..."
+                  : "Webapp Update Available"}
+            </DialogTitle>
             <DialogDescription>
-              Version {status?.webapp?.latest_version} is available
+              {updateDownload.readyToApply
+                ? `Version ${updateDownload.stagedVersion || status?.webapp?.latest_version} is ready to install`
+                : updateDownload.isDownloading
+                  ? updateDownload.downloadMessage || "Downloading..."
+                  : `Version ${status?.webapp?.latest_version} is available`}
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4">
-            {status?.webapp?.release_notes && (
+            {/* Download Progress */}
+            {updateDownload.isDownloading && (
+              <div className="space-y-2">
+                <Progress value={updateDownload.downloadProgress} className="h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{updateDownload.downloadMessage}</span>
+                  <span>{Math.round(updateDownload.downloadProgress)}%</span>
+                </div>
+              </div>
+            )}
+
+            {/* Download Error */}
+            {updateDownload.downloadError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {updateDownload.downloadError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Ready to Apply */}
+            {updateDownload.readyToApply && !updateDownload.isApplying && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <AlertDescription>
+                  Download complete. Click "Apply Update" to install. The application will restart automatically.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Apply in Progress */}
+            {updateDownload.isApplying && (
+              <Alert>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>
+                  Applying update... The application will restart shortly.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Apply Success */}
+            {updateDownload.applySuccess && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <AlertDescription>
+                  Update applied! Please close and reopen the application.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Apply Error */}
+            {updateDownload.applyError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Failed to apply update: {updateDownload.applyError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Release Notes (only show when not downloading) */}
+            {!updateDownload.isDownloading && !updateDownload.readyToApply && status?.webapp?.release_notes && (
               <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
                 <h4 className="font-medium mb-2">Release Notes</h4>
-                <div className="prose prose-sm dark:prose-invert">
+                <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap">
                   {status.webapp.release_notes}
                 </div>
               </div>
             )}
-            {status?.webapp?.download_size_bytes && (
+
+            {/* Download Size */}
+            {!updateDownload.isDownloading && !updateDownload.readyToApply && status?.webapp?.download_size_bytes && (
               <p className="text-sm text-muted-foreground">
                 Download size: {formatBytes(status.webapp.download_size_bytes)}
               </p>
             )}
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Webapp updates require downloading from GitHub and restarting the application.
-              </AlertDescription>
-            </Alert>
+
+            {/* Info Alert (only show before download starts) */}
+            {!updateDownload.isDownloading && !updateDownload.readyToApply && !updateDownload.downloadError && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Webapp updates will be downloaded and extracted. The application will restart to apply the update.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setWebappDialogOpen(false)}>
-              Later
-            </Button>
-            {status?.webapp?.release_url && (
-              <Button asChild>
-                <a href={status.webapp.release_url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Download from GitHub
-                </a>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {/* Cancel/Close button */}
+            {!updateDownload.isApplying && !updateDownload.applySuccess && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (updateDownload.isDownloading) {
+                    updateDownload.cancelDownload();
+                  } else if (updateDownload.readyToApply) {
+                    updateDownload.cancelStagedUpdate();
+                    updateDownload.reset();
+                  } else {
+                    setWebappDialogOpen(false);
+                  }
+                }}
+                disabled={updateDownload.isCancellingDownload || updateDownload.isCancellingStagedUpdate}
+              >
+                {(updateDownload.isCancellingDownload || updateDownload.isCancellingStagedUpdate) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {updateDownload.isDownloading || updateDownload.readyToApply ? (
+                  <>
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Cancel Update
+                  </>
+                ) : (
+                  "Later"
+                )}
               </Button>
             )}
+
+            {/* Main action button */}
+            {!updateDownload.readyToApply && !updateDownload.isDownloading && !updateDownload.applySuccess && (
+              <>
+                {/* Manual download link as fallback */}
+                {status?.webapp?.release_url && (
+                  <Button variant="outline" asChild>
+                    <a href={status.webapp.release_url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Manual Download
+                    </a>
+                  </Button>
+                )}
+
+                {/* Auto download button */}
+                <Button
+                  onClick={() => updateDownload.startDownload()}
+                  disabled={updateDownload.isStartingDownload}
+                >
+                  {updateDownload.isStartingDownload ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Download & Install
+                </Button>
+              </>
+            )}
+
+            {/* Apply Update button */}
+            {updateDownload.readyToApply && !updateDownload.isApplying && !updateDownload.applySuccess && (
+              <Button
+                onClick={() => setApplyConfirmOpen(true)}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Apply Update
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Apply Update Confirmation Dialog */}
+      <Dialog open={applyConfirmOpen} onOpenChange={setApplyConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart to Apply Update?</DialogTitle>
+            <DialogDescription>
+              The application will close and restart with version {updateDownload.stagedVersion || status?.webapp?.latest_version}.
+              Make sure you have saved any unsaved work.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApplyConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setApplyConfirmOpen(false);
+                updateDownload.applyUpdate();
+              }}
+              disabled={updateDownload.isApplying}
+            >
+              {updateDownload.isApplying ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="mr-2 h-4 w-4" />
+              )}
+              Restart Now
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -115,6 +115,34 @@ async def select_workspace(request: SetWorkspaceRequest):
         )
 
 
+@router.post("/workspace/reload")
+async def reload_workspace():
+    """Reload the workspace configuration from disk.
+
+    This is useful when the workspace.json file may have been modified
+    externally or to ensure the in-memory state matches the disk state.
+    """
+    try:
+        workspace_config = workspace_manager.reload_workspace()
+
+        if not workspace_config:
+            return {
+                "success": False,
+                "message": "No workspace is currently selected",
+                "workspace": None,
+            }
+
+        return {
+            "success": True,
+            "message": "Workspace configuration reloaded from disk",
+            "workspace": workspace_config.to_dict(),
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reload workspace: {str(e)}"
+        )
+
+
 @router.post("/datasets/link")
 async def link_dataset(request: LinkDatasetRequest):
     """Link a dataset to the current workspace."""

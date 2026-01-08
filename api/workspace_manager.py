@@ -719,6 +719,21 @@ class WorkspaceManager:
         """Get the current workspace configuration."""
         return self._workspace_config
 
+    def reload_workspace(self) -> Optional[WorkspaceConfig]:
+        """Reload the workspace configuration from disk.
+
+        This is useful when the workspace.json file may have been modified
+        externally or to ensure the in-memory state matches the disk state.
+
+        Returns:
+            The reloaded workspace configuration, or None if no workspace is set.
+        """
+        if not self._current_workspace_path:
+            return None
+
+        self._load_workspace_config()
+        return self._workspace_config
+
     def link_dataset(self, dataset_path: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Link a dataset to the current workspace."""
         if not self._workspace_config:

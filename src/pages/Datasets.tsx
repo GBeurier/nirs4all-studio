@@ -52,6 +52,7 @@ import {
   removeDatasetFromGroup,
   getWorkspace,
   selectWorkspace,
+  reloadWorkspace,
 } from "@/api/client";
 import { selectFolder } from "@/utils/fileDialogs";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
@@ -101,6 +102,9 @@ export default function Datasets() {
     try {
       setLoading(true);
 
+      // Reload workspace from disk to ensure fresh data
+      await reloadWorkspace();
+
       // Load workspace
       const wsResponse = await getWorkspace();
       if (wsResponse.workspace) {
@@ -125,9 +129,28 @@ export default function Datasets() {
     loadData();
   }, [loadData]);
 
+  // Debug: Log datasets when they change
+  useEffect(() => {
+    if (datasets.length > 0) {
+      console.log("Datasets loaded:", JSON.stringify(datasets, null, 2));
+      console.log("Filter state - searchQuery:", JSON.stringify(searchQuery), "filterGroup:", JSON.stringify(filterGroup));
+    }
+  }, [datasets, searchQuery, filterGroup]);
+
+  // Normalize datasets to ensure they have required fields
+  const normalizedDatasets = datasets.map((ds, index) => {
+    if (!ds) return null;
+    return {
+      ...ds,
+      id: ds.id || ds.path || `temp-${index}`,
+      name: ds.name || ds.path?.split("/").pop() || `Dataset ${index + 1}`,
+      path: ds.path || "",
+    };
+  }).filter((ds): ds is Dataset => ds !== null);
+
   // Filter datasets
-  const filteredDatasets = datasets.filter((ds) => {
-    // Search filter
+  const filteredDatasets = normalizedDatasets.filter((ds) => {
+    // Search filter (with null safety)
     const matchesSearch =
       !searchQuery ||
       ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -143,12 +166,20 @@ export default function Datasets() {
     return matchesSearch && matchesGroup;
   });
 
+  // Debug: Log filtered results
+  useEffect(() => {
+    console.log(`Filtered: ${filteredDatasets.length} of ${normalizedDatasets.length} datasets (raw: ${datasets.length})`);
+    if (normalizedDatasets.length > 0 && filteredDatasets.length === 0) {
+      console.warn("All datasets were filtered out! Check filter criteria.");
+    }
+  }, [filteredDatasets, normalizedDatasets, datasets]);
+
   // Stats
-  const totalSamples = datasets.reduce(
+  const totalSamples = normalizedDatasets.reduce(
     (sum, ds) => sum + (ds.num_samples || 0),
     0
   );
-  const totalFeatures = datasets.reduce(
+  const totalFeatures = normalizedDatasets.reduce(
     (sum, ds) => sum + (ds.num_features || 0),
     0
   );
@@ -307,7 +338,7 @@ export default function Datasets() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{datasets.length}</div>
+            <div className="text-2xl font-bold">{normalizedDatasets.length}</div>
           </CardContent>
         </Card>
         <Card className="glass-card">
@@ -330,8 +361,8 @@ export default function Datasets() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {datasets.length > 0
-                ? Math.round(totalFeatures / datasets.length).toLocaleString()
+              {normalizedDatasets.length > 0
+                ? Math.round(totalFeatures / normalizedDatasets.length).toLocaleString()
                 : 0}
             </div>
           </CardContent>
@@ -457,14 +488,14 @@ export default function Datasets() {
                   <Database className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-2">
-                  {datasets.length === 0 ? "No datasets yet" : "No matches"}
+                  {normalizedDatasets.length === 0 ? "No datasets yet" : "No matches"}
                 </h3>
                 <p className="text-muted-foreground max-w-md mb-6">
-                  {datasets.length === 0
+                  {normalizedDatasets.length === 0
                     ? "Get started by adding a dataset. You can link a folder containing your spectral data files."
                     : "Try adjusting your search or filter criteria."}
                 </p>
-                {datasets.length === 0 && (
+                {normalizedDatasets.length === 0 && (
                   <div className="flex gap-3">
                     <Button variant="outline" onClick={handleSelectWorkspace}>
                       <FolderOpen className="mr-2 h-4 w-4" />
@@ -483,24 +514,29 @@ export default function Datasets() {
       ) : (
         <motion.div
           variants={containerVariants}
+          initial="hidden"
+          animate="visible"
           className={
             viewMode === "grid"
               ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3"
               : "space-y-3"
           }
         >
-          {filteredDatasets.map((dataset) => (
-            <DatasetCard
-              key={dataset.id}
-              dataset={dataset}
-              groups={groups}
-              onPreview={() => console.log("Preview:", dataset.id)}
-              onEdit={() => handleEditDataset(dataset)}
-              onDelete={() => handleDeleteDataset(dataset)}
-              onRefresh={() => handleRefreshDataset(dataset)}
-              onAssignGroup={(ds, groupId) => handleAssignGroup(ds, groupId)}
-            />
-          ))}
+          {filteredDatasets.map((dataset) => {
+            console.log("Rendering DatasetCard for:", dataset.name, dataset.id);
+            return (
+              <DatasetCard
+                key={dataset.id}
+                dataset={dataset}
+                groups={groups}
+                onPreview={() => console.log("Preview:", dataset.id)}
+                onEdit={() => handleEditDataset(dataset)}
+                onDelete={() => handleDeleteDataset(dataset)}
+                onRefresh={() => handleRefreshDataset(dataset)}
+                onAssignGroup={(ds, groupId) => handleAssignGroup(ds, groupId)}
+              />
+            );
+          })}
         </motion.div>
       )}
 
