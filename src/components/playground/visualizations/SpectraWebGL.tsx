@@ -749,47 +749,46 @@ interface SpectraSceneProps {
 
 /**
  * Responsive camera that adapts to container size
- * Uses minimal margins to maximize chart area
+ * Fills the container width and adjusts height proportionally
  */
 function ResponsiveCamera() {
   const { camera, size } = useThree();
 
   useFrame(() => {
     if (camera instanceof THREE.OrthographicCamera) {
-      // Calculate aspect ratio
+      // Calculate aspect ratio of container
       const aspect = size.width / size.height;
 
-      // Minimal margins for axes - chart fills most of frame
-      const marginLeft = 0.04;  // Space for Y-axis labels
-      const marginRight = 0.01; // Minimal right margin
-      const marginBottom = 0.10; // Space for X-axis labels
-      const marginTop = 0.02;   // Minimal top margin
+      // Fixed margins in normalized data space
+      // These are proportional to the data area [0, 1]
+      const marginLeft = 0.06;   // Space for Y-axis labels
+      const marginRight = 0.02;  // Minimal right margin
+      const marginBottom = 0.12; // Space for X-axis labels
+      const marginTop = 0.04;    // Minimal top margin
 
-      // Data area is [0, 1] in both X and Y
+      // The chart should FILL the container width
+      // Data area X: from -marginLeft to 1+marginRight
+      // Data area Y: from -marginBottom to 1+marginTop
       const dataWidth = 1 + marginLeft + marginRight;
       const dataHeight = 1 + marginBottom + marginTop;
-      const dataAspect = dataWidth / dataHeight;
 
-      if (aspect > dataAspect) {
-        // Container is wider - fit to height, extend X symmetrically
-        const visibleHeight = dataHeight;
-        const visibleWidth = visibleHeight * aspect;
-        const extraX = (visibleWidth - dataWidth) / 2;
+      // Always fill width, adjust vertical based on aspect ratio
+      camera.left = -marginLeft;
+      camera.right = 1 + marginRight;
 
-        camera.left = -marginLeft - extraX;
-        camera.right = 1 + marginRight + extraX;
-        camera.top = 1 + marginTop;
-        camera.bottom = -marginBottom;
-      } else {
-        // Container is taller - fit to width, extend Y symmetrically
-        const visibleWidth = dataWidth;
-        const visibleHeight = visibleWidth / aspect;
-        const extraY = (visibleHeight - dataHeight) / 2;
+      // Calculate what Y range we need to fill the height while matching aspect
+      const requiredYRange = dataWidth / aspect;
 
-        camera.left = -marginLeft;
-        camera.right = 1 + marginRight;
+      if (requiredYRange >= dataHeight) {
+        // Container is taller than needed - extend Y symmetrically
+        const extraY = (requiredYRange - dataHeight) / 2;
         camera.top = 1 + marginTop + extraY;
         camera.bottom = -marginBottom - extraY;
+      } else {
+        // Container is wider than needed - just use the data height
+        // (this means we'll have some empty space on sides, but that's rare)
+        camera.top = 1 + marginTop;
+        camera.bottom = -marginBottom;
       }
 
       camera.updateProjectionMatrix();
@@ -850,6 +849,7 @@ export function SpectraWebGL({
   useSelectionContext = false,
   selectedIndices: manualSelectedIndices,
   pinnedIndices: manualPinnedIndices,
+  sampleColors,
   onSampleClick,
   className,
   yRange: propYRange,
@@ -943,8 +943,9 @@ export function SpectraWebGL({
 
   // Calculate data ranges (full data)
   const { xRange, yRange } = useMemo(() => {
-    const xMin = Math.min(...wavelengths);
-    const xMax = Math.max(...wavelengths);
+    // Guard against empty wavelengths
+    const xMin = wavelengths.length > 0 ? Math.min(...wavelengths) : 0;
+    const xMax = wavelengths.length > 0 ? Math.max(...wavelengths) : 1;
 
     let yMin = Infinity;
     let yMax = -Infinity;
@@ -979,6 +980,12 @@ export function SpectraWebGL({
       yMax = propYRange[1];
     }
 
+    // Guard against no data (yMin/yMax would be Infinity/-Infinity)
+    if (!isFinite(yMin) || !isFinite(yMax) || yMin >= yMax) {
+      yMin = 0;
+      yMax = 1;
+    }
+
     // Add 5% padding
     const yPadding = (yMax - yMin) * 0.05;
     yMin -= yPadding;
@@ -990,22 +997,49 @@ export function SpectraWebGL({
     };
   }, [spectra, originalSpectra, wavelengths, effectiveVisibleIndices, propYRange]);
 
-  // X-axis zoom state - initialize from xRange
+  // Track if user has zoomed (to avoid resetting their zoom on data updates)
+  const userHasZoomedRef = useRef(false);
+  // Track if we've done the initial sync
+  const hasInitializedRef = useRef(false);
+
+  // X-axis zoom state - always start with xRange (will be synced by useEffect)
   const [xViewRange, setXViewRange] = useState<[number, number]>(xRange);
 
-  // Only reset xViewRange when wavelengths actually change (different dataset loaded)
+  // Sync xViewRange with xRange when:
+  // 1. First mount with valid data
+  // 2. User hasn't zoomed yet (show full range)
+  // 3. Wavelengths change (new dataset)
+  // 4. xViewRange is invalid or mismatched with xRange
   useEffect(() => {
     const prevWl = prevWavelengthsRef.current;
-    const hasSignificantChange = !prevWl ||
+    const hasWavelengthChange = !prevWl ||
       prevWl.length !== wavelengths.length ||
       Math.abs((prevWl[0] ?? 0) - (wavelengths[0] ?? 0)) > 1 ||
       Math.abs((prevWl[prevWl.length - 1] ?? 0) - (wavelengths[wavelengths.length - 1] ?? 0)) > 1;
 
-    if (hasSignificantChange) {
-      setXViewRange([...xRange]);
-      prevWavelengthsRef.current = wavelengths;
+    // Check if xViewRange is invalid
+    const isXViewRangeInvalid = !isFinite(xViewRange[0]) || !isFinite(xViewRange[1]) ||
+      xViewRange[0] >= xViewRange[1];
+
+    // Check if xRange is valid
+    const isXRangeValid = isFinite(xRange[0]) && isFinite(xRange[1]) && xRange[0] < xRange[1];
+
+    // Check if xViewRange doesn't match xRange when user hasn't zoomed
+    const needsInitialSync = !userHasZoomedRef.current && isXRangeValid &&
+      (Math.abs(xViewRange[0] - xRange[0]) > 0.1 || Math.abs(xViewRange[1] - xRange[1]) > 0.1);
+
+    // Force sync on first valid initialization
+    const needsFirstSync = !hasInitializedRef.current && isXRangeValid && wavelengths.length > 0;
+
+    if (hasWavelengthChange || isXViewRangeInvalid || needsInitialSync || needsFirstSync) {
+      if (isXRangeValid) {
+        setXViewRange([xRange[0], xRange[1]]);
+        prevWavelengthsRef.current = wavelengths;
+        userHasZoomedRef.current = false;
+        hasInitializedRef.current = true;
+      }
     }
-  }, [wavelengths, xRange]);
+  }, [wavelengths, xRange, xViewRange]);
 
   // Target range for coloring
   const { yMin: yTargetMin, yMax: yTargetMax } = useMemo(() => {
@@ -1110,7 +1144,14 @@ export function SpectraWebGL({
   // Handle X view range change
   const handleXViewRangeChange = useCallback((range: [number, number]) => {
     setXViewRange(range);
-  }, []);
+    // Check if this is a reset to full range (from double-click)
+    const isFullRange = Math.abs(range[0] - xRange[0]) < 0.1 && Math.abs(range[1] - xRange[1]) < 0.1;
+    if (isFullRange) {
+      userHasZoomedRef.current = false; // Reset on full view
+    } else {
+      userHasZoomedRef.current = true; // Mark that user has zoomed
+    }
+  }, [xRange]);
 
   // Compute zoom level for display
   const zoomLevel = useMemo(() => {
@@ -1142,10 +1183,11 @@ export function SpectraWebGL({
           position: [0.5, 0.5, 5],
           near: 0.1,
           far: 100,
-          left: -0.12,
-          right: 1.05,
-          top: 1.08,
-          bottom: -0.15,
+          // Initial values - ResponsiveCamera will adjust these on each frame
+          left: -0.06,
+          right: 1.02,
+          top: 1.04,
+          bottom: -0.12,
         }}
         gl={{ antialias: qualityConfig.antialias, alpha: true }}
         dpr={Math.min(window.devicePixelRatio, qualityConfig.maxDpr)}

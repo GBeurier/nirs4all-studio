@@ -15,7 +15,7 @@
  * - Export menu
  */
 
-import { useCallback, memo } from 'react';
+import { useCallback, memo, useMemo } from 'react';
 import {
   Eye,
   EyeOff,
@@ -27,6 +27,7 @@ import {
   FileText,
   Zap,
   Monitor,
+  Palette,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { StepComparisonSlider } from './StepComparisonSlider';
@@ -54,9 +61,21 @@ import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
 import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
 import { SavedSelections } from './SavedSelections';
 import { SelectionFilters } from './SelectionFilters';
-import type { ExtendedColorConfig, ExtendedColorMode } from './visualizations/chartConfig';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo } from '@/types/playground';
+import {
+  type GlobalColorConfig,
+  type GlobalColorMode,
+  type ContinuousPalette,
+  type CategoricalPalette,
+  CONTINUOUS_PALETTES,
+  CATEGORICAL_PALETTES,
+  getContinuousPaletteLabel,
+  getCategoricalPaletteLabel,
+  getColorModeLabel,
+  getContinuousPaletteGradient,
+  isContinuousMode,
+} from '@/lib/playground/colorConfig';
 
 // ============= Types =============
 
@@ -119,8 +138,10 @@ export interface CanvasToolbarProps {
   enabledOperatorCount: number;
 
   // Color mode
-  colorConfig: ExtendedColorConfig;
-  onColorConfigChange: (config: ExtendedColorConfig) => void;
+  colorConfig: GlobalColorConfig;
+  onColorConfigChange: (config: GlobalColorConfig) => void;
+  /** Whether outliers have been detected (enables outlier color mode) */
+  hasOutliers?: boolean;
 
   // Render mode
   displayRenderMode: RenderMode;
@@ -144,30 +165,128 @@ export interface CanvasToolbarProps {
 // ============= Sub-Components =============
 
 interface ColorModeSelectorProps {
-  colorConfig: ExtendedColorConfig;
-  onChange: (config: ExtendedColorConfig) => void;
+  colorConfig: GlobalColorConfig;
+  onChange: (config: GlobalColorConfig) => void;
   hasFolds: boolean;
+  hasPartition: boolean;
+  hasOutliers: boolean;
+  metadataColumns: string[];
 }
 
 const ColorModeSelector = memo(function ColorModeSelector({
   colorConfig,
   onChange,
   hasFolds,
+  hasPartition,
+  hasOutliers,
+  metadataColumns,
 }: ColorModeSelectorProps) {
+  const hasMetadata = metadataColumns.length > 0;
+  const showContinuousPalette = isContinuousMode(colorConfig.mode, colorConfig.metadataType);
+
+  // Palette preview colors
+  const continuousPaletteOptions: ContinuousPalette[] = ['blue_red', 'viridis', 'plasma', 'inferno', 'coolwarm', 'spectral'];
+  const categoricalPaletteOptions: CategoricalPalette[] = ['default', 'tableau10', 'set1', 'set2', 'paired'];
+
   return (
-    <Select
-      value={colorConfig.mode}
-      onValueChange={(mode) => onChange({ ...colorConfig, mode: mode as ExtendedColorMode })}
-    >
-      <SelectTrigger className="h-6 w-24 text-[10px]">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="target">By Y Value</SelectItem>
-        {hasFolds && <SelectItem value="fold">By Fold</SelectItem>}
-        <SelectItem value="dataset">By Dataset</SelectItem>
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-1">
+      {/* Mode selector */}
+      <Select
+        value={colorConfig.mode}
+        onValueChange={(mode) => onChange({
+          ...colorConfig,
+          mode: mode as GlobalColorMode,
+          // Clear metadata key when switching away from metadata mode
+          metadataKey: mode === 'metadata' ? colorConfig.metadataKey : undefined,
+        })}
+      >
+        <SelectTrigger className="h-6 w-24 text-[10px]">
+          <SelectValue>{getColorModeLabel(colorConfig.mode)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="target">By Y Value</SelectItem>
+          {hasPartition && <SelectItem value="partition">By Partition</SelectItem>}
+          {hasFolds && <SelectItem value="fold">By Fold</SelectItem>}
+          {hasMetadata && <SelectItem value="metadata">By Metadata</SelectItem>}
+          <SelectItem value="selection">By Selection</SelectItem>
+          {hasOutliers && <SelectItem value="outlier">By Outlier</SelectItem>}
+        </SelectContent>
+      </Select>
+
+      {/* Metadata column picker */}
+      {colorConfig.mode === 'metadata' && hasMetadata && (
+        <Select
+          value={colorConfig.metadataKey || metadataColumns[0]}
+          onValueChange={(key) => onChange({ ...colorConfig, metadataKey: key })}
+        >
+          <SelectTrigger className="h-6 w-24 text-[10px]">
+            <SelectValue placeholder="Column..." />
+          </SelectTrigger>
+          <SelectContent>
+            {metadataColumns.map(col => (
+              <SelectItem key={col} value={col}>{col}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* Palette selector dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+            <Palette className="w-3 h-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {showContinuousPalette ? (
+            <>
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                Continuous Palette
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={colorConfig.continuousPalette}
+                onValueChange={(value) => onChange({ ...colorConfig, continuousPalette: value as ContinuousPalette })}
+              >
+                {continuousPaletteOptions.map(palette => (
+                  <DropdownMenuRadioItem key={palette} value={palette} className="flex items-center gap-2">
+                    <div
+                      className="w-16 h-3 rounded-sm"
+                      style={{ background: getContinuousPaletteGradient(palette) }}
+                    />
+                    <span className="text-xs">{getContinuousPaletteLabel(palette)}</span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </>
+          ) : (
+            <>
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                Categorical Palette
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={colorConfig.categoricalPalette}
+                onValueChange={(value) => onChange({ ...colorConfig, categoricalPalette: value as CategoricalPalette })}
+              >
+                {categoricalPaletteOptions.map(palette => (
+                  <DropdownMenuRadioItem key={palette} value={palette} className="flex items-center gap-2">
+                    <div className="flex gap-0.5">
+                      {CATEGORICAL_PALETTES[palette].slice(0, 5).map((color, i) => (
+                        <div
+                          key={i}
+                          className="w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs">{getCategoricalPaletteLabel(palette)}</span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 });
 
@@ -203,6 +322,7 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   enabledOperatorCount,
   colorConfig,
   onColorConfigChange,
+  hasOutliers = false,
   displayRenderMode,
   effectiveRenderMode,
   isWebGLActive,
@@ -226,10 +346,22 @@ export const CanvasToolbar = memo(function CanvasToolbar({
     onActiveStepChange?.(step);
   }, [onActiveStepChange]);
 
-  const handleColorConfigChange = useCallback((config: ExtendedColorConfig) => {
+  const handleColorConfigChange = useCallback((config: GlobalColorConfig) => {
     onInteractionStart();
     onColorConfigChange(config);
   }, [onInteractionStart, onColorConfigChange]);
+
+  // Extract metadata column names
+  const metadataColumns = useMemo(() => {
+    if (!metadata) return [];
+    return Object.keys(metadata).filter(key => {
+      const values = metadata[key];
+      return Array.isArray(values) && values.length > 0;
+    });
+  }, [metadata]);
+
+  // Determine if partition coloring is available (has folds with train/test split)
+  const hasPartition = hasFolds;
 
   return (
     <div
@@ -389,6 +521,9 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           colorConfig={colorConfig}
           onChange={handleColorConfigChange}
           hasFolds={hasFolds}
+          hasPartition={hasPartition}
+          hasOutliers={hasOutliers}
+          metadataColumns={metadataColumns}
         />
 
         {/* Phase 6: Render mode selector */}

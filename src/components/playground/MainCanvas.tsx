@@ -37,7 +37,11 @@ import {
   RepetitionsChart,
   ChartSkeleton,
 } from './visualizations';
-import type { ExtendedColorConfig } from './visualizations/chartConfig';
+import {
+  type GlobalColorConfig,
+  type ColorContext,
+  DEFAULT_GLOBAL_COLOR_CONFIG,
+} from '@/lib/playground/colorConfig';
 import { SampleDetails } from './SampleDetails';
 import { PartitionSelector, type PartitionFilter, getPartitionIndices } from './PartitionSelector';
 import type { MetricFilter } from './MetricsFilterPanel';
@@ -177,8 +181,8 @@ export function MainCanvas({
   const selectedSample = externalSelectedSample ?? internalSelectedSample;
   const setSelectedSample = externalOnSelectSample ?? setInternalSelectedSample;
 
-  // Color configuration
-  const [colorConfig, setColorConfig] = useState<ExtendedColorConfig>({ mode: 'target' });
+  // Color configuration (unified global)
+  const [colorConfig, setColorConfig] = useState<GlobalColorConfig>(DEFAULT_GLOBAL_COLOR_CONFIG);
 
   // Partition filtering (Phase 3) - applies to all charts
   const [partitionFilter, setPartitionFilter] = useState<PartitionFilter>('all');
@@ -256,6 +260,7 @@ export function MainCanvas({
     selectedSamples,
     selectedCount,
     pinnedSamples: contextPinnedSamples,
+    hoveredSample: contextHoveredSample,
     clear: clearSelection,
   } = useSelection();
 
@@ -323,6 +328,32 @@ export function MainCanvas({
     return rawData?.y ?? [];
   }, [result, rawData]);
 
+  // Convert row-oriented metadata (SampleMetadata[]) to column-oriented format (Record<string, unknown[]>)
+  // This is needed because rawData.metadata is per-sample objects, but charts expect column arrays
+  const columnMetadata = useMemo((): Record<string, unknown[]> | undefined => {
+    if (!rawData?.metadata || !Array.isArray(rawData.metadata) || rawData.metadata.length === 0) {
+      return undefined;
+    }
+    // Get all unique keys from metadata objects
+    const keys = new Set<string>();
+    rawData.metadata.forEach(item => {
+      if (item && typeof item === 'object') {
+        Object.keys(item).forEach(key => keys.add(key));
+      }
+    });
+    // Convert to column format
+    const result: Record<string, unknown[]> = {};
+    keys.forEach(key => {
+      result[key] = rawData.metadata!.map(item => item?.[key] ?? null);
+    });
+    return Object.keys(result).length > 0 ? result : undefined;
+  }, [rawData?.metadata]);
+
+  // Get metadata column names
+  const metadataColumns = useMemo(() => {
+    return columnMetadata ? Object.keys(columnMetadata) : undefined;
+  }, [columnMetadata]);
+
   // Total sample count
   const totalSamples = useMemo(() => {
     return rawData?.spectra?.length ?? result?.processed?.spectra?.length ?? 0;
@@ -338,6 +369,51 @@ export function MainCanvas({
     if (partitionFilter === 'all') return yValues;
     return filteredIndices.map(i => yValues[i]).filter(v => v !== undefined);
   }, [partitionFilter, filteredIndices, yValues]);
+
+  // Compute color context for unified coloring system
+  const colorContext = useMemo<ColorContext>(() => {
+    // Compute train/test indices from folds
+    let trainIndices: Set<number> | undefined;
+    let testIndices: Set<number> | undefined;
+
+    if (result?.folds?.folds && result.folds.folds.length > 0) {
+      trainIndices = new Set<number>();
+      testIndices = new Set<number>();
+
+      // Combine train indices from all folds (they overlap, so use Set)
+      for (const fold of result.folds.folds) {
+        if (fold.train_indices) {
+          fold.train_indices.forEach(i => trainIndices!.add(i));
+        }
+        if (fold.test_indices) {
+          fold.test_indices.forEach(i => testIndices!.add(i));
+        }
+      }
+    }
+
+    // Get outlier indices
+    const outlierIndices = lastOutlierResult
+      ? new Set(lastOutlierResult.outlier_indices)
+      : undefined;
+
+    // Y value bounds
+    const yMin = yValues.length > 0 ? Math.min(...yValues) : 0;
+    const yMax = yValues.length > 0 ? Math.max(...yValues) : 1;
+
+    return {
+      y: yValues,
+      yMin,
+      yMax,
+      trainIndices,
+      testIndices,
+      foldLabels: result?.folds?.fold_labels,
+      metadata: columnMetadata,
+      outlierIndices,
+      selectedSamples,
+      pinnedSamples: contextPinnedSamples,
+      hoveredSample: contextHoveredSample,
+    };
+  }, [yValues, result?.folds, lastOutlierResult, columnMetadata, selectedSamples, contextPinnedSamples, contextHoveredSample]);
 
   // Compute grid layout
   const visibleCount = effectiveVisibleCharts.size;
@@ -473,7 +549,7 @@ export function MainCanvas({
         onPartitionFilterChange={setPartitionFilter}
         folds={result?.folds ?? null}
         totalSamples={totalSamples}
-        metadata={rawData?.metadata}
+        metadata={columnMetadata}
         metrics={metrics}
         metricFilters={metricFilters}
         onMetricFiltersChange={onMetricFiltersChange}
@@ -490,6 +566,7 @@ export function MainCanvas({
         enabledOperatorCount={enabledOperatorCount}
         colorConfig={colorConfig}
         onColorConfigChange={setColorConfig}
+        hasOutliers={!!lastOutlierResult && lastOutlierResult.outlier_indices.length > 0}
         displayRenderMode={displayRenderMode}
         effectiveRenderMode={effectiveMode}
         isWebGLActive={isWebGL}
@@ -527,12 +604,16 @@ export function MainCanvas({
                   y={yValues}
                   sampleIds={rawData.sampleIds}
                   folds={result.folds}
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
                   onInteractionStart={triggerInteractionPending}
                   isLoading={chartRedrawing}
                   operators={operators}
-                  metadata={rawData.metadata as Record<string, unknown[]> | undefined}
-                  metadataColumns={rawData.metadata ? Object.keys(rawData.metadata) : undefined}
+                  metadata={columnMetadata}
+                  metadataColumns={metadataColumns}
                   renderMode={effectiveMode}
+                  displayRenderMode={displayRenderMode}
+                  onRenderModeChange={handleRenderModeChange}
                   outlierIndices={lastOutlierResult ? new Set(lastOutlierResult.outlier_indices) : undefined}
                 />
               </ChartErrorBoundary>
@@ -553,12 +634,16 @@ export function MainCanvas({
                   y={yValues}
                   sampleIds={rawData.sampleIds}
                   folds={undefined}
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
                   onInteractionStart={triggerInteractionPending}
                   isLoading={chartRedrawing}
                   operators={operators}
-                  metadata={rawData.metadata as Record<string, unknown[]> | undefined}
-                  metadataColumns={rawData.metadata ? Object.keys(rawData.metadata) : undefined}
+                  metadata={columnMetadata}
+                  metadataColumns={metadataColumns}
                   renderMode={effectiveMode}
+                  displayRenderMode={displayRenderMode}
+                  onRenderModeChange={handleRenderModeChange}
                 />
               </ChartErrorBoundary>
             ) : (
@@ -604,7 +689,10 @@ export function MainCanvas({
                 <YHistogramV2
                   y={filteredYValues}
                   folds={result?.folds}
+                  metadata={columnMetadata}
                   useSelectionContext
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
                 />
               </ChartErrorBoundary>
             ) : (
@@ -631,7 +719,10 @@ export function MainCanvas({
                 <FoldDistributionChartV2
                   folds={result?.folds ?? null}
                   y={yValues}
+                  metadata={columnMetadata}
                   useSelectionContext
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
                 />
               </ChartErrorBoundary>
             )}
@@ -657,9 +748,12 @@ export function MainCanvas({
                   y={filteredYValues}
                   folds={result.folds}
                   sampleIds={rawData.sampleIds}
+                  metadata={columnMetadata}
                   useSelectionContext
                   onRequestUMAP={onComputeUmapChange ? () => onComputeUmapChange(true) : undefined}
                   isUMAPLoading={isUmapLoading}
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
                 />
               </ChartErrorBoundary>
             ) : (
@@ -681,9 +775,11 @@ export function MainCanvas({
             ) : result?.repetitions ? (
               <ChartErrorBoundary chartType="Repetitions">
                 <RepetitionsChart
-                  data={result.repetitions}
+                  repetitionData={result.repetitions}
                   y={yValues}
                   useSelectionContext
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
                 />
               </ChartErrorBoundary>
             ) : (

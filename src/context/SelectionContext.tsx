@@ -453,7 +453,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
 // ============= Context =============
 
-const SelectionContext = createContext<SelectionContextValue | undefined>(undefined);
+export const SelectionContext = createContext<SelectionContextValue | undefined>(undefined);
 
 // ============= Storage Helpers =============
 

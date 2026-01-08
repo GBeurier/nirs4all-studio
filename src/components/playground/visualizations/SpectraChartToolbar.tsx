@@ -1,21 +1,29 @@
 /**
- * SpectraChartToolbar - Minimal toolbar for SpectraChart
+ * SpectraChartToolbar - Toolbar for SpectraChart with quick access controls
  *
- * Phase 3 Implementation: Clean UI
+ * Phase 3 Implementation: Enhanced UI
  *
- * Minimal controls:
+ * Controls:
  * - Title and sample count
- * - Settings popup button (all controls in popup)
+ * - View mode toggle (icon dropdown)
+ * - Display mode toggle (icon dropdown)
+ * - Sampling controls (icon dropdown)
+ * - Render mode toggle (Canvas/WebGL)
+ * - Settings popup button (Focus & Filter)
  * - Export button
  */
 
-import { useState, useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import {
   Download,
   Layers,
   RefreshCw,
-  SlidersHorizontal,
   ZoomIn,
+  Eye,
+  LayoutGrid,
+  Shuffle,
+  Zap,
+  Monitor,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,12 +32,28 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 import { SpectraSettingsPopup } from './SpectraSettingsPopup';
 import type { UseSpectraChartConfigResult } from '@/lib/playground/useSpectraChartConfig';
 import type { SamplingResult } from '@/lib/playground/sampling';
 import type { UnifiedOperator } from '@/types/playground';
+import type { RenderMode } from '@/lib/playground/renderOptimizer';
+import type {
+  SpectraViewMode,
+  SpectraDisplayMode,
+  SamplingStrategy,
+} from '@/lib/playground/spectraConfig';
 
 // ============= Types =============
 
@@ -60,7 +84,40 @@ export interface SpectraChartToolbarProps {
   metadataColumns?: string[];
   /** Wavelength range for focus controls */
   wavelengthRange?: [number, number];
+  /** Wavelength count for settings */
+  wavelengthCount?: number;
+  /** Current render mode (user selection for UI display) */
+  renderMode?: RenderMode;
+  /** Effective render mode (actual mode being used for rendering) */
+  effectiveRenderMode?: RenderMode;
+  /** Callback when render mode changes */
+  onRenderModeChange?: (mode: RenderMode) => void;
 }
+
+// ============= Constants =============
+
+const VIEW_MODE_OPTIONS: { value: SpectraViewMode; label: string }[] = [
+  { value: 'processed', label: 'Processed' },
+  { value: 'original', label: 'Original' },
+  { value: 'both', label: 'Both' },
+  { value: 'difference', label: 'Difference' },
+];
+
+const DISPLAY_MODE_OPTIONS: { value: SpectraDisplayMode; label: string }[] = [
+  { value: 'individual', label: 'Individual' },
+  { value: 'selected_only', label: 'Selected Only' },
+  { value: 'aggregated', label: 'Aggregated' },
+  { value: 'grouped', label: 'Grouped' },
+];
+
+const SAMPLING_STRATEGY_OPTIONS: { value: SamplingStrategy; label: string }[] = [
+  { value: 'random', label: 'Random' },
+  { value: 'stratified', label: 'Stratified' },
+  { value: 'coverage', label: 'Coverage' },
+  { value: 'progressive', label: 'Progressive' },
+];
+
+const SAMPLE_COUNT_PRESETS = [25, 50, 100, 200, 500];
 
 // ============= Main Component =============
 
@@ -78,11 +135,12 @@ export function SpectraChartToolbar({
   operators,
   metadataColumns,
   wavelengthRange,
+  wavelengthCount,
+  renderMode = 'auto',
+  effectiveRenderMode,
+  onRenderModeChange,
 }: SpectraChartToolbarProps) {
   const { config } = configResult;
-
-  // Settings popup state
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Compute sample count description
   const sampleDescription = useMemo(() => {
@@ -92,20 +150,65 @@ export function SpectraChartToolbar({
     return `${totalSamples}`;
   }, [samplingResult, displayedSamples, totalSamples]);
 
-  // Count modified settings for badge
+  // Count modified settings for badge (focus/filter only now)
   const modifiedCount = useMemo(() => {
     let count = 0;
-    if (config.viewMode !== 'processed') count++;
-    if (config.aggregation.mode !== 'none') count++;
-    if (config.displayMode !== 'individual') count++;
-    if (config.colorConfig.mode !== 'sample') count++;
-    if (config.sampling.sampleCount !== 100) count++;
     if (config.wavelengthFocus.range) count++;
+    if (config.wavelengthFocus.derivative > 0) count++;
+    if (config.wavelengthFocus.edgeMask.enabled) count++;
+    if (config.filters.partition !== 'all') count++;
+    if (config.filters.targetRange) count++;
     return count;
   }, [config]);
 
+  // Handle view mode change
+  const handleViewModeChange = useCallback((mode: string) => {
+    onInteractionStart?.();
+    configResult.setViewMode(mode as SpectraViewMode);
+  }, [configResult, onInteractionStart]);
+
+  // Handle display mode change
+  const handleDisplayModeChange = useCallback((mode: string) => {
+    onInteractionStart?.();
+    configResult.setDisplayMode(mode as SpectraDisplayMode);
+
+    // Reset aggregation mode for individual/selected_only to ensure clean display
+    if (mode === 'individual' || mode === 'selected_only') {
+      configResult.setAggregationMode('none');
+    }
+    // For aggregated mode, ensure aggregation mode is set
+    else if (mode === 'aggregated' && config.aggregation.mode === 'none') {
+      configResult.setAggregationMode('mean_std');
+    }
+    // For grouped mode, set default groupBy if not already set and metadata columns are available
+    else if (mode === 'grouped') {
+      if (!config.aggregation.groupBy && metadataColumns && metadataColumns.length > 0) {
+        configResult.setGroupBy(metadataColumns[0]);
+      }
+      if (config.aggregation.mode === 'none') {
+        configResult.setAggregationMode('mean_std');
+      }
+    }
+  }, [configResult, config.aggregation.mode, config.aggregation.groupBy, metadataColumns, onInteractionStart]);
+
+  // Handle sampling strategy change
+  const handleSamplingStrategyChange = useCallback((strategy: string) => {
+    onInteractionStart?.();
+    configResult.setSamplingStrategy(strategy as SamplingStrategy);
+  }, [configResult, onInteractionStart]);
+
+  // Handle sample count change
+  const handleSampleCountChange = useCallback((value: number[]) => {
+    onInteractionStart?.();
+    configResult.setSampleCount(value[0]);
+  }, [configResult, onInteractionStart]);
+
+  // Get view mode label
+  const viewModeLabel = VIEW_MODE_OPTIONS.find(o => o.value === config.viewMode)?.label ?? 'Processed';
+  const displayModeLabel = DISPLAY_MODE_OPTIONS.find(o => o.value === config.displayMode)?.label ?? 'Individual';
+
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={300}>
       <div className={cn(
         'flex items-center justify-between gap-2',
         compact ? 'mb-1.5' : 'mb-2'
@@ -127,7 +230,7 @@ export function SpectraChartToolbar({
           )}
         </div>
 
-        {/* Right side - Minimal controls */}
+        {/* Right side - Controls */}
         <div className="flex items-center gap-1">
           {/* Reset zoom button (only when active) */}
           {brushActive && onResetBrush && (
@@ -147,25 +250,173 @@ export function SpectraChartToolbar({
             </Tooltip>
           )}
 
-          {/* Settings button with badge */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={settingsOpen ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-7 px-2 gap-1"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <SlidersHorizontal className="w-3 h-3" />
-                {modifiedCount > 0 && (
-                  <Badge variant="secondary" className="h-4 px-1 text-[9px] ml-0.5">
-                    {modifiedCount}
-                  </Badge>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Chart settings</TooltipContent>
-          </Tooltip>
+          {/* View Mode dropdown */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={config.viewMode !== 'processed' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>View: {viewModeLabel}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent side="bottom" align="start" className="w-36">
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">View Mode</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={config.viewMode} onValueChange={handleViewModeChange}>
+                {VIEW_MODE_OPTIONS.map(opt => (
+                  <DropdownMenuRadioItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Display Mode dropdown */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={config.displayMode !== 'individual' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Display: {displayModeLabel}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent side="bottom" align="start" className="w-36">
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">Display Mode</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={config.displayMode} onValueChange={handleDisplayModeChange}>
+                {DISPLAY_MODE_OPTIONS.map(opt => (
+                  <DropdownMenuRadioItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Sampling dropdown */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={config.sampling.sampleCount !== totalSamples ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Sampling: {config.sampling.sampleCount}/{totalSamples}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent side="bottom" align="start" className="w-48 p-3">
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground px-0">Strategy</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={config.sampling.strategy} onValueChange={handleSamplingStrategyChange}>
+                {SAMPLING_STRATEGY_OPTIONS.map(opt => (
+                  <DropdownMenuRadioItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground px-0 flex justify-between">
+                <span>Count</span>
+                <span className="font-mono">{config.sampling.sampleCount}/{totalSamples}</span>
+              </DropdownMenuLabel>
+              <div className="flex gap-1 flex-wrap mb-2 mt-1">
+                {SAMPLE_COUNT_PRESETS.filter(c => c <= totalSamples).map(count => (
+                  <Button
+                    key={count}
+                    variant={config.sampling.sampleCount === count ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-5 text-[9px] px-1.5"
+                    onClick={() => {
+                      onInteractionStart?.();
+                      configResult.setSampleCount(count);
+                    }}
+                  >
+                    {count}
+                  </Button>
+                ))}
+                <Button
+                  variant={config.sampling.sampleCount === totalSamples ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-5 text-[9px] px-1.5"
+                  onClick={() => {
+                    onInteractionStart?.();
+                    configResult.setSampleCount(totalSamples);
+                  }}
+                >
+                  All
+                </Button>
+              </div>
+              <Slider
+                value={[config.sampling.sampleCount]}
+                min={10}
+                max={Math.min(1000, totalSamples)}
+                step={10}
+                onValueChange={handleSampleCountChange}
+                className="w-full"
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Render Mode toggle (Canvas/WebGL) - two checkable icons */}
+          {onRenderModeChange && (
+            <div className="flex items-center border rounded-md">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={effectiveRenderMode === 'canvas' || renderMode === 'canvas' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0 rounded-r-none border-r"
+                    onClick={() => onRenderModeChange('canvas')}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Canvas renderer</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={effectiveRenderMode === 'webgl' || renderMode === 'webgl' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0 rounded-l-none"
+                    onClick={() => onRenderModeChange('webgl')}
+                  >
+                    <Zap className={cn("w-3.5 h-3.5", (effectiveRenderMode === 'webgl' || renderMode === 'webgl') && "text-yellow-500")} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>WebGL renderer (GPU accelerated)</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
+          {/* Settings button (Focus & Filter) - uses standalone mode with built-in trigger */}
+          <SpectraSettingsPopup
+            configResult={configResult}
+            operators={operators}
+            metadataColumns={metadataColumns}
+            wavelengthRange={wavelengthRange ?? [0, 1000]}
+            wavelengthCount={wavelengthCount ?? 100}
+            totalSamples={totalSamples}
+            onInteractionStart={onInteractionStart}
+            compact={compact}
+          />
 
           {/* Export button */}
           {onExport && (
@@ -174,10 +425,10 @@ export function SpectraChartToolbar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2"
+                  className="h-7 w-7 p-0"
                   onClick={onExport}
                 >
-                  <Download className="w-3 h-3" />
+                  <Download className="w-3.5 h-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Export chart</TooltipContent>
@@ -185,18 +436,6 @@ export function SpectraChartToolbar({
           )}
         </div>
       </div>
-
-      {/* Settings popup (all controls consolidated here) */}
-      <SpectraSettingsPopup
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        configResult={configResult}
-        operators={operators}
-        metadataColumns={metadataColumns}
-        wavelengthRange={wavelengthRange}
-        totalSamples={totalSamples}
-        onInteractionStart={onInteractionStart}
-      />
     </TooltipProvider>
   );
 }

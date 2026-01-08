@@ -180,10 +180,12 @@ export type FoldDistributionState = ChartState<FoldDistributionData>;
 export type RepetitionsChartState = ChartState<RepetitionsChartData>;
 
 // ============= Color Palettes =============
+// For new code, prefer using CATEGORICAL_PALETTES from '@/lib/playground/colorConfig'
 
 /**
  * Fold colors - distinct colors for cross-validation folds
  * Designed to be colorblind-friendly with high contrast
+ * @deprecated Consider using CATEGORICAL_PALETTES from '@/lib/playground/colorConfig' for unified palette system
  */
 export const FOLD_COLORS = [
   'hsl(173, 80%, 45%)', // Teal
@@ -207,6 +209,7 @@ export function getFoldColor(foldIndex: number): string {
 
 /**
  * Train/Test colors for fold visualization
+ * @deprecated Consider using PARTITION_COLORS from '@/lib/playground/colorConfig' for unified palette system
  */
 export const TRAIN_TEST_COLORS = {
   train: 'hsl(217, 70%, 50%)',
@@ -217,6 +220,7 @@ export const TRAIN_TEST_COLORS = {
 
 /**
  * Sample colors by target value (Y)
+ * @deprecated Use getContinuousColor from '@/lib/playground/colorConfig' instead
  */
 export function getSampleColorByY(
   yValue: number,
@@ -410,12 +414,17 @@ export const CHART_MARGINS = {
 } as const;
 
 // ============= Color Mode =============
+// DEPRECATED: Use GlobalColorConfig from '@/lib/playground/colorConfig' instead
 
 /**
  * Extended color modes including fold-based coloring
+ * @deprecated Use GlobalColorMode from '@/lib/playground/colorConfig' instead
  */
 export type ExtendedColorMode = 'target' | 'dataset' | 'metadata' | 'fold';
 
+/**
+ * @deprecated Use GlobalColorConfig from '@/lib/playground/colorConfig' instead
+ */
 export interface ExtendedColorConfig {
   mode: ExtendedColorMode;
   metadataKey?: string;
@@ -424,6 +433,7 @@ export interface ExtendedColorConfig {
 
 /**
  * Get sample color based on extended color configuration
+ * @deprecated Use getUnifiedSampleColor from '@/lib/playground/colorConfig' instead
  */
 export function getExtendedSampleColor(
   index: number,

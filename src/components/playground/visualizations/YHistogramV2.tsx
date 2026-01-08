@@ -71,6 +71,15 @@ import {
   formatYValue,
   FOLD_COLORS,
 } from './chartConfig';
+import {
+  type GlobalColorConfig,
+  type ColorContext,
+  getCategoricalColor,
+  getContinuousColor,
+  normalizeValue,
+  PARTITION_COLORS,
+  HIGHLIGHT_COLORS,
+} from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
 import type { FoldsInfo } from '@/types/playground';
 import { cn } from '@/lib/utils';
@@ -102,6 +111,10 @@ interface YHistogramV2Props {
   useSelectionContext?: boolean;
   /** Compact mode for smaller containers */
   compact?: boolean;
+  /** Global unified color configuration */
+  globalColorConfig?: GlobalColorConfig;
+  /** Color context with computed values for coloring */
+  colorContext?: ColorContext;
 }
 
 interface BinData {
@@ -235,6 +248,8 @@ export function YHistogramV2({
   isLoading = false,
   useSelectionContext = true,
   compact = false,
+  globalColorConfig,
+  colorContext,
 }: YHistogramV2Props) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<HistogramConfig>(DEFAULT_CONFIG);
@@ -515,6 +530,56 @@ export function YHistogramV2({
     if (isSelected) return 'hsl(var(--primary))';
     if (hasSelection) return 'hsl(var(--primary) / 0.2)';
 
+    // Use global color config if provided
+    if (globalColorConfig) {
+      const mode = globalColorConfig.mode;
+
+      if (mode === 'target') {
+        // Color by average Y value in bin
+        const t = normalizeValue(entry.binCenter, stats?.min ?? 0, stats?.max ?? 1);
+        return getContinuousColor(t, globalColorConfig.continuousPalette);
+      }
+
+      if (mode === 'fold' && uniqueFolds.length > 0) {
+        // Color by dominant fold in bin
+        const foldCounts = entry.foldCounts || {};
+        let maxFold = -1;
+        let maxCount = 0;
+        for (const [fold, count] of Object.entries(foldCounts)) {
+          if (count > maxCount) {
+            maxCount = count;
+            maxFold = parseInt(fold, 10);
+          }
+        }
+        return maxFold >= 0 ? getCategoricalColor(maxFold, globalColorConfig.categoricalPalette) : 'hsl(var(--primary) / 0.6)';
+      }
+
+      if (mode === 'partition') {
+        // Check if bin has more train or test samples
+        const trainCount = entry.samples.filter(s => colorContext?.trainIndices?.has(s)).length;
+        const testCount = entry.samples.filter(s => colorContext?.testIndices?.has(s)).length;
+        if (trainCount > testCount) return PARTITION_COLORS.train;
+        if (testCount > trainCount) return PARTITION_COLORS.test;
+        return 'hsl(var(--primary) / 0.6)';
+      }
+
+      if (mode === 'outlier' && colorContext?.outlierIndices) {
+        // Color by proportion of outliers in bin
+        const outlierCount = entry.samples.filter(s => colorContext.outlierIndices?.has(s)).length;
+        if (outlierCount > entry.samples.length / 2) return HIGHLIGHT_COLORS.outlier;
+        return 'hsl(var(--muted-foreground) / 0.6)';
+      }
+
+      if (mode === 'selection') {
+        return 'hsl(var(--muted-foreground) / 0.6)';
+      }
+
+      // Default to Y-based coloring for other modes
+      const t = normalizeValue(entry.binCenter, stats?.min ?? 0, stats?.max ?? 1);
+      return getContinuousColor(t, globalColorConfig.continuousPalette);
+    }
+
+    // Legacy behavior
     if (config.colorMode === 'fold' && uniqueFolds.length > 0) {
       // Color by dominant fold in bin
       const foldCounts = entry.foldCounts || {};
@@ -530,7 +595,7 @@ export function YHistogramV2({
     }
 
     return 'hsl(var(--primary) / 0.6)';
-  }, [selectedBins, hoveredBin, selectedSamples.size, config.colorMode, uniqueFolds]);
+  }, [selectedBins, hoveredBin, selectedSamples.size, config.colorMode, uniqueFolds, globalColorConfig, colorContext, stats]);
 
   // Check if we should show fold-based display modes
   const hasFolds = uniqueFolds.length > 0;

@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import {
   FileSpreadsheet,
   MoreVertical,
@@ -45,11 +44,6 @@ interface DatasetCardProps {
   onRelink?: (dataset: Dataset) => void;
   onAssignGroup?: (dataset: Dataset, groupId: string | null) => void;
 }
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
 
 /**
  * Get relative time string from ISO date
@@ -121,7 +115,7 @@ export function DatasetCard({
   const showRelinkAction = versionStatus === "missing" || dataset.status === "missing";
 
   return (
-    <motion.div variants={itemVariants}>
+    <div>
       <Card className="hover:shadow-md transition-shadow duration-200 hover:border-primary/30">
         <CardContent className="p-5">
           {/* Header */}
@@ -336,6 +330,6 @@ export function DatasetCard({
           )}
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }

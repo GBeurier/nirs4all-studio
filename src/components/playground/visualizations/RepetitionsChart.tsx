@@ -71,6 +71,13 @@ import {
   ANIMATION_CONFIG,
   formatYValue,
 } from './chartConfig';
+import {
+  type GlobalColorConfig,
+  type ColorContext,
+  getContinuousColor,
+  getCategoricalColor,
+  normalizeValue,
+} from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
 import type { RepetitionResult, RepetitionDataPoint } from '@/types/playground';
 import { cn } from '@/lib/utils';
@@ -97,6 +104,10 @@ interface RepetitionsChartProps {
   compact?: boolean;
   /** Callback to open repetition setup dialog */
   onConfigureRepetitions?: () => void;
+  /** Global color configuration (unified system) */
+  globalColorConfig?: GlobalColorConfig;
+  /** Color context data for unified color system */
+  colorContext?: ColorContext;
 }
 
 interface ChartConfig {
@@ -149,10 +160,21 @@ const DEFAULT_CONFIG: ChartConfig = {
 /**
  * Get color based on target Y value (viridis-like)
  */
-function getTargetColor(y: number, yMin: number, yMax: number): string {
+function getTargetColor(
+  y: number,
+  yMin: number,
+  yMax: number,
+  palette?: GlobalColorConfig['continuousPalette']
+): string {
   if (yMax === yMin) return 'hsl(180, 60%, 50%)';
-  const t = (y - yMin) / (yMax - yMin);
-  // Viridis-inspired: purple -> blue -> green -> yellow
+  const t = normalizeValue(y, yMin, yMax);
+
+  // Use unified palette if provided
+  if (palette) {
+    return getContinuousColor(t, palette);
+  }
+
+  // Default: Viridis-inspired: purple -> blue -> green -> yellow
   const hue = 270 - t * 210; // 270 (purple) -> 60 (yellow)
   const saturation = 60 + t * 20;
   const lightness = 35 + t * 25;
@@ -173,8 +195,15 @@ function getDistanceColor(distance: number, maxDistance: number): string {
 /**
  * Get color for bio sample (categorical)
  */
-function getBioSampleColor(index: number): string {
-  const hue = (index * 137.508) % 360; // Golden angle for good distribution
+function getBioSampleColor(
+  index: number,
+  palette?: GlobalColorConfig['categoricalPalette']
+): string {
+  if (palette) {
+    return getCategoricalColor(index, palette);
+  }
+  // Default: Golden angle for good distribution
+  const hue = (index * 137.508) % 360;
   return `hsl(${hue}, 60%, 50%)`;
 }
 
@@ -189,6 +218,8 @@ export function RepetitionsChart({
   y,
   compact = false,
   onConfigureRepetitions,
+  globalColorConfig,
+  colorContext,
 }: RepetitionsChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
@@ -288,10 +319,72 @@ export function RepetitionsChart({
 
   // Get point color based on color mode
   const getPointColor = useCallback((point: PlotDataPoint): string => {
+    const continuousPalette = globalColorConfig?.continuousPalette;
+    const categoricalPalette = globalColorConfig?.categoricalPalette;
+
+    // Use global color config mode when provided
+    if (globalColorConfig) {
+      const mode = globalColorConfig.mode;
+
+      switch (mode) {
+        case 'target':
+          if (point.targetY !== undefined) {
+            return getTargetColor(point.targetY, yRange.min, yRange.max, continuousPalette);
+          }
+          return 'hsl(var(--muted-foreground))';
+
+        case 'partition':
+          // Color by train/test
+          if (colorContext?.trainIndices?.has(point.sampleIndex)) {
+            return 'hsl(217, 70%, 50%)'; // Blue for train
+          }
+          if (colorContext?.testIndices?.has(point.sampleIndex)) {
+            return 'hsl(38, 92%, 50%)'; // Orange for test
+          }
+          return 'hsl(var(--muted-foreground))';
+
+        case 'fold':
+          // Color by fold label
+          const foldLabel = colorContext?.foldLabels?.[point.sampleIndex];
+          if (foldLabel !== undefined && foldLabel >= 0) {
+            return getCategoricalColor(foldLabel, categoricalPalette);
+          }
+          return 'hsl(var(--muted-foreground))';
+
+        case 'metadata':
+          // Color by metadata column
+          if (colorContext?.metadata && globalColorConfig.metadataKey) {
+            const values = colorContext.metadata[globalColorConfig.metadataKey];
+            const value = values?.[point.sampleIndex];
+            if (value !== undefined && value !== null) {
+              const uniqueValues = [...new Set(values.filter(v => v !== null && v !== undefined))];
+              const idx = uniqueValues.indexOf(value);
+              return getCategoricalColor(idx >= 0 ? idx : 0, categoricalPalette);
+            }
+          }
+          return 'hsl(var(--muted-foreground))';
+
+        case 'selection':
+          // Selected = primary, unselected = grey
+          return 'hsl(var(--muted-foreground))'; // Base color, selection handled by rendering
+
+        case 'outlier':
+          // Outlier = red, non-outlier = grey
+          if (colorContext?.outlierIndices?.has(point.sampleIndex)) {
+            return 'hsl(0, 70%, 55%)'; // Red for outliers
+          }
+          return 'hsl(var(--muted-foreground))';
+
+        default:
+          return 'hsl(var(--primary))';
+      }
+    }
+
+    // Legacy behavior using internal config.colorMode
     switch (config.colorMode) {
       case 'target':
         if (point.targetY !== undefined) {
-          return getTargetColor(point.targetY, yRange.min, yRange.max);
+          return getTargetColor(point.targetY, yRange.min, yRange.max, continuousPalette);
         }
         return 'hsl(var(--muted-foreground))';
 
@@ -299,16 +392,19 @@ export function RepetitionsChart({
         return getDistanceColor(point.y, maxDistance);
 
       case 'bio_sample':
-        return getBioSampleColor(point.x);
+        return getBioSampleColor(point.x, categoricalPalette);
 
       case 'rep_index':
+        if (categoricalPalette) {
+          return getCategoricalColor(point.repIndex, categoricalPalette);
+        }
         const hue = point.repIndex * 60; // Different hue per rep
         return `hsl(${hue}, 60%, 50%)`;
 
       default:
         return 'hsl(var(--primary))';
     }
-  }, [config.colorMode, yRange, maxDistance]);
+  }, [config.colorMode, yRange, maxDistance, globalColorConfig, colorContext]);
 
   // Handle point click
   const handlePointClick = useCallback((point: PlotDataPoint, event?: React.MouseEvent) => {
@@ -546,21 +642,23 @@ export function RepetitionsChart({
             </Select>
           )}
 
-          {/* Color mode selector */}
-          <Select
-            value={config.colorMode}
-            onValueChange={(v) => updateConfig({ colorMode: v as RepetitionColorMode })}
-          >
-            <SelectTrigger className="h-7 w-24 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="target">By Y</SelectItem>
-              <SelectItem value="distance">By Distance</SelectItem>
-              <SelectItem value="bio_sample">By Sample</SelectItem>
-              <SelectItem value="rep_index">By Rep #</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Color mode selector - only show when no global config provided */}
+          {!globalColorConfig && (
+            <Select
+              value={config.colorMode}
+              onValueChange={(v) => updateConfig({ colorMode: v as RepetitionColorMode })}
+            >
+              <SelectTrigger className="h-7 w-24 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="target">By Y</SelectItem>
+                <SelectItem value="distance">By Distance</SelectItem>
+                <SelectItem value="bio_sample">By Sample</SelectItem>
+                <SelectItem value="rep_index">By Rep #</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
 
           {/* Settings */}
           {renderSettingsDropdown()}

@@ -67,6 +67,17 @@ import {
   formatFoldLabel,
   formatYValue,
 } from './chartConfig';
+import {
+  type GlobalColorConfig,
+  type ColorContext,
+  getContinuousColor,
+  getCategoricalColor,
+  PARTITION_COLORS,
+  HIGHLIGHT_COLORS,
+  normalizeValue,
+  computeYBins,
+  getYBinIndex,
+} from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
 import type { FoldsInfo, FoldData, YStats } from '@/types/playground';
 import { cn } from '@/lib/utils';
@@ -95,6 +106,10 @@ interface FoldDistributionChartV2Props {
   useSelectionContext?: boolean;
   /** Compact mode */
   compact?: boolean;
+  /** Global color configuration (unified system) */
+  globalColorConfig?: GlobalColorConfig;
+  /** Color context data for unified color system */
+  colorContext?: ColorContext;
 }
 
 interface ChartConfig {
@@ -119,6 +134,8 @@ interface FoldCountData {
   testIndices: number[];
   trainYMean?: number;
   testYMean?: number;
+  // Stacked segment counts for different color modes
+  segments?: Record<string, number>;
 }
 
 interface FoldYData {
@@ -153,10 +170,19 @@ const DEFAULT_CONFIG: ChartConfig = {
 /**
  * Get color based on Y mean value (blue to red gradient)
  */
-function getYMeanColor(yMean: number, yMin: number, yMax: number): string {
+function getYMeanColor(
+  yMean: number,
+  yMin: number,
+  yMax: number,
+  palette?: GlobalColorConfig['continuousPalette']
+): string {
   if (yMax === yMin) return 'hsl(180, 60%, 50%)';
-  const t = (yMean - yMin) / (yMax - yMin);
-  const hue = 240 - t * 180; // Blue to red
+  const t = normalizeValue(yMean, yMin, yMax);
+  if (palette) {
+    return getContinuousColor(t, palette);
+  }
+  // Default blue to red
+  const hue = 240 - t * 180;
   return `hsl(${hue}, 70%, 50%)`;
 }
 
@@ -172,6 +198,8 @@ export function FoldDistributionChartV2({
   isLoading = false,
   useSelectionContext = true,
   compact = false,
+  globalColorConfig,
+  colorContext,
 }: FoldDistributionChartV2Props) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
@@ -185,12 +213,30 @@ export function FoldDistributionChartV2({
   const selectedFold = externalSelectedFold ?? internalSelectedFold;
   const handleSelectFold = onSelectFold ?? setInternalSelectedFold;
 
-  // Transform fold data for count visualization
+  // Determine effective color mode (global or internal)
+  const effectiveColorMode = globalColorConfig?.mode ?? 'partition';
+
+  // Compute Y bins for target mode
+  const yBins = useMemo(() => {
+    if (!y || y.length === 0) return [];
+    return computeYBins(y, 3); // Low, Medium, High
+  }, [y]);
+
+  // Get unique metadata values for metadata mode
+  const metadataCategories = useMemo(() => {
+    if (!globalColorConfig?.metadataKey || !colorContext?.metadata) return [];
+    const values = colorContext.metadata[globalColorConfig.metadataKey];
+    if (!values) return [];
+    return [...new Set(values.filter(v => v !== null && v !== undefined))].slice(0, 10) as string[];
+  }, [globalColorConfig?.metadataKey, colorContext?.metadata]);
+
+  // Transform fold data for count visualization with stacked segments
   const countData = useMemo<FoldCountData[]>(() => {
     if (!folds || !folds.folds) return [];
 
     return folds.folds.map((fold) => {
-      const total = fold.train_count + fold.test_count;
+      const allIndices = [...fold.train_indices, ...fold.test_indices];
+      const total = allIndices.length;
 
       // Calculate Y means for coloring
       let trainYMean: number | undefined;
@@ -212,6 +258,70 @@ export function FoldDistributionChartV2({
         }
       }
 
+      // Compute stacked segments based on color mode
+      const segments: Record<string, number> = {};
+
+      switch (effectiveColorMode) {
+        case 'partition':
+          segments.train = fold.train_count;
+          segments.test = fold.test_count;
+          break;
+
+        case 'target':
+          // Count samples in each Y bin
+          if (y && yBins.length > 0) {
+            yBins.forEach((bin, i) => {
+              segments[`bin_${i}`] = allIndices.filter(idx => {
+                const yVal = y[idx];
+                return yVal !== undefined && getYBinIndex(yVal, yBins) === i;
+              }).length;
+            });
+          }
+          break;
+
+        case 'fold':
+          // Just the total count (single color per fold)
+          segments.total = total;
+          break;
+
+        case 'outlier':
+          // Count outliers vs non-outliers
+          if (colorContext?.outlierIndices) {
+            segments.outlier = allIndices.filter(idx => colorContext.outlierIndices!.has(idx)).length;
+            segments.normal = total - segments.outlier;
+          } else {
+            segments.normal = total;
+          }
+          break;
+
+        case 'selection':
+          // Count selected vs unselected
+          segments.selected = allIndices.filter(idx => selectedSamples.has(idx)).length;
+          segments.unselected = total - segments.selected;
+          break;
+
+        case 'metadata':
+          // Count by metadata category
+          if (globalColorConfig?.metadataKey && colorContext?.metadata) {
+            const values = colorContext.metadata[globalColorConfig.metadataKey];
+            if (values) {
+              metadataCategories.forEach((cat, i) => {
+                segments[`meta_${i}`] = allIndices.filter(idx => values[idx] === cat).length;
+              });
+              // Count uncategorized
+              const categorized = Object.values(segments).reduce((a, b) => a + b, 0);
+              if (categorized < total) {
+                segments.other = total - categorized;
+              }
+            }
+          }
+          break;
+
+        default:
+          segments.train = fold.train_count;
+          segments.test = fold.test_count;
+      }
+
       return {
         fold: formatFoldLabel(fold.fold_index),
         foldIndex: fold.fold_index,
@@ -224,9 +334,10 @@ export function FoldDistributionChartV2({
         testIndices: fold.test_indices,
         trainYMean,
         testYMean,
+        segments,
       };
     });
-  }, [folds, y]);
+  }, [folds, y, effectiveColorMode, yBins, colorContext, selectedSamples, globalColorConfig?.metadataKey, metadataCategories]);
 
   // Transform fold data for Y distribution visualization
   const yData = useMemo<FoldYData[]>(() => {
@@ -274,40 +385,116 @@ export function FoldDistributionChartV2({
     return y.reduce((a, b) => a + b, 0) / y.length;
   }, [y]);
 
-  // Get bar color based on color mode
-  const getTrainColor = useCallback((entry: FoldCountData) => {
-    const isSelected = selectedFold === entry.foldIndex;
+  // Get train/test colors from unified config or fallback to legacy colors
+  const trainColor = globalColorConfig ? PARTITION_COLORS.train : TRAIN_TEST_COLORS.train;
+  const trainColorLight = globalColorConfig ? PARTITION_COLORS.trainLight : TRAIN_TEST_COLORS.trainLight;
+  const testColor = globalColorConfig ? PARTITION_COLORS.test : TRAIN_TEST_COLORS.test;
+  const testColorLight = globalColorConfig ? PARTITION_COLORS.testLight : TRAIN_TEST_COLORS.testLight;
 
-    switch (config.colorMode) {
-      case 'target_mean':
-        if (entry.trainYMean !== undefined) {
-          const color = getYMeanColor(entry.trainYMean, yRange.min, yRange.max);
-          return isSelected ? color : color.replace('50%)', '65%)');
-        }
-        return isSelected ? TRAIN_TEST_COLORS.train : TRAIN_TEST_COLORS.trainLight;
-
+  // Get segment keys for current color mode
+  const segmentKeys = useMemo(() => {
+    switch (effectiveColorMode) {
       case 'partition':
+        return ['train', 'test'];
+      case 'target':
+        return yBins.map((_, i) => `bin_${i}`);
+      case 'fold':
+        return ['total'];
+      case 'outlier':
+        return ['normal', 'outlier'];
+      case 'selection':
+        return ['unselected', 'selected'];
+      case 'metadata':
+        return [...metadataCategories.map((_, i) => `meta_${i}`), 'other'];
       default:
-        return isSelected ? TRAIN_TEST_COLORS.train : TRAIN_TEST_COLORS.trainLight;
+        return ['train', 'test'];
     }
-  }, [config.colorMode, selectedFold, yRange]);
+  }, [effectiveColorMode, yBins, metadataCategories]);
+
+  // Get color for a segment based on color mode
+  const getSegmentColor = useCallback((segmentKey: string, entry: FoldCountData): string => {
+    const palette = globalColorConfig?.continuousPalette ?? 'blue_red';
+    const catPalette = globalColorConfig?.categoricalPalette ?? 'default';
+    const isSelected = selectedFold === entry.foldIndex;
+    const opacity = isSelected ? '' : '99'; // Slightly transparent when not selected
+
+    switch (effectiveColorMode) {
+      case 'partition':
+        if (segmentKey === 'train') {
+          return isSelected ? trainColor : trainColorLight;
+        }
+        return isSelected ? testColor : testColorLight;
+
+      case 'target': {
+        // Color by Y bin using continuous palette
+        const binIdx = parseInt(segmentKey.replace('bin_', ''), 10);
+        const t = yBins.length > 1 ? binIdx / (yBins.length - 1) : 0.5;
+        return getContinuousColor(t, palette);
+      }
+
+      case 'fold':
+        // Each fold gets its categorical color
+        return getCategoricalColor(entry.foldIndex, catPalette);
+
+      case 'outlier':
+        if (segmentKey === 'outlier') {
+          return 'hsl(0, 70%, 55%)'; // Red for outliers
+        }
+        return 'hsl(var(--muted-foreground))';
+
+      case 'selection':
+        if (segmentKey === 'selected') {
+          return 'hsl(var(--primary))';
+        }
+        return 'hsl(var(--muted-foreground) / 0.4)';
+
+      case 'metadata': {
+        if (segmentKey === 'other') {
+          return 'hsl(var(--muted-foreground) / 0.5)';
+        }
+        const metaIdx = parseInt(segmentKey.replace('meta_', ''), 10);
+        return getCategoricalColor(metaIdx, catPalette);
+      }
+
+      default:
+        return 'hsl(var(--primary))';
+    }
+  }, [effectiveColorMode, globalColorConfig, selectedFold, trainColor, trainColorLight, testColor, testColorLight, yBins]);
+
+  // Get segment label for legend
+  const getSegmentLabel = useCallback((segmentKey: string): string => {
+    switch (effectiveColorMode) {
+      case 'partition':
+        return segmentKey === 'train' ? 'Train' : 'Test';
+      case 'target': {
+        const binIdx = parseInt(segmentKey.replace('bin_', ''), 10);
+        const labels = ['Low Y', 'Medium Y', 'High Y'];
+        return labels[binIdx] ?? `Bin ${binIdx + 1}`;
+      }
+      case 'fold':
+        return 'Samples';
+      case 'outlier':
+        return segmentKey === 'outlier' ? 'Outliers' : 'Normal';
+      case 'selection':
+        return segmentKey === 'selected' ? 'Selected' : 'Unselected';
+      case 'metadata': {
+        if (segmentKey === 'other') return 'Other';
+        const metaIdx = parseInt(segmentKey.replace('meta_', ''), 10);
+        return String(metadataCategories[metaIdx] ?? `Category ${metaIdx + 1}`);
+      }
+      default:
+        return segmentKey;
+    }
+  }, [effectiveColorMode, metadataCategories]);
+
+  // Legacy color functions for backward compatibility
+  const getTrainColor = useCallback((entry: FoldCountData) => {
+    return getSegmentColor('train', entry);
+  }, [getSegmentColor]);
 
   const getTestColor = useCallback((entry: FoldCountData) => {
-    const isSelected = selectedFold === entry.foldIndex;
-
-    switch (config.colorMode) {
-      case 'target_mean':
-        if (entry.testYMean !== undefined) {
-          const color = getYMeanColor(entry.testYMean, yRange.min, yRange.max);
-          return isSelected ? color : color.replace('50%)', '65%)');
-        }
-        return isSelected ? TRAIN_TEST_COLORS.test : TRAIN_TEST_COLORS.testLight;
-
-      case 'partition':
-      default:
-        return isSelected ? TRAIN_TEST_COLORS.test : TRAIN_TEST_COLORS.testLight;
-    }
-  }, [config.colorMode, selectedFold, yRange]);
+    return getSegmentColor('test', entry);
+  }, [getSegmentColor]);
 
   // Handle bar click - select samples in partition via SelectionContext
   const handleBarClick = useCallback((entry: FoldCountData, partition: 'train' | 'test', event?: React.MouseEvent) => {
@@ -414,18 +601,23 @@ export function FoldDistributionChartV2({
           Show Global Mean
         </DropdownMenuCheckboxItem>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Color By</DropdownMenuLabel>
+        {/* Only show internal color selector when no global config provided */}
+        {!globalColorConfig && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Color By</DropdownMenuLabel>
 
-        <DropdownMenuRadioGroup
-          value={config.colorMode}
-          onValueChange={(v) => updateConfig({ colorMode: v as FoldColorMode })}
-        >
-          <DropdownMenuRadioItem value="partition">Partition (Train/Test)</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="target_mean" disabled={!y || y.length === 0}>
-            Target Mean
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
+            <DropdownMenuRadioGroup
+              value={config.colorMode}
+              onValueChange={(v) => updateConfig({ colorMode: v as FoldColorMode })}
+            >
+              <DropdownMenuRadioItem value="partition">Partition (Train/Test)</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="target_mean" disabled={!y || y.length === 0}>
+                Target Mean
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -476,28 +668,24 @@ export function FoldDistributionChartV2({
             const entry = countData.find(d => d.fold === label);
             if (!entry) return null;
 
-            const trainSelected = getPartitionSelectedCount(entry, 'train');
-            const testSelected = getPartitionSelectedCount(entry, 'test');
-
             return (
               <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
-                <p className="font-medium mb-1">{label}</p>
+                <p className="font-medium mb-1">{label} ({entry.total} samples)</p>
                 <div className="space-y-1">
-                  <p className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TRAIN_TEST_COLORS.train }} />
-                    Train: {entry.train} ({entry.trainPct.toFixed(0)}%)
-                    {trainSelected > 0 && (
-                      <span className="text-primary ml-1">({trainSelected} sel)</span>
-                    )}
-                  </p>
-                  <p className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TRAIN_TEST_COLORS.test }} />
-                    Test: {entry.test} ({entry.testPct.toFixed(0)}%)
-                    {testSelected > 0 && (
-                      <span className="text-primary ml-1">({testSelected} sel)</span>
-                    )}
-                  </p>
-                  {entry.trainYMean !== undefined && (
+                  {segmentKeys.filter(k => (entry.segments?.[k] ?? 0) > 0).map((segKey) => {
+                    const count = entry.segments?.[segKey] ?? 0;
+                    const pct = entry.total > 0 ? (count / entry.total) * 100 : 0;
+                    return (
+                      <p key={segKey} className="flex items-center gap-1">
+                        <span
+                          className="w-2 h-2 rounded-sm"
+                          style={{ backgroundColor: getSegmentColor(segKey, entry) }}
+                        />
+                        {getSegmentLabel(segKey)}: {count} ({pct.toFixed(0)}%)
+                      </p>
+                    );
+                  })}
+                  {entry.trainYMean !== undefined && effectiveColorMode === 'partition' && (
                     <p className="text-muted-foreground mt-1">
                       Y Mean: Train {formatYValue(entry.trainYMean)}, Test {formatYValue(entry.testYMean ?? 0)}
                     </p>
@@ -513,47 +701,53 @@ export function FoldDistributionChartV2({
             verticalAlign="top"
             height={24}
             iconSize={10}
-            formatter={(value) => (
-              <span className="text-xs">{value === 'train' ? 'Train' : 'Test'}</span>
-            )}
+            formatter={(value) => {
+              // Extract segment key from dataKey like "segments.train" or just "train"
+              const segKey = value.startsWith('segments.') ? value.replace('segments.', '') : value;
+              return <span className="text-xs">{getSegmentLabel(segKey)}</span>;
+            }}
           />
         )}
 
-        <Bar
-          dataKey="train"
-          stackId="a"
-          cursor="pointer"
-          onClick={(data, index, event) => handleBarClick(countData[index], 'train', event as React.MouseEvent)}
-          {...ANIMATION_CONFIG}
-        >
-          {countData.map((entry) => (
-            <Cell
-              key={`train-${entry.foldIndex}`}
-              fill={getTrainColor(entry)}
-              opacity={selectedFold === null || selectedFold === entry.foldIndex ? 1 : 0.4}
-              stroke={selectedFold === entry.foldIndex ? 'hsl(var(--foreground))' : 'none'}
-              strokeWidth={selectedFold === entry.foldIndex ? 1 : 0}
-            />
-          ))}
-        </Bar>
-
-        <Bar
-          dataKey="test"
-          stackId="a"
-          cursor="pointer"
-          onClick={(data, index, event) => handleBarClick(countData[index], 'test', event as React.MouseEvent)}
-          {...ANIMATION_CONFIG}
-        >
-          {countData.map((entry) => (
-            <Cell
-              key={`test-${entry.foldIndex}`}
-              fill={getTestColor(entry)}
-              opacity={selectedFold === null || selectedFold === entry.foldIndex ? 1 : 0.4}
-              stroke={selectedFold === entry.foldIndex ? 'hsl(var(--foreground))' : 'none'}
-              strokeWidth={selectedFold === entry.foldIndex ? 1 : 0}
-            />
-          ))}
-        </Bar>
+        {/* Dynamic stacked bars based on color mode */}
+        {segmentKeys.map((segKey) => (
+          <Bar
+            key={segKey}
+            dataKey={`segments.${segKey}`}
+            name={`segments.${segKey}`}
+            stackId="a"
+            cursor="pointer"
+            onClick={(data, index, event) => {
+              // Use train/test click behavior for partition mode, otherwise general select
+              if (effectiveColorMode === 'partition') {
+                handleBarClick(countData[index], segKey as 'train' | 'test', event as React.MouseEvent);
+              } else {
+                // For other modes, select all samples in the fold
+                const entry = countData[index];
+                const indices = [...entry.trainIndices, ...entry.testIndices];
+                if (selectionCtx) {
+                  if (event && (event as React.MouseEvent).shiftKey) {
+                    selectionCtx.select(indices, 'add');
+                  } else {
+                    selectionCtx.select(indices, 'replace');
+                  }
+                }
+                handleSelectFold(selectedFold === entry.foldIndex ? null : entry.foldIndex);
+              }
+            }}
+            {...ANIMATION_CONFIG}
+          >
+            {countData.map((entry) => (
+              <Cell
+                key={`${segKey}-${entry.foldIndex}`}
+                fill={getSegmentColor(segKey, entry)}
+                opacity={selectedFold === null || selectedFold === entry.foldIndex ? 1 : 0.4}
+                stroke={selectedFold === entry.foldIndex ? 'hsl(var(--foreground))' : 'none'}
+                strokeWidth={selectedFold === entry.foldIndex ? 1 : 0}
+              />
+            ))}
+          </Bar>
+        ))}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -773,19 +967,21 @@ export function FoldDistributionChartV2({
       {!compact && (
         <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TRAIN_TEST_COLORS.train }} />
-              Train
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: TRAIN_TEST_COLORS.test }} />
-              Test
-            </span>
+            {/* Dynamic legend based on color mode */}
+            {countData.length > 0 && segmentKeys.slice(0, 6).map((segKey) => (
+              <span key={segKey} className="flex items-center gap-1">
+                <span
+                  className="w-2 h-2 rounded-sm"
+                  style={{ backgroundColor: getSegmentColor(segKey, countData[0]) }}
+                />
+                {getSegmentLabel(segKey)}
+              </span>
+            ))}
           </div>
 
           {selectedFold !== null && countData[selectedFold] && (
             <span>
-              {countData[selectedFold].fold}: {countData[selectedFold].train} train, {countData[selectedFold].test} test
+              {countData[selectedFold].fold}: {countData[selectedFold].total} samples
             </span>
           )}
 
@@ -797,17 +993,17 @@ export function FoldDistributionChartV2({
         </div>
       )}
 
-      {/* Color mode legend for target_mean mode */}
-      {config.colorMode === 'target_mean' && y && y.length > 0 && !compact && (
+      {/* Color mode gradient legend for target mode */}
+      {effectiveColorMode === 'target' && y && y.length > 0 && !compact && (
         <div className="flex items-center gap-2 mt-1 text-[10px]">
-          <span className="text-muted-foreground">Y Mean:</span>
+          <span className="text-muted-foreground">Y Value:</span>
           <div className="flex items-center gap-0.5">
-            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: 'hsl(240, 70%, 50%)' }} />
+            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(0, globalColorConfig?.continuousPalette ?? 'blue_red') }} />
             <span>Low</span>
           </div>
           <div className="w-12 h-2 rounded-sm bg-gradient-to-r from-blue-500 via-cyan-500 to-red-500" />
           <div className="flex items-center gap-0.5">
-            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: 'hsl(60, 70%, 50%)' }} />
+            <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: getContinuousColor(1, globalColorConfig?.continuousPalette ?? 'blue_red') }} />
             <span>High</span>
           </div>
         </div>

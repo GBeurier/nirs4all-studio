@@ -15,7 +15,7 @@
  * while maintaining full backward compatibility.
  */
 
-import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import {
   ComposedChart,
   Line,
@@ -24,7 +24,6 @@ import {
   YAxis,
   CartesianGrid,
   ResponsiveContainer,
-  Brush,
   Tooltip,
   ReferenceArea,
 } from 'recharts';
@@ -32,18 +31,17 @@ import { Loader2 } from 'lucide-react';
 import { exportChart } from '@/lib/chartExport';
 import {
   CHART_THEME,
-  STATISTICS_COLORS,
   CHART_MARGINS,
   ANIMATION_CONFIG,
-  getExtendedSampleColor,
   formatWavelength,
   FOLD_COLORS,
-  type ExtendedColorConfig,
 } from './chartConfig';
+import {
+  type GlobalColorConfig,
+  type ColorContext,
+  getBaseColor as getUnifiedBaseColor,
+} from '@/lib/playground/colorConfig';
 import { SpectraChartToolbar } from './SpectraChartToolbar';
-import { WavelengthRangePicker } from './WavelengthRangePicker';
-import { SpectraFilterPanel } from './SpectraFilterPanel';
-import { SpectraSettingsPopup } from './SpectraSettingsPopup';
 import { SpectraContextMenu } from './SpectraContextMenu';
 import {
   computeAggregatedStats,
@@ -64,24 +62,14 @@ import {
 import {
   filterWavelengths,
   computeDerivative,
-  type AggregationMode,
-  type SpectraColorMode,
 } from '@/lib/playground/spectraConfig';
-import { useSelection, SelectionContext } from '@/context/SelectionContext';
+import { SelectionContext } from '@/context/SelectionContext';
 import { SpectraWebGL } from './SpectraWebGL';
 import { Zap } from 'lucide-react';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { DataSection, FoldsInfo, UnifiedOperator } from '@/types/playground';
 
 // ============= Types =============
-
-interface HoveredLine {
-  displayIdx: number;
-  sampleIdx: number;
-  isOriginal: boolean;
-  value: number;
-  color: string;
-}
 
 export interface SpectraChartV2Props {
   /** Original data section from backend */
@@ -94,12 +82,10 @@ export interface SpectraChartV2Props {
   sampleIds?: string[];
   /** Fold information for fold coloring */
   folds?: FoldsInfo | null;
-  /** Color configuration */
-  colorConfig?: ExtendedColorConfig;
-  /** Currently selected sample (deprecated - use SelectionContext) */
-  selectedSample?: number | null;
-  /** Callback when sample is selected (deprecated - use SelectionContext) */
-  onSelectSample?: (index: number) => void;
+  /** Global unified color configuration */
+  globalColorConfig?: GlobalColorConfig;
+  /** Color context with computed values for coloring */
+  colorContext?: ColorContext;
   /** Callback when the user triggers a chart interaction */
   onInteractionStart?: () => void;
   /** Whether chart is in loading state */
@@ -118,8 +104,12 @@ export interface SpectraChartV2Props {
   metadata?: Record<string, unknown[]>;
   /** Callback when samples are selected via brush */
   onBrushSelect?: (indices: number[]) => void;
-  /** Render mode: 'canvas' for Recharts, 'webgl' for GPU-accelerated Three.js */
+  /** Effective render mode for actual rendering ('canvas' or 'webgl') */
   renderMode?: RenderMode;
+  /** Display render mode for UI (user's selection: 'auto', 'canvas', 'webgl') */
+  displayRenderMode?: RenderMode;
+  /** Callback when render mode changes */
+  onRenderModeChange?: (mode: RenderMode) => void;
   /** Outlier indices from pipeline operators (for outlier color mode) */
   outlierIndices?: Set<number>;
 }
@@ -132,9 +122,8 @@ export function SpectraChartV2({
   y,
   sampleIds,
   folds,
-  colorConfig,
-  selectedSample: externalSelectedSample,
-  onSelectSample: externalOnSelectSample,
+  globalColorConfig,
+  colorContext,
   onInteractionStart,
   isLoading = false,
   useSelectionContext = true,
@@ -145,26 +134,26 @@ export function SpectraChartV2({
   metadata,
   onBrushSelect,
   renderMode = 'canvas',
+  displayRenderMode,
+  onRenderModeChange,
   outlierIndices,
 }: SpectraChartV2Props) {
   const chartRef = useRef<HTMLDivElement>(null);
-
-  // Determine if we're in WebGL mode
-  const isWebGLMode = renderMode === 'webgl' || renderMode === 'webgl_aggregated';
 
   // Use external config or create internal one
   const internalConfig = useSpectraChartConfig();
   const configResult = externalConfig ?? internalConfig;
   const { config } = configResult;
 
+  // Determine if we're in WebGL mode
+  const isWebGLMode = renderMode === 'webgl' || renderMode === 'webgl_aggregated';
+
   // SelectionContext integration for cross-chart highlighting
   const fullSelectionCtx = React.useContext(SelectionContext);
   const selectionCtx = useSelectionContext ? fullSelectionCtx : null;
 
   // Determine effective selection state
-  const selectedSamples = useSelectionContext && selectionCtx
-    ? selectionCtx.selectedSamples
-    : new Set<number>(externalSelectedSample !== null && externalSelectedSample !== undefined ? [externalSelectedSample] : []);
+  const selectedSamples = selectionCtx?.selectedSamples ?? new Set<number>();
 
   const hoveredSample = selectionCtx?.hoveredSample ?? null;
   const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
@@ -179,9 +168,6 @@ export function SpectraChartV2({
     isSelecting: boolean;
   }>({ startWavelength: null, endWavelength: null, isSelecting: false });
 
-  // Hover state
-  const [hoveredLine, setHoveredLine] = useState<HoveredLine | null>(null);
-  const [hoverWavelength, setHoverWavelength] = useState<number | null>(null);
 
   // Get base wavelengths
   const baseWavelengths = useMemo(() => {
@@ -261,8 +247,8 @@ export function SpectraChartV2({
         totalSamples,
         sampledCount: selectedIndices.length,
         wasApplied: true,
-        strategy: 'manual' as const,
-      } as SamplingResult;
+        strategy: 'random', // Using 'random' as placeholder for manual selection
+      };
     }
 
     return applySampling(totalSamples, config.sampling, {
@@ -300,7 +286,8 @@ export function SpectraChartV2({
 
   // Get outlier samples - prefer prop from pipeline operators, fallback to spectral deviation
   const outlierSamples = useMemo((): Set<number> => {
-    if (config.colorConfig.mode !== 'outlier') return new Set();
+    // Check if outlier mode is enabled in global color config
+    if (globalColorConfig?.mode !== 'outlier') return new Set();
 
     // Use provided outlier indices from pipeline operators if available
     if (outlierIndices && outlierIndices.size > 0) {
@@ -343,7 +330,7 @@ export function SpectraChartV2({
     });
 
     return outliers;
-  }, [config.colorConfig.mode, outlierIndices, focusedData]);
+  }, [globalColorConfig?.mode, outlierIndices, focusedData]);
 
   // Original stats for 'both' mode
   const originalAggregatedStats: AggregatedStats | null = useMemo(() => {
@@ -417,8 +404,8 @@ export function SpectraChartV2({
           point[`${prefix}_mean`] = stats.mean[wIdx];
           point[`${prefix}_std_low`] = stats.mean[wIdx] - stats.std[wIdx];
           point[`${prefix}_std_high`] = stats.mean[wIdx] + stats.std[wIdx];
-          if (stats.quantileLow) point[`${prefix}_q_low`] = stats.quantileLow[wIdx];
-          if (stats.quantileHigh) point[`${prefix}_q_high`] = stats.quantileHigh[wIdx];
+          if (stats.quantileLower) point[`${prefix}_q_low`] = stats.quantileLower[wIdx];
+          if (stats.quantileUpper) point[`${prefix}_q_high`] = stats.quantileUpper[wIdx];
           if (stats.median) point[`${prefix}_median`] = stats.median[wIdx];
           point[`${prefix}_min`] = stats.min[wIdx];
           point[`${prefix}_max`] = stats.max[wIdx];
@@ -437,61 +424,53 @@ export function SpectraChartV2({
     );
   }, [chartData, brushDomain]);
 
+  // Build color context from props (used when globalColorConfig is provided)
+  const computedColorContext = useMemo<ColorContext>(() => {
+    // If colorContext is provided, use it directly
+    if (colorContext) return colorContext;
+
+    // Otherwise build from local props
+    const yValues = y ?? [];
+
+    // Gather train/test indices from all folds
+    let trainIndices: Set<number> | undefined;
+    let testIndices: Set<number> | undefined;
+
+    if (folds?.folds && folds.folds.length > 0) {
+      trainIndices = new Set<number>();
+      testIndices = new Set<number>();
+
+      for (const fold of folds.folds) {
+        if (fold.train_indices) {
+          fold.train_indices.forEach(i => trainIndices!.add(i));
+        }
+        if (fold.test_indices) {
+          fold.test_indices.forEach(i => testIndices!.add(i));
+        }
+      }
+    }
+
+    return {
+      y: yValues,
+      yMin: yValues.length > 0 ? Math.min(...yValues) : 0,
+      yMax: yValues.length > 0 ? Math.max(...yValues) : 1,
+      trainIndices,
+      testIndices,
+      foldLabels: folds?.fold_labels,
+      metadata,
+      outlierIndices: outlierSamples.size > 0 ? outlierSamples : undefined,
+    };
+  }, [colorContext, y, folds, metadata, outlierSamples]);
+
   // Get color for a sample based on stats (ignoring selection/pinning)
   const getBaseColor = useCallback((sampleIdx: number) => {
-    const colorMode = config.colorConfig.mode;
-    const yValues = y ?? [];
-    const foldLabels = folds?.fold_labels;
-
-    switch (colorMode) {
-      case 'selection':
-        return 'hsl(var(--muted-foreground))';
-
-      case 'fold':
-        if (foldLabels && foldLabels[sampleIdx] !== undefined) {
-          return FOLD_COLORS[foldLabels[sampleIdx] % FOLD_COLORS.length];
-        }
-        return 'hsl(var(--muted-foreground))';
-
-      case 'partition':
-        if (folds?.train_indices?.includes(sampleIdx)) {
-          return 'hsl(217, 70%, 50%)'; // Blue for train
-        } else if (folds?.test_indices?.includes(sampleIdx)) {
-          return 'hsl(38, 92%, 50%)'; // Orange for test
-        }
-        return 'hsl(var(--muted-foreground))';
-
-      case 'metadata': {
-        if (metadata && config.colorConfig.metadataKey) {
-          const metaValues = metadata[config.colorConfig.metadataKey] as (string | number)[] | undefined;
-          if (metaValues) {
-            const value = metaValues[sampleIdx];
-            const uniqueValues = [...new Set(metaValues)];
-            const valueIndex = uniqueValues.indexOf(value);
-            return FOLD_COLORS[valueIndex % FOLD_COLORS.length];
-          }
-        }
-        return 'hsl(var(--muted-foreground))';
-      }
-
-      case 'outlier':
-        if (outlierSamples.has(sampleIdx)) {
-          return 'hsl(0, 70%, 50%)'; // Red for outliers
-        }
-        return 'hsl(var(--muted-foreground))';
-
-      case 'target':
-      default:
-        return getExtendedSampleColor(
-          sampleIdx,
-          yValues,
-          foldLabels,
-          colorConfig,
-          undefined,
-          undefined
-        );
+    // Use unified color system
+    if (globalColorConfig) {
+      return getUnifiedBaseColor(sampleIdx, globalColorConfig, computedColorContext);
     }
-  }, [config.colorConfig, y, folds, metadata, outlierSamples, colorConfig]);
+    // Default fallback when no color config is provided
+    return 'hsl(var(--muted-foreground))';
+  }, [globalColorConfig, computedColorContext]);
 
   // Get color for a sample based on color config (including selection)
   const getColor = useCallback((displayIdx: number, isOriginal: boolean) => {
@@ -510,17 +489,19 @@ export function SpectraChartV2({
 
     // Dim non-selected samples when there's a selection
     if (hasSelection) {
-      const opacity = Math.round(config.colorConfig.unselectedOpacity * 255).toString(16).padStart(2, '0');
-      return `${baseColor}${opacity}`;
+      const opacity = config.colorConfig.unselectedOpacity;
+      // Use color-mix for CSS-variable-safe opacity blending
+      return `color-mix(in srgb, ${baseColor} ${Math.round(opacity * 100)}%, transparent)`;
     }
 
-    // Desaturate original spectra slightly when showing both
+    // Lighten original spectra slightly when showing both (to differentiate from processed)
+    // The dashed stroke pattern already differentiates them visually
     if (isOriginal && config.viewMode === 'both') {
-      return baseColor.replace(/50%\)/, '60%)').replace(/70%/, '50%');
+      return `color-mix(in srgb, ${baseColor} 70%, white)`;
     }
 
     return baseColor;
-  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.colorConfig, getBaseColor]);
+  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, getBaseColor]);
 
   // Compute sample colors for WebGL to match Canvas coloring
   const sampleColors = useMemo(() => {
@@ -568,22 +549,8 @@ export function SpectraChartV2({
           selectionCtx.select([sampleIdx], 'replace');
         }
       }
-    } else if (externalOnSelectSample) {
-      externalOnSelectSample(sampleIdx);
     }
-  }, [selectionCtx, externalOnSelectSample, displayIndices, selectedSamples]);
-
-  // Handle brush change (for zoom)
-  const handleBrushChange = useCallback((domain: { startIndex?: number; endIndex?: number }) => {
-    if (domain.startIndex !== undefined && domain.endIndex !== undefined) {
-      const startWl = chartData[domain.startIndex]?.wavelength as number | undefined;
-      const endWl = chartData[domain.endIndex]?.wavelength as number | undefined;
-      if (startWl !== undefined && endWl !== undefined) {
-        onInteractionStart?.();
-        setBrushDomain([startWl, endWl]);
-      }
-    }
-  }, [chartData, onInteractionStart]);
+  }, [selectionCtx, displayIndices, selectedSamples]);
 
   // Mousewheel zoom handler for canvas mode
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -790,12 +757,13 @@ export function SpectraChartV2({
 
     switch (criterion) {
       case 'fold': {
-        if (folds) {
-          const targetFold = folds[sampleIdx];
-          similarSamples = folds
-            .map((f, idx) => ({ f, idx }))
-            .filter(({ f }) => f === targetFold)
-            .map(({ idx }) => idx);
+        const foldLabels = folds?.fold_labels;
+        if (foldLabels && foldLabels.length > sampleIdx) {
+          const targetFold = foldLabels[sampleIdx];
+          similarSamples = foldLabels
+            .map((f: number, idx: number) => ({ f, idx }))
+            .filter(({ f }: { f: number }) => f === targetFold)
+            .map(({ idx }: { idx: number }) => idx);
         }
         break;
       }
@@ -837,7 +805,8 @@ export function SpectraChartV2({
   const showGroupedAggregation = config.displayMode === 'grouped' && groupedStats && groupKeys.length > 0;
 
   // Get legend items
-  const legendItems = useMemo(() => {
+  type LegendItem = { label: string; color: string; dashed?: boolean; isArea?: boolean };
+  const legendItems = useMemo((): LegendItem[] => {
     // Grouped mode legend
     if (showGroupedAggregation) {
       return groupKeys.map((key, idx) => ({
@@ -848,9 +817,9 @@ export function SpectraChartV2({
     }
 
     if (config.aggregation.mode !== 'none') {
-      return getAggregationLegendItems(config.aggregation.mode, config.viewMode === 'both');
+      return getAggregationLegendItems(config.aggregation.mode, config.viewMode === 'both') as LegendItem[];
     }
-    const items: Array<{ label: string; color: string; dashed?: boolean; isArea?: boolean }> = [];
+    const items: LegendItem[] = [];
     if (showProcessed) {
       items.push({ label: config.viewMode === 'difference' ? 'Difference' : 'Processed', color: 'hsl(var(--primary))' });
     }
@@ -862,50 +831,26 @@ export function SpectraChartV2({
 
   return (
     <div className="h-full flex flex-col relative" ref={chartRef}>
-      {/* Enhanced Toolbar */}
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <SpectraChartToolbar
-          configResult={configResult}
-          samplingResult={samplingResult}
-          totalSamples={totalSamples}
-          displayedSamples={displayedSamples}
-          isLoading={isLoading}
-          brushActive={!!brushDomain}
-          onResetBrush={handleResetBrush}
-          onExport={handleExport}
-          onInteractionStart={onInteractionStart}
-          compact={compact}
-          operators={operators}
-          metadataColumns={metadataColumns}
-          wavelengthRange={wavelengthRange}
-        />
-
-        {/* Secondary controls */}
-        <div className="flex items-center gap-1.5">
-          {/* Wavelength focus picker */}
-          <WavelengthRangePicker
-            config={config.wavelengthFocus}
-            onChange={configResult.updateWavelengthFocus}
-            wavelengthRange={wavelengthRange}
-            wavelengthCount={baseWavelengths.length}
-            onInteractionStart={onInteractionStart}
-            compact={compact}
-          />
-
-          {/* Filter panel */}
-          <SpectraFilterPanel
-            config={config.filters}
-            onChange={configResult.updateFilters}
-            folds={folds}
-            yRange={yRange}
-            metadataColumns={metadataColumns}
-            totalSamples={totalSamples}
-            filteredSamples={displayedSamples}
-            onInteractionStart={onInteractionStart}
-            compact={compact}
-          />
-        </div>
-      </div>
+      {/* Enhanced Toolbar with integrated settings */}
+      <SpectraChartToolbar
+        configResult={configResult}
+        samplingResult={samplingResult}
+        totalSamples={totalSamples}
+        displayedSamples={displayedSamples}
+        isLoading={isLoading}
+        brushActive={!!brushDomain}
+        onResetBrush={handleResetBrush}
+        onExport={handleExport}
+        onInteractionStart={onInteractionStart}
+        compact={compact}
+        operators={operators}
+        metadataColumns={metadataColumns}
+        wavelengthRange={wavelengthRange}
+        wavelengthCount={baseWavelengths.length}
+        renderMode={displayRenderMode ?? renderMode}
+        effectiveRenderMode={renderMode}
+        onRenderModeChange={onRenderModeChange}
+      />
 
       {/* Loading overlay */}
       {isLoading && (
@@ -920,7 +865,7 @@ export function SpectraChartV2({
         hoveredSample={hoveredSample}
         sampleIds={sampleIds}
         yValues={y}
-        folds={folds}
+        folds={folds?.fold_labels?.map(String)}
         onExportSamples={handleExportSamples}
         onSelectSimilar={handleSelectSimilar}
       >
@@ -939,13 +884,34 @@ export function SpectraChartV2({
                 WebGL
               </div>
               <SpectraWebGL
-                spectra={config.viewMode === 'original' ? original.spectra : focusedData.spectra}
-                originalSpectra={config.viewMode === 'both' ? original.spectra : undefined}
+                spectra={
+                  // For aggregated mode, render mean with std bands as spectra
+                  config.displayMode === 'aggregated' && aggregatedStats
+                    ? [
+                        aggregatedStats.mean,
+                        aggregatedStats.mean.map((v, i) => v + aggregatedStats.std[i]),
+                        aggregatedStats.mean.map((v, i) => v - aggregatedStats.std[i]),
+                      ]
+                    : // For grouped mode, render each group's mean spectrum
+                      config.displayMode === 'grouped' && groupedStats
+                        ? Array.from(groupedStats.values()).map(stats => stats.mean)
+                        : // For individual/selected_only, render normal spectra
+                          config.viewMode === 'original'
+                            ? original.spectra
+                            : focusedData.spectra
+                }
+                originalSpectra={config.viewMode === 'both' && config.displayMode !== 'aggregated' && config.displayMode !== 'grouped' ? original.spectra : undefined}
                 wavelengths={focusedData.wavelengths}
-                y={y}
-                visibleIndices={displayIndices}
-                sampleColors={sampleColors}
-                useSelectionContext={useSelectionContext}
+                y={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : y}
+                visibleIndices={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : displayIndices}
+                sampleColors={
+                  config.displayMode === 'grouped' && groupedStats
+                    ? Array.from(groupedStats.keys()).map((_, idx) => FOLD_COLORS[idx % FOLD_COLORS.length])
+                    : config.displayMode === 'aggregated'
+                      ? ['hsl(var(--primary))', 'hsl(var(--primary) / 0.3)', 'hsl(var(--primary) / 0.3)']
+                      : sampleColors
+                }
+                useSelectionContext={config.displayMode !== 'aggregated' && config.displayMode !== 'grouped' && useSelectionContext}
                 isLoading={isLoading}
                 className="absolute inset-0"
               />
@@ -989,15 +955,6 @@ export function SpectraChartV2({
                 fillOpacity={0.15}
               />
             )}
-
-            <Brush
-              dataKey="wavelength"
-              height={15}
-              stroke="hsl(var(--primary))"
-              fill="hsl(var(--muted))"
-              onChange={handleBrushChange}
-              data={chartData}
-            />
 
             {/* Grouped aggregation elements */}
             {showGroupedAggregation && groupKeys.map((groupKey, groupIdx) => {

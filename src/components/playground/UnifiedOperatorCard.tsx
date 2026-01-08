@@ -342,11 +342,14 @@ function NumericParamInput({
     onUpdate(paramKey, v);
   }, [paramKey, onUpdate]);
 
+  // Ensure we handle null/undefined values gracefully
+  const safeValue = typeof value === 'number' ? value : (isInt ? min : 0);
+
   const {
     value: localValue,
     onChange: onLocalChange,
     onValueCommit,
-  } = useSliderWithCommit(value, commitHandler);
+  } = useSliderWithCommit(safeValue, commitHandler);
 
   // Special handling for window_length (must be odd)
   const handleSliderChange = ([v]: number[]) => {
@@ -365,13 +368,19 @@ function NumericParamInput({
     onValueCommit(newValue);
   };
 
+  // Safe display value function
+  const getDisplayValue = () => {
+    if (localValue == null) return '-';
+    return isInt ? Math.round(localValue) : localValue.toFixed(2);
+  };
+
   return (
     <div>
       <Label className="text-xs text-muted-foreground">
-        {displayName}: {isInt ? Math.round(localValue) : localValue.toFixed(2)}
+        {displayName}: {getDisplayValue()}
       </Label>
       <Slider
-        value={[localValue]}
+        value={[localValue ?? safeValue]}
         onValueChange={handleSliderChange}
         onValueCommit={handleCommit}
         min={min}

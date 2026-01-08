@@ -75,6 +75,18 @@ import {
   type ExtendedColorMode,
   FOLD_COLORS,
 } from './chartConfig';
+import {
+  type GlobalColorConfig,
+  type ColorContext,
+  type ColorResult,
+  getBaseColor as getUnifiedBaseColor,
+  getUnifiedSampleColor,
+  getCategoricalColor,
+  getContinuousColor,
+  normalizeValue,
+  PARTITION_COLORS,
+  HIGHLIGHT_COLORS,
+} from '@/lib/playground/colorConfig';
 import type { PCAResult, FoldsInfo } from '@/types/playground';
 import { useSelection } from '@/context/SelectionContext';
 import {
@@ -115,8 +127,12 @@ interface DimensionReductionChartProps {
   metadata?: Record<string, unknown[]>;
   /** Spectral metrics for coloring */
   spectralMetrics?: Record<string, number[]>;
-  /** Color configuration */
+  /** Color configuration (legacy) */
   colorConfig?: ExtendedColorConfig;
+  /** Global color configuration (unified system) */
+  globalColorConfig?: GlobalColorConfig;
+  /** Color context data for unified color system */
+  colorContext?: ColorContext;
   /** Currently selected sample (deprecated - use SelectionContext) */
   selectedSample?: number | null;
   /** Callback when sample is selected (deprecated - use SelectionContext) */
@@ -191,6 +207,8 @@ export function DimensionReductionChart({
   metadata,
   spectralMetrics,
   colorConfig: externalColorConfig,
+  globalColorConfig,
+  colorContext: externalColorContext,
   selectedSample: externalSelectedSample,
   onSelectSample: externalOnSelectSample,
   isLoading = false,
@@ -325,8 +343,30 @@ export function DimensionReductionChart({
     };
   }, [chartData]);
 
+  // Computed color context (build from props or use external)
+  const computedColorContext = useMemo<ColorContext>(() => {
+    if (externalColorContext) return externalColorContext;
+
+    return {
+      y,
+      yMin: yRange.min,
+      yMax: yRange.max,
+      foldLabels: folds?.fold_labels ?? pca?.fold_labels,
+      metadata,
+      selectedSamples,
+      pinnedSamples,
+      hoveredSample,
+    };
+  }, [externalColorContext, y, yRange, folds, pca, metadata, selectedSamples, pinnedSamples, hoveredSample]);
+
   // Get point color - returns CSS-compatible colors (concrete HSL, no variables)
   const getPointColor = useCallback((point: DataPoint) => {
+    // Use unified color system if globalColorConfig is provided
+    if (globalColorConfig) {
+      return getUnifiedBaseColor(point.index, globalColorConfig, computedColorContext);
+    }
+
+    // Legacy color logic
     switch (config.colorMode) {
       case 'fold':
         if (point.foldLabel !== undefined && point.foldLabel >= 0) {
@@ -359,11 +399,17 @@ export function DimensionReductionChart({
         }
         return 'hsl(239, 84%, 67%)'; // Primary-like indigo
     }
-  }, [config.colorMode, config.metadataKey, chartData, yRange]);
+  }, [globalColorConfig, computedColorContext, config.colorMode, config.metadataKey, chartData, yRange]);
 
   // Get point color for 3D view - returns only parseable HSL colors (no CSS variables)
   // Three.js cannot parse CSS variables, so we use concrete color values
   const getPointColor3D = useCallback((point: DataPoint) => {
+    // Use unified color system if globalColorConfig is provided
+    if (globalColorConfig) {
+      return getUnifiedBaseColor(point.index, globalColorConfig, computedColorContext);
+    }
+
+    // Legacy color logic
     switch (config.colorMode) {
       case 'fold':
         if (point.foldLabel !== undefined && point.foldLabel >= 0) {
@@ -394,7 +440,7 @@ export function DimensionReductionChart({
         }
         return 'hsl(239, 84%, 67%)'; // Primary-like indigo fallback
     }
-  }, [config.colorMode, config.metadataKey, chartData, yRange]);
+  }, [globalColorConfig, computedColorContext, config.colorMode, config.metadataKey, chartData, yRange]);
 
   // Handle point click - Recharts Scatter onClick signature: (data, index, event)
   const handleClick = useCallback((data: unknown, _index: number, event: React.MouseEvent) => {
@@ -647,36 +693,41 @@ export function DimensionReductionChart({
           <DropdownMenuRadioItem value="large">Large</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Color By</DropdownMenuLabel>
-
-        <DropdownMenuRadioGroup
-          value={config.colorMode}
-          onValueChange={(v) => updateConfig({ colorMode: v as ColorMode })}
-        >
-          <DropdownMenuRadioItem value="target">Y Value</DropdownMenuRadioItem>
-          {uniqueFolds.length > 0 && (
-            <DropdownMenuRadioItem value="fold">Fold</DropdownMenuRadioItem>
-          )}
-          {metadataKeys.length > 0 && (
-            <DropdownMenuRadioItem value="metadata">Metadata</DropdownMenuRadioItem>
-          )}
-        </DropdownMenuRadioGroup>
-
-        {config.colorMode === 'metadata' && metadataKeys.length > 0 && (
+        {/* Only show internal color selector when no global config provided */}
+        {!globalColorConfig && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Metadata Field</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Color By</DropdownMenuLabel>
+
             <DropdownMenuRadioGroup
-              value={config.metadataKey || metadataKeys[0]}
-              onValueChange={(v) => updateConfig({ metadataKey: v })}
+              value={config.colorMode}
+              onValueChange={(v) => updateConfig({ colorMode: v as ColorMode })}
             >
-              {metadataKeys.slice(0, 10).map(key => (
-                <DropdownMenuRadioItem key={key} value={key}>
-                  {key}
-                </DropdownMenuRadioItem>
-              ))}
+              <DropdownMenuRadioItem value="target">Y Value</DropdownMenuRadioItem>
+              {uniqueFolds.length > 0 && (
+                <DropdownMenuRadioItem value="fold">Fold</DropdownMenuRadioItem>
+              )}
+              {metadataKeys.length > 0 && (
+                <DropdownMenuRadioItem value="metadata">Metadata</DropdownMenuRadioItem>
+              )}
             </DropdownMenuRadioGroup>
+
+            {config.colorMode === 'metadata' && metadataKeys.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground">Metadata Field</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={config.metadataKey || metadataKeys[0]}
+                  onValueChange={(v) => updateConfig({ metadataKey: v })}
+                >
+                  {metadataKeys.slice(0, 10).map(key => (
+                    <DropdownMenuRadioItem key={key} value={key}>
+                      {key}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </>
+            )}
           </>
         )}
       </DropdownMenuContent>
@@ -805,6 +856,21 @@ export function DimensionReductionChart({
           {...ANIMATION_CONFIG}
         >
           {chartData.map((entry) => {
+            // Use unified color system when globalColorConfig is provided
+            if (globalColorConfig) {
+              const colorResult = getUnifiedSampleColor(entry.index, globalColorConfig, computedColorContext);
+              return (
+                <Cell
+                  key={`cell-${entry.index}`}
+                  fill={colorResult.color}
+                  fillOpacity={colorResult.opacity}
+                  stroke={colorResult.stroke}
+                  strokeWidth={colorResult.strokeWidth ?? 0}
+                />
+              );
+            }
+
+            // Legacy color logic
             const isSelected = selectedSamples.has(entry.index);
             const isHovered = hoveredSample === entry.index;
             const isPinned = pinnedSamples.has(entry.index);

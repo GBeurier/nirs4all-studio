@@ -9,10 +9,22 @@
 
 import { useMemo, type ReactElement } from 'react';
 import { Area, Line } from 'recharts';
-import type { AggregationMode, AggregationConfig } from '@/lib/playground/spectraConfig';
+import { DEFAULT_QUANTILE_BANDS, type AggregationMode, type AggregationConfig, type QuantileBand } from '@/lib/playground/spectraConfig';
 import { STATISTICS_COLORS, CHART_THEME, ANIMATION_CONFIG } from './chartConfig';
 
 // ============= Types =============
+
+/**
+ * Computed quantile band data
+ */
+export interface ComputedQuantileBand {
+  /** Lower quantile values per wavelength */
+  lower: number[];
+  /** Upper quantile values per wavelength */
+  upper: number[];
+  /** Original band configuration */
+  config: QuantileBand;
+}
 
 /**
  * Aggregated statistics for a set of spectra
@@ -28,10 +40,12 @@ export interface AggregatedStats {
   min: number[];
   /** Per-wavelength max */
   max: number[];
-  /** Lower quantile (e.g., p5) */
+  /** Lower quantile (e.g., p5) - deprecated, use quantileBands */
   quantileLower: number[];
-  /** Upper quantile (e.g., p95) */
+  /** Upper quantile (e.g., p95) - deprecated, use quantileBands */
   quantileUpper: number[];
+  /** Multiple quantile bands with computed values */
+  quantileBands?: ComputedQuantileBand[];
   /** Sample count */
   n: number;
 }
@@ -55,7 +69,8 @@ export interface AggregationElementsProps {
  */
 export function computeAggregatedStats(
   spectra: number[][],
-  quantileRange: [number, number] = [0.05, 0.95]
+  quantileRange: [number, number] = [0.05, 0.95],
+  quantileBands: QuantileBand[] = DEFAULT_QUANTILE_BANDS
 ): AggregatedStats {
   if (!spectra || spectra.length === 0 || !spectra[0]) {
     return {
@@ -66,6 +81,7 @@ export function computeAggregatedStats(
       max: [],
       quantileLower: [],
       quantileUpper: [],
+      quantileBands: [],
       n: 0,
     };
   }
@@ -80,6 +96,13 @@ export function computeAggregatedStats(
   const max = new Array<number>(nWavelengths).fill(-Infinity);
   const quantileLower = new Array<number>(nWavelengths).fill(0);
   const quantileUpper = new Array<number>(nWavelengths).fill(0);
+
+  // Initialize computed quantile bands
+  const computedBands: ComputedQuantileBand[] = quantileBands.map(band => ({
+    lower: new Array<number>(nWavelengths).fill(0),
+    upper: new Array<number>(nWavelengths).fill(0),
+    config: band,
+  }));
 
   // For each wavelength, compute statistics
   for (let w = 0; w < nWavelengths; w++) {
@@ -117,11 +140,19 @@ export function computeAggregatedStats(
       ? (column[mid - 1] + column[mid]) / 2
       : column[mid];
 
-    // Quantiles
+    // Legacy quantiles (for backward compatibility)
     const lowerIdx = Math.floor(column.length * quantileRange[0]);
     const upperIdx = Math.floor(column.length * quantileRange[1]);
     quantileLower[w] = column[lowerIdx] ?? min[w];
     quantileUpper[w] = column[upperIdx] ?? max[w];
+
+    // Compute all quantile bands
+    for (const band of computedBands) {
+      const bandLowerIdx = Math.floor(column.length * band.config.lower);
+      const bandUpperIdx = Math.floor(column.length * band.config.upper);
+      band.lower[w] = column[bandLowerIdx] ?? min[w];
+      band.upper[w] = column[bandUpperIdx] ?? max[w];
+    }
   }
 
   return {
@@ -132,6 +163,7 @@ export function computeAggregatedStats(
     max,
     quantileLower,
     quantileUpper,
+    quantileBands: computedBands,
     n,
   };
 }
@@ -190,10 +222,20 @@ export function buildAggregationDataPoint(
 
     case 'median_quantiles':
       point[`${p}median`] = stats.median[wIdx];
+      // Legacy single quantile range
       point[`${p}quantileRange`] = [
         stats.quantileLower[wIdx],
         stats.quantileUpper[wIdx],
       ];
+      // Multiple quantile bands
+      if (stats.quantileBands) {
+        stats.quantileBands.forEach((band, bandIdx) => {
+          point[`${p}qBand${bandIdx}`] = [
+            band.lower[wIdx],
+            band.upper[wIdx],
+          ];
+        });
+      }
       break;
 
     case 'minmax':
@@ -226,6 +268,7 @@ export function getAggregationElements(
   mode: AggregationMode,
   prefix: string = '',
   showOriginal: boolean = false,
+  quantileBandCount: number = DEFAULT_QUANTILE_BANDS.length,
 ): ReactElement[] {
   const elements: ReactElement[] = [];
   const p = prefix;
@@ -289,19 +332,24 @@ export function getAggregationElements(
       break;
 
     case 'median_quantiles':
-      // Quantile band
-      elements.push(
-        <Area
-          key={`${p}quantileBand`}
-          type="monotone"
-          dataKey={`${p}quantileRange`}
-          stroke="none"
-          fill={STATISTICS_COLORS.p5p95}
-          fillOpacity={CHART_THEME.statisticsBandOpacity}
-          {...ANIMATION_CONFIG}
-          tooltipType="none"
-        />
-      );
+      // Render multiple quantile bands with graduated opacity (outer bands first)
+      for (let bandIdx = 0; bandIdx < quantileBandCount; bandIdx++) {
+        const bandConfig = DEFAULT_QUANTILE_BANDS[bandIdx];
+        if (bandConfig) {
+          elements.push(
+            <Area
+              key={`${p}qBand${bandIdx}`}
+              type="monotone"
+              dataKey={`${p}qBand${bandIdx}`}
+              stroke="none"
+              fill={STATISTICS_COLORS.p5p95}
+              fillOpacity={bandConfig.opacity}
+              {...ANIMATION_CONFIG}
+              tooltipType="none"
+            />
+          );
+        }
+      }
       // Median line
       elements.push(
         <Line
@@ -316,18 +364,24 @@ export function getAggregationElements(
       );
 
       if (showOriginal) {
-        elements.push(
-          <Area
-            key={`${origP}quantileBand`}
-            type="monotone"
-            dataKey={`${origP}QuantileRange`}
-            stroke="none"
-            fill={STATISTICS_COLORS.original}
-            fillOpacity={CHART_THEME.statisticsBandOpacity * 0.6}
-            {...ANIMATION_CONFIG}
-            tooltipType="none"
-          />
-        );
+        // Render original quantile bands
+        for (let bandIdx = 0; bandIdx < quantileBandCount; bandIdx++) {
+          const bandConfig = DEFAULT_QUANTILE_BANDS[bandIdx];
+          if (bandConfig) {
+            elements.push(
+              <Area
+                key={`${origP}qBand${bandIdx}`}
+                type="monotone"
+                dataKey={`${origP}qBand${bandIdx}`}
+                stroke="none"
+                fill={STATISTICS_COLORS.original}
+                fillOpacity={bandConfig.opacity * 0.6}
+                {...ANIMATION_CONFIG}
+                tooltipType="none"
+              />
+            );
+          }
+        }
         elements.push(
           <Line
             key={`${origP}medianLine`}
@@ -413,7 +467,8 @@ export function getAggregationElements(
  */
 export function getAggregationLegendItems(
   mode: AggregationMode,
-  showOriginal: boolean = false
+  showOriginal: boolean = false,
+  quantileBands: QuantileBand[] = DEFAULT_QUANTILE_BANDS
 ): Array<{ label: string; color: string; dashed?: boolean; isArea?: boolean }> {
   const items: Array<{ label: string; color: string; dashed?: boolean; isArea?: boolean }> = [];
 
@@ -425,7 +480,15 @@ export function getAggregationLegendItems(
 
     case 'median_quantiles':
       items.push({ label: 'Median', color: STATISTICS_COLORS.median });
-      items.push({ label: 'p5–p95', color: STATISTICS_COLORS.p5p95, isArea: true });
+      // Show legend for multiple quantile bands
+      if (quantileBands.length > 0) {
+        const labels = quantileBands.map(b =>
+          `p${Math.round(b.lower * 100)}–p${Math.round(b.upper * 100)}`
+        ).join(', ');
+        items.push({ label: labels, color: STATISTICS_COLORS.p5p95, isArea: true });
+      } else {
+        items.push({ label: 'p5–p95', color: STATISTICS_COLORS.p5p95, isArea: true });
+      }
       break;
 
     case 'minmax':

@@ -32,11 +32,13 @@ export type SpectraDisplayMode = 'individual' | 'selected_only' | 'aggregated' |
 
 /**
  * Color mode for spectra visualization
+ * @deprecated Use GlobalColorMode from '@/lib/playground/colorConfig' instead
  */
 export type SpectraColorMode = 'target' | 'fold' | 'partition' | 'metadata' | 'selection' | 'outlier';
 
 /**
  * Coloring configuration for spectra
+ * @deprecated Use GlobalColorConfig from '@/lib/playground/colorConfig' instead
  */
 export interface SpectraColorConfig {
   /** Primary color mode */
@@ -53,6 +55,7 @@ export interface SpectraColorConfig {
 
 /**
  * Default spectra color configuration
+ * @deprecated Use DEFAULT_GLOBAL_COLOR_CONFIG from '@/lib/playground/colorConfig' instead
  */
 export const DEFAULT_SPECTRA_COLOR_CONFIG: SpectraColorConfig = {
   mode: 'target',
@@ -118,14 +121,36 @@ export const DEFAULT_SAMPLING_CONFIG: SamplingConfig = {
 export type AggregationMode = 'none' | 'mean_std' | 'median_quantiles' | 'minmax' | 'density';
 
 /**
+ * Quantile band configuration for multiple quantile display
+ */
+export interface QuantileBand {
+  /** Lower quantile (0-0.5) */
+  lower: number;
+  /** Upper quantile (0.5-1) */
+  upper: number;
+  /** Opacity for this band (0-1) */
+  opacity: number;
+}
+
+/**
+ * Default quantile bands with graduated opacity
+ */
+export const DEFAULT_QUANTILE_BANDS: QuantileBand[] = [
+  { lower: 0.05, upper: 0.95, opacity: 0.1 },
+  { lower: 0.25, upper: 0.75, opacity: 0.2 },
+];
+
+/**
  * Configuration for aggregation display
  */
 export interface AggregationConfig {
   mode: AggregationMode;
   /** Auto-switch to aggregation above this sample count */
   autoThreshold: number;
-  /** Quantile range for median_quantiles mode (default: [0.05, 0.95]) */
+  /** Quantile range for median_quantiles mode (default: [0.05, 0.95]) - deprecated, use quantileBands */
   quantileRange?: [number, number];
+  /** Multiple quantile bands with different opacities */
+  quantileBands?: QuantileBand[];
   /** Group by metadata field for grouped aggregates */
   groupBy?: string;
   /** Whether to show individual lines behind aggregation */
@@ -139,6 +164,7 @@ export const DEFAULT_AGGREGATION_CONFIG: AggregationConfig = {
   mode: 'none',
   autoThreshold: 200,
   quantileRange: [0.05, 0.95],
+  quantileBands: DEFAULT_QUANTILE_BANDS,
   showIndividualLines: false,
 };
 
