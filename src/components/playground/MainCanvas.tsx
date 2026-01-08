@@ -59,6 +59,7 @@ import {
   useFilterOptional,
   type FilterDataContext,
 } from '@/context/FilterContext';
+import { useReferenceDatasetOptional } from '@/context/ReferenceDatasetContext';
 import {
   useRenderOptimizer,
   type RenderMode,
@@ -204,7 +205,7 @@ export function MainCanvas({
   // Phase 6 props
   renderMode: _externalRenderMode,
   onRenderModeChange,
-  datasetId: _datasetId,
+  datasetId,
   lastOutlierResult,
 }: MainCanvasProps) {
   // ============= View Context (Phase 2) =============
@@ -301,6 +302,9 @@ export function MainCanvas({
 
   // Filter context (Phase 4) - centralized filtering
   const filterContext = useFilterOptional();
+
+  // Phase 6: Reference dataset context
+  const referenceCtx = useReferenceDatasetOptional();
 
   // Local fallback for partition filter (used when not in FilterProvider)
   const [localPartitionFilter, setLocalPartitionFilter] = useState<PartitionFilter>('all');
@@ -699,6 +703,7 @@ export function MainCanvas({
         activeStep={activeStep}
         onActiveStepChange={handleActiveStepChange}
         enabledOperatorCount={enabledOperatorCount}
+        currentDatasetId={datasetId}
         colorConfig={colorConfig}
         onColorConfigChange={setColorConfig}
         hasOutliers={!!lastOutlierResult && lastOutlierResult.outlier_indices.length > 0}
@@ -763,6 +768,8 @@ export function MainCanvas({
                 displayRenderMode={displayRenderMode}
                 onRenderModeChange={handleRenderModeChange}
                 outlierIndices={lastOutlierResult ? new Set(lastOutlierResult.outlier_indices) : undefined}
+                referenceDataset={referenceCtx?.referenceResult?.processed}
+                referenceLabel={referenceCtx?.referenceInfo?.datasetName}
               />
             ) : rawData ? (
               <SpectraChartV2
@@ -789,6 +796,8 @@ export function MainCanvas({
                 renderMode={effectiveMode}
                 displayRenderMode={displayRenderMode}
                 onRenderModeChange={handleRenderModeChange}
+                referenceDataset={referenceCtx?.referenceResult?.processed}
+                referenceLabel={referenceCtx?.referenceInfo?.datasetName}
               />
             ) : (
               <ChartSkeleton type="spectra" />
@@ -910,6 +919,8 @@ export function MainCanvas({
                 isUMAPLoading={isUmapLoading}
                 globalColorConfig={colorConfig}
                 colorContext={colorContext}
+                referencePca={referenceCtx?.referenceResult?.pca}
+                referenceLabel={referenceCtx?.referenceInfo?.datasetName}
               />
             ) : (
               <ChartSkeleton type="pca" />

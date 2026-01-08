@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Play, 
-  Pause, 
-  Square, 
-  Clock, 
-  CheckCircle2, 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Play,
+  Pause,
+  Square,
+  Clock,
+  CheckCircle2,
   AlertCircle,
   RefreshCw,
   Eye,
@@ -21,101 +23,20 @@ import {
   Plus,
   BarChart3,
   Target,
+  FolderOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
 import { Run, DatasetRun, PipelineRun, RunStatus, runStatusConfig } from "@/types/runs";
-
-// Mock runs data - in production this would come from the API/WebSocket
-const mockRuns: Run[] = [
-  {
-    id: "1",
-    name: "Wheat Protein Optimization",
-    status: "running",
-    created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-    started_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-    datasets: [
-      {
-        dataset_id: "wheat_nir",
-        dataset_name: "wheat_nir.csv",
-        pipelines: [
-          { id: "1-1", pipeline_id: "snv_pls", pipeline_name: "SNV + PLS(10)", model: "PLS", preprocessing: "SNV", split_strategy: "KFold(5)", status: "completed", progress: 100, metrics: { r2: 0.967, rmse: 0.42 } },
-          { id: "1-2", pipeline_id: "msc_pls", pipeline_name: "MSC + PLS(8)", model: "PLS", preprocessing: "MSC", split_strategy: "KFold(5)", status: "running", progress: 65 },
-          { id: "1-3", pipeline_id: "sg_svr", pipeline_name: "SG(1) + SVR", model: "SVR", preprocessing: "SG", split_strategy: "KFold(5)", status: "queued", progress: 0 },
-        ]
-      },
-      {
-        dataset_id: "wheat_moisture",
-        dataset_name: "wheat_moisture.csv",
-        pipelines: [
-          { id: "1-4", pipeline_id: "snv_pls", pipeline_name: "SNV + PLS(10)", model: "PLS", preprocessing: "SNV", split_strategy: "KFold(5)", status: "completed", progress: 100, metrics: { r2: 0.943, rmse: 0.51 } },
-          { id: "1-5", pipeline_id: "msc_pls", pipeline_name: "MSC + PLS(8)", model: "PLS", preprocessing: "MSC", split_strategy: "KFold(5)", status: "queued", progress: 0 },
-        ]
-      }
-    ]
-  },
-  {
-    id: "2",
-    name: "Corn Moisture Grid Search",
-    status: "queued",
-    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    datasets: [
-      {
-        dataset_id: "corn_moisture",
-        dataset_name: "corn_moisture.csv",
-        pipelines: [
-          { id: "2-1", pipeline_id: "snv_pls", pipeline_name: "SNV + PLS", model: "PLS", preprocessing: "SNV", split_strategy: "KFold(10)", status: "queued", progress: 0 },
-          { id: "2-2", pipeline_id: "msc_rf", pipeline_name: "MSC + RF", model: "RF", preprocessing: "MSC", split_strategy: "KFold(10)", status: "queued", progress: 0 },
-        ]
-      }
-    ]
-  },
-  {
-    id: "3",
-    name: "Multi-Product Analysis",
-    status: "completed",
-    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    started_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    completed_at: new Date(Date.now() - 75 * 60 * 1000).toISOString(),
-    duration: "45 min",
-    datasets: [
-      {
-        dataset_id: "soybean_oil",
-        dataset_name: "soybean_oil.csv",
-        pipelines: [
-          { id: "3-1", pipeline_id: "snv_cnn", pipeline_name: "SNV + CNN1D", model: "CNN", preprocessing: "SNV", split_strategy: "Train/Test", status: "completed", progress: 100, metrics: { r2: 0.938, rmse: 0.61 } },
-          { id: "3-2", pipeline_id: "msc_rf", pipeline_name: "MSC + RF", model: "RF", preprocessing: "MSC", split_strategy: "Train/Test", status: "completed", progress: 100, metrics: { r2: 0.925, rmse: 0.67 } },
-        ]
-      },
-      {
-        dataset_id: "dairy_fat",
-        dataset_name: "dairy_fat.spc",
-        pipelines: [
-          { id: "3-3", pipeline_id: "snv_multipls", pipeline_name: "SNV + MultiPLS", model: "PLS", preprocessing: "SNV", split_strategy: "KFold(5)", status: "completed", progress: 100, metrics: { r2: 0.972, rmse: 0.35 } },
-        ]
-      }
-    ]
-  },
-  {
-    id: "4",
-    name: "Rice Quality PLS",
-    status: "failed",
-    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    started_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    duration: "12 min",
-    datasets: [
-      {
-        dataset_id: "rice_quality",
-        dataset_name: "rice_quality.jdx",
-        pipelines: [
-          { id: "4-1", pipeline_id: "msc_pls", pipeline_name: "MSC + PLS(10)", model: "PLS", preprocessing: "MSC", split_strategy: "KFold(5)", status: "failed", progress: 35, error_message: "Dataset format incompatible with JCAMP-DX parser. Check file encoding." },
-        ]
-      }
-    ]
-  },
-];
+import {
+  listRuns,
+  getRunStats,
+  getLinkedWorkspaces,
+  getN4AWorkspaceRuns
+} from "@/api/client";
+import type { DiscoveredRun } from "@/types/linked-workspaces";
 
 const statusIcons = {
   queued: Clock,
@@ -125,8 +46,11 @@ const statusIcons = {
   paused: Pause,
 };
 
-function formatTimeAgo(dateString: string): string {
+function formatTimeAgo(dateString: string | null): string {
+  if (!dateString) return "Unknown";
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "Unknown";
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -139,12 +63,125 @@ function formatTimeAgo(dateString: string): string {
   return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
 }
 
+/**
+ * Convert discovered runs from workspace to the Run type used by the UI.
+ * Groups runs by config_name (run name) and creates pipelines for each.
+ */
+function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRun[]): Run[] {
+  // Group by config_name/name - each discovered run represents a pipeline execution
+  const runMap = new Map<string, Run>();
+
+  for (const dr of discoveredRuns) {
+    const runId = dr.name || dr.id;
+
+    if (!runMap.has(runId)) {
+      // Create new run
+      runMap.set(runId, {
+        id: runId,
+        name: dr.name || dr.id,
+        status: "completed" as RunStatus, // Discovered runs are historical/completed
+        created_at: dr.created_at || new Date().toISOString(),
+        datasets: [],
+      });
+    }
+
+    const run = runMap.get(runId)!;
+
+    // Find or create the dataset entry
+    let datasetRun = run.datasets.find(d => d.dataset_id === dr.dataset);
+    if (!datasetRun) {
+      datasetRun = {
+        dataset_id: dr.dataset,
+        dataset_name: dr.dataset,
+        pipelines: [],
+      };
+      run.datasets.push(datasetRun);
+    }
+
+    // Add pipeline entry
+    const pipeline: PipelineRun = {
+      id: dr.pipeline_id || dr.id,
+      pipeline_id: dr.pipeline_id || dr.id,
+      pipeline_name: dr.name,
+      model: dr.models?.[0] || "Unknown",
+      preprocessing: "-",
+      split_strategy: "-",
+      status: "completed",
+      progress: 100,
+      metrics: dr.best_val_score != null || dr.best_test_score != null ? {
+        r2: dr.best_val_score ?? dr.best_test_score ?? 0,
+        rmse: 0, // Not available in discovered runs
+      } : undefined,
+    };
+
+    datasetRun.pipelines.push(pipeline);
+  }
+
+  return Array.from(runMap.values());
+}
+
 export default function Runs() {
-  const [runs] = useState<Run[]>(mockRuns);
-  const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set(["1"]));
-  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set(["1-wheat_nir"]));
+  const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
+  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Fetch linked workspaces
+  const { data: workspacesData } = useQuery({
+    queryKey: ["linked-workspaces"],
+    queryFn: getLinkedWorkspaces,
+    staleTime: 30000,
+  });
+
+  // Get active workspace ID
+  const activeWorkspaceId = workspacesData?.active_workspace_id;
+
+  // Fetch runs from in-memory store (active/ongoing runs)
+  const {
+    data: activeRunsData,
+    isLoading: isLoadingActive
+  } = useQuery({
+    queryKey: ["runs"],
+    queryFn: listRuns,
+    staleTime: 5000, // Refresh more frequently for active runs
+    refetchInterval: 10000, // Poll for updates on running experiments
+  });
+
+  // Fetch run stats
+  const { data: statsData } = useQuery({
+    queryKey: ["run-stats"],
+    queryFn: getRunStats,
+    staleTime: 10000,
+    refetchInterval: 15000,
+  });
+
+  // Fetch discovered runs from active workspace (historical runs)
+  const {
+    data: discoveredRunsData,
+    isLoading: isLoadingDiscovered
+  } = useQuery({
+    queryKey: ["workspace-runs", activeWorkspaceId],
+    queryFn: () => activeWorkspaceId ? getN4AWorkspaceRuns(activeWorkspaceId) : Promise.resolve({ runs: [], total: 0, workspace_id: "" }),
+    enabled: !!activeWorkspaceId,
+    staleTime: 60000,
+  });
+
+  // Combine active runs with discovered historical runs
+  const runs = useMemo(() => {
+    const activeRuns = activeRunsData?.runs || [];
+    const discoveredRuns = discoveredRunsData?.runs || [];
+
+    // Convert discovered runs to Run format
+    const historicalRuns = convertDiscoveredRunsToRuns(discoveredRuns);
+
+    // Merge, with active runs taking precedence
+    const activeRunIds = new Set(activeRuns.map(r => r.id));
+    const uniqueHistoricalRuns = historicalRuns.filter(r => !activeRunIds.has(r.id));
+
+    return [...activeRuns, ...uniqueHistoricalRuns];
+  }, [activeRunsData, discoveredRunsData]);
+
+  const isLoading = isLoadingActive || isLoadingDiscovered;
 
   const openRunDetails = (run: Run, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -170,13 +207,16 @@ export default function Runs() {
     });
   };
 
-  const runningCount = runs.filter(r => r.status === "running").length;
-  const queuedCount = runs.filter(r => r.status === "queued").length;
-  const completedCount = runs.filter(r => r.status === "completed").length;
-  const failedCount = runs.filter(r => r.status === "failed").length;
-  const totalPipelines = runs.reduce((acc, r) => acc + r.datasets.reduce((a, d) => a + d.pipelines.length, 0), 0);
+  // Calculate stats from combined runs or use API stats
+  const runningCount = statsData?.running ?? runs.filter(r => r.status === "running").length;
+  const queuedCount = statsData?.queued ?? runs.filter(r => r.status === "queued").length;
+  const completedCount = statsData?.completed ?? runs.filter(r => r.status === "completed").length;
+  const failedCount = statsData?.failed ?? runs.filter(r => r.status === "failed").length;
+  const totalPipelines = statsData?.total_pipelines ?? runs.reduce((acc, r) => acc + r.datasets.reduce((a, d) => a + d.pipelines.length, 0), 0);
 
-  const getRunStats = (run: Run) => {
+  const hasActiveWorkspace = !!activeWorkspaceId;
+
+  const computeRunStats = (run: Run) => {
     const pipelineCount = run.datasets.reduce((acc, d) => acc + d.pipelines.length, 0);
     const models = new Set(run.datasets.flatMap(d => d.pipelines.map(p => p.model)));
     const completedPipelines = run.datasets.flatMap(d => d.pipelines).filter(p => p.status === "completed").length;
@@ -266,7 +306,49 @@ export default function Runs() {
 
       {/* Runs List */}
       <div className="space-y-4">
-        {runs.length === 0 ? (
+        {isLoading ? (
+          // Loading skeleton
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <Skeleton className="h-10 w-10 rounded-lg" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-5 w-48" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                    <Skeleton className="h-8 w-24" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : !hasActiveWorkspace ? (
+          // No workspace linked
+          <Card>
+            <CardContent className="p-12">
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted/50 mb-4">
+                  <FolderOpen className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  No workspace linked
+                </h3>
+                <p className="text-muted-foreground max-w-md mb-6">
+                  Link a nirs4all workspace to see your runs and training results.
+                  Go to Settings to link a workspace directory.
+                </p>
+                <Button asChild variant="outline">
+                  <Link to="/settings">
+                    <FolderOpen className="mr-2 h-4 w-4" />
+                    Link Workspace
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : runs.length === 0 ? (
           <Card>
             <CardContent className="p-12">
               <div className="flex flex-col items-center justify-center text-center">
@@ -293,7 +375,7 @@ export default function Runs() {
           runs.map((run) => {
             const StatusIcon = statusIcons[run.status];
             const config = runStatusConfig[run.status];
-            const { pipelineCount, modelCount, completedPipelines } = getRunStats(run);
+            const { pipelineCount, modelCount, completedPipelines } = computeRunStats(run);
             const isExpanded = expandedRuns.has(run.id);
             const progress = getRunProgress(run);
 
@@ -310,12 +392,12 @@ export default function Runs() {
                             <ChevronRight className="h-5 w-5 text-muted-foreground" />
                           )}
                           <div className={`p-2 rounded-lg ${config.bg}`}>
-                            <StatusIcon 
+                            <StatusIcon
                               className={cn(
                                 "h-5 w-5",
                                 config.color,
                                 config.iconClass
-                              )} 
+                              )}
                             />
                           </div>
                           <div>
@@ -378,9 +460,9 @@ export default function Runs() {
                               Retry
                             </Button>
                           )}
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={(e) => openRunDetails(run, e)}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -407,9 +489,9 @@ export default function Runs() {
                         const completedInDataset = datasetRun.pipelines.filter(p => p.status === "completed").length;
 
                         return (
-                          <Collapsible 
-                            key={datasetKey} 
-                            open={isDatasetExpanded} 
+                          <Collapsible
+                            key={datasetKey}
+                            open={isDatasetExpanded}
                             onOpenChange={() => toggleDataset(datasetKey)}
                           >
                             <CollapsibleTrigger asChild>
@@ -435,17 +517,17 @@ export default function Runs() {
                                   const PipelineStatusIcon = statusIcons[pipeline.status];
                                   const pipelineConfig = runStatusConfig[pipeline.status];
                                   return (
-                                    <div 
+                                    <div
                                       key={pipeline.id}
                                       className="flex items-center justify-between p-3 rounded-lg border bg-card"
                                     >
                                       <div className="flex items-center gap-3">
-                                        <PipelineStatusIcon 
+                                        <PipelineStatusIcon
                                           className={cn(
                                             "h-4 w-4",
                                             pipelineConfig.color,
                                             pipelineConfig.iconClass
-                                          )} 
+                                          )}
                                         />
                                         <code className="text-xs bg-accent px-1.5 py-0.5 rounded">
                                           {pipeline.pipeline_name}
@@ -468,7 +550,7 @@ export default function Runs() {
                                           </div>
                                         )}
                                         {pipeline.status === "completed" && (
-                                          <Link 
+                                          <Link
                                             to={`/predictions?config=${encodeURIComponent(pipeline.pipeline_name)}&dataset=${encodeURIComponent(datasetRun.dataset_name)}`}
                                             className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
                                             onClick={(e) => e.stopPropagation()}
@@ -542,10 +624,10 @@ export default function Runs() {
         </Card>
       )}
 
-      <RunDetailSheet 
-        run={selectedRun} 
-        open={sheetOpen} 
-        onOpenChange={setSheetOpen} 
+      <RunDetailSheet
+        run={selectedRun}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
       />
     </div>
   );

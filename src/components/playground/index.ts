@@ -65,3 +65,4 @@ export type { DisplayFiltersProps } from './DisplayFilters';
 // Phase 6: Performance & Polish components
 export { SavedSelections } from './SavedSelections';
 export { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+export { ReferenceModeControls } from './ReferenceModeControls';

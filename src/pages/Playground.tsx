@@ -19,6 +19,7 @@ import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/componen
 import { SelectionProvider } from '@/context/SelectionContext';
 import { PlaygroundViewProvider } from '@/context/PlaygroundViewContext';
 import { FilterProvider } from '@/context/FilterContext';
+import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
 import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
@@ -306,7 +307,8 @@ export default function Playground() {
     <PlaygroundViewProvider>
       <SelectionProvider>
         <FilterProvider>
-          <PlaygroundContent
+          <ReferenceDatasetProvider primaryData={rawData} operators={operators}>
+            <PlaygroundContent
             // Data
             rawData={rawData}
             dataLoading={dataLoading}
@@ -363,6 +365,7 @@ export default function Playground() {
             selectedSample={selectedSample}
             setSelectedSample={setSelectedSample}
           />
+          </ReferenceDatasetProvider>
         </FilterProvider>
       </SelectionProvider>
     </PlaygroundViewProvider>

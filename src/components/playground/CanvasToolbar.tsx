@@ -55,6 +55,7 @@ import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
 import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
 import { SavedSelections } from './SavedSelections';
 import { SelectionFilters } from './SelectionFilters';
+import { ReferenceModeControls } from './ReferenceModeControls';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo } from '@/types/playground';
 import {
@@ -133,6 +134,10 @@ export interface CanvasToolbarProps {
   activeStep: number;
   onActiveStepChange?: (step: number) => void;
   enabledOperatorCount: number;
+
+  // Phase 6: Reference mode
+  /** Current dataset ID for reference picker exclusion */
+  currentDatasetId?: string;
 
   // Color mode
   colorConfig: GlobalColorConfig;
@@ -367,6 +372,7 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   activeStep,
   onActiveStepChange,
   enabledOperatorCount,
+  currentDatasetId,
   colorConfig,
   onColorConfigChange,
   hasOutliers = false,
@@ -559,7 +565,21 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           </>
         )}
 
-        {/* Step comparison slider (compact) - only show when there are operators */}
+        {/* Phase 6: Reference Mode Controls */}
+        {hasOperators && (
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <ReferenceModeControls
+              stepComparisonEnabled={stepComparisonEnabled}
+              onDisableStepComparison={() => onStepComparisonEnabledChange?.(false)}
+              currentDatasetId={currentDatasetId}
+              onInteractionStart={onInteractionStart}
+              compact
+            />
+          </>
+        )}
+
+        {/* Step comparison slider (compact) - only show when there are operators and in step mode */}
         {hasOperators && onStepComparisonEnabledChange && (
           <StepComparisonSlider
             operators={operators}

@@ -112,6 +112,11 @@ export interface SpectraChartV2Props {
   onRenderModeChange?: (mode: RenderMode) => void;
   /** Outlier indices from pipeline operators (for outlier color mode) */
   outlierIndices?: Set<number>;
+  // Phase 6: Reference dataset comparison
+  /** Reference dataset for comparison (processed data from another dataset) */
+  referenceDataset?: DataSection | null;
+  /** Label for the reference dataset */
+  referenceLabel?: string;
 }
 
 // ============= Main Component =============
@@ -137,6 +142,8 @@ export function SpectraChartV2({
   displayRenderMode,
   onRenderModeChange,
   outlierIndices,
+  referenceDataset,
+  referenceLabel = 'Reference',
 }: SpectraChartV2Props) {
   const chartRef = useRef<HTMLDivElement>(null);
 
@@ -392,6 +399,17 @@ export function SpectraChartV2({
         });
       }
 
+      // Phase 6: Add reference dataset lines
+      if (referenceDataset?.spectra && referenceDataset.spectra.length > 0) {
+        const refSpectra = referenceDataset.spectra;
+        const maxRefSamples = Math.min(refSpectra.length, displayIndices.length);
+        for (let rIdx = 0; rIdx < maxRefSamples; rIdx++) {
+          if (refSpectra[rIdx] && refSpectra[rIdx][wIdx] !== undefined) {
+            point[`r${rIdx}`] = refSpectra[rIdx][wIdx];
+          }
+        }
+      }
+
       // Add aggregation data
       if (aggregatedStats && config.aggregation.mode !== 'none' && config.displayMode !== 'grouped') {
         const aggPoint = buildAggregationDataPoint(wavelength, wIdx, aggregatedStats, config.aggregation.mode, '');
@@ -421,7 +439,7 @@ export function SpectraChartV2({
 
       return point;
     });
-  }, [focusedData, displayIndices, config.aggregation.mode, config.aggregation.showIndividualLines, config.viewMode, config.displayMode, aggregatedStats, originalAggregatedStats, original.spectra, groupedStats]);
+  }, [focusedData, displayIndices, config.aggregation.mode, config.aggregation.showIndividualLines, config.viewMode, config.displayMode, aggregatedStats, originalAggregatedStats, original.spectra, groupedStats, referenceDataset]);
 
   // Filter data by brush domain
   const filteredData = useMemo(() => {
@@ -846,7 +864,12 @@ export function SpectraChartV2({
     }
 
     if (config.aggregation.mode !== 'none') {
-      return getAggregationLegendItems(config.aggregation.mode, config.viewMode === 'both') as LegendItem[];
+      const aggItems = getAggregationLegendItems(config.aggregation.mode, config.viewMode === 'both') as LegendItem[];
+      // Add reference dataset to aggregation legend
+      if (referenceDataset?.spectra && referenceDataset.spectra.length > 0) {
+        aggItems.push({ label: referenceLabel, color: CHART_THEME.referenceLineColor, dashed: true });
+      }
+      return aggItems;
     }
     const items: LegendItem[] = [];
     if (showProcessed) {
@@ -855,8 +878,12 @@ export function SpectraChartV2({
     if (showOriginal && config.viewMode === 'both') {
       items.push({ label: 'Original', color: 'hsl(var(--primary))', dashed: true });
     }
+    // Phase 6: Add reference dataset to legend
+    if (referenceDataset?.spectra && referenceDataset.spectra.length > 0) {
+      items.push({ label: referenceLabel, color: CHART_THEME.referenceLineColor, dashed: true });
+    }
     return items;
-  }, [config.aggregation.mode, config.viewMode, showProcessed, showOriginal, showGroupedAggregation, groupKeys]);
+  }, [config.aggregation.mode, config.viewMode, showProcessed, showOriginal, showGroupedAggregation, groupKeys, referenceDataset, referenceLabel]);
 
   return (
     <div className="h-full flex flex-col relative" ref={chartRef}>
@@ -1114,6 +1141,22 @@ export function SpectraChartV2({
                 />
               );
             })}
+
+            {/* Phase 6: Reference dataset spectra (dashed, distinct color) */}
+            {referenceDataset?.spectra && referenceDataset.spectra.slice(0, displayIndices.length).map((_spectrum, rIdx) => (
+              <Line
+                key={`ref-${rIdx}`}
+                type="monotone"
+                dataKey={`r${rIdx}`}
+                stroke={CHART_THEME.referenceLineColor}
+                strokeWidth={CHART_THEME.lineStrokeWidth}
+                strokeDasharray={CHART_THEME.referenceDashArray}
+                strokeOpacity={CHART_THEME.referenceLineOpacity}
+                dot={false}
+                activeDot={false}
+                {...ANIMATION_CONFIG}
+              />
+            ))}
 
             <Tooltip
               content={() => null}

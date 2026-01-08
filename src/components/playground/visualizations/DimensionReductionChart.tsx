@@ -142,6 +142,11 @@ interface DimensionReductionChartProps {
   isUMAPLoading?: boolean;
   /** Compact mode */
   compact?: boolean;
+  // Phase 6: Reference dataset
+  /** Reference PCA result for comparison */
+  referencePca?: PCAResult | null;
+  /** Label for reference dataset */
+  referenceLabel?: string;
 }
 
 interface DataPoint {
@@ -210,6 +215,8 @@ export function DimensionReductionChart({
   onRequestUMAP,
   isUMAPLoading = false,
   compact = false,
+  referencePca,
+  referenceLabel = 'Reference',
 }: DimensionReductionChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -314,6 +321,27 @@ export function DimensionReductionChart({
       return point;
     });
   }, [activeResult, config.xAxis, config.yAxis, config.zAxis, sampleIds, y, pca, folds, metadata]);
+
+  // Phase 6: Build reference dataset chart data
+  const referenceChartData = useMemo<DataPoint[]>(() => {
+    if (!referencePca?.coordinates || referencePca.coordinates.length === 0) {
+      return [];
+    }
+
+    const xIdx = parseInt(config.xAxis.replace('dim', ''), 10) - 1;
+    const yIdx = parseInt(config.yAxis.replace('dim', ''), 10) - 1;
+    const zIdx = parseInt(config.zAxis.replace('dim', ''), 10) - 1;
+
+    return referencePca.coordinates.map((coords, i) => ({
+      x: coords[xIdx] ?? 0,
+      y: coords[yIdx] ?? 0,
+      z: coords[zIdx],
+      index: i,
+      name: `${referenceLabel} ${i + 1}`,
+      yValue: referencePca.y?.[i],
+      foldLabel: referencePca.fold_labels?.[i],
+    }));
+  }, [referencePca, config.xAxis, config.yAxis, config.zAxis, referenceLabel]);
 
   // Debug logging for data flow
   if (process.env.NODE_ENV === 'development') {
@@ -885,6 +913,24 @@ export function DimensionReductionChart({
             );
           })}
         </Scatter>
+
+        {/* Phase 6: Reference dataset scatter points */}
+        {referenceChartData.length > 0 && (
+          <Scatter
+            data={referenceChartData}
+            fill={CHART_THEME.referenceLineColor}
+            shape="diamond"
+            {...ANIMATION_CONFIG}
+          >
+            {referenceChartData.map((entry) => (
+              <Cell
+                key={`ref-cell-${entry.index}`}
+                fill={CHART_THEME.referenceLineColor}
+                fillOpacity={CHART_THEME.referenceLineOpacity}
+              />
+            ))}
+          </Scatter>
+        )}
       </ScatterChart>
     </ResponsiveContainer>
   );
@@ -1054,6 +1100,20 @@ export function DimensionReductionChart({
               {uniqueFolds.length > 5 && (
                 <span>+{uniqueFolds.length - 5} more</span>
               )}
+            </div>
+          )}
+
+          {/* Phase 6: Reference dataset legend */}
+          {referenceChartData.length > 0 && (
+            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border/50">
+              <span
+                className="w-2 h-2"
+                style={{
+                  backgroundColor: CHART_THEME.referenceLineColor,
+                  clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+                }}
+              />
+              <span>{referenceLabel}</span>
             </div>
           )}
         </div>

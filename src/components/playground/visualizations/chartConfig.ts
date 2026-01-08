@@ -304,6 +304,11 @@ export const CHART_THEME = {
   // Statistics band
   statisticsBandOpacity: 0.2,
   statisticsLineOpacity: 0.8,
+
+  // Phase 6: Reference dataset
+  referenceLineColor: '#9333ea', // purple-600
+  referenceLineOpacity: 0.7,
+  referenceDashArray: '6 3',
 } as const;
 
 // ============= Selection Colors =============
