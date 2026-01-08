@@ -12,6 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, Pencil, Trash2, X, Check, Loader2 } from "lucide-react";
 import type { Dataset, DatasetGroup } from "@/types/datasets";
 
@@ -23,6 +30,7 @@ interface GroupsModalProps {
   onCreateGroup: (name: string) => Promise<void>;
   onRenameGroup: (groupId: string, newName: string) => Promise<void>;
   onDeleteGroup: (groupId: string) => Promise<void>;
+  onAddDatasetToGroup?: (groupId: string, datasetId: string) => Promise<void>;
   onRemoveDatasetFromGroup: (
     groupId: string,
     datasetId: string
@@ -37,12 +45,15 @@ export function GroupsModal({
   onCreateGroup,
   onRenameGroup,
   onDeleteGroup,
+  onAddDatasetToGroup,
   onRemoveDatasetFromGroup,
 }: GroupsModalProps) {
   const [newGroupName, setNewGroupName] = useState("");
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [addingToGroupId, setAddingToGroupId] = useState<string | null>(null);
+  const [selectedDatasetToAdd, setSelectedDatasetToAdd] = useState<string>("");
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
@@ -94,8 +105,27 @@ export function GroupsModal({
     }
   };
 
+  const handleAddDataset = async (groupId: string) => {
+    if (!selectedDatasetToAdd || !onAddDatasetToGroup) return;
+    setLoading(true);
+    try {
+      await onAddDatasetToGroup(groupId, selectedDatasetToAdd);
+      setSelectedDatasetToAdd("");
+      setAddingToGroupId(null);
+    } catch (error) {
+      console.error("Failed to add dataset to group:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getDatasetName = (datasetId: string): string => {
     return datasets.find((ds) => ds.id === datasetId)?.name || datasetId;
+  };
+
+  // Get datasets not in this group
+  const getAvailableDatasets = (group: DatasetGroup): Dataset[] => {
+    return datasets.filter((ds) => !group.dataset_ids.includes(ds.id));
   };
 
   const startEdit = (group: DatasetGroup) => {
@@ -106,6 +136,16 @@ export function GroupsModal({
   const cancelEdit = () => {
     setEditingGroupId(null);
     setEditingGroupName("");
+  };
+
+  const startAddingDataset = (groupId: string) => {
+    setAddingToGroupId(groupId);
+    setSelectedDatasetToAdd("");
+  };
+
+  const cancelAddingDataset = () => {
+    setAddingToGroupId(null);
+    setSelectedDatasetToAdd("");
   };
 
   return (
@@ -229,7 +269,7 @@ export function GroupsModal({
                       </div>
 
                       {/* Datasets in group */}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 mb-2">
                         {group.dataset_ids.length === 0 ? (
                           <span className="text-sm text-muted-foreground">
                             No datasets assigned
@@ -256,6 +296,64 @@ export function GroupsModal({
                           ))
                         )}
                       </div>
+
+                      {/* Add dataset to group */}
+                      {onAddDatasetToGroup && (
+                        <div className="mt-2">
+                          {addingToGroupId === group.id ? (
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={selectedDatasetToAdd}
+                                onValueChange={setSelectedDatasetToAdd}
+                              >
+                                <SelectTrigger className="h-8 flex-1 text-xs">
+                                  <SelectValue placeholder="Select dataset..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getAvailableDatasets(group).length === 0 ? (
+                                    <div className="p-2 text-xs text-muted-foreground text-center">
+                                      All datasets are in this group
+                                    </div>
+                                  ) : (
+                                    getAvailableDatasets(group).map((ds) => (
+                                      <SelectItem key={ds.id} value={ds.id}>
+                                        {ds.name}
+                                      </SelectItem>
+                                    ))
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleAddDataset(group.id)}
+                                disabled={loading || !selectedDatasetToAdd}
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={cancelAddingDataset}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-muted-foreground"
+                              onClick={() => startAddingDataset(group.id)}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Dataset
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

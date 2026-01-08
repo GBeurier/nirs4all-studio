@@ -6,11 +6,10 @@ import {
   Search,
   FolderOpen,
   RefreshCw,
-  LayoutGrid,
-  List,
   Filter,
   Tags,
   FlaskConical,
+  ArrowUpDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,10 +31,11 @@ import {
 import {
   DatasetCard,
   AddDatasetModal,
-  EditDatasetModal,
+  EditDatasetPanel,
   GroupsModal,
   DatasetWizard,
   SyntheticDataDialog,
+  DatasetQuickView,
 } from "@/components/datasets";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import {
@@ -70,7 +70,6 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-type ViewMode = "grid" | "list";
 type FilterGroup = "all" | string;
 
 export default function Datasets() {
@@ -86,8 +85,12 @@ export default function Datasets() {
 
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [filterGroup, setFilterGroup] = useState<FilterGroup>("all");
+
+  // Sort state
+  type SortField = "name" | "linked_at" | "num_samples" | "group";
+  const [sortField, setSortField] = useState<SortField>("linked_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   // Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -96,6 +99,9 @@ export default function Datasets() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [groupsModalOpen, setGroupsModalOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+
+  // Quick view state - inline panel
+  const [quickViewDataset, setQuickViewDataset] = useState<Dataset | null>(null);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -148,23 +154,55 @@ export default function Datasets() {
     };
   }).filter((ds): ds is Dataset => ds !== null);
 
+  // Helper to get assigned group for a dataset
+  const getAssignedGroup = (datasetId: string) =>
+    groups.find((g) => g.dataset_ids.includes(datasetId));
+
   // Filter datasets
-  const filteredDatasets = normalizedDatasets.filter((ds) => {
-    // Search filter (with null safety)
-    const matchesSearch =
-      !searchQuery ||
-      ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ds.path.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredDatasets = normalizedDatasets
+    .filter((ds) => {
+      // Search filter (with null safety) - includes group name
+      const assignedGroup = getAssignedGroup(ds.id);
+      const matchesSearch =
+        !searchQuery ||
+        ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ds.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (assignedGroup?.name.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
 
-    // Group filter
-    let matchesGroup = true;
-    if (filterGroup !== "all") {
-      const group = groups.find((g) => g.id === filterGroup);
-      matchesGroup = group?.dataset_ids.includes(ds.id) || false;
-    }
+      // Group filter
+      let matchesGroup = true;
+      if (filterGroup !== "all") {
+        const group = groups.find((g) => g.id === filterGroup);
+        matchesGroup = group?.dataset_ids.includes(ds.id) || false;
+      }
 
-    return matchesSearch && matchesGroup;
-  });
+      return matchesSearch && matchesGroup;
+    })
+    .sort((a, b) => {
+      // Sort datasets
+      let comparison = 0;
+
+      switch (sortField) {
+        case "name":
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case "linked_at":
+          comparison = new Date(a.linked_at).getTime() - new Date(b.linked_at).getTime();
+          break;
+        case "num_samples":
+          comparison = (a.num_samples || 0) - (b.num_samples || 0);
+          break;
+        case "group": {
+          // Sort by group name, ungrouped last
+          const groupA = getAssignedGroup(a.id)?.name || "\uffff"; // Unicode max to sort ungrouped last
+          const groupB = getAssignedGroup(b.id)?.name || "\uffff";
+          comparison = groupA.localeCompare(groupB);
+          break;
+        }
+      }
+
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
 
   // Debug: Log filtered results
   useEffect(() => {
@@ -230,6 +268,10 @@ export default function Datasets() {
   const handleDeleteDataset = async (dataset: Dataset) => {
     if (!confirm(`Remove "${dataset.name}" from workspace?`)) return;
     await unlinkDataset(dataset.id);
+    // Clear quick view if deleted dataset was selected
+    if (quickViewDataset?.id === dataset.id) {
+      setQuickViewDataset(null);
+    }
     await loadData();
   };
 
@@ -414,39 +456,46 @@ export default function Datasets() {
           </Select>
         )}
 
-        <div className="flex items-center gap-1 ml-auto">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={viewMode === "grid" ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => setViewMode("grid")}
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Grid View</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        {/* Sort dropdown */}
+        <Select
+          value={sortField}
+          onValueChange={(v) => setSortField(v as SortField)}
+        >
+          <SelectTrigger className="w-[150px]">
+            <ArrowUpDown className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="name">Name</SelectItem>
+            <SelectItem value="linked_at">Date Added</SelectItem>
+            <SelectItem value="num_samples">Samples</SelectItem>
+            <SelectItem value="group">Group</SelectItem>
+          </SelectContent>
+        </Select>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={viewMode === "list" ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => setViewMode("list")}
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>List View</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        {/* Sort direction toggle */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSortDirection((d) => (d === "asc" ? "desc" : "asc"))}
+              >
+                {sortDirection === "asc" ? (
+                  <ArrowUpDown className="h-4 w-4 rotate-180" />
+                ) : (
+                  <ArrowUpDown className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {sortDirection === "asc" ? "Ascending" : "Descending"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
-          <div className="w-px h-6 bg-border mx-2" />
-
+        <div className="ml-auto">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -467,9 +516,9 @@ export default function Datasets() {
         </div>
       </motion.div>
 
-      {/* Dataset Grid/List */}
-      {loading ? (
-        <motion.div variants={itemVariants}>
+      {/* Main Content: List + Quick View Panel */}
+      <motion.div variants={itemVariants}>
+        {loading ? (
           <Card>
             <CardContent className="p-12">
               <div className="flex flex-col items-center justify-center text-center">
@@ -478,9 +527,7 @@ export default function Datasets() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
-      ) : filteredDatasets.length === 0 ? (
-        <motion.div variants={itemVariants}>
+        ) : filteredDatasets.length === 0 ? (
           <Card>
             <CardContent className="p-12">
               <div className="flex flex-col items-center justify-center text-center">
@@ -510,35 +557,40 @@ export default function Datasets() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
-      ) : (
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className={
-            viewMode === "grid"
-              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-              : "space-y-3"
-          }
-        >
-          {filteredDatasets.map((dataset) => {
-            console.log("Rendering DatasetCard for:", dataset.name, dataset.id);
-            return (
-              <DatasetCard
-                key={dataset.id}
-                dataset={dataset}
-                groups={groups}
-                onPreview={() => console.log("Preview:", dataset.id)}
-                onEdit={() => handleEditDataset(dataset)}
-                onDelete={() => handleDeleteDataset(dataset)}
-                onRefresh={() => handleRefreshDataset(dataset)}
-                onAssignGroup={(ds, groupId) => handleAssignGroup(ds, groupId)}
+        ) : (
+          <div className="flex gap-6">
+            {/* Dataset List */}
+            <div className="flex-1 space-y-3 min-w-0">
+              {filteredDatasets.map((dataset) => (
+                <DatasetCard
+                  key={dataset.id}
+                  dataset={dataset}
+                  groups={groups}
+                  selected={quickViewDataset?.id === dataset.id}
+                  onSelect={(ds) => setQuickViewDataset(ds)}
+                  onPreview={(ds) => setQuickViewDataset(ds)}
+                  onEdit={() => handleEditDataset(dataset)}
+                  onDelete={() => handleDeleteDataset(dataset)}
+                  onRefresh={() => handleRefreshDataset(dataset)}
+                  onAssignGroup={(ds, groupId) => handleAssignGroup(ds, groupId)}
+                />
+              ))}
+            </div>
+
+            {/* Quick View Panel (inline) */}
+            {quickViewDataset && (
+              <DatasetQuickView
+                dataset={quickViewDataset}
+                onClose={() => setQuickViewDataset(null)}
+                onEdit={(ds) => {
+                  setSelectedDataset(ds);
+                  setEditModalOpen(true);
+                }}
               />
-            );
-          })}
-        </motion.div>
-      )}
+            )}
+          </div>
+        )}
+      </motion.div>
 
       {/* Workspace Info */}
       <motion.div variants={itemVariants}>
@@ -571,11 +623,15 @@ export default function Datasets() {
         onAdd={handleAddDataset}
       />
 
-      <EditDatasetModal
+      <EditDatasetPanel
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         dataset={selectedDataset}
         onSave={handleSaveDatasetConfig}
+        onRefresh={async (datasetId) => {
+          await refreshDataset(datasetId);
+          await loadData();
+        }}
       />
 
       <GroupsModal
@@ -586,6 +642,10 @@ export default function Datasets() {
         onCreateGroup={handleCreateGroup}
         onRenameGroup={handleRenameGroup}
         onDeleteGroup={handleDeleteGroup}
+        onAddDatasetToGroup={async (groupId, datasetId) => {
+          await addDatasetToGroup(groupId, datasetId);
+          await loadData();
+        }}
         onRemoveDatasetFromGroup={handleRemoveDatasetFromGroup}
       />
 

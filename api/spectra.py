@@ -66,6 +66,123 @@ def _get_dataset_config(dataset_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build nirs4all DatasetConfigs-compatible config from stored dataset configuration.
+
+    This mirrors the logic in POST /datasets/preview and GET /datasets/{id}/preview
+    to ensure consistent dataset loading across all views.
+    """
+    dataset_path = dataset_config.get("path", "")
+    stored_config = dataset_config.get("config", {})
+
+    # Get parsing options from stored config or use defaults
+    delimiter = stored_config.get("delimiter", ",")
+    decimal_separator = stored_config.get("decimal_separator", ".")
+    has_header = stored_config.get("has_header", True)
+    header_unit = stored_config.get("header_unit", "cm-1")
+    signal_type = stored_config.get("signal_type", "auto")
+
+    global_params = {
+        "delimiter": delimiter,
+        "decimal_separator": decimal_separator,
+        "has_header": has_header,
+    }
+
+    # X-specific params
+    x_specific_params = {}
+    if header_unit:
+        x_specific_params["header_unit"] = header_unit
+    if signal_type and signal_type != "auto":
+        x_specific_params["signal_type"] = signal_type
+
+    config: Dict[str, Any] = {
+        "global_params": global_params
+    }
+
+    # Get files from stored config
+    files = stored_config.get("files", [])
+
+    if files:
+        # Map files to config (same logic as POST endpoint)
+        for file_config in files:
+            file_type = file_config.get("type", "X")
+            file_split = file_config.get("split", "train")
+            file_path = file_config.get("path", "")
+            file_overrides = file_config.get("overrides")
+
+            file_key = None
+            if file_type == "X":
+                file_key = f"{file_split}_x"
+            elif file_type == "Y":
+                file_key = f"{file_split}_y"
+            elif file_type == "metadata":
+                file_key = f"{file_split}_group"
+
+            if file_key:
+                # Handle multi-source (list of X files for same split)
+                if file_key in config and file_type == "X":
+                    existing = config[file_key]
+                    if isinstance(existing, list):
+                        config[file_key].append(file_path)
+                    else:
+                        config[file_key] = [existing, file_path]
+                else:
+                    config[file_key] = file_path
+
+                # Per-file params (merge with x_specific_params for X files)
+                params_key = f"{file_key}_params"
+                if file_type == "X" and x_specific_params:
+                    if file_overrides:
+                        config[params_key] = {**x_specific_params, **file_overrides}
+                    else:
+                        config[params_key] = x_specific_params.copy()
+                elif file_overrides:
+                    config[params_key] = file_overrides
+    else:
+        # Fallback: try to auto-detect files from folder or use old format
+        # Check for train_x, train_y in stored config (old format)
+        if stored_config.get("train_x"):
+            config["train_x"] = stored_config["train_x"]
+            if x_specific_params:
+                config["train_x_params"] = x_specific_params
+        if stored_config.get("train_y"):
+            config["train_y"] = stored_config["train_y"]
+        if stored_config.get("test_x"):
+            config["test_x"] = stored_config["test_x"]
+            if x_specific_params:
+                config["test_x_params"] = x_specific_params
+        if stored_config.get("test_y"):
+            config["test_y"] = stored_config["test_y"]
+
+        # If still no files configured, try to detect from folder
+        if "train_x" not in config:
+            folder_path = Path(dataset_path)
+            if folder_path.is_dir():
+                # Look for dataset_config.json
+                config_file = folder_path / "dataset_config.json"
+                if config_file.exists():
+                    import json
+                    with open(config_file, "r", encoding="utf-8") as f:
+                        folder_config = json.load(f)
+                        config.update(folder_config)
+                else:
+                    # Try to find CSV files
+                    csv_files = list(folder_path.glob("*.csv"))
+                    if csv_files:
+                        # Simple heuristic: first CSV is X
+                        config["train_x"] = str(csv_files[0])
+                        if x_specific_params:
+                            config["train_x_params"] = x_specific_params
+            elif folder_path.is_file():
+                # Single file - create minimal config
+                config["train_x"] = str(folder_path)
+                if x_specific_params:
+                    config["train_x_params"] = x_specific_params
+
+    return config
+
+
 def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
     """Load a dataset by ID, with caching."""
     global _dataset_cache
@@ -85,62 +202,26 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
         return None
 
     try:
-        # Check if path is a directory (dataset folder) or file
-        path = Path(dataset_path)
+        # Build nirs4all config from stored configuration
+        # This mirrors the logic in POST/GET /datasets/preview endpoints
+        config = _build_nirs4all_config_from_stored(dataset_config)
 
-        if path.is_dir():
-            # Look for config file in directory
-            config_file = path / "dataset_config.json"
-            if config_file.exists():
-                import json
+        # Check if we have valid config
+        if "train_x" not in config:
+            print(f"No train_x found in config for dataset {dataset_id}")
+            return None
 
-                with open(config_file, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-            else:
-                # Try to find CSV files
-                csv_files = list(path.glob("*.csv"))
-                if csv_files:
-                    config = {"train_x": str(csv_files[0])}
-                else:
-                    return None
-        else:
-            # Single file - create minimal config
-            config = {"train_x": str(path)}
+        # Load using DatasetConfigs (same as working preview endpoints)
+        from nirs4all.data import DatasetConfigs
 
-        # Load data using nirs4all loader
-        x, y, m, x_headers, m_headers, x_unit, x_signal_type = handle_data(
-            config, "train"
-        )
+        dataset_configs = DatasetConfigs(config)
+        datasets = dataset_configs.get_datasets()
 
-        # Create SpectroDataset
-        dataset = SpectroDataset(name=dataset_config.get("name", "Unknown"))
+        if not datasets:
+            print(f"No datasets loaded for {dataset_id}")
+            return None
 
-        # Add samples
-        if isinstance(x, list):
-            # Multi-source
-            for i, x_source in enumerate(x):
-                headers = x_headers[i] if isinstance(x_headers, list) else x_headers
-                unit = x_unit[i] if isinstance(x_unit, list) else x_unit
-                if i == 0:
-                    dataset.add_samples(
-                        x_source, {"partition": "train"}, headers=headers, header_unit=unit
-                    )
-                else:
-                    dataset.add_samples(
-                        x_source, {"partition": "train"}, headers=headers, header_unit=unit
-                    )
-        else:
-            dataset.add_samples(
-                x, {"partition": "train"}, headers=x_headers, header_unit=x_unit
-            )
-
-        # Add targets if available
-        if y is not None and len(y) > 0 and y.shape[1] > 0:
-            dataset.add_targets(y)
-
-        # Add metadata if available
-        if m is not None and len(m) > 0:
-            dataset.add_metadata(m, headers=m_headers)
+        dataset = datasets[0]
 
         # Cache the dataset
         _dataset_cache[dataset_id] = dataset
@@ -149,6 +230,8 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
 
     except Exception as e:
         print(f"Error loading dataset {dataset_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

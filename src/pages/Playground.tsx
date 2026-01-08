@@ -470,6 +470,7 @@ function PlaygroundContent({
 }: PlaygroundContentProps) {
   // Use the centralized keyboard shortcuts hook (now inside SelectionProvider)
   const { shortcutsByCategory } = usePlaygroundShortcuts({
+    totalSamples: rawData?.spectra?.length ?? 0,
     onUndo: undo,
     onRedo: redo,
     onClearPipeline: () => {

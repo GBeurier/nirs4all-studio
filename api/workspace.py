@@ -148,6 +148,63 @@ async def link_dataset(request: LinkDatasetRequest):
     """Link a dataset to the current workspace."""
     try:
         dataset_info = workspace_manager.link_dataset(request.path, config=request.config)
+
+        # Try to populate num_samples, num_features, and targets from the actual dataset
+        try:
+            from .spectra import _build_nirs4all_config_from_stored
+
+            nirs4all_config = _build_nirs4all_config_from_stored(dataset_info)
+            if "train_x" in nirs4all_config:
+                from nirs4all.data import DatasetConfigs
+
+                dataset_configs = DatasetConfigs(nirs4all_config)
+                datasets = dataset_configs.get_datasets()
+
+                if datasets:
+                    ds = datasets[0]
+                    dataset_info["num_samples"] = ds.num_samples
+                    dataset_info["num_features"] = ds.num_features
+
+                    # Determine task type
+                    task_type_str = None
+                    if ds.task_type:
+                        task_type_str = str(ds.task_type)
+                        if "." in task_type_str:
+                            task_type_str = task_type_str.split(".")[-1].lower()
+                    dataset_info["task_type"] = task_type_str
+
+                    # Try to detect/set targets if not already configured
+                    config = dataset_info.get("config", {})
+                    if "targets" not in config and ds._targets is not None:
+                        try:
+                            target_columns = ds.target_columns if hasattr(ds, 'target_columns') else None
+                            if target_columns:
+                                detected_targets = [{"column": col, "type": task_type_str or "regression"} for col in target_columns]
+                            else:
+                                detected_targets = [{"column": "target", "type": task_type_str or "regression"}]
+                            dataset_info["targets"] = detected_targets
+                            if "config" not in dataset_info:
+                                dataset_info["config"] = {}
+                            dataset_info["config"]["targets"] = detected_targets
+                        except Exception:
+                            pass
+                    elif "targets" in config:
+                        dataset_info["targets"] = config["targets"]
+
+                    # Update stored info
+                    workspace = workspace_manager.get_current_workspace()
+                    if workspace:
+                        for ds_info in workspace.datasets:
+                            if ds_info.get("id") == dataset_info["id"]:
+                                ds_info.update(dataset_info)
+                                break
+                        workspace_manager._save_workspace_config()
+        except ImportError:
+            pass
+        except Exception as e:
+            # Don't fail link if we can't populate extra info
+            dataset_info["load_warning"] = str(e)
+
         return {
             "success": True,
             "message": "Dataset linked successfully",

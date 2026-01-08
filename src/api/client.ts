@@ -309,6 +309,16 @@ export async function previewDataset(
   return api.post("/datasets/preview", request);
 }
 
+/**
+ * Preview a linked dataset by ID using its stored configuration
+ */
+export async function previewDatasetById(
+  datasetId: string,
+  maxSamples: number = 100
+): Promise<PreviewDataResponse> {
+  return api.get(`/datasets/${datasetId}/preview?max_samples=${maxSamples}`);
+}
+
 // ============= Phase 2: Versioning & Integrity API =============
 
 /**

@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Dashboard from "@/pages/Dashboard";
 import Datasets from "@/pages/Datasets";
+import DatasetDetail from "@/pages/DatasetDetail";
 import Playground from "@/pages/Playground";
 import Pipelines from "@/pages/Pipelines";
 import PipelineEditor from "@/pages/PipelineEditor";
@@ -19,6 +20,7 @@ function App() {
       <Route element={<AppLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="datasets" element={<Datasets />} />
+        <Route path="datasets/:id" element={<DatasetDetail />} />
         <Route path="playground" element={<Playground />} />
         <Route path="pipelines" element={<Pipelines />} />
         <Route path="pipelines/:id" element={<PipelineEditor />} />

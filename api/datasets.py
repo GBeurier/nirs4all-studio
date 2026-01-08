@@ -937,12 +937,63 @@ async def list_datasets(verify_integrity: bool = False):
             dataset_info = dict(ds)
             path = Path(ds.get("path", ""))
 
+            # Ensure targets is available at top level (may be stored in config.targets)
+            config = ds.get("config", {})
+            if "targets" not in dataset_info and "targets" in config:
+                dataset_info["targets"] = config["targets"]
+            if "default_target" not in dataset_info and "default_target" in config:
+                dataset_info["default_target"] = config["default_target"]
+
             # Check accessibility
             if not path.exists():
                 dataset_info["status"] = "missing"
                 dataset_info["version_status"] = "missing"
             else:
                 dataset_info["status"] = "available"
+
+                # Load dataset to get actual num_samples, num_features, targets if not populated
+                if dataset_info.get("num_samples", 0) == 0 and NIRS4ALL_AVAILABLE:
+                    try:
+                        from .spectra import _load_dataset
+
+                        loaded_ds = _load_dataset(ds.get("id"))
+                        if loaded_ds:
+                            dataset_info["num_samples"] = loaded_ds.num_samples
+                            dataset_info["num_features"] = loaded_ds.num_features
+
+                            # Determine task type
+                            task_type_str = None
+                            if loaded_ds.task_type:
+                                task_type_str = str(loaded_ds.task_type)
+                                if "." in task_type_str:
+                                    task_type_str = task_type_str.split(".")[-1].lower()
+                            dataset_info["task_type"] = task_type_str
+
+                            # Detect targets if not configured
+                            if not dataset_info.get("targets") and loaded_ds._targets is not None:
+                                try:
+                                    target_columns = loaded_ds.target_columns if hasattr(loaded_ds, 'target_columns') else None
+                                    if target_columns:
+                                        detected_targets = [{"column": col, "type": task_type_str or "regression"} for col in target_columns]
+                                    else:
+                                        detected_targets = [{"column": "target", "type": task_type_str or "regression"}]
+                                    dataset_info["targets"] = detected_targets
+                                except Exception:
+                                    pass
+
+                            # Update stored values
+                            ds["num_samples"] = dataset_info["num_samples"]
+                            ds["num_features"] = dataset_info["num_features"]
+                            if "task_type" in dataset_info:
+                                ds["task_type"] = dataset_info["task_type"]
+                            if "targets" in dataset_info:
+                                ds["targets"] = dataset_info["targets"]
+                                if "config" not in ds:
+                                    ds["config"] = {}
+                                ds["config"]["targets"] = dataset_info["targets"]
+                            needs_save = True
+                    except Exception as e:
+                        dataset_info["load_warning"] = str(e)
 
                 # Verify integrity if requested
                 if verify_integrity:
@@ -1080,18 +1131,32 @@ async def get_dataset(dataset_id: str):
         # Try to load additional info from the actual dataset
         extended_info = dict(dataset)
 
+        # Ensure targets is available at top level (may be stored in config.targets)
+        config = dataset.get("config", {})
+        if "targets" not in extended_info and "targets" in config:
+            extended_info["targets"] = config["targets"]
+        if "default_target" not in extended_info and "default_target" in config:
+            extended_info["default_target"] = config["default_target"]
+
         if NIRS4ALL_AVAILABLE:
             try:
                 from .spectra import _load_dataset
 
                 ds = _load_dataset(dataset_id)
                 if ds:
+                    task_type_str = None
+                    if ds.task_type:
+                        task_type_str = str(ds.task_type)
+                        # Handle TaskType enum format like "TaskType.REGRESSION"
+                        if "." in task_type_str:
+                            task_type_str = task_type_str.split(".")[-1].lower()
+
                     extended_info.update({
                         "num_samples": ds.num_samples,
                         "num_features": ds.num_features,
                         "n_sources": ds.n_sources,
                         "is_multi_source": ds.is_multi_source(),
-                        "task_type": str(ds.task_type) if ds.task_type else None,
+                        "task_type": task_type_str,
                         "num_classes": ds.num_classes if ds.is_classification else None,
                         "has_targets": ds._targets is not None,
                         "has_metadata": ds._metadata.num_rows > 0 if ds._metadata else False,
@@ -1099,6 +1164,28 @@ async def get_dataset(dataset_id: str):
                         "signal_types": [st.value for st in ds.signal_types] if ds.signal_types else [],
                         "num_folds": ds.num_folds,
                     })
+
+                    # If no targets configured, try to detect from loaded dataset
+                    if not extended_info.get("targets") and ds._targets is not None:
+                        try:
+                            # Get target column names from the dataset
+                            target_columns = ds.target_columns if hasattr(ds, 'target_columns') else None
+                            if target_columns:
+                                detected_targets = []
+                                for col in target_columns:
+                                    detected_targets.append({
+                                        "column": col,
+                                        "type": task_type_str or "regression",
+                                    })
+                                extended_info["targets"] = detected_targets
+                            elif ds._targets is not None:
+                                # Fallback: create a single "target" entry
+                                extended_info["targets"] = [{
+                                    "column": "target",
+                                    "type": task_type_str or "regression",
+                                }]
+                        except Exception:
+                            pass
             except Exception as e:
                 extended_info["load_warning"] = str(e)
 
@@ -1108,6 +1195,310 @@ async def get_dataset(dataset_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get dataset: {str(e)}"
+        )
+
+
+@router.get("/datasets/{dataset_id}/preview", response_model=PreviewDataResponse)
+async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
+    """
+    Preview a linked dataset using its stored configuration.
+
+    This uses the same loading logic as POST /datasets/preview but retrieves
+    the configuration from the stored dataset in the workspace.
+    """
+    if not NIRS4ALL_AVAILABLE:
+        return PreviewDataResponse(
+            success=False,
+            error="nirs4all library not available",
+        )
+
+    try:
+        # Get dataset info from workspace
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            return PreviewDataResponse(
+                success=False,
+                error="No workspace selected",
+            )
+
+        dataset_info = next(
+            (d for d in workspace.datasets if d.get("id") == dataset_id), None
+        )
+        if not dataset_info:
+            return PreviewDataResponse(
+                success=False,
+                error="Dataset not found",
+            )
+
+        dataset_path = dataset_info.get("path", "")
+        stored_config = dataset_info.get("config", {})
+
+        if not Path(dataset_path).exists():
+            return PreviewDataResponse(
+                success=False,
+                error=f"Dataset path not found: {dataset_path}",
+            )
+
+        # Build nirs4all config from stored configuration
+        # This mirrors the logic in POST /datasets/preview
+
+        # Get parsing options from stored config or use defaults
+        delimiter = stored_config.get("delimiter", ",")
+        decimal_separator = stored_config.get("decimal_separator", ".")
+        has_header = stored_config.get("has_header", True)
+        header_unit = stored_config.get("header_unit", "cm-1")
+        signal_type = stored_config.get("signal_type", "auto")
+
+        global_params = {
+            "delimiter": delimiter,
+            "decimal_separator": decimal_separator,
+            "has_header": has_header,
+        }
+
+        # X-specific params
+        x_specific_params = {}
+        if header_unit:
+            x_specific_params["header_unit"] = header_unit
+        if signal_type and signal_type != "auto":
+            x_specific_params["signal_type"] = signal_type
+
+        config: Dict[str, Any] = {
+            "global_params": global_params
+        }
+
+        # Get files from stored config
+        files = stored_config.get("files", [])
+
+        if files:
+            # Map files to config (same logic as POST endpoint)
+            for file_config in files:
+                file_type = file_config.get("type", "X")
+                file_split = file_config.get("split", "train")
+                file_path = file_config.get("path", "")
+                file_overrides = file_config.get("overrides")
+
+                file_key = None
+                if file_type == "X":
+                    file_key = f"{file_split}_x"
+                elif file_type == "Y":
+                    file_key = f"{file_split}_y"
+                elif file_type == "metadata":
+                    file_key = f"{file_split}_group"
+
+                if file_key:
+                    # Handle multi-source (list of X files for same split)
+                    if file_key in config and file_type == "X":
+                        existing = config[file_key]
+                        if isinstance(existing, list):
+                            config[file_key].append(file_path)
+                        else:
+                            config[file_key] = [existing, file_path]
+                    else:
+                        config[file_key] = file_path
+
+                    # Per-file params (merge with x_specific_params for X files)
+                    params_key = f"{file_key}_params"
+                    if file_type == "X" and x_specific_params:
+                        if file_overrides:
+                            config[params_key] = {**x_specific_params, **file_overrides}
+                        else:
+                            config[params_key] = x_specific_params.copy()
+                    elif file_overrides:
+                        config[params_key] = file_overrides
+        else:
+            # Fallback: try to auto-detect files from folder
+            # Check for train_x, train_y in stored config (old format)
+            if stored_config.get("train_x"):
+                config["train_x"] = stored_config["train_x"]
+                if x_specific_params:
+                    config["train_x_params"] = x_specific_params
+            if stored_config.get("train_y"):
+                config["train_y"] = stored_config["train_y"]
+            if stored_config.get("test_x"):
+                config["test_x"] = stored_config["test_x"]
+                if x_specific_params:
+                    config["test_x_params"] = x_specific_params
+            if stored_config.get("test_y"):
+                config["test_y"] = stored_config["test_y"]
+
+            # If still no files configured, try to detect from folder
+            if "train_x" not in config:
+                folder_path = Path(dataset_path)
+                if folder_path.is_dir():
+                    # Look for dataset_config.json
+                    config_file = folder_path / "dataset_config.json"
+                    if config_file.exists():
+                        with open(config_file, "r", encoding="utf-8") as f:
+                            folder_config = json.load(f)
+                            config.update(folder_config)
+                    else:
+                        # Try to find CSV files
+                        csv_files = list(folder_path.glob("*.csv"))
+                        if csv_files:
+                            # Simple heuristic: first CSV is X
+                            config["train_x"] = str(csv_files[0])
+                            if x_specific_params:
+                                config["train_x_params"] = x_specific_params
+
+        # Load dataset using nirs4all
+        try:
+            from nirs4all.data import DatasetConfigs
+
+            dataset_configs = DatasetConfigs(config)
+            datasets = dataset_configs.get_datasets()
+
+            if not datasets:
+                return PreviewDataResponse(
+                    success=False,
+                    error="No data could be loaded from the dataset configuration",
+                )
+
+            dataset = datasets[0]
+
+            # Get X data for spectra preview
+            X = dataset.x({"partition": "train"}, layout="2d")
+            if isinstance(X, list):
+                X = X[0]
+
+            # Limit samples for preview
+            if len(X) > max_samples:
+                indices = np.linspace(0, len(X) - 1, max_samples, dtype=int)
+                X = X[indices]
+
+            # Get wavelengths/headers
+            try:
+                wavelengths = dataset.headers(0)
+                if wavelengths is None or len(wavelengths) == 0:
+                    wavelengths = np.arange(X.shape[1])
+                wavelengths = np.array(wavelengths, dtype=float)
+            except Exception:
+                wavelengths = np.arange(X.shape[1])
+
+            # Spectra statistics
+            mean_spectrum = np.mean(X, axis=0).tolist()
+            std_spectrum = np.std(X, axis=0).tolist()
+            min_spectrum = np.min(X, axis=0).tolist()
+            max_spectrum = np.max(X, axis=0).tolist()
+
+            # Sample spectra (first 5)
+            sample_spectra = X[:5].tolist() if len(X) >= 5 else X.tolist()
+
+            spectra_preview = {
+                "wavelengths": wavelengths.tolist(),
+                "mean_spectrum": mean_spectrum,
+                "std_spectrum": std_spectrum,
+                "min_spectrum": min_spectrum,
+                "max_spectrum": max_spectrum,
+                "sample_spectra": sample_spectra,
+            }
+
+            # Target distribution
+            target_distribution = None
+            try:
+                y = dataset.y({"partition": "train"})
+                if y is not None and len(y) > 0:
+                    if dataset.is_regression:
+                        # Histogram for regression
+                        hist, bin_edges = np.histogram(y, bins=20)
+                        histogram = [
+                            {"bin": float(bin_edges[i]), "count": int(hist[i])}
+                            for i in range(len(hist))
+                        ]
+                        target_distribution = {
+                            "type": "regression",
+                            "min": float(np.min(y)),
+                            "max": float(np.max(y)),
+                            "mean": float(np.mean(y)),
+                            "std": float(np.std(y)),
+                            "histogram": histogram,
+                        }
+                    else:
+                        # Class counts for classification
+                        unique, counts = np.unique(y, return_counts=True)
+                        target_distribution = {
+                            "type": "classification",
+                            "classes": [str(c) for c in unique.tolist()],
+                            "class_counts": {str(k): int(v) for k, v in zip(unique.tolist(), counts.tolist())},
+                        }
+            except Exception:
+                pass
+
+            # Get metadata columns
+            metadata_columns = []
+            try:
+                metadata_columns = dataset.metadata_columns or []
+            except Exception:
+                pass
+
+            # Signal type
+            detected_signal_type = None
+            try:
+                if dataset.signal_types:
+                    detected_signal_type = dataset.signal_types[0].value
+            except Exception:
+                pass
+
+            # Header unit
+            detected_header_unit = None
+            try:
+                detected_header_unit = dataset.header_unit(0)
+            except Exception:
+                pass
+
+            # Train/test sample counts
+            train_samples = 0
+            test_samples = 0
+            try:
+                train_x = dataset.x({"partition": "train"}, layout="2d")
+                if isinstance(train_x, list):
+                    train_x = train_x[0]
+                train_samples = len(train_x) if train_x is not None else 0
+            except Exception:
+                pass
+
+            try:
+                test_x = dataset.x({"partition": "test"}, layout="2d")
+                if isinstance(test_x, list):
+                    test_x = test_x[0]
+                test_samples = len(test_x) if test_x is not None else 0
+            except Exception:
+                pass
+
+            summary = {
+                "num_samples": dataset.num_samples,
+                "num_features": dataset.num_features,
+                "n_sources": dataset.n_sources,
+                "train_samples": train_samples,
+                "test_samples": test_samples,
+                "has_targets": dataset._targets is not None,
+                "has_metadata": dataset._metadata.num_rows > 0 if dataset._metadata else False,
+                "target_columns": metadata_columns if dataset._targets else None,
+                "metadata_columns": metadata_columns,
+                "signal_type": detected_signal_type,
+                "header_unit": detected_header_unit,
+            }
+
+            return PreviewDataResponse(
+                success=True,
+                summary=summary,
+                spectra_preview=spectra_preview,
+                target_distribution=target_distribution,
+            )
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return PreviewDataResponse(
+                success=False,
+                error=f"Failed to load dataset: {str(e)}",
+            )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return PreviewDataResponse(
+            success=False,
+            error=f"Preview failed: {str(e)}",
         )
 
 
