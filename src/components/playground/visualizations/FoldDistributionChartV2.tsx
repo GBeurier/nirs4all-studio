@@ -12,7 +12,7 @@
  * - Export functionality
  */
 
-import { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   ComposedChart,
   BarChart,
@@ -206,8 +206,9 @@ export function FoldDistributionChartV2({
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
   const [internalSelectedFold, setInternalSelectedFold] = useState<number | null>(null);
 
-  // SelectionContext integration
-  const selectionCtx = useSelectionContext ? useSelection() : null;
+  // SelectionContext integration - always call hook, conditionally use result
+  const selectionHook = useSelection();
+  const selectionCtx = useSelectionContext ? selectionHook : null;
   const selectedSamples = selectionCtx?.selectedSamples ?? new Set<number>();
 
   // Use external selection if provided
@@ -1064,4 +1065,4 @@ export function FoldDistributionChartV2({
   );
 }
 
-export default FoldDistributionChartV2;
+export default React.memo(FoldDistributionChartV2);

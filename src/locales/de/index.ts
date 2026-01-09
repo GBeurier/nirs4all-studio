@@ -315,7 +315,6 @@ const de = {
       },
       system: {
         title: "Systeminformationen",
-          description: "Verbindungszustand und Latenz",
         description: "Python-Umgebung und Systemdetails",
         python: "Python",
         version: "Version",
@@ -325,9 +324,6 @@ const de = {
         osRelease: "Version",
         architecture: "Architektur",
         nirs4all: "nirs4all",
-          recentChecks: "Letzte Prüfungen",
-          failed: "Fehlgeschlagen",
-          autoRefreshEvery: "Auto-Aktualisierung alle {{seconds}}s",
         capabilities: "Fähigkeiten",
         packages: "Installierte Pakete",
         copyToClipboard: "Systeminfos kopieren",

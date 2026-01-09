@@ -116,16 +116,19 @@ export function DatasetRawDataTab({
 
   // Mock data for demonstration - replace with actual API call
   const mockColumns = ["ID", "Protein", "Moisture", "Batch", "Origin"];
-  const mockData = Array.from({ length: Math.min(pageSize, preview.summary.num_samples) }, (_, i) => ({
-    id: `SAMPLE_${String(currentPage * pageSize + i + 1).padStart(4, "0")}`,
-    values: {
-      ID: `SAMPLE_${String(currentPage * pageSize + i + 1).padStart(4, "0")}`,
-      Protein: (10 + Math.random() * 4).toFixed(2),
-      Moisture: (10 + Math.random() * 3).toFixed(2),
-      Batch: `B${Math.floor(Math.random() * 5) + 1}`,
-      Origin: `Farm ${String.fromCharCode(65 + Math.floor(Math.random() * 5))}`,
-    },
-  }));
+  const mockData: Array<{ id: string; values: Record<string, string> }> = Array.from(
+    { length: Math.min(pageSize, preview.summary.num_samples) },
+    (_, i) => ({
+      id: `SAMPLE_${String(currentPage * pageSize + i + 1).padStart(4, "0")}`,
+      values: {
+        ID: `SAMPLE_${String(currentPage * pageSize + i + 1).padStart(4, "0")}`,
+        Protein: (10 + Math.random() * 4).toFixed(2),
+        Moisture: (10 + Math.random() * 3).toFixed(2),
+        Batch: `B${Math.floor(Math.random() * 5) + 1}`,
+        Origin: `Farm ${String.fromCharCode(65 + Math.floor(Math.random() * 5))}`,
+      },
+    })
+  );
 
   const totalPages = Math.ceil((preview.summary.num_samples || 0) / pageSize);
 

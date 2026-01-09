@@ -17,7 +17,9 @@ import {
   exportSpectraToCsv,
   exportSelectionsToJson,
   batchExport,
+  exportCombinedReport,
   type ChartExportData,
+  type CombinedReportOptions,
 } from '@/lib/playground/export';
 import type { SavedSelection } from '@/context/SelectionContext';
 import type { ChartType } from '../CanvasToolbar';
@@ -38,6 +40,12 @@ export interface ExportData {
   sampleIds?: string[];
   selectedSamples: Set<number>;
   pinnedSamples: Set<number>;
+  /** Outlier indices for export (Phase 8) */
+  outlierIndices?: Set<number>;
+  /** Dataset name for combined report */
+  datasetName?: string;
+  /** Pipeline description for combined report */
+  pipelineDescription?: string;
 }
 
 export interface UsePlaygroundExportOptions {
@@ -55,6 +63,8 @@ export interface UsePlaygroundExportResult {
   exportSelectionsJson: () => Promise<void>;
   /** Export all visible charts to PNG */
   batchExportCharts: () => Promise<void>;
+  /** Export combined report with all charts (Phase 8) */
+  exportCombinedReportPng: () => Promise<void>;
 }
 
 // ============= Hook =============
@@ -88,9 +98,9 @@ export function usePlaygroundExport({
     }
   }, [chartRefs]);
 
-  // Export spectra data to CSV
+  // Export spectra data to CSV (Phase 8: includes outlier column)
   const exportSpectraCsv = useCallback(async () => {
-    const { spectra, wavelengths, sampleIds } = exportData;
+    const { spectra, wavelengths, sampleIds, outlierIndices } = exportData;
 
     if (!spectra || !wavelengths) {
       toast.error('No spectra data to export');
@@ -99,12 +109,13 @@ export function usePlaygroundExport({
 
     try {
       const result = exportSpectraToCsv(
-        { spectra, wavelengths, sampleIds },
+        { spectra, wavelengths, sampleIds, outlierIndices },
         { filename: 'processed-spectra' }
       );
       if (result.success) {
+        const outlierInfo = outlierIndices?.size ? ` (${outlierIndices.size} outliers marked)` : '';
         toast.success('Data exported', {
-          description: `${spectra.length} samples × ${wavelengths.length} wavelengths saved to CSV`,
+          description: `${spectra.length} samples × ${wavelengths.length} wavelengths saved to CSV${outlierInfo}`,
         });
       } else {
         toast.error('Export failed', { description: result.error });
@@ -215,11 +226,67 @@ export function usePlaygroundExport({
     }
   }, [chartRefs, visibleCharts]);
 
+  // Export combined report with all charts (Phase 8)
+  const exportCombinedReportPng = useCallback(async () => {
+    const { spectra, wavelengths, selectedSamples, outlierIndices, datasetName, pipelineDescription } = exportData;
+    const chartElements = new Map<string, HTMLElement>();
+
+    // Collect visible chart elements
+    if (chartRefs.spectra.current && visibleCharts.has('spectra')) {
+      chartElements.set('spectra', chartRefs.spectra.current);
+    }
+    if (chartRefs.pca.current && visibleCharts.has('pca')) {
+      chartElements.set('pca', chartRefs.pca.current);
+    }
+    if (chartRefs.histogram.current && visibleCharts.has('histogram')) {
+      chartElements.set('histogram', chartRefs.histogram.current);
+    }
+    if (chartRefs.folds.current && visibleCharts.has('folds')) {
+      chartElements.set('folds', chartRefs.folds.current);
+    }
+    if (chartRefs.repetitions.current && visibleCharts.has('repetitions')) {
+      chartElements.set('repetitions', chartRefs.repetitions.current);
+    }
+
+    if (chartElements.size === 0) {
+      toast.error('No charts to export');
+      return;
+    }
+
+    // Build statistics
+    const statistics: CombinedReportOptions['statistics'] = {
+      sampleCount: spectra?.length,
+      wavelengthCount: wavelengths?.length,
+      selectedCount: selectedSamples.size,
+      outlierCount: outlierIndices?.size ?? 0,
+    };
+
+    try {
+      const result = await exportCombinedReport(chartElements, {
+        filename: 'playground-report',
+        datasetName: datasetName ?? 'Playground Data',
+        pipelineDescription,
+        statistics,
+      });
+
+      if (result.success) {
+        toast.success('Combined report exported', {
+          description: `Report with ${chartElements.size} charts saved to ${result.filename}`,
+        });
+      } else {
+        toast.error('Export failed', { description: result.error });
+      }
+    } catch (error) {
+      toast.error('Export failed', { description: (error as Error).message });
+    }
+  }, [chartRefs, visibleCharts, exportData]);
+
   return {
     exportChartPng,
     exportSpectraCsv,
     exportSelectionsJson,
     batchExportCharts,
+    exportCombinedReportPng,
   };
 }
 

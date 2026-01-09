@@ -13,7 +13,7 @@
  * - Export functionality (PNG, CSV)
  */
 
-import { useMemo, useRef, useCallback, useState } from 'react';
+import React, { useMemo, useRef, useCallback, useState } from 'react';
 import {
   ScatterChart,
   Scatter,
@@ -196,6 +196,14 @@ const POINT_SIZES = {
   large: { base: 80, selected: 120, hovered: 150 },
 };
 
+// Helper to safely get a finite coordinate value (outside component to avoid re-renders)
+function safeCoord(value: number | undefined): number {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return 0;
+  }
+  return value;
+}
+
 // ============= Component =============
 
 export function DimensionReductionChart({
@@ -222,11 +230,14 @@ export function DimensionReductionChart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
 
-  // Selection tool mode (click, lasso, box)
-  const [selectionTool, setSelectionTool] = useState<SelectionToolType>('click');
+  // SelectionContext integration - always call hook, conditionally use result
+  const selectionHook = useSelection();
+  const selectionCtx = useSelectionContext ? selectionHook : null;
 
-  // SelectionContext integration
-  const selectionCtx = useSelectionContext ? useSelection() : null;
+  // Use global selection tool mode from SelectionContext
+  const selectionTool = selectionCtx?.selectionToolMode ?? 'click';
+  const setSelectionTool = selectionCtx?.setSelectionToolMode ?? (() => {});
+
 
   // Effective selection state
   const selectedSamples = useSelectionContext && selectionCtx
@@ -287,7 +298,7 @@ export function DimensionReductionChart({
     return result;
   }, [config.method, pca]);
 
-  // Build chart data
+  // Build chart data - filter out points with NaN/Infinity coordinates
   const chartData = useMemo<DataPoint[]>(() => {
     if (!activeResult?.coordinates || activeResult.coordinates.length === 0) {
       return [];
@@ -297,11 +308,23 @@ export function DimensionReductionChart({
     const yIdx = parseInt(config.yAxis.replace('dim', ''), 10) - 1;
     const zIdx = parseInt(config.zAxis.replace('dim', ''), 10) - 1;
 
-    return activeResult.coordinates.map((coords, i) => {
+    const points: DataPoint[] = [];
+
+    activeResult.coordinates.forEach((coords, i) => {
+      const rawX = coords[xIdx];
+      const rawY = coords[yIdx];
+      const rawZ = coords[zIdx];
+
+      // Skip points with NaN/Infinity in x or y coordinates (essential for 2D rendering)
+      if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
+        console.warn(`[DimensionReductionChart] Skipping point ${i} with invalid coordinates: x=${rawX}, y=${rawY}`);
+        return;
+      }
+
       const point: DataPoint = {
-        x: coords[xIdx] ?? 0,
-        y: coords[yIdx] ?? 0,
-        z: coords[zIdx],
+        x: rawX,
+        y: rawY,
+        z: safeCoord(rawZ),
         index: i,
         name: sampleIds?.[i] ?? `Sample ${i + 1}`,
         yValue: y?.[i] ?? pca?.y?.[i],
@@ -318,11 +341,13 @@ export function DimensionReductionChart({
         }
       }
 
-      return point;
+      points.push(point);
     });
+
+    return points;
   }, [activeResult, config.xAxis, config.yAxis, config.zAxis, sampleIds, y, pca, folds, metadata]);
 
-  // Phase 6: Build reference dataset chart data
+  // Phase 6: Build reference dataset chart data - filter out NaN/Infinity coordinates
   const referenceChartData = useMemo<DataPoint[]>(() => {
     if (!referencePca?.coordinates || referencePca.coordinates.length === 0) {
       return [];
@@ -332,22 +357,31 @@ export function DimensionReductionChart({
     const yIdx = parseInt(config.yAxis.replace('dim', ''), 10) - 1;
     const zIdx = parseInt(config.zAxis.replace('dim', ''), 10) - 1;
 
-    return referencePca.coordinates.map((coords, i) => ({
-      x: coords[xIdx] ?? 0,
-      y: coords[yIdx] ?? 0,
-      z: coords[zIdx],
-      index: i,
-      name: `${referenceLabel} ${i + 1}`,
-      yValue: referencePca.y?.[i],
-      foldLabel: referencePca.fold_labels?.[i],
-    }));
+    const points: DataPoint[] = [];
+
+    referencePca.coordinates.forEach((coords, i) => {
+      const rawX = coords[xIdx];
+      const rawY = coords[yIdx];
+
+      // Skip points with NaN/Infinity in x or y coordinates
+      if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
+        return;
+      }
+
+      points.push({
+        x: rawX,
+        y: rawY,
+        z: safeCoord(coords[zIdx]),
+        index: i,
+        name: `${referenceLabel} ${i + 1}`,
+        yValue: referencePca.y?.[i],
+        foldLabel: referencePca.fold_labels?.[i],
+      });
+    });
+
+    return points;
   }, [referencePca, config.xAxis, config.yAxis, config.zAxis, referenceLabel]);
 
-  // Debug logging for data flow
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[DimensionReductionChart] pca:', pca ? { n_components: pca.n_components, coordinatesLength: pca.coordinates?.length, firstCoord: pca.coordinates?.[0] } : null);
-    console.log('[DimensionReductionChart] chartData.length:', chartData.length, 'sample:', chartData[0]);
-  }
 
   // Unique folds for legend
   const uniqueFolds = useMemo(() => {
@@ -358,7 +392,11 @@ export function DimensionReductionChart({
   // Pre-compute Y value range for efficient coloring
   const yRange = useMemo(() => {
     if (chartData.length === 0) return { min: 0, max: 1 };
-    const yValues = chartData.map(d => d.yValue ?? 0);
+    // Filter to only finite values to avoid NaN in color calculations
+    const yValues = chartData
+      .map(d => d.yValue ?? 0)
+      .filter(Number.isFinite);
+    if (yValues.length === 0) return { min: 0, max: 1 };
     return {
       min: Math.min(...yValues),
       max: Math.max(...yValues),
@@ -366,6 +404,8 @@ export function DimensionReductionChart({
   }, [chartData]);
 
   // Computed color context (build from props or use external)
+  // NOTE: hoveredSample is intentionally NOT included to avoid expensive re-renders on hover
+  // Hover highlighting is handled directly in the Cell render
   const computedColorContext = useMemo<ColorContext>(() => {
     if (externalColorContext) return externalColorContext;
 
@@ -377,9 +417,9 @@ export function DimensionReductionChart({
       metadata,
       selectedSamples,
       pinnedSamples,
-      hoveredSample,
+      // hoveredSample excluded - handled directly in Cell render for performance
     };
-  }, [externalColorContext, y, yRange, folds, pca, metadata, selectedSamples, pinnedSamples, hoveredSample]);
+  }, [externalColorContext, y, yRange, folds, pca, metadata, selectedSamples, pinnedSamples]);
 
   // Get point color - returns CSS-compatible colors (concrete HSL, no variables)
   const getPointColor = useCallback((point: DataPoint) => {
@@ -503,67 +543,97 @@ export function DimensionReductionChart({
   }, [selectionCtx]);
 
   // Handle box/lasso selection completion
+  // Strategy: Check if each scatter circle's screen position is inside the selection area
+  // This is more reliable than trying to convert between coordinate systems
   const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    if (!selectionCtx || !chartContainerRef.current) return;
+    if (!selectionCtx || !chartContainerRef.current) {
+      return;
+    }
 
-    // Get the chart container's bounding rect to convert screen coords to data coords
     const container = chartContainerRef.current;
-    const rect = container.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
 
-    // Get chart margins (from CHART_MARGINS.pca)
-    const margin = CHART_MARGINS.pca;
-    const chartLeft = margin.left;
-    const chartTop = margin.top;
-    const chartWidth = rect.width - margin.left - margin.right;
-    const chartHeight = rect.height - margin.top - margin.bottom;
+    // Find all scatter symbols - try multiple selectors
+    // Recharts renders symbols inside layer groups
+    const selectors = [
+      '.recharts-scatter-symbol',
+      '.recharts-symbols',
+      '.recharts-layer.recharts-scatter .recharts-symbols',
+      '.recharts-scatter path',
+      '.recharts-layer path[fill]',
+    ];
 
-    // Find data bounds from chartData
-    const xValues = chartData.map(d => d.x);
-    const yValues = chartData.map(d => d.y);
-    const dataXMin = Math.min(...xValues);
-    const dataXMax = Math.max(...xValues);
-    const dataYMin = Math.min(...yValues);
-    const dataYMax = Math.max(...yValues);
+    let scatterSymbols: NodeListOf<Element> | null = null;
 
-    // Function to convert screen point to data coordinates
-    const screenToData = (screenPoint: Point): Point => {
-      const relX = (screenPoint.x - chartLeft) / chartWidth;
-      const relY = (screenPoint.y - chartTop) / chartHeight;
-      return {
-        x: dataXMin + relX * (dataXMax - dataXMin),
-        y: dataYMax - relY * (dataYMax - dataYMin), // Y is inverted in screen coords
-      };
-    };
+    for (const selector of selectors) {
+      const elements = container.querySelectorAll(selector);
+      if (elements.length > 0) {
+        scatterSymbols = elements;
+        break;
+      }
+    }
 
-    // Find points inside the selection
+    if (!scatterSymbols || scatterSymbols.length === 0) {
+      return;
+    }
+
+    // Build a map of screen positions to data indices using getBoundingClientRect
+    // This is more reliable than parsing SVG attributes
+    const pointScreenPositions: Array<{ screenX: number; screenY: number; dataIndex: number }> = [];
+
+    scatterSymbols.forEach((symbol, idx) => {
+      // Only process symbols that correspond to our data (skip reference dataset symbols)
+      if (idx < chartData.length) {
+        const rect = symbol.getBoundingClientRect();
+        // Get the center of the symbol
+        const centerX = rect.left + rect.width / 2 - containerRect.left;
+        const centerY = rect.top + rect.height / 2 - containerRect.top;
+
+        if (Number.isFinite(centerX) && Number.isFinite(centerY) && rect.width > 0) {
+          pointScreenPositions.push({
+            screenX: centerX,
+            screenY: centerY,
+            dataIndex: chartData[idx].index,
+          });
+        }
+      }
+    });
+
+    // Find points inside the selection using their screen coordinates
     const selectedIndices: number[] = [];
 
     if ('path' in result) {
-      // Lasso selection - convert path to data coordinates
-      const dataPath = result.path.map(screenToData);
-      chartData.forEach(point => {
-        if (isPointInPolygon({ x: point.x, y: point.y }, dataPath)) {
-          selectedIndices.push(point.index);
+      // Lasso selection - check if each point's screen position is inside the lasso path
+      const screenPath = result.path;
+
+      if (screenPath.length < 3) {
+        return;
+      }
+
+      pointScreenPositions.forEach(point => {
+        if (isPointInPolygon({ x: point.screenX, y: point.screenY }, screenPath)) {
+          selectedIndices.push(point.dataIndex);
         }
       });
     } else {
-      // Box selection - convert corners to data coordinates
-      const start = screenToData(result.start);
-      const end = screenToData(result.end);
+      // Box selection - check if each point's screen position is inside the box
       const bounds = {
-        minX: Math.min(start.x, end.x),
-        maxX: Math.max(start.x, end.x),
-        minY: Math.min(start.y, end.y),
-        maxY: Math.max(start.y, end.y),
+        minX: Math.min(result.start.x, result.end.x),
+        maxX: Math.max(result.start.x, result.end.x),
+        minY: Math.min(result.start.y, result.end.y),
+        maxY: Math.max(result.start.y, result.end.y),
       };
-      chartData.forEach(point => {
-        if (isPointInBox({ x: point.x, y: point.y }, bounds)) {
-          selectedIndices.push(point.index);
+
+      pointScreenPositions.forEach(point => {
+        if (isPointInBox({ x: point.screenX, y: point.screenY }, bounds)) {
+          selectedIndices.push(point.dataIndex);
         }
       });
     }
 
-    if (selectedIndices.length === 0) return;
+    if (selectedIndices.length === 0) {
+      return;
+    }
 
     // Apply selection based on modifiers
     if (modifiers.shift) {
@@ -579,15 +649,23 @@ export function DimensionReductionChart({
     }
   }, [selectionCtx, chartData]);
 
-  // Handle background click
+  // Handle background click - only clear selection when in 'click' mode
+  // In box/lasso modes, the mouseup that completes selection also triggers a click event
+  // so we must not clear selection in those modes
   const handleChartClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only clear selection on background click when in 'click' mode
+    // In box/lasso modes, completing a selection triggers a click that would clear it
+    if (selectionTool !== 'click') {
+      return;
+    }
+
     const target = e.target as HTMLElement;
     if (target.tagName === 'svg' || target.classList.contains('recharts-surface')) {
       if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
         selectionCtx.clear();
       }
     }
-  }, [selectionCtx]);
+  }, [selectionCtx, selectionTool]);
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -880,7 +958,10 @@ export function DimensionReductionChart({
           {chartData.map((entry) => {
             // Use unified color system when globalColorConfig is provided
             if (globalColorConfig) {
-              const colorResult = getUnifiedSampleColor(entry.index, globalColorConfig, computedColorContext);
+              // Pass hoveredSample directly to colorContext to avoid full re-render
+              // but still get correct hover styling
+              const contextWithHover = { ...computedColorContext, hoveredSample };
+              const colorResult = getUnifiedSampleColor(entry.index, globalColorConfig, contextWithHover);
               // Phase 4: Skip hidden samples (from display filtering)
               if (colorResult.hidden) {
                 return <Cell key={`cell-${entry.index}`} fill="transparent" fillOpacity={0} />;
@@ -1122,4 +1203,4 @@ export function DimensionReductionChart({
   );
 }
 
-export default DimensionReductionChart;
+export default React.memo(DimensionReductionChart);

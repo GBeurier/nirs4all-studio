@@ -110,6 +110,10 @@ export interface ChartPanelProps {
   headerContent?: ReactNode;
   /** Custom menu items for dropdown */
   menuItems?: ReactNode;
+
+  // Phase 10: Resize capability
+  /** Enable CSS resize (experimental - works within grid cell) */
+  resizable?: boolean;
 }
 
 // ============= Sub-Components =============
@@ -303,16 +307,15 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
       pinnedCount,
       headerContent,
       menuItems,
+      resizable = false,
     },
     ref
   ) {
     const isMinimized = viewState === 'minimized';
     const isHidden = viewState === 'hidden';
 
-    // Don't render if hidden
-    if (isHidden) return null;
-
     // Handle double-click to toggle maximize
+    // Note: Hook must be called before early return
     const handleHeaderDoubleClick = useCallback(() => {
       if (isMinimized) {
         onRestore?.();
@@ -323,6 +326,9 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
       }
     }, [isMinimized, isMaximized, onRestore, onMaximize]);
 
+    // Don't render if hidden (early return after hooks)
+    if (isHidden) return null;
+
     return (
       <div
         ref={ref}
@@ -331,10 +337,18 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
           'transition-all duration-200 ease-in-out',
           isMaximized && 'col-span-full row-span-full z-10',
           isMinimized && 'min-h-0',
+          // Phase 10: CSS resize capability (experimental)
+          resizable && !isMinimized && !isMaximized && 'resize overflow-auto',
           className
         )}
         style={{
           minHeight: isMinimized ? 'auto' : minHeight,
+          // CSS resize needs explicit min dimensions
+          ...(resizable && !isMinimized && !isMaximized ? {
+            minWidth: '200px',
+            maxWidth: '100%',
+            maxHeight: '100%',
+          } : {}),
         }}
         role="img"
         aria-label={ariaLabel ?? `${CHART_LABELS[chartType]} visualization`}

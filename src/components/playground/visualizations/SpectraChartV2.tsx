@@ -117,6 +117,9 @@ export interface SpectraChartV2Props {
   referenceDataset?: DataSection | null;
   /** Label for the reference dataset */
   referenceLabel?: string;
+  // Phase 7: Difference mode enhancements
+  /** Whether to show absolute differences instead of signed differences */
+  showAbsoluteDifference?: boolean;
 }
 
 // ============= Main Component =============
@@ -144,8 +147,10 @@ export function SpectraChartV2({
   outlierIndices,
   referenceDataset,
   referenceLabel = 'Reference',
+  showAbsoluteDifference = false,
 }: SpectraChartV2Props) {
   const chartRef = useRef<HTMLDivElement>(null);
+  const chartAreaRef = useRef<HTMLDivElement>(null);
 
   // Use external config or create internal one
   const internalConfig = useSpectraChartConfig();
@@ -174,6 +179,15 @@ export function SpectraChartV2({
     endWavelength: number | null;
     isSelecting: boolean;
   }>({ startWavelength: null, endWavelength: null, isSelecting: false });
+
+  // Rectangle selection state (for 2D selection by wavelength AND absorbance)
+  const [rectSelection, setRectSelection] = useState<{
+    startX: number | null;
+    startY: number | null;
+    endX: number | null;
+    endY: number | null;
+    isSelecting: boolean;
+  }>({ startX: null, startY: null, endX: null, endY: null, isSelecting: false });
 
 
   // Get base wavelengths
@@ -206,14 +220,17 @@ export function SpectraChartV2({
         const diffSpectra = processed.spectra.map((proc, idx) => {
           const orig = original.spectra[idx];
           if (!orig || proc.length !== orig.length) return proc;
-          return proc.map((v, i) => v - orig[i]);
+          return proc.map((v, i) => {
+            const diff = v - orig[i];
+            return showAbsoluteDifference ? Math.abs(diff) : diff;
+          });
         });
         return { spectra: diffSpectra, wavelengths: processed.wavelengths };
       }
       default:
         return { spectra: processed.spectra, wavelengths: processed.wavelengths };
     }
-  }, [config.viewMode, processed, original]);
+  }, [config.viewMode, processed, original, showAbsoluteDifference]);
 
   // Apply wavelength focus (range filter, derivative)
   const focusedData = useMemo(() => {
@@ -235,12 +252,6 @@ export function SpectraChartV2({
 
     return { wavelengths, spectra };
   }, [baseSpectra, config.wavelengthFocus]);
-
-  // Compute Y value range for filter panel
-  const yRange: [number, number] | undefined = useMemo(() => {
-    if (!y || y.length === 0) return undefined;
-    return [Math.min(...y), Math.max(...y)];
-  }, [y]);
 
   // Apply sampling strategy with display mode consideration
   const samplingResult: SamplingResult = useMemo(() => {
@@ -636,18 +647,111 @@ export function SpectraChartV2({
     }
   }, [isWebGLMode, brushDomain, onInteractionStart]);
 
-  // Handle wavelength range selection for sample selection
-  const handleRangeMouseDown = useCallback((e: unknown) => {
-    const chartEvent = e as { activeLabel?: number };
-    if (!chartEvent?.activeLabel) return;
-    const wl = chartEvent.activeLabel;
-    if (!isNaN(wl)) {
-      setRangeSelection({ startWavelength: wl, endWavelength: wl, isSelecting: true });
-    }
+  // Track if Alt key is pressed for rectangle selection mode
+  const [isAltKeyPressed, setIsAltKeyPressed] = useState(false);
+
+  // Track Alt key state
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setIsAltKeyPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setIsAltKeyPressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, []);
 
+  // Compute Y-axis domain for rectangle selection coordinate mapping
+  const yAxisDomain = useMemo((): [number, number] => {
+    const { spectra } = focusedData;
+    if (spectra.length === 0) return [0, 1];
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (const spectrum of spectra) {
+      for (const v of spectrum) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    // Add 5% padding
+    const padding = (max - min) * 0.05;
+    return [min - padding, max + padding];
+  }, [focusedData]);
+
+  // Rectangle selection handlers (Alt+drag for 2D selection)
+  // Note: These are called from handleRangeMouseDown/Move with chart event data
+  const handleRectMouseDownCb = useCallback((chartEvent: { activeLabel?: number; chartY?: number }) => {
+    if (!chartEvent?.activeLabel || chartEvent?.chartY === undefined) return;
+
+    const wl = chartEvent.activeLabel;
+    if (isNaN(wl)) return;
+
+    // Get actual chart height from the container ref
+    const containerHeight = chartAreaRef.current?.clientHeight ?? 250;
+    const marginTop = CHART_MARGINS.spectra.top;
+    const marginBottom = CHART_MARGINS.spectra.bottom;
+    const plotHeight = containerHeight - marginTop - marginBottom;
+
+    const normalizedY = Math.max(0, Math.min(1, 1 - (chartEvent.chartY - marginTop) / plotHeight));
+    const yValue = yAxisDomain[0] + normalizedY * (yAxisDomain[1] - yAxisDomain[0]);
+
+    setRectSelection({
+      startX: wl,
+      startY: yValue,
+      endX: wl,
+      endY: yValue,
+      isSelecting: true,
+    });
+  }, [yAxisDomain]);
+
+  const handleRectMouseMoveCb = useCallback((chartEvent: { activeLabel?: number; chartY?: number }) => {
+    if (!rectSelection.isSelecting) return;
+    if (!chartEvent?.activeLabel || chartEvent?.chartY === undefined) return;
+
+    const wl = chartEvent.activeLabel;
+    if (isNaN(wl)) return;
+
+    // Get actual chart height from the container ref
+    const containerHeight = chartAreaRef.current?.clientHeight ?? 250;
+    const marginTop = CHART_MARGINS.spectra.top;
+    const marginBottom = CHART_MARGINS.spectra.bottom;
+    const plotHeight = containerHeight - marginTop - marginBottom;
+
+    const normalizedY = Math.max(0, Math.min(1, 1 - (chartEvent.chartY - marginTop) / plotHeight));
+    const yValue = yAxisDomain[0] + normalizedY * (yAxisDomain[1] - yAxisDomain[0]);
+
+    setRectSelection(prev => ({
+      ...prev,
+      endX: wl,
+      endY: yValue,
+    }));
+  }, [rectSelection.isSelecting, yAxisDomain]);
+
+  // Handle wavelength range selection for sample selection
+  const handleRangeMouseDown = useCallback((e: unknown) => {
+    const chartEvent = e as { activeLabel?: number; chartY?: number };
+    if (!chartEvent?.activeLabel) return;
+    const wl = chartEvent.activeLabel;
+    if (isNaN(wl)) return;
+
+    // Rectangle selection mode (Alt key)
+    if (isAltKeyPressed && chartEvent.chartY !== undefined) {
+      handleRectMouseDownCb(chartEvent);
+      return;
+    }
+
+    // Standard wavelength range selection
+    setRangeSelection({ startWavelength: wl, endWavelength: wl, isSelecting: true });
+  }, [isAltKeyPressed, handleRectMouseDownCb]);
+
   const handleRangeMouseMove = useCallback((e: unknown) => {
-    const chartEvent = e as { activeLabel?: number; activePayload?: Array<{ dataKey: string }> };
+    const chartEvent = e as { activeLabel?: number; activePayload?: Array<{ dataKey: string }>; chartY?: number };
 
     // Handle hover detection for SelectionContext
     if (selectionCtx && chartEvent?.activePayload?.[0]?.dataKey) {
@@ -662,6 +766,12 @@ export function SpectraChartV2({
       }
     }
 
+    // Handle rectangle selection
+    if (rectSelection.isSelecting && chartEvent?.activeLabel && chartEvent.chartY !== undefined) {
+      handleRectMouseMoveCb(chartEvent);
+      return;
+    }
+
     // Handle range selection
     if (!rangeSelection.isSelecting) return;
     if (!chartEvent?.activeLabel) return;
@@ -669,7 +779,7 @@ export function SpectraChartV2({
     if (!isNaN(wl)) {
       setRangeSelection(prev => ({ ...prev, endWavelength: wl }));
     }
-  }, [rangeSelection.isSelecting, selectionCtx, displayIndices]);
+  }, [rangeSelection.isSelecting, rectSelection.isSelecting, selectionCtx, displayIndices, handleRectMouseMoveCb]);
 
   // Clear hover when mouse leaves chart
   const handleMouseLeave = useCallback(() => {
@@ -757,6 +867,76 @@ export function SpectraChartV2({
       max: Math.max(rangeSelection.startWavelength, rangeSelection.endWavelength),
     };
   }, [rangeSelection]);
+
+  // Rectangle selection mouse up handler
+  const handleRectMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!rectSelection.isSelecting || !rectSelection.startX || !rectSelection.endX) {
+      setRectSelection({ startX: null, startY: null, endX: null, endY: null, isSelecting: false });
+      return;
+    }
+
+    const { wavelengths, spectra } = focusedData;
+
+    // Get rectangle bounds
+    const minX = Math.min(rectSelection.startX, rectSelection.endX);
+    const maxX = Math.max(rectSelection.startX, rectSelection.endX);
+    const minY = Math.min(rectSelection.startY ?? 0, rectSelection.endY ?? 0);
+    const maxY = Math.max(rectSelection.startY ?? 0, rectSelection.endY ?? 0);
+
+    // Only process if rectangle has meaningful size
+    const wlStep = wavelengths.length > 1 ? Math.abs(wavelengths[1] - wavelengths[0]) : 1;
+    const yRange = yAxisDomain[1] - yAxisDomain[0];
+
+    if (Math.abs(maxX - minX) > wlStep * 2 && Math.abs(maxY - minY) > yRange * 0.02) {
+      // Find wavelength indices in X range
+      const wlIndicesInRange: number[] = [];
+      wavelengths.forEach((wl, idx) => {
+        if (wl >= minX && wl <= maxX) {
+          wlIndicesInRange.push(idx);
+        }
+      });
+
+      if (wlIndicesInRange.length > 0) {
+        // Find spectra that have at least one point inside the rectangle
+        const selectedIndices: number[] = [];
+        spectra.forEach((spectrum, sampleIdx) => {
+          for (const wlIdx of wlIndicesInRange) {
+            const yVal = spectrum[wlIdx];
+            if (yVal !== undefined && yVal >= minY && yVal <= maxY) {
+              selectedIndices.push(sampleIdx);
+              break; // Found a point in rectangle, no need to check more
+            }
+          }
+        });
+
+        if (selectedIndices.length > 0 && selectionCtx) {
+          if (e.shiftKey) {
+            selectionCtx.select(selectedIndices, 'add');
+          } else if (e.ctrlKey || e.metaKey) {
+            selectionCtx.toggle(selectedIndices);
+          } else {
+            selectionCtx.select(selectedIndices, 'replace');
+          }
+          onBrushSelect?.(selectedIndices);
+        }
+      }
+    }
+
+    setRectSelection({ startX: null, startY: null, endX: null, endY: null, isSelecting: false });
+  }, [rectSelection, focusedData, yAxisDomain, selectionCtx, onBrushSelect]);
+
+  // Compute rectangle selection bounds for visual feedback
+  const rectSelectionBounds = useMemo(() => {
+    if (!rectSelection.isSelecting || !rectSelection.startX || !rectSelection.endX) {
+      return null;
+    }
+    return {
+      x1: Math.min(rectSelection.startX, rectSelection.endX),
+      x2: Math.max(rectSelection.startX, rectSelection.endX),
+      y1: Math.min(rectSelection.startY ?? 0, rectSelection.endY ?? 0),
+      y2: Math.max(rectSelection.startY ?? 0, rectSelection.endY ?? 0),
+    };
+  }, [rectSelection]);
 
   // Reset brush
   const handleResetBrush = useCallback(() => {
@@ -851,6 +1031,107 @@ export function SpectraChartV2({
   const showProcessed = showIndividualLines && (config.viewMode === 'both' || config.viewMode === 'processed');
   const showGroupedAggregation = config.displayMode === 'grouped' && groupedStats && groupKeys.length > 0;
 
+  // Phase 7: Compute difference statistics when in difference mode
+  const differenceStats = useMemo(() => {
+    if (config.viewMode !== 'difference') return null;
+    if (processed.spectra.length !== original.spectra.length) return null;
+
+    let sumAbs = 0;
+    let sumSq = 0;
+    let maxAbs = 0;
+    let count = 0;
+
+    processed.spectra.forEach((proc, sampleIdx) => {
+      const orig = original.spectra[sampleIdx];
+      if (!orig || proc.length !== orig.length) return;
+      proc.forEach((v, i) => {
+        const diff = v - orig[i];
+        const absDiff = Math.abs(diff);
+        sumAbs += absDiff;
+        sumSq += diff * diff;
+        maxAbs = Math.max(maxAbs, absDiff);
+        count++;
+      });
+    });
+
+    if (count === 0) return null;
+
+    const meanAbsDiff = sumAbs / count;
+    const rmse = Math.sqrt(sumSq / count);
+
+    return {
+      meanAbsDiff,
+      maxAbsDiff: maxAbs,
+      rmse,
+    };
+  }, [config.viewMode, processed.spectra, original.spectra]);
+
+  // Phase 7: Compute high-difference wavelength regions for highlighting
+  const highDifferenceRegions = useMemo(() => {
+    if (config.viewMode !== 'difference') return [];
+    if (processed.spectra.length !== original.spectra.length) return [];
+
+    const { wavelengths: wls, spectra: diffSpectra } = focusedData;
+    if (wls.length === 0 || diffSpectra.length === 0) return [];
+
+    // Compute mean absolute difference per wavelength
+    const meanAbsPerWl = wls.map((_, wlIdx) => {
+      let sum = 0;
+      let count = 0;
+      diffSpectra.forEach(spectrum => {
+        if (spectrum[wlIdx] !== undefined) {
+          sum += Math.abs(spectrum[wlIdx]);
+          count++;
+        }
+      });
+      return count > 0 ? sum / count : 0;
+    });
+
+    // Compute overall mean and std of mean abs per wavelength
+    const overallMean = meanAbsPerWl.reduce((a, b) => a + b, 0) / meanAbsPerWl.length;
+    const overallStd = Math.sqrt(
+      meanAbsPerWl.reduce((acc, v) => acc + Math.pow(v - overallMean, 2), 0) / meanAbsPerWl.length
+    );
+
+    // Threshold: wavelengths with mean abs diff > mean + 1.5*std
+    const threshold = overallMean + 1.5 * overallStd;
+
+    // Find contiguous regions above threshold
+    const regions: { start: number; end: number }[] = [];
+    let inRegion = false;
+    let regionStart = 0;
+
+    meanAbsPerWl.forEach((val, idx) => {
+      if (val > threshold) {
+        if (!inRegion) {
+          inRegion = true;
+          regionStart = idx;
+        }
+      } else {
+        if (inRegion) {
+          inRegion = false;
+          // Only add regions spanning at least 3 wavelengths to avoid noise
+          if (idx - regionStart >= 3) {
+            regions.push({
+              start: wls[regionStart],
+              end: wls[idx - 1],
+            });
+          }
+        }
+      }
+    });
+
+    // Handle region that extends to the end
+    if (inRegion && wls.length - regionStart >= 3) {
+      regions.push({
+        start: wls[regionStart],
+        end: wls[wls.length - 1],
+      });
+    }
+
+    return regions;
+  }, [config.viewMode, processed.spectra.length, original.spectra.length, focusedData]);
+
   // Get legend items
   type LegendItem = { label: string; color: string; dashed?: boolean; isArea?: boolean };
   const legendItems = useMemo((): LegendItem[] => {
@@ -926,8 +1207,15 @@ export function SpectraChartV2({
         onSelectSimilar={handleSelectSimilar}
       >
         <div
+          ref={chartAreaRef}
           className="flex-1 min-h-0 relative"
-          onMouseUp={isWebGLMode ? undefined : handleRangeMouseUp}
+          onMouseUp={isWebGLMode ? undefined : (e) => {
+            if (rectSelection.isSelecting) {
+              handleRectMouseUp(e);
+            } else {
+              handleRangeMouseUp(e);
+            }
+          }}
           onWheel={handleWheel}
           onDoubleClick={handleDoubleClick}
         >
@@ -1001,6 +1289,18 @@ export function SpectraChartV2({
               width={45}
             />
 
+            {/* Phase 7: High difference region highlights */}
+            {highDifferenceRegions.map((region, idx) => (
+              <ReferenceArea
+                key={`high-diff-${idx}`}
+                x1={region.start}
+                x2={region.end}
+                strokeOpacity={0}
+                fill="hsl(30, 100%, 50%)"
+                fillOpacity={0.12}
+              />
+            ))}
+
             {/* Wavelength range selection highlight */}
             {rangeSelectionBounds && (
               <ReferenceArea
@@ -1010,6 +1310,21 @@ export function SpectraChartV2({
                 stroke="hsl(var(--primary))"
                 fill="hsl(var(--primary))"
                 fillOpacity={0.15}
+              />
+            )}
+
+            {/* Rectangle selection highlight (Alt+drag) */}
+            {rectSelectionBounds && (
+              <ReferenceArea
+                x1={rectSelectionBounds.x1}
+                x2={rectSelectionBounds.x2}
+                y1={rectSelectionBounds.y1}
+                y2={rectSelectionBounds.y2}
+                strokeOpacity={0.5}
+                stroke="hsl(var(--primary))"
+                fill="hsl(var(--primary))"
+                fillOpacity={0.2}
+                strokeDasharray="4 2"
               />
             )}
 
@@ -1168,7 +1483,7 @@ export function SpectraChartV2({
         </div>
       </SpectraContextMenu>
 
-      {/* Legend */}
+      {/* Legend and Footer */}
       <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-3">
           {legendItems.map((item, idx) => (
@@ -1190,14 +1505,24 @@ export function SpectraChartV2({
             </span>
           )}
         </div>
-        {brushDomain && (
-          <span>
-            Zoom: {brushDomain[0].toFixed(0)} - {brushDomain[1].toFixed(0)} nm
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Phase 7: Difference statistics */}
+          {differenceStats && (
+            <span className="font-mono text-orange-600 dark:text-orange-400">
+              MAD: {differenceStats.meanAbsDiff.toExponential(2)} |
+              Max: {differenceStats.maxAbsDiff.toExponential(2)} |
+              RMSE: {differenceStats.rmse.toExponential(2)}
+            </span>
+          )}
+          {brushDomain && (
+            <span>
+              Zoom: {brushDomain[0].toFixed(0)} - {brushDomain[1].toFixed(0)} nm
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-export default SpectraChartV2;
+export default React.memo(SpectraChartV2);

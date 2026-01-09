@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Beaker, BarChart3, TrendingUp, Layers, Settings2 } from "lucide-react";
+import { Beaker, BarChart3, TrendingUp, Layers, Settings2, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ const itemVariants = {
 interface AnalysisToolProps {
   title: string;
   description: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   status: "available" | "coming-soon" | "beta";
   href?: string;
 }

@@ -20,6 +20,7 @@ import { SelectionProvider } from '@/context/SelectionContext';
 import { PlaygroundViewProvider } from '@/context/PlaygroundViewContext';
 import { FilterProvider } from '@/context/FilterContext';
 import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
+import { OutliersProvider } from '@/context/OutliersContext';
 import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
@@ -307,8 +308,9 @@ export default function Playground() {
     <PlaygroundViewProvider>
       <SelectionProvider>
         <FilterProvider>
-          <ReferenceDatasetProvider primaryData={rawData} operators={operators}>
-            <PlaygroundContent
+          <OutliersProvider>
+            <ReferenceDatasetProvider primaryData={rawData} operators={operators}>
+              <PlaygroundContent
             // Data
             rawData={rawData}
             dataLoading={dataLoading}
@@ -364,8 +366,9 @@ export default function Playground() {
             toggleChartVisibility={toggleChartVisibility}
             selectedSample={selectedSample}
             setSelectedSample={setSelectedSample}
-          />
-          </ReferenceDatasetProvider>
+              />
+            </ReferenceDatasetProvider>
+          </OutliersProvider>
         </FilterProvider>
       </SelectionProvider>
     </PlaygroundViewProvider>
@@ -424,6 +427,8 @@ interface PlaygroundContentProps {
 }
 
 import { usePlaygroundShortcuts } from '@/hooks/usePlaygroundShortcuts';
+import { usePlaygroundReset } from '@/hooks/usePlaygroundReset';
+import { useOutliers } from '@/context/OutliersContext';
 
 function PlaygroundContent({
   rawData,
@@ -472,6 +477,31 @@ function PlaygroundContent({
   selectedSample,
   setSelectedSample,
 }: PlaygroundContentProps) {
+  // Phase 8: Outliers context for mark-as-outliers functionality
+  const { toggleOutliers } = useOutliers();
+
+  // Phase 8: Playground reset hook
+  const { resetPlayground, hasStateToReset } = usePlaygroundReset({
+    onResetStepComparison: () => {
+      setStepComparisonEnabled(false);
+      setActiveStep(0);
+    },
+  });
+
+  // Handle mark as outliers (Ctrl+O)
+  const handleMarkAsOutliers = useCallback((indices: number[]) => {
+    toggleOutliers(indices);
+    toast.success(`Toggled ${indices.length} sample${indices.length !== 1 ? 's' : ''} as outliers`);
+  }, [toggleOutliers]);
+
+  // Handle reset playground
+  const handleResetPlayground = useCallback(() => {
+    resetPlayground();
+    toast.success('Playground reset', {
+      description: 'All selections, filters, and settings have been cleared',
+    });
+  }, [resetPlayground]);
+
   // Use the centralized keyboard shortcuts hook (now inside SelectionProvider)
   const { shortcutsByCategory } = usePlaygroundShortcuts({
     totalSamples: rawData?.spectra?.length ?? 0,
@@ -495,6 +525,8 @@ function PlaygroundContent({
       }
     },
     onShowHelp: () => setShowShortcutsHelp(true),
+    onMarkAsOutliers: handleMarkAsOutliers,
+    onResetPlayground: handleResetPlayground,
     canUndo,
     canRedo,
   });
@@ -565,6 +597,9 @@ function PlaygroundContent({
         renderMode={renderMode}
         onRenderModeChange={setRenderMode}
         datasetId={currentDatasetInfo?.datasetId ?? 'playground'}
+        // Phase 8 props
+        onResetPlayground={handleResetPlayground}
+        hasStateToReset={hasStateToReset}
       />
 
       {/* Phase 6: Keyboard shortcuts help dialog */}

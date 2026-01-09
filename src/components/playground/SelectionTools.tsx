@@ -28,10 +28,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { type SelectionToolType } from '@/context/SelectionContext';
+
+// Re-export for convenience
+export type { SelectionToolType };
 
 // ============= Types =============
-
-export type SelectionToolType = 'click' | 'lasso' | 'box';
 
 export interface Point {
   x: number;
@@ -355,6 +357,12 @@ export function SelectionContainer({
   const [boxStart, setBoxStart] = useState<Point | null>(null);
   const [boxEnd, setBoxEnd] = useState<Point | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  // Store modifiers at drag start to use them at drag end
+  const modifiersRef = useRef({ shift: false, ctrl: false });
+  // Use refs to track current positions during drag (avoid stale closure issues)
+  const boxStartRef = useRef<Point | null>(null);
+  const boxEndRef = useRef<Point | null>(null);
+  const lassoPathRef = useRef<Point[]>([]);
 
   // Track container size
   useEffect(() => {
@@ -390,6 +398,10 @@ export function SelectionContainer({
 
   const handleMouseDown = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SelectionContainer] handleMouseDown', { enabled, mode, button: e.button });
+      }
+
       if (!enabled) return;
       if (e.button !== 0) return; // Only left click
 
@@ -402,73 +414,125 @@ export function SelectionContainer({
         return;
       }
 
+      // Store modifiers at drag start
+      modifiersRef.current = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey };
       setIsSelecting(true);
 
       if (mode === 'lasso') {
         setLassoPath([point]);
+        lassoPathRef.current = [point];
       } else if (mode === 'box') {
         setBoxStart(point);
         setBoxEnd(point);
+        boxStartRef.current = point;
+        boxEndRef.current = point;
       }
+
+      // Prevent text selection during drag
+      e.preventDefault();
     },
     [enabled, mode, getPointFromEvent, onPointClick]
   );
 
-  const handleMouseMove = useCallback(
-    (e: globalThis.MouseEvent) => {
-      if (!isSelecting || !enabled) return;
+  // Use document-level event listeners for robust drag handling
+  // This ensures we capture events even if other elements are in the way
+  // Using refs to avoid stale closure issues - handlers don't need to be recreated on every state change
+  useEffect(() => {
+    if (!isSelecting) return;
 
-      const point = getPointFromEvent(e);
-      if (!point) return;
+    const handleDocumentMouseMove = (e: globalThis.MouseEvent) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SelectionContainer] handleDocumentMouseMove', {
+          clientX: e.clientX,
+          clientY: e.clientY
+        });
+      }
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const point = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SelectionContainer] handleDocumentMouseMove - updating position', { mode, point });
+      }
 
       if (mode === 'lasso') {
-        setLassoPath((prev) => [...prev, point]);
+        lassoPathRef.current = [...lassoPathRef.current, point];
+        setLassoPath(lassoPathRef.current);
       } else if (mode === 'box') {
+        boxEndRef.current = point;
         setBoxEnd(point);
       }
-    },
-    [isSelecting, enabled, mode, getPointFromEvent]
-  );
+    };
 
-  const handleMouseUp = useCallback(
-    (e: globalThis.MouseEvent) => {
-      if (!isSelecting) return;
+    const handleDocumentMouseUp = (e: globalThis.MouseEvent) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[SelectionContainer] handleDocumentMouseUp', {
+          boxStart: boxStartRef.current,
+          boxEnd: boxEndRef.current,
+          lassoPathLength: lassoPathRef.current.length
+        });
+      }
 
-      setIsSelecting(false);
+      const modifiers = {
+        shift: e.shiftKey || modifiersRef.current.shift,
+        ctrl: e.ctrlKey || e.metaKey || modifiersRef.current.ctrl
+      };
 
-      const modifiers = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey };
-
-      if (mode === 'lasso' && lassoPath.length >= 3) {
-        const simplified = simplifyPath(lassoPath);
+      // Complete selection using refs (which have the latest values)
+      if (mode === 'lasso' && lassoPathRef.current.length >= 3) {
+        const simplified = simplifyPath(lassoPathRef.current);
         const bounds = getBoundsFromPoints(simplified);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[SelectionContainer] calling onSelectionComplete (lasso)', { pathLength: simplified.length, bounds });
+        }
         onSelectionComplete({ path: simplified, bounds }, modifiers);
-      } else if (mode === 'box' && boxStart && boxEnd) {
-        const bounds = getBoundsFromCorners(boxStart, boxEnd);
+      } else if (mode === 'box' && boxStartRef.current && boxEndRef.current) {
+        const bounds = getBoundsFromCorners(boxStartRef.current, boxEndRef.current);
+        const width = Math.abs(boxEndRef.current.x - boxStartRef.current.x);
+        const height = Math.abs(boxEndRef.current.y - boxStartRef.current.y);
         // Only complete if box has meaningful size
-        if (Math.abs(boxEnd.x - boxStart.x) > 5 && Math.abs(boxEnd.y - boxStart.y) > 5) {
-          onSelectionComplete({ start: boxStart, end: boxEnd, bounds }, modifiers);
+        if (width > 5 && height > 5) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[SelectionContainer] calling onSelectionComplete (box)', {
+              boxStart: boxStartRef.current,
+              boxEnd: boxEndRef.current,
+              bounds
+            });
+          }
+          onSelectionComplete({ start: boxStartRef.current, end: boxEndRef.current, bounds }, modifiers);
+        } else {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[SelectionContainer] box too small, not calling onSelectionComplete', { width, height });
+          }
         }
       }
 
+      // Reset state
+      setIsSelecting(false);
       setLassoPath([]);
       setBoxStart(null);
       setBoxEnd(null);
-    },
-    [isSelecting, mode, lassoPath, boxStart, boxEnd, onSelectionComplete]
-  );
-
-  // Global mouse event handlers
-  useEffect(() => {
-    if (isSelecting) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      boxStartRef.current = null;
+      boxEndRef.current = null;
+      lassoPathRef.current = [];
     };
-  }, [isSelecting, handleMouseMove, handleMouseUp]);
+
+    // Add listeners when selection starts
+    document.addEventListener('mousemove', handleDocumentMouseMove);
+    document.addEventListener('mouseup', handleDocumentMouseUp);
+
+    // Clean up when selection ends or component unmounts
+    return () => {
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      document.removeEventListener('mouseup', handleDocumentMouseUp);
+    };
+  }, [isSelecting, mode, onSelectionComplete]);
 
   // Cursor style based on mode
   const cursorClass =

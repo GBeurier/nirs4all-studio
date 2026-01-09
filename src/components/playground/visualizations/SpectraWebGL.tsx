@@ -153,10 +153,17 @@ function parseColor(color: string): THREE.Color {
 
 /**
  * Normalize data to 0-1 range for rendering
+ * Returns 0.5 for invalid inputs to prevent NaN propagation
  */
 function normalizeValue(value: number, min: number, max: number): number {
+  // Guard against NaN/Infinity inputs
+  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max)) {
+    return 0.5;
+  }
   if (max === min) return 0.5;
-  return (value - min) / (max - min);
+  const result = (value - min) / (max - min);
+  // Guard against NaN result (shouldn't happen but defensive)
+  return Number.isFinite(result) ? result : 0.5;
 }
 
 /**
@@ -330,6 +337,11 @@ function BatchedLines({ lines, lineWidth, opacity }: BatchedLinesProps) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
+      // Manually set bounding sphere to prevent THREE.js from computing it
+      // (computation fails with NaN break points in the position array)
+      // Data is normalized to [0,1] range, so sphere at center (0.5, 0.5, 0) with radius 1 covers all
+      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0.5, 0.5, 0), 1);
+
       return { geometry, color };
     });
   }, [linesByColor]);
@@ -398,12 +410,52 @@ function HighlightedLines({ lines, lineWidth }: HighlightedLinesProps) {
   );
 }
 
+/**
+ * Renders a single hovered line on top - lightweight component that doesn't
+ * require recomputation of all line data when hover changes
+ */
+interface HoveredLineProps {
+  lines: LineData[];
+  hoveredIdx: number | null;
+  lineWidth: number;
+}
+
+function HoveredLine({ lines, hoveredIdx, lineWidth }: HoveredLineProps) {
+  if (hoveredIdx === null) return null;
+
+  const hoveredLine = lines.find(l => l.index === hoveredIdx && !l.isOriginal);
+  if (!hoveredLine) return null;
+
+  const positions = new Float32Array(hoveredLine.pointCount * 3);
+  for (let i = 0; i < hoveredLine.pointCount; i++) {
+    positions[i * 3] = hoveredLine.points[i * 2];
+    positions[i * 3 + 1] = hoveredLine.points[i * 2 + 1];
+    positions[i * 3 + 2] = 0.03; // z-order above pinned
+  }
+
+  return (
+    <line>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+        />
+      </bufferGeometry>
+      <lineBasicMaterial
+        color="#ffffff"
+        linewidth={lineWidth + 1}
+      />
+    </line>
+  );
+}
+
 interface SpectraLinesProps {
   lines: LineData[];
   qualityConfig: QualityConfig;
+  hoveredIdx?: number | null;
 }
 
-function SpectraLines({ lines, qualityConfig }: SpectraLinesProps) {
+function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
   // Separate lines by type for layered rendering
   const { normalLines, originalLines, selectedLines, pinnedLines } = useMemo(() => {
     const normal: LineData[] = [];
@@ -456,6 +508,13 @@ function SpectraLines({ lines, qualityConfig }: SpectraLinesProps) {
       <HighlightedLines
         lines={pinnedLines}
         lineWidth={qualityConfig.selectedLineWidth + 0.5}
+      />
+
+      {/* Hovered line - render on very top */}
+      <HoveredLine
+        lines={lines}
+        hoveredIdx={hoveredIdx ?? null}
+        lineWidth={qualityConfig.selectedLineWidth}
       />
     </group>
   );
@@ -862,6 +921,7 @@ interface SpectraSceneProps {
   showGrid: boolean;
   onHover: (index: number | null) => void;
   onClick: (index: number, event: MouseEvent) => void;
+  hoveredIdx?: number | null;
 }
 
 /**
@@ -915,7 +975,7 @@ function ResponsiveCamera() {
   return null;
 }
 
-function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick }: SpectraSceneProps) {
+function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx }: SpectraSceneProps) {
   const { camera } = useThree();
 
   // Setup orthographic camera on mount
@@ -934,7 +994,7 @@ function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, q
       <XZoomController xRange={xRange} onXViewRangeChange={onXViewRangeChange} />
       <SpectraInteractionController lines={lines} onHover={onHover} onClick={onClick} />
       <Axes yRange={yRange} xViewRange={xViewRange} showGrid={showGrid} />
-      <SpectraLines lines={lines} qualityConfig={qualityConfig} />
+      <SpectraLines lines={lines} qualityConfig={qualityConfig} hoveredIdx={hoveredIdx} />
     </>
   );
 }
@@ -1198,12 +1258,13 @@ export function SpectraWebGL({
   }, [y]);
 
   // Prepare line data with decimation
+  // IMPORTANT: hoveredSampleIdx is NOT in deps to avoid expensive recomputation on every hover
+  // Hover highlighting is handled separately in the render phase
   const lines = useMemo<LineData[]>(() => {
     const baseCol = parseColor(baseColor);
     const origCol = parseColor(originalColor);
     const selectedCol = parseColor(selectedColor);
     const pinnedCol = parseColor(pinnedColor);
-    const hoveredCol = parseColor('#ffffff'); // White for hovered
 
     const result: LineData[] = [];
     const maxPoints = qualityConfig.maxPointsPerSpectrum;
@@ -1215,13 +1276,10 @@ export function SpectraWebGL({
 
       const isSelected = selectedIndicesSet.has(idx);
       const isPinned = pinnedIndicesSet.has(idx);
-      const isHovered = hoveredSampleIdx === idx;
 
-      // Calculate color - hovered takes precedence for visibility
+      // Calculate color - selected/pinned only, hover is handled separately
       let color: THREE.Color;
-      if (isHovered) {
-        color = hoveredCol;
-      } else if (isPinned) {
+      if (isPinned) {
         color = pinnedCol;
       } else if (isSelected) {
         color = selectedCol;
@@ -1290,22 +1348,49 @@ export function SpectraWebGL({
     return result;
   }, [
     spectra, originalSpectra, wavelengths, effectiveVisibleIndices,
-    selectedIndicesSet, pinnedIndicesSet, hoveredSampleIdx, y, yTargetMin, yTargetMax,
+    selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
     baseColor, originalColor, selectedColor, pinnedColor, sampleColors,
     xViewRange, yRange, qualityConfig.maxPointsPerSpectrum,
   ]);
 
-  // Handle X view range change
+  // Debounce ref for zoom updates
+  const zoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRangeRef = useRef<[number, number] | null>(null);
+
+  // Handle X view range change with debouncing to prevent rapid re-renders
   const handleXViewRangeChange = useCallback((range: [number, number]) => {
-    setXViewRange(range);
-    // Check if this is a reset to full range (from double-click)
-    const isFullRange = Math.abs(range[0] - xRange[0]) < 0.1 && Math.abs(range[1] - xRange[1]) < 0.1;
-    if (isFullRange) {
-      userHasZoomedRef.current = false; // Reset on full view
-    } else {
-      userHasZoomedRef.current = true; // Mark that user has zoomed
+    // Store the pending range
+    pendingRangeRef.current = range;
+
+    // Clear any existing timeout
+    if (zoomTimeoutRef.current) {
+      clearTimeout(zoomTimeoutRef.current);
     }
+
+    // Debounce the actual state update (16ms = ~60fps)
+    zoomTimeoutRef.current = setTimeout(() => {
+      const finalRange = pendingRangeRef.current;
+      if (finalRange) {
+        setXViewRange(finalRange);
+        // Check if this is a reset to full range (from double-click)
+        const isFullRange = Math.abs(finalRange[0] - xRange[0]) < 0.1 && Math.abs(finalRange[1] - xRange[1]) < 0.1;
+        if (isFullRange) {
+          userHasZoomedRef.current = false; // Reset on full view
+        } else {
+          userHasZoomedRef.current = true; // Mark that user has zoomed
+        }
+      }
+    }, 16);
   }, [xRange]);
+
+  // Cleanup zoom timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (zoomTimeoutRef.current) {
+        clearTimeout(zoomTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Compute zoom level for display
   const zoomLevel = useMemo(() => {
@@ -1358,6 +1443,7 @@ export function SpectraWebGL({
           showGrid={showGrid ?? true}
           onHover={handleHover}
           onClick={handleClick}
+          hoveredIdx={hoveredSampleIdx}
         />
       </Canvas>
 

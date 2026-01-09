@@ -6,6 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Play,
   Pause,
   Square,
@@ -24,12 +30,15 @@ import {
   BarChart3,
   Target,
   FolderOpen,
+  LayoutTemplate,
+  GitBranch,
+  Settings2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
-import { Run, DatasetRun, PipelineRun, RunStatus, runStatusConfig } from "@/types/runs";
+import { Run, DatasetRun, PipelineRun, RunStatus, runStatusConfig, PipelineTemplate, RunDatasetInfo } from "@/types/runs";
 import {
   listRuns,
   getRunStats,
@@ -44,6 +53,7 @@ const statusIcons = {
   completed: CheckCircle2,
   failed: AlertCircle,
   paused: Pause,
+  partial: AlertCircle,
 };
 
 function formatTimeAgo(dateString: string | null): string {
@@ -64,60 +74,145 @@ function formatTimeAgo(dateString: string | null): string {
 }
 
 /**
- * Convert discovered runs from workspace to the Run type used by the UI.
- * Groups runs by config_name (run name) and creates pipelines for each.
+ * Extended DiscoveredRun interface with v2 fields.
+ * The API returns additional fields for v2 format runs.
  */
-function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRun[]): Run[] {
-  // Group by config_name/name - each discovered run represents a pipeline execution
-  const runMap = new Map<string, Run>();
+interface DiscoveredRunV2 extends DiscoveredRun {
+  format?: "v1" | "v2" | "parquet_derived";
+  templates?: Array<{
+    id: string;
+    name: string;
+    file?: string;
+    expansion_count: number;
+  }>;
+  datasets?: Array<{
+    name: string;
+    path?: string;
+    hash?: string;
+    task_type?: string;
+    n_samples?: number;
+    n_features?: number;
+  }>;
+  total_pipeline_configs?: number;
+  summary?: {
+    total_results?: number;
+    completed_results?: number;
+    failed_results?: number;
+    best_result?: Record<string, unknown>;
+  };
+  description?: string;
+  status?: string;
+  results_count?: number;
+}
+
+/**
+ * Convert discovered runs from workspace to the Run type used by the UI.
+ * Supports both v1 (legacy) and v2 (templates) formats.
+ */
+function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
+  const runs: Run[] = [];
 
   for (const dr of discoveredRuns) {
-    const runId = dr.name || dr.id;
+    const isV2 = dr.format === "v2";
+    const runId = dr.id || dr.name;
 
-    if (!runMap.has(runId)) {
-      // Create new run
-      runMap.set(runId, {
+    if (isV2) {
+      // V2 format: run has templates and multiple datasets
+      const templates: PipelineTemplate[] = (dr.templates || []).map(t => ({
+        id: t.id,
+        name: t.name,
+        file: t.file,
+        expansion_count: t.expansion_count,
+      }));
+
+      const datasetsInfo: RunDatasetInfo[] = (dr.datasets || []).map(d => ({
+        name: d.name,
+        path: d.path,
+        hash: d.hash,
+        task_type: d.task_type,
+        n_samples: d.n_samples,
+        n_features: d.n_features,
+      }));
+
+      // Create dataset entries from the datasets array
+      const datasetRuns: DatasetRun[] = (dr.datasets || []).map(d => ({
+        dataset_id: d.name,
+        dataset_name: d.name,
+        pipelines: [], // Will be populated from results if needed
+      }));
+
+      // Determine status
+      let status: RunStatus = "completed";
+      if (dr.status) {
+        const statusLower = dr.status.toLowerCase();
+        if (["queued", "running", "completed", "failed", "paused", "partial"].includes(statusLower)) {
+          status = statusLower as RunStatus;
+        }
+      }
+
+      runs.push({
         id: runId,
-        name: dr.name || dr.id,
-        status: "completed" as RunStatus, // Discovered runs are historical/completed
+        name: dr.name || runId,
+        description: dr.description,
+        status,
+        format: "v2",
         created_at: dr.created_at || new Date().toISOString(),
-        datasets: [],
+        datasets: datasetRuns,
+        templates,
+        datasets_info: datasetsInfo,
+        total_pipeline_configs: dr.total_pipeline_configs,
+        summary: dr.summary,
+        results_count: dr.results_count,
+        manifest_path: dr.manifest_path,
       });
-    }
+    } else {
+      // V1 or parquet_derived format: group by name like before
+      let existingRun = runs.find(r => r.id === runId);
 
-    const run = runMap.get(runId)!;
+      if (!existingRun) {
+        existingRun = {
+          id: runId,
+          name: dr.name || runId,
+          status: "completed" as RunStatus,
+          format: dr.format || "v1",
+          created_at: dr.created_at || new Date().toISOString(),
+          datasets: [],
+        };
+        runs.push(existingRun);
+      }
 
-    // Find or create the dataset entry
-    let datasetRun = run.datasets.find(d => d.dataset_id === dr.dataset);
-    if (!datasetRun) {
-      datasetRun = {
-        dataset_id: dr.dataset,
-        dataset_name: dr.dataset,
-        pipelines: [],
+      // Find or create the dataset entry
+      let datasetRun = existingRun.datasets.find(d => d.dataset_id === dr.dataset);
+      if (!datasetRun) {
+        datasetRun = {
+          dataset_id: dr.dataset,
+          dataset_name: dr.dataset,
+          pipelines: [],
+        };
+        existingRun.datasets.push(datasetRun);
+      }
+
+      // Add pipeline entry
+      const pipeline: PipelineRun = {
+        id: dr.pipeline_id || dr.id,
+        pipeline_id: dr.pipeline_id || dr.id,
+        pipeline_name: dr.name,
+        model: dr.models?.[0] || "Unknown",
+        preprocessing: "-",
+        split_strategy: "-",
+        status: "completed",
+        progress: 100,
+        metrics: dr.best_val_score != null || dr.best_test_score != null ? {
+          r2: dr.best_val_score ?? dr.best_test_score ?? 0,
+          rmse: 0,
+        } : undefined,
       };
-      run.datasets.push(datasetRun);
+
+      datasetRun.pipelines.push(pipeline);
     }
-
-    // Add pipeline entry
-    const pipeline: PipelineRun = {
-      id: dr.pipeline_id || dr.id,
-      pipeline_id: dr.pipeline_id || dr.id,
-      pipeline_name: dr.name,
-      model: dr.models?.[0] || "Unknown",
-      preprocessing: "-",
-      split_strategy: "-",
-      status: "completed",
-      progress: 100,
-      metrics: dr.best_val_score != null || dr.best_test_score != null ? {
-        r2: dr.best_val_score ?? dr.best_test_score ?? 0,
-        rmse: 0, // Not available in discovered runs
-      } : undefined,
-    };
-
-    datasetRun.pipelines.push(pipeline);
   }
 
-  return Array.from(runMap.values());
+  return runs;
 }
 
 export default function Runs() {
@@ -217,10 +312,37 @@ export default function Runs() {
   const hasActiveWorkspace = !!activeWorkspaceId;
 
   const computeRunStats = (run: Run) => {
+    // For v2 format, use the run-level stats
+    if (run.format === "v2") {
+      const templatesCount = run.templates?.length || 0;
+      const datasetsCount = run.datasets_info?.length || run.datasets.length;
+      const pipelineConfigs = run.total_pipeline_configs || 0;
+      const resultsCount = run.results_count || run.summary?.total_results || 0;
+      const completedResults = run.summary?.completed_results || 0;
+      return {
+        templatesCount,
+        datasetsCount,
+        pipelineCount: pipelineConfigs,
+        resultsCount,
+        completedResults,
+        modelCount: 0, // Not easily available in v2 without reading results
+        completedPipelines: completedResults,
+      };
+    }
+
+    // For v1/parquet format, compute from pipelines
     const pipelineCount = run.datasets.reduce((acc, d) => acc + d.pipelines.length, 0);
     const models = new Set(run.datasets.flatMap(d => d.pipelines.map(p => p.model)));
     const completedPipelines = run.datasets.flatMap(d => d.pipelines).filter(p => p.status === "completed").length;
-    return { pipelineCount, modelCount: models.size, completedPipelines };
+    return {
+      templatesCount: 0,
+      datasetsCount: run.datasets.length,
+      pipelineCount,
+      resultsCount: pipelineCount,
+      completedResults: completedPipelines,
+      modelCount: models.size,
+      completedPipelines,
+    };
   };
 
   const getRunProgress = (run: Run): number => {
@@ -373,11 +495,12 @@ export default function Runs() {
           </Card>
         ) : (
           runs.map((run) => {
-            const StatusIcon = statusIcons[run.status];
-            const config = runStatusConfig[run.status];
-            const { pipelineCount, modelCount, completedPipelines } = computeRunStats(run);
+            const StatusIcon = statusIcons[run.status] || statusIcons.completed;
+            const config = runStatusConfig[run.status] || runStatusConfig.completed;
+            const stats = computeRunStats(run);
             const isExpanded = expandedRuns.has(run.id);
             const progress = getRunProgress(run);
+            const isV2 = run.format === "v2";
 
             return (
               <Card key={run.id} className="overflow-hidden">
@@ -401,22 +524,71 @@ export default function Runs() {
                             />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-foreground">{run.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-foreground">{run.name}</h3>
+                              {isV2 && (
+                                <Badge variant="outline" className="text-xs">v2</Badge>
+                              )}
+                            </div>
                             <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                              {/* Show templates for v2 format */}
+                              {isV2 && stats.templatesCount > 0 && (
+                                <>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="flex items-center gap-1">
+                                          <LayoutTemplate className="h-3.5 w-3.5 text-primary" />
+                                          {stats.templatesCount} {stats.templatesCount === 1 ? "template" : "templates"}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="font-medium">Templates:</p>
+                                        <ul className="text-xs">
+                                          {run.templates?.slice(0, 5).map(t => (
+                                            <li key={t.id}>{t.name} ({t.expansion_count} configs)</li>
+                                          ))}
+                                          {(run.templates?.length || 0) > 5 && (
+                                            <li>...and {(run.templates?.length || 0) - 5} more</li>
+                                          )}
+                                        </ul>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  <span>•</span>
+                                </>
+                              )}
                               <span className="flex items-center gap-1">
                                 <Database className="h-3.5 w-3.5" />
-                                {run.datasets.length} datasets
+                                {stats.datasetsCount} {stats.datasetsCount === 1 ? "dataset" : "datasets"}
                               </span>
                               <span>•</span>
                               <span className="flex items-center gap-1">
                                 <Layers className="h-3.5 w-3.5" />
-                                {pipelineCount} pipelines
+                                {isV2 ? (
+                                  <>{stats.pipelineCount} configs</>
+                                ) : (
+                                  <>{stats.pipelineCount} pipelines</>
+                                )}
                               </span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1">
-                                <Box className="h-3.5 w-3.5" />
-                                {modelCount} models
-                              </span>
+                              {!isV2 && stats.modelCount > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1">
+                                    <Box className="h-3.5 w-3.5" />
+                                    {stats.modelCount} models
+                                  </span>
+                                </>
+                              )}
+                              {isV2 && stats.resultsCount > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1">
+                                    <BarChart3 className="h-3.5 w-3.5" />
+                                    {stats.completedResults}/{stats.resultsCount} results
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>

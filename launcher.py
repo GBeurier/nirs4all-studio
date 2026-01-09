@@ -169,13 +169,15 @@ def main():
     global window
     global backend_server
 
-    # Determine if we need to show debug console
-    is_prod = is_packaged()
+    # Determine if we're in production mode
+    # Production mode is either when packaged OR when NIRS4ALL_PRODUCTION env is set
+    is_prod = is_packaged() or os.environ.get("NIRS4ALL_PRODUCTION", "false").lower() == "true"
+    is_dev = os.environ.get("VITE_DEV", "false").lower() == "true"
     show_debug = not is_prod or os.environ.get("NIRS4ALL_DEBUG", "false").lower() == "true"
 
-    # Start backend server in a separate thread (only in production)
+    # Start backend server in a separate thread (in production mode, not dev mode)
     backend_ready = False
-    if is_prod:
+    if is_prod and not is_dev:
         print("Starting embedded backend server...")
         backend_server = threading.Thread(target=start_backend_server, daemon=True)
         backend_server.start()

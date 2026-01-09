@@ -535,6 +535,20 @@ export async function createRun(config: ExperimentConfig): Promise<Run> {
   return api.post("/runs", { config });
 }
 
+// Quick Run (Run A) - Single pipeline execution
+export interface QuickRunRequest {
+  pipeline_id: string;
+  dataset_id: string;
+  name?: string;
+  export_model?: boolean;
+  cv_folds?: number;
+  random_state?: number;
+}
+
+export async function quickRun(request: QuickRunRequest): Promise<Run> {
+  return api.post("/runs/quick", request);
+}
+
 export async function stopRun(runId: string): Promise<RunActionResponse> {
   return api.post(`/runs/${runId}/stop`);
 }
@@ -1026,6 +1040,7 @@ import type {
   LinkedWorkspaceDiscoveredExports,
   LinkedWorkspaceDiscoveredTemplates,
   PredictionDataResponse,
+  PredictionSummaryResponse,
   AppSettingsResponse,
   AppSettingsUpdateRequest,
   FavoriteAddRequest,
@@ -1078,9 +1093,96 @@ export async function scanN4AWorkspace(
  * Get discovered runs for a workspace
  */
 export async function getN4AWorkspaceRuns(
-  workspaceId: string
+  workspaceId: string,
+  options?: {
+    source?: "unified" | "manifests" | "parquet";
+  }
 ): Promise<LinkedWorkspaceDiscoveredRuns> {
-  return api.get(`/workspaces/${workspaceId}/runs`);
+  const params = new URLSearchParams();
+  if (options?.source) params.set("source", options.source);
+  const query = params.toString();
+  return api.get(`/workspaces/${workspaceId}/runs${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Get detailed information about a specific run.
+ * Returns full run info including templates, datasets, config, and results.
+ */
+export async function getN4AWorkspaceRunDetail(
+  workspaceId: string,
+  runId: string
+): Promise<unknown> {
+  return api.get(`/workspaces/${workspaceId}/runs/${runId}`);
+}
+
+/**
+ * Get individual results (pipeline config × dataset combinations).
+ * Results represent the granular level below runs.
+ */
+export async function getN4AWorkspaceResults(
+  workspaceId: string,
+  options?: {
+    run_id?: string;
+    dataset?: string;
+    template_id?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{
+  workspace_id: string;
+  results: Array<{
+    id: string;
+    run_id?: string;
+    template_id?: string;
+    dataset: string;
+    pipeline_config: string;
+    pipeline_config_id: string;
+    created_at?: string;
+    best_score?: number | null;
+    best_model?: string;
+    metric?: string;
+    predictions_count?: number;
+    artifact_count?: number;
+    manifest_path?: string;
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}> {
+  const params = new URLSearchParams();
+  if (options?.run_id) params.set("run_id", options.run_id);
+  if (options?.dataset) params.set("dataset", options.dataset);
+  if (options?.template_id) params.set("template_id", options.template_id);
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.offset) params.set("offset", String(options.offset));
+  const query = params.toString();
+  return api.get(`/workspaces/${workspaceId}/results${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Get datasets discovered from run manifests.
+ * Includes full metadata like n_samples, y_stats, and path status.
+ */
+export async function getN4AWorkspaceDiscoveredDatasets(
+  workspaceId: string
+): Promise<{
+  workspace_id: string;
+  datasets: Array<{
+    name: string;
+    path: string;
+    hash?: string;
+    task_type?: string;
+    n_samples?: number;
+    n_features?: number;
+    runs_count: number;
+    versions_seen: string[];
+    hashes_seen: string[];
+    status: "valid" | "missing" | "hash_mismatch" | "relocated" | "unknown";
+  }>;
+  total: number;
+}> {
+  return api.get(`/workspaces/${workspaceId}/datasets/discovered`);
 }
 
 /**
@@ -1111,6 +1213,24 @@ export async function getN4AWorkspacePredictionsData(
 
   const query = params.toString();
   return api.get(`/workspaces/${workspaceId}/predictions/data${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Get aggregated prediction summary from parquet metadata.
+ *
+ * This endpoint reads ONLY file footers, not row data.
+ * Response time: ~10-50ms for any workspace size.
+ *
+ * Returns instant summary with:
+ * - Total predictions across all datasets
+ * - Score statistics (min/max/mean)
+ * - Model breakdown with average scores
+ * - Top predictions by validation score
+ */
+export async function getN4AWorkspacePredictionsSummary(
+  workspaceId: string
+): Promise<PredictionSummaryResponse> {
+  return api.get(`/workspaces/${workspaceId}/predictions/summary`);
 }
 
 /**

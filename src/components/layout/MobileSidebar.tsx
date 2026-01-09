@@ -13,6 +13,7 @@ import {
   Settings,
   Menu,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { Separator } from "@/components/ui/separator";
 interface NavItem {
   title: string;
   href: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
 }
 
 const mainNavItems: NavItem[] = [

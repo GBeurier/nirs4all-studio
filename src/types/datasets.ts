@@ -128,6 +128,8 @@ export interface Dataset {
   linked_at: string;
   status?: "available" | "missing" | "loading" | "error";
   group_id?: string;
+  /** Optional description for the dataset */
+  description?: string;
 
   // Version & Integrity (Phase 2)
   hash?: string;
@@ -250,6 +252,8 @@ export interface DatasetChangeSummary {
   samples_added: number;
   samples_removed: number;
   files_changed: string[];
+  files_added?: string[];
+  files_removed?: string[];
   size_change_bytes: number;
   old_hash: string;
   new_hash: string;

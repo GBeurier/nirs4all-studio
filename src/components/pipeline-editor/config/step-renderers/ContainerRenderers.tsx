@@ -14,7 +14,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
-import { Zap, Layers, Filter, Combine, Trash2 } from "lucide-react";
+import { Zap, Layers, Filter, Combine, Trash2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +43,7 @@ interface ChildrenListProps {
   addLabel: string;
   emptyLabel: string;
   emptySubLabel: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   onSelectStep?: (id: string | null) => void;
   onAddChild?: (stepId: string) => void;
   onRemoveChild?: (stepId: string, childId: string) => void;

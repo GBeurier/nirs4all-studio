@@ -22,6 +22,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   CheckCircle2,
   Clock,
   RefreshCw,
@@ -37,7 +43,9 @@ import {
   Terminal,
   Wrench,
   GitBranch,
+  Target,
 } from "lucide-react";
+import { PredictDialog } from "./PredictDialog";
 import { cn } from "@/lib/utils";
 import {
   Run,
@@ -124,6 +132,15 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
   const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
   const [selectedPipeline, setSelectedPipeline] = useState<PipelineRun | null>(null);
   const [groupBy, setGroupBy] = useState<"model" | "preprocessing" | "split_strategy">("model");
+
+  // Predict dialog state
+  const [predictDialogOpen, setPredictDialogOpen] = useState(false);
+  const [predictPipeline, setPredictPipeline] = useState<(PipelineRun & { dataset: string }) | null>(null);
+
+  const handlePredict = (pipeline: PipelineRun & { dataset: string }) => {
+    setPredictPipeline(pipeline);
+    setPredictDialogOpen(true);
+  };
 
   if (!run) return null;
 
@@ -274,7 +291,7 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
                           <TableHead className="text-xs">Pipeline</TableHead>
                           <TableHead className="text-xs text-right">R²</TableHead>
                           <TableHead className="text-xs text-right">RMSE</TableHead>
-                          <TableHead className="text-xs"></TableHead>
+                          <TableHead className="text-xs">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -303,7 +320,31 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
                               {p.metrics?.rmse?.toFixed(3) ?? "-"}
                             </TableCell>
                             <TableCell>
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex items-center gap-1">
+                                {p.status === "completed" && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 w-7 p-0"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handlePredict(p);
+                                          }}
+                                        >
+                                          <Target className="h-3.5 w-3.5 text-primary" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Make predictions with this model</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -414,6 +455,19 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
             </TabsContent>
           </ScrollArea>
         </Tabs>
+
+        {/* Predict Dialog */}
+        {predictPipeline && (
+          <PredictDialog
+            open={predictDialogOpen}
+            onOpenChange={setPredictDialogOpen}
+            modelId={predictPipeline.id}
+            modelName={predictPipeline.model}
+            pipelineId={predictPipeline.id}
+            pipelineName={predictPipeline.pipeline_name}
+            runId={run.id}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

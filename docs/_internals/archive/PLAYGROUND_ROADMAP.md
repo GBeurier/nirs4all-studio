@@ -761,29 +761,36 @@ function detectTargetType(yValues: (number | string)[]): TargetTypeResult {
 
 ---
 
-## Phase 6: Dataset Reference Mode
+## Phase 6: Dataset Reference Mode ✅ COMPLETED
 
 **Priority**: MEDIUM
-**Estimated Effort**: 5-7 days *(revised from 4-5 days - backend investigation needed)*
+**Status**: COMPLETED (2026-01-08)
 **Goal**: Enable comparison between two different datasets
 **Dependencies**: Phase 1 (selection), Phase 3 (coloration), Phase 5 (classification for class comparison)
 
-### Current State
+### Implementation Summary
 
-**Step Reference Mode exists** - [CanvasToolbar.tsx](../src/components/playground/CanvasToolbar.tsx#L134-L137):
-```typescript
-stepComparisonEnabled: boolean;
-onStepComparisonEnabledChange?: (enabled: boolean) => void;
-activeStep: number;
-onActiveStepChange?: (step: number) => void;
-```
+**Files Created**:
+- `src/lib/playground/referenceDataset.ts` - Types and utilities (ReferenceMode, alignment, compatibility checking)
+- `src/context/ReferenceDatasetContext.tsx` - Context provider for reference state management
+- `src/hooks/useReferenceDatasetQuery.ts` - Hook for processing reference data through pipeline
+- `src/components/playground/ReferenceModeControls.tsx` - UI component with mode toggle and dataset picker
 
-This allows comparing raw data (step 0) vs processed data (step N).
+**Files Modified**:
+- `src/components/playground/CanvasToolbar.tsx` - Added ReferenceModeControls
+- `src/pages/Playground.tsx` - Added ReferenceDatasetProvider
+- `src/components/playground/MainCanvas.tsx` - Pass reference data to charts
+- `src/components/playground/visualizations/SpectraChartV2.tsx` - Reference lines (dashed purple)
+- `src/components/playground/visualizations/DimensionReductionChart.tsx` - Reference points (diamonds)
+- `src/components/playground/visualizations/chartConfig.ts` - Reference styling constants
 
-**Dataset Reference Mode is completely missing**:
-- Cannot compare two different datasets through the same pipeline
-- No UI to select a reference dataset
-- No reference mode toggle
+**Features Implemented**:
+- Reference Mode toggle (Step vs Dataset comparison)
+- Dataset compatibility checking (feature count, wavelength matching)
+- Sample alignment (by index, by ID, or none)
+- Dual dataset rendering in Spectra chart (dashed lines)
+- Dual dataset rendering in PCA chart (diamond markers)
+- Legends for reference data in both charts
 
 ### Use Cases for Dataset Reference Mode
 
@@ -989,14 +996,14 @@ Since difference mode exists within SpectraChartV2, the question is:
 
 ### Tasks
 
-| ID | Task | Component | Notes |
-|----|------|-----------|-------|
-| 7.1 | **Add Differences quick-toggle to toolbar** | CanvasToolbar | Prominent button to enable difference view in Spectra |
-| 7.2 | **Add heatmap display mode** | SpectraChartV2 | X=wavelength, Y=sample, color=difference magnitude |
-| 7.3 | **Highlight large differences** | SpectraChartV2 | Color-code regions with high mean absolute difference |
-| 7.4 | **Add difference statistics** | Footer | Show mean, max, std of differences |
-| 7.5 | **Absolute difference toggle** | Toolbar | Switch between signed and absolute differences |
-| 7.6 | **Document spec deviation** | PLAYGROUND_SPECIFICATION.md | Note that Differences is a mode, not separate view |
+| ID | Task | Component | Status | Notes |
+|----|------|-----------|--------|-------|
+| 7.1 | **Add Differences quick-toggle to toolbar** | CanvasToolbar | ✅ DONE | Diff button with orange highlight when active |
+| 7.2 | **Add heatmap display mode** | SpectraChartV2 | ⏸ DEFERRED | Complex feature, can be added later |
+| 7.3 | **Highlight large differences** | SpectraChartV2 | ✅ DONE | Orange regions for wavelengths > mean + 1.5σ |
+| 7.4 | **Add difference statistics** | Footer | ✅ DONE | Shows MAD, Max, RMSE in footer |
+| 7.5 | **Absolute difference toggle** | Toolbar | ✅ DONE | ±Δ / \|Δ\| toggle button |
+| 7.6 | **Document spec deviation** | PLAYGROUND_SPECIFICATION.md | ✅ DONE | Added implementation note section |
 
 ### Optional: Standalone Differences Chart
 
@@ -1028,7 +1035,23 @@ interface DifferencesChartProps {
 
 ### Reviewed: January 8, 2026
 
-**Status**: Not Started
+**Status**: ✅ COMPLETED (5/6 tasks, 1 deferred)
+
+**Implemented Features**:
+- **Quick toggle button** in CanvasToolbar with "Diff" label and orange highlight when active
+- **Absolute/signed difference toggle** (±Δ / |Δ|) appears when in difference mode
+- **Difference statistics** shown in footer: MAD (Mean Absolute Difference), Max, RMSE
+- **High-difference region highlighting**: Orange overlay on wavelength regions where mean abs diff > mean + 1.5σ
+- **Specification updated**: Added implementation note explaining differences is a mode, not separate view
+
+**Deferred**:
+- **Heatmap display mode** (7.2): Complex feature that requires significant rendering changes. Can be added later if needed.
+
+**Code Changes**:
+- [CanvasToolbar.tsx](../src/components/playground/CanvasToolbar.tsx): Added `spectraViewMode`, `onSpectraViewModeChange`, `showAbsoluteDifference`, `onToggleAbsoluteDifference` props and UI
+- [MainCanvas.tsx](../src/components/playground/MainCanvas.tsx): Lifted spectra config to component level, added absolute difference state
+- [SpectraChartV2.tsx](../src/components/playground/visualizations/SpectraChartV2.tsx): Added `showAbsoluteDifference` prop, difference statistics computation, high-difference region highlighting
+- [PLAYGROUND_SPECIFICATION.md](./PLAYGROUND_SPECIFICATION.md): Added section 6.5.9 Implementation Note
 
 **Issues Found**:
 - Difference mode already exists in SpectraChartV2!
@@ -1038,41 +1061,46 @@ interface DifferencesChartProps {
 **Decisions Made**:
 - Keep difference as view mode in SpectraChartV2 (not separate component)
 - Add quick toggle in global toolbar
-- Add heatmap mode and statistics
+- Defer heatmap mode (complex, low priority)
 - Document spec deviation
 
 ---
 
-## Phase 8: Global Actions & Export Enhancements
+## Phase 8: Global Actions & Export Enhancements ✅ COMPLETED
 
 **Priority**: MEDIUM
 **Estimated Effort**: 2-3 days *(revised from 2 days)*
+**Status**: COMPLETED (2026-01-08)
 **Goal**: Complete global action buttons and export capabilities
 **Dependencies**: Phase 1 (selection for export), Phase 4 (filtering for meaningful exports)
 
-### Current State
+### Implementation Summary
 
-**Export system is comprehensive** - [export.ts](../src/lib/playground/export.ts):
-- PNG, SVG, CSV, TXT, JSON export all implemented
-- Batch export for all visible charts
-- Quality and scale options
+All Phase 8 tasks have been completed:
 
-**Missing**:
-- Global "Reset View" action (reset all state)
-- Combined report export (single PDF/PNG with all views)
-- Mark as Outliers (Ctrl+O) not implemented
+**Files Created**:
+- `src/hooks/usePlaygroundReset.ts` - Hook for resetting all playground state
+- `src/context/OutliersContext.tsx` - User-marked outliers with session persistence
+
+**Files Modified**:
+- `src/lib/playground/export.ts` - Added outlierIndices support, combined report export function
+- `src/components/playground/hooks/usePlaygroundExport.ts` - Wired combined report, outlier CSV export
+- `src/components/playground/CanvasToolbar.tsx` - Reset button, confirmation dialog, combined report menu
+- `src/components/playground/MainCanvas.tsx` - Pass outlierIndices and combined report handler
+- `src/hooks/usePlaygroundShortcuts.ts` - Added Ctrl+O (mark outliers) and Ctrl+Shift+R (reset)
+- `src/pages/Playground.tsx` - Integrated OutliersProvider and reset/outlier handlers
 
 ### Tasks
 
-| ID | Task | Component | Notes |
-|----|------|-----------|-------|
-| 8.1 | **Create resetPlayground function** | PlaygroundContext or hook | Clears all state in one action |
-| 8.2 | **Add Reset View button** | Toolbar | Calls resetPlayground |
-| 8.3 | **Combined report export** | export.ts | Canvas-based composition (client-side) |
-| 8.4 | **Mark as Outliers action** | SelectionContext | Ctrl+O marks selected as outliers |
-| 8.5 | **Outlier storage** | Context | Persist outlier flags per session |
-| 8.6 | **Export with outlier column** | export.ts | Add `is_outlier` column to CSV |
-| 8.7 | **Confirm dialog for Reset** | UI | Prevent accidental reset |
+| ID | Task | Component | Status | Notes |
+|----|------|-----------|--------|-------|
+| 8.1 | **Create resetPlayground function** | usePlaygroundReset.ts | ✅ | Clears selection, pins, filters, outliers, colors |
+| 8.2 | **Add Reset View button** | CanvasToolbar | ✅ | Orange highlight when state to reset |
+| 8.3 | **Combined report export** | export.ts | ✅ | Canvas-based composition with header/footer |
+| 8.4 | **Mark as Outliers action** | usePlaygroundShortcuts | ✅ | Ctrl+O toggles selected as outliers |
+| 8.5 | **Outlier storage** | OutliersContext | ✅ | Session storage persistence |
+| 8.6 | **Export with outlier column** | export.ts | ✅ | `is_outlier` column in CSV |
+| 8.7 | **Confirm dialog for Reset** | CanvasToolbar | ✅ | AlertDialog with details |
 
 ### Combined Report Export Strategy
 
@@ -1156,13 +1184,13 @@ function resetPlayground() {
 
 ### Success Criteria
 
-- [ ] Reset View button in toolbar (with confirmation)
-- [ ] Reset clears selection, pins, filters, zoom, coloration
-- [ ] Combined report export creates single image with all views
-- [ ] Ctrl+O marks selected samples as outliers
-- [ ] Outlier status persists within session
-- [ ] CSV export includes `is_outlier` column
-- [ ] **Canvas-based report composition works** *(new)*
+- [x] Reset View button in toolbar (with confirmation)
+- [x] Reset clears selection, pins, filters, zoom, coloration
+- [x] Combined report export creates single image with all views
+- [x] Ctrl+O marks selected samples as outliers
+- [x] Outlier status persists within session
+- [x] CSV export includes `is_outlier` column
+- [x] **Canvas-based report composition works** *(new)*
 
 ---
 
@@ -1170,59 +1198,65 @@ function resetPlayground() {
 
 ### Reviewed: January 8, 2026
 
-**Status**: Not Started
+**Status**: ✅ COMPLETED
 
-**Issues Found**:
-- Export system well-implemented
-- No global reset action exists
-- Mark as Outliers not wired up
-- **Combined report rendering approach not specified**
+**Implementation Details**:
+- **Reset System**: `usePlaygroundReset` hook clears selection, pins, filters, outliers, color config, step comparison
+- **Reset Button**: Added to CanvasToolbar with orange highlight when state exists, confirmation dialog before reset
+- **Outliers Context**: `OutliersContext` with session storage persistence, supports mark/unmark/toggle operations
+- **Keyboard Shortcuts**: Ctrl+O toggles selected samples as outliers, Ctrl+Shift+R resets playground
+- **Combined Report**: Canvas-based composition with header (dataset name, date), chart grid, footer (statistics)
+- **CSV Export**: `is_outlier` column automatically added when outliers exist
+- **Export Menu**: Added "Combined Report" option to export dropdown
 
-**Decisions Made**:
-- Create resetPlayground function that clears all state
-- Add confirmation dialog before reset
-- Store outlier flags in context, include in exports
-- **Use canvas-based client-side composition** for combined report
+**Files Created**:
+- `src/hooks/usePlaygroundReset.ts`
+- `src/context/OutliersContext.tsx`
+
+**Code Quality**:
+- All new code passes linting (no new errors introduced)
+- Follows existing patterns (hooks, context, memoization)
+- Proper TypeScript types throughout
 
 ---
 
-## Phase 9: Area Selection Enhancements
+## Phase 9: Area Selection Enhancements ✅ COMPLETED
 
 **Priority**: LOW-MEDIUM
 **Estimated Effort**: 1-2 days *(revised from 2 days - much exists)*
+**Status**: COMPLETED (2026-01-08)
 **Goal**: Improve area selection across all views
 **Dependencies**: Phase 1 (selection system must work first)
 
-### Current State
+### Implementation Summary
 
-**Substantial selection code already exists**:
+All Phase 9 tasks have been completed:
 
-**Box/Lasso selection for PCA** - [EmbeddingSelector.tsx](../src/components/playground/EmbeddingSelector.tsx):
-- `SelectionMode = 'none' | 'box' | 'lasso'`
-- Box selection with drag rectangle
-- Lasso selection with freeform polygon
-- `pointInPolygon` helper for lasso hit-testing
-- Toolbar buttons to toggle selection mode
+**Files Modified**:
+- `src/context/SelectionContext.tsx` - Added lastSelectedIndex, selectionToolMode, SELECT_RANGE action, selectRange/setSelectionToolMode functions
+- `src/components/playground/visualizations/SpectraChartV2.tsx` - Added rectangle selection with Alt+drag, yAxisDomain calculation, visual feedback via ReferenceArea
+- `src/components/playground/SelectionTools.tsx` - Changed to import SelectionToolType from SelectionContext, re-exports for convenience
+- `src/components/playground/CanvasToolbar.tsx` - Added SelectionModeToggle component with mode indicator badge
+- `src/components/playground/visualizations/DimensionReductionChart.tsx` - Uses global selectionToolMode from SelectionContext instead of local state
 
-**SelectionTools.tsx** (624 lines) - Not previously documented:
-- Contains substantial selection functionality
-- Review before implementing new code
-
-**Missing in other charts**:
-- Spectra: Rectangle selection for spectra passing through region
-- Range selection (Shift+Click from A to B)
+**Features Implemented**:
+- **Rectangle selection in SpectraChartV2**: Alt+drag to select spectra passing through 2D region (X wavelength range AND Y value range)
+- **Range selection**: Shift+Click selects all samples between lastSelectedIndex and clicked index
+- **Unified selection tool mode**: Global state (`click` | `box` | `lasso`) in SelectionContext used across charts
+- **Selection mode indicator**: Mode badge in toolbar shows "Box" or "Lasso" when not in click mode
+- **Type consolidation**: SelectionToolType now defined once in SelectionContext and re-exported from SelectionTools
 
 ### Tasks
 
-| ID | Task | Component | Notes |
-|----|------|-----------|-------|
-| 9.0 | **Review SelectionTools.tsx** | SelectionTools.tsx | Understand existing functionality before adding new |
-| 9.1 | **Verify box/lasso in EmbeddingSelector** | EmbeddingSelector | Test it works with SelectionContext |
-| 9.2 | **Verify histogram bar click** | YHistogramV2 | Test bar click selects bin samples |
-| 9.3 | **Add rectangle selection to Spectra** | SpectraChartV2 | Drag to select spectra in region |
-| 9.4 | **Range selection (Shift+Click)** | SelectionContext | Track lastSelected, select range |
-| 9.5 | **Selection mode indicator** | UI | Show current selection mode in toolbar |
-| 9.6 | **Unified selection mode toggle** | Toolbar | Box/Lasso/Click for all applicable views |
+| ID | Task | Component | Status |
+|----|------|-----------|--------|
+| 9.0 | **Review SelectionTools.tsx** | SelectionTools.tsx | ✅ Comprehensive toolkit with SelectionModeToggle, SelectionContainer, SelectionOverlay |
+| 9.1 | **Verify box/lasso in EmbeddingSelector** | EmbeddingSelector | ✅ Works with SelectionContext |
+| 9.2 | **Verify histogram bar click** | YHistogramV2 | ✅ Bar click and hover propagation works |
+| 9.3 | **Add rectangle selection to Spectra** | SpectraChartV2 | ✅ Alt+drag for 2D selection with visual feedback |
+| 9.4 | **Range selection (Shift+Click)** | SelectionContext | ✅ lastSelectedIndex + SELECT_RANGE action |
+| 9.5 | **Selection mode indicator** | UI | ✅ Badge shows "Box" or "Lasso" in toolbar |
+| 9.6 | **Unified selection mode toggle** | Toolbar | ✅ SelectionModeToggle in CanvasToolbar |
 
 ### Range Selection Implementation
 
@@ -1275,13 +1309,13 @@ function getSpectraInRectangle(
 
 ### Success Criteria
 
-- [ ] **SelectionTools.tsx reviewed and documented** *(new)*
-- [ ] Box selection works in EmbeddingSelector (PCA/UMAP)
-- [ ] Lasso selection works in EmbeddingSelector
-- [ ] Histogram bar click selects all samples in that bin
-- [ ] Shift+Click selects range from last selection
-- [ ] Rectangle selection in Spectra chart
-- [ ] Selection mode clearly indicated in UI
+- [x] **SelectionTools.tsx reviewed and documented** *(new)*
+- [x] Box selection works in EmbeddingSelector (PCA/UMAP)
+- [x] Lasso selection works in EmbeddingSelector
+- [x] Histogram bar click selects all samples in that bin
+- [x] Shift+Click selects range from last selection
+- [x] Rectangle selection in Spectra chart (Alt+drag)
+- [x] Selection mode clearly indicated in UI
 
 ---
 
@@ -1289,19 +1323,21 @@ function getSpectraInRectangle(
 
 ### Reviewed: January 8, 2026
 
-**Status**: Not Started
+**Status**: ✅ COMPLETED
 
-**Issues Found**:
-- Box/Lasso selection code exists in EmbeddingSelector
-- Need to verify it works with SelectionContext
-- Spectra rectangle selection not implemented
-- **SelectionTools.tsx (624 lines) not reviewed**
+**Implementation Details**:
+- **SelectionTools.tsx reviewed**: Comprehensive toolkit with SelectionModeToggle, SelectionContainer, SelectionOverlay components
+- **EmbeddingSelector verification**: Box/lasso selection works correctly with SelectionContext integration
+- **YHistogramV2 verification**: Bar click properly selects bin samples, hover propagation works
+- **Rectangle selection**: Added to SpectraChartV2 with Alt+drag modifier, uses ReferenceArea for visual feedback
+- **Range selection**: Added to SelectionContext with lastSelectedIndex tracking and SELECT_RANGE action
+- **Unified tool mode**: Global selectionToolMode (`click` | `box` | `lasso`) in SelectionContext, used by DimensionReductionChart
+- **Mode indicator**: SelectionModeToggle added to CanvasToolbar with badge showing current mode
 
-**Decisions Made**:
-- **Review existing SelectionTools.tsx first**
-- Reuse EmbeddingSelector pattern for other charts
-- Add range selection via Shift+Click
-- Add rectangle selection to Spectra chart
+**Code Quality**:
+- Removed duplicate SelectionToolType definition (consolidated in SelectionContext)
+- DimensionReductionChart uses global state instead of local state
+- All Phase 9 files pass linting
 
 ---
 
@@ -1550,3 +1586,5 @@ After each phase:
 | 2026-01-08 | Added baseline measurement and CSS-only resize evaluation to Phase 10 |
 | 2026-01-08 | Revised dependency graph and effort estimates |
 | 2026-01-08 | Added cross-cutting concerns section |
+| 2026-01-08 | **Phase 8 COMPLETED**: Reset system, outliers context, combined report export, keyboard shortcuts |
+| 2026-01-08 | **Phase 9 COMPLETED**: Rectangle selection in SpectraChartV2, range selection, unified tool mode, mode indicator |

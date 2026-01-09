@@ -23,7 +23,7 @@
  * - Render mode optimization (auto/canvas/webgl)
  */
 
-import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, memo, useDeferredValue } from 'react';
 import { FlaskConical, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -68,6 +68,8 @@ import {
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChartPanel } from './ChartPanel';
 import { usePlaygroundExport, type ChartRefs } from './hooks/usePlaygroundExport';
+import { useSpectraChartConfig } from '@/lib/playground/useSpectraChartConfig';
+import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
 
 import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
@@ -129,6 +131,11 @@ interface MainCanvasProps {
   datasetId?: string;
   /** Last outlier detection result - from operators */
   lastOutlierResult?: OutlierResult | null;
+  // === Phase 8: Reset Functionality ===
+  /** Callback to reset all playground state */
+  onResetPlayground?: () => void;
+  /** Whether there is state that can be reset */
+  hasStateToReset?: boolean;
 }
 
 // ============= Sub-Components =============
@@ -207,6 +214,9 @@ export function MainCanvas({
   onRenderModeChange,
   datasetId,
   lastOutlierResult,
+  // Phase 8 props
+  onResetPlayground,
+  hasStateToReset = false,
 }: MainCanvasProps) {
   // ============= View Context (Phase 2) =============
   // Use optional hook - falls back to local state if not within provider
@@ -300,6 +310,21 @@ export function MainCanvas({
   // Color configuration (unified global)
   const [colorConfig, setColorConfig] = useState<GlobalColorConfig>(DEFAULT_GLOBAL_COLOR_CONFIG);
 
+  // Phase 7: Spectra chart configuration (lifted for global control)
+  const spectraConfigResult = useSpectraChartConfig();
+  const spectraViewMode = spectraConfigResult.config.viewMode;
+
+  // Phase 7: Absolute difference mode state
+  const [showAbsoluteDifference, setShowAbsoluteDifference] = useState(false);
+
+  const handleSpectraViewModeChange = useCallback((mode: SpectraViewMode) => {
+    spectraConfigResult.setViewMode(mode);
+  }, [spectraConfigResult]);
+
+  const handleToggleAbsoluteDifference = useCallback(() => {
+    setShowAbsoluteDifference(prev => !prev);
+  }, []);
+
   // Filter context (Phase 4) - centralized filtering
   const filterContext = useFilterOptional();
 
@@ -337,6 +362,11 @@ export function MainCanvas({
     setForceMode(mode === 'auto' ? null : mode);
     onRenderModeChange?.(mode);
   }, [setForceMode, onRenderModeChange]);
+
+  // Deferred result for secondary charts (histogram, PCA, folds, repetitions)
+  // This allows the spectra chart to render first while others are deferred
+  const deferredResult = useDeferredValue(result);
+  const isSecondaryChartsStale = deferredResult !== result;
 
   // Skeleton display logic
   const showSkeletons = isLoading && !result;
@@ -378,12 +408,13 @@ export function MainCanvas({
   const isRawDataMode = !hasOperators || enabledOperatorCount === 0;
 
   // Get selection context
+  // Note: hoveredSample is NOT extracted here - charts get it directly from SelectionContext
+  // This prevents cascade re-renders when hover changes
   const {
     selectedSamples,
     selectedCount,
     pinnedSamples: contextPinnedSamples,
     pinnedCount,
-    hoveredSample: contextHoveredSample,
     clear: clearSelection,
   } = useSelection();
 
@@ -509,6 +540,8 @@ export function MainCanvas({
   }, [classLabels]);
 
   // Compute color context
+  // NOTE: hoveredSample is intentionally NOT included here to avoid cascade re-renders
+  // Charts that need hover highlighting should get it from SelectionContext directly
   const colorContext = useMemo<ColorContext>(() => {
     let trainIndices: Set<number> | undefined;
     let testIndices: Set<number> | undefined;
@@ -546,14 +579,14 @@ export function MainCanvas({
       totalSamples,
       selectedSamples,
       pinnedSamples: contextPinnedSamples,
-      hoveredSample: contextHoveredSample,
+      // hoveredSample excluded - charts get it from SelectionContext directly
       displayFilteredIndices: hasDisplayFilter ? filteredIndicesSet : undefined,
       // Phase 5: Classification support
       targetType,
       classLabels,
       classLabelMap,
     };
-  }, [yValues, result?.folds, lastOutlierResult, columnMetadata, totalSamples, selectedSamples, contextPinnedSamples, contextHoveredSample, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
+  }, [yValues, result?.folds, lastOutlierResult, columnMetadata, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
 
   // Compute grid layout
   const hasMaximized = maximizedChart !== null;
@@ -573,14 +606,17 @@ export function MainCanvas({
     repetitions: repetitionsChartRef,
   }), []);
 
-  // Export data
+  // Export data (Phase 8: includes outlierIndices for CSV export)
   const exportData = useMemo(() => ({
     spectra: result?.processed?.spectra ?? rawData?.spectra ?? null,
     wavelengths: result?.processed?.wavelengths ?? rawData?.wavelengths ?? null,
     sampleIds: rawData?.sampleIds,
     selectedSamples,
     pinnedSamples: contextPinnedSamples,
-  }), [result, rawData, selectedSamples, contextPinnedSamples]);
+    outlierIndices: lastOutlierResult
+      ? new Set(lastOutlierResult.outlier_indices)
+      : undefined,
+  }), [result, rawData, selectedSamples, contextPinnedSamples, lastOutlierResult]);
 
   // Use extracted export hook
   const {
@@ -588,6 +624,7 @@ export function MainCanvas({
     exportSpectraCsv,
     exportSelectionsJson,
     batchExportCharts,
+    exportCombinedReportPng,
   } = usePlaygroundExport({
     chartRefs,
     exportData,
@@ -717,7 +754,16 @@ export function MainCanvas({
         onExportSpectraCsv={exportSpectraCsv}
         onExportSelectionsJson={exportSelectionsJson}
         onBatchExport={batchExportCharts}
+        onExportCombinedReport={exportCombinedReportPng}
         onInteractionStart={triggerInteractionPending}
+        // Phase 7: Spectra difference mode
+        spectraViewMode={spectraViewMode}
+        onSpectraViewModeChange={handleSpectraViewModeChange}
+        showAbsoluteDifference={showAbsoluteDifference}
+        onToggleAbsoluteDifference={handleToggleAbsoluteDifference}
+        // Phase 8: Reset functionality
+        onResetPlayground={onResetPlayground}
+        hasStateToReset={hasStateToReset}
       />
 
       {/* Charts grid */}
@@ -770,6 +816,8 @@ export function MainCanvas({
                 outlierIndices={lastOutlierResult ? new Set(lastOutlierResult.outlier_indices) : undefined}
                 referenceDataset={referenceCtx?.referenceResult?.processed}
                 referenceLabel={referenceCtx?.referenceInfo?.datasetName}
+                externalConfig={spectraConfigResult}
+                showAbsoluteDifference={showAbsoluteDifference}
               />
             ) : rawData ? (
               <SpectraChartV2
@@ -798,6 +846,8 @@ export function MainCanvas({
                 onRenderModeChange={handleRenderModeChange}
                 referenceDataset={referenceCtx?.referenceResult?.processed}
                 referenceLabel={referenceCtx?.referenceInfo?.datasetName}
+                externalConfig={spectraConfigResult}
+                showAbsoluteDifference={showAbsoluteDifference}
               />
             ) : (
               <ChartSkeleton type="spectra" />
@@ -844,14 +894,16 @@ export function MainCanvas({
             {showSkeletons ? (
               <ChartSkeleton type="histogram" />
             ) : yValues.length > 0 ? (
-              <YHistogramV2
-                y={yValues}
-                folds={result?.folds}
-                metadata={columnMetadata}
-                useSelectionContext
-                globalColorConfig={colorConfig}
-                colorContext={colorContext}
-              />
+              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
+                <YHistogramV2
+                  y={yValues}
+                  folds={deferredResult?.folds}
+                  metadata={columnMetadata}
+                  useSelectionContext
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
+                />
+              </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                 No Y values available
@@ -877,14 +929,16 @@ export function MainCanvas({
             {showSkeletons ? (
               <ChartSkeleton type="folds" />
             ) : (
-              <FoldDistributionChartV2
-                folds={result?.folds ?? null}
-                y={yValues}
-                metadata={columnMetadata}
-                useSelectionContext
-                globalColorConfig={colorConfig}
-                colorContext={colorContext}
-              />
+              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
+                <FoldDistributionChartV2
+                  folds={deferredResult?.folds ?? null}
+                  y={yValues}
+                  metadata={columnMetadata}
+                  useSelectionContext
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
+                />
+              </div>
             )}
           </ChartPanel>
         )}
@@ -906,22 +960,24 @@ export function MainCanvas({
           >
             {showSkeletons ? (
               <ChartSkeleton type="pca" />
-            ) : result?.pca ? (
-              <DimensionReductionChart
-                pca={result.pca}
-                umap={result.umap}
-                y={yValues}
-                folds={result.folds}
-                sampleIds={rawData.sampleIds}
-                metadata={columnMetadata}
-                useSelectionContext
-                onRequestUMAP={onComputeUmapChange ? () => onComputeUmapChange(true) : undefined}
-                isUMAPLoading={isUmapLoading}
-                globalColorConfig={colorConfig}
-                colorContext={colorContext}
-                referencePca={referenceCtx?.referenceResult?.pca}
-                referenceLabel={referenceCtx?.referenceInfo?.datasetName}
-              />
+            ) : deferredResult?.pca ? (
+              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
+                <DimensionReductionChart
+                  pca={deferredResult.pca}
+                  umap={deferredResult.umap}
+                  y={yValues}
+                  folds={deferredResult.folds}
+                  sampleIds={rawData.sampleIds}
+                  metadata={columnMetadata}
+                  useSelectionContext
+                  onRequestUMAP={onComputeUmapChange ? () => onComputeUmapChange(true) : undefined}
+                  isUMAPLoading={isUmapLoading}
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
+                  referencePca={referenceCtx?.referenceResult?.pca}
+                  referenceLabel={referenceCtx?.referenceInfo?.datasetName}
+                />
+              </div>
             ) : (
               <ChartSkeleton type="pca" />
             )}
@@ -944,14 +1000,16 @@ export function MainCanvas({
           >
             {showSkeletons ? (
               <ChartSkeleton type="histogram" />
-            ) : result?.repetitions ? (
-              <RepetitionsChart
-                repetitionData={result.repetitions}
-                y={yValues}
-                useSelectionContext
-                globalColorConfig={colorConfig}
-                colorContext={colorContext}
-              />
+            ) : deferredResult?.repetitions ? (
+              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
+                <RepetitionsChart
+                  repetitionData={deferredResult.repetitions}
+                  y={yValues}
+                  useSelectionContext
+                  globalColorConfig={colorConfig}
+                  colorContext={colorContext}
+                />
+              </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                 No repetitions detected
@@ -987,4 +1045,4 @@ export function MainCanvas({
   );
 }
 
-export default MainCanvas;
+export default memo(MainCanvas);

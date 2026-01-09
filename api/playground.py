@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel, Field
 from sklearn.decomposition import PCA
 
@@ -379,8 +380,8 @@ class PlaygroundExecutor:
             except Exception as e:
                 repetition_result = {"error": str(e), "has_repetitions": False}
 
-        # Compute spectral metrics (Phase 5)
-        compute_metrics = options.get("compute_metrics", True)
+        # Compute spectral metrics (Phase 5) - disabled by default for performance
+        compute_metrics = options.get("compute_metrics", False)
         metrics_result = None
         if compute_metrics:
             try:
@@ -1225,7 +1226,7 @@ MAX_FEATURES = 4000
 MAX_STEPS = 50
 
 
-@router.post("/execute", response_model=ExecuteResponse)
+@router.post("/execute", response_model=ExecuteResponse, response_class=ORJSONResponse)
 async def execute_pipeline(request: ExecuteRequest):
     """Execute a playground pipeline on spectral data.
 

@@ -69,8 +69,15 @@ import { toast } from "sonner";
 import {
   getLinkedWorkspaces,
   getN4AWorkspacePredictionsData,
+  getN4AWorkspacePredictionsSummary,
 } from "@/api/client";
-import type { PredictionRecord, LinkedWorkspace } from "@/types/linked-workspaces";
+import type {
+  PredictionRecord,
+  LinkedWorkspace,
+  PredictionSummaryResponse,
+  ModelFacet,
+  TopPrediction,
+} from "@/types/linked-workspaces";
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 
 const allMetrics = [
@@ -83,11 +90,15 @@ type SortField = "model_name" | "dataset_name" | "partition" | "val_score" | "te
 type SortOrder = "asc" | "desc";
 
 export default function Predictions() {
+  // Two-phase loading: summary (instant) + details (on-demand)
+  const [summary, setSummary] = useState<PredictionSummaryResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
   const [predictions, setPredictions] = useState<PredictionRecord[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<LinkedWorkspace | null>(null);
 
@@ -114,13 +125,13 @@ export default function Predictions() {
   const [pageSize, setPageSize] = useState(50);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Load workspace and predictions on mount
+  // Phase 1: Load summary on mount (instant ~10-50ms)
   useEffect(() => {
-    loadData();
+    loadSummary();
   }, []);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadSummary = async () => {
+    setSummaryLoading(true);
     setError(null);
     try {
       // Get active workspace
@@ -129,61 +140,70 @@ export default function Predictions() {
 
       if (!active) {
         setActiveWorkspace(null);
-        setPredictions([]);
+        setSummary(null);
         setTotalCount(0);
         return;
       }
 
       setActiveWorkspace(active);
 
-      // Load all prediction data with pagination
-      const allPredictions: PredictionRecord[] = [];
-      let offset = 0;
-      const batchSize = 2000;
-      let hasMore = true;
+      // Load summary (instant - reads only parquet footers)
+      const summaryRes = await getN4AWorkspacePredictionsSummary(active.id);
+      setSummary(summaryRes);
+      setTotalCount(summaryRes.total_predictions);
 
-      while (hasMore) {
-        const predictionsRes = await getN4AWorkspacePredictionsData(active.id, {
-          limit: batchSize,
-          offset,
-        });
-
-        allPredictions.push(...predictionsRes.records);
-        setTotalCount(predictionsRes.total);
-
-        // Update UI progressively
-        if (offset === 0) {
-          setPredictions([...allPredictions]);
-        }
-
-        offset += batchSize;
-        hasMore = predictionsRes.has_more;
-
-        // Show loading more indicator after first batch
-        if (hasMore && offset === batchSize) {
-          setIsLoading(false);
-          setIsLoadingMore(true);
-        }
-      }
-
-      setPredictions(allPredictions);
+      // Auto-load first page of details
+      await loadDetails(active.id, 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load predictions");
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  // Phase 2: Load details on-demand with server-side pagination
+  const loadDetails = async (workspaceId: string, offset: number) => {
+    setIsLoading(true);
+    try {
+      const predictionsRes = await getN4AWorkspacePredictionsData(workspaceId, {
+        limit: pageSize,
+        offset,
+        dataset: filterDataset !== "all" ? filterDataset : undefined,
+      });
+
+      setPredictions(predictionsRes.records);
+      setTotalCount(predictionsRes.total);
+    } catch (err) {
+      console.error("Failed to load details:", err);
     } finally {
       setIsLoading(false);
       setIsLoadingMore(false);
     }
   };
 
-  // Get unique values for filters
-  const datasets = useMemo(
-    () => [...new Set(predictions.map((p) => p.source_dataset || p.dataset_name))],
-    [predictions]
-  );
-  const models = useMemo(
-    () => [...new Set(predictions.map((p) => p.model_name).filter(Boolean))],
-    [predictions]
-  );
+  // Reload details when page or filter changes
+  useEffect(() => {
+    if (activeWorkspace) {
+      const offset = (currentPage - 1) * pageSize;
+      loadDetails(activeWorkspace.id, offset);
+    }
+  }, [currentPage, pageSize, filterDataset]);
+
+  // Get unique values for filters from summary (instant) or fall back to predictions
+  const datasets = useMemo(() => {
+    if (summary?.datasets) {
+      return summary.datasets.map((d) => d.dataset);
+    }
+    return [...new Set(predictions.map((p) => p.source_dataset || p.dataset_name))];
+  }, [summary, predictions]);
+
+  const models = useMemo(() => {
+    if (summary?.models) {
+      return summary.models.map((m) => m.name);
+    }
+    return [...new Set(predictions.map((p) => p.model_name).filter(Boolean))];
+  }, [summary, predictions]);
+
   const partitions = useMemo(
     () => [...new Set(predictions.map((p) => p.partition).filter(Boolean))],
     [predictions]
@@ -193,15 +213,23 @@ export default function Predictions() {
     [predictions]
   );
 
-  // Stats
+  // Stats from summary (instant) - no need to compute from all predictions
   const stats = useMemo(() => {
+    if (summary) {
+      return {
+        total: summary.total_predictions,
+        datasets: summary.total_datasets,
+        models: summary.models.length,
+        pipelines: summary.datasets.reduce((acc, d) => acc + (d.facets?.n_pipelines || 0), 0),
+      };
+    }
     return {
       total: predictions.length,
       datasets: new Set(predictions.map((p) => p.source_dataset || p.dataset_name)).size,
       models: new Set(predictions.map((p) => p.model_name).filter(Boolean)).size,
       pipelines: new Set(predictions.map((p) => p.pipeline_uid).filter(Boolean)).size,
     };
-  }, [predictions]);
+  }, [summary, predictions]);
 
   const filteredPredictions = useMemo(() => {
     let result = predictions;
@@ -372,8 +400,8 @@ export default function Predictions() {
     </TableHead>
   );
 
-  // Loading state
-  if (isLoading) {
+  // Loading state (initial summary load)
+  if (summaryLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
@@ -394,7 +422,7 @@ export default function Predictions() {
             <h3 className="text-lg font-semibold">Error loading predictions</h3>
             <p className="text-muted-foreground">{error}</p>
           </div>
-          <Button variant="outline" onClick={loadData}>
+          <Button variant="outline" onClick={loadSummary}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
           </Button>
@@ -473,7 +501,7 @@ export default function Predictions() {
                 nirs4all. Run <code className="text-primary">nirs4all.run()</code>{" "}
                 to generate predictions.
               </p>
-              <Button variant="outline" onClick={loadData}>
+              <Button variant="outline" onClick={loadSummary}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
@@ -495,18 +523,18 @@ export default function Predictions() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Predictions</h1>
           <p className="mt-1 text-muted-foreground">
-            {totalCount} total • {filteredPredictions.length} filtered •{" "}
+            {stats.total.toLocaleString()} total • {filteredPredictions.length} showing •{" "}
             {activeWorkspace.name}
-            {isLoadingMore && (
+            {isLoading && (
               <span className="ml-2 inline-flex items-center gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Loading more...
+                Loading...
               </span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={loadData} size="sm">
+          <Button variant="outline" onClick={loadSummary} size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>

@@ -7,6 +7,7 @@ import Playground from "@/pages/Playground";
 import Pipelines from "@/pages/Pipelines";
 import PipelineEditor from "@/pages/PipelineEditor";
 import Runs from "@/pages/Runs";
+import RunProgress from "@/pages/RunProgress";
 import NewExperiment from "@/pages/NewExperiment";
 import Results from "@/pages/Results";
 import Predictions from "@/pages/Predictions";
@@ -27,6 +28,7 @@ function App() {
         <Route path="pipelines/new" element={<PipelineEditor />} />
         <Route path="runs" element={<Runs />} />
         <Route path="runs/new" element={<NewExperiment />} />
+        <Route path="runs/:id" element={<RunProgress />} />
         <Route path="results" element={<Results />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="analysis" element={<Analysis />} />

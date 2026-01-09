@@ -6,9 +6,14 @@
  * - Real-time progress via WebSocket
  * - Result visualization
  * - Export options (Python, YAML, JSON)
+ *
+ * Run A Enhancement:
+ * - Quick Run option that navigates to /runs/{id} for progress tracking
+ * - Persisted runs with model export
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
@@ -47,6 +52,7 @@ import {
   Trophy,
   Wifi,
   WifiOff,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -59,6 +65,7 @@ import {
   ExecutionResult,
   ExportResult,
 } from "@/hooks/usePipelineExecution";
+import { quickRun } from "@/api/client";
 
 // ============================================================================
 // Types
@@ -351,8 +358,10 @@ export function PipelineExecutionDialog({
   pipelineName,
   variantCount,
 }: PipelineExecutionDialogProps) {
+  const navigate = useNavigate();
   const [selectedDataset, setSelectedDataset] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"execute" | "export">("execute");
+  const [isQuickRunning, setIsQuickRunning] = useState(false);
 
   // Hooks
   const { datasets, isLoading: isLoadingDatasets } = useDatasetSelection();
@@ -374,10 +383,11 @@ export function PipelineExecutionDialog({
     if (open) {
       reset();
       setActiveTab("execute");
+      setIsQuickRunning(false);
     }
   }, [open, reset]);
 
-  // Handle execution
+  // Handle execution (inline mode)
   const handleExecute = async () => {
     if (!selectedDataset) {
       toast.error("Please select a dataset");
@@ -391,8 +401,34 @@ export function PipelineExecutionDialog({
     });
   };
 
+  // Handle Quick Run (navigates to progress page)
+  const handleQuickRun = async () => {
+    if (!selectedDataset) {
+      toast.error("Please select a dataset");
+      return;
+    }
+
+    setIsQuickRunning(true);
+    try {
+      const run = await quickRun({
+        pipeline_id: pipelineId,
+        dataset_id: selectedDataset,
+        name: `${pipelineName} Run`,
+        export_model: true,
+        cv_folds: 5,
+      });
+
+      toast.success("Run started! Redirecting to progress page...");
+      onOpenChange(false);
+      navigate(`/runs/${run.id}`);
+    } catch (err) {
+      toast.error("Failed to start run");
+      setIsQuickRunning(false);
+    }
+  };
+
   // Can close if not running
-  const canClose = status !== "running" && status !== "starting";
+  const canClose = status !== "running" && status !== "starting" && !isQuickRunning;
 
   return (
     <Dialog open={open} onOpenChange={canClose ? onOpenChange : undefined}>
@@ -518,10 +554,19 @@ export function PipelineExecutionDialog({
         </Tabs>
 
         <DialogFooter className="gap-2">
-          {status === "idle" && (
+          {status === "idle" && !isQuickRunning && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleQuickRun}
+                disabled={!selectedDataset}
+                className="gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Run & Track Progress
               </Button>
               <Button
                 onClick={handleExecute}
@@ -529,9 +574,16 @@ export function PipelineExecutionDialog({
                 className="gap-2"
               >
                 <Play className="h-4 w-4" />
-                Execute Pipeline
+                Execute Here
               </Button>
             </>
+          )}
+
+          {isQuickRunning && (
+            <Button disabled className="gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Starting Run...
+            </Button>
           )}
 
           {(status === "starting" || status === "running") && (

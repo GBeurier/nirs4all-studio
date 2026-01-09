@@ -1,9 +1,12 @@
 /**
  * Run types for nirs4all webapp
  * Phase 8: Runs Management
+ * Phase 2-5: Enhanced with templates, results, and robustness features
  */
 
-export type RunStatus = "queued" | "running" | "completed" | "failed" | "paused";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "paused" | "partial";
+
+export type RunFormat = "v1" | "v2" | "parquet_derived";
 
 export interface RunMetrics {
   r2: number;
@@ -11,6 +14,37 @@ export interface RunMetrics {
   mae?: number;
   rpd?: number;
   nrmse?: number;
+}
+
+/**
+ * Pipeline template information (v2 format).
+ * Templates define the experiment recipe before expansion.
+ */
+export interface PipelineTemplate {
+  id: string;
+  name: string;
+  file?: string;
+  expansion_count: number;
+  description?: string;
+}
+
+/**
+ * Dataset metadata stored with runs (v2 format).
+ * Contains full information for auto-discovery.
+ */
+export interface RunDatasetInfo {
+  name: string;
+  path?: string;
+  hash?: string;
+  task_type?: string;
+  n_samples?: number;
+  n_features?: number;
+  y_columns?: string[];
+  y_stats?: Record<string, { min: number; max: number; mean: number; std: number }>;
+  wavelength_range?: [number, number];
+  wavelength_unit?: string;
+  version?: string;
+  status?: "valid" | "missing" | "hash_mismatch" | "relocated" | "unknown";
 }
 
 export interface PipelineRun {
@@ -28,6 +62,7 @@ export interface PipelineRun {
   started_at?: string;
   completed_at?: string;
   error_message?: string;
+  template_id?: string; // Which template this came from (v2)
 }
 
 export interface DatasetRun {
@@ -36,20 +71,77 @@ export interface DatasetRun {
   pipelines: PipelineRun[];
 }
 
+/**
+ * Run configuration (v2 format).
+ */
+export interface RunConfig {
+  cv_folds?: number;
+  cv_strategy?: string;
+  random_state?: number;
+  test_size?: number;
+}
+
+/**
+ * Run summary statistics (v2 format).
+ */
+export interface RunSummary {
+  total_results?: number;
+  completed_results?: number;
+  failed_results?: number;
+  best_result?: {
+    dataset?: string;
+    template?: string;
+    pipeline_config?: string;
+    score?: number;
+    metric?: string;
+  };
+}
+
+/**
+ * Checkpoint for error recovery (Phase 5).
+ */
+export interface RunCheckpoint {
+  result_id: string;
+  completed_at: string;
+}
+
+/**
+ * Run entity - represents a complete experiment session.
+ * Supports both legacy (v1) and new (v2) formats.
+ */
 export interface Run {
   id: string;
   name: string;
   description?: string;
-  datasets: DatasetRun[];
   status: RunStatus;
+  format?: RunFormat;
   created_at: string;
   started_at?: string;
   completed_at?: string;
   duration?: string;
   created_by?: string;
+
+  // Legacy fields (v1)
+  datasets: DatasetRun[];
   cv_folds?: number;
   total_pipelines?: number;
   completed_pipelines?: number;
+
+  // New fields (v2)
+  templates?: PipelineTemplate[];
+  total_pipeline_configs?: number;
+  datasets_info?: RunDatasetInfo[];
+  config?: RunConfig;
+  summary?: RunSummary;
+
+  // Robustness fields (Phase 5)
+  checkpoints?: RunCheckpoint[];
+  resume_from?: string;
+
+  // Discovery metadata
+  manifest_path?: string;
+  run_dir?: string;
+  results_count?: number;
 }
 
 export interface RunProgress {
@@ -92,7 +184,13 @@ export const runStatusConfig = {
     bg: "bg-warning/10",
     iconClass: "",
   },
-};
+  partial: {
+    label: "Partial",
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    iconClass: "",
+  },
+} as const;
 
 // Experiment configuration for creating new runs
 export interface ExperimentConfig {
@@ -129,4 +227,95 @@ export interface RunStatsResponse {
   completed: number;
   failed: number;
   total_pipelines: number;
+}
+
+// ============================================================================
+// Result Types (Phase 2-5)
+// ============================================================================
+
+/**
+ * Result entity - represents one pipeline config × one dataset.
+ * This is the granular level below runs.
+ */
+export interface Result {
+  id: string;
+  run_id?: string;
+  template_id?: string;
+  dataset: string;
+  pipeline_config: string;
+  pipeline_config_id: string;
+  created_at?: string;
+  schema_version?: string;
+  generator_choices?: Array<Record<string, unknown>>;
+  best_score?: number | null;
+  best_model?: string;
+  metric?: string;
+  task_type?: string;
+  n_samples?: number;
+  n_features?: number;
+  predictions_count?: number;
+  artifact_count?: number;
+  manifest_path?: string;
+}
+
+export interface ResultListResponse {
+  workspace_id: string;
+  results: Result[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+// ============================================================================
+// Discovered Dataset Types (Phase 2.2)
+// ============================================================================
+
+/**
+ * Dataset discovered from run manifests with full metadata.
+ */
+export interface DiscoveredDatasetInfo {
+  name: string;
+  path: string;
+  hash?: string;
+  task_type?: string;
+  n_samples?: number;
+  n_features?: number;
+  y_columns?: string[];
+  y_stats?: Record<string, { min: number; max: number; mean: number; std: number }>;
+  wavelength_range?: number[];
+  wavelength_unit?: string;
+  runs_count: number;
+  versions_seen: string[];
+  hashes_seen: string[];
+  status: "valid" | "missing" | "hash_mismatch" | "relocated" | "unknown";
+}
+
+export interface DiscoveredDatasetsResponse {
+  workspace_id: string;
+  datasets: DiscoveredDatasetInfo[];
+  total: number;
+}
+
+// ============================================================================
+// State Machine Types (Phase 5.3)
+// ============================================================================
+
+/**
+ * Valid state transitions for runs.
+ */
+export const VALID_RUN_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
+  queued: ["running", "failed"],
+  running: ["completed", "failed", "paused", "partial"],
+  paused: ["running", "failed"],
+  failed: ["queued"], // retry
+  completed: [], // terminal
+  partial: ["running", "failed"], // resume or fail
+};
+
+/**
+ * Check if a state transition is valid.
+ */
+export function isValidTransition(from: RunStatus, to: RunStatus): boolean {
+  return VALID_RUN_TRANSITIONS[from]?.includes(to) ?? false;
 }

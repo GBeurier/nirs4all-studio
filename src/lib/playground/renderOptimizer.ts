@@ -59,7 +59,7 @@ export interface OptimizationConfig {
 const STORAGE_KEY = 'playground-render-preferences';
 
 const DEFAULT_CONFIG: OptimizationConfig = {
-  canvasComplexityLimit: 50_000,      // ~500 samples × 100 wavelengths
+  canvasComplexityLimit: 10_000,      // ~100 samples × 100 wavelengths (lowered for performance)
   webglComplexityLimit: 500_000,      // ~5000 samples × 100 wavelengths
   defaultAggregationThreshold: 200,   // Switch to aggregation above this
   autoOptimize: true,

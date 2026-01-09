@@ -15,7 +15,7 @@
  * - Export menu
  */
 
-import { useCallback, memo, useMemo } from 'react';
+import { useCallback, memo, useMemo, useState } from 'react';
 import {
   Eye,
   EyeOff,
@@ -26,6 +26,9 @@ import {
   Image,
   FileText,
   Palette,
+  Diff,
+  RotateCcw,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,6 +50,16 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { StepComparisonSlider } from './StepComparisonSlider';
 import { PartitionSelector, type PartitionFilter } from './PartitionSelector';
@@ -55,7 +68,9 @@ import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
 import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
 import { SavedSelections } from './SavedSelections';
 import { SelectionFilters } from './SelectionFilters';
+import { SelectionModeToggle } from './SelectionTools';
 import { ReferenceModeControls } from './ReferenceModeControls';
+import { useSelection } from '@/context/SelectionContext';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo } from '@/types/playground';
 import {
@@ -76,6 +91,7 @@ import { type TargetType, isCategoricalTarget } from '@/lib/playground/targetTyp
 import { ColorLegend } from './ColorLegend';
 import { DisplayFilters } from './DisplayFilters';
 import { type ChartType } from '@/context/PlaygroundViewContext';
+import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
 
 // Re-export ChartType for consumers
 export type { ChartType };
@@ -160,9 +176,27 @@ export interface CanvasToolbarProps {
   onExportSpectraCsv: () => Promise<void>;
   onExportSelectionsJson: () => Promise<void>;
   onBatchExport: () => Promise<void>;
+  /** Export combined report with all charts (Phase 8) */
+  onExportCombinedReport?: () => Promise<void>;
 
   // Interaction
   onInteractionStart: () => void;
+
+  // Phase 7: Spectra difference mode quick-toggle
+  /** Current spectra view mode */
+  spectraViewMode?: SpectraViewMode;
+  /** Callback when spectra view mode changes */
+  onSpectraViewModeChange?: (mode: SpectraViewMode) => void;
+  /** Whether to show absolute differences (vs signed) */
+  showAbsoluteDifference?: boolean;
+  /** Callback to toggle absolute/signed difference mode */
+  onToggleAbsoluteDifference?: () => void;
+
+  // Phase 8: Reset functionality
+  /** Callback to reset playground state */
+  onResetPlayground?: () => void;
+  /** Whether there's state to reset */
+  hasStateToReset?: boolean;
 }
 
 // ============= Sub-Components =============
@@ -208,7 +242,14 @@ const ColorModeSelector = memo(function ColorModeSelector({
   return (
     <div className="flex items-center gap-1">
       {/* Mode selector with icon */}
-      <Palette className="w-3 h-3 text-muted-foreground" />
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Palette className="w-3 h-3 text-muted-foreground cursor-help" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Color mode: how samples are colored</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <Select
         value={colorConfig.mode}
         onValueChange={(mode) => onChange({
@@ -386,8 +427,22 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   onExportSpectraCsv,
   onExportSelectionsJson,
   onBatchExport,
+  onExportCombinedReport,
   onInteractionStart,
+  // Phase 7: Spectra difference mode
+  spectraViewMode,
+  onSpectraViewModeChange,
+  showAbsoluteDifference = false,
+  onToggleAbsoluteDifference,
+  // Phase 8: Reset functionality
+  onResetPlayground,
+  hasStateToReset = false,
 }: CanvasToolbarProps) {
+  // Get selection context for tool mode
+  const selectionCtx = useSelection();
+
+  // Phase 8: Reset confirmation dialog state
+  const [showResetDialog, setShowResetDialog] = useState(false);
   // Handle step comparison enabled change
   const handleStepComparisonEnabledChange = useCallback((enabled: boolean) => {
     onStepComparisonEnabledChange?.(enabled);
@@ -404,6 +459,33 @@ export const CanvasToolbar = memo(function CanvasToolbar({
     onInteractionStart();
     onColorConfigChange(config);
   }, [onInteractionStart, onColorConfigChange]);
+
+  // Phase 7: Toggle difference mode
+  const handleToggleDifferenceMode = useCallback(() => {
+    if (!onSpectraViewModeChange) return;
+    onInteractionStart();
+    if (spectraViewMode === 'difference') {
+      // Toggle back to processed
+      onSpectraViewModeChange('processed');
+    } else {
+      // Switch to difference mode
+      onSpectraViewModeChange('difference');
+    }
+  }, [onInteractionStart, onSpectraViewModeChange, spectraViewMode]);
+
+  const isDifferenceMode = spectraViewMode === 'difference';
+
+  // Phase 8: Handle reset confirmation
+  const handleResetClick = useCallback(() => {
+    if (hasStateToReset) {
+      setShowResetDialog(true);
+    }
+  }, [hasStateToReset]);
+
+  const handleResetConfirm = useCallback(() => {
+    onResetPlayground?.();
+    setShowResetDialog(false);
+  }, [onResetPlayground]);
 
   // Extract metadata column names
   const metadataColumns = useMemo(() => {
@@ -424,29 +506,46 @@ export const CanvasToolbar = memo(function CanvasToolbar({
       aria-label="Chart controls"
     >
       <div className="flex items-center gap-1.5" role="group" aria-label="Chart visibility toggles">
-        <span className="text-[10px] text-muted-foreground mr-1">Show:</span>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-[10px] text-muted-foreground mr-1 cursor-help">Show:</span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Toggle which charts are visible in the playground
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         {CHART_CONFIG.map(({ id, label, requiresFolds, requiresRepetitions }) => {
           const isVisible = effectiveVisibleCharts.has(id);
           const isDisabled = (requiresFolds && !hasFolds) || (requiresRepetitions && !hasRepetitions);
+          const tooltipText = isDisabled
+            ? (requiresFolds ? 'Add a splitter operator to see folds' : 'No repetitions detected in dataset')
+            : `${isVisible ? 'Hide' : 'Show'} ${label} chart (press ${CHART_CONFIG.findIndex(c => c.id === id) + 1})`;
 
           return (
-            <Button
-              key={id}
-              variant={isVisible ? 'secondary' : 'ghost'}
-              size="sm"
-              className={cn(
-                'h-6 text-[10px] gap-1 px-2',
-                !isVisible && 'opacity-50',
-                isDisabled && 'cursor-not-allowed opacity-30'
-              )}
-              onMouseDown={onInteractionStart}
-              onClick={() => !isDisabled && onToggleChart(id)}
-              disabled={isDisabled}
-              title={isDisabled ? 'Add a splitter to see folds' : undefined}
-            >
-              {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-              {label}
-            </Button>
+            <TooltipProvider key={id} delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={isVisible ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className={cn(
+                      'h-6 text-[10px] gap-1 px-2',
+                      !isVisible && 'opacity-50',
+                      isDisabled && 'cursor-not-allowed opacity-30'
+                    )}
+                    onMouseDown={onInteractionStart}
+                    onClick={() => !isDisabled && onToggleChart(id)}
+                    disabled={isDisabled}
+                  >
+                    {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                    {label}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{tooltipText}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           );
         })}
 
@@ -454,6 +553,20 @@ export const CanvasToolbar = memo(function CanvasToolbar({
         {isFetching && (
           <Loader2 className="w-3 h-3 animate-spin text-primary ml-2" />
         )}
+
+        {/* Phase 9: Selection Tool Mode Toggle */}
+        <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+          <SelectionModeToggle
+            mode={selectionCtx.selectionToolMode}
+            onChange={selectionCtx.setSelectionToolMode}
+          />
+          {/* Show mode indicator when not in click mode */}
+          {selectionCtx.selectionToolMode !== 'click' && (
+            <span className="text-[9px] text-primary font-medium px-1 py-0.5 bg-primary/10 rounded">
+              {selectionCtx.selectionToolMode === 'box' ? 'Box' : 'Lasso'}
+            </span>
+          )}
+        </div>
 
         {/* Selection by metadata/fold filter */}
         <SelectionFilters
@@ -467,9 +580,18 @@ export const CanvasToolbar = memo(function CanvasToolbar({
         {/* Selection count and filter button */}
         {selectedCount > 0 && (
           <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
-              {selectedCount} selected
-            </Badge>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium cursor-help">
+                    {selectedCount} selected
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {selectedCount} sample{selectedCount !== 1 ? 's' : ''} currently selected. Press Esc to clear.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {onFilterToSelection && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -501,7 +623,16 @@ export const CanvasToolbar = memo(function CanvasToolbar({
         {/* Partition filter (Phase 3) */}
         {hasFolds && (
           <>
-            <span className="text-[10px] text-muted-foreground">View:</span>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-[10px] text-muted-foreground cursor-help">View:</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Filter displayed samples by partition (train/test/fold)
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <PartitionSelector
               value={partitionFilter}
               onChange={onPartitionFilterChange}
@@ -521,13 +652,77 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           compact
         />
 
+        {/* Phase 7: Quick Difference Mode Toggle */}
+        {onSpectraViewModeChange && hasOperators && (
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <div className="flex items-center gap-1">
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={isDifferenceMode ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className={cn(
+                        'h-6 px-2 text-[10px] gap-1',
+                        isDifferenceMode && 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-600 dark:text-orange-400'
+                      )}
+                      onClick={handleToggleDifferenceMode}
+                    >
+                      <Diff className="w-3 h-3" />
+                      {isDifferenceMode ? 'Diff ON' : 'Diff'}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {isDifferenceMode
+                      ? 'Click to show processed spectra'
+                      : 'Show difference between processed and original spectra'}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Absolute/Signed toggle when in difference mode */}
+              {isDifferenceMode && onToggleAbsoluteDifference && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={showAbsoluteDifference ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-6 px-1.5 text-[9px]"
+                        onClick={onToggleAbsoluteDifference}
+                      >
+                        {showAbsoluteDifference ? '|Δ|' : '±Δ'}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {showAbsoluteDifference
+                        ? 'Showing absolute differences. Click for signed.'
+                        : 'Showing signed differences. Click for absolute.'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          </>
+        )}
+
         {/* Phase 5: Advanced Filtering & Metrics */}
         {(metrics || onDetectOutliers || onFindSimilar) && (
           <>
             <Separator orientation="vertical" className="h-4" />
             <div className="flex items-center gap-1.5">
               <Activity className="w-3 h-3 text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground">Filter:</span>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-[10px] text-muted-foreground cursor-help">Filter:</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Advanced filtering by metrics, outliers, or similarity
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
               {/* Metrics Filter Panel */}
               {metrics && onMetricFiltersChange && (
@@ -616,14 +811,51 @@ export const CanvasToolbar = memo(function CanvasToolbar({
         {/* Phase 6: Saved Selections */}
         <SavedSelections compact sampleIds={sampleIds} />
 
+        {/* Phase 8: Reset View button */}
+        {onResetPlayground && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'h-6 px-2 text-[10px] gap-1',
+                    hasStateToReset && 'text-orange-600 dark:text-orange-400 hover:bg-orange-500/10'
+                  )}
+                  onClick={handleResetClick}
+                  disabled={!hasStateToReset}
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {hasStateToReset
+                  ? 'Reset all selections, filters, and settings (Ctrl+Shift+R)'
+                  : 'Nothing to reset'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         {/* Phase 6: Export menu */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1">
-              <Download className="w-3 h-3" />
-              Export
-            </Button>
-          </DropdownMenuTrigger>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1">
+                    <Download className="w-3 h-3" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Export charts as PNG, data as CSV, or combined report
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem onClick={() => onExportChartPng('spectra')}>
               <Image className="w-4 h-4 mr-2" />
@@ -648,6 +880,12 @@ export const CanvasToolbar = memo(function CanvasToolbar({
               <Image className="w-4 h-4 mr-2" />
               All Charts as PNG
             </DropdownMenuItem>
+            {onExportCombinedReport && (
+              <DropdownMenuItem onClick={onExportCombinedReport}>
+                <FileText className="w-4 h-4 mr-2" />
+                Combined Report
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onExportSpectraCsv}>
               <FileText className="w-4 h-4 mr-2" />
@@ -662,6 +900,40 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Phase 8: Reset Confirmation Dialog */}
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-500" />
+              Reset Playground View?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will reset all playground state including:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Current selection ({selectedCount} sample{selectedCount !== 1 ? 's' : ''})</li>
+                <li>Pinned samples</li>
+                <li>Display filters (outlier, selection)</li>
+                <li>Color configuration</li>
+                <li>User-marked outliers</li>
+              </ul>
+              <p className="mt-3 text-muted-foreground">
+                This action cannot be undone.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetConfirm}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Reset View
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });

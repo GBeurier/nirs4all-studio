@@ -43,6 +43,27 @@ const UISettingsContext = createContext<UISettingsContextType | undefined>(
 const STORAGE_KEY_DENSITY = "nirs4all-ui-density";
 const STORAGE_KEY_ANIMATIONS = "nirs4all-reduce-animations";
 
+// Safe localStorage access - returns null if localStorage is unavailable
+function safeGetItem(key: string): string | null {
+  try {
+    return typeof window !== "undefined" && window.localStorage
+      ? localStorage.getItem(key)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Silently fail if localStorage is unavailable
+  }
+}
+
 interface UISettingsProviderProps {
   children: ReactNode;
 }
@@ -50,20 +71,15 @@ interface UISettingsProviderProps {
 export function UISettingsProvider({ children }: UISettingsProviderProps) {
   // Initialize from localStorage for fast render
   const [density, setDensityState] = useState<UIDensity>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(STORAGE_KEY_DENSITY);
-      if (stored === "compact" || stored === "comfortable" || stored === "spacious") {
-        return stored;
-      }
+    const stored = safeGetItem(STORAGE_KEY_DENSITY);
+    if (stored === "compact" || stored === "comfortable" || stored === "spacious") {
+      return stored;
     }
     return "comfortable";
   });
 
   const [reduceAnimations, setReduceAnimationsState] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(STORAGE_KEY_ANIMATIONS) === "true";
-    }
-    return false;
+    return safeGetItem(STORAGE_KEY_ANIMATIONS) === "true";
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -126,7 +142,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
   // Set density with backend sync
   const setDensity = useCallback(async (newDensity: UIDensity) => {
     setDensityState(newDensity);
-    localStorage.setItem(STORAGE_KEY_DENSITY, newDensity);
+    safeSetItem(STORAGE_KEY_DENSITY, newDensity);
 
     if (hasWorkspace) {
       try {
@@ -143,7 +159,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
   // Set reduce animations with backend sync
   const setReduceAnimations = useCallback(async (reduce: boolean) => {
     setReduceAnimationsState(reduce);
-    localStorage.setItem(STORAGE_KEY_ANIMATIONS, String(reduce));
+    safeSetItem(STORAGE_KEY_ANIMATIONS, String(reduce));
 
     if (hasWorkspace) {
       try {

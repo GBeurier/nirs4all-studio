@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { SpectralData } from '@/types/spectral';
+import { SpectralData, SampleMetadata } from '@/types/spectral';
 import { loadWorkspaceDataset } from '@/api/playground';
 
 export interface WorkspaceDatasetInfo {
@@ -16,9 +16,12 @@ export function useSpectralData() {
   const [currentDatasetInfo, setCurrentDatasetInfo] = useState<WorkspaceDatasetInfo | null>(null);
 
   const loadDemoData = useCallback(() => {
-    // Generate synthetic NIR spectra with repetitions for testing all charts
-    // 35 biological samples with 2-4 repetitions each = ~100 total measurements
-    const numBioSamples = 35;
+    // Generate synthetic NIR spectra with consistent repetitions for testing all charts
+    // 25 biological samples with exactly 4 repetitions each = 100 total measurements
+    // 80% train (20 samples), 20% test (5 samples)
+    const numBioSamples = 25;
+    const numReps = 4;
+    const numTestSamples = 5;
     const numWavelengths = 200;
     const startWavelength = 1100;
     const endWavelength = 2500;
@@ -31,14 +34,17 @@ export function useSpectralData() {
     const spectra: number[][] = [];
     const y: number[] = [];
     const sampleIds: string[] = [];
+    const metadata: SampleMetadata[] = [];
 
-    // Create biological samples with repetitions
+    // Determine which samples are test samples (last numTestSamples)
+    const testSampleStart = numBioSamples - numTestSamples;
+
+    // Create biological samples with exactly 4 repetitions each
     for (let bioIdx = 0; bioIdx < numBioSamples; bioIdx++) {
       // Each sample has a true concentration value
       const trueConcentration = Math.random() * 100;
-
-      // Number of repetitions varies: 2-4 per biological sample
-      const numReps = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4 reps
+      const bioId = String(bioIdx + 1).padStart(2, '0');
+      const isTest = bioIdx >= testSampleStart;
 
       for (let rep = 0; rep < numReps; rep++) {
         // Small variation in measured concentration between repetitions
@@ -46,8 +52,14 @@ export function useSpectralData() {
         y.push(Math.max(0, Math.min(100, measuredConcentration)));
 
         // Sample ID format: Sample_XX_rY (e.g., Sample_01_r1, Sample_01_r2)
-        const bioId = String(bioIdx + 1).padStart(2, '0');
         sampleIds.push(`Sample_${bioId}_r${rep + 1}`);
+
+        // Add metadata for this measurement
+        metadata.push({
+          bio_sample: `Sample_${bioId}`,
+          repetition: rep + 1,
+          set: isTest ? 'test' : 'train',
+        });
 
         // Generate spectrum with peaks related to concentration
         // Add slight random variation between repetitions
@@ -70,7 +82,7 @@ export function useSpectralData() {
       }
     }
 
-    setRawData({ wavelengths, spectra, y, sampleIds });
+    setRawData({ wavelengths, spectra, y, sampleIds, metadata });
     setDataSource('demo');
     setCurrentDatasetInfo(null);
     setError(null);

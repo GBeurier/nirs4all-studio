@@ -109,7 +109,7 @@ export function DatasetSpectraTab({
               {wavelengthMin.toFixed(0)} - {wavelengthMax.toFixed(0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {preview.summary?.signal_type === "nir" ? "nm" : preview.summary?.signal_type === "mir" ? "cm⁻¹" : "units"}
+              {preview.summary?.header_unit === "nm" ? "nm" : preview.summary?.header_unit === "cm-1" ? "cm⁻¹" : "units"}
             </p>
           </CardContent>
         </Card>

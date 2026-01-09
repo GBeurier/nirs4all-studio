@@ -17,5 +17,14 @@ export * from './sampling';
 export * from './renderOptimizer';
 export * from './export';
 
+// Phase 10: Performance Baselines
+export * from './performanceBaselines';
+
+// Phase 10: Accessibility
+export * from './accessibility';
+
+// Phase 10: Memory Monitoring
+export * from './memoryMonitor';
+
 // Phase 1: Type Safety - Zod validation schemas
 export * from './validation';

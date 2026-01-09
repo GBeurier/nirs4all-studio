@@ -127,6 +127,94 @@ export interface PredictionDataResponse {
   has_more: boolean;
 }
 
+/**
+ * Summary statistics for a score column.
+ */
+export interface ScoreStats {
+  min: number;
+  max: number;
+  mean: number;
+  std?: number;
+  quartiles?: [number, number, number];
+}
+
+/**
+ * Model facet with count and average score.
+ */
+export interface ModelFacet {
+  name: string;
+  count: number;
+  avg_val_score: number | null;
+}
+
+/**
+ * Partition facet with count.
+ */
+export interface PartitionFacet {
+  name: string;
+  count: number;
+}
+
+/**
+ * Run summary from embedded parquet metadata.
+ */
+export interface RunSummary {
+  id: string;
+  name: string;
+  n_predictions: number;
+  best_val_score: number | null;
+  best_test_score: number | null;
+}
+
+/**
+ * Top prediction entry.
+ */
+export interface TopPrediction {
+  id: string;
+  model_name: string;
+  config_name: string;
+  val_score: number | null;
+  test_score: number | null;
+  fold_id: string;
+  partition: string;
+  dataset?: string;
+}
+
+/**
+ * Dataset summary from embedded parquet metadata.
+ */
+export interface DatasetSummary {
+  dataset: string;
+  total_predictions: number;
+  has_summary: boolean;
+  stats?: Record<string, ScoreStats>;
+  facets?: {
+    models: ModelFacet[];
+    partitions: PartitionFacet[];
+    folds: string[];
+    task_types?: { name: string; count: number }[];
+    n_configs: number;
+    n_pipelines: number;
+  };
+  runs?: RunSummary[];
+  top_predictions?: TopPrediction[];
+}
+
+/**
+ * Aggregated summary response from predictions/summary endpoint.
+ * Read from parquet file footers for instant response (~10-50ms).
+ */
+export interface PredictionSummaryResponse {
+  total_predictions: number;
+  total_datasets: number;
+  datasets: DatasetSummary[];
+  models: ModelFacet[];
+  runs: RunSummary[];
+  top_predictions: TopPrediction[];
+  stats: Record<string, { min: number; max: number; mean: number }>;
+  generated_at: string;
+}
+
 export interface DiscoveredExport {
   type: "n4a_bundle" | "pipeline_json" | "summary_json" | "predictions_csv";
   name?: string;

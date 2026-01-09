@@ -185,7 +185,13 @@ class WorkspaceScanner:
         return result
 
     def discover_runs(self) -> List[Dict[str, Any]]:
-        """Discover all runs by parsing manifest.yaml files.
+        """Discover all runs by parsing manifest files.
+
+        Supports two formats:
+        1. New format: workspace/runs/<run_id>/run_manifest.yaml
+           - Contains templates, multiple datasets, run-level metadata
+        2. Legacy format: workspace/runs/<dataset>/<pipeline_id>/manifest.yaml
+           - Per-dataset, per-pipeline manifests (treated as individual results)
 
         Returns:
             List of run information dictionaries
@@ -196,9 +202,157 @@ class WorkspaceScanner:
         if not runs_dir.exists():
             return runs
 
+        # First, check for new format: run_manifest.yaml files
+        new_format_runs = self._discover_runs_new_format(runs_dir)
+        if new_format_runs:
+            runs.extend(new_format_runs)
+
+        # Also scan for legacy format (per-dataset/pipeline manifests)
+        legacy_runs = self._discover_runs_legacy_format(runs_dir)
+
+        # Filter out legacy runs that are already covered by new format
+        new_format_run_ids = {r.get("id") for r in new_format_runs}
+        for legacy_run in legacy_runs:
+            # Check if this legacy run is part of a new-format run
+            if legacy_run.get("run_id") not in new_format_run_ids:
+                runs.append(legacy_run)
+
+        return runs
+
+    def _discover_runs_new_format(self, runs_dir: Path) -> List[Dict[str, Any]]:
+        """Discover runs using new run_manifest.yaml format.
+
+        New format structure:
+        workspace/runs/<run_id>/
+        ├── run_manifest.yaml
+        ├── templates/
+        │   ├── template_001.yaml
+        │   └── template_002.yaml
+        └── results/
+            └── <dataset>/
+                └── <pipeline_config>/
+                    └── manifest.yaml
+        """
+        runs = []
+
+        for run_dir in runs_dir.iterdir():
+            if not run_dir.is_dir() or run_dir.name.startswith("_"):
+                continue
+
+            run_manifest = run_dir / "run_manifest.yaml"
+            if not run_manifest.exists():
+                continue
+
+            try:
+                run_info = self._parse_run_manifest(run_manifest, run_dir)
+                if run_info:
+                    runs.append(run_info)
+            except Exception as e:
+                print(f"Failed to parse run manifest {run_manifest}: {e}")
+
+        return runs
+
+    def _parse_run_manifest(self, manifest_file: Path, run_dir: Path) -> Optional[Dict[str, Any]]:
+        """Parse a run_manifest.yaml file (new format).
+
+        Args:
+            manifest_file: Path to run_manifest.yaml
+            run_dir: Path to the run directory
+
+        Returns:
+            Dict with run information or None if parsing fails
+        """
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                manifest = yaml.safe_load(f)
+        except Exception:
+            return None
+
+        if not manifest:
+            return None
+
+        # Extract templates information
+        templates = manifest.get("templates", [])
+        templates_info = []
+        for tmpl in templates:
+            templates_info.append({
+                "id": tmpl.get("id", ""),
+                "name": tmpl.get("name", ""),
+                "file": tmpl.get("file", ""),
+                "expansion_count": tmpl.get("expansion_count", 1),
+            })
+
+        # Extract datasets with full metadata
+        datasets = manifest.get("datasets", [])
+        datasets_info = []
+        for ds in datasets:
+            datasets_info.append({
+                "name": ds.get("name", ""),
+                "path": ds.get("path", ""),
+                "hash": ds.get("hash", ""),
+                "task_type": ds.get("task_type", ""),
+                "n_samples": ds.get("n_samples", 0),
+                "n_features": ds.get("n_features", 0),
+                "y_columns": ds.get("y_columns", []),
+                "y_stats": ds.get("y_stats", {}),
+                "wavelength_range": ds.get("wavelength_range", []),
+                "wavelength_unit": ds.get("wavelength_unit", ""),
+                "version": ds.get("version", ""),
+            })
+
+        # Extract summary if available
+        summary = manifest.get("summary", {})
+
+        # Count results by scanning results directory
+        results_count = 0
+        results_dir = run_dir / "results"
+        if results_dir.exists():
+            for dataset_dir in results_dir.iterdir():
+                if dataset_dir.is_dir():
+                    results_count += len([d for d in dataset_dir.iterdir() if d.is_dir()])
+
+        return {
+            "id": manifest.get("uid", run_dir.name),
+            "name": manifest.get("name", run_dir.name),
+            "description": manifest.get("description", ""),
+            "status": manifest.get("status", "unknown"),
+            "created_at": manifest.get("created_at", ""),
+            "started_at": manifest.get("started_at", ""),
+            "completed_at": manifest.get("completed_at", ""),
+            "schema_version": manifest.get("schema_version", "2.0"),
+            "manifest_path": str(manifest_file),
+            "run_dir": str(run_dir),
+            # New format specific fields
+            "format": "v2",
+            "templates": templates_info,
+            "total_pipeline_configs": manifest.get("total_pipeline_configs", 0),
+            "datasets": datasets_info,
+            "config": manifest.get("config", {}),
+            "summary": summary,
+            "results_count": summary.get("total_results", results_count),
+            "completed_results": summary.get("completed_results", 0),
+            "failed_results": summary.get("failed_results", 0),
+            "best_result": summary.get("best_result", {}),
+            # Checkpoints for Phase 5 robustness
+            "checkpoints": manifest.get("checkpoints", []),
+            "resume_from": manifest.get("resume_from", None),
+        }
+
+    def _discover_runs_legacy_format(self, runs_dir: Path) -> List[Dict[str, Any]]:
+        """Discover runs using legacy format (per-dataset/pipeline manifests).
+
+        Legacy format structure:
+        workspace/runs/<dataset>/<pipeline_id>/manifest.yaml
+        """
+        runs = []
+
         # Iterate through dataset directories
         for dataset_dir in runs_dir.iterdir():
             if not dataset_dir.is_dir() or dataset_dir.name.startswith("_"):
+                continue
+
+            # Skip if this looks like a new-format run directory (has run_manifest.yaml)
+            if (dataset_dir / "run_manifest.yaml").exists():
                 continue
 
             dataset_name = dataset_dir.name
@@ -215,6 +369,7 @@ class WorkspaceScanner:
                 try:
                     run_info = self._parse_manifest(manifest_file, dataset_name, pipeline_dir.name)
                     if run_info:
+                        run_info["format"] = "v1"
                         runs.append(run_info)
                 except Exception as e:
                     print(f"Failed to parse manifest {manifest_file}: {e}")
@@ -511,50 +666,989 @@ class WorkspaceScanner:
     def extract_datasets(self, runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Extract unique datasets from discovered runs.
 
+        Supports both:
+        - New format: runs with 'datasets' array containing full metadata
+        - Legacy format: runs with 'dataset' string and 'dataset_info' dict
+
         Args:
             runs: List of discovered run information
 
         Returns:
-            List of unique dataset information with version tracking
+            List of unique dataset information with version tracking and full metadata
         """
         datasets_map: Dict[str, Dict[str, Any]] = {}
 
         for run in runs:
-            dataset_name = run.get("dataset", "")
-            if not dataset_name:
-                continue
+            run_format = run.get("format", "v1")
 
-            dataset_info = run.get("dataset_info", {})
-            dataset_path = dataset_info.get("path", "")
+            if run_format == "v2":
+                # New format: extract from datasets array
+                datasets_list = run.get("datasets", [])
+                for ds in datasets_list:
+                    ds_name = ds.get("name", "")
+                    if not ds_name:
+                        continue
 
-            if dataset_name not in datasets_map:
-                datasets_map[dataset_name] = {
-                    "name": dataset_name,
-                    "path": dataset_path,
-                    "runs_count": 0,
-                    "versions_seen": set(),
-                    "hashes_seen": set(),
-                }
+                    ds_hash = ds.get("hash", "")
+                    key = ds_hash if ds_hash else ds_name
 
-            datasets_map[dataset_name]["runs_count"] += 1
+                    if key not in datasets_map:
+                        datasets_map[key] = {
+                            "name": ds_name,
+                            "path": ds.get("path", ""),
+                            "hash": ds_hash,
+                            "task_type": ds.get("task_type", ""),
+                            "n_samples": ds.get("n_samples", 0),
+                            "n_features": ds.get("n_features", 0),
+                            "y_columns": ds.get("y_columns", []),
+                            "y_stats": ds.get("y_stats", {}),
+                            "wavelength_range": ds.get("wavelength_range", []),
+                            "wavelength_unit": ds.get("wavelength_unit", ""),
+                            "runs_count": 0,
+                            "versions_seen": set(),
+                            "hashes_seen": set(),
+                            "status": "unknown",  # Will be updated by path resolution
+                        }
 
-            if dataset_info.get("version_at_run"):
-                datasets_map[dataset_name]["versions_seen"].add(dataset_info["version_at_run"])
-            if dataset_info.get("hash"):
-                datasets_map[dataset_name]["hashes_seen"].add(dataset_info["hash"])
+                    datasets_map[key]["runs_count"] += 1
+                    if ds.get("version"):
+                        datasets_map[key]["versions_seen"].add(ds["version"])
+                    if ds_hash:
+                        datasets_map[key]["hashes_seen"].add(ds_hash)
+            else:
+                # Legacy format: single dataset per run
+                dataset_name = run.get("dataset", "")
+                if not dataset_name:
+                    continue
 
-        # Convert sets to lists for JSON serialization
+                dataset_info = run.get("dataset_info", {})
+                dataset_path = dataset_info.get("path", "")
+
+                if dataset_name not in datasets_map:
+                    datasets_map[dataset_name] = {
+                        "name": dataset_name,
+                        "path": dataset_path,
+                        "hash": dataset_info.get("hash", ""),
+                        "task_type": dataset_info.get("task_type", ""),
+                        "n_samples": dataset_info.get("n_samples", 0),
+                        "n_features": dataset_info.get("n_features", 0),
+                        "y_columns": dataset_info.get("y_columns", []),
+                        "y_stats": dataset_info.get("y_stats", {}),
+                        "wavelength_range": [],
+                        "wavelength_unit": "",
+                        "runs_count": 0,
+                        "versions_seen": set(),
+                        "hashes_seen": set(),
+                        "status": "unknown",
+                    }
+
+                datasets_map[dataset_name]["runs_count"] += 1
+
+                if dataset_info.get("version_at_run"):
+                    datasets_map[dataset_name]["versions_seen"].add(dataset_info["version_at_run"])
+                if dataset_info.get("hash"):
+                    datasets_map[dataset_name]["hashes_seen"].add(dataset_info["hash"])
+
+        # Convert sets to lists for JSON serialization and resolve path status
         result = []
-        for dataset_name, info in datasets_map.items():
+        for key, info in datasets_map.items():
+            # Resolve path status
+            path = info.get("path", "")
+            status = "unknown"
+            if path:
+                path_obj = Path(path)
+                if path_obj.exists():
+                    status = "valid"
+                else:
+                    # Try relative paths
+                    workspace_relative = self.workspace_path / path_obj.name
+                    if workspace_relative.exists():
+                        status = "relocated"
+                        info["path"] = str(workspace_relative)
+                    else:
+                        status = "missing"
+
             result.append({
                 "name": info["name"],
                 "path": info["path"],
+                "hash": info.get("hash", ""),
+                "task_type": info.get("task_type", ""),
+                "n_samples": info.get("n_samples", 0),
+                "n_features": info.get("n_features", 0),
+                "y_columns": info.get("y_columns", []),
+                "y_stats": info.get("y_stats", {}),
+                "wavelength_range": info.get("wavelength_range", []),
+                "wavelength_unit": info.get("wavelength_unit", ""),
                 "runs_count": info["runs_count"],
                 "versions_seen": list(info["versions_seen"]),
                 "hashes_seen": list(info["hashes_seen"]),
+                "status": status,
             })
 
         return result
+
+    def discover_results(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Discover individual results (pipeline config × dataset combinations).
+
+        Results are the granular level below runs - each result represents
+        one specific pipeline configuration executed on one dataset.
+
+        Args:
+            run_id: Optional run ID to filter results for a specific run
+
+        Returns:
+            List of result information dictionaries
+        """
+        results = []
+        runs_dir = self.workspace_dir / "runs"
+
+        if not runs_dir.exists():
+            return results
+
+        # Check for new format runs first
+        for run_dir in runs_dir.iterdir():
+            if not run_dir.is_dir() or run_dir.name.startswith("_"):
+                continue
+
+            # Filter by run_id if specified
+            if run_id and run_dir.name != run_id:
+                continue
+
+            run_manifest = run_dir / "run_manifest.yaml"
+            if run_manifest.exists():
+                # New format: look in results subdirectory
+                results_dir = run_dir / "results"
+                if results_dir.exists():
+                    for dataset_dir in results_dir.iterdir():
+                        if not dataset_dir.is_dir():
+                            continue
+                        for config_dir in dataset_dir.iterdir():
+                            if not config_dir.is_dir():
+                                continue
+                            manifest = config_dir / "manifest.yaml"
+                            if manifest.exists():
+                                result_info = self._parse_result_manifest(
+                                    manifest, run_dir.name, dataset_dir.name, config_dir.name
+                                )
+                                if result_info:
+                                    results.append(result_info)
+            else:
+                # Legacy format: this directory is a dataset directory
+                if run_id:
+                    continue  # Can't filter legacy by run_id
+
+                dataset_name = run_dir.name
+                for config_dir in run_dir.iterdir():
+                    if not config_dir.is_dir() or config_dir.name.startswith("_"):
+                        continue
+                    manifest = config_dir / "manifest.yaml"
+                    if manifest.exists():
+                        result_info = self._parse_result_manifest(
+                            manifest, None, dataset_name, config_dir.name
+                        )
+                        if result_info:
+                            results.append(result_info)
+
+        return results
+
+    def _parse_result_manifest(
+        self,
+        manifest_file: Path,
+        run_id: Optional[str],
+        dataset_name: str,
+        config_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Parse a result manifest.yaml file.
+
+        Args:
+            manifest_file: Path to manifest.yaml
+            run_id: Parent run ID (None for legacy format)
+            dataset_name: Name of the dataset
+            config_id: Pipeline configuration ID
+
+        Returns:
+            Dict with result information or None if parsing fails
+        """
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                manifest = yaml.safe_load(f)
+        except Exception:
+            return None
+
+        if not manifest:
+            return None
+
+        # Extract artifacts
+        artifacts = manifest.get("artifacts", {})
+        if isinstance(artifacts, dict):
+            artifact_count = len(artifacts.get("items", []))
+        else:
+            artifact_count = len(artifacts) if isinstance(artifacts, list) else 0
+
+        # Extract generator choices if available
+        generator_choices = manifest.get("generator_choices", [])
+
+        return {
+            "id": manifest.get("uid", config_id),
+            "run_id": run_id or manifest.get("run_id", ""),
+            "template_id": manifest.get("template_id", ""),
+            "dataset": dataset_name,
+            "pipeline_config": manifest.get("pipeline_config", config_id),
+            "pipeline_config_id": config_id,
+            "created_at": manifest.get("created_at", ""),
+            "schema_version": manifest.get("schema_version", "1.0"),
+            "generator_choices": generator_choices,
+            "best_score": manifest.get("best_score"),
+            "best_model": manifest.get("best_model", ""),
+            "metric": manifest.get("metric", ""),
+            "task_type": manifest.get("task_type", ""),
+            "n_samples": manifest.get("n_samples", 0),
+            "n_features": manifest.get("n_features", 0),
+            "predictions_count": len(manifest.get("predictions", [])),
+            "artifact_count": artifact_count,
+            "manifest_path": str(manifest_file),
+        }
+
+
+# ============================================================================
+# Phase 2.2: Dataset Registry with File Locking
+# ============================================================================
+
+class DatasetRegistry:
+    """Manages a workspace's dataset registry with file locking.
+
+    The registry stores discovered datasets with their metadata,
+    enabling auto-discovery when linking workspaces and path
+    resolution when files are moved.
+
+    File format: datasets.yaml in workspace root
+    """
+
+    SCHEMA_VERSION = "1.0"
+
+    def __init__(self, workspace_path: Path):
+        """Initialize registry for a workspace.
+
+        Args:
+            workspace_path: Root path of the nirs4all workspace
+        """
+        self.workspace_path = Path(workspace_path)
+        self.registry_path = self.workspace_path / "datasets.yaml"
+        self._datasets: Dict[str, Dict[str, Any]] = {}
+        self._lock_file: Optional[Path] = None
+
+    def _acquire_lock(self, timeout: float = 5.0) -> bool:
+        """Acquire file lock for registry operations.
+
+        Args:
+            timeout: Maximum time to wait for lock (seconds)
+
+        Returns:
+            True if lock acquired, False otherwise
+        """
+        import time
+        import fcntl
+
+        self._lock_file = self.registry_path.with_suffix(".lock")
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                # Create lock file if it doesn't exist
+                self._lock_fd = open(self._lock_file, "w")
+                fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return True
+            except (IOError, OSError):
+                time.sleep(0.1)
+
+        return False
+
+    def _release_lock(self) -> None:
+        """Release file lock."""
+        import fcntl
+
+        if hasattr(self, "_lock_fd") and self._lock_fd:
+            try:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                self._lock_fd.close()
+            except Exception:
+                pass
+            finally:
+                self._lock_fd = None
+
+    def load(self) -> Dict[str, Dict[str, Any]]:
+        """Load registry from disk with file locking.
+
+        Returns:
+            Dict of datasets keyed by hash or name
+        """
+        if not self._acquire_lock():
+            print("Warning: Could not acquire lock for dataset registry")
+
+        try:
+            if self.registry_path.exists():
+                with open(self.registry_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                    self._datasets = {
+                        ds.get("hash") or ds.get("name"): ds
+                        for ds in data.get("datasets", [])
+                    }
+            else:
+                self._datasets = {}
+        finally:
+            self._release_lock()
+
+        return self._datasets
+
+    def save(self) -> bool:
+        """Save registry to disk with file locking.
+
+        Returns:
+            True if saved successfully
+        """
+        if not self._acquire_lock():
+            print("Warning: Could not acquire lock for saving dataset registry")
+            return False
+
+        try:
+            data = {
+                "schema_version": self.SCHEMA_VERSION,
+                "updated_at": datetime.now().isoformat(),
+                "datasets": list(self._datasets.values()),
+            }
+            with open(self.registry_path, "w", encoding="utf-8") as f:
+                yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+            return True
+        except Exception as e:
+            print(f"Error saving dataset registry: {e}")
+            return False
+        finally:
+            self._release_lock()
+
+    def get_by_hash(self, hash_value: str) -> Optional[Dict[str, Any]]:
+        """Get dataset by hash.
+
+        Args:
+            hash_value: SHA256 hash of dataset
+
+        Returns:
+            Dataset dict or None
+        """
+        return self._datasets.get(hash_value)
+
+    def get_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get dataset by name.
+
+        Args:
+            name: Dataset name
+
+        Returns:
+            Dataset dict or None
+        """
+        for ds in self._datasets.values():
+            if ds.get("name") == name:
+                return ds
+        return None
+
+    def add(self, dataset: Dict[str, Any]) -> str:
+        """Add or update a dataset in the registry.
+
+        Args:
+            dataset: Dataset info dict
+
+        Returns:
+            Key used for the dataset
+        """
+        key = dataset.get("hash") or dataset.get("name")
+        if not key:
+            raise ValueError("Dataset must have hash or name")
+
+        # Generate ID if not present
+        if "id" not in dataset:
+            import hashlib
+            hash_input = f"{dataset.get('name', '')}_{dataset.get('hash', '')}"
+            dataset["id"] = f"ds_{hashlib.sha256(hash_input.encode()).hexdigest()[:12]}"
+
+        # Set timestamps
+        now = datetime.now().isoformat()
+        if key not in self._datasets:
+            dataset["first_used"] = now
+        dataset["last_used"] = now
+
+        self._datasets[key] = dataset
+        return key
+
+    def update_path(self, key: str, new_path: str) -> bool:
+        """Update the path for a dataset.
+
+        Args:
+            key: Dataset hash or name
+            new_path: New file path
+
+        Returns:
+            True if updated successfully
+        """
+        if key not in self._datasets:
+            return False
+
+        self._datasets[key]["current_path"] = new_path
+        self._datasets[key]["last_used"] = datetime.now().isoformat()
+        return True
+
+    def update_status(self, key: str, status: str) -> bool:
+        """Update the status for a dataset.
+
+        Args:
+            key: Dataset hash or name
+            status: New status (valid, missing, hash_mismatch, relocated)
+
+        Returns:
+            True if updated successfully
+        """
+        if key not in self._datasets:
+            return False
+
+        self._datasets[key]["status"] = status
+        return True
+
+    def sync_from_runs(self, runs: List[Dict[str, Any]]) -> int:
+        """Sync registry with datasets discovered from runs.
+
+        Args:
+            runs: List of run information dicts
+
+        Returns:
+            Number of new datasets added
+        """
+        added = 0
+
+        for run in runs:
+            run_format = run.get("format", "v1")
+
+            if run_format == "v2":
+                # New format: extract from datasets array
+                for ds in run.get("datasets", []):
+                    key = ds.get("hash") or ds.get("name")
+                    if key and key not in self._datasets:
+                        self.add(ds)
+                        added += 1
+            else:
+                # Legacy format: extract from dataset_info
+                ds_info = run.get("dataset_info", {})
+                ds_name = run.get("dataset", "")
+                key = ds_info.get("hash") or ds_name
+                if key and key not in self._datasets:
+                    ds_entry = {
+                        "name": ds_name,
+                        "path": ds_info.get("path", ""),
+                        "hash": ds_info.get("hash", ""),
+                        **ds_info,
+                    }
+                    self.add(ds_entry)
+                    added += 1
+
+        return added
+
+    def resolve_paths(self) -> Dict[str, str]:
+        """Resolve paths for all datasets using multi-stage filtering.
+
+        Multi-stage resolution:
+        1. Check original path (instant)
+        2. Check common relative locations (instant)
+        3. Filter by file size (instant) - if available
+        4. Search workspace by name pattern (fast)
+        5. Verify with full hash only for candidates (slow, but targeted)
+
+        Returns:
+            Dict mapping dataset keys to their status
+        """
+        import hashlib
+
+        results = {}
+
+        for key, ds in self._datasets.items():
+            original_path = ds.get("path", "")
+            expected_hash = ds.get("hash", "")
+            expected_size = ds.get("file_size")
+            ds_name = ds.get("name", "")
+
+            # Stage 1: Check original path
+            if original_path:
+                path_obj = Path(original_path)
+                if path_obj.exists():
+                    # Verify hash if available
+                    if expected_hash:
+                        actual_hash = self._compute_hash(path_obj)
+                        if actual_hash == expected_hash:
+                            ds["status"] = "valid"
+                            ds["current_path"] = original_path
+                            results[key] = "valid"
+                            continue
+                        else:
+                            ds["status"] = "hash_mismatch"
+                            results[key] = "hash_mismatch"
+                            continue
+                    else:
+                        ds["status"] = "valid"
+                        ds["current_path"] = original_path
+                        results[key] = "valid"
+                        continue
+
+            # Stage 2: Check relative locations
+            candidates = []
+            for relative_path in [
+                self.workspace_path / Path(original_path).name if original_path else None,
+                self.workspace_path / "data" / Path(original_path).name if original_path else None,
+                self.workspace_path / ds_name if ds_name else None,
+                self.workspace_path / f"{ds_name}.csv" if ds_name else None,
+            ]:
+                if relative_path and relative_path.exists():
+                    candidates.append(relative_path)
+
+            # Stage 3: Filter by file size (if available)
+            if expected_size and candidates:
+                candidates = [c for c in candidates if c.stat().st_size == expected_size]
+
+            # Stage 4: Search workspace for matching files
+            if not candidates and ds_name:
+                for pattern in [f"*{ds_name}*", f"*{ds_name}*.csv", f"*{ds_name}*.parquet"]:
+                    found = list(self.workspace_path.rglob(pattern))
+                    candidates.extend(found[:10])  # Limit to first 10 matches
+
+            # Stage 5: Verify hash for candidates
+            if expected_hash and candidates:
+                for candidate in candidates:
+                    actual_hash = self._compute_hash(candidate)
+                    if actual_hash == expected_hash:
+                        ds["status"] = "relocated"
+                        ds["current_path"] = str(candidate)
+                        results[key] = "relocated"
+                        break
+                else:
+                    ds["status"] = "missing"
+                    results[key] = "missing"
+            elif candidates:
+                # No hash to verify, use first candidate
+                ds["status"] = "relocated"
+                ds["current_path"] = str(candidates[0])
+                results[key] = "relocated"
+            else:
+                ds["status"] = "missing"
+                results[key] = "missing"
+
+        return results
+
+    def _compute_hash(self, file_path: Path, algorithm: str = "sha256") -> str:
+        """Compute hash of a file.
+
+        Args:
+            file_path: Path to file
+            algorithm: Hash algorithm (default: sha256)
+
+        Returns:
+            Hash string prefixed with algorithm name
+        """
+        import hashlib
+
+        hasher = hashlib.new(algorithm)
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        return f"{algorithm}:{hasher.hexdigest()}"
+
+    def to_api_response(self) -> List[Dict[str, Any]]:
+        """Convert registry to API response format.
+
+        Returns:
+            List of dataset dicts ready for JSON serialization
+        """
+        return list(self._datasets.values())
+
+
+# ============================================================================
+# Phase 4: Schema Migration & Backward Compatibility
+# ============================================================================
+
+class SchemaMigrator:
+    """Handles schema migration for run manifests.
+
+    Supports automatic detection and migration of:
+    - v1 → v2: Legacy per-dataset manifests to run-level manifests
+    - Format normalization: Ensures consistent field types
+    """
+
+    CURRENT_SCHEMA_VERSION = "2.0"
+
+    @classmethod
+    def detect_schema_version(cls, manifest: Dict[str, Any]) -> str:
+        """Detect the schema version of a manifest.
+
+        Args:
+            manifest: Manifest dictionary
+
+        Returns:
+            Schema version string
+        """
+        # Explicit version
+        if "schema_version" in manifest:
+            return manifest["schema_version"]
+
+        # V2 indicators
+        if "templates" in manifest or "total_pipeline_configs" in manifest:
+            return "2.0"
+
+        # V1 indicators
+        if "artifacts" in manifest or "predictions" in manifest:
+            return "1.0"
+
+        return "unknown"
+
+    @classmethod
+    def migrate_to_v2(cls, v1_manifest: Dict[str, Any], dataset_name: str) -> Dict[str, Any]:
+        """Migrate a v1 manifest to v2 format.
+
+        Args:
+            v1_manifest: Legacy manifest dict
+            dataset_name: Name of the dataset
+
+        Returns:
+            Migrated v2 manifest dict
+        """
+        return {
+            "schema_version": cls.CURRENT_SCHEMA_VERSION,
+            "uid": v1_manifest.get("uid", ""),
+            "name": v1_manifest.get("name", ""),
+            "description": f"Migrated from v1: {dataset_name}",
+            "status": "completed",
+            "created_at": v1_manifest.get("created_at", ""),
+            "completed_at": v1_manifest.get("created_at", ""),
+            "templates": [],  # No templates in v1
+            "datasets": [{
+                "name": dataset_name,
+                "path": v1_manifest.get("dataset_info", {}).get("path", ""),
+                "hash": v1_manifest.get("dataset_info", {}).get("hash", ""),
+            }],
+            "total_pipeline_configs": 1,
+            "config": {},
+            "summary": {
+                "total_results": 1,
+                "completed_results": 1,
+                "failed_results": 0,
+            },
+            "_migrated_from": "v1",
+            "_original_artifacts": v1_manifest.get("artifacts", {}),
+            "_original_predictions": v1_manifest.get("predictions", []),
+        }
+
+    @classmethod
+    def normalize_manifest(cls, manifest: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize manifest fields to consistent types.
+
+        Args:
+            manifest: Manifest dictionary
+
+        Returns:
+            Normalized manifest dictionary
+        """
+        normalized = dict(manifest)
+
+        # Ensure arrays are lists, not tuples
+        for key in ["templates", "datasets", "checkpoints"]:
+            if key in normalized and isinstance(normalized[key], tuple):
+                normalized[key] = list(normalized[key])
+
+        # Ensure timestamps are ISO format strings
+        for key in ["created_at", "started_at", "completed_at"]:
+            if key in normalized:
+                val = normalized[key]
+                if val and not isinstance(val, str):
+                    try:
+                        normalized[key] = datetime.fromisoformat(str(val)).isoformat()
+                    except Exception:
+                        normalized[key] = str(val)
+
+        return normalized
+
+
+# ============================================================================
+# Phase 5: Run Management with Checkpoints and Resource Locking
+# ============================================================================
+
+class RunManager:
+    """Manages run lifecycle with checkpoint support and resource locking.
+
+    Features:
+    - Checkpoint creation and restoration
+    - Concurrent run handling with locks
+    - State machine validation
+    """
+
+    # Valid state transitions
+    VALID_TRANSITIONS = {
+        "queued": ["running", "failed"],
+        "running": ["completed", "failed", "paused", "partial"],
+        "paused": ["running", "failed"],
+        "failed": ["queued"],  # retry
+        "completed": [],  # terminal
+        "partial": ["running", "failed"],  # resume or fail
+    }
+
+    def __init__(self, workspace_path: Path):
+        """Initialize run manager.
+
+        Args:
+            workspace_path: Path to the nirs4all workspace
+        """
+        self.workspace_path = Path(workspace_path)
+        workspace_dir = self.workspace_path / "workspace"
+        if workspace_dir.exists():
+            self.runs_dir = workspace_dir / "runs"
+        else:
+            self.runs_dir = self.workspace_path / "runs"
+        self._locks: Dict[str, Any] = {}
+
+    def is_valid_transition(self, from_status: str, to_status: str) -> bool:
+        """Check if a state transition is valid.
+
+        Args:
+            from_status: Current status
+            to_status: Target status
+
+        Returns:
+            True if transition is valid
+        """
+        valid_targets = self.VALID_TRANSITIONS.get(from_status, [])
+        return to_status in valid_targets
+
+    def create_checkpoint(self, run_id: str, result_id: str) -> Dict[str, Any]:
+        """Create a checkpoint for a run.
+
+        Args:
+            run_id: Run ID
+            result_id: ID of the completed result
+
+        Returns:
+            Checkpoint info dict
+        """
+        checkpoint = {
+            "result_id": result_id,
+            "completed_at": datetime.now().isoformat(),
+        }
+
+        # Update run manifest with checkpoint
+        run_dir = self.runs_dir / run_id
+        manifest_path = run_dir / "run_manifest.yaml"
+
+        if manifest_path.exists():
+            try:
+                with open(manifest_path, "r") as f:
+                    manifest = yaml.safe_load(f) or {}
+
+                checkpoints = manifest.get("checkpoints", [])
+                checkpoints.append(checkpoint)
+                manifest["checkpoints"] = checkpoints
+                manifest["last_checkpoint"] = checkpoint["completed_at"]
+
+                with open(manifest_path, "w") as f:
+                    yaml.dump(manifest, f, default_flow_style=False)
+            except Exception as e:
+                print(f"Failed to save checkpoint: {e}")
+
+        return checkpoint
+
+    def get_checkpoints(self, run_id: str) -> List[Dict[str, Any]]:
+        """Get all checkpoints for a run.
+
+        Args:
+            run_id: Run ID
+
+        Returns:
+            List of checkpoint info dicts
+        """
+        run_dir = self.runs_dir / run_id
+        manifest_path = run_dir / "run_manifest.yaml"
+
+        if not manifest_path.exists():
+            return []
+
+        try:
+            with open(manifest_path, "r") as f:
+                manifest = yaml.safe_load(f) or {}
+            return manifest.get("checkpoints", [])
+        except Exception:
+            return []
+
+    def get_resume_point(self, run_id: str) -> Optional[str]:
+        """Get the result ID to resume from.
+
+        Args:
+            run_id: Run ID
+
+        Returns:
+            Result ID to resume from, or None if starting fresh
+        """
+        checkpoints = self.get_checkpoints(run_id)
+        if checkpoints:
+            return checkpoints[-1].get("result_id")
+        return None
+
+    def acquire_run_lock(self, run_id: str, timeout: float = 5.0) -> bool:
+        """Acquire a lock for a run.
+
+        Prevents concurrent modifications to the same run.
+
+        Args:
+            run_id: Run ID
+            timeout: Maximum time to wait for lock
+
+        Returns:
+            True if lock acquired
+        """
+        import time
+        import fcntl
+
+        run_dir = self.runs_dir / run_id
+        lock_file = run_dir / ".lock"
+
+        run_dir.mkdir(parents=True, exist_ok=True)
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            try:
+                lock_fd = open(lock_file, "w")
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self._locks[run_id] = lock_fd
+                return True
+            except (IOError, OSError):
+                time.sleep(0.1)
+
+        return False
+
+    def release_run_lock(self, run_id: str) -> None:
+        """Release a run lock.
+
+        Args:
+            run_id: Run ID
+        """
+        import fcntl
+
+        if run_id in self._locks:
+            lock_fd = self._locks[run_id]
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+            except Exception:
+                pass
+            finally:
+                del self._locks[run_id]
+
+    def update_run_status(
+        self,
+        run_id: str,
+        new_status: str,
+        error_message: Optional[str] = None
+    ) -> bool:
+        """Update run status with state machine validation.
+
+        Args:
+            run_id: Run ID
+            new_status: Target status
+            error_message: Optional error message for failed status
+
+        Returns:
+            True if status was updated
+        """
+        run_dir = self.runs_dir / run_id
+        manifest_path = run_dir / "run_manifest.yaml"
+
+        if not manifest_path.exists():
+            return False
+
+        if not self.acquire_run_lock(run_id):
+            print(f"Could not acquire lock for run {run_id}")
+            return False
+
+        try:
+            with open(manifest_path, "r") as f:
+                manifest = yaml.safe_load(f) or {}
+
+            current_status = manifest.get("status", "unknown")
+
+            # Validate transition
+            if current_status != "unknown" and not self.is_valid_transition(current_status, new_status):
+                print(f"Invalid transition: {current_status} → {new_status}")
+                return False
+
+            # Update status
+            manifest["status"] = new_status
+            manifest["status_updated_at"] = datetime.now().isoformat()
+
+            if new_status == "completed":
+                manifest["completed_at"] = datetime.now().isoformat()
+            elif new_status == "failed" and error_message:
+                manifest["error_message"] = error_message
+
+            with open(manifest_path, "w") as f:
+                yaml.dump(manifest, f, default_flow_style=False)
+
+            return True
+        except Exception as e:
+            print(f"Failed to update run status: {e}")
+            return False
+        finally:
+            self.release_run_lock(run_id)
+
+    def cleanup_partial_run(self, run_id: str) -> Dict[str, Any]:
+        """Clean up a partial run, preserving completed results.
+
+        Args:
+            run_id: Run ID
+
+        Returns:
+            Cleanup summary dict
+        """
+        run_dir = self.runs_dir / run_id
+        results_dir = run_dir / "results"
+
+        cleanup_summary = {
+            "run_id": run_id,
+            "preserved_results": [],
+            "removed_partial": [],
+        }
+
+        if not results_dir.exists():
+            return cleanup_summary
+
+        checkpoints = self.get_checkpoints(run_id)
+        completed_result_ids = {cp["result_id"] for cp in checkpoints}
+
+        # Scan results directory
+        for dataset_dir in results_dir.iterdir():
+            if not dataset_dir.is_dir():
+                continue
+            for config_dir in dataset_dir.iterdir():
+                if not config_dir.is_dir():
+                    continue
+
+                result_manifest = config_dir / "manifest.yaml"
+                if result_manifest.exists():
+                    try:
+                        with open(result_manifest, "r") as f:
+                            result_data = yaml.safe_load(f) or {}
+                        result_id = result_data.get("uid", config_dir.name)
+
+                        if result_id in completed_result_ids:
+                            cleanup_summary["preserved_results"].append(result_id)
+                        # Keep all results that have manifests - they're complete
+                    except Exception:
+                        pass
+                else:
+                    # No manifest = incomplete result, can be removed
+                    cleanup_summary["removed_partial"].append(str(config_dir))
+                    # Optionally remove the incomplete directory
+                    # shutil.rmtree(config_dir)
+
+        return cleanup_summary
 
 
 @dataclass

@@ -66,6 +66,10 @@ export interface UsePlaygroundShortcutsOptions {
   onToggleChart?: (index: number) => void;
   onShowHelp?: () => void;
   onRefresh?: () => void;
+  /** Mark selected samples as outliers (Ctrl+O) */
+  onMarkAsOutliers?: (indices: number[]) => void;
+  /** Reset playground to initial state */
+  onResetPlayground?: () => void;
   /** Whether undo is available */
   canUndo?: boolean;
   /** Whether redo is available */
@@ -209,6 +213,8 @@ export function usePlaygroundShortcuts(
     onToggleChart,
     onShowHelp,
     onRefresh,
+    onMarkAsOutliers,
+    onResetPlayground,
     canUndo = false,
     canRedo = false,
     enabled = true,
@@ -256,6 +262,16 @@ export function usePlaygroundShortcuts(
         category: 'general',
         enabled: !!onRefresh,
         handler: () => onRefresh?.(),
+        preventDefault: true,
+      },
+      {
+        id: 'reset-playground',
+        label: 'Reset View',
+        description: 'Reset all selections, filters, and settings',
+        keys: 'Ctrl+Shift+R',
+        category: 'general',
+        enabled: !!onResetPlayground,
+        handler: () => onResetPlayground?.(),
         preventDefault: true,
       },
 
@@ -316,6 +332,20 @@ export function usePlaygroundShortcuts(
         category: 'selection',
         enabled: pinnedSamples.size > 0,
         handler: () => clearPins(),
+        preventDefault: true,
+      },
+      {
+        id: 'mark-outliers',
+        label: 'Mark as Outliers',
+        description: 'Mark selected samples as outliers',
+        keys: 'Ctrl+O',
+        category: 'selection',
+        enabled: !!onMarkAsOutliers && selectedCount > 0,
+        handler: () => {
+          if (onMarkAsOutliers && selectedCount > 0) {
+            onMarkAsOutliers(Array.from(selectedSamples));
+          }
+        },
         preventDefault: true,
       },
 
@@ -464,6 +494,8 @@ export function usePlaygroundShortcuts(
       onToggleChart,
       onShowHelp,
       onRefresh,
+      onMarkAsOutliers,
+      onResetPlayground,
     ]
   );
 

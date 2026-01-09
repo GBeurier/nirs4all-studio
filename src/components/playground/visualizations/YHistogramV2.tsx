@@ -13,7 +13,7 @@
  * - Export functionality (PNG, CSV)
  */
 
-import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import {
   BarChart,
   Bar,
@@ -576,6 +576,11 @@ export function YHistogramV2({
 
   // Handle range selection on X axis (Y value range)
   const handleMouseDown = useCallback((e: RechartsMouseEvent) => {
+    // Don't start range selection when clicking directly on a bar
+    // (bar click is handled separately by handleClick)
+    if (e?.activePayload && e.activePayload.length > 0 && e.activePayload[0]?.payload?.samples?.length > 0) {
+      return;
+    }
     if (!e?.activeLabel) return;
     const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
     if (!isNaN(yValue)) {
@@ -1526,4 +1531,4 @@ export function YHistogramV2({
   );
 }
 
-export default YHistogramV2;
+export default React.memo(YHistogramV2);

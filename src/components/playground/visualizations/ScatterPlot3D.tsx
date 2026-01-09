@@ -14,7 +14,7 @@
 
 import React, { useRef, useMemo, useCallback, useState, Suspense } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Text, Line, Html } from '@react-three/drei';
+import { OrbitControls, Text, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { Download, RotateCcw, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -63,29 +63,47 @@ const CAMERA_DISTANCE = 4;
 // ============= Utility Functions =============
 
 /**
+ * Safely get a finite number, with fallback
+ */
+function safeFinite(value: number | undefined | null, fallback: number): number {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return value;
+}
+
+/**
  * Normalize data to fit within [-1, 1] range for each axis
  * Filters out points with NaN/Infinity coordinates to prevent Three.js errors
  */
 function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { min: THREE.Vector3; max: THREE.Vector3; scale: THREE.Vector3 } } {
-  // Filter out invalid data points (NaN or Infinity)
+  // Default safe bounds
+  const defaultBounds = {
+    min: new THREE.Vector3(-1, -1, -1),
+    max: new THREE.Vector3(1, 1, 1),
+    scale: new THREE.Vector3(1, 1, 1),
+  };
+
+  // Guard against invalid input
+  if (!Array.isArray(data) || data.length === 0) {
+    return { normalized: [], bounds: defaultBounds };
+  }
+
+  // Filter out invalid data points (NaN, Infinity, or non-numeric)
   const validData = data.filter(d =>
-    Number.isFinite(d.x) && Number.isFinite(d.y) && Number.isFinite(d.z ?? 0)
+    d &&
+    typeof d.x === 'number' && Number.isFinite(d.x) &&
+    typeof d.y === 'number' && Number.isFinite(d.y) &&
+    (d.z === undefined || (typeof d.z === 'number' && Number.isFinite(d.z)))
   );
 
   if (validData.length === 0) {
-    return {
-      normalized: [],
-      bounds: {
-        min: new THREE.Vector3(-1, -1, -1),
-        max: new THREE.Vector3(1, 1, 1),
-        scale: new THREE.Vector3(1, 1, 1),
-      },
-    };
+    return { normalized: [], bounds: defaultBounds };
   }
 
   const xs = validData.map(d => d.x);
   const ys = validData.map(d => d.y);
-  const zs = validData.map(d => d.z ?? 0);
+  const zs = validData.map(d => safeFinite(d.z, 0));
 
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
@@ -94,17 +112,36 @@ function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { 
   const minZ = Math.min(...zs);
   const maxZ = Math.max(...zs);
 
+  // Double-check that min/max are finite (shouldn't happen, but defensive)
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) ||
+      !Number.isFinite(minY) || !Number.isFinite(maxY) ||
+      !Number.isFinite(minZ) || !Number.isFinite(maxZ)) {
+    console.warn('[ScatterPlot3D] Invalid bounds detected, using defaults');
+    return { normalized: [], bounds: defaultBounds };
+  }
+
   const rangeX = maxX - minX || 1;
   const rangeY = maxY - minY || 1;
   const rangeZ = maxZ - minZ || 1;
 
   // Normalize to [-1, 1], only include valid points
-  const normalized = validData.map(d => ({
-    ...d,
-    x: ((d.x - minX) / rangeX) * 2 - 1,
-    y: ((d.y - minY) / rangeY) * 2 - 1,
-    z: (((d.z ?? 0) - minZ) / rangeZ) * 2 - 1,
-  }));
+  const normalized = validData.map(d => {
+    const normX = ((d.x - minX) / rangeX) * 2 - 1;
+    const normY = ((d.y - minY) / rangeY) * 2 - 1;
+    const normZ = ((safeFinite(d.z, 0) - minZ) / rangeZ) * 2 - 1;
+
+    // Final NaN check on normalized values
+    if (!Number.isFinite(normX) || !Number.isFinite(normY) || !Number.isFinite(normZ)) {
+      return null;
+    }
+
+    return {
+      ...d,
+      x: normX,
+      y: normY,
+      z: normZ,
+    };
+  }).filter((d): d is DataPoint => d !== null);
 
   return {
     normalized,
@@ -117,6 +154,47 @@ function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { 
 }
 
 // ============= Sub-Components =============
+
+/**
+ * Simple line component using Three.js primitives (replaces drei Line to avoid NaN issues)
+ */
+interface SimpleLineProps {
+  points: THREE.Vector3[];
+  color: string;
+  lineWidth?: number;
+  opacity?: number;
+}
+
+function SimpleLine({ points, color, opacity = 1 }: SimpleLineProps) {
+  const geometry = useMemo(() => {
+    // Validate all points are finite before creating geometry
+    const validPoints = points.filter(p =>
+      p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)
+    );
+
+    if (validPoints.length < 2) {
+      // Return empty geometry if not enough valid points
+      return new THREE.BufferGeometry();
+    }
+
+    const positions = new Float32Array(validPoints.length * 3);
+    validPoints.forEach((point, i) => {
+      positions[i * 3] = point.x;
+      positions[i * 3 + 1] = point.y;
+      positions[i * 3 + 2] = point.z;
+    });
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return geo;
+  }, [points]);
+
+  return (
+    <line geometry={geometry}>
+      <lineBasicMaterial color={color} transparent={opacity < 1} opacity={opacity} />
+    </line>
+  );
+}
 
 /**
  * Individual point mesh - simpler but more reliable than instanced mesh
@@ -191,14 +269,23 @@ function InstancedPoints({
   // Limit to 500 points for performance with individual meshes
   const maxPoints = Math.min(normalized.length, 500);
 
+  // Create a lookup map from index to original data point
+  const dataByIndex = useMemo(() => {
+    const map = new Map<number, DataPoint>();
+    data.forEach(d => map.set(d.index, d));
+    return map;
+  }, [data]);
+
   return (
     <group>
-      {normalized.slice(0, maxPoints).map((point, i) => {
+      {normalized.slice(0, maxPoints).map((point) => {
         const isSelected = selectedSamples.has(point.index);
         const isHovered = hoveredSample === point.index;
         const radius = isHovered ? HOVERED_RADIUS :
                        isSelected ? SELECTED_RADIUS : POINT_RADIUS;
-        const color = getColor(data[i]);
+        // Use point.index to look up original data (handles filtered points correctly)
+        const originalPoint = dataByIndex.get(point.index) ?? point;
+        const color = getColor(originalPoint);
 
         return (
           <PointMesh
@@ -206,7 +293,7 @@ function InstancedPoints({
             position={[point.x, point.y, point.z ?? 0]}
             color={color}
             radius={radius}
-            onClick={() => onSelect?.(data[i])}
+            onClick={() => onSelect?.(originalPoint)}
             onPointerOver={() => {
               onHover?.(point.index);
               document.body.style.cursor = 'pointer';
@@ -233,47 +320,28 @@ interface AxisLineProps {
   bounds?: { min: number; max: number };
 }
 
-function AxisLine({ start, end, label, tickCount = 5, bounds }: AxisLineProps) {
+function AxisLine({ start, end, label }: AxisLineProps) {
+  // Validate inputs - ensure all coordinates are finite
+  const safeStart = start.map(v => Number.isFinite(v) ? v : 0) as [number, number, number];
+  const safeEnd = end.map(v => Number.isFinite(v) ? v : 0) as [number, number, number];
+
   const points = useMemo(() => [
-    new THREE.Vector3(...start),
-    new THREE.Vector3(...end),
-  ], [start, end]);
-
-  // Generate tick positions
-  const ticks = useMemo(() => {
-    const result: { position: [number, number, number]; value: string }[] = [];
-
-    for (let i = 0; i <= tickCount; i++) {
-      const t = i / tickCount;
-      const x = start[0] + (end[0] - start[0]) * t;
-      const y = start[1] + (end[1] - start[1]) * t;
-      const z = start[2] + (end[2] - start[2]) * t;
-
-      let value = '';
-      if (bounds) {
-        const v = bounds.min + (bounds.max - bounds.min) * t;
-        value = v.toFixed(1);
-      }
-
-      result.push({ position: [x, y, z], value });
-    }
-
-    return result;
-  }, [start, end, tickCount, bounds]);
+    new THREE.Vector3(safeStart[0], safeStart[1], safeStart[2]),
+    new THREE.Vector3(safeEnd[0], safeEnd[1], safeEnd[2]),
+  ], [safeStart[0], safeStart[1], safeStart[2], safeEnd[0], safeEnd[1], safeEnd[2]]);
 
   // Determine label position (at the end of the axis)
-  const labelPosition: [number, number, number] = [
-    end[0] + (end[0] - start[0]) * 0.15,
-    end[1] + (end[1] - start[1]) * 0.15,
-    end[2] + (end[2] - start[2]) * 0.15,
-  ];
+  const labelPosition: [number, number, number] = useMemo(() => [
+    safeEnd[0] + (safeEnd[0] - safeStart[0]) * 0.15,
+    safeEnd[1] + (safeEnd[1] - safeStart[1]) * 0.15,
+    safeEnd[2] + (safeEnd[2] - safeStart[2]) * 0.15,
+  ], [safeStart[0], safeStart[1], safeStart[2], safeEnd[0], safeEnd[1], safeEnd[2]]);
 
   return (
     <group>
-      <Line
+      <SimpleLine
         points={points}
         color={AXIS_COLOR}
-        lineWidth={1.5}
       />
       <Text
         position={labelPosition}
@@ -296,7 +364,6 @@ function Grid3D() {
     const lines: { points: THREE.Vector3[]; opacity: number }[] = [];
     const size = 2;
     const divisions = 4;
-    const step = size / divisions;
 
     // XY plane (at z = -1)
     for (let i = -divisions / 2; i <= divisions / 2; i++) {
@@ -345,13 +412,11 @@ function Grid3D() {
   return (
     <group>
       {gridLines.map((line, i) => (
-        <Line
+        <SimpleLine
           key={i}
           points={line.points}
           color={GRID_COLOR}
-          lineWidth={0.5}
           opacity={line.opacity}
-          transparent
         />
       ))}
     </group>
@@ -451,14 +516,34 @@ function SceneContent({
 }: SceneContentProps) {
   const { normalized, bounds } = useMemo(() => normalizeData(data), [data]);
 
+  // Create safe bounds for axes - ensure all values are finite
+  const safeBounds = useMemo(() => ({
+    x: {
+      min: Number.isFinite(bounds.min.x) ? bounds.min.x : -1,
+      max: Number.isFinite(bounds.max.x) ? bounds.max.x : 1,
+    },
+    y: {
+      min: Number.isFinite(bounds.min.y) ? bounds.min.y : -1,
+      max: Number.isFinite(bounds.max.y) ? bounds.max.y : 1,
+    },
+    z: {
+      min: Number.isFinite(bounds.min.z) ? bounds.min.z : -1,
+      max: Number.isFinite(bounds.max.z) ? bounds.max.z : 1,
+    },
+  }), [bounds]);
+
   // Find hovered point position for tooltip
   const hoveredPoint = useMemo(() => {
     if (hoveredSample === null) return null;
     const point = normalized.find(p => p.index === hoveredSample);
     if (!point) return null;
+    // Ensure position values are finite
+    const px = Number.isFinite(point.x) ? point.x : 0;
+    const py = Number.isFinite(point.y) ? point.y : 0;
+    const pz = Number.isFinite(point.z) ? point.z : 0;
     return {
       point: data.find(p => p.index === hoveredSample)!,
-      position: new THREE.Vector3(point.x, point.y, point.z ?? 0),
+      position: new THREE.Vector3(px, py, pz),
     };
   }, [hoveredSample, normalized, data]);
 
@@ -477,19 +562,19 @@ function SceneContent({
         start={[-1, -1, -1]}
         end={[1, -1, -1]}
         label={xLabel}
-        bounds={{ min: bounds.min.x, max: bounds.max.x }}
+        bounds={safeBounds.x}
       />
       <AxisLine
         start={[-1, -1, -1]}
         end={[-1, 1, -1]}
         label={yLabel}
-        bounds={{ min: bounds.min.y, max: bounds.max.y }}
+        bounds={safeBounds.y}
       />
       <AxisLine
         start={[-1, -1, -1]}
         end={[-1, -1, 1]}
         label={zLabel}
-        bounds={{ min: bounds.min.z, max: bounds.max.z }}
+        bounds={safeBounds.z}
       />
 
       {/* Points */}

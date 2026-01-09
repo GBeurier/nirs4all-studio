@@ -839,6 +839,26 @@ Advanced statistical overlays for outlier detection and quality control:
 
 These overlays integrate as horizontal reference lines in the chart. Samples exceeding thresholds can be optionally auto-selected or marked.
 
+#### 6.5.9 Implementation Note
+
+> **Note**: In the current implementation, the Differences Chart is implemented as a **view mode within the Spectra Chart** rather than as a separate view component. This pragmatic decision was made because:
+>
+> 1. The "difference" mode shares the same rendering infrastructure (wavelengths on X-axis, values on Y-axis)
+> 2. It reduces code duplication and maintenance burden
+> 3. Users can quickly toggle between processed and difference views within the same chart
+>
+> **Accessing Difference Mode**:
+> - Via the global toolbar: Click the "Diff" button to toggle difference mode
+> - Via the Spectra Chart toolbar: Select "Difference" from the View Mode dropdown
+>
+> **Features Available in Difference Mode**:
+> - Toggle between signed (±Δ) and absolute (|Δ|) differences
+> - High-difference wavelength regions are automatically highlighted (orange overlay)
+> - Statistics footer shows Mean Absolute Difference (MAD), Max Difference, and RMSE
+> - All standard Spectra Chart features remain available (sampling, aggregation, zoom/pan)
+>
+> The separate Differences Chart described above (with distance metrics, Hotelling's T², etc.) remains available for future implementation as an advanced analysis view.
+
 ---
 
 ## 7. Pipeline Editor Integration

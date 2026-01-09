@@ -3,6 +3,11 @@
  *
  * These utilities create deterministic hashes for React Query cache keys,
  * ensuring that identical data/pipeline configurations produce the same key.
+ *
+ * Performance optimizations:
+ * - Fast djb2 hash for strings
+ * - Fast numeric checksum for data arrays (avoids JSON serialization)
+ * - Minimal fingerprinting for large datasets
  */
 
 import type { UnifiedOperator, SamplingOptions, ExecuteOptions } from '@/types/playground';
@@ -21,8 +26,22 @@ function djb2Hash(str: string): string {
 }
 
 /**
- * Stable JSON stringify with sorted keys
- * Ensures consistent string representation regardless of object key order
+ * Fast numeric checksum for arrays (avoids string serialization)
+ */
+function fastArrayChecksum(arr: number[]): number {
+  let sum = 0;
+  const len = arr.length;
+  // Sample every 50th element for large arrays
+  const step = len > 500 ? 50 : 1;
+  for (let i = 0; i < len; i += step) {
+    sum = ((sum << 5) - sum + (arr[i] * 1000) | 0) | 0;
+  }
+  return sum >>> 0;
+}
+
+/**
+ * Stable JSON stringify with sorted keys - optimized version
+ * Uses native JSON.stringify with replacer for better performance
  */
 function stableStringify(obj: unknown): string {
   if (obj === null || obj === undefined) {
@@ -33,16 +52,18 @@ function stableStringify(obj: unknown): string {
     return JSON.stringify(obj);
   }
 
-  if (Array.isArray(obj)) {
-    return '[' + obj.map(stableStringify).join(',') + ']';
+  // For simple objects without deep nesting, use fast path
+  if (!Array.isArray(obj)) {
+    const keys = Object.keys(obj as object).sort();
+    const sortedObj: Record<string, unknown> = {};
+    for (const key of keys) {
+      sortedObj[key] = (obj as Record<string, unknown>)[key];
+    }
+    return JSON.stringify(sortedObj);
   }
 
-  const keys = Object.keys(obj as object).sort();
-  const pairs = keys.map(key => {
-    const value = (obj as Record<string, unknown>)[key];
-    return `"${key}":${stableStringify(value)}`;
-  });
-  return '{' + pairs.join(',') + '}';
+  // For arrays, stringify directly (order matters)
+  return JSON.stringify(obj);
 }
 
 /**
@@ -85,7 +106,7 @@ export function hashOptions(options: {
 
 /**
  * Hash spectral data for cache key purposes
- * Uses a fingerprint (first few samples + shape) rather than full data
+ * Uses fast numeric checksums instead of JSON serialization
  *
  * @param spectra - 2D array of spectral data
  * @param y - Optional target values
@@ -95,24 +116,22 @@ export function hashData(spectra: number[][], y?: number[]): string {
   const nSamples = spectra.length;
   const nFeatures = spectra[0]?.length ?? 0;
 
-  // Use first 3 samples for fingerprinting (if available)
-  const sampleCount = Math.min(3, nSamples);
-  const fingerprint: number[][] = [];
-
-  for (let i = 0; i < sampleCount; i++) {
-    // Use every 10th feature to reduce size
-    const subSampled = spectra[i].filter((_, j) => j % 10 === 0);
-    fingerprint.push(subSampled.map(v => Math.round(v * 1000) / 1000)); // Round for stability
+  // Fast checksum using first, middle, and last samples
+  let dataChecksum = 0;
+  if (nSamples > 0) {
+    dataChecksum ^= fastArrayChecksum(spectra[0]);
+    if (nSamples > 1) {
+      dataChecksum ^= fastArrayChecksum(spectra[Math.floor(nSamples / 2)]);
+      dataChecksum ^= fastArrayChecksum(spectra[nSamples - 1]);
+    }
   }
 
-  const dataObj = {
-    shape: [nSamples, nFeatures],
-    fingerprint,
-    yLength: y?.length ?? 0,
-    ySum: y ? y.reduce((a, b) => a + b, 0) : 0,
-  };
+  // Fast Y checksum
+  const yChecksum = y ? fastArrayChecksum(y) : 0;
 
-  return djb2Hash(stableStringify(dataObj));
+  // Combine into simple string (much faster than JSON serialization)
+  const hashStr = `${nSamples}:${nFeatures}:${dataChecksum}:${y?.length ?? 0}:${yChecksum}`;
+  return djb2Hash(hashStr);
 }
 
 /**

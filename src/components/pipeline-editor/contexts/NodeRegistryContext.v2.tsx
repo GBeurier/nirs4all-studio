@@ -87,6 +87,8 @@ export interface NodeDefinition {
   isGenerator?: boolean;
   /** Color scheme for the node type */
   colorScheme?: CategoryConfig['color'];
+  /** Default parameter values (legacy support) */
+  defaultParams?: Record<string, unknown>;
 }
 
 /**

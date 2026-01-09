@@ -944,7 +944,12 @@ export default function PipelineEditor() {
               <DatasetBindingProvider
                 steps={steps}
                 boundDataset={boundDataset}
-                stepShapes={undefined} // Will use internal calculation from useShapePropagation
+                datasets={datasets}
+                isLoading={isDatasetsLoading}
+                onBind={bindDataset}
+                onClear={clearBinding}
+                onSelectTarget={selectTarget}
+                onRefresh={refreshDatasets}
               >
                 <div className="flex-1 flex z-0 min-h-0">
                 {/* Left Panel: Step Palette */}
@@ -988,7 +993,7 @@ export default function PipelineEditor() {
                     step={selectedStep}
                     onUpdate={updateStep}
                     onRemove={removeStep}
-                    onDuplicateStep={duplicateStep}
+                    onDuplicate={duplicateStep}
                     onSelectStep={setSelectedStepId}
                     onAddChild={addChild}
                     onRemoveChild={removeChild}
