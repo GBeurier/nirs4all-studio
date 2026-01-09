@@ -474,6 +474,47 @@ export function MainCanvas({
     return rawData?.y ?? [];
   }, [result, rawData]);
 
+  // Memoize yMin/yMax separately - these only depend on yValues, not selections
+  // Using a loop instead of Math.min(...array) to avoid stack overflow and improve performance
+  const { yMin, yMax } = useMemo(() => {
+    if (yValues.length === 0) {
+      return { yMin: 0, yMax: 1 };
+    }
+    let min = yValues[0];
+    let max = yValues[0];
+    for (let i = 1; i < yValues.length; i++) {
+      const v = yValues[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    return { yMin: min, yMax: max };
+  }, [yValues]);
+
+  // Memoize train/test indices separately - these only depend on folds, not selections
+  const { trainIndices, testIndices } = useMemo(() => {
+    if (!result?.folds?.folds || result.folds.folds.length === 0) {
+      return { trainIndices: undefined, testIndices: undefined };
+    }
+    const train = new Set<number>();
+    const test = new Set<number>();
+    for (const fold of result.folds.folds) {
+      if (fold.train_indices) {
+        fold.train_indices.forEach(i => train.add(i));
+      }
+      if (fold.test_indices) {
+        fold.test_indices.forEach(i => test.add(i));
+      }
+    }
+    return { trainIndices: train, testIndices: test };
+  }, [result?.folds]);
+
+  // Memoize outlier indices separately - these only depend on outlier result, not selections
+  const outlierIndicesSet = useMemo(() => {
+    return lastOutlierResult
+      ? new Set(lastOutlierResult.outlier_indices)
+      : undefined;
+  }, [lastOutlierResult]);
+
   // Convert metadata format
   const columnMetadata = useMemo((): Record<string, unknown[]> | undefined => {
     if (!rawData?.metadata || !Array.isArray(rawData.metadata) || rawData.metadata.length === 0) {
@@ -506,10 +547,10 @@ export function MainCanvas({
   const filterDataContext = useMemo<FilterDataContext>(() => ({
     totalSamples,
     folds: result?.folds ?? null,
-    outlierIndices: lastOutlierResult ? new Set(lastOutlierResult.outlier_indices) : new Set(),
+    outlierIndices: outlierIndicesSet ?? new Set(),
     selectedSamples,
     metadata: columnMetadata ?? null,
-  }), [totalSamples, result?.folds, lastOutlierResult, selectedSamples, columnMetadata]);
+  }), [totalSamples, result?.folds, outlierIndicesSet, selectedSamples, columnMetadata]);
 
   // Get filtered indices - use FilterContext if available, otherwise just partition filter
   const filteredIndices = useMemo(() => {
@@ -542,31 +583,9 @@ export function MainCanvas({
   // Compute color context
   // NOTE: hoveredSample is intentionally NOT included here to avoid cascade re-renders
   // Charts that need hover highlighting should get it from SelectionContext directly
+  // NOTE: Expensive computations (yMin/yMax, trainIndices, testIndices, outlierIndices)
+  // are memoized separately above to avoid recomputation on selection changes
   const colorContext = useMemo<ColorContext>(() => {
-    let trainIndices: Set<number> | undefined;
-    let testIndices: Set<number> | undefined;
-
-    if (result?.folds?.folds && result.folds.folds.length > 0) {
-      trainIndices = new Set<number>();
-      testIndices = new Set<number>();
-
-      for (const fold of result.folds.folds) {
-        if (fold.train_indices) {
-          fold.train_indices.forEach(i => trainIndices!.add(i));
-        }
-        if (fold.test_indices) {
-          fold.test_indices.forEach(i => testIndices!.add(i));
-        }
-      }
-    }
-
-    const outlierIndices = lastOutlierResult
-      ? new Set(lastOutlierResult.outlier_indices)
-      : undefined;
-
-    const yMin = yValues.length > 0 ? Math.min(...yValues) : 0;
-    const yMax = yValues.length > 0 ? Math.max(...yValues) : 1;
-
     return {
       y: yValues,
       yMin,
@@ -575,7 +594,7 @@ export function MainCanvas({
       testIndices,
       foldLabels: result?.folds?.fold_labels,
       metadata: columnMetadata,
-      outlierIndices,
+      outlierIndices: outlierIndicesSet,
       totalSamples,
       selectedSamples,
       pinnedSamples: contextPinnedSamples,
@@ -586,7 +605,7 @@ export function MainCanvas({
       classLabels,
       classLabelMap,
     };
-  }, [yValues, result?.folds, lastOutlierResult, columnMetadata, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
+  }, [yValues, yMin, yMax, trainIndices, testIndices, result?.folds?.fold_labels, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
 
   // Compute grid layout
   const hasMaximized = maximizedChart !== null;

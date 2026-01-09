@@ -578,7 +578,7 @@ export function YHistogramV2({
   const handleMouseDown = useCallback((e: RechartsMouseEvent) => {
     // Don't start range selection when clicking directly on a bar
     // (bar click is handled separately by handleClick)
-    if (e?.activePayload && e.activePayload.length > 0 && e.activePayload[0]?.payload?.samples?.length > 0) {
+    if (e?.activePayload && e.activePayload.length > 0 && (e.activePayload[0]?.payload?.samples?.length ?? 0) > 0) {
       return;
     }
     if (!e?.activeLabel) return;
@@ -882,6 +882,7 @@ export function YHistogramV2({
           />
           <YAxis hide />
           <Tooltip
+            isAnimationActive={false}
             contentStyle={{
               backgroundColor: CHART_THEME.tooltipBg,
               border: `1px solid ${CHART_THEME.tooltipBorder}`,
@@ -957,6 +958,7 @@ export function YHistogramV2({
             }}
           />
           <Tooltip
+            isAnimationActive={false}
             contentStyle={{
               backgroundColor: CHART_THEME.tooltipBg,
               border: `1px solid ${CHART_THEME.tooltipBorder}`,
@@ -1078,6 +1080,7 @@ export function YHistogramV2({
             }}
           />
           <Tooltip
+            isAnimationActive={false}
             contentStyle={{
               backgroundColor: CHART_THEME.tooltipBg,
               border: `1px solid ${CHART_THEME.tooltipBorder}`,
@@ -1290,6 +1293,7 @@ export function YHistogramV2({
             }}
           />
           <Tooltip
+            isAnimationActive={false}
             contentStyle={{
               backgroundColor: CHART_THEME.tooltipBg,
               border: `1px solid ${CHART_THEME.tooltipBorder}`,

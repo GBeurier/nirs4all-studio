@@ -39,6 +39,11 @@ interface DataPoint {
   metadata?: Record<string, unknown>;
 }
 
+// DataPoint with z guaranteed to be a number (after normalization)
+interface NormalizedDataPoint extends DataPoint {
+  z: number;
+}
+
 interface ScatterPlot3DProps {
   data: DataPoint[];
   xLabel?: string;
@@ -76,7 +81,7 @@ function safeFinite(value: number | undefined | null, fallback: number): number 
  * Normalize data to fit within [-1, 1] range for each axis
  * Filters out points with NaN/Infinity coordinates to prevent Three.js errors
  */
-function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { min: THREE.Vector3; max: THREE.Vector3; scale: THREE.Vector3 } } {
+function normalizeData(data: DataPoint[]): { normalized: NormalizedDataPoint[]; bounds: { min: THREE.Vector3; max: THREE.Vector3; scale: THREE.Vector3 } } {
   // Default safe bounds
   const defaultBounds = {
     min: new THREE.Vector3(-1, -1, -1),
@@ -141,7 +146,7 @@ function normalizeData(data: DataPoint[]): { normalized: DataPoint[]; bounds: { 
       y: normY,
       z: normZ,
     };
-  }).filter((d): d is DataPoint => d !== null);
+  }).filter((d): d is NormalizedDataPoint => d !== null);
 
   return {
     normalized,
@@ -166,15 +171,15 @@ interface SimpleLineProps {
 }
 
 function SimpleLine({ points, color, opacity = 1 }: SimpleLineProps) {
-  const geometry = useMemo(() => {
+  const lineObject = useMemo(() => {
     // Validate all points are finite before creating geometry
     const validPoints = points.filter(p =>
       p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)
     );
 
     if (validPoints.length < 2) {
-      // Return empty geometry if not enough valid points
-      return new THREE.BufferGeometry();
+      // Return empty Line if not enough valid points
+      return new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity }));
     }
 
     const positions = new Float32Array(validPoints.length * 3);
@@ -186,14 +191,11 @@ function SimpleLine({ points, color, opacity = 1 }: SimpleLineProps) {
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    return geo;
-  }, [points]);
+    const material = new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+    return new THREE.Line(geo, material);
+  }, [points, color, opacity]);
 
-  return (
-    <line geometry={geometry}>
-      <lineBasicMaterial color={color} transparent={opacity < 1} opacity={opacity} />
-    </line>
-  );
+  return <primitive object={lineObject} />;
 }
 
 /**

@@ -603,15 +603,18 @@ export function usePipelineEditor(
     [steps, pushToHistory]
   );
 
-  // Remove a branch from a branch step
+  // Remove a branch from a branch or generator step
   const removeBranch = useCallback(
     (stepId: string, branchIndex: number, path?: string[]) => {
       const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
         targetSteps.map((s) => {
-          if (s.id === stepId && s.type === "branch" && s.branches && s.branches.length > 1) {
+          // Support both branch and generator step types (both have branches)
+          if (s.id === stepId && (s.type === "branch" || s.type === "generator") && s.branches && s.branches.length > 1) {
             return {
               ...s,
               branches: s.branches.filter((_, idx) => idx !== branchIndex),
+              // Also update branch metadata if present
+              branchMetadata: s.branchMetadata?.filter((_, idx) => idx !== branchIndex),
             };
           }
           return s;

@@ -10,7 +10,11 @@
     "tags": ["generator", "choice", "variants", "sweep"],
     "source": "nirs4all",
     "isGenerator": true,
+    "isContainer": true,
+    "containerType": "branches",
     "generatorType": "choose_one",
+    "generatorKind": "or",
+    "defaultBranches": 3,
     "parameters": [
       {
         "name": "items",
@@ -19,8 +23,7 @@
         "description": "List of items to choose from (preprocessing steps, models, etc.)",
         "required": true
       }
-    ],
-    "containerType": "list"
+    ]
   },
   {
     "id": "generator.choose_n",
@@ -33,7 +36,11 @@
     "tags": ["generator", "choice", "combination", "variants"],
     "source": "nirs4all",
     "isGenerator": true,
+    "isContainer": true,
+    "containerType": "branches",
     "generatorType": "choose_n",
+    "generatorKind": "or",
+    "defaultBranches": 3,
     "parameters": [
       {
         "name": "items",
@@ -49,8 +56,7 @@
         "max": 10,
         "description": "Number of items to select"
       }
-    ],
-    "containerType": "list"
+    ]
   },
   {
     "id": "generator.cartesian",
@@ -63,9 +69,12 @@
     "tags": ["generator", "cartesian", "product", "combinations"],
     "source": "nirs4all",
     "isGenerator": true,
+    "isContainer": true,
+    "containerType": "branches",
     "generatorType": "cartesian",
-    "parameters": [],
-    "containerType": "nested_list"
+    "generatorKind": "cartesian",
+    "defaultBranches": 2,
+    "parameters": []
   },
   {
     "id": "generator.range",

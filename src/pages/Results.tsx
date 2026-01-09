@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  CircleDashed,
   Eye,
   ChevronDown,
   ChevronRight,
@@ -76,6 +77,7 @@ const statusIcons = {
   completed: CheckCircle2,
   failed: AlertCircle,
   paused: Clock,
+  partial: CircleDashed,
 };
 
 /**

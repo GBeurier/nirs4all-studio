@@ -15,13 +15,48 @@ from datetime import datetime
 from pathlib import Path
 import json
 import shutil
+import time
 import zipfile
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceConfig, LinkedWorkspace, WorkspaceScanner
+
+
+# Simple TTL cache for workspace discovery operations
+# Key: (workspace_path, source) -> (timestamp, result)
+_workspace_runs_cache: Dict[Tuple[str, str], Tuple[float, Any]] = {}
+_CACHE_TTL_SECONDS = 5  # Cache results for 5 seconds
+
+
+def _get_cached_runs(workspace_path: str, source: str) -> Optional[Any]:
+    """Get cached runs if still valid."""
+    key = (workspace_path, source)
+    if key in _workspace_runs_cache:
+        timestamp, result = _workspace_runs_cache[key]
+        if time.time() - timestamp < _CACHE_TTL_SECONDS:
+            return result
+        # Expired, remove from cache
+        del _workspace_runs_cache[key]
+    return None
+
+
+def _set_cached_runs(workspace_path: str, source: str, result: Any) -> None:
+    """Cache runs result with current timestamp."""
+    key = (workspace_path, source)
+    _workspace_runs_cache[key] = (time.time(), result)
+
+
+def invalidate_workspace_cache(workspace_path: str = None) -> None:
+    """Invalidate cache for a workspace or all workspaces."""
+    if workspace_path is None:
+        _workspace_runs_cache.clear()
+    else:
+        keys_to_delete = [k for k in _workspace_runs_cache if k[0] == workspace_path]
+        for k in keys_to_delete:
+            del _workspace_runs_cache[k]
 
 
 # ============= Request/Response Models =============
@@ -1517,7 +1552,7 @@ async def scan_workspace(workspace_id: str):
 
 
 @router.get("/workspaces/{workspace_id}/runs")
-async def get_workspace_runs(workspace_id: str, source: str = "unified"):
+async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh: bool = False):
     """Get discovered runs from a linked workspace.
 
     This endpoint supports three discovery modes:
@@ -1527,15 +1562,25 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified"):
 
     The unified mode prioritizes manifest-based runs (v2 format with templates)
     and supplements with parquet-derived runs for legacy data.
+
+    Use refresh=true to bypass the cache and force a fresh scan.
     """
     try:
         ws = workspace_manager._find_linked_workspace(workspace_id)
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
+        workspace_path = Path(ws.path)
+        workspace_path_str = str(workspace_path)
+
+        # Check cache first (unless refresh is requested)
+        if not refresh:
+            cached = _get_cached_runs(workspace_path_str, source)
+            if cached is not None:
+                return cached
+
         import pandas as pd
 
-        workspace_path = Path(ws.path)
         all_runs = []
         seen_run_ids = set()
 
@@ -1562,41 +1607,65 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified"):
                         "val_score", "test_score", "n_samples"
                     ])
 
-                    if "config_name" in df.columns:
-                        for config_name in df["config_name"].dropna().unique():
-                            config_id = str(config_name)
-                            # Skip if already discovered from manifests
-                            if config_id in seen_run_ids:
-                                continue
-                            seen_run_ids.add(config_id)
+                    if "config_name" not in df.columns or df.empty:
+                        continue
 
-                            run_df = df[df["config_name"] == config_name]
-                            dataset_name = parquet_file.stem.replace(".meta", "")
+                    dataset_name = parquet_file.stem.replace(".meta", "")
 
-                            pipeline_count = run_df["pipeline_uid"].nunique() if "pipeline_uid" in run_df.columns else 1
-                            val_score = run_df["val_score"].max() if "val_score" in run_df.columns else None
-                            test_score = run_df["test_score"].max() if "test_score" in run_df.columns else None
-                            models = run_df["model_name"].dropna().unique().tolist() if "model_name" in run_df.columns else []
+                    # Use groupby for efficient aggregation instead of filtering per config
+                    # This avoids O(k) DataFrame copies where k = number of unique configs
+                    grouped = df.groupby("config_name", dropna=True)
 
-                            all_runs.append({
-                                "id": config_id,
-                                "pipeline_id": config_id,
-                                "name": config_id,
-                                "dataset": dataset_name,
-                                "created_at": None,
-                                "schema_version": "derived",
-                                "format": "parquet_derived",
-                                "artifact_count": 0,
-                                "predictions_count": len(run_df),
-                                "pipeline_count": pipeline_count,
-                                "models": models[:5],
-                                "best_val_score": float(val_score) if pd.notna(val_score) else None,
-                                "best_test_score": float(test_score) if pd.notna(test_score) else None,
-                                "templates": [],
-                                "datasets": [{"name": dataset_name}],
-                                "dataset_info": {},
-                                "manifest_path": "",
-                            })
+                    # Compute aggregates in one pass
+                    agg_dict = {"config_name": "size"}  # count as predictions_count
+                    if "pipeline_uid" in df.columns:
+                        agg_dict["pipeline_uid"] = "nunique"
+                    if "val_score" in df.columns:
+                        agg_dict["val_score"] = "max"
+                    if "test_score" in df.columns:
+                        agg_dict["test_score"] = "max"
+
+                    agg_df = grouped.agg(agg_dict)
+                    agg_df.columns = ["predictions_count", "pipeline_count", "val_score", "test_score"][:len(agg_df.columns)]
+
+                    # Get unique models per config (need separate groupby for list aggregation)
+                    if "model_name" in df.columns:
+                        models_per_config = grouped["model_name"].apply(
+                            lambda x: x.dropna().unique().tolist()[:5]
+                        ).to_dict()
+                    else:
+                        models_per_config = {}
+
+                    # Build run entries from aggregated results
+                    for config_name in agg_df.index:
+                        config_id = str(config_name)
+                        if config_id in seen_run_ids:
+                            continue
+                        seen_run_ids.add(config_id)
+
+                        row = agg_df.loc[config_name]
+                        val_score = row.get("val_score") if "val_score" in row.index else None
+                        test_score = row.get("test_score") if "test_score" in row.index else None
+
+                        all_runs.append({
+                            "id": config_id,
+                            "pipeline_id": config_id,
+                            "name": config_id,
+                            "dataset": dataset_name,
+                            "created_at": None,
+                            "schema_version": "derived",
+                            "format": "parquet_derived",
+                            "artifact_count": 0,
+                            "predictions_count": int(row.get("predictions_count", 0)),
+                            "pipeline_count": int(row.get("pipeline_count", 1)) if "pipeline_count" in row.index else 1,
+                            "models": models_per_config.get(config_name, []),
+                            "best_val_score": float(val_score) if pd.notna(val_score) else None,
+                            "best_test_score": float(test_score) if pd.notna(test_score) else None,
+                            "templates": [],
+                            "datasets": [{"name": dataset_name}],
+                            "dataset_info": {},
+                            "manifest_path": "",
+                        })
                 except Exception as e:
                     print(f"Failed to read {parquet_file}: {e}")
                     continue
@@ -1604,7 +1673,12 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified"):
         # Sort by created_at (newest first) for runs that have timestamps
         all_runs.sort(key=lambda r: r.get("created_at", "") or "", reverse=True)
 
-        return {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
+        result = {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
+
+        # Cache the result for subsequent requests
+        _set_cached_runs(workspace_path_str, source, result)
+
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -1802,26 +1876,31 @@ async def get_workspace_predictions_data(
                 # Only include columns that exist in the DataFrame
                 available_columns = [c for c in columns_to_include if c in df.columns]
 
-                for _, row in df[available_columns].iterrows():
-                    record = row.to_dict()
+                # Use vectorized operations instead of iterrows() for 10-100x speedup
+                subset = df[available_columns].copy()
+
+                # Replace NaN with None in one vectorized operation
+                subset = subset.where(pd.notna(subset), None)
+
+                # Convert to records (much faster than iterrows)
+                records = subset.to_dict('records')
+
+                # Add source info and parse JSON fields
+                source_file_str = str(parquet_file)
+                for record in records:
                     record["source_dataset"] = dataset_name
-                    record["source_file"] = str(parquet_file)
+                    record["source_file"] = source_file_str
 
                     # Parse JSON fields
                     for json_field in ["best_params", "scores"]:
-                        if json_field in record and record[json_field]:
+                        val = record.get(json_field)
+                        if val is not None and isinstance(val, str):
                             try:
-                                if isinstance(record[json_field], str):
-                                    record[json_field] = json.loads(record[json_field])
+                                record[json_field] = json.loads(val)
                             except (json.JSONDecodeError, TypeError):
                                 pass
 
-                    # Handle NaN values
-                    for key, value in record.items():
-                        if pd.isna(value):
-                            record[key] = None
-
-                    all_records.append(record)
+                all_records.extend(records)
             except Exception as e:
                 # Log but continue with other files
                 print(f"Error reading {parquet_file}: {e}")

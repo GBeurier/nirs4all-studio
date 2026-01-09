@@ -89,6 +89,10 @@ export interface NodeDefinition {
   colorScheme?: CategoryConfig['color'];
   /** Default parameter values (legacy support) */
   defaultParams?: Record<string, unknown>;
+  /** Number of default branches for container/generator nodes */
+  defaultBranches?: number;
+  /** Generator kind (for generator nodes) */
+  generatorKind?: "or" | "cartesian";
 }
 
 /**

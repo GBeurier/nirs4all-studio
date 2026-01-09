@@ -33,6 +33,7 @@ import {
   RefreshCw,
   AlertCircle,
   Pause,
+  CircleDashed,
   Database,
   Layers,
   Box,
@@ -67,6 +68,7 @@ const statusIcons = {
   completed: CheckCircle2,
   failed: AlertCircle,
   paused: Pause,
+  partial: CircleDashed,
 };
 
 const StatusIcon = ({ status }: { status: RunStatus }) => {

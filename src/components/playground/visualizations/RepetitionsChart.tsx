@@ -744,7 +744,7 @@ export function RepetitionsChart({
 
             <ZAxis range={[40, 120]} />
 
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip isAnimationActive={false} content={<CustomTooltip />} />
 
             {/* Reference lines */}
             {config.showMeanLine && statistics && (

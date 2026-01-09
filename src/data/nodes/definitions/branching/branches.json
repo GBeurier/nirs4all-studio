@@ -11,6 +11,7 @@
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "branches",
+    "defaultBranches": 2,
     "parameters": [],
     "acceptsChildren": true,
     "childTypes": ["preprocessing", "model", "splitting"],
@@ -31,6 +32,7 @@
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "source_branches",
+    "defaultBranches": 2,
     "parameters": [
       {
         "name": "sources",

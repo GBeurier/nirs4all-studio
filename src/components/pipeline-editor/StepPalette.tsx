@@ -41,6 +41,7 @@ import {
   stepColors,
   type StepType,
   type StepOption,
+  type PipelineStep,
 } from "./types";
 import { useNodeRegistryOptional, type NodeDefinition } from "./contexts/NodeRegistryContext";
 import { usePipelineEditorPreferencesOptional } from "./contexts/PipelineEditorPreferencesContext";
@@ -69,6 +70,16 @@ const stepIcons: Record<StepType, typeof Waves> = {
  * Convert a NodeDefinition from the registry to a StepOption for backwards compatibility
  */
 function nodeDefToStepOption(node: NodeDefinition): StepOption {
+  // For container/generator nodes, create initial branches array based on defaultBranches count
+  let defaultBranches: PipelineStep[][] | undefined = undefined;
+  if (node.defaultBranches !== undefined && node.defaultBranches > 0) {
+    // Create empty branches based on the count
+    defaultBranches = Array.from({ length: node.defaultBranches }, () => []);
+  } else if (node.isContainer && (node.type === 'branch' || node.type === 'generator')) {
+    // Default to 2 branches for container types if not specified
+    defaultBranches = [[], []];
+  }
+
   return {
     name: node.name,
     description: node.description,
@@ -77,6 +88,8 @@ function nodeDefToStepOption(node: NodeDefinition): StepOption {
     isDeepLearning: node.isDeepLearning,
     isAdvanced: node.isAdvanced,
     tags: node.tags,
+    defaultBranches,
+    generatorKind: node.generatorKind,
   };
 }
 

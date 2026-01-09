@@ -690,6 +690,7 @@ export function FoldDistributionChartV2({
         )}
 
         <Tooltip
+          isAnimationActive={false}
           contentStyle={{
             backgroundColor: CHART_THEME.tooltipBg,
             border: `1px solid ${CHART_THEME.tooltipBorder}`,
@@ -835,6 +836,7 @@ export function FoldDistributionChartV2({
           )}
 
           <Tooltip
+            isAnimationActive={false}
             contentStyle={{
               backgroundColor: CHART_THEME.tooltipBg,
               border: `1px solid ${CHART_THEME.tooltipBorder}`,

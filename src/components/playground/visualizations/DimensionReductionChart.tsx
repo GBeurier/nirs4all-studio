@@ -908,6 +908,7 @@ export function DimensionReductionChart({
         )}
 
         <Tooltip
+          isAnimationActive={false}
           contentStyle={{
             backgroundColor: CHART_THEME.tooltipBg,
             border: `1px solid ${CHART_THEME.tooltipBorder}`,

@@ -1474,6 +1474,7 @@ export function SpectraChartV2({
             ))}
 
             <Tooltip
+              isAnimationActive={false}
               content={() => null}
               cursor={false}
             />

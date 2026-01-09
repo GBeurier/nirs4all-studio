@@ -247,6 +247,80 @@ async def get_pipeline_sample(sample_id: str, canonical: bool = True):
     return result
 
 
+@router.get("/pipelines/presets")
+async def get_pipeline_presets():
+    """
+    Get predefined pipeline presets/templates.
+
+    Returns common pipeline configurations for different use cases.
+    """
+    presets = [
+        {
+            "id": "pls_basic",
+            "name": "Basic PLS Pipeline",
+            "description": "Simple PLS regression with SNV preprocessing",
+            "task_type": "regression",
+            "steps": [
+                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
+                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
+                {"name": "PLSRegression", "type": "model", "params": {"n_components": 10}},
+            ],
+        },
+        {
+            "id": "pls_derivative",
+            "name": "PLS with Derivative",
+            "description": "PLS regression with first derivative preprocessing",
+            "task_type": "regression",
+            "steps": [
+                {"name": "SavitzkyGolay", "type": "preprocessing", "params": {"window_length": 11, "polyorder": 2, "deriv": 1}},
+                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
+                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
+                {"name": "PLSRegression", "type": "model", "params": {"n_components": 15}},
+            ],
+        },
+        {
+            "id": "rf_standard",
+            "name": "Random Forest Pipeline",
+            "description": "Random Forest with standard preprocessing",
+            "task_type": "regression",
+            "steps": [
+                {"name": "StandardScaler", "type": "preprocessing", "params": {}},
+                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
+                {"name": "RandomForestRegressor", "type": "model", "params": {"n_estimators": 100}},
+            ],
+        },
+        {
+            "id": "kennard_stone_pls",
+            "name": "Kennard-Stone PLS",
+            "description": "PLS with Kennard-Stone sample selection",
+            "task_type": "regression",
+            "steps": [
+                {"name": "MultiplicativeScatterCorrection", "type": "preprocessing", "params": {}},
+                {"name": "KennardStoneSplitter", "type": "splitting", "params": {"test_size": 0.2}},
+                {"name": "PLSRegression", "type": "model", "params": {"n_components": 10}},
+            ],
+        },
+        {
+            "id": "advanced_nirs",
+            "name": "Advanced NIRS Pipeline",
+            "description": "Comprehensive NIRS preprocessing with OPLS",
+            "task_type": "regression",
+            "steps": [
+                {"name": "ASLSBaseline", "type": "preprocessing", "params": {"lam": 1e6, "p": 0.01}},
+                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
+                {"name": "SavitzkyGolay", "type": "preprocessing", "params": {"window_length": 15, "polyorder": 2, "deriv": 1}},
+                {"name": "SPXYGFold", "type": "splitting", "params": {"n_splits": 5}},
+                {"name": "OPLS", "type": "model", "params": {"n_components": 10}},
+            ],
+        },
+    ]
+
+    return {
+        "presets": presets,
+        "total": len(presets),
+    }
+
+
 # ============================================================================
 
 
@@ -1488,80 +1562,6 @@ async def prepare_pipeline_execution(
         "execution_config": execution_config,
         "validation": validation_result,
         "message": "Pipeline ready for execution",
-    }
-
-
-@router.get("/pipelines/presets")
-async def get_pipeline_presets():
-    """
-    Get predefined pipeline presets/templates.
-
-    Returns common pipeline configurations for different use cases.
-    """
-    presets = [
-        {
-            "id": "pls_basic",
-            "name": "Basic PLS Pipeline",
-            "description": "Simple PLS regression with SNV preprocessing",
-            "task_type": "regression",
-            "steps": [
-                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
-                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "PLSRegression", "type": "model", "params": {"n_components": 10}},
-            ],
-        },
-        {
-            "id": "pls_derivative",
-            "name": "PLS with Derivative",
-            "description": "PLS regression with first derivative preprocessing",
-            "task_type": "regression",
-            "steps": [
-                {"name": "SavitzkyGolay", "type": "preprocessing", "params": {"window_length": 11, "polyorder": 2, "deriv": 1}},
-                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
-                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "PLSRegression", "type": "model", "params": {"n_components": 15}},
-            ],
-        },
-        {
-            "id": "rf_standard",
-            "name": "Random Forest Pipeline",
-            "description": "Random Forest with standard preprocessing",
-            "task_type": "regression",
-            "steps": [
-                {"name": "StandardScaler", "type": "preprocessing", "params": {}},
-                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "RandomForestRegressor", "type": "model", "params": {"n_estimators": 100}},
-            ],
-        },
-        {
-            "id": "kennard_stone_pls",
-            "name": "Kennard-Stone PLS",
-            "description": "PLS with Kennard-Stone sample selection",
-            "task_type": "regression",
-            "steps": [
-                {"name": "MultiplicativeScatterCorrection", "type": "preprocessing", "params": {}},
-                {"name": "KennardStoneSplitter", "type": "splitting", "params": {"test_size": 0.2}},
-                {"name": "PLSRegression", "type": "model", "params": {"n_components": 10}},
-            ],
-        },
-        {
-            "id": "advanced_nirs",
-            "name": "Advanced NIRS Pipeline",
-            "description": "Comprehensive NIRS preprocessing with OPLS",
-            "task_type": "regression",
-            "steps": [
-                {"name": "ASLSBaseline", "type": "preprocessing", "params": {"lam": 1e6, "p": 0.01}},
-                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
-                {"name": "SavitzkyGolay", "type": "preprocessing", "params": {"window_length": 15, "polyorder": 2, "deriv": 1}},
-                {"name": "SPXYGFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "OPLS", "type": "model", "params": {"n_components": 10}},
-            ],
-        },
-    ]
-
-    return {
-        "presets": presets,
-        "total": len(presets),
     }
 
 
