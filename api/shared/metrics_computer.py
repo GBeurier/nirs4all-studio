@@ -667,6 +667,225 @@ class MetricsComputer:
             # Return all sorted
             return sorted_indices, distances[sorted_indices]
 
+    def compute_pairwise_distances(
+        self,
+        X_ref: np.ndarray,
+        X_final: np.ndarray,
+        metric: str = 'euclidean',
+    ) -> np.ndarray:
+        """Compute per-sample distance between reference and final spectra.
+
+        Args:
+            X_ref: Reference spectra (n_samples, n_features)
+            X_final: Final spectra (n_samples, n_features)
+            metric: Distance metric to use:
+                - 'euclidean': L2 norm of difference
+                - 'manhattan': L1 norm of difference
+                - 'cosine': Cosine distance (1 - cosine similarity)
+                - 'spectral_angle': Spectral Angle Mapper (arccos of cosine sim)
+                - 'correlation': Pearson correlation distance (1 - r)
+                - 'mahalanobis': Mahalanobis distance using combined covariance
+                - 'pca_distance': Distance in PCA score space
+
+        Returns:
+            Array of per-sample distances (n_samples,)
+        """
+        n_samples = X_ref.shape[0]
+
+        if metric == 'euclidean':
+            return np.linalg.norm(X_ref - X_final, axis=1)
+
+        elif metric == 'manhattan':
+            return np.sum(np.abs(X_ref - X_final), axis=1)
+
+        elif metric == 'cosine':
+            # Cosine distance = 1 - cosine_similarity
+            from scipy.spatial.distance import cdist
+            # Compute diagonal of pairwise cosine distance matrix
+            return np.array([cdist(X_ref[i:i+1], X_final[i:i+1], 'cosine')[0, 0]
+                           for i in range(n_samples)])
+
+        elif metric == 'spectral_angle':
+            # Spectral Angle Mapper: arccos of cosine similarity
+            dot = np.sum(X_ref * X_final, axis=1)
+            norm_ref = np.linalg.norm(X_ref, axis=1)
+            norm_final = np.linalg.norm(X_final, axis=1)
+            cos_sim = dot / (norm_ref * norm_final + 1e-10)
+            return np.arccos(np.clip(cos_sim, -1, 1))
+
+        elif metric == 'correlation':
+            # 1 - Pearson correlation per sample
+            correlations = np.zeros(n_samples)
+            for i in range(n_samples):
+                r = np.corrcoef(X_ref[i], X_final[i])[0, 1]
+                correlations[i] = 1 - r if not np.isnan(r) else 1.0
+            return correlations
+
+        elif metric == 'mahalanobis':
+            # Mahalanobis using combined covariance
+            if not SKLEARN_AVAILABLE:
+                # Fall back to euclidean
+                return np.linalg.norm(X_ref - X_final, axis=1)
+
+            from sklearn.covariance import EmpiricalCovariance
+            try:
+                X_combined = np.vstack([X_ref, X_final])
+                cov = EmpiricalCovariance().fit(X_combined)
+                diff = X_ref - X_final
+                return np.sqrt(np.sum(diff @ cov.precision_ * diff, axis=1))
+            except Exception:
+                # Fall back to euclidean if covariance estimation fails
+                return np.linalg.norm(X_ref - X_final, axis=1)
+
+        elif metric == 'pca_distance':
+            # Distance in PCA score space (first n_components)
+            if not SKLEARN_AVAILABLE:
+                return np.linalg.norm(X_ref - X_final, axis=1)
+
+            from sklearn.decomposition import PCA
+            n_components = min(10, X_ref.shape[1], n_samples - 1)
+            if n_components < 1:
+                return np.linalg.norm(X_ref - X_final, axis=1)
+
+            try:
+                pca = PCA(n_components=n_components)
+                pca.fit(np.vstack([X_ref, X_final]))
+                scores_ref = pca.transform(X_ref)
+                scores_final = pca.transform(X_final)
+                return np.linalg.norm(scores_ref - scores_final, axis=1)
+            except Exception:
+                return np.linalg.norm(X_ref - X_final, axis=1)
+
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+
+    def compute_repetition_variance(
+        self,
+        X: np.ndarray,
+        group_ids: np.ndarray,
+        reference: str = 'group_mean',
+        metric: str = 'euclidean',
+    ) -> Dict[str, Any]:
+        """Compute variance within repetition groups.
+
+        Args:
+            X: Spectral data (n_samples, n_features)
+            group_ids: Array of group identifiers for each sample
+            reference: Reference type for distance calculation:
+                - 'group_mean': Distance from group mean
+                - 'leave_one_out': Distance from mean of other samples in group
+                - 'first': Distance from first sample in group
+                - 'selected': Not implemented (requires additional parameter)
+            metric: Distance metric (default 'euclidean')
+
+        Returns:
+            Dict with:
+                - distances: Array of per-sample distances
+                - sample_indices: Original sample indices
+                - group_ids: Group ID for each distance
+                - quantiles: Dict of quantile values
+                - per_group: Dict of per-group statistics
+        """
+        unique_groups = np.unique(group_ids)
+        distances = []
+        sample_indices = []
+        group_labels = []
+        per_group_stats = {}
+
+        for group_id in unique_groups:
+            mask = group_ids == group_id
+            group_indices = np.where(mask)[0]
+            group_spectra = X[mask]
+
+            if len(group_spectra) < 2:
+                # Can't compute variance with single sample
+                continue
+
+            group_distances = []
+
+            if reference == 'group_mean':
+                ref = group_spectra.mean(axis=0)
+                for idx, spectrum in zip(group_indices, group_spectra):
+                    if metric == 'euclidean':
+                        d = np.linalg.norm(spectrum - ref)
+                    else:
+                        d = self.compute_pairwise_distances(
+                            spectrum.reshape(1, -1),
+                            ref.reshape(1, -1),
+                            metric
+                        )[0]
+                    distances.append(d)
+                    sample_indices.append(int(idx))
+                    group_labels.append(str(group_id))
+                    group_distances.append(d)
+
+            elif reference == 'first':
+                ref = group_spectra[0]
+                for idx, spectrum in zip(group_indices, group_spectra):
+                    if metric == 'euclidean':
+                        d = np.linalg.norm(spectrum - ref)
+                    else:
+                        d = self.compute_pairwise_distances(
+                            spectrum.reshape(1, -1),
+                            ref.reshape(1, -1),
+                            metric
+                        )[0]
+                    distances.append(d)
+                    sample_indices.append(int(idx))
+                    group_labels.append(str(group_id))
+                    group_distances.append(d)
+
+            elif reference == 'leave_one_out':
+                for i, (idx, spectrum) in enumerate(zip(group_indices, group_spectra)):
+                    others = np.delete(group_spectra, i, axis=0)
+                    ref = others.mean(axis=0)
+                    if metric == 'euclidean':
+                        d = np.linalg.norm(spectrum - ref)
+                    else:
+                        d = self.compute_pairwise_distances(
+                            spectrum.reshape(1, -1),
+                            ref.reshape(1, -1),
+                            metric
+                        )[0]
+                    distances.append(d)
+                    sample_indices.append(int(idx))
+                    group_labels.append(str(group_id))
+                    group_distances.append(d)
+
+            else:
+                # Default to group_mean for unknown reference types
+                ref = group_spectra.mean(axis=0)
+                for idx, spectrum in zip(group_indices, group_spectra):
+                    d = np.linalg.norm(spectrum - ref)
+                    distances.append(d)
+                    sample_indices.append(int(idx))
+                    group_labels.append(str(group_id))
+                    group_distances.append(d)
+
+            # Compute per-group statistics
+            if group_distances:
+                per_group_stats[str(group_id)] = {
+                    'mean': float(np.mean(group_distances)),
+                    'std': float(np.std(group_distances)),
+                    'max': float(np.max(group_distances)),
+                    'count': len(group_distances),
+                }
+
+        distances_arr = np.array(distances)
+
+        return {
+            'distances': distances_arr,
+            'sample_indices': sample_indices,
+            'group_ids': group_labels,
+            'quantiles': {
+                '50': float(np.percentile(distances_arr, 50)) if len(distances_arr) > 0 else 0,
+                '75': float(np.percentile(distances_arr, 75)) if len(distances_arr) > 0 else 0,
+                '90': float(np.percentile(distances_arr, 90)) if len(distances_arr) > 0 else 0,
+                '95': float(np.percentile(distances_arr, 95)) if len(distances_arr) > 0 else 0,
+            },
+            'per_group': per_group_stats,
+        }
+
 
 def get_available_metrics() -> Dict[str, List[Dict[str, Any]]]:
     """Get list of available metrics organized by category.

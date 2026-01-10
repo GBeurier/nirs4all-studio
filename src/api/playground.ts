@@ -155,6 +155,7 @@ export function buildExecuteRequest(params: {
   wavelengths?: number[];
   y?: number[];
   sampleIds?: string[];
+  metadata?: Record<string, unknown[]>;
   steps: PlaygroundStep[];
   samplingMethod?: 'random' | 'stratified' | 'kmeans' | 'all';
   maxSamples?: number;
@@ -169,6 +170,7 @@ export function buildExecuteRequest(params: {
   maxWavelengths?: number;
   splitIndex?: number;
   useCache?: boolean;
+  bioSampleColumn?: string;
 }): ExecuteRequest {
   return {
     data: {
@@ -176,6 +178,7 @@ export function buildExecuteRequest(params: {
       wavelengths: params.wavelengths,
       y: params.y,
       sample_ids: params.sampleIds,
+      metadata: params.metadata,
     },
     steps: params.steps,
     sampling: params.samplingMethod !== 'all' ? {
@@ -191,6 +194,7 @@ export function buildExecuteRequest(params: {
       max_wavelengths_returned: params.maxWavelengths,
       split_index: params.splitIndex,
       use_cache: params.useCache ?? true,
+      bio_sample_column: params.bioSampleColumn,
     },
   };
 }
@@ -298,4 +302,141 @@ export async function loadWorkspaceDataset(
     y,
     sampleIds,
   };
+}
+
+// ============= Difference Computation Types & Functions =============
+
+/**
+ * Available distance metrics for difference computation
+ */
+export type DiffDistanceMetric =
+  | 'euclidean'
+  | 'manhattan'
+  | 'cosine'
+  | 'spectral_angle'
+  | 'correlation'
+  | 'mahalanobis'
+  | 'pca_distance';
+
+/**
+ * Request for computing differences between reference and final datasets
+ */
+export interface DiffComputeRequest {
+  X_ref: number[][];
+  X_final: number[][];
+  metric: DiffDistanceMetric;
+  scale: 'linear' | 'log';
+}
+
+/**
+ * Response from diff computation
+ */
+export interface DiffComputeResponse {
+  success: boolean;
+  metric: string;
+  scale: string;
+  distances: number[];
+  statistics: {
+    mean: number;
+    std: number;
+    min: number;
+    max: number;
+    quantiles: {
+      50: number;
+      75: number;
+      90: number;
+      95: number;
+    };
+  };
+}
+
+/**
+ * Request for computing repetition variance
+ */
+export interface RepetitionVarianceRequest {
+  X: number[][];
+  group_ids: string[];
+  reference: 'group_mean' | 'leave_one_out' | 'first';
+  metric?: DiffDistanceMetric;
+}
+
+/**
+ * Response from repetition variance computation
+ */
+export interface RepetitionVarianceResponse {
+  success: boolean;
+  reference: string;
+  metric: string;
+  distances: number[];
+  sample_indices: number[];
+  group_ids: string[];
+  quantiles: {
+    50: number;
+    75: number;
+    90: number;
+    95: number;
+  };
+  per_group: Record<string, {
+    mean: number;
+    std: number;
+    max: number;
+    count: number;
+  }>;
+  n_groups: number;
+}
+
+/**
+ * Compute per-sample differences between reference and final spectra
+ *
+ * @param request - Request with reference and final spectra arrays
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Distance values and statistics for each sample
+ */
+export async function computeDiff(
+  request: DiffComputeRequest,
+  signal?: AbortSignal
+): Promise<DiffComputeResponse> {
+  const response = await fetch('/api/playground/diff/compute', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `HTTP error ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Compute variance within repetition groups
+ *
+ * @param request - Request with spectra data and group identifiers
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Per-sample distances and per-group statistics
+ */
+export async function computeRepetitionVariance(
+  request: RepetitionVarianceRequest,
+  signal?: AbortSignal
+): Promise<RepetitionVarianceResponse> {
+  const response = await fetch('/api/playground/diff/repetition-variance', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `HTTP error ${response.status}`);
+  }
+
+  return response.json();
 }

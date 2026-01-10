@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Database,
@@ -86,11 +85,7 @@ export function AppSidebar() {
         )}
       >
         {active && (
-          <motion.div
-            layoutId="sidebar-active"
-            className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-primary"
-            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-          />
+          <div className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-primary" />
         )}
         <Icon className={cn("h-5 w-5 shrink-0", active && "text-primary")} />
         {!collapsed && (
@@ -142,28 +137,12 @@ export function AppSidebar() {
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center justify-center border-b border-border/50 px-4">
-        {collapsed ? (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">N</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <span className="text-lg font-bold text-primary-foreground">
-                N
-              </span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-base font-semibold text-foreground">
-                nirs4all
-              </span>
-              <span className="text-xs text-muted-foreground">
-                NIRS Analysis
-              </span>
-            </div>
-          </div>
-        )}
+      <div className="flex h-16 items-center justify-center border-b border-border/50 px-2">
+        <img
+          src="/nirs4all_logo_green.png"
+          alt="nirs4all"
+          className="h-12 w-full object-contain"
+        />
       </div>
 
       {/* Navigation */}

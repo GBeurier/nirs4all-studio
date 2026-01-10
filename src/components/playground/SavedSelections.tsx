@@ -458,15 +458,19 @@ export function SavedSelections({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0"
+                className="h-6 px-1.5 gap-1 text-[10px]"
                 onClick={() => setSaveDialogOpen(true)}
                 disabled={selectedCount === 0}
               >
                 <BookmarkPlus className="w-3.5 h-3.5" />
+                Save
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">Save selection (Ctrl+S)</p>
+            <TooltipContent side="bottom" className="max-w-xs">
+              <p className="text-xs font-medium">Save current selection</p>
+              <p className="text-xs text-muted-foreground">
+                Save the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''} for later recall. Saved selections persist during this session.
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -476,7 +480,7 @@ export function SavedSelections({
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 gap-1 px-2 text-[10px]">
                 <Bookmark className="w-3 h-3" />
-                {savedSelections.length}
+                Saved ({savedSelections.length})
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 p-2">

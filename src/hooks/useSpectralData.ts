@@ -17,11 +17,11 @@ export function useSpectralData() {
 
   const loadDemoData = useCallback(() => {
     // Generate synthetic NIR spectra with consistent repetitions for testing all charts
-    // 25 biological samples with exactly 4 repetitions each = 100 total measurements
-    // 80% train (20 samples), 20% test (5 samples)
-    const numBioSamples = 25;
+    // 175 biological samples with exactly 4 repetitions each = 700 total measurements
+    // 80% train (140 samples), 20% test (35 samples)
+    const numBioSamples = 175;
     const numReps = 4;
-    const numTestSamples = 5;
+    const numTestSamples = 35;
     const numWavelengths = 200;
     const startWavelength = 1100;
     const endWavelength = 2500;

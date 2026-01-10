@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import { cn } from '@/lib/utils';
 import { useSelection } from '@/context/SelectionContext';
 import { detectDeviceCapabilities } from '@/lib/playground/renderOptimizer';
-import { CHART_THEME } from './chartConfig';
+import { CHART_THEME, SELECTION_COLORS } from './chartConfig';
 
 // ============= Types =============
 
@@ -34,6 +34,10 @@ export interface SpectraWebGLProps {
   originalSpectra?: number[][];
   /** Target values for coloring */
   y?: number[];
+  /** Sample IDs for display in tooltip */
+  sampleIds?: string[];
+  /** Fold labels for display in tooltip */
+  folds?: { fold_labels?: number[] };
   /** Sample indices to render (for sampling) */
   visibleIndices?: number[];
   /** Base color for lines */
@@ -48,6 +52,32 @@ export interface SpectraWebGLProps {
   useSelectionContext?: boolean;
   /** Callback when hovered sample changes (for components without context) */
   onHover?: (index: number | null) => void;
+  /** Whether hover highlighting is enabled (default: true) */
+  enableHover?: boolean;
+  /** Whether to show tooltip on hover (default: true) */
+  showHoverTooltip?: boolean;
+  /** Whether to apply selection highlight coloring (default: true). Set to false in selected_only mode */
+  applySelectionColoring?: boolean;
+  /** Aggregated statistics for rendering min/max area and median */
+  aggregatedStats?: {
+    mean: number[];
+    median: number[];
+    min: number[];
+    max: number[];
+    std: number[];
+    quantileLower: number[];
+    quantileUpper: number[];
+  };
+  /** Grouped statistics for rendering quartile areas per group */
+  groupedStats?: Map<string | number, {
+    mean: number[];
+    median: number[];
+    min: number[];
+    max: number[];
+    std: number[];
+    quantileLower: number[];
+    quantileUpper: number[];
+  }>;
   /** Manually provided selected indices */
   selectedIndices?: number[];
   /** Manually provided pinned indices */
@@ -433,6 +463,9 @@ function HoveredLine({ lines, hoveredIdx, lineWidth }: HoveredLineProps) {
     positions[i * 3 + 2] = 0.03; // z-order above pinned
   }
 
+  // Use bright orange hover color for high visibility
+  const hoverColor = new THREE.Color(SELECTION_COLORS.hovered);
+
   return (
     <line>
       <bufferGeometry>
@@ -442,10 +475,219 @@ function HoveredLine({ lines, hoveredIdx, lineWidth }: HoveredLineProps) {
         />
       </bufferGeometry>
       <lineBasicMaterial
-        color="#ffffff"
+        color={hoverColor}
         linewidth={lineWidth + 1}
       />
     </line>
+  );
+}
+
+// ============= Aggregated Spectra Area Component =============
+
+interface AggregatedAreaProps {
+  wavelengths: number[];
+  min: number[];
+  max: number[];
+  median: number[];
+  mean?: number[];
+  quantileLower?: number[];
+  quantileUpper?: number[];
+  xRange: [number, number];
+  yRange: [number, number];
+  color?: string;
+  /** Show mean line instead of median */
+  showMean?: boolean;
+}
+
+/**
+ * Renders aggregated spectra as filled area (min/max) with median/mean line
+ */
+function AggregatedArea({
+  wavelengths,
+  min,
+  max,
+  median,
+  mean,
+  quantileLower,
+  quantileUpper,
+  xRange,
+  yRange,
+  color = 'hsl(217, 70%, 50%)',
+  showMean = false,
+}: AggregatedAreaProps) {
+  const geometryData = useMemo(() => {
+    const nPoints = wavelengths.length;
+    if (nPoints < 2) return null;
+
+    const xMin = xRange[0];
+    const xMax = xRange[1];
+    const yMin = yRange[0];
+    const yMax = yRange[1];
+    const xSpan = xMax - xMin || 1;
+    const ySpan = yMax - yMin || 1;
+
+    // Normalize coordinates to [0, 1]
+    const normalizeX = (x: number) => (x - xMin) / xSpan;
+    const normalizeY = (y: number) => (y - yMin) / ySpan;
+
+    // Create vertices for min/max area (triangle strip as triangles)
+    // Each segment needs 2 triangles (6 vertices)
+    const areaVertices: number[] = [];
+    for (let i = 0; i < nPoints - 1; i++) {
+      const x1 = normalizeX(wavelengths[i]);
+      const x2 = normalizeX(wavelengths[i + 1]);
+      const minY1 = normalizeY(min[i]);
+      const maxY1 = normalizeY(max[i]);
+      const minY2 = normalizeY(min[i + 1]);
+      const maxY2 = normalizeY(max[i + 1]);
+
+      // Triangle 1: bottom-left, top-left, bottom-right
+      areaVertices.push(x1, minY1, -0.02);
+      areaVertices.push(x1, maxY1, -0.02);
+      areaVertices.push(x2, minY2, -0.02);
+
+      // Triangle 2: top-left, top-right, bottom-right
+      areaVertices.push(x1, maxY1, -0.02);
+      areaVertices.push(x2, maxY2, -0.02);
+      areaVertices.push(x2, minY2, -0.02);
+    }
+
+    // Create vertices for quantile area (p5-p95) if provided
+    const quantileVertices: number[] = [];
+    if (quantileLower && quantileUpper) {
+      for (let i = 0; i < nPoints - 1; i++) {
+        const x1 = normalizeX(wavelengths[i]);
+        const x2 = normalizeX(wavelengths[i + 1]);
+        const qLow1 = normalizeY(quantileLower[i]);
+        const qHigh1 = normalizeY(quantileUpper[i]);
+        const qLow2 = normalizeY(quantileLower[i + 1]);
+        const qHigh2 = normalizeY(quantileUpper[i + 1]);
+
+        // Triangle 1
+        quantileVertices.push(x1, qLow1, -0.015);
+        quantileVertices.push(x1, qHigh1, -0.015);
+        quantileVertices.push(x2, qLow2, -0.015);
+
+        // Triangle 2
+        quantileVertices.push(x1, qHigh1, -0.015);
+        quantileVertices.push(x2, qHigh2, -0.015);
+        quantileVertices.push(x2, qLow2, -0.015);
+      }
+    }
+
+    // Create center line vertices (median or mean)
+    const centerLine = showMean && mean ? mean : median;
+    const centerLineVertices: number[] = [];
+    for (let i = 0; i < nPoints; i++) {
+      centerLineVertices.push(normalizeX(wavelengths[i]), normalizeY(centerLine[i]), 0);
+    }
+
+    return {
+      areaPositions: new Float32Array(areaVertices),
+      quantilePositions: quantileVertices.length > 0 ? new Float32Array(quantileVertices) : null,
+      centerLinePositions: new Float32Array(centerLineVertices),
+    };
+  }, [wavelengths, min, max, median, mean, quantileLower, quantileUpper, xRange, yRange, showMean]);
+
+  if (!geometryData) return null;
+
+  const areaColor = new THREE.Color(color);
+  // Use the same color for the center line but brighter/darker
+  const lineColor = new THREE.Color(color);
+
+  return (
+    <group>
+      {/* Min/Max area - lighter fill */}
+      <mesh>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[geometryData.areaPositions, 3]}
+          />
+        </bufferGeometry>
+        <meshBasicMaterial
+          color={areaColor}
+          transparent
+          opacity={0.15}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Quantile area (p5-p95) - slightly darker */}
+      {geometryData.quantilePositions && (
+        <mesh>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              args={[geometryData.quantilePositions, 3]}
+            />
+          </bufferGeometry>
+          <meshBasicMaterial
+            color={areaColor}
+            transparent
+            opacity={0.25}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+
+      {/* Center line (median or mean) */}
+      <line>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[geometryData.centerLinePositions, 3]}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial color={lineColor} linewidth={2} />
+      </line>
+    </group>
+  );
+}
+
+// ============= Grouped Spectra Areas Component =============
+
+interface GroupedAreasProps {
+  wavelengths: number[];
+  groupedStats: Map<string | number, {
+    mean: number[];
+    median: number[];
+    min: number[];
+    max: number[];
+    std: number[];
+    quantileLower: number[];
+    quantileUpper: number[];
+  }>;
+  xRange: [number, number];
+  yRange: [number, number];
+  colors: string[];
+}
+
+/**
+ * Renders grouped spectra with quartile areas and mean line for each group
+ */
+function GroupedAreas({ wavelengths, groupedStats, xRange, yRange, colors }: GroupedAreasProps) {
+  const groups = useMemo(() => Array.from(groupedStats.entries()), [groupedStats]);
+
+  return (
+    <group>
+      {groups.map(([label, stats], idx) => (
+        <AggregatedArea
+          key={String(label)}
+          wavelengths={wavelengths}
+          min={stats.quantileLower} // Use p5 as min for groups
+          max={stats.quantileUpper} // Use p95 as max for groups
+          median={stats.median}
+          mean={stats.mean}
+          xRange={xRange}
+          yRange={yRange}
+          color={colors[idx % colors.length]}
+          showMean={true} // Show mean line for grouped view
+        />
+      ))}
+    </group>
   );
 }
 
@@ -800,7 +1042,7 @@ function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
 
 interface SpectraInteractionControllerProps {
   lines: LineData[];
-  onHover: (index: number | null) => void;
+  onHover: (index: number | null, event?: MouseEvent) => void;
   onClick: (index: number, event: MouseEvent) => void;
 }
 
@@ -876,7 +1118,7 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       const closest = findClosestSpectrum(e.clientX, e.clientY);
       if (closest !== hoveredRef.current) {
         hoveredRef.current = closest;
-        onHover(closest);
+        onHover(closest, e);
       }
     };
 
@@ -922,6 +1164,31 @@ interface SpectraSceneProps {
   onHover: (index: number | null) => void;
   onClick: (index: number, event: MouseEvent) => void;
   hoveredIdx?: number | null;
+  /** Aggregated stats for area rendering (includes wavelengths) */
+  aggregatedStats?: {
+    wavelengths: number[];
+    mean: number[];
+    median: number[];
+    min: number[];
+    max: number[];
+    std: number[];
+    quantileLower: number[];
+    quantileUpper: number[];
+  };
+  /** Grouped stats for multi-area rendering */
+  groupedStats?: {
+    wavelengths: number[];
+    groups: Map<string | number, {
+      mean: number[];
+      median: number[];
+      min: number[];
+      max: number[];
+      std: number[];
+      quantileLower: number[];
+      quantileUpper: number[];
+    }>;
+    colors: string[];
+  };
 }
 
 /**
@@ -975,7 +1242,7 @@ function ResponsiveCamera() {
   return null;
 }
 
-function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx }: SpectraSceneProps) {
+function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx, aggregatedStats, groupedStats }: SpectraSceneProps) {
   const { camera } = useThree();
 
   // Setup orthographic camera on mount
@@ -992,9 +1259,41 @@ function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, q
     <>
       <ResponsiveCamera />
       <XZoomController xRange={xRange} onXViewRangeChange={onXViewRangeChange} />
-      <SpectraInteractionController lines={lines} onHover={onHover} onClick={onClick} />
+      {!aggregatedStats && !groupedStats && (
+        <SpectraInteractionController lines={lines} onHover={onHover} onClick={onClick} />
+      )}
       <Axes yRange={yRange} xViewRange={xViewRange} showGrid={showGrid} />
-      <SpectraLines lines={lines} qualityConfig={qualityConfig} hoveredIdx={hoveredIdx} />
+
+      {/* Render aggregated area with min/max and median */}
+      {aggregatedStats && (
+        <AggregatedArea
+          wavelengths={aggregatedStats.wavelengths}
+          min={aggregatedStats.min}
+          max={aggregatedStats.max}
+          median={aggregatedStats.median}
+          mean={aggregatedStats.mean}
+          quantileLower={aggregatedStats.quantileLower}
+          quantileUpper={aggregatedStats.quantileUpper}
+          xRange={xRange}
+          yRange={yRange}
+        />
+      )}
+
+      {/* Render grouped areas with quartiles per group */}
+      {groupedStats && (
+        <GroupedAreas
+          wavelengths={groupedStats.wavelengths}
+          groupedStats={groupedStats.groups}
+          xRange={xRange}
+          yRange={yRange}
+          colors={groupedStats.colors}
+        />
+      )}
+
+      {/* Render individual lines when not in aggregated/grouped mode */}
+      {!aggregatedStats && !groupedStats && (
+        <SpectraLines lines={lines} qualityConfig={qualityConfig} hoveredIdx={hoveredIdx} />
+      )}
     </>
   );
 }
@@ -1019,17 +1318,24 @@ export function SpectraWebGL({
   wavelengths,
   originalSpectra,
   y,
+  sampleIds,
+  folds,
   visibleIndices,
   baseColor = '#3b82f6',
-  originalColor = '#888888',
-  selectedColor = '#f59e0b',
-  pinnedColor = '#ef4444',
+  originalColor,
+  selectedColor, // Optional - defaults to SELECTION_COLORS.selected
+  pinnedColor = SELECTION_COLORS.pinned, // Gold
   useSelectionContext = true,
   selectedIndices: manualSelectedIndices,
   pinnedIndices: manualPinnedIndices,
   sampleColors,
   onSampleClick,
   onHover,
+  enableHover = true,
+  showHoverTooltip = true,
+  applySelectionColoring = true,
+  aggregatedStats,
+  groupedStats,
   className,
   yRange: propYRange,
   isLoading = false,
@@ -1042,6 +1348,7 @@ export function SpectraWebGL({
   const containerRef = useRef<HTMLDivElement>(null);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [internalQuality, setInternalQuality] = useState<QualityMode>(quality);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
 
   // Sync internal quality with prop
   useEffect(() => {
@@ -1058,13 +1365,28 @@ export function SpectraWebGL({
   // Local hovered state is synced to context
   const hoveredSampleIdx = contextHoveredSample;
 
-  // Handle hover - dispatch to SelectionContext and callback
-  const handleHover = useCallback((index: number | null) => {
+  // Handle hover - dispatch to SelectionContext and callback (only if hover is enabled)
+  const handleHover = useCallback((index: number | null, event?: MouseEvent) => {
+    if (!enableHover) {
+      // Clear any existing hover when disabled
+      if (useSelectionContext && selectionCtx.hoveredSample !== null) {
+        selectionCtx.setHovered(null);
+      }
+      setMousePosition(null);
+      return;
+    }
     if (useSelectionContext) {
       selectionCtx.setHovered(index);
     }
+    // Track mouse position for tooltip
+    if (index !== null && event && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setMousePosition({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    } else if (index === null) {
+      setMousePosition(null);
+    }
     onHover?.(index);
-  }, [useSelectionContext, selectionCtx, onHover]);
+  }, [useSelectionContext, selectionCtx, onHover, enableHover]);
 
   // Handle click - dispatch to SelectionContext or use callback
   const handleClick = useCallback((index: number, event: MouseEvent) => {
@@ -1160,26 +1482,45 @@ export function SpectraWebGL({
     let yMin = Infinity;
     let yMax = -Infinity;
 
-    // Include processed spectra
-    for (const idx of effectiveVisibleIndices) {
-      const spectrum = spectra[idx];
-      if (!spectrum) continue;
-      for (let j = 0; j < spectrum.length; j++) {
-        const v = spectrum[j];
-        if (v < yMin) yMin = v;
-        if (v > yMax) yMax = v;
+    // If aggregatedStats provided, use min/max from stats
+    if (aggregatedStats) {
+      for (let j = 0; j < aggregatedStats.min.length; j++) {
+        if (aggregatedStats.min[j] < yMin) yMin = aggregatedStats.min[j];
+        if (aggregatedStats.max[j] > yMax) yMax = aggregatedStats.max[j];
       }
     }
-
-    // Include original spectra if present
-    if (originalSpectra) {
+    // If groupedStats provided, compute range from all groups
+    else if (groupedStats) {
+      groupedStats.forEach(stats => {
+        for (let j = 0; j < stats.min.length; j++) {
+          if (stats.min[j] < yMin) yMin = stats.min[j];
+          if (stats.max[j] > yMax) yMax = stats.max[j];
+        }
+      });
+    }
+    // Otherwise, use spectra
+    else {
+      // Include processed spectra
       for (const idx of effectiveVisibleIndices) {
-        const spectrum = originalSpectra[idx];
+        const spectrum = spectra[idx];
         if (!spectrum) continue;
         for (let j = 0; j < spectrum.length; j++) {
           const v = spectrum[j];
           if (v < yMin) yMin = v;
           if (v > yMax) yMax = v;
+        }
+      }
+
+      // Include original spectra if present
+      if (originalSpectra) {
+        for (const idx of effectiveVisibleIndices) {
+          const spectrum = originalSpectra[idx];
+          if (!spectrum) continue;
+          for (let j = 0; j < spectrum.length; j++) {
+            const v = spectrum[j];
+            if (v < yMin) yMin = v;
+            if (v > yMax) yMax = v;
+          }
         }
       }
     }
@@ -1205,7 +1546,7 @@ export function SpectraWebGL({
       xRange: [xMin, xMax] as [number, number],
       yRange: [yMin, yMax] as [number, number],
     };
-  }, [spectra, originalSpectra, wavelengths, effectiveVisibleIndices, propYRange]);
+  }, [spectra, originalSpectra, wavelengths, effectiveVisibleIndices, propYRange, aggregatedStats, groupedStats]);
 
   // Track if user has zoomed (to avoid resetting their zoom on data updates)
   const userHasZoomedRef = useRef(false);
@@ -1262,8 +1603,8 @@ export function SpectraWebGL({
   // Hover highlighting is handled separately in the render phase
   const lines = useMemo<LineData[]>(() => {
     const baseCol = parseColor(baseColor);
-    const origCol = parseColor(originalColor);
-    const selectedCol = parseColor(selectedColor);
+    const origCol = originalColor ? parseColor(originalColor) : null;
+    const selectedCol = parseColor(selectedColor ?? SELECTION_COLORS.selected);
     const pinnedCol = parseColor(pinnedColor);
 
     const result: LineData[] = [];
@@ -1277,11 +1618,12 @@ export function SpectraWebGL({
       const isSelected = selectedIndicesSet.has(idx);
       const isPinned = pinnedIndicesSet.has(idx);
 
-      // Calculate color - selected/pinned only, hover is handled separately
+      // Calculate color - apply selection/pinned only when applySelectionColoring is true
+      // hover is handled separately in render phase
       let color: THREE.Color;
-      if (isPinned) {
+      if (applySelectionColoring && isPinned) {
         color = pinnedCol;
-      } else if (isSelected) {
+      } else if (applySelectionColoring && isSelected) {
         color = selectedCol;
       } else if (sampleColors && sampleColors[idx]) {
         color = parseColor(sampleColors[idx]);
@@ -1314,6 +1656,7 @@ export function SpectraWebGL({
     }
 
     // Add original spectra if provided
+    // Use same base colors as processed spectra (transparency handled in render)
     if (originalSpectra) {
       for (const idx of effectiveVisibleIndices) {
         const spectrum = originalSpectra[idx];
@@ -1321,6 +1664,24 @@ export function SpectraWebGL({
 
         const isSelected = selectedIndicesSet.has(idx);
         const isPinned = pinnedIndicesSet.has(idx);
+
+        // Use same color as processed spectrum to preserve coloration
+        // If originalColor is explicitly provided, use that; otherwise use base color
+        let color: THREE.Color;
+        if (origCol) {
+          // User explicitly set a color for original spectra
+          color = origCol;
+        } else if (isPinned) {
+          color = pinnedCol;
+        } else if (isSelected) {
+          color = selectedCol;
+        } else if (sampleColors && sampleColors[idx]) {
+          color = parseColor(sampleColors[idx]);
+        } else if (y && y[idx] !== undefined) {
+          color = getTargetColor(y[idx], yTargetMin, yTargetMax);
+        } else {
+          color = baseCol;
+        }
 
         // Decimate points
         const points = decimatePoints(
@@ -1334,7 +1695,7 @@ export function SpectraWebGL({
         if (points.length >= 4) {
           result.push({
             points,
-            color: origCol,
+            color,
             index: idx,
             isSelected,
             isPinned,
@@ -1350,7 +1711,7 @@ export function SpectraWebGL({
     spectra, originalSpectra, wavelengths, effectiveVisibleIndices,
     selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
     baseColor, originalColor, selectedColor, pinnedColor, sampleColors,
-    xViewRange, yRange, qualityConfig.maxPointsPerSpectrum,
+    xViewRange, yRange, qualityConfig.maxPointsPerSpectrum, applySelectionColoring,
   ]);
 
   // Debounce ref for zoom updates
@@ -1444,6 +1805,15 @@ export function SpectraWebGL({
           onHover={handleHover}
           onClick={handleClick}
           hoveredIdx={hoveredSampleIdx}
+          aggregatedStats={aggregatedStats ? {
+            wavelengths,
+            ...aggregatedStats,
+          } : undefined}
+          groupedStats={groupedStats ? {
+            wavelengths,
+            groups: groupedStats,
+            colors: sampleColors ?? [],
+          } : undefined}
         />
       </Canvas>
 
@@ -1515,6 +1885,32 @@ export function SpectraWebGL({
           className="fixed inset-0 z-10"
           onClick={() => setShowQualityMenu(false)}
         />
+      )}
+
+      {/* Hover tooltip */}
+      {showHoverTooltip && enableHover && hoveredSampleIdx !== null && mousePosition && (
+        <div
+          className="absolute bg-popover border border-border rounded-md px-2 py-1.5 shadow-md text-[10px] pointer-events-none z-30"
+          style={{
+            left: mousePosition.x + 10,
+            top: mousePosition.y - 10,
+            transform: mousePosition.x > (containerRef.current?.clientWidth ?? 0) / 2 ? 'translateX(-100%)' : undefined,
+          }}
+        >
+          <div className="font-medium text-foreground mb-0.5">
+            {sampleIds?.[hoveredSampleIdx] ?? `Sample ${hoveredSampleIdx}`}
+          </div>
+          {y?.[hoveredSampleIdx] !== undefined && (
+            <div className="text-muted-foreground">
+              Y: <span className="font-mono">{y[hoveredSampleIdx].toFixed(3)}</span>
+            </div>
+          )}
+          {folds?.fold_labels?.[hoveredSampleIdx] !== undefined && folds.fold_labels[hoveredSampleIdx] >= 0 && (
+            <div className="text-muted-foreground">
+              Fold: {folds.fold_labels[hoveredSampleIdx] + 1}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

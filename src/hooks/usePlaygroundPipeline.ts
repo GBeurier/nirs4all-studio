@@ -17,9 +17,11 @@ import type {
   PlaygroundResult,
   SamplingOptions,
   ExecuteOptions,
+  PerChartLoadingState,
 } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 import { usePlaygroundQuery } from './usePlaygroundQuery';
+import { useChangeDetection } from './useChangeDetection';
 import {
   createOperatorFromDefinition,
   isSplitter,
@@ -117,6 +119,9 @@ export interface UsePlaygroundPipelineResult {
   computeUmap: boolean;
   setComputeUmap: (enabled: boolean) => void;
   isUmapLoading: boolean;
+
+  // Granular chart loading states
+  chartLoadingStates: PerChartLoadingState;
 }
 
 /**
@@ -208,6 +213,24 @@ export function usePlaygroundPipeline(
     sampling,
     executeOptions,
   });
+
+  // Change detection for granular chart loading states
+  const {
+    chartLoadingStates,
+    markStable,
+  } = useChangeDetection({
+    operators: effectiveOperators,
+    computeUmap,
+    isFetching,
+    hasResult: result !== null,
+  });
+
+  // Mark state as stable when result arrives (not fetching anymore)
+  useEffect(() => {
+    if (!isFetching && result !== null) {
+      markStable();
+    }
+  }, [isFetching, result, markStable]);
 
   // Determine if UMAP is currently loading
   // UMAP is loading if we requested it and the query is still fetching
@@ -395,5 +418,7 @@ export function usePlaygroundPipeline(
     computeUmap,
     setComputeUmap,
     isUmapLoading,
+    // Granular chart loading states
+    chartLoadingStates,
   };
 }

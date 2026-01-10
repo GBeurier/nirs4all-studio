@@ -63,6 +63,10 @@ interface PlaygroundSidebarProps {
   onLoadFromWorkspace: (datasetId: string, datasetName: string) => void;
   onClearData: () => void;
 
+  // Dataset selector
+  showDatasetSelector?: boolean;
+  onToggleDatasetSelector?: () => void;
+
   // Pipeline handlers
   onAddOperator: (definition: OperatorDefinition) => void;
   onUpdateOperator: (id: string, updates: Partial<UnifiedOperator>) => void;
@@ -100,6 +104,8 @@ export function PlaygroundSidebar({
   onLoadDemo,
   onLoadFromWorkspace,
   onClearData,
+  showDatasetSelector,
+  onToggleDatasetSelector,
   onAddOperator,
   onUpdateOperator,
   onUpdateOperatorParams,
@@ -218,6 +224,8 @@ export function PlaygroundSidebar({
           onLoadDemo={onLoadDemo}
           onLoadFromWorkspace={onLoadFromWorkspace}
           onClear={onClearData}
+          showDatasetSelector={showDatasetSelector}
+          onToggleDatasetSelector={onToggleDatasetSelector}
         />
 
         <Separator />

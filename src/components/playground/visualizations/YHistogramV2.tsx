@@ -3,10 +3,8 @@
  *
  * Features:
  * - Configurable bin count (auto, 10, 20, 50, custom)
- * - Color by: target value, fold, metadata column, spectral metric
- * - Stacked fold display mode
- * - Ridge plot fold display mode
- * - Overlaid transparency mode
+ * - Automatic stacking based on global color mode (partition/fold = stacked)
+ * - Color derived from global color configuration
  * - KDE overlay toggle
  * - Reference lines (mean, median)
  * - Cross-chart selection highlighting via SelectionContext
@@ -17,8 +15,6 @@ import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react'
 import {
   BarChart,
   Bar,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -29,16 +25,14 @@ import {
   ReferenceLine,
   ComposedChart,
   Line,
-  Brush,
   ReferenceArea,
 } from 'recharts';
 import {
   BarChart3,
   Download,
   Settings2,
-  Layers,
-  TrendingUp,
   ChevronDown,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -67,9 +61,7 @@ import {
   CHART_THEME,
   CHART_MARGINS,
   ANIMATION_CONFIG,
-  getFoldColor,
   formatYValue,
-  FOLD_COLORS,
 } from './chartConfig';
 import {
   type GlobalColorConfig,
@@ -77,18 +69,18 @@ import {
   getCategoricalColor,
   getContinuousColor,
   normalizeValue,
+  detectMetadataType,
   PARTITION_COLORS,
   HIGHLIGHT_COLORS,
 } from '@/lib/playground/colorConfig';
 import { type TargetType } from '@/lib/playground/targetTypeDetection';
 import { useSelection } from '@/context/SelectionContext';
+import { InlineColorLegend } from '../ColorLegend';
 import type { FoldsInfo } from '@/types/playground';
 import { cn } from '@/lib/utils';
 
 // ============= Types =============
 
-export type HistogramColorMode = 'uniform' | 'fold' | 'metadata' | 'metric';
-export type HistogramDisplayMode = 'simple' | 'stacked' | 'overlaid' | 'ridge';
 export type BinCountOption = 'auto' | '10' | '20' | '30' | '50' | 'custom';
 
 interface YHistogramV2Props {
@@ -155,15 +147,11 @@ interface YStats {
 interface HistogramConfig {
   binCount: BinCountOption;
   customBinCount: number;
-  colorMode: HistogramColorMode;
-  displayMode: HistogramDisplayMode;
   showKDE: boolean;
   showMean: boolean;
   showMedian: boolean;
   showStdBands: boolean;
   yAxisType: 'count' | 'frequency' | 'density';
-  metadataKey?: string;
-  metricKey?: string;
 }
 
 // Recharts mouse event type for histogram interactions
@@ -244,8 +232,6 @@ function calculateOptimalBinCount(values: number[]): number {
 const DEFAULT_CONFIG: HistogramConfig = {
   binCount: 'auto',
   customBinCount: 20,
-  colorMode: 'uniform',
-  displayMode: 'simple',
   showKDE: false,
   showMean: false,
   showMedian: false,
@@ -296,6 +282,39 @@ export function YHistogramV2({
   // Use processed Y if available
   const displayY = processedY && processedY.length === y.length ? processedY : y;
   const isProcessed = processedY && processedY.length === y.length;
+
+  // Determine effective color mode from global config (like FoldDistributionChartV2)
+  const effectiveColorMode = globalColorConfig?.mode ?? 'target';
+
+  // Determine if we should use stacked display based on color mode
+  // - partition: stack by train/test (doesn't need folds)
+  // - fold: stack by fold index (needs folds)
+  // - metadata (categorical): stack by metadata category
+  // - selection: stack by selected/unselected
+  const shouldStackByPartition = effectiveColorMode === 'partition';
+  const shouldStackByFold = effectiveColorMode === 'fold';
+  const shouldStackBySelection = effectiveColorMode === 'selection';
+
+  // Auto-detect metadata type if not explicitly set
+  const effectiveMetadataType = useMemo(() => {
+    if (effectiveColorMode !== 'metadata' || !globalColorConfig?.metadataKey || !metadata) return null;
+    if (globalColorConfig?.metadataType) return globalColorConfig.metadataType;
+    const values = metadata[globalColorConfig.metadataKey];
+    if (!values) return null;
+    return detectMetadataType(values);
+  }, [effectiveColorMode, globalColorConfig?.metadataKey, globalColorConfig?.metadataType, metadata]);
+
+  const shouldStackByMetadata = effectiveColorMode === 'metadata' && effectiveMetadataType === 'categorical';
+
+  // Get unique metadata categories for stacking
+  const metadataCategories = useMemo(() => {
+    if (!shouldStackByMetadata || !globalColorConfig?.metadataKey || !metadata) return [];
+    const key = globalColorConfig.metadataKey;
+    const values = metadata[key];
+    if (!values) return [];
+    const uniqueValues = [...new Set(values.map(v => String(v)))].filter(v => v !== 'undefined' && v !== 'null');
+    return uniqueValues.sort();
+  }, [shouldStackByMetadata, globalColorConfig?.metadataKey, metadata]);
 
   // Calculate effective bin count
   const effectiveBinCount = useMemo(() => {
@@ -462,6 +481,40 @@ export function YHistogramV2({
     };
   }, [displayY, colorContext?.displayFilteredIndices]);
 
+  // Compute stats for selected samples (used in footer when there's a selection)
+  const selectedStats = useMemo<YStats | null>(() => {
+    if (!displayY || displayY.length === 0 || selectedSamples.size === 0) return null;
+
+    const values = displayY.filter((_, idx) => selectedSamples.has(idx));
+    if (values.length === 0) return null;
+
+    const n = values.length;
+    const sorted = [...values].sort((a, b) => a - b);
+    const sum = values.reduce((a, b) => a + b, 0);
+    const mean = sum / n;
+    const median = n % 2 === 0
+      ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2
+      : sorted[Math.floor(n / 2)];
+    const variance = values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / n;
+    const std = Math.sqrt(variance);
+    const q1 = sorted[Math.floor(n * 0.25)];
+    const q3 = sorted[Math.floor(n * 0.75)];
+
+    return {
+      mean,
+      median,
+      std,
+      min: sorted[0],
+      max: sorted[n - 1],
+      n,
+      q1,
+      q3,
+    };
+  }, [displayY, selectedSamples]);
+
+  // Stats to display in footer: selected stats if there's a selection, otherwise all stats
+  const displayStats = selectedSamples.size > 0 ? selectedStats : stats;
+
   // Compute KDE data
   const kdeData = useMemo(() => {
     if (!config.showKDE || !displayY || displayY.length === 0) return [];
@@ -480,29 +533,6 @@ export function YHistogramV2({
     if (!folds?.fold_labels) return [];
     return [...new Set(folds.fold_labels.filter(f => f >= 0))].sort((a, b) => a - b);
   }, [folds]);
-
-  // Ridge plot data transformation
-  const ridgePlotData = useMemo(() => {
-    if (config.displayMode !== 'ridge' || uniqueFolds.length === 0) return null;
-
-    const ridgeHeight = 100 / (uniqueFolds.length + 1);
-    const ridgeOverlap = 0.4;
-
-    return uniqueFolds.map((foldIdx, i) => {
-      const foldBins = histogramData.map(bin => ({
-        binCenter: bin.binCenter,
-        count: bin.foldCounts?.[foldIdx] || 0,
-        offset: i * ridgeHeight * (1 - ridgeOverlap),
-        foldIndex: foldIdx,
-        samples: bin.foldSamples?.[foldIdx] || [],
-      }));
-      return {
-        foldIndex: foldIdx,
-        data: foldBins,
-        color: getFoldColor(foldIdx),
-      };
-    });
-  }, [config.displayMode, uniqueFolds, histogramData]);
 
   // Find which bins contain selected/hovered samples
   const selectedBins = useMemo(() => {
@@ -538,49 +568,8 @@ export function YHistogramV2({
     return classIdx !== undefined && classIdx >= 0 ? classIdx : null;
   }, [isClassificationMode, hoveredSample, sampleToClass]);
 
-  // Handle bar click - select all samples in the bin
-  // Recharts Bar onClick passes: (data, index, event) where data contains payload property
-  const handleClick = useCallback((data: unknown, _index: number, event?: React.MouseEvent) => {
-    // Recharts wraps the data - extract payload if present
-    const rawData = data as { payload?: BinData } | BinData;
-    const binData = 'payload' in rawData && rawData.payload ? rawData.payload : rawData as BinData;
-
-    if (!binData?.samples?.length) {
-      console.warn('YHistogramV2: No samples in clicked bin', binData);
-      return;
-    }
-
-    if (selectionCtx) {
-      if (event?.shiftKey) {
-        selectionCtx.select(binData.samples, 'add');
-      } else if (event?.ctrlKey || event?.metaKey) {
-        selectionCtx.toggle(binData.samples);
-      } else {
-        selectionCtx.select(binData.samples, 'replace');
-      }
-    } else if (externalOnSelectSample) {
-      externalOnSelectSample(binData.samples[0]);
-    }
-  }, [selectionCtx, externalOnSelectSample]);
-
-  // Handle background click to clear selection
-  const handleChartBackgroundClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const tagName = target.tagName.toLowerCase();
-    if (tagName === 'svg' || target.classList.contains('recharts-surface') || target.classList.contains('recharts-wrapper')) {
-      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
-        selectionCtx.clear();
-      }
-    }
-  }, [selectionCtx]);
-
   // Handle range selection on X axis (Y value range)
   const handleMouseDown = useCallback((e: RechartsMouseEvent) => {
-    // Don't start range selection when clicking directly on a bar
-    // (bar click is handled separately by handleClick)
-    if (e?.activePayload && e.activePayload.length > 0 && (e.activePayload[0]?.payload?.samples?.length ?? 0) > 0) {
-      return;
-    }
     if (!e?.activeLabel) return;
     const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
     if (!isNaN(yValue)) {
@@ -589,58 +578,53 @@ export function YHistogramV2({
   }, []);
 
   const handleMouseMove = useCallback((e: RechartsMouseEvent) => {
-    // Handle hover detection for SelectionContext
-    if (selectionCtx && e?.activePayload?.[0]?.payload) {
-      const binData = e.activePayload[0].payload as BinData;
-      if (binData?.samples?.length > 0) {
-        // Hover the first sample in the bin
-        const sampleToHover = binData.samples[0];
-        if (selectionCtx.hoveredSample !== sampleToHover) {
-          selectionCtx.setHovered(sampleToHover);
-        }
-      }
-    }
-
-    // Handle range selection
+    // Handle range selection only - hover propagation disabled for performance
     if (!rangeSelection.isSelecting || !e?.activeLabel) return;
     const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel);
     if (!isNaN(yValue)) {
       setRangeSelection(prev => ({ ...prev, end: yValue }));
     }
-  }, [rangeSelection.isSelecting, selectionCtx]);
+  }, [rangeSelection.isSelecting]);
 
-  // Recharts provides CategoricalChartState, but we need native event for modifiers
-  // Store last native event for use in Recharts handler
+  // Recharts provides CategoricalChartState, but we need native event for modifiers and click position
+  // Store last native events for use in Recharts handlers
   const lastMouseEventRef = useRef<MouseEvent | null>(null);
+  const mouseDownEventRef = useRef<MouseEvent | null>(null);
 
-  // Track native mouse events for modifier keys
+  // Track native mouse events for modifier keys and click position
   useEffect(() => {
     const handleNativeMouseUp = (e: MouseEvent) => {
       lastMouseEventRef.current = e;
     };
+    const handleNativeMouseDown = (e: MouseEvent) => {
+      mouseDownEventRef.current = e;
+    };
     window.addEventListener('mouseup', handleNativeMouseUp, { capture: true });
+    window.addEventListener('mousedown', handleNativeMouseDown, { capture: true });
     return () => {
       window.removeEventListener('mouseup', handleNativeMouseUp, { capture: true });
+      window.removeEventListener('mousedown', handleNativeMouseDown, { capture: true });
     };
   }, []);
 
-  const handleMouseUp = useCallback(() => {
-    const e = lastMouseEventRef.current;
+  // Shared drag selection handler - returns true if drag was handled
+  const handleDragSelection = useCallback((e: MouseEvent | null): boolean => {
     if (!rangeSelection.isSelecting || rangeSelection.start === null || rangeSelection.end === null) {
-      setRangeSelection({ start: null, end: null, isSelecting: false });
-      return;
+      return false;
     }
 
     const minY = Math.min(rangeSelection.start, rangeSelection.end);
     const maxY = Math.max(rangeSelection.start, rangeSelection.end);
 
-    // Only process if there's a meaningful range (not just a click)
+    // Check if this is a meaningful drag range or just a click
     const binWidth = histogramData.length > 0
       ? histogramData[0].binEnd - histogramData[0].binStart
       : 0;
 
-    if (Math.abs(maxY - minY) > binWidth * 0.5) {
-      // Find all samples within the Y range
+    const isDragSelection = Math.abs(maxY - minY) > binWidth * 0.3;
+
+    if (isDragSelection) {
+      // Drag selection: find all samples within the Y range
       const samplesInRange: number[] = [];
       displayY.forEach((yVal, idx) => {
         if (yVal >= minY && yVal <= maxY) {
@@ -657,10 +641,53 @@ export function YHistogramV2({
           selectionCtx.select(samplesInRange, 'replace');
         }
       }
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+      return true;
     }
 
+    return false;
+  }, [rangeSelection, histogramData, displayY, selectionCtx]);
+
+  // Handle all click/mouseup interactions on the chart
+  const handleMouseUp = useCallback((state: RechartsMouseEvent) => {
+    const e = lastMouseEventRef.current;
+
+    // Check if this was a drag selection
+    if (handleDragSelection(e)) {
+      return;
+    }
+
+    // Reset range selection state
     setRangeSelection({ start: null, end: null, isSelecting: false });
-  }, [rangeSelection, displayY, histogramData, selectionCtx]);
+
+    // Check if click was on a bar - bars are path elements with class 'recharts-rectangle'
+    const target = e?.target as SVGElement | null;
+    const isBar = target?.classList?.contains('recharts-rectangle') ||
+      target?.closest('.recharts-bar-rectangle') !== null;
+
+    // Not a drag - check if we clicked on a bar
+    const payload = state?.activePayload;
+
+    if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
+      const clickedData = payload[0].payload as BinData;
+      if (clickedData?.samples?.length && selectionCtx) {
+        if (e?.shiftKey) {
+          selectionCtx.select(clickedData.samples, 'add');
+        } else if (e?.ctrlKey || e?.metaKey) {
+          selectionCtx.toggle(clickedData.samples);
+        } else {
+          // Toggle behavior: if all samples in this bin are already selected, deselect them
+          const allSelected = clickedData.samples.every(s => selectionCtx.selectedSamples.has(s));
+          if (allSelected) {
+            selectionCtx.toggle(clickedData.samples); // Deselect
+          } else {
+            selectionCtx.select(clickedData.samples, 'replace');
+          }
+        }
+        return;
+      }
+    }
+  }, [handleDragSelection, selectionCtx]);
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -678,41 +705,36 @@ export function YHistogramV2({
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
-  // Determine bar color for simple mode
-  const getBarColor = useCallback((entry: BinData, index: number) => {
-    const isSelected = selectedBins.has(index);
-    const isHovered = hoveredBin === index;
-    const hasSelection = selectedSamples.size > 0;
-
-    if (isHovered) return 'hsl(var(--primary))';
-    if (isSelected) return 'hsl(var(--primary))';
-    if (hasSelection) return 'hsl(var(--primary) / 0.2)';
-
-    // Use global color config if provided
-    if (globalColorConfig) {
-      const mode = globalColorConfig.mode;
-
-      if (mode === 'target') {
+  // Determine bar color for simple mode based on global color config
+  const getBarColor = useCallback((entry: BinData, _index: number) => {
+    // Use effectiveColorMode (derived from globalColorConfig)
+    switch (effectiveColorMode) {
+      case 'target': {
         // Color by average Y value in bin
         const t = normalizeValue(entry.binCenter, stats?.min ?? 0, stats?.max ?? 1);
-        return getContinuousColor(t, globalColorConfig.continuousPalette);
+        return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
       }
 
-      if (mode === 'fold' && uniqueFolds.length > 0) {
+      case 'fold': {
         // Color by dominant fold in bin
-        const foldCounts = entry.foldCounts || {};
-        let maxFold = -1;
-        let maxCount = 0;
-        for (const [fold, count] of Object.entries(foldCounts)) {
-          if (count > maxCount) {
-            maxCount = count;
-            maxFold = parseInt(fold, 10);
+        if (uniqueFolds.length > 0) {
+          const foldCounts = entry.foldCounts || {};
+          let maxFold = -1;
+          let maxCount = 0;
+          for (const [fold, count] of Object.entries(foldCounts)) {
+            if (count > maxCount) {
+              maxCount = count;
+              maxFold = parseInt(fold, 10);
+            }
+          }
+          if (maxFold >= 0) {
+            return getCategoricalColor(maxFold, globalColorConfig?.categoricalPalette ?? 'default');
           }
         }
-        return maxFold >= 0 ? getCategoricalColor(maxFold, globalColorConfig.categoricalPalette) : 'hsl(var(--primary) / 0.6)';
+        return 'hsl(var(--primary) / 0.6)';
       }
 
-      if (mode === 'partition') {
+      case 'partition': {
         // Check if bin has more train or test samples
         const trainCount = entry.samples.filter(s => colorContext?.trainIndices?.has(s)).length;
         const testCount = entry.samples.filter(s => colorContext?.testIndices?.has(s)).length;
@@ -721,39 +743,89 @@ export function YHistogramV2({
         return 'hsl(var(--primary) / 0.6)';
       }
 
-      if (mode === 'outlier' && colorContext?.outlierIndices) {
+      case 'outlier': {
         // Color by proportion of outliers in bin
-        const outlierCount = entry.samples.filter(s => colorContext.outlierIndices?.has(s)).length;
-        if (outlierCount > entry.samples.length / 2) return HIGHLIGHT_COLORS.outlier;
-        return 'hsl(var(--muted-foreground) / 0.6)';
-      }
-
-      if (mode === 'selection') {
-        return 'hsl(var(--muted-foreground) / 0.6)';
-      }
-
-      // Default to Y-based coloring for other modes
-      const t = normalizeValue(entry.binCenter, stats?.min ?? 0, stats?.max ?? 1);
-      return getContinuousColor(t, globalColorConfig.continuousPalette);
-    }
-
-    // Legacy behavior
-    if (config.colorMode === 'fold' && uniqueFolds.length > 0) {
-      // Color by dominant fold in bin
-      const foldCounts = entry.foldCounts || {};
-      let maxFold = -1;
-      let maxCount = 0;
-      for (const [fold, count] of Object.entries(foldCounts)) {
-        if (count > maxCount) {
-          maxCount = count;
-          maxFold = parseInt(fold, 10);
+        if (colorContext?.outlierIndices) {
+          const outlierCount = entry.samples.filter(s => colorContext.outlierIndices?.has(s)).length;
+          if (outlierCount > entry.samples.length / 2) return HIGHLIGHT_COLORS.outlier;
         }
+        return 'hsl(var(--muted-foreground) / 0.6)';
       }
-      return maxFold >= 0 ? getFoldColor(maxFold) : 'hsl(var(--primary) / 0.6)';
-    }
 
-    return 'hsl(var(--primary) / 0.6)';
-  }, [selectedBins, hoveredBin, selectedSamples.size, config.colorMode, uniqueFolds, globalColorConfig, colorContext, stats]);
+      case 'selection':
+        return 'hsl(var(--muted-foreground) / 0.6)';
+
+      case 'index': {
+        // For index mode, use average sample index in bin
+        const avgIndex = entry.samples.length > 0
+          ? entry.samples.reduce((a, b) => a + b, 0) / entry.samples.length
+          : 0;
+        const totalSamples = colorContext?.totalSamples ?? displayY.length;
+        const t = avgIndex / Math.max(1, totalSamples - 1);
+        return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
+      }
+
+      case 'metadata': {
+        const metadataKey = globalColorConfig?.metadataKey;
+        if (metadataKey && metadata?.[metadataKey] && entry.samples.length > 0) {
+          const metadataValues = metadata[metadataKey];
+          const metadataType = globalColorConfig?.metadataType ?? detectMetadataType(metadataValues);
+
+          if (metadataType === 'continuous') {
+            // Calculate average metadata value for samples in this bin
+            const numericValues = metadataValues.filter(v => typeof v === 'number') as number[];
+            if (numericValues.length > 0) {
+              const sum = entry.samples.reduce((acc, sampleIdx) => {
+                const val = metadataValues[sampleIdx];
+                return acc + (typeof val === 'number' ? val : 0);
+              }, 0);
+              const avgValue = sum / entry.samples.length;
+              const min = Math.min(...numericValues);
+              const max = Math.max(...numericValues);
+              const t = normalizeValue(avgValue, min, max);
+              return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
+            }
+          } else {
+            // Categorical metadata - find dominant category in bin
+            const categoryCounts: Record<string, number> = {};
+            entry.samples.forEach(sampleIdx => {
+              const val = String(metadataValues[sampleIdx] ?? '');
+              if (val && val !== 'undefined' && val !== 'null') {
+                categoryCounts[val] = (categoryCounts[val] || 0) + 1;
+              }
+            });
+
+            // Find dominant category
+            let maxCategory = '';
+            let maxCount = 0;
+            Object.entries(categoryCounts).forEach(([cat, count]) => {
+              if (count > maxCount) {
+                maxCount = count;
+                maxCategory = cat;
+              }
+            });
+
+            if (maxCategory) {
+              const uniqueValues = [...new Set(metadataValues
+                .filter(v => v !== null && v !== undefined)
+                .map(v => String(v)))].sort();
+              const idx = uniqueValues.indexOf(maxCategory);
+              return getCategoricalColor(idx >= 0 ? idx : 0, globalColorConfig?.categoricalPalette ?? 'default');
+            }
+          }
+        }
+        // Fallback to Y-based coloring
+        const t = normalizeValue(entry.binCenter, stats?.min ?? 0, stats?.max ?? 1);
+        return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
+      }
+
+      default: {
+        // Default to Y-based coloring
+        const t = normalizeValue(entry.binCenter, stats?.min ?? 0, stats?.max ?? 1);
+        return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
+      }
+    }
+  }, [effectiveColorMode, uniqueFolds, globalColorConfig, colorContext, stats, displayY.length, metadata]);
 
   // Check if we should show fold-based display modes
   const hasFolds = uniqueFolds.length > 0;
@@ -856,17 +928,78 @@ export function YHistogramV2({
 
   const yAxisLabel = config.yAxisType === 'frequency' ? '%' : config.yAxisType === 'density' ? 'Density' : 'Count';
 
-  // Render ridge plot
-  const renderRidgePlot = () => {
-    if (!ridgePlotData) return null;
+  // Render stacked bar chart by partition (train/test)
+  const renderStackedByPartition = () => {
+    // Transform data for partition stacking
+    const stackedData = histogramData.map(bin => {
+      const trainCount = bin.samples.filter(s => colorContext?.trainIndices?.has(s)).length;
+      const testCount = bin.samples.filter(s => colorContext?.testIndices?.has(s)).length;
+      return {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+        train: getYValue(trainCount),
+        test: getYValue(testCount),
+        trainCount,
+        testCount,
+      };
+    });
 
-    const maxCount = Math.max(
-      ...ridgePlotData.flatMap(r => r.data.map(d => d.count))
-    );
+    // Calculate range selection bounds for ReferenceArea
+    const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
+      ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
+      : null;
+
+    // Handle click for stacked partition chart
+    const handleStackedPartitionMouseUp = (state: RechartsMouseEvent) => {
+      const e = lastMouseEventRef.current;
+
+      // Check drag selection first
+      if (handleDragSelection(e)) {
+        return;
+      }
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+
+      const target = e?.target as SVGElement | null;
+      const isBar = target?.classList?.contains('recharts-rectangle') ||
+        target?.closest('.recharts-bar-rectangle') !== null;
+
+      const payload = state?.activePayload;
+      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
+        const clickedData = payload[0].payload as typeof stackedData[0];
+        if (clickedData?.samples?.length && selectionCtx) {
+          if (e?.shiftKey) {
+            selectionCtx.select(clickedData.samples, 'add');
+          } else if (e?.ctrlKey || e?.metaKey) {
+            selectionCtx.toggle(clickedData.samples);
+          } else {
+            // Regular click: always replace selection with this bar's samples
+            selectionCtx.select(clickedData.samples, 'replace');
+          }
+          return;
+        }
+      }
+    };
 
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart margin={CHART_MARGINS.histogram}>
+        <BarChart
+          data={stackedData}
+          margin={CHART_MARGINS.histogram}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleStackedPartitionMouseUp}
+          onMouseLeave={() => {
+            if (rangeSelection.isSelecting) {
+              setRangeSelection({ start: null, end: null, isSelecting: false });
+            }
+            if (selectionCtx) {
+              selectionCtx.setHovered(null);
+            }
+          }}
+        >
           <CartesianGrid
             strokeDasharray={CHART_THEME.gridDasharray}
             stroke={CHART_THEME.gridStroke}
@@ -874,13 +1007,21 @@ export function YHistogramV2({
           />
           <XAxis
             dataKey="binCenter"
-            type="number"
-            domain={['dataMin', 'dataMax']}
             stroke={CHART_THEME.axisStroke}
             fontSize={CHART_THEME.axisFontSize}
             tickFormatter={(v) => formatYValue(v, 1)}
           />
-          <YAxis hide />
+          <YAxis
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            width={35}
+            label={{
+              value: yAxisLabel,
+              angle: -90,
+              position: 'insideLeft',
+              fontSize: 9,
+            }}
+          />
           <Tooltip
             isAnimationActive={false}
             contentStyle={{
@@ -889,34 +1030,101 @@ export function YHistogramV2({
               borderRadius: CHART_THEME.tooltipBorderRadius,
               fontSize: CHART_THEME.tooltipFontSize,
             }}
+            content={({ payload }) => {
+              if (!payload || payload.length === 0) return null;
+              const data = payload[0]?.payload;
+              if (!data) return null;
+
+              return (
+                <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
+                  <p className="font-medium">{data.label}</p>
+                  {data.trainCount > 0 && (
+                    <p className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: PARTITION_COLORS.train }} />
+                      Train: {data.trainCount}
+                    </p>
+                  )}
+                  {data.testCount > 0 && (
+                    <p className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: PARTITION_COLORS.test }} />
+                      Test: {data.testCount}
+                    </p>
+                  )}
+                </div>
+              );
+            }}
           />
-          {ridgePlotData.map((ridge, ridgeIdx) => (
-            <Area
-              key={`ridge-${ridge.foldIndex}`}
-              data={ridge.data.map(d => ({
-                binCenter: d.binCenter,
-                [`fold${ridge.foldIndex}`]: d.count + d.offset * maxCount,
-              }))}
-              dataKey={`fold${ridge.foldIndex}`}
-              fill={ridge.color}
-              fillOpacity={0.6}
-              stroke={ridge.color}
-              strokeWidth={1.5}
-              type="monotone"
-              baseValue={ridge.data[0]?.offset * maxCount || 0}
-              {...ANIMATION_CONFIG}
+          <Legend
+            verticalAlign="top"
+            height={24}
+            iconSize={10}
+          />
+          <Bar
+            dataKey="train"
+            name="Train"
+            stackId="partition"
+            fill={PARTITION_COLORS.train}
+            cursor="pointer"
+            {...ANIMATION_CONFIG}
+          >
+            {stackedData.map((entry, index) => {
+              const isSelected = selectedBins.has(index);
+              const isHovered = hoveredBin === index;
+              return (
+                <Cell
+                  key={`train-${index}`}
+                  fill={PARTITION_COLORS.train}
+                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
+          </Bar>
+          <Bar
+            dataKey="test"
+            name="Test"
+            stackId="partition"
+            fill={PARTITION_COLORS.test}
+            radius={[2, 2, 0, 0]}
+            cursor="pointer"
+            {...ANIMATION_CONFIG}
+          >
+            {stackedData.map((entry, index) => {
+              const isSelected = selectedBins.has(index);
+              const isHovered = hoveredBin === index;
+              return (
+                <Cell
+                  key={`test-${index}`}
+                  fill={PARTITION_COLORS.test}
+                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
+          </Bar>
+          {/* Range selection overlay */}
+          {rangeSelectionBounds && (
+            <ReferenceArea
+              x1={rangeSelectionBounds.min}
+              x2={rangeSelectionBounds.max}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.15}
+              stroke="hsl(var(--primary))"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="4 2"
             />
-          ))}
-        </AreaChart>
+          )}
+        </BarChart>
       </ResponsiveContainer>
     );
   };
 
-  // Render stacked bar chart
-  const renderStackedChart = () => {
+  // Render stacked bar chart by fold
+  const renderStackedByFold = () => {
     if (uniqueFolds.length === 0) return renderSimpleChart();
 
-    // Transform data for stacking
+    // Transform data for fold stacking
     const stackedData = histogramData.map(bin => {
       const row: Record<string, unknown> = {
         binCenter: bin.binCenter,
@@ -932,9 +1140,60 @@ export function YHistogramV2({
       return row;
     });
 
+    // Calculate range selection bounds for ReferenceArea
+    const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
+      ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
+      : null;
+
+    // Handle click for stacked fold chart
+    const handleStackedFoldMouseUp = (state: RechartsMouseEvent) => {
+      const e = lastMouseEventRef.current;
+
+      // Check drag selection first
+      if (handleDragSelection(e)) {
+        return;
+      }
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+
+      const target = e?.target as SVGElement | null;
+      const isBar = target?.classList?.contains('recharts-rectangle') ||
+        target?.closest('.recharts-bar-rectangle') !== null;
+
+      const payload = state?.activePayload;
+      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
+        const clickedData = payload[0].payload as typeof stackedData[0];
+        const samples = clickedData?.samples as number[] | undefined;
+        if (samples?.length && selectionCtx) {
+          if (e?.shiftKey) {
+            selectionCtx.select(samples, 'add');
+          } else if (e?.ctrlKey || e?.metaKey) {
+            selectionCtx.toggle(samples);
+          } else {
+            // Regular click: always replace selection with this bar's samples
+            selectionCtx.select(samples, 'replace');
+          }
+          return;
+        }
+      }
+    };
+
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={stackedData} margin={CHART_MARGINS.histogram}>
+        <BarChart
+          data={stackedData}
+          margin={CHART_MARGINS.histogram}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleStackedFoldMouseUp}
+          onMouseLeave={() => {
+            if (rangeSelection.isSelecting) {
+              setRangeSelection({ start: null, end: null, isSelecting: false });
+            }
+            if (selectionCtx) {
+              selectionCtx.setHovered(null);
+            }
+          }}
+        >
           <CartesianGrid
             strokeDasharray={CHART_THEME.gridDasharray}
             stroke={CHART_THEME.gridStroke}
@@ -980,7 +1239,7 @@ export function YHistogramV2({
                       <p key={foldIdx} className="flex items-center gap-1">
                         <span
                           className="w-2 h-2 rounded-sm"
-                          style={{ backgroundColor: getFoldColor(foldIdx) }}
+                          style={{ backgroundColor: getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default') }}
                         />
                         Fold {foldIdx + 1}: {typeof count === 'number' ? count.toFixed(config.yAxisType === 'count' ? 0 : 2) : count}
                       </p>
@@ -1005,11 +1264,423 @@ export function YHistogramV2({
               key={`fold-${foldIdx}`}
               dataKey={`fold${foldIdx}`}
               stackId="folds"
-              fill={getFoldColor(foldIdx)}
+              fill={getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default')}
               radius={foldIdx === uniqueFolds[uniqueFolds.length - 1] ? [2, 2, 0, 0] : undefined}
+              cursor="pointer"
               {...ANIMATION_CONFIG}
-            />
+            >
+              {stackedData.map((entry, index) => {
+                const isSelected = selectedBins.has(index);
+                const isHovered = hoveredBin === index;
+                return (
+                  <Cell
+                    key={`fold-${foldIdx}-${index}`}
+                    fill={getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default')}
+                    stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                    strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                  />
+                );
+              })}
+            </Bar>
           ))}
+          {/* Range selection overlay */}
+          {rangeSelectionBounds && (
+            <ReferenceArea
+              x1={rangeSelectionBounds.min}
+              x2={rangeSelectionBounds.max}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.15}
+              stroke="hsl(var(--primary))"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="4 2"
+            />
+          )}
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  };
+
+  // Render stacked bar chart by metadata category
+  const renderStackedByMetadata = () => {
+    if (metadataCategories.length === 0) return renderSimpleChart();
+
+    const metadataKey = globalColorConfig?.metadataKey;
+    if (!metadataKey || !metadata?.[metadataKey]) return renderSimpleChart();
+
+    const metadataValues = metadata[metadataKey];
+
+    // Transform data for metadata category stacking
+    const stackedData = histogramData.map(bin => {
+      const row: Record<string, unknown> = {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+      };
+      // Count samples per category in this bin
+      metadataCategories.forEach((category, catIdx) => {
+        const count = bin.samples.filter(sampleIdx => String(metadataValues[sampleIdx]) === category).length;
+        row[`cat${catIdx}`] = getYValue(count);
+        row[`cat${catIdx}Count`] = count;
+        row[`cat${catIdx}Label`] = category;
+      });
+      return row;
+    });
+
+    // Calculate range selection bounds for ReferenceArea
+    const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
+      ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
+      : null;
+
+    // Handle click for stacked metadata chart
+    const handleStackedMetadataMouseUp = (state: RechartsMouseEvent) => {
+      const e = lastMouseEventRef.current;
+
+      // Check drag selection first
+      if (handleDragSelection(e)) {
+        return;
+      }
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+
+      const target = e?.target as SVGElement | null;
+      const isBar = target?.classList?.contains('recharts-rectangle') ||
+        target?.closest('.recharts-bar-rectangle') !== null;
+
+      const payload = state?.activePayload;
+      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
+        const clickedData = payload[0].payload as typeof stackedData[0];
+        const samples = clickedData?.samples as number[] | undefined;
+        if (samples?.length && selectionCtx) {
+          if (e?.shiftKey) {
+            selectionCtx.select(samples, 'add');
+          } else if (e?.ctrlKey || e?.metaKey) {
+            selectionCtx.toggle(samples);
+          } else {
+            // Regular click: always replace selection with this bar's samples
+            selectionCtx.select(samples, 'replace');
+          }
+          return;
+        }
+      }
+    };
+
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={stackedData}
+          margin={CHART_MARGINS.histogram}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleStackedMetadataMouseUp}
+          onMouseLeave={() => {
+            if (rangeSelection.isSelecting) {
+              setRangeSelection({ start: null, end: null, isSelecting: false });
+            }
+            if (selectionCtx) {
+              selectionCtx.setHovered(null);
+            }
+          }}
+        >
+          <CartesianGrid
+            strokeDasharray={CHART_THEME.gridDasharray}
+            stroke={CHART_THEME.gridStroke}
+            opacity={CHART_THEME.gridOpacity}
+          />
+          <XAxis
+            dataKey="binCenter"
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            tickFormatter={(v) => formatYValue(v, 1)}
+          />
+          <YAxis
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            width={35}
+            label={{
+              value: yAxisLabel,
+              angle: -90,
+              position: 'insideLeft',
+              fontSize: 9,
+            }}
+          />
+          <Tooltip
+            isAnimationActive={false}
+            contentStyle={{
+              backgroundColor: CHART_THEME.tooltipBg,
+              border: `1px solid ${CHART_THEME.tooltipBorder}`,
+              borderRadius: CHART_THEME.tooltipBorderRadius,
+              fontSize: CHART_THEME.tooltipFontSize,
+            }}
+            content={({ payload }) => {
+              if (!payload || payload.length === 0) return null;
+              const data = payload[0]?.payload;
+              if (!data) return null;
+
+              return (
+                <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
+                  <p className="font-medium">{data.label}</p>
+                  {metadataCategories.map((category, catIdx) => {
+                    const count = data[`cat${catIdx}Count`] || 0;
+                    if (count === 0) return null;
+                    return (
+                      <p key={catIdx} className="flex items-center gap-1">
+                        <span
+                          className="w-2 h-2 rounded-sm"
+                          style={{ backgroundColor: getCategoricalColor(catIdx, globalColorConfig?.categoricalPalette ?? 'default') }}
+                        />
+                        {category}: {count}
+                      </p>
+                    );
+                  })}
+                </div>
+              );
+            }}
+          />
+          <Legend
+            verticalAlign="top"
+            height={24}
+            iconSize={10}
+            formatter={(value) => {
+              const idx = parseInt(value.replace('cat', ''), 10);
+              return <span className="text-[10px]">{metadataCategories[idx] ?? value}</span>;
+            }}
+          />
+          {metadataCategories.map((category, catIdx) => (
+            <Bar
+              key={`cat-${catIdx}`}
+              dataKey={`cat${catIdx}`}
+              name={`cat${catIdx}`}
+              stackId="metadata"
+              fill={getCategoricalColor(catIdx, globalColorConfig?.categoricalPalette ?? 'default')}
+              radius={catIdx === metadataCategories.length - 1 ? [2, 2, 0, 0] : undefined}
+              cursor="pointer"
+              {...ANIMATION_CONFIG}
+            >
+              {stackedData.map((entry, index) => {
+                const isSelected = selectedBins.has(index);
+                const isHovered = hoveredBin === index;
+                return (
+                  <Cell
+                    key={`cat-${catIdx}-${index}`}
+                    fill={getCategoricalColor(catIdx, globalColorConfig?.categoricalPalette ?? 'default')}
+                    stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                    strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                  />
+                );
+              })}
+            </Bar>
+          ))}
+          {/* Range selection overlay */}
+          {rangeSelectionBounds && (
+            <ReferenceArea
+              x1={rangeSelectionBounds.min}
+              x2={rangeSelectionBounds.max}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.15}
+              stroke="hsl(var(--primary))"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="4 2"
+            />
+          )}
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  };
+
+  // Render stacked bar chart by selection (selected vs unselected)
+  const renderStackedBySelection = () => {
+    // Transform data for selection stacking
+    const stackedData = histogramData.map(bin => {
+      const selectedCount = bin.samples.filter(s => selectedSamples.has(s)).length;
+      const unselectedCount = bin.count - selectedCount;
+      return {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+        selected: getYValue(selectedCount),
+        unselected: getYValue(unselectedCount),
+        selectedCount,
+        unselectedCount,
+      };
+    });
+
+    // Calculate range selection bounds for ReferenceArea
+    const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
+      ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
+      : null;
+
+    // Handle click for stacked selection chart
+    const handleStackedSelectionMouseUp = (state: RechartsMouseEvent) => {
+      const e = lastMouseEventRef.current;
+
+      // Check drag selection first
+      if (handleDragSelection(e)) {
+        return;
+      }
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+
+      const target = e?.target as SVGElement | null;
+      const isBar = target?.classList?.contains('recharts-rectangle') ||
+        target?.closest('.recharts-bar-rectangle') !== null;
+
+      const payload = state?.activePayload;
+      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
+        const clickedData = payload[0].payload as typeof stackedData[0];
+        if (clickedData?.samples?.length && selectionCtx) {
+          if (e?.shiftKey) {
+            selectionCtx.select(clickedData.samples, 'add');
+          } else if (e?.ctrlKey || e?.metaKey) {
+            selectionCtx.toggle(clickedData.samples);
+          } else {
+            const allSelected = clickedData.samples.every(s => selectionCtx.selectedSamples.has(s));
+            if (allSelected) {
+              selectionCtx.toggle(clickedData.samples);
+            } else {
+              selectionCtx.select(clickedData.samples, 'replace');
+            }
+          }
+          return;
+        }
+      }
+    };
+
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={stackedData}
+          margin={CHART_MARGINS.histogram}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleStackedSelectionMouseUp}
+          onMouseLeave={() => {
+            if (rangeSelection.isSelecting) {
+              setRangeSelection({ start: null, end: null, isSelecting: false });
+            }
+            if (selectionCtx) {
+              selectionCtx.setHovered(null);
+            }
+          }}
+        >
+          <CartesianGrid
+            strokeDasharray={CHART_THEME.gridDasharray}
+            stroke={CHART_THEME.gridStroke}
+            opacity={CHART_THEME.gridOpacity}
+          />
+          <XAxis
+            dataKey="binCenter"
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            tickFormatter={(v) => formatYValue(v, 1)}
+          />
+          <YAxis
+            stroke={CHART_THEME.axisStroke}
+            fontSize={CHART_THEME.axisFontSize}
+            width={35}
+            label={{
+              value: yAxisLabel,
+              angle: -90,
+              position: 'insideLeft',
+              fontSize: 9,
+            }}
+          />
+          <Tooltip
+            isAnimationActive={false}
+            contentStyle={{
+              backgroundColor: CHART_THEME.tooltipBg,
+              border: `1px solid ${CHART_THEME.tooltipBorder}`,
+              borderRadius: CHART_THEME.tooltipBorderRadius,
+              fontSize: CHART_THEME.tooltipFontSize,
+            }}
+            content={({ payload }) => {
+              if (!payload || payload.length === 0) return null;
+              const data = payload[0]?.payload;
+              if (!data) return null;
+
+              return (
+                <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
+                  <p className="font-medium">{data.label}</p>
+                  {data.selectedCount > 0 && (
+                    <p className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: HIGHLIGHT_COLORS.selected }} />
+                      Selected: {data.selectedCount}
+                    </p>
+                  )}
+                  {data.unselectedCount > 0 && (
+                    <p className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: 'hsl(var(--muted-foreground) / 0.4)' }} />
+                      Unselected: {data.unselectedCount}
+                    </p>
+                  )}
+                </div>
+              );
+            }}
+          />
+          <Legend
+            verticalAlign="top"
+            height={24}
+            iconSize={10}
+          />
+          <Bar
+            dataKey="unselected"
+            name="Unselected"
+            stackId="selection"
+            fill="hsl(var(--muted-foreground) / 0.4)"
+            cursor="pointer"
+            {...ANIMATION_CONFIG}
+          >
+            {stackedData.map((entry, index) => {
+              const isSelected = selectedBins.has(index);
+              const isHovered = hoveredBin === index;
+              return (
+                <Cell
+                  key={`unselected-${index}`}
+                  fill="hsl(var(--muted-foreground) / 0.4)"
+                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
+          </Bar>
+          <Bar
+            dataKey="selected"
+            name="Selected"
+            stackId="selection"
+            fill={HIGHLIGHT_COLORS.selected}
+            radius={[2, 2, 0, 0]}
+            cursor="pointer"
+            {...ANIMATION_CONFIG}
+          >
+            {stackedData.map((entry, index) => {
+              const isSelected = selectedBins.has(index);
+              const isHovered = hoveredBin === index;
+              return (
+                <Cell
+                  key={`selected-${index}`}
+                  fill={HIGHLIGHT_COLORS.selected}
+                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
+          </Bar>
+          {/* Range selection overlay */}
+          {rangeSelectionBounds && (
+            <ReferenceArea
+              x1={rangeSelectionBounds.min}
+              x2={rangeSelectionBounds.max}
+              fill="hsl(var(--primary))"
+              fillOpacity={0.15}
+              stroke="hsl(var(--primary))"
+              strokeOpacity={0.5}
+              strokeWidth={1}
+              strokeDasharray="4 2"
+            />
+          )}
         </BarChart>
       </ResponsiveContainer>
     );
@@ -1022,14 +1693,24 @@ export function YHistogramV2({
       displayCount: getYValue(bin.count),
     }));
 
-    // Merge KDE data
-    const mergedData = chartData.map((bin, idx) => {
-      const kdePoint = kdeData.find(k =>
-        k.x >= bin.binStart && k.x < bin.binEnd
-      );
+    // Merge KDE data - find nearest KDE point for each bin center
+    // kdeData is already scaled to match histogram count scale
+    const mergedData = chartData.map((bin) => {
+      // Find nearest KDE point to bin center
+      let nearestKde: { x: number; density: number } | undefined;
+      let minDist = Infinity;
+      for (const kp of kdeData) {
+        const dist = Math.abs(kp.x - bin.binCenter);
+        if (dist < minDist) {
+          minDist = dist;
+          nearestKde = kp;
+        }
+      }
+      // Convert KDE density to the same scale as displayCount
+      const kdeValue = nearestKde ? getYValue(nearestKde.density) : undefined;
       return {
         ...bin,
-        kde: kdePoint ? getYValue(kdePoint.density * (bin.binEnd - bin.binStart) * stats.n) : undefined,
+        kde: kdeValue,
       };
     });
 
@@ -1171,32 +1852,33 @@ export function YHistogramV2({
           <Bar
             dataKey="displayCount"
             radius={[2, 2, 0, 0]}
-            onClick={handleClick}
             cursor="pointer"
             {...ANIMATION_CONFIG}
           >
-            {mergedData.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={getBarColor(entry, index)}
-                stroke={selectedBins.has(index) || hoveredBin === index ? 'hsl(var(--primary))' : 'none'}
-                strokeWidth={selectedBins.has(index) || hoveredBin === index ? 1 : 0}
-              />
-            ))}
+            {mergedData.map((entry, index) => {
+              const isSelected = selectedBins.has(index);
+              const isHovered = hoveredBin === index;
+              const fillColor = getBarColor(entry, index);
+              return (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={fillColor}
+                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
           </Bar>
 
-          {/* KDE overlay */}
-          {config.showKDE && kdeData.length > 0 && (
+          {/* KDE overlay - uses the kde property merged into bar data */}
+          {config.showKDE && (
             <Line
-              data={kdeData.map(d => ({
-                binCenter: d.x,
-                kde: d.density,
-              }))}
               dataKey="kde"
               type="monotone"
               stroke="hsl(280, 65%, 55%)"
               strokeWidth={2}
               dot={false}
+              connectNulls
               {...ANIMATION_CONFIG}
             />
           )}
@@ -1213,41 +1895,13 @@ export function YHistogramV2({
 
     const totalCount = classBarData.reduce((sum, d) => sum + d.count, 0);
 
-    // Get class bar color
+    // Get class bar color - now just returns the base color (selection handled via stroke)
     const getClassBarColor = (entry: ClassBarData, _index: number) => {
-      const isSelected = selectedClasses.has(entry.classIndex);
-      const isHovered = hoveredClass === entry.classIndex;
-      const hasSelection = selectedSamples.size > 0;
-
-      if (isHovered) return 'hsl(var(--primary))';
-      if (isSelected) return 'hsl(var(--primary))';
-      if (hasSelection) return 'hsl(var(--primary) / 0.2)';
-
       // Use categorical color for each class
       if (globalColorConfig) {
         return getCategoricalColor(entry.classIndex, globalColorConfig.categoricalPalette);
       }
       return getCategoricalColor(entry.classIndex, 'default');
-    };
-
-    // Handle class bar click
-    const handleClassClick = (data: unknown, _index: number, event?: React.MouseEvent) => {
-      const rawData = data as { payload?: ClassBarData } | ClassBarData;
-      const barData = 'payload' in rawData && rawData.payload ? rawData.payload : rawData as ClassBarData;
-
-      if (!barData?.samples?.length) return;
-
-      if (selectionCtx) {
-        if (event?.shiftKey) {
-          selectionCtx.select(barData.samples, 'add');
-        } else if (event?.ctrlKey || event?.metaKey) {
-          selectionCtx.toggle(barData.samples);
-        } else {
-          selectionCtx.select(barData.samples, 'replace');
-        }
-      } else if (externalOnSelectSample) {
-        externalOnSelectSample(barData.samples[0]);
-      }
     };
 
     const chartData = classBarData.map(bar => ({
@@ -1257,11 +1911,41 @@ export function YHistogramV2({
         : bar.count,
     }));
 
+    // Handle click for classification chart
+    const handleClassChartMouseUp = (state: RechartsMouseEvent) => {
+      const e = lastMouseEventRef.current;
+
+      // Check if click was on a bar - bars are path elements with class 'recharts-rectangle'
+      const target = e?.target as SVGElement | null;
+      const isBar = target?.classList?.contains('recharts-rectangle') ||
+        target?.closest('.recharts-bar-rectangle') !== null;
+
+      const payload = state?.activePayload;
+      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
+        const clickedData = payload[0].payload as ClassBarData;
+        if (clickedData?.samples?.length && selectionCtx) {
+          if (e?.shiftKey) {
+            selectionCtx.select(clickedData.samples, 'add');
+          } else if (e?.ctrlKey || e?.metaKey) {
+            selectionCtx.toggle(clickedData.samples);
+          } else {
+            selectionCtx.select(clickedData.samples, 'replace');
+          }
+          return;
+        }
+      }
+      // No bar clicked - clear selection
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
+      }
+    };
+
     return (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={chartData}
           margin={CHART_MARGINS.histogram}
+          onMouseUp={handleClassChartMouseUp}
           onMouseLeave={() => {
             if (selectionCtx) {
               selectionCtx.setHovered(null);
@@ -1319,7 +2003,6 @@ export function YHistogramV2({
           <Bar
             dataKey="displayCount"
             radius={[4, 4, 0, 0]}
-            onClick={handleClassClick}
             cursor="pointer"
             onMouseEnter={(data: { payload?: ClassBarData }) => {
               if (selectionCtx && data.payload?.samples?.length) {
@@ -1328,37 +2011,53 @@ export function YHistogramV2({
             }}
             {...ANIMATION_CONFIG}
           >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={`class-cell-${index}`}
-                fill={getClassBarColor(entry, index)}
-                stroke={selectedClasses.has(entry.classIndex) || hoveredClass === entry.classIndex ? 'hsl(var(--primary))' : 'none'}
-                strokeWidth={selectedClasses.has(entry.classIndex) || hoveredClass === entry.classIndex ? 1 : 0}
-              />
-            ))}
+            {chartData.map((entry, index) => {
+              const isSelected = selectedClasses.has(entry.classIndex);
+              const isHovered = hoveredClass === entry.classIndex;
+              const fillColor = getClassBarColor(entry, index);
+              return (
+                <Cell
+                  key={`class-cell-${index}`}
+                  fill={fillColor}
+                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
     );
   };
 
-  // Select renderer based on display mode
+  // Select renderer based on color mode
   const renderChart = () => {
     // Phase 5: Use classification chart for categorical targets
     if (isClassificationMode && classBarData.length > 0) {
       return renderClassificationChart();
     }
 
-    switch (config.displayMode) {
-      case 'ridge':
-        return hasFolds ? renderRidgePlot() : renderSimpleChart();
-      case 'stacked':
-        return hasFolds ? renderStackedChart() : renderSimpleChart();
-      case 'overlaid':
-        return hasFolds ? renderStackedChart() : renderSimpleChart();
-      default:
-        return renderSimpleChart();
+    // Stack by partition (train/test) when partition mode is selected
+    if (shouldStackByPartition && colorContext?.trainIndices && colorContext?.testIndices) {
+      return renderStackedByPartition();
     }
+
+    // Stack by fold when fold mode is selected and folds are available
+    if (shouldStackByFold && hasFolds) {
+      return renderStackedByFold();
+    }
+
+    // Stack by metadata category when metadata mode is selected with categorical type
+    if (shouldStackByMetadata && metadataCategories.length > 0) {
+      return renderStackedByMetadata();
+    }
+
+    // Stack by selection when selection mode is selected
+    if (shouldStackBySelection) {
+      return renderStackedBySelection();
+    }
+
+    return renderSimpleChart();
   };
 
   return (
@@ -1396,41 +2095,29 @@ export function YHistogramV2({
             </SelectContent>
           </Select>
 
-          {/* Display mode selector (only when folds available) */}
-          {hasFolds && (
-            <Select
-              value={config.displayMode}
-              onValueChange={(v) => updateConfig({ displayMode: v as HistogramDisplayMode })}
-            >
-              <SelectTrigger className="h-7 w-20 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="simple">Simple</SelectItem>
-                <SelectItem value="stacked">Stacked</SelectItem>
-                <SelectItem value="ridge">Ridge</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Color mode selector */}
-          {hasFolds && config.displayMode === 'simple' && (
-            <Select
-              value={config.colorMode}
-              onValueChange={(v) => updateConfig({ colorMode: v as HistogramColorMode })}
-            >
-              <SelectTrigger className="h-7 w-16 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="uniform">Color</SelectItem>
-                <SelectItem value="fold">Fold</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-
           {/* Settings dropdown */}
           {renderSettingsDropdown()}
+
+          {/* Clear selection button - only show when there's a selection */}
+          {selectionCtx && selectionCtx.selectedSamples.size > 0 && (
+            <TooltipProvider delayDuration={200}>
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => selectionCtx.clear()}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Clear selection ({selectionCtx.selectedSamples.size})</p>
+                </TooltipContent>
+              </TooltipUI>
+            </TooltipProvider>
+          )}
 
           {/* Export button */}
           <TooltipProvider delayDuration={200}>
@@ -1449,7 +2136,7 @@ export function YHistogramV2({
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-0" onClick={handleChartBackgroundClick}>
+      <div className="flex-1 min-h-0">
         {renderChart()}
       </div>
 
@@ -1484,20 +2171,21 @@ export function YHistogramV2({
               )}
             </div>
           ) : (
-            // Regression stats
+            // Regression stats - show selected stats if there's a selection, otherwise all stats
             <div className="grid grid-cols-5 gap-1 text-[10px] flex-1">
               {[
-                { label: 'Mean', value: stats?.mean ?? 0, highlight: config.showMean },
-                { label: 'Med', value: stats?.median ?? 0, highlight: config.showMedian },
-                { label: 'Std', value: stats?.std ?? 0 },
-                { label: 'Min', value: stats?.min ?? 0 },
-                { label: 'Max', value: stats?.max ?? 0 },
+                { label: 'Mean', value: displayStats?.mean ?? 0, highlight: config.showMean },
+                { label: 'Med', value: displayStats?.median ?? 0, highlight: config.showMedian },
+                { label: 'Std', value: displayStats?.std ?? 0 },
+                { label: 'Min', value: displayStats?.min ?? 0 },
+                { label: 'Max', value: displayStats?.max ?? 0 },
               ].map(({ label, value, highlight }) => (
                 <div
                   key={label}
                   className={cn(
                     'bg-muted rounded p-1 text-center',
-                    highlight && 'ring-1 ring-primary/50'
+                    highlight && 'ring-1 ring-primary/50',
+                    selectedSamples.size > 0 && 'ring-1 ring-primary/30'
                   )}
                 >
                   <div className="text-muted-foreground">{label}</div>
@@ -1514,21 +2202,10 @@ export function YHistogramV2({
         </div>
       )}
 
-      {/* Fold legend for stacked/ridge modes */}
-      {hasFolds && (config.displayMode === 'stacked' || config.displayMode === 'ridge') && !compact && (
-        <div className="flex items-center gap-2 mt-2 text-[10px]">
-          {uniqueFolds.slice(0, 5).map(foldIdx => (
-            <span key={foldIdx} className="flex items-center gap-1">
-              <span
-                className="w-2 h-2 rounded-sm"
-                style={{ backgroundColor: getFoldColor(foldIdx) }}
-              />
-              <span>F{foldIdx + 1}</span>
-            </span>
-          ))}
-          {uniqueFolds.length > 5 && (
-            <span className="text-muted-foreground">+{uniqueFolds.length - 5} more</span>
-          )}
+      {/* Color legend */}
+      {globalColorConfig && colorContext && !compact && (
+        <div className="mt-2">
+          <InlineColorLegend config={globalColorConfig} context={colorContext} />
         </div>
       )}
     </div>

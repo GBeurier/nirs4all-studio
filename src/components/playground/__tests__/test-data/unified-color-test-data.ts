@@ -1,13 +1,14 @@
 /**
  * Test data for Unified Coloration System visual testing
  *
- * Contains 100 samples with:
- * - Spectra (100 x 200 wavelengths)
+ * Contains 700 samples with:
+ * - Spectra (700 x 200 wavelengths)
  * - Y values (range 0-100)
  * - 5-fold CV fold labels
  * - Train/test partition per fold
+ * - Repetitions (175 bio samples x 4 reps)
  * - Categorical and continuous metadata
- * - 10 outliers
+ * - 70 outliers (10%)
  */
 
 // Generate deterministic pseudo-random numbers
@@ -23,16 +24,23 @@ const random = seededRandom(42);
 
 // ============= Sample Configuration =============
 
-export const NUM_SAMPLES = 100;
+export const NUM_SAMPLES = 700;
 export const NUM_WAVELENGTHS = 200;
 export const NUM_FOLDS = 5;
+export const NUM_BIO_SAMPLES = 175;
+export const NUM_REPS = 4;
+export const NUM_TEST_SAMPLES = 35; // 20% test
 
 // ============= Generate Sample IDs =============
 
-export const sampleIds: string[] = Array.from(
-  { length: NUM_SAMPLES },
-  (_, i) => `sample_${String(i + 1).padStart(3, '0')}`
-);
+// Sample IDs follow the pattern: Sample_XX_rY (bio sample ID with repetition number)
+export const sampleIds: string[] = [];
+for (let bioIdx = 0; bioIdx < NUM_BIO_SAMPLES; bioIdx++) {
+  const bioId = String(bioIdx + 1).padStart(3, '0');
+  for (let rep = 0; rep < NUM_REPS; rep++) {
+    sampleIds.push(`Sample_${bioId}_r${rep + 1}`);
+  }
+}
 
 // ============= Generate Wavelengths =============
 
@@ -43,33 +51,53 @@ export const wavelengths: number[] = Array.from(
 
 // ============= Generate Y Values =============
 
-export const y: number[] = Array.from(
-  { length: NUM_SAMPLES },
-  (_, i) => {
+// First generate true concentrations for each bio sample
+const bioSampleConcentrations: number[] = Array.from(
+  { length: NUM_BIO_SAMPLES },
+  (_, bioIdx) => {
     // Create a distribution with some clustering
-    const base = (i / NUM_SAMPLES) * 100;
+    const base = (bioIdx / NUM_BIO_SAMPLES) * 100;
     const noise = (random() - 0.5) * 20;
     return Math.max(0, Math.min(100, base + noise));
   }
 );
 
+// Now create Y values with small variations for each repetition
+export const y: number[] = [];
+for (let bioIdx = 0; bioIdx < NUM_BIO_SAMPLES; bioIdx++) {
+  const trueConcentration = bioSampleConcentrations[bioIdx];
+  for (let rep = 0; rep < NUM_REPS; rep++) {
+    // Small variation between repetitions
+    const variation = (random() - 0.5) * 5;
+    y.push(Math.max(0, Math.min(100, trueConcentration + variation)));
+  }
+}
+
 // ============= Generate Spectra =============
 
-export const spectra: number[][] = Array.from(
-  { length: NUM_SAMPLES },
-  (_, sampleIdx) => {
-    return Array.from({ length: NUM_WAVELENGTHS }, (_, wlIdx) => {
+// Generate spectra with bio sample correlation (same bio sample = similar spectra)
+export const spectra: number[][] = [];
+for (let bioIdx = 0; bioIdx < NUM_BIO_SAMPLES; bioIdx++) {
+  const trueConcentration = bioSampleConcentrations[bioIdx];
+  const yFactor = trueConcentration / 100;
+
+  for (let rep = 0; rep < NUM_REPS; rep++) {
+    // Small variation between repetitions
+    const repVariation = (random() - 0.5) * 0.01;
+
+    const spectrum = Array.from({ length: NUM_WAVELENGTHS }, (_, wlIdx) => {
       // Base spectrum with some structure
       const base = Math.sin(wlIdx / 20) * 0.3 + 1;
-      // Sample-specific variation correlated with Y
-      const yFactor = y[sampleIdx] / 100;
+      // Sample-specific variation correlated with true concentration
       const sampleVariation = yFactor * 0.2 * Math.cos(wlIdx / 10);
       // Random noise
       const noise = (random() - 0.5) * 0.05;
-      return base + sampleVariation + noise;
+      return base + sampleVariation + noise + repVariation;
     });
+
+    spectra.push(spectrum);
   }
-);
+}
 
 // ============= Generate Fold Labels =============
 
@@ -112,32 +140,58 @@ export const folds: {
 const categories = ['A', 'B', 'C', 'D'];
 const sources = ['Lab1', 'Lab2', 'Lab3'];
 
-export const metadata: Record<string, (string | number)[]> = {
-  // Categorical: category assignment
-  category: Array.from({ length: NUM_SAMPLES }, (_, i) =>
-    categories[Math.floor(random() * categories.length)]
-  ),
+// Determine train/test split: last NUM_TEST_SAMPLES bio samples are test
+const testSampleStart = NUM_BIO_SAMPLES - NUM_TEST_SAMPLES;
 
-  // Categorical: source lab
-  source: Array.from({ length: NUM_SAMPLES }, (_, i) =>
-    sources[Math.floor(random() * sources.length)]
-  ),
+// Generate metadata with bio_sample, repetition, and set (train/test)
+export const metadata: Record<string, (string | number)[]> = {
+  // Bio sample ID (e.g., Sample_001, Sample_002, ...)
+  bio_sample: [],
+
+  // Repetition number (1-4)
+  repetition: [],
+
+  // Set: train or test
+  set: [],
+
+  // Categorical: category assignment (per bio sample)
+  category: [],
+
+  // Categorical: source lab (per bio sample)
+  source: [],
 
   // Continuous: measurement quality score
-  quality: Array.from({ length: NUM_SAMPLES }, () =>
-    Math.round((random() * 40 + 60) * 10) / 10 // 60-100 range
-  ),
+  quality: [],
 
   // Continuous: sample age in days
-  age: Array.from({ length: NUM_SAMPLES }, () =>
-    Math.round(random() * 365) // 0-365 days
-  ),
+  age: [],
 };
+
+// Populate metadata arrays
+for (let bioIdx = 0; bioIdx < NUM_BIO_SAMPLES; bioIdx++) {
+  const bioId = String(bioIdx + 1).padStart(3, '0');
+  const isTest = bioIdx >= testSampleStart;
+  const bioCategory = categories[Math.floor(random() * categories.length)];
+  const bioSource = sources[Math.floor(random() * sources.length)];
+
+  for (let rep = 0; rep < NUM_REPS; rep++) {
+    metadata.bio_sample.push(`Sample_${bioId}`);
+    metadata.repetition.push(rep + 1);
+    metadata.set.push(isTest ? 'test' : 'train');
+    metadata.category.push(bioCategory);
+    metadata.source.push(bioSource);
+    metadata.quality.push(Math.round((random() * 40 + 60) * 10) / 10);
+    metadata.age.push(Math.round(random() * 365));
+  }
+}
 
 // ============= Generate Outliers =============
 
-// Select 10 samples as outliers (spread across the dataset)
-export const outlierIndices: number[] = [5, 12, 23, 45, 52, 67, 78, 83, 91, 99];
+// Select 70 samples as outliers (10% of 700, spread across the dataset)
+export const outlierIndices: number[] = Array.from(
+  { length: 70 },
+  (_, i) => Math.floor((i * NUM_SAMPLES) / 70)
+);
 
 export const outlierResult = {
   outlier_indices: outlierIndices,
@@ -145,6 +199,19 @@ export const outlierResult = {
   threshold: 0.85,
   method: 'iqr',
 };
+
+// ============= Compute Train/Test Indices from Metadata =============
+
+// Train indices: samples where metadata.set === 'train'
+const trainIndices: number[] = [];
+const testIndices: number[] = [];
+for (let i = 0; i < NUM_SAMPLES; i++) {
+  if (metadata.set[i] === 'train') {
+    trainIndices.push(i);
+  } else {
+    testIndices.push(i);
+  }
+}
 
 // ============= Combined Test Data Export =============
 
@@ -164,10 +231,10 @@ export const unifiedColorTestData = {
   // Outliers
   outlierResult,
 
-  // Derived sets for colorContext
+  // Derived sets for colorContext (using metadata-based train/test)
   outlierIndicesSet: new Set(outlierIndices),
-  trainIndicesSet: new Set(folds.folds[0].train_indices), // Use fold 0 for train/test
-  testIndicesSet: new Set(folds.folds[0].test_indices),
+  trainIndicesSet: new Set(trainIndices),
+  testIndicesSet: new Set(testIndices),
 };
 
 // ============= Mock Result Object =============
@@ -213,6 +280,7 @@ export const testScenarios = [
       'Medium Y values (34-66) should be green/yellow',
       'High Y values (67-100) should be red',
       'All charts should use the same colors for the same samples',
+      'Note: Repetitions of the same bio sample should have similar colors',
     ],
   },
   {
@@ -220,9 +288,9 @@ export const testScenarios = [
     mode: 'partition' as const,
     description: 'Samples should show train (blue) vs test (orange)',
     verification: [
-      'Train samples should be blue',
-      'Test samples should be orange',
-      'Fold 0 test samples: indices 0, 5, 10, 15, 20, ...',
+      'Train samples (560): first 140 bio samples × 4 reps',
+      'Test samples (140): last 35 bio samples × 4 reps',
+      'Test samples start at index 560 (Sample_141_r1)',
     ],
   },
   {
@@ -233,7 +301,7 @@ export const testScenarios = [
       'Each fold should have a unique color from categorical palette',
       'Fold 0: indices 0, 5, 10, ... (every 5th starting from 0)',
       'Fold 1: indices 1, 6, 11, ... (every 5th starting from 1)',
-      // etc.
+      'With 700 samples, each fold has ~140 samples',
     ],
   },
   {
@@ -244,6 +312,28 @@ export const testScenarios = [
     verification: [
       'Each category should have a distinct color',
       '4 categories = 4 colors from categorical palette',
+      'All reps of the same bio sample share the same category',
+    ],
+  },
+  {
+    name: 'Metadata Mode (set)',
+    mode: 'metadata' as const,
+    metadataKey: 'set',
+    description: 'Samples should show train vs test based on metadata',
+    verification: [
+      'Train samples should have one color',
+      'Test samples should have another color',
+      '80% train (560 samples), 20% test (140 samples)',
+    ],
+  },
+  {
+    name: 'Metadata Mode (repetition)',
+    mode: 'metadata' as const,
+    metadataKey: 'repetition',
+    description: 'Samples should show colors based on repetition number (1-4)',
+    verification: [
+      'Each repetition (1-4) should have a distinct color',
+      '4 repetitions = 4 colors from categorical palette',
     ],
   },
   {
@@ -253,7 +343,7 @@ export const testScenarios = [
     verification: [
       'Unselected samples should be grey/muted',
       'Selected samples should be primary color',
-      'Try selecting samples 0, 10, 20, 30, 40',
+      'Try selecting samples 0, 100, 200, 300, 400',
     ],
   },
   {
@@ -261,7 +351,7 @@ export const testScenarios = [
     mode: 'outlier' as const,
     description: 'Outliers should be red, non-outliers grey',
     verification: [
-      'Outlier indices: 5, 12, 23, 45, 52, 67, 78, 83, 91, 99',
+      '70 outliers (10% of 700 samples) spread across dataset',
       'These samples should be red',
       'All other samples should be grey',
       'Outliers should be rendered on top (z-order)',

@@ -36,6 +36,81 @@ export type SpectraDisplayMode = 'individual' | 'selected_only' | 'aggregated' |
  */
 export type SpectraColorMode = 'target' | 'fold' | 'partition' | 'metadata' | 'selection' | 'outlier';
 
+// ============= Difference Mode Types =============
+
+/**
+ * Analysis mode for difference visualization
+ */
+export type DiffAnalysisMode = 'reference_vs_final' | 'repetition_variance';
+
+/**
+ * Distance metrics for difference calculations
+ */
+export type DiffDistanceMetric =
+  | 'euclidean'
+  | 'manhattan'
+  | 'mahalanobis'
+  | 'cosine'
+  | 'pca_distance'
+  | 'spectral_angle'
+  | 'correlation';
+
+/**
+ * Plot types for difference visualization
+ */
+export type DiffPlotType = 'scatter' | 'line' | 'bar';
+
+/**
+ * Reference options for repetition variance mode
+ */
+export type RepetitionReference = 'group_mean' | 'leave_one_out' | 'first' | 'selected';
+
+/**
+ * Quantile options for reference lines
+ */
+export type DiffQuantile = 50 | 75 | 90 | 95;
+
+/**
+ * Scale type for difference visualization
+ */
+export type DiffScaleType = 'linear' | 'log';
+
+/**
+ * Difference mode configuration
+ */
+export interface DiffModeConfig {
+  /** Analysis mode: compare reference vs final, or analyze repetition variance */
+  analysisMode: DiffAnalysisMode;
+  /** Dataset source for repetition variance mode */
+  datasetSource: 'primary' | 'reference';
+  /** Distance metric to use */
+  metric: DiffDistanceMetric;
+  /** Plot type for visualization */
+  plotType: DiffPlotType;
+  /** Quantile reference lines to display */
+  quantiles: DiffQuantile[];
+  /** Reference type for repetition variance mode */
+  repetitionReference: RepetitionReference;
+  /** Scale type for y-axis */
+  scaleType: DiffScaleType;
+  /** Whether to show absolute differences */
+  showAbsoluteDifference: boolean;
+}
+
+/**
+ * Default difference mode configuration
+ */
+export const DEFAULT_DIFF_MODE_CONFIG: DiffModeConfig = {
+  analysisMode: 'reference_vs_final',
+  datasetSource: 'primary',
+  metric: 'euclidean',
+  plotType: 'line',
+  quantiles: [],
+  repetitionReference: 'group_mean',
+  scaleType: 'linear',
+  showAbsoluteDifference: false,
+};
+
 /**
  * Coloring configuration for spectra
  * @deprecated Use GlobalColorConfig from '@/lib/playground/colorConfig' instead
@@ -51,6 +126,8 @@ export interface SpectraColorConfig {
   unselectedOpacity: number;
   /** Whether to show pinned samples with distinct style */
   highlightPinned: boolean;
+  /** Custom color for selected spectra (overrides default cyan) */
+  selectionColor?: string;
 }
 
 /**
@@ -297,6 +374,11 @@ export interface SpectraChartConfig {
   showGrid: boolean;
   showLegend: boolean;
   showTooltip: boolean;
+  /** Whether to enable hover highlighting (can cause performance issues with many spectra) */
+  enableHover: boolean;
+
+  // Difference mode configuration
+  diffConfig: DiffModeConfig;
 }
 
 /**
@@ -317,6 +399,8 @@ export const DEFAULT_SPECTRA_CHART_CONFIG: SpectraChartConfig = {
   showGrid: true,
   showLegend: true,
   showTooltip: true,
+  enableHover: true,
+  diffConfig: DEFAULT_DIFF_MODE_CONFIG,
 };
 
 // ============= Helper Functions =============
@@ -442,6 +526,7 @@ export function deserializeConfig(json: string): SpectraChartConfig | null {
       aggregation: { ...DEFAULT_AGGREGATION_CONFIG, ...parsed.aggregation },
       wavelengthFocus: { ...DEFAULT_WAVELENGTH_FOCUS_CONFIG, ...parsed.wavelengthFocus },
       filters: { ...DEFAULT_FILTER_CONFIG, ...parsed.filters },
+      diffConfig: { ...DEFAULT_DIFF_MODE_CONFIG, ...parsed.diffConfig },
     };
   } catch {
     return null;

@@ -1694,3 +1694,126 @@ async def find_similar_samples(request: SimilarityRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============= Difference Computation Endpoints =============
+
+
+class DiffComputeRequest(BaseModel):
+    """Request model for computing differences between reference and final datasets."""
+
+    X_ref: List[List[float]] = Field(..., description="Reference spectra (n_samples x n_features)")
+    X_final: List[List[float]] = Field(..., description="Final spectra (n_samples x n_features)")
+    metric: str = Field(
+        "euclidean",
+        description="Distance metric: 'euclidean', 'manhattan', 'cosine', 'spectral_angle', 'correlation', 'mahalanobis', 'pca_distance'",
+    )
+    scale: str = Field("linear", description="Scale type: 'linear' or 'log'")
+
+
+class RepetitionVarianceRequest(BaseModel):
+    """Request model for computing variance within repetition groups."""
+
+    X: List[List[float]] = Field(..., description="Spectral data (n_samples x n_features)")
+    group_ids: List[str] = Field(..., description="Group identifiers for each sample")
+    reference: str = Field(
+        "group_mean",
+        description="Reference type: 'group_mean', 'leave_one_out', 'first'",
+    )
+    metric: str = Field("euclidean", description="Distance metric to use")
+
+
+@router.post("/diff/compute")
+async def compute_diff(request: DiffComputeRequest):
+    """Compute per-sample differences between reference and final spectra.
+
+    Phase 7 Implementation: Computes distance metrics between paired samples
+    from reference and final datasets for difference visualization.
+    """
+    try:
+        X_ref = np.array(request.X_ref, dtype=np.float64)
+        X_final = np.array(request.X_final, dtype=np.float64)
+
+        if X_ref.shape != X_final.shape:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Shape mismatch: X_ref {X_ref.shape} != X_final {X_final.shape}",
+            )
+
+        computer = MetricsComputer()
+        distances = computer.compute_pairwise_distances(X_ref, X_final, request.metric)
+
+        if request.scale == "log":
+            distances = np.log1p(distances)
+
+        quantiles = np.percentile(distances, [50, 75, 90, 95])
+
+        return {
+            "success": True,
+            "metric": request.metric,
+            "scale": request.scale,
+            "distances": distances.tolist(),
+            "statistics": {
+                "mean": float(np.mean(distances)),
+                "std": float(np.std(distances)),
+                "min": float(np.min(distances)),
+                "max": float(np.max(distances)),
+                "quantiles": {
+                    "50": float(quantiles[0]),
+                    "75": float(quantiles[1]),
+                    "90": float(quantiles[2]),
+                    "95": float(quantiles[3]),
+                },
+            },
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/diff/repetition-variance")
+async def compute_repetition_variance(request: RepetitionVarianceRequest):
+    """Compute variance within repetition groups.
+
+    Phase 7 Implementation: Analyzes the variance of spectra within groups
+    (e.g., repetitions of the same biological sample) to identify inconsistent
+    measurements or problematic samples.
+    """
+    try:
+        X = np.array(request.X, dtype=np.float64)
+        group_ids = np.array(request.group_ids)
+
+        if len(group_ids) != X.shape[0]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"group_ids length ({len(group_ids)}) != number of samples ({X.shape[0]})",
+            )
+
+        computer = MetricsComputer()
+        result = computer.compute_repetition_variance(
+            X=X,
+            group_ids=group_ids,
+            reference=request.reference,
+            metric=request.metric,
+        )
+
+        return {
+            "success": True,
+            "reference": request.reference,
+            "metric": request.metric,
+            "distances": result["distances"].tolist(),
+            "sample_indices": result["sample_indices"],
+            "group_ids": result["group_ids"],
+            "quantiles": result["quantiles"],
+            "per_group": result["per_group"],
+            "n_groups": len(result["per_group"]),
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

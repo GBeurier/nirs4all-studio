@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion";
 import {
   Database,
   Plus,

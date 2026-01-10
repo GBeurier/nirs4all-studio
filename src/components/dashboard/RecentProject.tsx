@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion";
 import { Clock, CheckCircle2, Loader2, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 

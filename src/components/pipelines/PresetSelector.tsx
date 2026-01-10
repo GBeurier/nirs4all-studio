@@ -3,7 +3,7 @@
  * Phase 6: Pipelines Library
  */
 
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion";
 import { FlaskConical, Wheat, Calculator, GitBranch, Sparkles, Beaker } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";

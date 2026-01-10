@@ -126,7 +126,7 @@ export function ChartLoadingOverlay({ visible }: ChartLoadingOverlayProps) {
   if (!visible) return null;
 
   return (
-    <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] flex items-center justify-center z-20 pointer-events-none">
+    <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-20 pointer-events-none">
       <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
       <span className="sr-only">Updating chart</span>
     </div>

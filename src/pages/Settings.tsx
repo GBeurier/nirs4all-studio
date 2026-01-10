@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion";
 import {
   FolderOpen,
   Monitor,

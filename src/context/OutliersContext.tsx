@@ -190,11 +190,11 @@ export function OutliersProvider({
     return merged;
   });
 
-  // Persist manual outliers on change
+  // Persist manual outliers on change - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
     const timeout = setTimeout(() => {
       persistState(state);
-    }, 100);
+    }, 500);
     return () => clearTimeout(timeout);
   }, [state.manualOutliers]);
 

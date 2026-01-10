@@ -19,8 +19,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { UnifiedOperatorCard } from './UnifiedOperatorCard';
-import { useOperatorRegistry } from '@/hooks/useOperatorRegistry';
-import type { UnifiedOperator, StepError, FilterInfo } from '@/types/playground';
+import { useNodeRegistryOptional, type NodeDefinition } from '@/components/pipeline-editor/contexts';
+import type { UnifiedOperator, StepError, FilterInfo, OperatorParamInfo } from '@/types/playground';
 
 interface PipelineBuilderProps {
   operators: UnifiedOperator[];
@@ -34,6 +34,33 @@ interface PipelineBuilderProps {
   onToggle: (id: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onClear: () => void;
+}
+
+// Map playground operator type to NodeRegistry type
+type PlaygroundType = 'preprocessing' | 'augmentation' | 'splitting' | 'filter';
+const TYPE_TO_NODE_TYPES: Record<PlaygroundType, string[]> = {
+  preprocessing: ['preprocessing'],
+  augmentation: ['augmentation', 'sample_augmentation', 'feature_augmentation'],
+  splitting: ['splitting'],
+  filter: ['filter', 'sample_filter'],
+};
+
+/**
+ * Convert NodeDefinition parameters to OperatorParamInfo format
+ */
+function nodeParamsToOperatorParams(node: NodeDefinition | undefined): Record<string, OperatorParamInfo> | undefined {
+  if (!node?.parameters) return undefined;
+
+  const result: Record<string, OperatorParamInfo> = {};
+  for (const param of node.parameters) {
+    result[param.name] = {
+      required: param.required ?? false,
+      default: param.default,
+      type: param.type,
+      default_is_callable: false,
+    };
+  }
+  return result;
 }
 
 export function PipelineBuilder({
@@ -51,8 +78,23 @@ export function PipelineBuilder({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
-  // Get operator definitions for parameter info
-  const { getOperator } = useOperatorRegistry();
+  // Get operator definitions from NodeRegistry
+  const registryContext = useNodeRegistryOptional();
+
+  // Helper to find operator definition by name and type
+  const getOperatorDefinition = useMemo(() => {
+    if (!registryContext) return () => undefined;
+
+    return (name: string, type: PlaygroundType): NodeDefinition | undefined => {
+      const nodeTypes = TYPE_TO_NODE_TYPES[type] ?? [type];
+      for (const nodeType of nodeTypes) {
+        const nodes = registryContext.getNodesByType(nodeType as NodeDefinition['type']);
+        const found = nodes.find(n => n.name === name);
+        if (found) return found;
+      }
+      return undefined;
+    };
+  }, [registryContext]);
 
   // Build error map for quick lookup
   const errorMap = useMemo(() => {
@@ -184,7 +226,8 @@ export function PipelineBuilder({
 
       <div className="space-y-2">
         {operators.map((operator, index) => {
-          const definition = getOperator(operator.name);
+          const nodeDef = getOperatorDefinition(operator.name, operator.type as PlaygroundType);
+          const paramDefs = nodeParamsToOperatorParams(nodeDef);
           const hasError = errorMap.has(operator.id);
           const filterStats = operator.type === 'filter'
             ? filterStatsMap.get(operator.name)
@@ -198,8 +241,8 @@ export function PipelineBuilder({
               <UnifiedOperatorCard
                 operator={operator}
                 index={index}
-                paramDefs={definition?.params}
-                description={definition?.description}
+                paramDefs={paramDefs}
+                description={nodeDef?.description}
                 filterStats={filterStats}
                 onUpdate={onUpdate}
                 onUpdateParams={onUpdateParams}

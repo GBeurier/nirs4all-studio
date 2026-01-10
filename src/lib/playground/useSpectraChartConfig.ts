@@ -24,8 +24,16 @@ import {
   type SpectraColorConfig,
   type SpectraColorMode,
   type ReferenceStepConfig,
+  type DiffModeConfig,
+  type DiffAnalysisMode,
+  type DiffDistanceMetric,
+  type DiffPlotType,
+  type DiffQuantile,
+  type DiffScaleType,
+  type RepetitionReference,
   DEFAULT_SPECTRA_CHART_CONFIG,
   DEFAULT_SPECTRA_COLOR_CONFIG,
+  DEFAULT_DIFF_MODE_CONFIG,
   serializeConfig,
   deserializeConfig,
 } from './spectraConfig';
@@ -65,6 +73,7 @@ export interface UseSpectraChartConfigResult {
   // Color configuration
   setColorMode: (mode: SpectraColorMode) => void;
   setColorMetadataKey: (key: string | undefined) => void;
+  setSelectionColor: (color: string | undefined) => void;
   updateColorConfig: (updates: Partial<SpectraColorConfig>) => void;
 
   // Reference step
@@ -102,6 +111,19 @@ export interface UseSpectraChartConfigResult {
   toggleGrid: () => void;
   toggleLegend: () => void;
   toggleTooltip: () => void;
+  toggleHover: () => void;
+
+  // Diff mode configuration
+  setDiffAnalysisMode: (mode: DiffAnalysisMode) => void;
+  setDiffDatasetSource: (source: 'primary' | 'reference') => void;
+  setDiffMetric: (metric: DiffDistanceMetric) => void;
+  setDiffPlotType: (plotType: DiffPlotType) => void;
+  setDiffQuantiles: (quantiles: DiffQuantile[]) => void;
+  toggleDiffQuantile: (quantile: DiffQuantile) => void;
+  setDiffRepetitionReference: (ref: RepetitionReference) => void;
+  setDiffScaleType: (scale: DiffScaleType) => void;
+  toggleDiffAbsoluteMode: () => void;
+  updateDiffConfig: (updates: Partial<DiffModeConfig>) => void;
 }
 
 /**
@@ -262,6 +284,13 @@ export function useSpectraChartConfig(
     }));
   }, []);
 
+  const setSelectionColor = useCallback((color: string | undefined) => {
+    setConfig(prev => ({
+      ...prev,
+      colorConfig: { ...prev.colorConfig, selectionColor: color },
+    }));
+  }, []);
+
   const updateColorConfig = useCallback((updates: Partial<SpectraColorConfig>) => {
     setConfig(prev => ({
       ...prev,
@@ -369,6 +398,87 @@ export function useSpectraChartConfig(
     setConfig(prev => ({ ...prev, showTooltip: !prev.showTooltip }));
   }, []);
 
+  const toggleHover = useCallback(() => {
+    setConfig(prev => ({ ...prev, enableHover: !prev.enableHover }));
+  }, []);
+
+  // Diff mode setters
+  const setDiffAnalysisMode = useCallback((mode: DiffAnalysisMode) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, analysisMode: mode },
+    }));
+  }, []);
+
+  const setDiffDatasetSource = useCallback((source: 'primary' | 'reference') => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, datasetSource: source },
+    }));
+  }, []);
+
+  const setDiffMetric = useCallback((metric: DiffDistanceMetric) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, metric },
+    }));
+  }, []);
+
+  const setDiffPlotType = useCallback((plotType: DiffPlotType) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, plotType },
+    }));
+  }, []);
+
+  const setDiffQuantiles = useCallback((quantiles: DiffQuantile[]) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, quantiles },
+    }));
+  }, []);
+
+  const toggleDiffQuantile = useCallback((quantile: DiffQuantile) => {
+    setConfig(prev => {
+      const current = prev.diffConfig.quantiles;
+      const newQuantiles = current.includes(quantile)
+        ? current.filter(q => q !== quantile)
+        : [...current, quantile].sort((a, b) => a - b);
+      return {
+        ...prev,
+        diffConfig: { ...prev.diffConfig, quantiles: newQuantiles },
+      };
+    });
+  }, []);
+
+  const setDiffRepetitionReference = useCallback((ref: RepetitionReference) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, repetitionReference: ref },
+    }));
+  }, []);
+
+  const setDiffScaleType = useCallback((scale: DiffScaleType) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, scaleType: scale },
+    }));
+  }, []);
+
+  const toggleDiffAbsoluteMode = useCallback(() => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, showAbsoluteDifference: !prev.diffConfig.showAbsoluteDifference },
+    }));
+  }, []);
+
+  const updateDiffConfig = useCallback((updates: Partial<DiffModeConfig>) => {
+    setConfig(prev => ({
+      ...prev,
+      diffConfig: { ...prev.diffConfig, ...updates },
+    }));
+  }, []);
+
   return useMemo(() => ({
     config,
     updateConfig,
@@ -378,6 +488,7 @@ export function useSpectraChartConfig(
     setDisplayMode,
     setColorMode,
     setColorMetadataKey,
+    setSelectionColor,
     updateColorConfig,
     setReferenceStep,
     setSubsetMode,
@@ -401,6 +512,18 @@ export function useSpectraChartConfig(
     toggleGrid,
     toggleLegend,
     toggleTooltip,
+    toggleHover,
+    // Diff mode
+    setDiffAnalysisMode,
+    setDiffDatasetSource,
+    setDiffMetric,
+    setDiffPlotType,
+    setDiffQuantiles,
+    toggleDiffQuantile,
+    setDiffRepetitionReference,
+    setDiffScaleType,
+    toggleDiffAbsoluteMode,
+    updateDiffConfig,
   }), [
     config,
     updateConfig,
@@ -410,6 +533,7 @@ export function useSpectraChartConfig(
     setDisplayMode,
     setColorMode,
     setColorMetadataKey,
+    setSelectionColor,
     updateColorConfig,
     setReferenceStep,
     setSubsetMode,
@@ -433,5 +557,17 @@ export function useSpectraChartConfig(
     toggleGrid,
     toggleLegend,
     toggleTooltip,
+    toggleHover,
+    // Diff mode
+    setDiffAnalysisMode,
+    setDiffDatasetSource,
+    setDiffMetric,
+    setDiffPlotType,
+    setDiffQuantiles,
+    toggleDiffQuantile,
+    setDiffRepetitionReference,
+    setDiffScaleType,
+    toggleDiffAbsoluteMode,
+    updateDiffConfig,
   ]);
 }

@@ -719,9 +719,8 @@ export function ScatterPlot3D({
         )}
       </div>
 
-      {/* 3D Canvas - key ensures re-mount when data length changes */}
+      {/* 3D Canvas */}
       <Canvas
-        key={`canvas-${data.length}`}
         ref={canvasRef}
         camera={{
           position: [CAMERA_DISTANCE, CAMERA_DISTANCE, CAMERA_DISTANCE],

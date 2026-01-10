@@ -242,7 +242,7 @@ export const ColorLegend = memo(function ColorLegend({
   return (
     <div
       className={cn(
-        'bg-card/95 backdrop-blur-sm border rounded-lg shadow-sm',
+        'bg-card border rounded-lg shadow-sm',
         'transition-all duration-200',
         collapsed ? 'w-auto' : 'min-w-[120px] max-w-[200px]',
         className
@@ -283,6 +283,47 @@ export const ColorLegend = memo(function ColorLegend({
             <SwatchLegend items={categoricalItems} />
           )}
         </div>
+      )}
+    </div>
+  );
+});
+
+/**
+ * InlineColorLegend - Simplified legend for embedding in charts
+ * Shows just colors and labels, no title or border
+ */
+export interface InlineColorLegendProps {
+  config: GlobalColorConfig;
+  context: ColorContext;
+  className?: string;
+}
+
+export const InlineColorLegend = memo(function InlineColorLegend({
+  config,
+  context,
+  className,
+}: InlineColorLegendProps) {
+  const isContinuous = useMemo(
+    () => isContinuousMode(config.mode, config.metadataType, context.targetType, config.targetTypeOverride),
+    [config.mode, config.metadataType, context.targetType, config.targetTypeOverride]
+  );
+
+  const categoricalItems = useMemo(
+    () => (isContinuous ? [] : getCategoricalLegendItems(config, context)),
+    [isContinuous, config, context]
+  );
+
+  // Don't render if nothing to show
+  if (!isContinuous && categoricalItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={cn('flex items-center gap-2', className)}>
+      {isContinuous ? (
+        <GradientLegend config={config} context={context} />
+      ) : (
+        <SwatchLegend items={categoricalItems} />
       )}
     </div>
   );

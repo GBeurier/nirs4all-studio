@@ -35,12 +35,14 @@ import {
   ANIMATION_CONFIG,
   formatWavelength,
   FOLD_COLORS,
+  SELECTION_COLORS,
 } from './chartConfig';
 import {
   type GlobalColorConfig,
   type ColorContext,
   getBaseColor as getUnifiedBaseColor,
 } from '@/lib/playground/colorConfig';
+import { InlineColorLegend } from '../ColorLegend';
 import { SpectraChartToolbar } from './SpectraChartToolbar';
 import { SpectraContextMenu } from './SpectraContextMenu';
 import {
@@ -379,8 +381,12 @@ export function SpectraChartV2({
     return computeAggregatedStats(origSpectra, config.aggregation.quantileRange);
   }, [original, config.aggregation.mode, config.viewMode, config.wavelengthFocus, config.aggregation.quantileRange]);
 
-  // Build chart data
+  // Build chart data (only for Canvas/Recharts mode - WebGL doesn't use this)
   const chartData = useMemo(() => {
+    // Skip expensive chart data construction when in WebGL mode
+    // WebGL uses focusedData directly and doesn't need this Recharts format
+    if (isWebGLMode) return [];
+
     const { wavelengths, spectra } = focusedData;
     const showIndividualLines = config.aggregation.mode === 'none' || config.aggregation.showIndividualLines;
     const showOriginalLines = showIndividualLines && (config.viewMode === 'both' || config.viewMode === 'original');
@@ -450,7 +456,7 @@ export function SpectraChartV2({
 
       return point;
     });
-  }, [focusedData, displayIndices, config.aggregation.mode, config.aggregation.showIndividualLines, config.viewMode, config.displayMode, aggregatedStats, originalAggregatedStats, original.spectra, groupedStats, referenceDataset]);
+  }, [isWebGLMode, focusedData, displayIndices, config.aggregation.mode, config.aggregation.showIndividualLines, config.viewMode, config.displayMode, aggregatedStats, originalAggregatedStats, original.spectra, groupedStats, referenceDataset]);
 
   // Filter data by brush domain
   const filteredData = useMemo(() => {
@@ -516,28 +522,37 @@ export function SpectraChartV2({
     const isPinned = pinnedSamples.has(sampleIdx);
     const hasSelection = selectedSamples.size > 0;
 
-    // Highlighted states always take priority
-    if (isHovered) return 'hsl(var(--primary))';
-    if (isSelected) return 'hsl(var(--primary))';
-    if (isPinned && config.colorConfig.highlightPinned) return 'hsl(45, 90%, 50%)'; // Gold for pinned
+    // In "selected_only" mode, don't apply selection overlay - keep global coloration
+    // The samples shown are already filtered to selected ones
+    const isSelectedOnlyMode = config.displayMode === 'selected_only';
+
+    // Highlighted states take priority - use distinctive colors (except in selected_only mode)
+    if (!isSelectedOnlyMode) {
+      if (isHovered) return SELECTION_COLORS.hovered; // Bright orange
+      if (isSelected) return config.colorConfig.selectionColor ?? SELECTION_COLORS.selected; // Configurable selection color
+      if (isPinned && config.colorConfig.highlightPinned) return SELECTION_COLORS.pinned; // Gold for pinned
+    } else {
+      // In selected_only mode, only show hover highlight (not selection color)
+      if (isHovered) return SELECTION_COLORS.hovered;
+    }
 
     const baseColor = getBaseColor(sampleIdx);
 
-    // Dim non-selected samples when there's a selection
-    if (hasSelection) {
+    // Dim non-selected samples when there's a selection (but not in selected_only mode)
+    if (hasSelection && !isSelectedOnlyMode && !isSelected && !isPinned) {
       const opacity = config.colorConfig.unselectedOpacity;
       // Use color-mix for CSS-variable-safe opacity blending
       return `color-mix(in srgb, ${baseColor} ${Math.round(opacity * 100)}%, transparent)`;
     }
 
-    // Lighten original spectra slightly when showing both (to differentiate from processed)
-    // The dashed stroke pattern already differentiates them visually
+    // Make original spectra semi-transparent when showing both (to differentiate from processed)
+    // Using transparency preserves the color while showing the difference
     if (isOriginal && config.viewMode === 'both') {
-      return `color-mix(in srgb, ${baseColor} 70%, white)`;
+      return `color-mix(in srgb, ${baseColor} 50%, transparent)`;
     }
 
     return baseColor;
-  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, getBaseColor]);
+  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor]);
 
   // Compute sample colors for WebGL to match Canvas coloring
   const sampleColors = useMemo(() => {
@@ -753,8 +768,8 @@ export function SpectraChartV2({
   const handleRangeMouseMove = useCallback((e: unknown) => {
     const chartEvent = e as { activeLabel?: number; activePayload?: Array<{ dataKey: string }>; chartY?: number };
 
-    // Handle hover detection for SelectionContext
-    if (selectionCtx && chartEvent?.activePayload?.[0]?.dataKey) {
+    // Handle hover detection for SelectionContext (only if hover is enabled)
+    if (config.enableHover && selectionCtx && chartEvent?.activePayload?.[0]?.dataKey) {
       const key = chartEvent.activePayload[0].dataKey as string;
       const match = key.match(/[po](\d+)/);
       if (match) {
@@ -764,6 +779,9 @@ export function SpectraChartV2({
           selectionCtx.setHovered(sampleIdx);
         }
       }
+    } else if (!config.enableHover && selectionCtx && selectionCtx.hoveredSample !== null) {
+      // Clear hover if hover is disabled
+      selectionCtx.setHovered(null);
     }
 
     // Handle rectangle selection
@@ -779,7 +797,7 @@ export function SpectraChartV2({
     if (!isNaN(wl)) {
       setRangeSelection(prev => ({ ...prev, endWavelength: wl }));
     }
-  }, [rangeSelection.isSelecting, rectSelection.isSelecting, selectionCtx, displayIndices, handleRectMouseMoveCb]);
+  }, [rangeSelection.isSelecting, rectSelection.isSelecting, selectionCtx, displayIndices, handleRectMouseMoveCb, config.enableHover]);
 
   // Clear hover when mouse leaves chart
   const handleMouseLeave = useCallback(() => {
@@ -1191,7 +1209,7 @@ export function SpectraChartV2({
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 bg-background/70 backdrop-blur-[1px] flex items-center justify-center z-20 pointer-events-none">
+        <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-20 pointer-events-none">
           <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
           <span className="sr-only">Updating spectra</span>
         </div>
@@ -1229,33 +1247,32 @@ export function SpectraChartV2({
               </div>
               <SpectraWebGL
                 spectra={
-                  // For aggregated mode, render mean with std bands as spectra
-                  config.displayMode === 'aggregated' && aggregatedStats
-                    ? [
-                        aggregatedStats.mean,
-                        aggregatedStats.mean.map((v, i) => v + aggregatedStats.std[i]),
-                        aggregatedStats.mean.map((v, i) => v - aggregatedStats.std[i]),
-                      ]
-                    : // For grouped mode, render each group's mean spectrum
-                      config.displayMode === 'grouped' && groupedStats
-                        ? Array.from(groupedStats.values()).map(stats => stats.mean)
-                        : // For individual/selected_only, render normal spectra
-                          config.viewMode === 'original'
-                            ? original.spectra
-                            : focusedData.spectra
+                  // For aggregated/grouped mode, pass empty spectra (we use aggregatedStats/groupedStats instead)
+                  config.displayMode === 'aggregated' || config.displayMode === 'grouped'
+                    ? []
+                    : // For individual/selected_only, render normal spectra
+                      config.viewMode === 'original'
+                        ? original.spectra
+                        : focusedData.spectra
                 }
                 originalSpectra={config.viewMode === 'both' && config.displayMode !== 'aggregated' && config.displayMode !== 'grouped' ? original.spectra : undefined}
                 wavelengths={focusedData.wavelengths}
                 y={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : y}
+                sampleIds={sampleIds}
+                folds={folds}
                 visibleIndices={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : displayIndices}
                 sampleColors={
                   config.displayMode === 'grouped' && groupedStats
                     ? Array.from(groupedStats.keys()).map((_, idx) => FOLD_COLORS[idx % FOLD_COLORS.length])
-                    : config.displayMode === 'aggregated'
-                      ? ['hsl(var(--primary))', 'hsl(var(--primary) / 0.3)', 'hsl(var(--primary) / 0.3)']
-                      : sampleColors
+                    : sampleColors
                 }
+                aggregatedStats={config.displayMode === 'aggregated' && aggregatedStats ? aggregatedStats : undefined}
+                groupedStats={config.displayMode === 'grouped' && groupedStats ? groupedStats : undefined}
                 useSelectionContext={config.displayMode !== 'aggregated' && config.displayMode !== 'grouped' && useSelectionContext}
+                selectedColor={config.colorConfig.selectionColor}
+                applySelectionColoring={config.displayMode !== 'selected_only'}
+                enableHover={config.enableHover}
+                showHoverTooltip={config.enableHover}
                 isLoading={isLoading}
                 className="absolute inset-0"
               />
@@ -1475,8 +1492,43 @@ export function SpectraChartV2({
 
             <Tooltip
               isAnimationActive={false}
-              content={() => null}
-              cursor={false}
+              cursor={config.enableHover ? { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '4 2' } : false}
+              content={({ active, payload }) => {
+                // Only show tooltip when hover is enabled and we have a hovered sample
+                if (!config.enableHover || !active || hoveredSample === null) return null;
+
+                // Get sample info
+                const sampleId = sampleIds?.[hoveredSample] ?? `Sample ${hoveredSample}`;
+                const yValue = y?.[hoveredSample];
+                const foldLabel = folds?.fold_labels?.[hoveredSample];
+
+                // Get wavelength from payload
+                const wavelength = payload?.[0]?.payload?.wavelength;
+
+                // Get first spectrum value at this wavelength for the hovered sample
+                const displayIdx = displayIndices.indexOf(hoveredSample);
+                const spectrumValue = displayIdx >= 0 && payload?.[0]?.payload
+                  ? payload[0].payload[`p${displayIdx}`] ?? payload[0].payload[`o${displayIdx}`]
+                  : undefined;
+
+                return (
+                  <div className="bg-popover border border-border rounded-md px-2 py-1.5 shadow-md text-[10px]">
+                    <div className="font-medium text-foreground mb-0.5">{sampleId}</div>
+                    {yValue !== undefined && (
+                      <div className="text-muted-foreground">Y: <span className="font-mono">{yValue.toFixed(3)}</span></div>
+                    )}
+                    {foldLabel !== undefined && foldLabel >= 0 && (
+                      <div className="text-muted-foreground">Fold: {foldLabel + 1}</div>
+                    )}
+                    {wavelength !== undefined && (
+                      <div className="text-muted-foreground">λ: <span className="font-mono">{wavelength.toFixed(1)} nm</span></div>
+                    )}
+                    {spectrumValue !== undefined && (
+                      <div className="text-muted-foreground">A: <span className="font-mono">{spectrumValue.toFixed(4)}</span></div>
+                    )}
+                  </div>
+                );
+              }}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -1504,6 +1556,10 @@ export function SpectraChartV2({
             <span className="text-primary font-medium">
               • {selectedSamples.size} selected
             </span>
+          )}
+          {/* Color legend */}
+          {globalColorConfig && colorContext && (
+            <InlineColorLegend config={globalColorConfig} context={colorContext} />
           )}
         </div>
         <div className="flex items-center gap-3">

@@ -71,7 +71,7 @@ import { usePlaygroundExport, type ChartRefs } from './hooks/usePlaygroundExport
 import { useSpectraChartConfig } from '@/lib/playground/useSpectraChartConfig';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
 
-import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult } from '@/types/playground';
+import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, PerChartLoadingState } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 
 // ============= Types =============
@@ -136,6 +136,9 @@ interface MainCanvasProps {
   onResetPlayground?: () => void;
   /** Whether there is state that can be reset */
   hasStateToReset?: boolean;
+  // === Granular Chart Loading ===
+  /** Per-chart loading states from change detection */
+  chartLoadingStates?: PerChartLoadingState;
 }
 
 // ============= Sub-Components =============
@@ -217,6 +220,8 @@ export function MainCanvas({
   // Phase 8 props
   onResetPlayground,
   hasStateToReset = false,
+  // Granular chart loading
+  chartLoadingStates,
 }: MainCanvasProps) {
   // ============= View Context (Phase 2) =============
   // Use optional hook - falls back to local state if not within provider
@@ -400,7 +405,28 @@ export function MainCanvas({
     interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 150);
   }, [isFetching, isLoading]);
 
-  const chartRedrawing = ((isFetching || isLoading) && !!result && !showSkeletons) || interactionPending;
+  // Per-chart loading states: use granular states from useChangeDetection
+  // The hook already handles all fetching/loading logic internally based on isFetching and hasResult
+  const effectiveChartLoading = useMemo<PerChartLoadingState>(() => {
+    if (chartLoadingStates) {
+      return {
+        spectra: chartLoadingStates.spectra,
+        histogram: chartLoadingStates.histogram,
+        pca: chartLoadingStates.pca || isUmapLoading,
+        folds: chartLoadingStates.folds,
+        repetitions: chartLoadingStates.repetitions,
+      };
+    }
+
+    // Fallback when no granular states provided (shouldn't happen normally)
+    return {
+      spectra: false,
+      histogram: false,
+      pca: isUmapLoading,
+      folds: false,
+      repetitions: false,
+    };
+  }, [chartLoadingStates, isUmapLoading]);
 
   // Check if pipeline has any operators
   const hasOperators = operators.length > 0;
@@ -427,10 +453,17 @@ export function MainCanvas({
     }
   }, [onFilterToSelection, selectedCount, selectedSamples, clearSelection]);
 
-  // Check if we have folds
+  // Check if we have a train/test partition from metadata
+  const hasMetadataPartition = useMemo(() => {
+    if (!rawData?.metadata || rawData.metadata.length === 0) return false;
+    const first = rawData.metadata[0];
+    return first && 'set' in first;
+  }, [rawData?.metadata]);
+
+  // Check if we have folds (from splitter) or metadata partition
   const hasFolds = useMemo(() => {
-    return result?.folds && result.folds.n_folds > 0;
-  }, [result?.folds]);
+    return (result?.folds && result.folds.n_folds > 0) || hasMetadataPartition;
+  }, [result?.folds, hasMetadataPartition]);
 
   // Check if we have repetitions
   const hasRepetitions = useMemo(() => {
@@ -490,23 +523,41 @@ export function MainCanvas({
     return { yMin: min, yMax: max };
   }, [yValues]);
 
-  // Memoize train/test indices separately - these only depend on folds, not selections
+  // Memoize train/test indices separately - use folds if available, otherwise metadata
   const { trainIndices, testIndices } = useMemo(() => {
-    if (!result?.folds?.folds || result.folds.folds.length === 0) {
-      return { trainIndices: undefined, testIndices: undefined };
-    }
-    const train = new Set<number>();
-    const test = new Set<number>();
-    for (const fold of result.folds.folds) {
-      if (fold.train_indices) {
-        fold.train_indices.forEach(i => train.add(i));
+    // First try to get from folds (splitter result)
+    if (result?.folds?.folds && result.folds.folds.length > 0) {
+      const train = new Set<number>();
+      const test = new Set<number>();
+      for (const fold of result.folds.folds) {
+        if (fold.train_indices) {
+          fold.train_indices.forEach(i => train.add(i));
+        }
+        if (fold.test_indices) {
+          fold.test_indices.forEach(i => test.add(i));
+        }
       }
-      if (fold.test_indices) {
-        fold.test_indices.forEach(i => test.add(i));
+      return { trainIndices: train, testIndices: test };
+    }
+
+    // Fall back to metadata 'set' column if available
+    if (rawData?.metadata && rawData.metadata.length > 0 && 'set' in rawData.metadata[0]) {
+      const train = new Set<number>();
+      const test = new Set<number>();
+      rawData.metadata.forEach((m, i) => {
+        if (m.set === 'train') {
+          train.add(i);
+        } else if (m.set === 'test') {
+          test.add(i);
+        }
+      });
+      if (train.size > 0 || test.size > 0) {
+        return { trainIndices: train, testIndices: test };
       }
     }
-    return { trainIndices: train, testIndices: test };
-  }, [result?.folds]);
+
+    return { trainIndices: undefined, testIndices: undefined };
+  }, [result?.folds, rawData?.metadata]);
 
   // Memoize outlier indices separately - these only depend on outlier result, not selections
   const outlierIndicesSet = useMemo(() => {
@@ -537,6 +588,72 @@ export function MainCanvas({
     return columnMetadata ? Object.keys(columnMetadata) : undefined;
   }, [columnMetadata]);
 
+  // Create effective folds - either from result or synthesized from metadata partition
+  const effectiveFolds = useMemo(() => {
+    // If we have folds from splitter, use them
+    if (result?.folds && result.folds.n_folds > 0) {
+      return result.folds;
+    }
+
+    // If we have metadata partition, create a synthetic folds object
+    if (trainIndices && testIndices && (trainIndices.size > 0 || testIndices.size > 0)) {
+      const trainArray = Array.from(trainIndices);
+      const testArray = Array.from(testIndices);
+      const total = trainArray.length + testArray.length;
+
+      // Compute Y stats if y values are available
+      let yTrainStats = undefined;
+      let yTestStats = undefined;
+      if (rawData?.y && rawData.y.length > 0) {
+        const yTrain = trainArray.map(i => rawData.y[i]).filter(v => v !== undefined);
+        const yTest = testArray.map(i => rawData.y[i]).filter(v => v !== undefined);
+
+        if (yTrain.length > 0) {
+          const mean = yTrain.reduce((a, b) => a + b, 0) / yTrain.length;
+          const std = Math.sqrt(yTrain.reduce((a, b) => a + (b - mean) ** 2, 0) / yTrain.length);
+          yTrainStats = {
+            mean,
+            std,
+            min: Math.min(...yTrain),
+            max: Math.max(...yTrain),
+          };
+        }
+        if (yTest.length > 0) {
+          const mean = yTest.reduce((a, b) => a + b, 0) / yTest.length;
+          const std = Math.sqrt(yTest.reduce((a, b) => a + (b - mean) ** 2, 0) / yTest.length);
+          yTestStats = {
+            mean,
+            std,
+            min: Math.min(...yTest),
+            max: Math.max(...yTest),
+          };
+        }
+      }
+
+      // Create fold labels (0 = train, 1 = test)
+      const foldLabels = new Array(total).fill(-1);
+      trainArray.forEach(i => { if (i < foldLabels.length) foldLabels[i] = 0; });
+      testArray.forEach(i => { if (i < foldLabels.length) foldLabels[i] = 1; });
+
+      return {
+        splitter_name: 'Metadata Partition',
+        n_folds: 1,
+        folds: [{
+          fold_index: 0,
+          train_count: trainArray.length,
+          test_count: testArray.length,
+          train_indices: trainArray,
+          test_indices: testArray,
+          y_train_stats: yTrainStats,
+          y_test_stats: yTestStats,
+        }],
+        fold_labels: foldLabels,
+      };
+    }
+
+    return null;
+  }, [result?.folds, trainIndices, testIndices, rawData?.y]);
+
   // Total sample count
   const totalSamples = useMemo(() => {
     return rawData?.spectra?.length ?? result?.processed?.spectra?.length ?? 0;
@@ -546,11 +663,11 @@ export function MainCanvas({
   // Build filter data context for FilterContext
   const filterDataContext = useMemo<FilterDataContext>(() => ({
     totalSamples,
-    folds: result?.folds ?? null,
+    folds: effectiveFolds,
     outlierIndices: outlierIndicesSet ?? new Set(),
     selectedSamples,
     metadata: columnMetadata ?? null,
-  }), [totalSamples, result?.folds, outlierIndicesSet, selectedSamples, columnMetadata]);
+  }), [totalSamples, effectiveFolds, outlierIndicesSet, selectedSamples, columnMetadata]);
 
   // Get filtered indices - use FilterContext if available, otherwise just partition filter
   const filteredIndices = useMemo(() => {
@@ -558,8 +675,8 @@ export function MainCanvas({
       return filterContext.getFilteredIndices(filterDataContext);
     }
     // Fallback to partition filter only
-    return getPartitionIndices(partitionFilter, result?.folds ?? null, totalSamples);
-  }, [filterContext, filterDataContext, partitionFilter, result?.folds, totalSamples]);
+    return getPartitionIndices(partitionFilter, effectiveFolds, totalSamples);
+  }, [filterContext, filterDataContext, partitionFilter, effectiveFolds, totalSamples]);
 
   // Create a Set of filtered indices for efficient lookup
   const filteredIndicesSet = useMemo(() => new Set(filteredIndices), [filteredIndices]);
@@ -592,7 +709,7 @@ export function MainCanvas({
       yMax,
       trainIndices,
       testIndices,
-      foldLabels: result?.folds?.fold_labels,
+      foldLabels: effectiveFolds?.fold_labels,
       metadata: columnMetadata,
       outlierIndices: outlierIndicesSet,
       totalSamples,
@@ -605,7 +722,7 @@ export function MainCanvas({
       classLabels,
       classLabelMap,
     };
-  }, [yValues, yMin, yMax, trainIndices, testIndices, result?.folds?.fold_labels, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
+  }, [yValues, yMin, yMax, trainIndices, testIndices, effectiveFolds?.fold_labels, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
 
   // Compute grid layout
   const hasMaximized = maximizedChart !== null;
@@ -742,7 +859,7 @@ export function MainCanvas({
         onFilterToSelection={onFilterToSelection ? handleFilterToSelection : undefined}
         partitionFilter={partitionFilter}
         onPartitionFilterChange={setPartitionFilter}
-        folds={result?.folds ?? null}
+        folds={effectiveFolds}
         totalSamples={totalSamples}
         metadata={columnMetadata}
         metrics={metrics}
@@ -803,7 +920,7 @@ export function MainCanvas({
             chartType="spectra"
             viewState={getChartViewState('spectra')}
             isMaximized={maximizedChart === 'spectra'}
-            isLoading={chartRedrawing}
+            isLoading={effectiveChartLoading.spectra}
             onMaximize={() => handleMaximize('spectra')}
             onMinimize={() => handleMinimize('spectra')}
             onRestore={() => handleRestore('spectra')}
@@ -821,11 +938,11 @@ export function MainCanvas({
                 processed={result.processed}
                 y={yValues}
                 sampleIds={rawData.sampleIds}
-                folds={result.folds}
+                folds={effectiveFolds}
                 globalColorConfig={colorConfig}
                 colorContext={colorContext}
                 onInteractionStart={triggerInteractionPending}
-                isLoading={chartRedrawing}
+                isLoading={effectiveChartLoading.spectra}
                 operators={operators}
                 metadata={columnMetadata}
                 metadataColumns={metadataColumns}
@@ -856,7 +973,7 @@ export function MainCanvas({
                 globalColorConfig={colorConfig}
                 colorContext={colorContext}
                 onInteractionStart={triggerInteractionPending}
-                isLoading={chartRedrawing}
+                isLoading={effectiveChartLoading.spectra}
                 operators={operators}
                 metadata={columnMetadata}
                 metadataColumns={metadataColumns}
@@ -902,7 +1019,7 @@ export function MainCanvas({
             chartType="histogram"
             viewState={getChartViewState('histogram')}
             isMaximized={maximizedChart === 'histogram'}
-            isLoading={chartRedrawing}
+            isLoading={effectiveChartLoading.histogram}
             onMaximize={() => handleMaximize('histogram')}
             onMinimize={() => handleMinimize('histogram')}
             onRestore={() => handleRestore('histogram')}
@@ -938,7 +1055,7 @@ export function MainCanvas({
             chartType="folds"
             viewState={getChartViewState('folds')}
             isMaximized={maximizedChart === 'folds'}
-            isLoading={chartRedrawing}
+            isLoading={effectiveChartLoading.folds}
             onMaximize={() => handleMaximize('folds')}
             onMinimize={() => handleMinimize('folds')}
             onRestore={() => handleRestore('folds')}
@@ -950,7 +1067,7 @@ export function MainCanvas({
             ) : (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
                 <FoldDistributionChartV2
-                  folds={deferredResult?.folds ?? null}
+                  folds={effectiveFolds}
                   y={yValues}
                   metadata={columnMetadata}
                   useSelectionContext
@@ -969,7 +1086,7 @@ export function MainCanvas({
             chartType="pca"
             viewState={getChartViewState('pca')}
             isMaximized={maximizedChart === 'pca'}
-            isLoading={chartRedrawing}
+            isLoading={effectiveChartLoading.pca}
             onMaximize={() => handleMaximize('pca')}
             onMinimize={() => handleMinimize('pca')}
             onRestore={() => handleRestore('pca')}
@@ -1010,7 +1127,7 @@ export function MainCanvas({
             chartType="repetitions"
             viewState={getChartViewState('repetitions')}
             isMaximized={maximizedChart === 'repetitions'}
-            isLoading={chartRedrawing}
+            isLoading={effectiveChartLoading.repetitions}
             onMaximize={() => handleMaximize('repetitions')}
             onMinimize={() => handleMinimize('repetitions')}
             onRestore={() => handleRestore('repetitions')}
@@ -1027,6 +1144,7 @@ export function MainCanvas({
                   useSelectionContext
                   globalColorConfig={colorConfig}
                   colorContext={colorContext}
+                  configResult={spectraConfigResult}
                 />
               </div>
             ) : (

@@ -53,6 +53,10 @@ class ApiClient {
       if ((error as ApiError).status) {
         throw error;
       }
+      // Preserve AbortError for proper handling by callers
+      if (error instanceof Error && error.name === "AbortError") {
+        throw error;
+      }
       throw {
         detail: error instanceof Error ? error.message : "Network error",
         status: 0,

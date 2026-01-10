@@ -1,5 +1,5 @@
 /**
- * RepetitionsChart - Visualize intra-sample variability (Phase 4)
+ * RepetitionsChart - Visualize intra-sample variability (Phase 7)
  *
  * Displays the variability between multiple measurements (repetitions) of the
  * same biological sample. Helps identify:
@@ -9,20 +9,17 @@
  *
  * Features:
  * - Strip plot: X = bio sample, Y = distance from reference
- * - Connects points from same biological sample
- * - Color by target value, metadata, or distance metric
- * - Distance metric selector (PCA, UMAP, Euclidean, Mahalanobis)
+ * - Dynamic distance metric computation via API
+ * - Configurable quantile reference lines
  * - Selection integration with other charts
- * - Tooltip with sample details
+ * - X-axis zoom with mouse wheel/pan
  * - Export functionality
  */
 
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
-  ComposedChart,
   ScatterChart,
   Scatter,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -30,33 +27,15 @@ import {
   Cell,
   Tooltip,
   ZAxis,
-  Legend,
   ReferenceLine,
 } from 'recharts';
 import {
   Repeat,
   Download,
   Settings2,
-  ChevronDown,
   AlertTriangle,
-  Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Tooltip as TooltipUI,
   TooltipContent,
@@ -67,8 +46,6 @@ import { Badge } from '@/components/ui/badge';
 import { exportDataAsCSV } from '@/lib/chartExport';
 import {
   CHART_THEME,
-  CHART_MARGINS,
-  ANIMATION_CONFIG,
   formatYValue,
 } from './chartConfig';
 import {
@@ -79,21 +56,21 @@ import {
   normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
-import type { RepetitionResult, RepetitionDataPoint } from '@/types/playground';
+import type { RepetitionResult } from '@/types/playground';
+import type { UseSpectraChartConfigResult } from '@/lib/playground/useSpectraChartConfig';
+import type { DiffQuantile } from '@/lib/playground/spectraConfig';
+import { DiffModeControls } from './DiffModeControls';
+import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { computeRepetitionVariance } from '@/api/playground';
 
 // ============= Types =============
-
-export type RepetitionColorMode = 'target' | 'distance' | 'bio_sample' | 'rep_index';
-export type DistanceMetric = 'pca' | 'umap' | 'euclidean' | 'mahalanobis';
 
 interface RepetitionsChartProps {
   /** Repetition analysis data from backend */
   repetitionData: RepetitionResult | null | undefined;
-  /** Current distance metric used */
-  distanceMetric?: DistanceMetric;
-  /** Callback when distance metric changes */
-  onDistanceMetricChange?: (metric: DistanceMetric) => void;
+  /** Raw spectra data for distance computation */
+  spectraData?: number[][];
   /** Whether chart is in loading state */
   isLoading?: boolean;
   /** Enable SelectionContext integration */
@@ -108,16 +85,10 @@ interface RepetitionsChartProps {
   globalColorConfig?: GlobalColorConfig;
   /** Color context data for unified color system */
   colorContext?: ColorContext;
-}
-
-interface ChartConfig {
-  colorMode: RepetitionColorMode;
-  showConnectors: boolean;
-  showP95Line: boolean;
-  showMeanLine: boolean;
-  showSingletons: boolean;
-  sortBy: 'alphabetical' | 'mean_distance' | 'target';
-  highlightOutliers: boolean;
+  /** Spectra chart config result for diff mode controls */
+  configResult?: UseSpectraChartConfigResult;
+  /** Whether reference dataset mode is active (affects dataset source visibility) */
+  hasReferenceDataset?: boolean;
 }
 
 interface PlotDataPoint {
@@ -143,23 +114,15 @@ interface PlotDataPoint {
   isSelected: boolean;
 }
 
-// ============= Default Configuration =============
-
-const DEFAULT_CONFIG: ChartConfig = {
-  colorMode: 'target',
-  showConnectors: true,
-  showP95Line: true,
-  showMeanLine: true,
-  showSingletons: false,
-  sortBy: 'alphabetical',
-  highlightOutliers: true,
-};
+interface ComputedDistances {
+  distances: number[];
+  quantiles: Record<number, number>;
+  mean: number;
+  max: number;
+}
 
 // ============= Color Helpers =============
 
-/**
- * Get color based on target Y value (viridis-like)
- */
 function getTargetColor(
   y: number,
   yMin: number,
@@ -168,33 +131,22 @@ function getTargetColor(
 ): string {
   if (yMax === yMin) return 'hsl(180, 60%, 50%)';
   const t = normalizeValue(y, yMin, yMax);
-
-  // Use unified palette if provided
   if (palette) {
     return getContinuousColor(t, palette);
   }
-
-  // Default: Viridis-inspired: purple -> blue -> green -> yellow
-  const hue = 270 - t * 210; // 270 (purple) -> 60 (yellow)
+  const hue = 270 - t * 210;
   const saturation = 60 + t * 20;
   const lightness = 35 + t * 25;
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
-/**
- * Get color based on distance (green -> yellow -> red)
- */
 function getDistanceColor(distance: number, maxDistance: number): string {
-  if (maxDistance === 0) return 'hsl(120, 60%, 50%)'; // Green
+  if (maxDistance === 0) return 'hsl(120, 60%, 50%)';
   const t = Math.min(distance / maxDistance, 1);
-  // Green -> Yellow -> Red
   const hue = 120 - t * 120;
   return `hsl(${hue}, 70%, 50%)`;
 }
 
-/**
- * Get color for bio sample (categorical)
- */
 function getBioSampleColor(
   index: number,
   palette?: GlobalColorConfig['categoricalPalette']
@@ -202,17 +154,25 @@ function getBioSampleColor(
   if (palette) {
     return getCategoricalColor(index, palette);
   }
-  // Default: Golden angle for good distribution
   const hue = (index * 137.508) % 360;
   return `hsl(${hue}, 60%, 50%)`;
 }
+
+// ============= Constants =============
+
+const MIN_PIXELS_PER_SAMPLE = 5;
+const QUANTILE_COLORS: Record<DiffQuantile, string> = {
+  50: 'hsl(var(--muted-foreground))',
+  75: 'hsl(180, 60%, 50%)',
+  90: 'hsl(45, 90%, 50%)',
+  95: 'hsl(0, 70%, 55%)',
+};
 
 // ============= Component =============
 
 export function RepetitionsChart({
   repetitionData,
-  distanceMetric = 'pca',
-  onDistanceMetricChange,
+  spectraData,
   isLoading = false,
   useSelectionContext = true,
   y,
@@ -220,10 +180,18 @@ export function RepetitionsChart({
   onConfigureRepetitions,
   globalColorConfig,
   colorContext,
+  configResult,
+  hasReferenceDataset = false,
 }: RepetitionsChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
-  const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
-  const [hoveredBioSample, setHoveredBioSample] = useState<string | null>(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [computedDistances, setComputedDistances] = useState<ComputedDistances | null>(null);
+  const [isComputing, setIsComputing] = useState(false);
+
+  // Zoom state
+  const [xDomain, setXDomain] = useState<[number, number] | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<number | null>(null);
 
   // SelectionContext integration
   const selectionCtx = useSelectionContext ? useSelection() : null;
@@ -231,6 +199,52 @@ export function RepetitionsChart({
 
   // Check if we have valid repetition data
   const hasRepetitions = repetitionData?.has_repetitions && repetitionData?.data;
+
+  // Get diff config from configResult
+  const diffConfig = configResult?.config.diffConfig;
+  const metric = diffConfig?.metric ?? 'euclidean';
+  const scaleType = diffConfig?.scaleType ?? 'linear';
+  const quantiles = diffConfig?.quantiles ?? [];
+  const repetitionReference = diffConfig?.repetitionReference ?? 'group_mean';
+
+  // Compute distances when metric or reference changes
+  useEffect(() => {
+    if (!hasRepetitions || !repetitionData?.data || !spectraData || spectraData.length === 0) {
+      return;
+    }
+
+    const groupIds = repetitionData.data.map(d => d.bio_sample);
+
+    // Only compute if we have valid data
+    if (groupIds.length === 0 || spectraData.length !== groupIds.length) {
+      return;
+    }
+
+    setIsComputing(true);
+
+    computeRepetitionVariance({
+      X: spectraData,
+      group_ids: groupIds,
+      reference: repetitionReference,
+      metric: metric,
+    })
+      .then(response => {
+        if (response.success) {
+          setComputedDistances({
+            distances: response.distances,
+            quantiles: response.quantiles,
+            mean: response.distances.reduce((a, b) => a + b, 0) / response.distances.length,
+            max: Math.max(...response.distances),
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Failed to compute distances:', err);
+      })
+      .finally(() => {
+        setIsComputing(false);
+      });
+  }, [hasRepetitions, repetitionData, spectraData, metric, repetitionReference]);
 
   // Transform data for plotting
   const { plotData, bioSampleOrder, yRange, statistics } = useMemo(() => {
@@ -245,40 +259,11 @@ export function RepetitionsChart({
 
     const data = repetitionData.data;
 
-    // Get unique bio samples and sort them
+    // Get unique bio samples
     const bioSamplesSet = new Set(data.map(d => d.bio_sample));
-    let bioSampleList = Array.from(bioSamplesSet);
-
-    // Sort based on config
-    switch (config.sortBy) {
-      case 'mean_distance': {
-        // Sort by mean distance (descending - highest variability first)
-        const meanDistances = new Map<string, number>();
-        for (const bioSample of bioSampleList) {
-          const points = data.filter(d => d.bio_sample === bioSample);
-          const mean = points.reduce((sum, p) => sum + p.distance, 0) / points.length;
-          meanDistances.set(bioSample, mean);
-        }
-        bioSampleList.sort((a, b) => (meanDistances.get(b) ?? 0) - (meanDistances.get(a) ?? 0));
-        break;
-      }
-      case 'target': {
-        // Sort by mean target value
-        const meanTargets = new Map<string, number>();
-        for (const bioSample of bioSampleList) {
-          const points = data.filter(d => d.bio_sample === bioSample);
-          const validY = points.filter(p => p.y !== undefined).map(p => p.y!);
-          if (validY.length > 0) {
-            meanTargets.set(bioSample, validY.reduce((a, b) => a + b, 0) / validY.length);
-          }
-        }
-        bioSampleList.sort((a, b) => (meanTargets.get(a) ?? 0) - (meanTargets.get(b) ?? 0));
-        break;
-      }
-      case 'alphabetical':
-      default:
-        bioSampleList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    }
+    const bioSampleList = Array.from(bioSamplesSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true })
+    );
 
     // Create a map of bio sample to X index
     const bioSampleIndex = new Map<string, number>();
@@ -289,122 +274,91 @@ export function RepetitionsChart({
     const yMin = allY.length > 0 ? Math.min(...allY) : 0;
     const yMax = allY.length > 0 ? Math.max(...allY) : 1;
 
-    // P95 threshold for outliers
-    const p95 = repetitionData.statistics?.p95_distance ?? 0;
+    // Use computed distances if available, otherwise fall back to repetitionData distances
+    const distances = computedDistances?.distances ?? data.map(d => d.distance);
+    const maxDist = computedDistances?.max ?? repetitionData.statistics?.max_distance ?? 1;
+    const p95 = computedDistances?.quantiles?.[95] ?? repetitionData.statistics?.p95_distance ?? maxDist;
 
     // Transform to plot data
-    const plotData: PlotDataPoint[] = data.map(d => ({
-      x: bioSampleIndex.get(d.bio_sample) ?? 0,
-      y: d.distance,
-      bioSample: d.bio_sample,
-      repIndex: d.rep_index,
-      sampleIndex: d.sample_index,
-      sampleId: d.sample_id,
-      targetY: d.y,
-      yMean: d.y_mean,
-      isOutlier: d.distance > p95,
-      isSelected: selectedSamples.has(d.sample_index),
-    }));
+    const plotData: PlotDataPoint[] = data.map((d, i) => {
+      const distance = distances[i] ?? d.distance;
+      // Apply log scale if needed
+      const displayDistance = scaleType === 'log' ? Math.log1p(distance) : distance;
+
+      return {
+        x: bioSampleIndex.get(d.bio_sample) ?? 0,
+        y: displayDistance,
+        bioSample: d.bio_sample,
+        repIndex: d.rep_index,
+        sampleIndex: d.sample_index,
+        sampleId: d.sample_id,
+        targetY: d.y,
+        yMean: d.y_mean,
+        isOutlier: distance > p95,
+        isSelected: selectedSamples.has(d.sample_index),
+      };
+    });
+
+    // Compute statistics for display
+    const stats = computedDistances
+      ? {
+          mean_distance: computedDistances.mean,
+          max_distance: computedDistances.max,
+          p95_distance: computedDistances.quantiles[95] ?? computedDistances.max,
+        }
+      : repetitionData.statistics;
 
     return {
       plotData,
       bioSampleOrder: bioSampleList,
       yRange: { min: yMin, max: yMax },
-      statistics: repetitionData.statistics,
+      statistics: stats,
     };
-  }, [repetitionData, config.sortBy, selectedSamples, hasRepetitions]);
+  }, [repetitionData, selectedSamples, hasRepetitions, computedDistances, scaleType]);
 
   // Max distance for color scaling
   const maxDistance = statistics?.max_distance ?? 1;
 
-  // Get point color based on color mode
+  // Get point color
   const getPointColor = useCallback((point: PlotDataPoint): string => {
     const continuousPalette = globalColorConfig?.continuousPalette;
     const categoricalPalette = globalColorConfig?.categoricalPalette;
 
-    // Use global color config mode when provided
     if (globalColorConfig) {
       const mode = globalColorConfig.mode;
-
       switch (mode) {
         case 'target':
           if (point.targetY !== undefined) {
             return getTargetColor(point.targetY, yRange.min, yRange.max, continuousPalette);
           }
           return 'hsl(var(--muted-foreground))';
-
         case 'partition':
-          // Color by train/test
           if (colorContext?.trainIndices?.has(point.sampleIndex)) {
-            return 'hsl(217, 70%, 50%)'; // Blue for train
+            return 'hsl(217, 70%, 50%)';
           }
           if (colorContext?.testIndices?.has(point.sampleIndex)) {
-            return 'hsl(38, 92%, 50%)'; // Orange for test
+            return 'hsl(38, 92%, 50%)';
           }
           return 'hsl(var(--muted-foreground))';
-
         case 'fold':
-          // Color by fold label
           const foldLabel = colorContext?.foldLabels?.[point.sampleIndex];
           if (foldLabel !== undefined && foldLabel >= 0) {
             return getCategoricalColor(foldLabel, categoricalPalette);
           }
           return 'hsl(var(--muted-foreground))';
-
-        case 'metadata':
-          // Color by metadata column
-          if (colorContext?.metadata && globalColorConfig.metadataKey) {
-            const values = colorContext.metadata[globalColorConfig.metadataKey];
-            const value = values?.[point.sampleIndex];
-            if (value !== undefined && value !== null) {
-              const uniqueValues = [...new Set(values.filter(v => v !== null && v !== undefined))];
-              const idx = uniqueValues.indexOf(value);
-              return getCategoricalColor(idx >= 0 ? idx : 0, categoricalPalette);
-            }
-          }
-          return 'hsl(var(--muted-foreground))';
-
-        case 'selection':
-          // Selected = primary, unselected = grey
-          return 'hsl(var(--muted-foreground))'; // Base color, selection handled by rendering
-
         case 'outlier':
-          // Outlier = red, non-outlier = grey
           if (colorContext?.outlierIndices?.has(point.sampleIndex)) {
-            return 'hsl(0, 70%, 55%)'; // Red for outliers
+            return 'hsl(0, 70%, 55%)';
           }
           return 'hsl(var(--muted-foreground))';
-
         default:
           return 'hsl(var(--primary))';
       }
     }
 
-    // Legacy behavior using internal config.colorMode
-    switch (config.colorMode) {
-      case 'target':
-        if (point.targetY !== undefined) {
-          return getTargetColor(point.targetY, yRange.min, yRange.max, continuousPalette);
-        }
-        return 'hsl(var(--muted-foreground))';
-
-      case 'distance':
-        return getDistanceColor(point.y, maxDistance);
-
-      case 'bio_sample':
-        return getBioSampleColor(point.x, categoricalPalette);
-
-      case 'rep_index':
-        if (categoricalPalette) {
-          return getCategoricalColor(point.repIndex, categoricalPalette);
-        }
-        const hue = point.repIndex * 60; // Different hue per rep
-        return `hsl(${hue}, 60%, 50%)`;
-
-      default:
-        return 'hsl(var(--primary))';
-    }
-  }, [config.colorMode, yRange, maxDistance, globalColorConfig, colorContext]);
+    // Default: color by distance
+    return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
+  }, [yRange, maxDistance, globalColorConfig, colorContext, scaleType]);
 
   // Handle point click
   const handlePointClick = useCallback((point: PlotDataPoint, event?: React.MouseEvent) => {
@@ -413,26 +367,10 @@ export function RepetitionsChart({
     const indices = [point.sampleIndex];
 
     if (event?.shiftKey) {
-      // Add all reps of this bio sample
       const bioSamplePoints = plotData.filter(p => p.bioSample === point.bioSample);
       selectionCtx.select(bioSamplePoints.map(p => p.sampleIndex), 'add');
     } else if (event?.ctrlKey || event?.metaKey) {
       selectionCtx.toggle(indices);
-    } else {
-      selectionCtx.select(indices, 'replace');
-    }
-  }, [selectionCtx, plotData]);
-
-  // Handle bio sample group click (select all reps)
-  const handleBioSampleClick = useCallback((bioSample: string, event?: React.MouseEvent) => {
-    if (!selectionCtx) return;
-
-    const indices = plotData
-      .filter(p => p.bioSample === bioSample)
-      .map(p => p.sampleIndex);
-
-    if (event?.shiftKey) {
-      selectionCtx.select(indices, 'add');
     } else {
       selectionCtx.select(indices, 'replace');
     }
@@ -448,29 +386,106 @@ export function RepetitionsChart({
     }
   }, [selectionCtx]);
 
-  // Update config
-  const updateConfig = useCallback((updates: Partial<ChartConfig>) => {
-    setConfig(prev => ({ ...prev, ...updates }));
+  // Handle mouse wheel for X-axis zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+
+    const numSamples = bioSampleOrder.length;
+    if (numSamples === 0) return;
+
+    const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
+    const range = currentDomain[1] - currentDomain[0];
+    const center = (currentDomain[0] + currentDomain[1]) / 2;
+
+    // Zoom in or out
+    const zoomFactor = e.deltaY > 0 ? 1.2 : 0.8;
+    let newRange = range * zoomFactor;
+
+    // Limit zoom based on min pixels per sample
+    const chartWidth = chartRef.current?.clientWidth ?? 800;
+    const minRange = (chartWidth / MIN_PIXELS_PER_SAMPLE) / numSamples * range;
+    newRange = Math.max(newRange, 1); // At least 1 sample visible
+    newRange = Math.min(newRange, numSamples); // Can't zoom out beyond all samples
+
+    const newStart = Math.max(-0.5, center - newRange / 2);
+    const newEnd = Math.min(numSamples - 0.5, center + newRange / 2);
+
+    setXDomain([newStart, newEnd]);
+  }, [xDomain, bioSampleOrder.length]);
+
+  // Handle mouse down for pan
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 0) { // Left click
+      setIsDragging(true);
+      setDragStart(e.clientX);
+    }
+  }, []);
+
+  // Handle mouse move for pan
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || dragStart === null) return;
+
+    const numSamples = bioSampleOrder.length;
+    if (numSamples === 0) return;
+
+    const chartWidth = chartRef.current?.clientWidth ?? 800;
+    const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
+    const range = currentDomain[1] - currentDomain[0];
+
+    const deltaX = e.clientX - dragStart;
+    const deltaSamples = -(deltaX / chartWidth) * range;
+
+    let newStart = currentDomain[0] + deltaSamples;
+    let newEnd = currentDomain[1] + deltaSamples;
+
+    // Clamp to bounds
+    if (newStart < -0.5) {
+      newEnd -= (newStart + 0.5);
+      newStart = -0.5;
+    }
+    if (newEnd > numSamples - 0.5) {
+      newStart -= (newEnd - (numSamples - 0.5));
+      newEnd = numSamples - 0.5;
+    }
+
+    setXDomain([Math.max(-0.5, newStart), Math.min(numSamples - 0.5, newEnd)]);
+    setDragStart(e.clientX);
+  }, [isDragging, dragStart, xDomain, bioSampleOrder.length]);
+
+  // Handle mouse up
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    setDragStart(null);
+  }, []);
+
+  // Reset zoom on double click
+  const handleDoubleClick = useCallback(() => {
+    setXDomain(null);
   }, []);
 
   // Export handler
   const handleExport = useCallback(() => {
     if (!repetitionData?.data) return;
 
-    const exportData = repetitionData.data.map(d => ({
+    const exportData = repetitionData.data.map((d, i) => ({
       bio_sample: d.bio_sample,
       rep_index: d.rep_index,
       sample_id: d.sample_id,
       sample_index: d.sample_index,
-      distance: d.distance,
+      distance: computedDistances?.distances[i] ?? d.distance,
       y: d.y ?? '',
       y_mean: d.y_mean ?? '',
     }));
 
     exportDataAsCSV(exportData, 'repetition_analysis');
-  }, [repetitionData]);
+  }, [repetitionData, computedDistances]);
 
-  // Empty state: No repetition data
+  // Toggle grid
+  const handleGridToggle = useCallback(() => {
+    setShowGrid(prev => !prev);
+  }, []);
+
+  // Empty states
   if (!repetitionData) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
@@ -482,7 +497,6 @@ export function RepetitionsChart({
     );
   }
 
-  // Empty state: Error in computation
   if (repetitionData.error) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
@@ -495,7 +509,6 @@ export function RepetitionsChart({
     );
   }
 
-  // Empty state: No repetitions detected
   if (!hasRepetitions) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
@@ -503,7 +516,6 @@ export function RepetitionsChart({
           <Repeat className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
           <p className="font-medium mb-1">No repetitions detected</p>
           <p className="text-xs">{repetitionData.message || 'Samples appear to be unique measurements.'}</p>
-
           {onConfigureRepetitions && (
             <Button
               variant="outline"
@@ -520,78 +532,34 @@ export function RepetitionsChart({
     );
   }
 
-  // Render settings dropdown
-  const renderSettingsDropdown = () => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 px-2">
-          <Settings2 className="w-3 h-3" />
-          <ChevronDown className="w-3 h-3 ml-1" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Display Options</DropdownMenuLabel>
-        <DropdownMenuSeparator />
+  // Compute X domain
+  const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
 
-        <DropdownMenuCheckboxItem
-          checked={config.showConnectors}
-          onCheckedChange={(checked) => updateConfig({ showConnectors: checked })}
-        >
-          Connect repetitions
-        </DropdownMenuCheckboxItem>
+  // Get quantile values for reference lines
+  const quantileValues = useMemo(() => {
+    const values: { quantile: DiffQuantile; value: number }[] = [];
+    const source = computedDistances?.quantiles ?? {
+      50: statistics?.mean_distance ?? 0,
+      75: (statistics?.mean_distance ?? 0) * 1.5,
+      90: (statistics?.p95_distance ?? 0) * 0.9,
+      95: statistics?.p95_distance ?? 0,
+    };
 
-        <DropdownMenuCheckboxItem
-          checked={config.showP95Line}
-          onCheckedChange={(checked) => updateConfig({ showP95Line: checked })}
-        >
-          Show P95 threshold
-        </DropdownMenuCheckboxItem>
-
-        <DropdownMenuCheckboxItem
-          checked={config.showMeanLine}
-          onCheckedChange={(checked) => updateConfig({ showMeanLine: checked })}
-        >
-          Show mean distance
-        </DropdownMenuCheckboxItem>
-
-        <DropdownMenuCheckboxItem
-          checked={config.highlightOutliers}
-          onCheckedChange={(checked) => updateConfig({ highlightOutliers: checked })}
-        >
-          Highlight outliers
-        </DropdownMenuCheckboxItem>
-
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Sort By</DropdownMenuLabel>
-
-        <DropdownMenuCheckboxItem
-          checked={config.sortBy === 'alphabetical'}
-          onCheckedChange={() => updateConfig({ sortBy: 'alphabetical' })}
-        >
-          Name
-        </DropdownMenuCheckboxItem>
-
-        <DropdownMenuCheckboxItem
-          checked={config.sortBy === 'mean_distance'}
-          onCheckedChange={() => updateConfig({ sortBy: 'mean_distance' })}
-        >
-          Variability (highest first)
-        </DropdownMenuCheckboxItem>
-
-        <DropdownMenuCheckboxItem
-          checked={config.sortBy === 'target'}
-          onCheckedChange={() => updateConfig({ sortBy: 'target' })}
-        >
-          Target value
-        </DropdownMenuCheckboxItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+    for (const q of quantiles) {
+      let value = source[q] ?? 0;
+      if (scaleType === 'log') {
+        value = Math.log1p(value);
+      }
+      values.push({ quantile: q, value });
+    }
+    return values;
+  }, [quantiles, computedDistances, statistics, scaleType]);
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload || payload.length === 0) return null;
-    const point: PlotDataPoint = payload[0].payload;
+    const point: PlotDataPoint | undefined = payload[0]?.payload;
+    if (!point) return null;
 
     return (
       <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs max-w-[200px]">
@@ -612,7 +580,11 @@ export function RepetitionsChart({
   };
 
   return (
-    <div className="h-full flex flex-col" ref={chartRef} onClick={handleChartBackgroundClick}>
+    <div
+      className="h-full flex flex-col"
+      ref={chartRef}
+      onClick={handleChartBackgroundClick}
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -621,47 +593,26 @@ export function RepetitionsChart({
           <Badge variant="secondary" className="text-[10px] font-normal">
             {repetitionData.n_with_reps} bio samples
           </Badge>
+          {(isComputing || isLoading) && (
+            <span className="text-[10px] text-muted-foreground animate-pulse">Computing...</span>
+          )}
         </h3>
 
         <div className="flex items-center gap-1.5">
-          {/* Distance metric selector */}
-          {onDistanceMetricChange && (
-            <Select
-              value={distanceMetric}
-              onValueChange={(v) => onDistanceMetricChange(v as DistanceMetric)}
-            >
-              <SelectTrigger className="h-7 w-28 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pca">PCA Distance</SelectItem>
-                <SelectItem value="umap">UMAP Distance</SelectItem>
-                <SelectItem value="euclidean">Euclidean</SelectItem>
-                <SelectItem value="mahalanobis">Mahalanobis</SelectItem>
-              </SelectContent>
-            </Select>
+          {/* Diff Mode Controls */}
+          {configResult && (
+            <>
+              <DiffModeControls
+                configResult={configResult}
+                compact={compact}
+                hasReferenceDataset={hasReferenceDataset}
+                hasRepetitions={true}
+                showGrid={showGrid}
+                onGridToggle={handleGridToggle}
+              />
+              <Separator orientation="vertical" className="h-4 mx-0.5" />
+            </>
           )}
-
-          {/* Color mode selector - only show when no global config provided */}
-          {!globalColorConfig && (
-            <Select
-              value={config.colorMode}
-              onValueChange={(v) => updateConfig({ colorMode: v as RepetitionColorMode })}
-            >
-              <SelectTrigger className="h-7 w-24 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="target">By Y</SelectItem>
-                <SelectItem value="distance">By Distance</SelectItem>
-                <SelectItem value="bio_sample">By Sample</SelectItem>
-                <SelectItem value="rep_index">By Rep #</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Settings */}
-          {renderSettingsDropdown()}
 
           {/* Configure */}
           {onConfigureRepetitions && (
@@ -701,20 +652,32 @@ export function RepetitionsChart({
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-0">
+      <div
+        className="flex-1 min-h-0 cursor-grab active:cursor-grabbing"
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
-            <CartesianGrid
-              strokeDasharray={CHART_THEME.gridDasharray}
-              stroke={CHART_THEME.gridStroke}
-              opacity={CHART_THEME.gridOpacity}
-            />
+            {showGrid && (
+              <CartesianGrid
+                strokeDasharray={CHART_THEME.gridDasharray}
+                stroke={CHART_THEME.gridStroke}
+                opacity={CHART_THEME.gridOpacity}
+              />
+            )}
 
             <XAxis
               type="number"
               dataKey="x"
-              domain={[-0.5, bioSampleOrder.length - 0.5]}
-              ticks={bioSampleOrder.map((_, i) => i)}
+              domain={effectiveXDomain}
+              ticks={bioSampleOrder.map((_, i) => i).filter(i =>
+                i >= Math.floor(effectiveXDomain[0]) && i <= Math.ceil(effectiveXDomain[1])
+              )}
               tickFormatter={(value) => {
                 const label = bioSampleOrder[value];
                 return label?.length > 8 ? label.slice(0, 8) + '…' : label ?? '';
@@ -725,6 +688,7 @@ export function RepetitionsChart({
               angle={-45}
               textAnchor="end"
               height={50}
+              allowDataOverflow
             />
 
             <YAxis
@@ -733,8 +697,9 @@ export function RepetitionsChart({
               stroke={CHART_THEME.axisStroke}
               fontSize={CHART_THEME.axisFontSize}
               width={40}
+              scale={scaleType === 'log' ? 'linear' : 'linear'}
               label={{
-                value: 'Distance',
+                value: scaleType === 'log' ? 'log(1 + Distance)' : 'Distance',
                 angle: -90,
                 position: 'insideLeft',
                 fontSize: CHART_THEME.axisLabelFontSize,
@@ -746,36 +711,22 @@ export function RepetitionsChart({
 
             <Tooltip isAnimationActive={false} content={<CustomTooltip />} />
 
-            {/* Reference lines */}
-            {config.showMeanLine && statistics && (
+            {/* Quantile reference lines */}
+            {quantileValues.map(({ quantile, value }) => (
               <ReferenceLine
-                y={statistics.mean_distance}
-                stroke="hsl(var(--muted-foreground))"
-                strokeDasharray="5 5"
-                strokeWidth={1}
-                label={{
-                  value: `μ = ${formatYValue(statistics.mean_distance)}`,
-                  position: 'right',
-                  fontSize: 9,
-                  fill: 'hsl(var(--muted-foreground))',
-                }}
-              />
-            )}
-
-            {config.showP95Line && statistics && (
-              <ReferenceLine
-                y={statistics.p95_distance}
-                stroke="hsl(var(--warning))"
+                key={`quantile-${quantile}`}
+                y={value}
+                stroke={QUANTILE_COLORS[quantile]}
                 strokeDasharray="3 3"
                 strokeWidth={1}
                 label={{
-                  value: `P95`,
+                  value: `P${quantile}`,
                   position: 'right',
                   fontSize: 9,
-                  fill: 'hsl(var(--warning))',
+                  fill: QUANTILE_COLORS[quantile],
                 }}
               />
-            )}
+            ))}
 
             {/* Scatter points */}
             <Scatter
@@ -784,7 +735,7 @@ export function RepetitionsChart({
               onClick={(data: any, index: number, event: React.MouseEvent) => {
                 handlePointClick(plotData[index], event);
               }}
-              {...ANIMATION_CONFIG}
+              isAnimationActive={false}
             >
               {plotData.map((point, index) => (
                 <Cell
@@ -793,15 +744,13 @@ export function RepetitionsChart({
                   stroke={
                     point.isSelected
                       ? 'hsl(var(--primary))'
-                      : point.isOutlier && config.highlightOutliers
+                      : point.isOutlier
                         ? 'hsl(var(--warning))'
                         : 'transparent'
                   }
-                  strokeWidth={point.isSelected ? 2 : point.isOutlier && config.highlightOutliers ? 1.5 : 0}
+                  strokeWidth={point.isSelected ? 2 : point.isOutlier ? 1.5 : 0}
                   opacity={
-                    selectedSamples.size === 0 ||
-                    point.isSelected ||
-                    (hoveredBioSample && point.bioSample === hoveredBioSample)
+                    selectedSamples.size === 0 || point.isSelected
                       ? 1
                       : 0.3
                   }
@@ -823,13 +772,16 @@ export function RepetitionsChart({
             {repetitionData.n_singletons && repetitionData.n_singletons > 0 && (
               <span>({repetitionData.n_singletons} singletons hidden)</span>
             )}
+            <span className="text-muted-foreground/50">
+              Scroll to zoom • Drag to pan • Double-click to reset
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
             {statistics && (
               <span>
-                Mean dist: {formatYValue(statistics.mean_distance)} |
-                Max: {formatYValue(statistics.max_distance)}
+                Mean: {formatYValue(scaleType === 'log' ? Math.log1p(statistics.mean_distance) : statistics.mean_distance)} |
+                Max: {formatYValue(scaleType === 'log' ? Math.log1p(statistics.max_distance) : statistics.max_distance)}
               </span>
             )}
 

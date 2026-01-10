@@ -178,11 +178,26 @@ export function usePlaygroundQuery(
 
     const steps = unifiedToPlaygroundSteps(stableOperatorsRef.current);
 
+    // Convert metadata from array of objects to record of arrays if present
+    let metadata: Record<string, unknown[]> | undefined;
+    if (data.metadata && data.metadata.length > 0) {
+      metadata = {};
+      // Get all keys from first metadata object
+      const keys = Object.keys(data.metadata[0]);
+      for (const key of keys) {
+        metadata[key] = data.metadata.map(m => m[key]);
+      }
+    }
+
+    // Check if metadata has bio_sample column for repetition detection
+    const hasBioSample = metadata && 'bio_sample' in metadata;
+
     const request = buildExecuteRequest({
       spectra: data.spectra,
       wavelengths: data.wavelengths,
       y: data.y,
       sampleIds: data.sampleIds,
+      metadata,
       steps,
       samplingMethod: sampling.method,
       maxSamples: sampling.n_samples,
@@ -193,6 +208,7 @@ export function usePlaygroundQuery(
       maxWavelengths: executeOptions?.max_wavelengths_returned,
       splitIndex: executeOptions?.split_index,
       useCache: executeOptions?.use_cache ?? true,
+      bioSampleColumn: hasBioSample ? 'bio_sample' : undefined,
     });
 
     try {

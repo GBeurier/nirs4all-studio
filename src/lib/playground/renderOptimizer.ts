@@ -59,7 +59,7 @@ export interface OptimizationConfig {
 const STORAGE_KEY = 'playground-render-preferences';
 
 const DEFAULT_CONFIG: OptimizationConfig = {
-  canvasComplexityLimit: 10_000,      // ~100 samples × 100 wavelengths (lowered for performance)
+  canvasComplexityLimit: 5_000,       // ~50 samples × 100 wavelengths (low threshold - prefer WebGL for medium+)
   webglComplexityLimit: 500_000,      // ~5000 samples × 100 wavelengths
   defaultAggregationThreshold: 200,   // Switch to aggregation above this
   autoOptimize: true,
@@ -123,11 +123,13 @@ export function detectDeviceCapabilities(): DeviceCapabilities {
       // Get max texture size
       capabilities.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
 
-      // Try to get GPU info via WEBGL_debug_renderer_info
-      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-      if (debugInfo) {
-        capabilities.gpuVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-        capabilities.gpuRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+      // Get GPU info using standard WebGL parameters
+      // Note: WEBGL_debug_renderer_info is deprecated in Firefox and causes significant delays
+      try {
+        capabilities.gpuRenderer = gl.getParameter(gl.RENDERER);
+        capabilities.gpuVendor = gl.getParameter(gl.VENDOR);
+      } catch {
+        // Ignore errors - GPU info is optional
       }
 
       // Estimate performance score based on various factors
@@ -159,11 +161,8 @@ export function detectDeviceCapabilities(): DeviceCapabilities {
 
       capabilities.performanceScore = Math.max(0, Math.min(1, score));
 
-      // Clean up
-      const loseContext = gl.getExtension('WEBGL_lose_context');
-      if (loseContext) {
-        loseContext.loseContext();
-      }
+      // Note: We no longer call WEBGL_lose_context as it's deprecated in Firefox
+      // Modern browsers handle context cleanup automatically when the canvas goes out of scope
     }
   } catch {
     // WebGL not available
@@ -418,7 +417,7 @@ export function createPerformanceMonitor() {
 
 // ============= React Hook =============
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 export interface UseRenderOptimizerOptions {
   nSamples: number;
@@ -463,8 +462,9 @@ export function useRenderOptimizer(options: UseRenderOptimizerOptions): UseRende
   // Device capabilities (computed once)
   const capabilities = useMemo(() => detectDeviceCapabilities(), []);
 
-  // Performance monitor
-  const monitor = useMemo(() => createPerformanceMonitor(), []);
+  // Performance monitor - use useRef for guaranteed stability across renders
+  const monitorRef = useRef(createPerformanceMonitor());
+  const monitor = monitorRef.current;
 
   // Get recommendation
   const recommendation = useMemo(() => {
@@ -499,7 +499,8 @@ export function useRenderOptimizer(options: UseRenderOptimizerOptions): UseRende
     }, 5000);
 
     return () => clearInterval(checkInterval);
-  }, [recommendation.mode, monitor]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- monitor is stable via useRef
+  }, [recommendation.mode]);
 
   return {
     renderMode: recommendation.mode,

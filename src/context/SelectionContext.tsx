@@ -715,11 +715,11 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     subscribersRef.current.forEach(callback => callback());
   }, [state]);
 
-  // Persist state changes (debounced)
+  // Persist state changes (debounced) - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
     const timeout = setTimeout(() => {
       persistState(state);
-    }, 100);
+    }, 500);
     return () => clearTimeout(timeout);
   }, [state.selectedSamples, state.pinnedSamples, state.savedSelections]);
 

@@ -23,6 +23,31 @@ export interface UnifiedOperator {
   enabled: boolean;
 }
 
+// ============= Change Detection Types =============
+
+/**
+ * Categories of changes that affect different charts
+ * Used for granular loading state management
+ */
+export type ChangeCategory =
+  | 'data_transform'  // preprocessing, augmentation operators -> spectra, PCA, histogram
+  | 'splitting'       // splitting operators -> folds chart only
+  | 'embedding'       // UMAP toggle -> PCA chart only
+  | 'filter'          // filter operators -> all charts (affects sample count)
+  | 'all';            // multiple categories changed at once
+
+/**
+ * Per-chart loading state for granular loading indicators
+ * Named "PerChartLoadingState" to avoid collision with ChartLoadingState in chartConfig.ts
+ */
+export interface PerChartLoadingState {
+  spectra: boolean;
+  histogram: boolean;
+  pca: boolean;
+  folds: boolean;
+  repetitions: boolean;
+}
+
 // ============= API Request/Response Types =============
 
 /**

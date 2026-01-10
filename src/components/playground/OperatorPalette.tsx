@@ -1,17 +1,18 @@
 /**
- * OperatorPalette - Operator selection with backend integration
+ * OperatorPalette - Operator selection using shared NodeRegistry
  *
  * Features:
- * - Fetches operators from backend API
- * - Supports both preprocessing and splitting operators
- * - Shows loading and error states
+ * - Uses the same NodeRegistry as the Pipeline Editor
+ * - Supports preprocessing, augmentation, splitting, and filter operators
+ * - Extended mode toggle to show all operators (including advanced ones)
  * - Grouped by categories with collapsible sections
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import {
   Command,
   CommandEmpty,
@@ -55,11 +56,10 @@ import {
   Target,
   Users,
   Ruler,
-  HelpCircle,
-  ExternalLink,
   Filter,
   XCircle,
   Shield,
+  Zap,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -68,7 +68,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useOperatorRegistry, getCategoryLabel } from '@/hooks/useOperatorRegistry';
+import { useNodeRegistryOptional, usePipelineEditorPreferencesOptional, type NodeDefinition } from '@/components/pipeline-editor/contexts';
 import type { OperatorDefinition } from '@/types/playground';
 
 // Icon mapping for operators
@@ -113,6 +113,112 @@ function getOperatorIcon(category: string): React.ComponentType<{ className?: st
   return ICON_MAP[category] || Waves;
 }
 
+// Playground tab type - maps to the 4 playground categories
+type PlaygroundTabType = 'preprocessing' | 'augmentation' | 'splitting' | 'filter';
+
+// Category labels for display
+const CATEGORY_LABELS: Record<string, Record<string, string>> = {
+  preprocessing: {
+    scatter_correction: 'Scatter Correction',
+    derivative: 'Derivatives',
+    smoothing: 'Smoothing',
+    baseline: 'Baseline',
+    scaling: 'Scaling',
+    wavelet: 'Wavelets',
+    conversion: 'Conversion',
+    features: 'Features',
+    other: 'Other',
+  },
+  augmentation: {
+    noise: 'Noise',
+    baseline_drift: 'Baseline Drift',
+    wavelength_distortion: 'Wavelength Distortion',
+    resolution: 'Resolution & Smoothing',
+    masking: 'Masking & Dropout',
+    artefacts: 'Artefacts',
+    mixing: 'Sample Mixing',
+    scatter_simulation: 'Scatter Simulation',
+    geometric: 'Geometric',
+    container: 'Containers',
+    other: 'Other',
+  },
+  splitting: {
+    kfold: 'K-Fold',
+    stratified: 'Stratified',
+    shuffle: 'Shuffle Split',
+    grouped: 'Grouped',
+    distance: 'Distance-Based',
+    other: 'Other',
+  },
+  filter: {
+    outlier: 'Outlier Detection',
+    range: 'Range Filtering',
+    metadata: 'Metadata Filtering',
+    quality: 'Quality Control',
+    distance: 'Distance-Based',
+    container: 'Containers',
+    other: 'Other',
+  },
+};
+
+/**
+ * Convert NodeDefinition to OperatorDefinition for playground compatibility
+ */
+function nodeToOperatorDef(node: NodeDefinition, tabType: PlaygroundTabType): OperatorDefinition {
+  // Build params from node parameters
+  const params: OperatorDefinition['params'] = {};
+  if (node.parameters) {
+    for (const param of node.parameters) {
+      params[param.name] = {
+        required: param.required ?? false,
+        default: param.default,
+        type: param.type,
+        default_is_callable: false,
+      };
+    }
+  }
+
+  return {
+    name: node.name,
+    display_name: node.name,
+    description: node.description,
+    category: node.category ?? 'other',
+    params,
+    type: tabType,
+    source: node.source,
+  };
+}
+
+/**
+ * Get display label for a category
+ */
+function getCategoryLabel(category: string, type: PlaygroundTabType): string {
+  return CATEGORY_LABELS[type]?.[category] || category;
+}
+
+// Extended mode local storage key (shared with pipeline editor)
+const EXTENDED_MODE_STORAGE_KEY = "pipelineEditor.extendedMode";
+
+function readLocalStorageBoolean(key: string, fallback: boolean): boolean {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalStorageBoolean(key: string, value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value ? "true" : "false");
+  } catch {
+    // ignore
+  }
+}
+
 interface OperatorPaletteProps {
   onAddOperator: (definition: OperatorDefinition) => void;
   hasSplitter?: boolean;
@@ -124,23 +230,97 @@ export function OperatorPalette({
 }: OperatorPaletteProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'preprocessing' | 'augmentation' | 'splitting' | 'filter'>('preprocessing');
+  const [activeTab, setActiveTab] = useState<PlaygroundTabType>('preprocessing');
   const [expandedCategory, setExpandedCategory] = useState<string | null>('scatter_correction');
-  const searchButtonRef = useRef<HTMLButtonElement>(null);
 
+  // Use shared registry and preferences contexts
+  const registryContext = useNodeRegistryOptional();
+  const prefs = usePipelineEditorPreferencesOptional();
+
+  // Extended mode state (synced with pipeline editor)
+  const [extendedModeFallback, setExtendedModeFallback] = useState<boolean>(() =>
+    readLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, false)
+  );
+
+  const extendedMode = prefs?.extendedMode ?? extendedModeFallback;
+  const setExtendedMode = useCallback(
+    (value: boolean) => {
+      if (prefs) {
+        prefs.setExtendedMode(value);
+        return;
+      }
+      setExtendedModeFallback(value);
+      writeLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, value);
+    },
+    [prefs]
+  );
+
+  // Get operators from registry, organized by playground tab type
+  const operatorsByTab = useMemo(() => {
+    const result: Record<PlaygroundTabType, OperatorDefinition[]> = {
+      preprocessing: [],
+      augmentation: [],
+      splitting: [],
+      filter: [],
+    };
+
+    if (!registryContext) return result;
+
+    // Node types that map to each playground tab
+    const typeGroups: Record<PlaygroundTabType, string[]> = {
+      preprocessing: ['preprocessing'],
+      augmentation: ['augmentation', 'sample_augmentation', 'feature_augmentation'],
+      splitting: ['splitting'],
+      filter: ['filter', 'sample_filter'],
+    };
+
+    for (const [tabType, nodeTypes] of Object.entries(typeGroups) as [PlaygroundTabType, string[]][]) {
+      for (const nodeType of nodeTypes) {
+        const nodes = registryContext.getNodesByType(nodeType as NodeDefinition['type']);
+        for (const node of nodes) {
+          // Filter by extended mode
+          if (!extendedMode && node.isAdvanced) continue;
+          result[tabType].push(nodeToOperatorDef(node, tabType));
+        }
+      }
+    }
+
+    return result;
+  }, [registryContext, extendedMode]);
+
+  // Group operators by category
+  const operatorsByCategory = useMemo(() => {
+    const result: Record<PlaygroundTabType, Record<string, OperatorDefinition[]>> = {
+      preprocessing: {},
+      augmentation: {},
+      splitting: {},
+      filter: {},
+    };
+
+    for (const [tabType, operators] of Object.entries(operatorsByTab) as [PlaygroundTabType, OperatorDefinition[]][]) {
+      for (const op of operators) {
+        const category = op.category || 'other';
+        if (!result[tabType][category]) {
+          result[tabType][category] = [];
+        }
+        result[tabType][category].push(op);
+      }
+    }
+
+    return result;
+  }, [operatorsByTab]);
+
+  const { preprocessing, augmentation, splitting, filter } = operatorsByTab;
   const {
-    preprocessing,
-    preprocessingByCategory,
-    augmentation,
-    augmentationByCategory,
-    splitting,
-    splittingByCategory,
-    filter,
-    filterByCategory,
-    isLoading,
-    isError,
-    error,
-  } = useOperatorRegistry();
+    preprocessing: preprocessingByCategory,
+    augmentation: augmentationByCategory,
+    splitting: splittingByCategory,
+    filter: filterByCategory,
+  } = operatorsByCategory;
+
+  const isLoading = registryContext?.isLoading ?? false;
+  const isError = !!registryContext?.error;
+  const error = registryContext?.error;
 
   const totalCount = preprocessing.length + augmentation.length + splitting.length + filter.length;
 
@@ -238,10 +418,36 @@ export function OperatorPalette({
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Operators
         </h3>
-        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          {totalCount}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+            {totalCount}
+          </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => setExtendedMode(!extendedMode)}
+                className={`text-[9px] font-medium px-1.5 py-0.5 rounded transition-colors ${
+                  extendedMode
+                    ? "bg-primary/20 text-primary hover:bg-primary/30"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                {extendedMode ? "EXT" : "STD"}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs max-w-[200px]">
+              {extendedMode
+                ? "Extended mode: all sklearn, nirs4all, and TensorFlow operators"
+                : "Standard mode: curated operators only"}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
+
+      {extendedMode && registryContext?.isLoading && (
+        <div className="text-[10px] text-muted-foreground/70">Loading extended...</div>
+      )}
 
       {/* Quick search button */}
       <Popover open={searchOpen} onOpenChange={setSearchOpen}>

@@ -104,18 +104,27 @@ export function computeAggregatedStats(
     config: band,
   }));
 
+  // Pre-allocate reusable column buffer to avoid creating new arrays for each wavelength
+  // This reduces GC pressure significantly for large datasets
+  const columnBuffer = new Array<number>(n);
+  let columnLength = 0;
+
   // For each wavelength, compute statistics
   for (let w = 0; w < nWavelengths; w++) {
-    const column: number[] = [];
+    // Reset column buffer for this wavelength
+    columnLength = 0;
 
     for (let s = 0; s < n; s++) {
       const value = spectra[s]?.[w];
       if (value !== undefined && !isNaN(value)) {
-        column.push(value);
+        columnBuffer[columnLength++] = value;
         min[w] = Math.min(min[w], value);
         max[w] = Math.max(max[w], value);
       }
     }
+
+    // Create a view of the actual values for sorting (slice to avoid sorting unused buffer space)
+    const column = columnBuffer.slice(0, columnLength);
 
     if (column.length === 0) {
       min[w] = 0;

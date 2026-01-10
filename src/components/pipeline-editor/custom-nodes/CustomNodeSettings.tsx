@@ -12,7 +12,7 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from '@/lib/motion';
 import {
   Settings,
   Shield,

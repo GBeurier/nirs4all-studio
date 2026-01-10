@@ -12,7 +12,7 @@
  * - Phase 6: Keyboard shortcuts, saved selections, render optimization
  */
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
@@ -21,6 +21,13 @@ import { PlaygroundViewProvider } from '@/context/PlaygroundViewContext';
 import { FilterProvider } from '@/context/FilterContext';
 import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
 import { OutliersProvider } from '@/context/OutliersContext';
+import {
+  PlaygroundSessionProvider,
+  usePlaygroundSession,
+  serializeOperators,
+  type PlaygroundSessionState,
+} from '@/context/PlaygroundSessionContext';
+import { NodeRegistryProvider, PipelineEditorPreferencesProvider } from '@/components/pipeline-editor/contexts';
 import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
@@ -84,11 +91,11 @@ export default function Playground() {
     computeUmap,
     setComputeUmap,
     isUmapLoading,
+    chartLoadingStates,
   } = usePlaygroundPipeline(rawData, {
     enableBackend: true,
     sampling: {
-      method: 'random',
-      n_samples: 100,
+      method: 'all',
     },
   });
 
@@ -279,6 +286,107 @@ export default function Playground() {
   // Sample selection state for cross-chart highlighting (legacy - kept for backward compatibility)
   const [selectedSample, setSelectedSample] = useState<number | null>(null);
 
+  // ============= Dataset Selector State =============
+
+  // Whether to show the dataset selector (for changing datasets)
+  const [showDatasetSelector, setShowDatasetSelector] = useState(false);
+
+  const handleToggleDatasetSelector = useCallback(() => {
+    setShowDatasetSelector(prev => !prev);
+  }, []);
+
+  // When a dataset is loaded, hide the selector
+  useEffect(() => {
+    if (rawData && showDatasetSelector) {
+      setShowDatasetSelector(false);
+    }
+  }, [rawData, showDatasetSelector]);
+
+  // ============= Session Persistence =============
+
+  const sessionRestoredRef = useRef(false);
+
+  // Restore session on mount
+  useEffect(() => {
+    if (sessionRestoredRef.current) return;
+
+    const stored = sessionStorage.getItem('playground-session-state');
+    if (!stored) return;
+
+    try {
+      const session: PlaygroundSessionState = JSON.parse(stored);
+
+      // Check if session is still valid (not older than 24 hours)
+      if (Date.now() - session.savedAt > 24 * 60 * 60 * 1000) {
+        sessionStorage.removeItem('playground-session-state');
+        return;
+      }
+
+      sessionRestoredRef.current = true;
+
+      // Restore view preferences
+      if (session.chartVisibility) {
+        setChartVisibility(session.chartVisibility);
+      }
+      if (session.renderMode) {
+        setRenderMode(session.renderMode);
+      }
+      if (session.stepComparisonEnabled !== undefined) {
+        setStepComparisonEnabled(session.stepComparisonEnabled);
+      }
+      if (session.activeStep !== undefined) {
+        setActiveStep(session.activeStep);
+      }
+
+      // Restore dataset
+      if (session.datasetId && session.datasetName && session.dataSource === 'workspace') {
+        loadFromWorkspace(session.datasetId, session.datasetName);
+      } else if (session.dataSource === 'demo') {
+        loadDemoData();
+      }
+
+      // Restore operators (after a small delay to ensure data is loaded)
+      if (session.operators && session.operators.length > 0) {
+        setTimeout(() => {
+          session.operators.forEach(op => {
+            addOperatorByName(op.name, op.type, op.params);
+          });
+        }, 100);
+      }
+    } catch (e) {
+      console.warn('Failed to restore playground session:', e);
+      sessionStorage.removeItem('playground-session-state');
+    }
+  }, [loadFromWorkspace, loadDemoData, addOperatorByName, setStepComparisonEnabled, setActiveStep]);
+
+  // Persist session on state changes
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const session: PlaygroundSessionState = {
+        datasetId: currentDatasetInfo?.datasetId || null,
+        datasetName: currentDatasetInfo?.datasetName || null,
+        dataSource: dataSource,
+        operators: serializeOperators(operators),
+        chartVisibility,
+        renderMode,
+        stepComparisonEnabled,
+        activeStep,
+        savedAt: Date.now(),
+      };
+      sessionStorage.setItem('playground-session-state', JSON.stringify(session));
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [
+    currentDatasetInfo,
+    dataSource,
+    operators,
+    chartVisibility,
+    renderMode,
+    stepComparisonEnabled,
+    activeStep,
+  ]);
+
   // ============= Filter to Selection Handler =============
 
   /**
@@ -305,73 +413,81 @@ export default function Playground() {
   }, [addOperatorByName]);
 
   return (
-    <PlaygroundViewProvider>
-      <SelectionProvider>
-        <FilterProvider>
-          <OutliersProvider>
-            <ReferenceDatasetProvider primaryData={rawData} operators={operators}>
-              <PlaygroundContent
-            // Data
-            rawData={rawData}
-            dataLoading={dataLoading}
-            dataError={dataError}
-            dataSource={dataSource}
-            currentDatasetInfo={currentDatasetInfo}
-            // Data handlers
-            loadDemoData={loadDemoData}
-            loadFromWorkspace={loadFromWorkspace}
-            clearData={clearData}
-            // Pipeline state
-            operators={operators}
-            result={result}
-            isProcessing={isProcessing}
-            isFetching={isFetching}
-            isDebouncing={isDebouncing}
-            hasSplitter={hasSplitter}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            // Pipeline handlers
-            addOperator={handleAddOperator}
-            updateOperator={updateOperator}
-            updateOperatorParams={updateOperatorParams}
-            removeOperator={removeOperator}
-            toggleOperator={toggleOperator}
-            reorderOperators={reorderOperators}
-            clearPipeline={clearPipeline}
-            undo={undo}
-            redo={redo}
-            // Step comparison
-            stepComparisonEnabled={stepComparisonEnabled}
-            setStepComparisonEnabled={setStepComparisonEnabled}
-            activeStep={activeStep}
-            setActiveStep={setActiveStep}
-            // UMAP
-            computeUmap={computeUmap}
-            setComputeUmap={setComputeUmap}
-            isUmapLoading={isUmapLoading}
-            // Export handlers
-            exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
-            exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
-            exportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
-            importPipeline={handleImportFromPipelineEditor}
-            // Filter
-            filterToSelection={handleFilterToSelection}
-            addOperatorByName={addOperatorByName}
-            // Shortcuts state
-            showShortcutsHelp={showShortcutsHelp}
-            setShowShortcutsHelp={setShowShortcutsHelp}
-            renderMode={renderMode}
-            setRenderMode={setRenderMode}
-            chartVisibility={chartVisibility}
-            toggleChartVisibility={toggleChartVisibility}
-            selectedSample={selectedSample}
-            setSelectedSample={setSelectedSample}
-              />
-            </ReferenceDatasetProvider>
-          </OutliersProvider>
-        </FilterProvider>
-      </SelectionProvider>
-    </PlaygroundViewProvider>
+    <PipelineEditorPreferencesProvider>
+      <NodeRegistryProvider useJsonRegistry>
+        <PlaygroundViewProvider>
+          <SelectionProvider>
+            <FilterProvider>
+              <OutliersProvider>
+                <ReferenceDatasetProvider primaryData={rawData} operators={operators}>
+                  <PlaygroundContent
+                    // Data
+                    rawData={rawData}
+                    dataLoading={dataLoading}
+                    dataError={dataError}
+                    dataSource={dataSource}
+                    currentDatasetInfo={currentDatasetInfo}
+                    // Data handlers
+                    loadDemoData={loadDemoData}
+                    loadFromWorkspace={loadFromWorkspace}
+                    clearData={clearData}
+                    // Dataset selector
+                    showDatasetSelector={showDatasetSelector}
+                    onToggleDatasetSelector={handleToggleDatasetSelector}
+                    // Pipeline state
+                    operators={operators}
+                    result={result}
+                    isProcessing={isProcessing}
+                    isFetching={isFetching}
+                    isDebouncing={isDebouncing}
+                    hasSplitter={hasSplitter}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
+                    // Pipeline handlers
+                    addOperator={handleAddOperator}
+                    updateOperator={updateOperator}
+                    updateOperatorParams={updateOperatorParams}
+                    removeOperator={removeOperator}
+                    toggleOperator={toggleOperator}
+                    reorderOperators={reorderOperators}
+                    clearPipeline={clearPipeline}
+                    undo={undo}
+                    redo={redo}
+                    // Step comparison
+                    stepComparisonEnabled={stepComparisonEnabled}
+                    setStepComparisonEnabled={setStepComparisonEnabled}
+                    activeStep={activeStep}
+                    setActiveStep={setActiveStep}
+                    // UMAP
+                    computeUmap={computeUmap}
+                    setComputeUmap={setComputeUmap}
+                    isUmapLoading={isUmapLoading}
+                    chartLoadingStates={chartLoadingStates}
+                    // Export handlers
+                    exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
+                    exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
+                    exportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
+                    importPipeline={handleImportFromPipelineEditor}
+                    // Filter
+                    filterToSelection={handleFilterToSelection}
+                    addOperatorByName={addOperatorByName}
+                    // Shortcuts state
+                    showShortcutsHelp={showShortcutsHelp}
+                    setShowShortcutsHelp={setShowShortcutsHelp}
+                    renderMode={renderMode}
+                    setRenderMode={setRenderMode}
+                    chartVisibility={chartVisibility}
+                    toggleChartVisibility={toggleChartVisibility}
+                    selectedSample={selectedSample}
+                    setSelectedSample={setSelectedSample}
+                  />
+                </ReferenceDatasetProvider>
+              </OutliersProvider>
+            </FilterProvider>
+          </SelectionProvider>
+        </PlaygroundViewProvider>
+      </NodeRegistryProvider>
+    </PipelineEditorPreferencesProvider>
   );
 }
 
@@ -386,6 +502,8 @@ interface PlaygroundContentProps {
   loadDemoData: ReturnType<typeof useSpectralData>['loadDemoData'];
   loadFromWorkspace: ReturnType<typeof useSpectralData>['loadFromWorkspace'];
   clearData: ReturnType<typeof useSpectralData>['clearData'];
+  showDatasetSelector: boolean;
+  onToggleDatasetSelector: () => void;
   operators: ReturnType<typeof usePlaygroundPipeline>['operators'];
   result: ReturnType<typeof usePlaygroundPipeline>['result'];
   isProcessing: boolean;
@@ -410,6 +528,7 @@ interface PlaygroundContentProps {
   computeUmap: boolean;
   setComputeUmap: (compute: boolean) => void;
   isUmapLoading: boolean;
+  chartLoadingStates: ReturnType<typeof usePlaygroundPipeline>['chartLoadingStates'];
   exportToPipelineEditor?: () => void;
   exportPipelineJson?: () => void;
   exportDataCsv?: () => void;
@@ -439,6 +558,8 @@ function PlaygroundContent({
   loadDemoData,
   loadFromWorkspace,
   clearData,
+  showDatasetSelector,
+  onToggleDatasetSelector,
   operators,
   result,
   isProcessing,
@@ -463,6 +584,7 @@ function PlaygroundContent({
   computeUmap,
   setComputeUmap,
   isUmapLoading,
+  chartLoadingStates,
   exportToPipelineEditor,
   exportPipelineJson,
   exportDataCsv,
@@ -560,6 +682,10 @@ function PlaygroundContent({
         onLoadFromWorkspace={loadFromWorkspace}
         onClearData={clearData}
 
+        // Dataset selector
+        showDatasetSelector={showDatasetSelector}
+        onToggleDatasetSelector={onToggleDatasetSelector}
+
         // Pipeline handlers
         onAddOperator={addOperator}
         onUpdateOperator={updateOperator}
@@ -600,6 +726,8 @@ function PlaygroundContent({
         // Phase 8 props
         onResetPlayground={handleResetPlayground}
         hasStateToReset={hasStateToReset}
+        // Granular chart loading
+        chartLoadingStates={chartLoadingStates}
       />
 
       {/* Phase 6: Keyboard shortcuts help dialog */}

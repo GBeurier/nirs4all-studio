@@ -315,8 +315,8 @@ export function EmbeddingSelector({
   }
 
   const containerClass = expanded
-    ? 'w-full h-64 border rounded-lg bg-background/95 backdrop-blur'
-    : 'w-40 h-32 border rounded-lg bg-background/95 backdrop-blur shadow-lg';
+    ? 'w-full h-64 border rounded-lg bg-background'
+    : 'w-40 h-32 border rounded-lg bg-background shadow-lg';
 
   return (
     <div

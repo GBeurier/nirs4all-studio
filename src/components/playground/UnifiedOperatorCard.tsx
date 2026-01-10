@@ -22,7 +22,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useSliderWithCommit } from '@/lib/playground/debounce';
+import { useSliderWithCommit, useCommittedInput } from '@/lib/playground/debounce';
 import type { UnifiedOperator, OperatorParamInfo, FilterResult } from '@/types/playground';
 
 interface UnifiedOperatorCardProps {
@@ -295,14 +295,54 @@ function ParamInput({ paramKey, paramInfo, value, onUpdate }: ParamInputProps) {
     );
   }
 
-  // Default: text input
+  // Default: text input with commit-on-blur/enter
+  return (
+    <TextParamInput
+      paramKey={paramKey}
+      displayName={displayName}
+      value={String(value ?? '')}
+      onUpdate={onUpdate}
+    />
+  );
+}
+
+// Text parameter input with commit-on-blur/enter behavior
+interface TextParamInputProps {
+  paramKey: string;
+  displayName: string;
+  value: string;
+  onUpdate: (key: string, value: unknown) => void;
+}
+
+function TextParamInput({ paramKey, displayName, value, onUpdate }: TextParamInputProps) {
+  const commitHandler = useCallback((v: string) => {
+    onUpdate(paramKey, v);
+  }, [paramKey, onUpdate]);
+
+  const {
+    value: localValue,
+    onChange,
+    onBlur,
+    onKeyDown,
+    isDirty,
+  } = useCommittedInput(value, commitHandler);
+
   return (
     <div>
-      <Label className="text-xs text-muted-foreground">{displayName}</Label>
+      <Label className="text-xs text-muted-foreground">
+        {displayName}
+        {isDirty && <span className="text-primary ml-1">*</span>}
+      </Label>
       <Input
-        value={String(value ?? '')}
-        onChange={(e) => onUpdate(paramKey, e.target.value)}
-        className="h-8 text-xs mt-1"
+        value={localValue}
+        onChange={onChange}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        className={cn(
+          "h-8 text-xs mt-1",
+          isDirty && "border-primary/50 ring-1 ring-primary/20"
+        )}
+        placeholder="Press Enter to apply"
       />
     </div>
   );

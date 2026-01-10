@@ -6,7 +6,7 @@
  */
 
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/lib/motion";
 import type { PanelFocus } from "@/hooks/useKeyboardNavigation";
 
 export interface FocusIndicatorProps {

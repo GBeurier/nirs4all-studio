@@ -88,6 +88,91 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => void>(
 }
 
 /**
+ * Hook for text input with commit-on-blur/enter behavior
+ *
+ * Maintains local state for immediate UI feedback while editing.
+ * Only commits to parent state on:
+ * - Blur (focus loss)
+ * - Enter key press
+ *
+ * This prevents intermediate/invalid values from triggering execution.
+ *
+ * @param externalValue - The current value from parent state
+ * @param onCommit - Callback when value is committed (blur/enter)
+ * @returns Object with value, onChange, onBlur, onKeyDown, and reset
+ */
+export function useCommittedInput(
+  externalValue: string,
+  onCommit: (value: string) => void
+): {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  reset: () => void;
+  isDirty: boolean;
+} {
+  const [localValue, setLocalValue] = useState<string>(externalValue);
+  const [isDirty, setIsDirty] = useState(false);
+  const lastCommittedRef = useRef(externalValue);
+
+  // Sync with external value when it changes (from undo/redo, reset, etc.)
+  // but only if we're not actively editing
+  useEffect(() => {
+    if (!isDirty && externalValue !== lastCommittedRef.current) {
+      setLocalValue(externalValue);
+      lastCommittedRef.current = externalValue;
+    }
+  }, [externalValue, isDirty]);
+
+  const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalValue(e.target.value);
+    setIsDirty(true);
+  }, []);
+
+  const commit = useCallback(() => {
+    if (isDirty && localValue !== lastCommittedRef.current) {
+      onCommit(localValue);
+      lastCommittedRef.current = localValue;
+    }
+    setIsDirty(false);
+  }, [localValue, isDirty, onCommit]);
+
+  const onBlur = useCallback(() => {
+    commit();
+  }, [commit]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+      // Optionally blur the input after enter
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      // Revert to last committed value on Escape
+      setLocalValue(lastCommittedRef.current);
+      setIsDirty(false);
+      (e.target as HTMLInputElement).blur();
+    }
+  }, [commit]);
+
+  const reset = useCallback(() => {
+    setLocalValue(externalValue);
+    lastCommittedRef.current = externalValue;
+    setIsDirty(false);
+  }, [externalValue]);
+
+  return {
+    value: localValue,
+    onChange,
+    onBlur,
+    onKeyDown,
+    reset,
+    isDirty,
+  };
+}
+
+/**
  * Hook for handling slider changes with commit behavior
  *
  * Returns local value for immediate UI feedback and a commit function

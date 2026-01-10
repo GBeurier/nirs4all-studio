@@ -24,6 +24,8 @@ import {
   Shuffle,
   Zap,
   Monitor,
+  MousePointer2,
+  Palette,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -119,6 +121,18 @@ const SAMPLING_STRATEGY_OPTIONS: { value: SamplingStrategy; label: string }[] = 
 
 const SAMPLE_COUNT_PRESETS = [25, 50, 100, 200, 500];
 
+/** Selection color presets - high visibility colors that work with various palettes */
+const SELECTION_COLOR_PRESETS = [
+  { value: undefined, label: 'Default (Cyan)', color: 'hsl(180, 85%, 45%)' },
+  { value: 'hsl(0, 85%, 55%)', label: 'Red', color: 'hsl(0, 85%, 55%)' },
+  { value: 'hsl(280, 75%, 55%)', label: 'Purple', color: 'hsl(280, 75%, 55%)' },
+  { value: 'hsl(120, 70%, 45%)', label: 'Green', color: 'hsl(120, 70%, 45%)' },
+  { value: 'hsl(45, 95%, 55%)', label: 'Gold', color: 'hsl(45, 95%, 55%)' },
+  { value: 'hsl(320, 80%, 55%)', label: 'Magenta', color: 'hsl(320, 80%, 55%)' },
+  { value: '#ffffff', label: 'White', color: '#ffffff' },
+  { value: '#000000', label: 'Black', color: '#000000' },
+];
+
 // ============= Main Component =============
 
 export function SpectraChartToolbar({
@@ -202,6 +216,16 @@ export function SpectraChartToolbar({
     onInteractionStart?.();
     configResult.setSampleCount(value[0]);
   }, [configResult, onInteractionStart]);
+
+  // Handle selection color change
+  const handleSelectionColorChange = useCallback((color: string) => {
+    onInteractionStart?.();
+    // 'default' value means undefined (use default cyan)
+    configResult.setSelectionColor(color === 'default' ? undefined : color);
+  }, [configResult, onInteractionStart]);
+
+  // Get current selection color for display
+  const currentSelectionColor = config.colorConfig.selectionColor ?? 'hsl(180, 85%, 45%)';
 
   // Get view mode label
   const viewModeLabel = VIEW_MODE_OPTIONS.find(o => o.value === config.viewMode)?.label ?? 'Processed';
@@ -306,6 +330,45 @@ export function SpectraChartToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Selection Color dropdown - always visible for changing selection highlight color */}
+          <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant={config.colorConfig.selectionColor ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                    >
+                      <Palette className="w-3.5 h-3.5" style={{ color: currentSelectionColor }} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Selection color</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent side="bottom" align="start" className="w-40">
+                <DropdownMenuLabel className="text-[10px] text-muted-foreground">Selection Color</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={config.colorConfig.selectionColor ?? 'default'}
+                  onValueChange={handleSelectionColorChange}
+                >
+                  {SELECTION_COLOR_PRESETS.map(opt => (
+                    <DropdownMenuRadioItem
+                      key={opt.label}
+                      value={opt.value ?? 'default'}
+                      className="text-xs flex items-center gap-2"
+                    >
+                      <span
+                        className="w-3 h-3 rounded-full border border-border flex-shrink-0"
+                        style={{ backgroundColor: opt.color }}
+                      />
+                      {opt.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
           {/* Sampling dropdown */}
           <DropdownMenu>
             <Tooltip>
@@ -366,13 +429,28 @@ export function SpectraChartToolbar({
               <Slider
                 value={[config.sampling.sampleCount]}
                 min={10}
-                max={Math.min(1000, totalSamples)}
+                max={totalSamples}
                 step={10}
                 onValueChange={handleSampleCountChange}
                 className="w-full"
               />
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Hover toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={config.enableHover ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={() => configResult.toggleHover()}
+              >
+                <MousePointer2 className={cn("w-3.5 h-3.5", config.enableHover && "text-primary")} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{config.enableHover ? 'Hover enabled' : 'Hover disabled'}</TooltipContent>
+          </Tooltip>
 
           {/* Render Mode toggle (Canvas/WebGL) - two checkable icons */}
           {onRenderModeChange && (

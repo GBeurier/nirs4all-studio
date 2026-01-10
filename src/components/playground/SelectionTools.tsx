@@ -335,6 +335,8 @@ interface SelectionContainerProps {
   onSelectionComplete: (result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => void;
   /** Callback for single click selection */
   onPointClick?: (point: Point, modifiers: { shift: boolean; ctrl: boolean }) => void;
+  /** Callback when clicking on background (selection too small to be valid) */
+  onBackgroundClick?: (modifiers: { shift: boolean; ctrl: boolean }) => void;
   /** Whether selection is enabled */
   enabled?: boolean;
   /** Children to render inside the container */
@@ -347,6 +349,7 @@ export function SelectionContainer({
   mode,
   onSelectionComplete,
   onPointClick,
+  onBackgroundClick,
   enabled = true,
   children,
   className,
@@ -398,10 +401,6 @@ export function SelectionContainer({
 
   const handleMouseDown = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[SelectionContainer] handleMouseDown', { enabled, mode, button: e.button });
-      }
-
       if (!enabled) return;
       if (e.button !== 0) return; // Only left click
 
@@ -441,13 +440,6 @@ export function SelectionContainer({
     if (!isSelecting) return;
 
     const handleDocumentMouseMove = (e: globalThis.MouseEvent) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[SelectionContainer] handleDocumentMouseMove', {
-          clientX: e.clientX,
-          clientY: e.clientY
-        });
-      }
-
       const container = containerRef.current;
       if (!container) return;
 
@@ -456,10 +448,6 @@ export function SelectionContainer({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
       };
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[SelectionContainer] handleDocumentMouseMove - updating position', { mode, point });
-      }
 
       if (mode === 'lasso') {
         lassoPathRef.current = [...lassoPathRef.current, point];
@@ -471,46 +459,33 @@ export function SelectionContainer({
     };
 
     const handleDocumentMouseUp = (e: globalThis.MouseEvent) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[SelectionContainer] handleDocumentMouseUp', {
-          boxStart: boxStartRef.current,
-          boxEnd: boxEndRef.current,
-          lassoPathLength: lassoPathRef.current.length
-        });
-      }
-
       const modifiers = {
         shift: e.shiftKey || modifiersRef.current.shift,
         ctrl: e.ctrlKey || e.metaKey || modifiersRef.current.ctrl
       };
 
+      let selectionMade = false;
+
       // Complete selection using refs (which have the latest values)
       if (mode === 'lasso' && lassoPathRef.current.length >= 3) {
         const simplified = simplifyPath(lassoPathRef.current);
         const bounds = getBoundsFromPoints(simplified);
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SelectionContainer] calling onSelectionComplete (lasso)', { pathLength: simplified.length, bounds });
-        }
         onSelectionComplete({ path: simplified, bounds }, modifiers);
+        selectionMade = true;
       } else if (mode === 'box' && boxStartRef.current && boxEndRef.current) {
         const bounds = getBoundsFromCorners(boxStartRef.current, boxEndRef.current);
         const width = Math.abs(boxEndRef.current.x - boxStartRef.current.x);
         const height = Math.abs(boxEndRef.current.y - boxStartRef.current.y);
         // Only complete if box has meaningful size
         if (width > 5 && height > 5) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[SelectionContainer] calling onSelectionComplete (box)', {
-              boxStart: boxStartRef.current,
-              boxEnd: boxEndRef.current,
-              bounds
-            });
-          }
           onSelectionComplete({ start: boxStartRef.current, end: boxEndRef.current, bounds }, modifiers);
-        } else {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[SelectionContainer] box too small, not calling onSelectionComplete', { width, height });
-          }
+          selectionMade = true;
         }
+      }
+
+      // If selection was too small (just a click), treat as background click
+      if (!selectionMade && !modifiers.shift && !modifiers.ctrl) {
+        onBackgroundClick?.(modifiers);
       }
 
       // Reset state
@@ -532,7 +507,7 @@ export function SelectionContainer({
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isSelecting, mode, onSelectionComplete]);
+  }, [isSelecting, mode, onSelectionComplete, onBackgroundClick]);
 
   // Cursor style based on mode
   const cursorClass =

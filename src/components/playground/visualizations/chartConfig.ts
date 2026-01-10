@@ -317,14 +317,14 @@ export const CHART_THEME = {
  * Colors for selection states - Phase 2 Enhancement
  */
 export const SELECTION_COLORS = {
-  // Primary selection
-  selected: 'hsl(var(--primary))',
-  selectedBg: 'hsl(var(--primary) / 0.15)',
+  // Primary selection - Distinctive cyan for better visibility
+  selected: 'hsl(180, 85%, 45%)',
+  selectedBg: 'hsl(180, 85%, 45% / 0.15)',
   selectedStroke: '#ffffff',
 
-  // Hover state
-  hovered: 'hsl(var(--primary) / 0.8)',
-  hoveredBg: 'hsl(var(--primary) / 0.1)',
+  // Hover state - Bright orange for high contrast
+  hovered: 'hsl(35, 95%, 55%)',
+  hoveredBg: 'hsl(35, 95%, 55% / 0.1)',
 
   // Pinned state (gold/amber)
   pinned: 'hsl(45, 90%, 50%)',

@@ -199,7 +199,8 @@
   .glass-card {
     @apply rounded-xl border border-border/50;
     background: var(--glass-bg);
-    backdrop-filter: blur(12px);
+    /* backdrop-filter disabled - causes severe performance issues in Firefox */
+    /* backdrop-filter: blur(12px); */
   }
 
   .glow-primary {

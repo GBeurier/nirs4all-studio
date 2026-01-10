@@ -35,7 +35,12 @@ export type ContinuousPalette =
   | 'plasma'      // Purple->pink->orange->yellow
   | 'inferno'     // Black->purple->red->yellow
   | 'coolwarm'    // Blue->white->red (diverging)
-  | 'spectral';   // Red->orange->yellow->green->blue (rainbow)
+  | 'spectral'    // Red->orange->yellow->green->blue (rainbow)
+  | 'cividis'     // Blue->green->yellow (colorblind-friendly)
+  | 'winter'      // Blue->cyan (cool colors only)
+  | 'blues'       // Light blue->dark blue (single hue)
+  | 'greens'      // Light green->dark green (single hue)
+  | 'turbo';      // Blue->cyan->green->yellow->red (improved rainbow)
 
 /**
  * Palette types for categorical coloring
@@ -234,6 +239,66 @@ export const CONTINUOUS_PALETTES: Record<ContinuousPalette, (t: number) => strin
     // Rainbow: Red -> Orange -> Yellow -> Green -> Blue
     const hue = (1 - t) * 240;
     return `hsl(${hue}, 80%, 50%)`;
+  },
+
+  cividis: (t) => {
+    // Colorblind-friendly: Navy blue -> teal -> olive -> yellow
+    // Based on the matplotlib cividis colormap
+    if (t < 0.25) {
+      const s = t / 0.25;
+      return `hsl(${235 - s * 25}, ${50 + s * 20}%, ${25 + s * 10}%)`;
+    } else if (t < 0.5) {
+      const s = (t - 0.25) / 0.25;
+      return `hsl(${210 - s * 30}, ${70 - s * 10}%, ${35 + s * 10}%)`;
+    } else if (t < 0.75) {
+      const s = (t - 0.5) / 0.25;
+      return `hsl(${180 - s * 100}, ${60 - s * 10}%, ${45 + s * 10}%)`;
+    } else {
+      const s = (t - 0.75) / 0.25;
+      return `hsl(${80 - s * 30}, ${50 + s * 30}%, ${55 + s * 25}%)`;
+    }
+  },
+
+  winter: (t) => {
+    // Cool colors only: Blue -> Cyan -> Light Cyan
+    const hue = 240 - t * 60; // 240 (blue) to 180 (cyan)
+    const lightness = 40 + t * 25; // Gets lighter
+    return `hsl(${hue}, 75%, ${lightness}%)`;
+  },
+
+  blues: (t) => {
+    // Single hue blue: Light blue -> Dark blue
+    const lightness = 90 - t * 55; // 90% (very light) to 35% (dark)
+    const saturation = 60 + t * 30; // More saturated as it gets darker
+    return `hsl(215, ${saturation}%, ${lightness}%)`;
+  },
+
+  greens: (t) => {
+    // Single hue green: Light green -> Dark green
+    const lightness = 90 - t * 55; // 90% (very light) to 35% (dark)
+    const saturation = 50 + t * 40; // More saturated as it gets darker
+    return `hsl(140, ${saturation}%, ${lightness}%)`;
+  },
+
+  turbo: (t) => {
+    // Improved rainbow: Blue -> Cyan -> Green -> Yellow -> Orange -> Red
+    // Better perceptual uniformity than jet/spectral
+    if (t < 0.2) {
+      const s = t / 0.2;
+      return `hsl(${260 - s * 40}, ${70 + s * 20}%, ${35 + s * 15}%)`;
+    } else if (t < 0.4) {
+      const s = (t - 0.2) / 0.2;
+      return `hsl(${220 - s * 40}, ${90}%, ${50 + s * 5}%)`;
+    } else if (t < 0.6) {
+      const s = (t - 0.4) / 0.2;
+      return `hsl(${180 - s * 60}, ${85}%, ${55 - s * 5}%)`;
+    } else if (t < 0.8) {
+      const s = (t - 0.6) / 0.2;
+      return `hsl(${120 - s * 70}, ${80 + s * 10}%, ${50}%)`;
+    } else {
+      const s = (t - 0.8) / 0.2;
+      return `hsl(${50 - s * 45}, ${90}%, ${50 - s * 5}%)`;
+    }
   },
 };
 
@@ -681,6 +746,11 @@ export function getContinuousPaletteLabel(palette: ContinuousPalette): string {
     inferno: 'Inferno',
     coolwarm: 'Cool-Warm',
     spectral: 'Spectral',
+    cividis: 'Cividis',
+    winter: 'Winter',
+    blues: 'Blues',
+    greens: 'Greens',
+    turbo: 'Turbo',
   };
   return labels[palette];
 }

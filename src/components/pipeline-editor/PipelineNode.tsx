@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion";
 import {
   Waves,
   Shuffle,

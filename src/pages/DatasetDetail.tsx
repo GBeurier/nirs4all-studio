@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion } from "@/lib/motion";
 import {
   ArrowLeft,
   FileSpreadsheet,

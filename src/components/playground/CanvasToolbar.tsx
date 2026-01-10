@@ -26,9 +26,9 @@ import {
   Image,
   FileText,
   Palette,
-  Diff,
   RotateCcw,
   AlertCircle,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -88,7 +88,6 @@ import {
   getEffectiveTargetType,
 } from '@/lib/playground/colorConfig';
 import { type TargetType, isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
-import { ColorLegend } from './ColorLegend';
 import { DisplayFilters } from './DisplayFilters';
 import { type ChartType } from '@/context/PlaygroundViewContext';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
@@ -236,7 +235,10 @@ const ColorModeSelector = memo(function ColorModeSelector({
   );
 
   // Palette preview colors
-  const continuousPaletteOptions: ContinuousPalette[] = ['blue_red', 'viridis', 'plasma', 'inferno', 'coolwarm', 'spectral'];
+  const continuousPaletteOptions: ContinuousPalette[] = [
+    'blue_red', 'viridis', 'plasma', 'inferno', 'coolwarm', 'spectral',
+    'cividis', 'winter', 'blues', 'greens', 'turbo'
+  ];
   const categoricalPaletteOptions: CategoricalPalette[] = ['default', 'tableau10', 'set1', 'set2', 'paired'];
 
   return (
@@ -264,11 +266,11 @@ const ColorModeSelector = memo(function ColorModeSelector({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="target">By Y Value</SelectItem>
-          <SelectItem value="index">By Index</SelectItem>
           <SelectItem value="partition" disabled={!hasPartition}>By Partition</SelectItem>
           <SelectItem value="fold" disabled={!hasFolds}>By Fold</SelectItem>
           <SelectItem value="metadata" disabled={!hasMetadata}>By Metadata</SelectItem>
           <SelectItem value="selection">By Selection</SelectItem>
+          <SelectItem value="outlier">By Outlier</SelectItem>
         </SelectContent>
       </Select>
 
@@ -460,21 +462,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
     onColorConfigChange(config);
   }, [onInteractionStart, onColorConfigChange]);
 
-  // Phase 7: Toggle difference mode
-  const handleToggleDifferenceMode = useCallback(() => {
-    if (!onSpectraViewModeChange) return;
-    onInteractionStart();
-    if (spectraViewMode === 'difference') {
-      // Toggle back to processed
-      onSpectraViewModeChange('processed');
-    } else {
-      // Switch to difference mode
-      onSpectraViewModeChange('difference');
-    }
-  }, [onInteractionStart, onSpectraViewModeChange, spectraViewMode]);
-
-  const isDifferenceMode = spectraViewMode === 'difference';
-
   // Phase 8: Handle reset confirmation
   const handleResetClick = useCallback(() => {
     if (hasStateToReset) {
@@ -506,6 +493,23 @@ export const CanvasToolbar = memo(function CanvasToolbar({
       aria-label="Chart controls"
     >
       <div className="flex items-center gap-1.5" role="group" aria-label="Chart visibility toggles">
+        {/* Step comparison slider (compact) - at far left for visibility */}
+        {hasOperators && onStepComparisonEnabledChange && (
+          <>
+            <StepComparisonSlider
+              operators={operators}
+              currentStep={activeStep}
+              onStepChange={handleActiveStepChange}
+              enabled={stepComparisonEnabled}
+              onEnabledChange={handleStepComparisonEnabledChange}
+              onInteractionStart={onInteractionStart}
+              isLoading={isFetching}
+              compact
+            />
+            <Separator orientation="vertical" className="h-4 mx-1" />
+          </>
+        )}
+
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -552,6 +556,55 @@ export const CanvasToolbar = memo(function CanvasToolbar({
         {/* Loading indicator */}
         {isFetching && (
           <Loader2 className="w-3 h-3 animate-spin text-primary ml-2" />
+        )}
+
+        {/* Phase 7: Diff Mode Toggle */}
+        {onSpectraViewModeChange && (
+          <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={spectraViewMode === 'difference' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className={cn(
+                      'h-6 text-[10px] gap-1 px-2',
+                      spectraViewMode === 'difference' && 'bg-orange-500/20 text-orange-600 dark:text-orange-400'
+                    )}
+                    onMouseDown={onInteractionStart}
+                    onClick={() => onSpectraViewModeChange(spectraViewMode === 'difference' ? 'processed' : 'difference')}
+                  >
+                    <ArrowLeftRight className="w-3 h-3" />
+                    Diff
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {spectraViewMode === 'difference'
+                    ? 'Exit difference mode (show processed spectra)'
+                    : 'Enter difference mode (show per-sample distances)'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {spectraViewMode === 'difference' && onToggleAbsoluteDifference && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showAbsoluteDifference ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-6 text-[10px] px-2"
+                      onClick={onToggleAbsoluteDifference}
+                    >
+                      {showAbsoluteDifference ? '|Δ|' : '±Δ'}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {showAbsoluteDifference ? 'Show signed differences' : 'Show absolute differences'}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
         )}
 
         {/* Phase 9: Selection Tool Mode Toggle */}
@@ -652,60 +705,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           compact
         />
 
-        {/* Phase 7: Quick Difference Mode Toggle */}
-        {onSpectraViewModeChange && hasOperators && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1">
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={isDifferenceMode ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className={cn(
-                        'h-6 px-2 text-[10px] gap-1',
-                        isDifferenceMode && 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-600 dark:text-orange-400'
-                      )}
-                      onClick={handleToggleDifferenceMode}
-                    >
-                      <Diff className="w-3 h-3" />
-                      {isDifferenceMode ? 'Diff ON' : 'Diff'}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {isDifferenceMode
-                      ? 'Click to show processed spectra'
-                      : 'Show difference between processed and original spectra'}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              {/* Absolute/Signed toggle when in difference mode */}
-              {isDifferenceMode && onToggleAbsoluteDifference && (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={showAbsoluteDifference ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="h-6 px-1.5 text-[9px]"
-                        onClick={onToggleAbsoluteDifference}
-                      >
-                        {showAbsoluteDifference ? '|Δ|' : '±Δ'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {showAbsoluteDifference
-                        ? 'Showing absolute differences. Click for signed.'
-                        : 'Showing signed differences. Click for absolute.'}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </div>
-          </>
-        )}
 
         {/* Phase 5: Advanced Filtering & Metrics */}
         {(metrics || onDetectOutliers || onFindSimilar) && (
@@ -774,20 +773,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           </>
         )}
 
-        {/* Step comparison slider (compact) - only show when there are operators and in step mode */}
-        {hasOperators && onStepComparisonEnabledChange && (
-          <StepComparisonSlider
-            operators={operators}
-            currentStep={activeStep}
-            onStepChange={handleActiveStepChange}
-            enabled={stepComparisonEnabled}
-            onEnabledChange={handleStepComparisonEnabledChange}
-            onInteractionStart={onInteractionStart}
-            isLoading={isFetching}
-            compact
-          />
-        )}
-
         <ColorModeSelector
           colorConfig={colorConfig}
           onChange={handleColorConfigChange}
@@ -797,16 +782,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           metadataColumns={metadataColumns}
           colorContext={colorContext}
         />
-
-        {/* Color Legend (inline) */}
-        {colorContext && (
-          <ColorLegend
-            config={colorConfig}
-            context={colorContext}
-            collapsed={false}
-            className="border-0 shadow-none bg-transparent min-w-0 max-w-none"
-          />
-        )}
 
         {/* Phase 6: Saved Selections */}
         <SavedSelections compact sampleIds={sampleIds} />

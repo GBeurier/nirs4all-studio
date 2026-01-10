@@ -191,3 +191,48 @@ export function operatorsEqual(a: UnifiedOperator[], b: UnifiedOperator[]): bool
 export function shortHash(str: string): string {
   return djb2Hash(str).substring(0, 6);
 }
+
+// ============= Change Detection Hashing =============
+
+/**
+ * Hash a filtered list of operators for change detection
+ * Only considers enabled operators
+ */
+export function hashOperatorList(operators: UnifiedOperator[]): string {
+  const enabledOps = operators.filter(op => op.enabled);
+  if (enabledOps.length === 0) return '';
+  return hashPipeline(enabledOps);
+}
+
+/**
+ * Category hashes for granular change detection
+ */
+export interface CategoryHashes {
+  /** Hash of preprocessing + augmentation operators */
+  dataTransform: string;
+  /** Hash of splitting operators */
+  splitting: string;
+  /** Hash of filter operators */
+  filter: string;
+}
+
+/**
+ * Compute per-category hashes for change detection
+ * Used to determine which charts need to show loading state
+ *
+ * @param operators - All pipeline operators
+ * @returns Hashes for each operator category
+ */
+export function computeCategoryHashes(operators: UnifiedOperator[]): CategoryHashes {
+  const dataTransformOps = operators.filter(
+    op => op.type === 'preprocessing' || op.type === 'augmentation'
+  );
+  const splittingOps = operators.filter(op => op.type === 'splitting');
+  const filterOps = operators.filter(op => op.type === 'filter');
+
+  return {
+    dataTransform: hashOperatorList(dataTransformOps),
+    splitting: hashOperatorList(splittingOps),
+    filter: hashOperatorList(filterOps),
+  };
+}
