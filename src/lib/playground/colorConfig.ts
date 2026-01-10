@@ -353,6 +353,7 @@ export const PARTITION_COLORS = {
 
 /**
  * Fixed colors for selection/outlier modes
+ * NOTE: Some of these use CSS variables which work in SVG/CSS but not in WebGL/canvas
  */
 export const HIGHLIGHT_COLORS = {
   selected: 'hsl(var(--primary))',
@@ -361,6 +362,19 @@ export const HIGHLIGHT_COLORS = {
   outlier: 'hsl(0, 70%, 55%)',      // Red
   unselected: 'hsl(var(--muted-foreground))',
   muted: 'hsl(var(--muted-foreground) / 0.3)',
+} as const;
+
+/**
+ * Concrete color alternatives for WebGL/canvas renderers that can't parse CSS variables
+ * These match the theme's typical primary/muted colors
+ */
+export const HIGHLIGHT_COLORS_CONCRETE = {
+  selected: 'hsl(173, 80%, 45%)',   // Teal (matches --primary in default theme)
+  hovered: 'hsl(173, 80%, 45%)',    // Teal
+  pinned: 'hsl(45, 90%, 50%)',      // Gold
+  outlier: 'hsl(0, 70%, 55%)',      // Red
+  unselected: 'hsl(220, 10%, 50%)', // Muted gray
+  muted: 'hsl(220, 10%, 50%, 0.3)', // Muted gray with alpha
 } as const;
 
 // ============= Color Utility Functions =============
@@ -675,6 +689,59 @@ export function getUnifiedSampleColor(
   }
 
   return { color: baseColor, opacity };
+}
+
+/**
+ * Get sample color for WebGL/canvas renderers (returns concrete colors, no CSS variables)
+ * Similar to getUnifiedSampleColor but uses HIGHLIGHT_COLORS_CONCRETE for CSS-variable colors
+ */
+export function getWebGLSampleColor(
+  sampleIndex: number,
+  config: GlobalColorConfig,
+  context: ColorContext
+): string {
+  const {
+    selectedSamples, pinnedSamples, hoveredSample, outlierIndices, displayFilteredIndices,
+  } = context;
+
+  // Display filtering - return transparent for hidden samples
+  if (displayFilteredIndices && !displayFilteredIndices.has(sampleIndex)) {
+    return 'transparent';
+  }
+
+  const isSelected = selectedSamples?.has(sampleIndex) ?? false;
+  const isPinned = pinnedSamples?.has(sampleIndex) ?? false;
+  const isHovered = hoveredSample === sampleIndex;
+  const hasSelection = (selectedSamples?.size ?? 0) > 0;
+  const isOutlier = outlierIndices?.has(sampleIndex) ?? false;
+
+  // Handle hover state (highest priority)
+  if (isHovered) {
+    return HIGHLIGHT_COLORS_CONCRETE.hovered;
+  }
+
+  // Handle selection mode specially
+  if (config.mode === 'selection') {
+    return isSelected ? HIGHLIGHT_COLORS_CONCRETE.selected : HIGHLIGHT_COLORS_CONCRETE.unselected;
+  }
+
+  // Handle outlier mode specially
+  if (config.mode === 'outlier') {
+    return isOutlier ? HIGHLIGHT_COLORS_CONCRETE.outlier : HIGHLIGHT_COLORS_CONCRETE.unselected;
+  }
+
+  // Handle selected state with selection override
+  if (isSelected && config.selectionOverride) {
+    return HIGHLIGHT_COLORS_CONCRETE.selected;
+  }
+
+  // Handle pinned state - return base color (pinned styling is handled via stroke in renderers)
+  // Get base color by mode
+  const baseColor = getBaseColor(sampleIndex, config, context);
+
+  // For dimmed unselected samples, we can't easily apply opacity in WebGL color strings
+  // So we return the base color and let the renderer handle opacity if needed
+  return baseColor;
 }
 
 /**

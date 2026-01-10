@@ -624,11 +624,14 @@ export function YHistogramV2({
     const isDragSelection = Math.abs(maxY - minY) > binWidth * 0.3;
 
     if (isDragSelection) {
-      // Drag selection: find all samples within the Y range
+      // Drag selection: find all bins that intersect with the selection range
+      // and select ALL samples from those bins (not just samples within the Y range)
       const samplesInRange: number[] = [];
-      displayY.forEach((yVal, idx) => {
-        if (yVal >= minY && yVal <= maxY) {
-          samplesInRange.push(idx);
+      histogramData.forEach(bin => {
+        // Check if bin intersects with selection range
+        if (bin.binEnd >= minY && bin.binStart <= maxY) {
+          // Add all samples from this bin
+          samplesInRange.push(...bin.samples);
         }
       });
 
@@ -646,7 +649,7 @@ export function YHistogramV2({
     }
 
     return false;
-  }, [rangeSelection, histogramData, displayY, selectionCtx]);
+  }, [rangeSelection, histogramData, selectionCtx]);
 
   // Handle all click/mouseup interactions on the chart
   const handleMouseUp = useCallback((state: RechartsMouseEvent) => {
@@ -671,23 +674,28 @@ export function YHistogramV2({
     if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
       const clickedData = payload[0].payload as BinData;
       if (clickedData?.samples?.length && selectionCtx) {
+        const binSamples = clickedData.samples;
+
         if (e?.shiftKey) {
-          selectionCtx.select(clickedData.samples, 'add');
+          selectionCtx.select(binSamples, 'add');
         } else if (e?.ctrlKey || e?.metaKey) {
-          selectionCtx.toggle(clickedData.samples);
+          selectionCtx.toggle(binSamples);
         } else {
-          // Toggle behavior: if all samples in this bin are already selected, deselect them
-          const allSelected = clickedData.samples.every(s => selectionCtx.selectedSamples.has(s));
-          if (allSelected) {
-            selectionCtx.toggle(clickedData.samples); // Deselect
+          // Check if this bin's samples are exactly the current selection
+          const isExactlyThisBinSelected =
+            selectedSamples.size === binSamples.length &&
+            binSamples.every((idx: number) => selectedSamples.has(idx));
+
+          if (isExactlyThisBinSelected) {
+            selectionCtx.clear();
           } else {
-            selectionCtx.select(clickedData.samples, 'replace');
+            selectionCtx.select(binSamples, 'replace');
           }
         }
         return;
       }
     }
-  }, [handleDragSelection, selectionCtx]);
+  }, [handleDragSelection, selectionCtx, selectedSamples]);
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -970,13 +978,24 @@ export function YHistogramV2({
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
         const clickedData = payload[0].payload as typeof stackedData[0];
         if (clickedData?.samples?.length && selectionCtx) {
+          const samples = clickedData.samples;
           if (e?.shiftKey) {
-            selectionCtx.select(clickedData.samples, 'add');
+            selectionCtx.select(samples, 'add');
           } else if (e?.ctrlKey || e?.metaKey) {
-            selectionCtx.toggle(clickedData.samples);
+            selectionCtx.toggle(samples);
           } else {
-            // Regular click: always replace selection with this bar's samples
-            selectionCtx.select(clickedData.samples, 'replace');
+            // Check if this bar is already the only selection
+            const samplesSet = new Set(samples);
+            const allSamplesInBarSelected = samples.length > 0 && samples.every((s: number) => selectedSamples.has(s));
+            const selectionMatchesBar = allSamplesInBarSelected &&
+              selectedSamples.size === samples.length &&
+              [...selectedSamples].every(s => samplesSet.has(s));
+
+            if (selectionMatchesBar) {
+              selectionCtx.clear();
+            } else {
+              selectionCtx.select(samples, 'replace');
+            }
           }
           return;
         }
@@ -1169,8 +1188,18 @@ export function YHistogramV2({
           } else if (e?.ctrlKey || e?.metaKey) {
             selectionCtx.toggle(samples);
           } else {
-            // Regular click: always replace selection with this bar's samples
-            selectionCtx.select(samples, 'replace');
+            // Check if this bar is already the only selection
+            const samplesSet = new Set(samples);
+            const allSamplesInBarSelected = samples.length > 0 && samples.every((s: number) => selectedSamples.has(s));
+            const selectionMatchesBar = allSamplesInBarSelected &&
+              selectedSamples.size === samples.length &&
+              [...selectedSamples].every(s => samplesSet.has(s));
+
+            if (selectionMatchesBar) {
+              selectionCtx.clear();
+            } else {
+              selectionCtx.select(samples, 'replace');
+            }
           }
           return;
         }
@@ -1358,8 +1387,18 @@ export function YHistogramV2({
           } else if (e?.ctrlKey || e?.metaKey) {
             selectionCtx.toggle(samples);
           } else {
-            // Regular click: always replace selection with this bar's samples
-            selectionCtx.select(samples, 'replace');
+            // Check if this bar is already the only selection
+            const samplesSet = new Set(samples);
+            const allSamplesInBarSelected = samples.length > 0 && samples.every((s: number) => selectedSamples.has(s));
+            const selectionMatchesBar = allSamplesInBarSelected &&
+              selectedSamples.size === samples.length &&
+              [...selectedSamples].every(s => samplesSet.has(s));
+
+            if (selectionMatchesBar) {
+              selectionCtx.clear();
+            } else {
+              selectionCtx.select(samples, 'replace');
+            }
           }
           return;
         }
@@ -1537,11 +1576,25 @@ export function YHistogramV2({
           } else if (e?.ctrlKey || e?.metaKey) {
             selectionCtx.toggle(clickedData.samples);
           } else {
-            const allSelected = clickedData.samples.every(s => selectionCtx.selectedSamples.has(s));
-            if (allSelected) {
-              selectionCtx.toggle(clickedData.samples);
+            // Regular click: check if this bar is already the only selection
+            const samples = clickedData.samples;
+            const currentSelection = selectionCtx.selectedSamples;
+            const samplesSet = new Set(samples);
+
+            // Check if all samples in this bar are selected
+            const allSamplesInBarSelected = samples.length > 0 && samples.every(s => currentSelection.has(s));
+
+            // Check if selection contains ONLY samples from this bar
+            const selectionMatchesBar = allSamplesInBarSelected &&
+              currentSelection.size === samples.length &&
+              [...currentSelection].every(s => samplesSet.has(s));
+
+            if (selectionMatchesBar) {
+              // Clicking on the only selected bar - deselect
+              selectionCtx.clear();
             } else {
-              selectionCtx.select(clickedData.samples, 'replace');
+              // Select this bar (replace any existing selection)
+              selectionCtx.select(samples, 'replace');
             }
           }
           return;
@@ -1631,7 +1684,7 @@ export function YHistogramV2({
             stackId="selection"
             fill="hsl(var(--muted-foreground) / 0.4)"
             cursor="pointer"
-            {...ANIMATION_CONFIG}
+            isAnimationActive={false}
           >
             {stackedData.map((entry, index) => {
               const isSelected = selectedBins.has(index);
@@ -1653,7 +1706,7 @@ export function YHistogramV2({
             fill={HIGHLIGHT_COLORS.selected}
             radius={[2, 2, 0, 0]}
             cursor="pointer"
-            {...ANIMATION_CONFIG}
+            isAnimationActive={false}
           >
             {stackedData.map((entry, index) => {
               const isSelected = selectedBins.has(index);

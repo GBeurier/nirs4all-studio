@@ -17,7 +17,7 @@ import {
   getContinuousPaletteGradient,
   getCategoricalColor,
   PARTITION_COLORS,
-  HIGHLIGHT_COLORS,
+  HIGHLIGHT_COLORS_CONCRETE,
   getColorModeLabel,
   getEffectiveTargetType,
 } from '@/lib/playground/colorConfig';
@@ -88,14 +88,14 @@ function getCategoricalLegendItems(
     case 'selection':
       // Use concrete colors for legend swatches (CSS variables don't work in inline styles)
       return [
-        { color: 'hsl(173, 80%, 45%)', label: 'Selected' },  // Primary teal
-        { color: 'hsl(220, 10%, 60%)', label: 'Unselected' },
+        { color: HIGHLIGHT_COLORS_CONCRETE.selected, label: 'Selected' },
+        { color: HIGHLIGHT_COLORS_CONCRETE.unselected, label: 'Unselected' },
       ];
 
     case 'outlier':
       return [
-        { color: HIGHLIGHT_COLORS.outlier, label: 'Outlier' },
-        { color: HIGHLIGHT_COLORS.unselected, label: 'Normal' },
+        { color: HIGHLIGHT_COLORS_CONCRETE.outlier, label: 'Outlier' },
+        { color: HIGHLIGHT_COLORS_CONCRETE.unselected, label: 'Normal' },
       ];
 
     default:

@@ -523,24 +523,9 @@ export function MainCanvas({
     return { yMin: min, yMax: max };
   }, [yValues]);
 
-  // Memoize train/test indices separately - use folds if available, otherwise metadata
-  const { trainIndices, testIndices } = useMemo(() => {
-    // First try to get from folds (splitter result)
-    if (result?.folds?.folds && result.folds.folds.length > 0) {
-      const train = new Set<number>();
-      const test = new Set<number>();
-      for (const fold of result.folds.folds) {
-        if (fold.train_indices) {
-          fold.train_indices.forEach(i => train.add(i));
-        }
-        if (fold.test_indices) {
-          fold.test_indices.forEach(i => test.add(i));
-        }
-      }
-      return { trainIndices: train, testIndices: test };
-    }
-
-    // Fall back to metadata 'set' column if available
+  // Get train/test indices from metadata 'set' column if available
+  // This is computed separately from folds to support synthetic fold creation
+  const metadataPartition = useMemo(() => {
     if (rawData?.metadata && rawData.metadata.length > 0 && 'set' in rawData.metadata[0]) {
       const train = new Set<number>();
       const test = new Set<number>();
@@ -555,9 +540,8 @@ export function MainCanvas({
         return { trainIndices: train, testIndices: test };
       }
     }
-
-    return { trainIndices: undefined, testIndices: undefined };
-  }, [result?.folds, rawData?.metadata]);
+    return null;
+  }, [rawData?.metadata]);
 
   // Memoize outlier indices separately - these only depend on outlier result, not selections
   const outlierIndicesSet = useMemo(() => {
@@ -596,10 +580,9 @@ export function MainCanvas({
     }
 
     // If we have metadata partition, create a synthetic folds object
-    if (trainIndices && testIndices && (trainIndices.size > 0 || testIndices.size > 0)) {
-      const trainArray = Array.from(trainIndices);
-      const testArray = Array.from(testIndices);
-      const total = trainArray.length + testArray.length;
+    if (metadataPartition) {
+      const trainArray = Array.from(metadataPartition.trainIndices);
+      const testArray = Array.from(metadataPartition.testIndices);
 
       // Compute Y stats if y values are available
       let yTrainStats = undefined;
@@ -630,10 +613,9 @@ export function MainCanvas({
         }
       }
 
-      // Create fold labels (0 = train, 1 = test)
-      const foldLabels = new Array(total).fill(-1);
-      trainArray.forEach(i => { if (i < foldLabels.length) foldLabels[i] = 0; });
-      testArray.forEach(i => { if (i < foldLabels.length) foldLabels[i] = 1; });
+      // NOTE: Don't create fold_labels for simple train/test split
+      // fold_labels should only exist for actual K-fold cross-validation
+      // This prevents "by fold" mode from treating train/test as 2 folds
 
       return {
         splitter_name: 'Metadata Partition',
@@ -647,12 +629,25 @@ export function MainCanvas({
           y_train_stats: yTrainStats,
           y_test_stats: yTestStats,
         }],
-        fold_labels: foldLabels,
+        // fold_labels is undefined for simple train/test - only actual K-fold has fold labels
+        fold_labels: undefined,
       };
     }
 
     return null;
-  }, [result?.folds, trainIndices, testIndices, rawData?.y]);
+  }, [result?.folds, metadataPartition, rawData?.y]);
+
+  // Derive train/test indices from effectiveFolds for consistent coloring
+  // Uses first fold only to ensure disjoint sets (K-fold has overlapping samples across folds)
+  const { trainIndices, testIndices } = useMemo(() => {
+    if (effectiveFolds?.folds && effectiveFolds.folds.length > 0) {
+      const firstFold = effectiveFolds.folds[0];
+      const train = new Set<number>(firstFold.train_indices ?? []);
+      const test = new Set<number>(firstFold.test_indices ?? []);
+      return { trainIndices: train, testIndices: test };
+    }
+    return { trainIndices: undefined, testIndices: undefined };
+  }, [effectiveFolds]);
 
   // Total sample count
   const totalSamples = useMemo(() => {
@@ -1033,7 +1028,7 @@ export function MainCanvas({
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
                 <YHistogramV2
                   y={yValues}
-                  folds={deferredResult?.folds}
+                  folds={effectiveFolds}
                   metadata={columnMetadata}
                   useSelectionContext
                   globalColorConfig={colorConfig}
@@ -1102,7 +1097,7 @@ export function MainCanvas({
                   pca={deferredResult.pca}
                   umap={deferredResult.umap}
                   y={yValues}
-                  folds={deferredResult.folds}
+                  folds={effectiveFolds}
                   sampleIds={rawData.sampleIds}
                   metadata={columnMetadata}
                   useSelectionContext
@@ -1140,6 +1135,7 @@ export function MainCanvas({
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
                 <RepetitionsChart
                   repetitionData={deferredResult.repetitions}
+                  spectraData={deferredResult.processed?.spectra}
                   y={yValues}
                   useSelectionContext
                   globalColorConfig={colorConfig}

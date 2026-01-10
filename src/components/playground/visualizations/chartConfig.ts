@@ -179,13 +179,17 @@ export type ScatterChartState = ChartState<ScatterChartData>;
 export type FoldDistributionState = ChartState<FoldDistributionData>;
 export type RepetitionsChartState = ChartState<RepetitionsChartData>;
 
-// ============= Color Palettes =============
-// For new code, prefer using CATEGORICAL_PALETTES from '@/lib/playground/colorConfig'
+// ============= DEPRECATED Color Palettes =============
+// ⚠️ IMPORTANT: All color constants below are DEPRECATED
+// Use the unified color system from '@/lib/playground/colorConfig' instead:
+// - PARTITION_COLORS for train/test colors
+// - HIGHLIGHT_COLORS for selection/hover/pinned states
+// - getCategoricalColor() for fold/category colors
+// - getContinuousColor() for continuous value colors
 
 /**
  * Fold colors - distinct colors for cross-validation folds
- * Designed to be colorblind-friendly with high contrast
- * @deprecated Consider using CATEGORICAL_PALETTES from '@/lib/playground/colorConfig' for unified palette system
+ * @deprecated ⚠️ DO NOT USE - Use getCategoricalColor(index, palette) from '@/lib/playground/colorConfig'
  */
 export const FOLD_COLORS = [
   'hsl(173, 80%, 45%)', // Teal
@@ -202,6 +206,7 @@ export const FOLD_COLORS = [
 
 /**
  * Get fold color by index (wraps around if more folds than colors)
+ * @deprecated ⚠️ DO NOT USE - Use getCategoricalColor(foldIndex, palette) from '@/lib/playground/colorConfig'
  */
 export function getFoldColor(foldIndex: number): string {
   return FOLD_COLORS[foldIndex % FOLD_COLORS.length];
@@ -209,7 +214,7 @@ export function getFoldColor(foldIndex: number): string {
 
 /**
  * Train/Test colors for fold visualization
- * @deprecated Consider using PARTITION_COLORS from '@/lib/playground/colorConfig' for unified palette system
+ * @deprecated ⚠️ DO NOT USE - Use PARTITION_COLORS from '@/lib/playground/colorConfig'
  */
 export const TRAIN_TEST_COLORS = {
   train: 'hsl(217, 70%, 50%)',
@@ -220,7 +225,7 @@ export const TRAIN_TEST_COLORS = {
 
 /**
  * Sample colors by target value (Y)
- * @deprecated Use getContinuousColor from '@/lib/playground/colorConfig' instead
+ * @deprecated ⚠️ DO NOT USE - Use getContinuousColor(t, palette) from '@/lib/playground/colorConfig'
  */
 export function getSampleColorByY(
   yValue: number,
@@ -234,6 +239,7 @@ export function getSampleColorByY(
 
 /**
  * Sample colors by fold assignment
+ * @deprecated ⚠️ DO NOT USE - Use getCategoricalColor(foldLabel, palette) from '@/lib/playground/colorConfig'
  */
 export function getSampleColorByFold(
   foldLabel: number | undefined,
@@ -311,10 +317,11 @@ export const CHART_THEME = {
   referenceDashArray: '6 3',
 } as const;
 
-// ============= Selection Colors =============
+// ============= DEPRECATED Selection Colors =============
 
 /**
  * Colors for selection states - Phase 2 Enhancement
+ * @deprecated ⚠️ DO NOT USE - Use HIGHLIGHT_COLORS from '@/lib/playground/colorConfig'
  */
 export const SELECTION_COLORS = {
   // Primary selection - Distinctive cyan for better visibility
@@ -340,6 +347,7 @@ export const SELECTION_COLORS = {
 
 /**
  * Get selection state color for a sample
+ * @deprecated ⚠️ DO NOT USE - Use getUnifiedSampleColor from '@/lib/playground/colorConfig'
  */
 export function getSelectionStateColor(
   index: number,
@@ -461,6 +469,7 @@ export interface LegendItem {
 
 /**
  * Generate legend items for fold visualization
+ * @deprecated ⚠️ DO NOT USE - Build legend items using getCategoricalColor from '@/lib/playground/colorConfig'
  */
 export function getFoldLegendItems(nFolds: number): LegendItem[] {
   return Array.from({ length: Math.min(nFolds, FOLD_COLORS.length) }, (_, i) => ({
@@ -471,6 +480,7 @@ export function getFoldLegendItems(nFolds: number): LegendItem[] {
 
 /**
  * Generate legend items for train/test split
+ * @deprecated ⚠️ DO NOT USE - Build legend items using PARTITION_COLORS from '@/lib/playground/colorConfig'
  */
 export function getTrainTestLegendItems(): LegendItem[] {
   return [

@@ -727,12 +727,32 @@ class MetricsComputer:
                 # Fall back to euclidean
                 return np.linalg.norm(X_ref - X_final, axis=1)
 
-            from sklearn.covariance import EmpiricalCovariance
+            # Need enough samples for covariance estimation
+            min_samples_for_cov = X_ref.shape[1] + 2
+            if n_samples < min_samples_for_cov:
+                # Fall back to euclidean for small sample sizes
+                return np.linalg.norm(X_ref - X_final, axis=1)
+
+            from sklearn.covariance import LedoitWolf
             try:
                 X_combined = np.vstack([X_ref, X_final])
-                cov = EmpiricalCovariance().fit(X_combined)
+                # Use LedoitWolf for more stable covariance estimation (shrinkage)
+                cov = LedoitWolf().fit(X_combined)
                 diff = X_ref - X_final
-                return np.sqrt(np.sum(diff @ cov.precision_ * diff, axis=1))
+
+                # Check if precision matrix is valid
+                if not np.all(np.isfinite(cov.precision_)):
+                    return np.linalg.norm(X_ref - X_final, axis=1)
+
+                distances = np.sqrt(np.sum(diff @ cov.precision_ * diff, axis=1))
+
+                # Replace any NaN/Inf with euclidean fallback
+                euclidean = np.linalg.norm(X_ref - X_final, axis=1)
+                mask = ~np.isfinite(distances)
+                if np.any(mask):
+                    distances[mask] = euclidean[mask]
+
+                return distances
             except Exception:
                 # Fall back to euclidean if covariance estimation fails
                 return np.linalg.norm(X_ref - X_final, axis=1)
@@ -792,6 +812,67 @@ class MetricsComputer:
         group_labels = []
         per_group_stats = {}
 
+        # Pre-compute precision matrix for Mahalanobis (using all data)
+        precision_matrix = None
+        if metric == 'mahalanobis' and SKLEARN_AVAILABLE:
+            try:
+                from sklearn.covariance import LedoitWolf
+                n_samples, n_features = X.shape
+                if n_samples >= n_features + 2:
+                    cov = LedoitWolf().fit(X)
+                    if np.all(np.isfinite(cov.precision_)):
+                        precision_matrix = cov.precision_
+            except Exception:
+                pass
+
+        def compute_distance(spectrum: np.ndarray, ref: np.ndarray) -> float:
+            """Compute distance between spectrum and reference."""
+            diff = spectrum - ref
+
+            if metric == 'euclidean':
+                return float(np.linalg.norm(diff))
+
+            elif metric == 'manhattan':
+                return float(np.sum(np.abs(diff)))
+
+            elif metric == 'cosine':
+                norm_s = np.linalg.norm(spectrum)
+                norm_r = np.linalg.norm(ref)
+                if norm_s < 1e-10 or norm_r < 1e-10:
+                    return 0.0
+                cos_sim = np.dot(spectrum, ref) / (norm_s * norm_r)
+                return float(1 - cos_sim)
+
+            elif metric == 'spectral_angle':
+                norm_s = np.linalg.norm(spectrum)
+                norm_r = np.linalg.norm(ref)
+                if norm_s < 1e-10 or norm_r < 1e-10:
+                    return 0.0
+                cos_sim = np.dot(spectrum, ref) / (norm_s * norm_r)
+                return float(np.arccos(np.clip(cos_sim, -1, 1)))
+
+            elif metric == 'correlation':
+                r = np.corrcoef(spectrum, ref)[0, 1]
+                return float(1 - r) if np.isfinite(r) else 1.0
+
+            elif metric == 'mahalanobis':
+                if precision_matrix is not None:
+                    try:
+                        d = np.sqrt(np.dot(np.dot(diff, precision_matrix), diff))
+                        if np.isfinite(d):
+                            return float(d)
+                    except Exception:
+                        pass
+                # Fall back to euclidean
+                return float(np.linalg.norm(diff))
+
+            elif metric == 'pca_distance':
+                # For single-point comparison, just use euclidean
+                return float(np.linalg.norm(diff))
+
+            else:
+                return float(np.linalg.norm(diff))
+
         for group_id in unique_groups:
             mask = group_ids == group_id
             group_indices = np.where(mask)[0]
@@ -806,14 +887,7 @@ class MetricsComputer:
             if reference == 'group_mean':
                 ref = group_spectra.mean(axis=0)
                 for idx, spectrum in zip(group_indices, group_spectra):
-                    if metric == 'euclidean':
-                        d = np.linalg.norm(spectrum - ref)
-                    else:
-                        d = self.compute_pairwise_distances(
-                            spectrum.reshape(1, -1),
-                            ref.reshape(1, -1),
-                            metric
-                        )[0]
+                    d = compute_distance(spectrum, ref)
                     distances.append(d)
                     sample_indices.append(int(idx))
                     group_labels.append(str(group_id))
@@ -822,14 +896,7 @@ class MetricsComputer:
             elif reference == 'first':
                 ref = group_spectra[0]
                 for idx, spectrum in zip(group_indices, group_spectra):
-                    if metric == 'euclidean':
-                        d = np.linalg.norm(spectrum - ref)
-                    else:
-                        d = self.compute_pairwise_distances(
-                            spectrum.reshape(1, -1),
-                            ref.reshape(1, -1),
-                            metric
-                        )[0]
+                    d = compute_distance(spectrum, ref)
                     distances.append(d)
                     sample_indices.append(int(idx))
                     group_labels.append(str(group_id))
@@ -839,14 +906,7 @@ class MetricsComputer:
                 for i, (idx, spectrum) in enumerate(zip(group_indices, group_spectra)):
                     others = np.delete(group_spectra, i, axis=0)
                     ref = others.mean(axis=0)
-                    if metric == 'euclidean':
-                        d = np.linalg.norm(spectrum - ref)
-                    else:
-                        d = self.compute_pairwise_distances(
-                            spectrum.reshape(1, -1),
-                            ref.reshape(1, -1),
-                            metric
-                        )[0]
+                    d = compute_distance(spectrum, ref)
                     distances.append(d)
                     sample_indices.append(int(idx))
                     group_labels.append(str(group_id))
@@ -856,7 +916,7 @@ class MetricsComputer:
                 # Default to group_mean for unknown reference types
                 ref = group_spectra.mean(axis=0)
                 for idx, spectrum in zip(group_indices, group_spectra):
-                    d = np.linalg.norm(spectrum - ref)
+                    d = compute_distance(spectrum, ref)
                     distances.append(d)
                     sample_indices.append(int(idx))
                     group_labels.append(str(group_id))
@@ -864,14 +924,19 @@ class MetricsComputer:
 
             # Compute per-group statistics
             if group_distances:
-                per_group_stats[str(group_id)] = {
-                    'mean': float(np.mean(group_distances)),
-                    'std': float(np.std(group_distances)),
-                    'max': float(np.max(group_distances)),
-                    'count': len(group_distances),
-                }
+                valid_distances = [d for d in group_distances if np.isfinite(d)]
+                if valid_distances:
+                    per_group_stats[str(group_id)] = {
+                        'mean': float(np.mean(valid_distances)),
+                        'std': float(np.std(valid_distances)),
+                        'max': float(np.max(valid_distances)),
+                        'count': len(valid_distances),
+                    }
 
         distances_arr = np.array(distances)
+
+        # Final validation - replace any remaining NaN/Inf with 0
+        distances_arr = np.where(np.isfinite(distances_arr), distances_arr, 0.0)
 
         return {
             'distances': distances_arr,

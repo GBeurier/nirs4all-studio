@@ -333,7 +333,7 @@ export const ChartPanel = forwardRef<HTMLDivElement, ChartPanelProps>(
       <div
         ref={ref}
         className={cn(
-          'bg-card rounded-lg border border-border relative flex flex-col',
+          'bg-card rounded-lg border border-border relative flex flex-col select-none',
           'transition-all duration-200 ease-in-out',
           isMaximized && 'col-span-full row-span-full z-10',
           isMinimized && 'min-h-0',

@@ -34,13 +34,14 @@ import {
   CHART_MARGINS,
   ANIMATION_CONFIG,
   formatWavelength,
-  FOLD_COLORS,
-  SELECTION_COLORS,
 } from './chartConfig';
 import {
   type GlobalColorConfig,
   type ColorContext,
   getBaseColor as getUnifiedBaseColor,
+  getWebGLSampleColor,
+  HIGHLIGHT_COLORS,
+  getCategoricalColor,
 } from '@/lib/playground/colorConfig';
 import { InlineColorLegend } from '../ColorLegend';
 import { SpectraChartToolbar } from './SpectraChartToolbar';
@@ -474,22 +475,15 @@ export function SpectraChartV2({
     // Otherwise build from local props
     const yValues = y ?? [];
 
-    // Gather train/test indices from all folds
+    // Get train/test indices from first fold only to ensure disjoint sets
+    // In K-fold CV, the same sample can be train in one fold and test in another
     let trainIndices: Set<number> | undefined;
     let testIndices: Set<number> | undefined;
 
     if (folds?.folds && folds.folds.length > 0) {
-      trainIndices = new Set<number>();
-      testIndices = new Set<number>();
-
-      for (const fold of folds.folds) {
-        if (fold.train_indices) {
-          fold.train_indices.forEach(i => trainIndices!.add(i));
-        }
-        if (fold.test_indices) {
-          fold.test_indices.forEach(i => testIndices!.add(i));
-        }
-      }
+      const firstFold = folds.folds[0];
+      trainIndices = new Set<number>(firstFold.train_indices ?? []);
+      testIndices = new Set<number>(firstFold.test_indices ?? []);
     }
 
     return {
@@ -528,12 +522,12 @@ export function SpectraChartV2({
 
     // Highlighted states take priority - use distinctive colors (except in selected_only mode)
     if (!isSelectedOnlyMode) {
-      if (isHovered) return SELECTION_COLORS.hovered; // Bright orange
-      if (isSelected) return config.colorConfig.selectionColor ?? SELECTION_COLORS.selected; // Configurable selection color
-      if (isPinned && config.colorConfig.highlightPinned) return SELECTION_COLORS.pinned; // Gold for pinned
+      if (isHovered) return HIGHLIGHT_COLORS.hovered; // Primary color
+      if (isSelected) return config.colorConfig.selectionColor ?? HIGHLIGHT_COLORS.selected; // Configurable selection color
+      if (isPinned && config.colorConfig.highlightPinned) return HIGHLIGHT_COLORS.pinned; // Gold for pinned
     } else {
       // In selected_only mode, only show hover highlight (not selection color)
-      if (isHovered) return SELECTION_COLORS.hovered;
+      if (isHovered) return HIGHLIGHT_COLORS.hovered;
     }
 
     const baseColor = getBaseColor(sampleIdx);
@@ -555,15 +549,20 @@ export function SpectraChartV2({
   }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor]);
 
   // Compute sample colors for WebGL to match Canvas coloring
+  // Uses getWebGLSampleColor which includes selection/outlier mode handling
   const sampleColors = useMemo(() => {
     if (!isWebGLMode) return undefined;
     const colors: string[] = [];
     // Populate colors for visible samples
     for (const sampleIdx of displayIndices) {
-      colors[sampleIdx] = getBaseColor(sampleIdx);
+      if (globalColorConfig) {
+        colors[sampleIdx] = getWebGLSampleColor(sampleIdx, globalColorConfig, computedColorContext);
+      } else {
+        colors[sampleIdx] = getBaseColor(sampleIdx);
+      }
     }
     return colors;
-  }, [isWebGLMode, displayIndices, getBaseColor]);
+  }, [isWebGLMode, displayIndices, globalColorConfig, computedColorContext, getBaseColor]);
 
   // Handle chart click
   const handleClick = useCallback((e: unknown, event?: React.MouseEvent) => {
@@ -1157,7 +1156,7 @@ export function SpectraChartV2({
     if (showGroupedAggregation) {
       return groupKeys.map((key, idx) => ({
         label: String(key),
-        color: FOLD_COLORS[idx % FOLD_COLORS.length],
+        color: getCategoricalColor(idx, globalColorConfig?.categoricalPalette ?? 'default'),
         isArea: config.aggregation.mode !== 'none',
       }));
     }
@@ -1263,7 +1262,7 @@ export function SpectraChartV2({
                 visibleIndices={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : displayIndices}
                 sampleColors={
                   config.displayMode === 'grouped' && groupedStats
-                    ? Array.from(groupedStats.keys()).map((_, idx) => FOLD_COLORS[idx % FOLD_COLORS.length])
+                    ? Array.from(groupedStats.keys()).map((_, idx) => getCategoricalColor(idx, globalColorConfig?.categoricalPalette ?? 'default'))
                     : sampleColors
                 }
                 aggregatedStats={config.displayMode === 'aggregated' && aggregatedStats ? aggregatedStats : undefined}
@@ -1348,7 +1347,7 @@ export function SpectraChartV2({
             {/* Grouped aggregation elements */}
             {showGroupedAggregation && groupKeys.map((groupKey, groupIdx) => {
               const prefix = `grp_${groupKey}`;
-              const groupColor = FOLD_COLORS[groupIdx % FOLD_COLORS.length];
+              const groupColor = getCategoricalColor(groupIdx, globalColorConfig?.categoricalPalette ?? 'default');
 
               return (
                 <React.Fragment key={`group-${groupKey}`}>

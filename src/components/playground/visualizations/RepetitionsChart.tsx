@@ -34,6 +34,9 @@ import {
   Download,
   Settings2,
   AlertTriangle,
+  ArrowUpDown,
+  ZoomIn,
+  MousePointer2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -54,6 +57,9 @@ import {
   getContinuousColor,
   getCategoricalColor,
   normalizeValue,
+  detectMetadataType,
+  PARTITION_COLORS,
+  HIGHLIGHT_COLORS_CONCRETE,
 } from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
 import type { RepetitionResult } from '@/types/playground';
@@ -61,6 +67,15 @@ import type { UseSpectraChartConfigResult } from '@/lib/playground/useSpectraCha
 import type { DiffQuantile } from '@/lib/playground/spectraConfig';
 import { DiffModeControls } from './DiffModeControls';
 import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { computeRepetitionVariance } from '@/api/playground';
 
@@ -160,13 +175,28 @@ function getBioSampleColor(
 
 // ============= Constants =============
 
-const MIN_PIXELS_PER_SAMPLE = 5;
+const MIN_PIXELS_PER_SAMPLE = 4;
+const INITIAL_VISIBLE_SAMPLES = 20; // Initial zoom level
+const Y_AXIS_PADDING = 0.15; // 15% padding above max
+const POINT_RADIUS = { normal: 2, outlier: 3, selected: 4 };
 const QUANTILE_COLORS: Record<DiffQuantile, string> = {
   50: 'hsl(var(--muted-foreground))',
   75: 'hsl(180, 60%, 50%)',
   90: 'hsl(45, 90%, 50%)',
   95: 'hsl(0, 70%, 55%)',
 };
+
+// Sort options for X-axis ordering
+type SortOption = 'index' | 'distance' | 'distance_desc' | 'variance' | 'variance_desc' | 'color' | 'name';
+const SORT_OPTIONS: { value: SortOption; label: string; description: string }[] = [
+  { value: 'index', label: 'Original Index', description: 'Original sample order' },
+  { value: 'name', label: 'Name', description: 'Alphabetical by bio sample' },
+  { value: 'distance', label: 'Distance ↑', description: 'Lowest distance first' },
+  { value: 'distance_desc', label: 'Distance ↓', description: 'Highest distance first' },
+  { value: 'variance', label: 'Variance ↑', description: 'Lowest within-group variance first' },
+  { value: 'variance_desc', label: 'Variance ↓', description: 'Highest within-group variance first' },
+  { value: 'color', label: 'Color Value', description: 'By color/target value' },
+];
 
 // ============= Component =============
 
@@ -185,13 +215,24 @@ export function RepetitionsChart({
 }: RepetitionsChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [showGrid, setShowGrid] = useState(true);
+  const [enableHover, setEnableHover] = useState(true);
   const [computedDistances, setComputedDistances] = useState<ComputedDistances | null>(null);
   const [isComputing, setIsComputing] = useState(false);
 
-  // Zoom state
+  // Zoom/pan state (right-click drag)
   const [xDomain, setXDomain] = useState<[number, number] | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<number | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<number | null>(null);
+
+  // Selection state (left-click drag for area selection)
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+
+  // Sort state
+  const [sortBy, setSortBy] = useState<SortOption>('index');
+
+  // Track if initial zoom has been set
+  const [initialZoomSet, setInitialZoomSet] = useState(false);
 
   // SelectionContext integration
   const selectionCtx = useSelectionContext ? useSelection() : null;
@@ -230,21 +271,40 @@ export function RepetitionsChart({
     })
       .then(response => {
         if (response.success) {
-          setComputedDistances({
-            distances: response.distances,
-            quantiles: response.quantiles,
-            mean: response.distances.reduce((a, b) => a + b, 0) / response.distances.length,
-            max: Math.max(...response.distances),
+          // Validate distances - replace NaN/Inf with 0 to prevent chart breaking
+          const validDistances = response.distances.map(d => {
+            if (!Number.isFinite(d) || d < 0) return 0;
+            return d;
           });
+
+          // Check if all distances are valid (non-zero)
+          const hasValidData = validDistances.some(d => d > 0);
+
+          if (hasValidData) {
+            setComputedDistances({
+              distances: validDistances,
+              quantiles: response.quantiles,
+              mean: validDistances.reduce((a, b) => a + b, 0) / validDistances.length,
+              max: Math.max(...validDistances.filter(d => Number.isFinite(d))),
+            });
+          } else {
+            // If all distances are 0 or invalid, clear computed distances to use fallback
+            console.warn('Metric computation returned invalid distances, using fallback');
+            setComputedDistances(null);
+          }
         }
       })
       .catch(err => {
         console.error('Failed to compute distances:', err);
+        setComputedDistances(null);
       })
       .finally(() => {
         setIsComputing(false);
       });
   }, [hasRepetitions, repetitionData, spectraData, metric, repetitionReference]);
+
+  // Get display filter from colorContext
+  const displayFilteredIndices = colorContext?.displayFilteredIndices;
 
   // Transform data for plotting
   const { plotData, bioSampleOrder, yRange, statistics } = useMemo(() => {
@@ -257,15 +317,76 @@ export function RepetitionsChart({
       };
     }
 
-    const data = repetitionData.data;
+    let data = repetitionData.data;
 
-    // Get unique bio samples
+    // Apply display filter if active (e.g., "selected only" mode)
+    if (displayFilteredIndices && displayFilteredIndices.size > 0) {
+      data = data.filter(d => displayFilteredIndices.has(d.sample_index));
+    }
+
+    if (data.length === 0) {
+      return {
+        plotData: [] as PlotDataPoint[],
+        bioSampleOrder: [] as string[],
+        yRange: { min: 0, max: 1 },
+        statistics: null,
+      };
+    }
+
+    // Use computed distances if available, otherwise fall back to repetitionData distances
+    // Note: distances array corresponds to original data order, need to map by sample_index
+    const distanceMap = new Map<number, number>();
+    if (computedDistances?.distances) {
+      repetitionData.data.forEach((d, i) => {
+        distanceMap.set(d.sample_index, computedDistances.distances[i] ?? d.distance);
+      });
+    }
+
+    // Get unique bio samples and compute per-group stats for sorting
     const bioSamplesSet = new Set(data.map(d => d.bio_sample));
-    const bioSampleList = Array.from(bioSamplesSet).sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true })
-    );
+    const bioSampleStats = new Map<string, { meanDist: number; variance: number; meanY: number; firstIndex: number }>();
 
-    // Create a map of bio sample to X index
+    for (const bioSample of bioSamplesSet) {
+      const groupData = data.filter(d => d.bio_sample === bioSample);
+      const distances = groupData.map(d => distanceMap.get(d.sample_index) ?? d.distance);
+      const meanDist = distances.reduce((a, b) => a + b, 0) / distances.length;
+      const variance = distances.length > 1
+        ? distances.reduce((sum, d) => sum + Math.pow(d - meanDist, 2), 0) / (distances.length - 1)
+        : 0;
+      const yValues = groupData.filter(d => d.y !== undefined).map(d => d.y!);
+      const meanY = yValues.length > 0 ? yValues.reduce((a, b) => a + b, 0) / yValues.length : 0;
+      const firstIndex = groupData[0]?.sample_index ?? 0;
+      bioSampleStats.set(bioSample, { meanDist, variance, meanY, firstIndex });
+    }
+
+    // Sort bio samples based on sortBy option
+    let bioSampleList = Array.from(bioSamplesSet);
+    switch (sortBy) {
+      case 'name':
+        bioSampleList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        break;
+      case 'distance':
+        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanDist ?? 0) - (bioSampleStats.get(b)?.meanDist ?? 0));
+        break;
+      case 'distance_desc':
+        bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.meanDist ?? 0) - (bioSampleStats.get(a)?.meanDist ?? 0));
+        break;
+      case 'variance':
+        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.variance ?? 0) - (bioSampleStats.get(b)?.variance ?? 0));
+        break;
+      case 'variance_desc':
+        bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.variance ?? 0) - (bioSampleStats.get(a)?.variance ?? 0));
+        break;
+      case 'color':
+        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanY ?? 0) - (bioSampleStats.get(b)?.meanY ?? 0));
+        break;
+      case 'index':
+      default:
+        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.firstIndex ?? 0) - (bioSampleStats.get(b)?.firstIndex ?? 0));
+        break;
+    }
+
+    // Create a map of bio sample to X index (after sorting)
     const bioSampleIndex = new Map<string, number>();
     bioSampleList.forEach((bs, i) => bioSampleIndex.set(bs, i));
 
@@ -274,14 +395,12 @@ export function RepetitionsChart({
     const yMin = allY.length > 0 ? Math.min(...allY) : 0;
     const yMax = allY.length > 0 ? Math.max(...allY) : 1;
 
-    // Use computed distances if available, otherwise fall back to repetitionData distances
-    const distances = computedDistances?.distances ?? data.map(d => d.distance);
     const maxDist = computedDistances?.max ?? repetitionData.statistics?.max_distance ?? 1;
     const p95 = computedDistances?.quantiles?.[95] ?? repetitionData.statistics?.p95_distance ?? maxDist;
 
     // Transform to plot data
-    const plotData: PlotDataPoint[] = data.map((d, i) => {
-      const distance = distances[i] ?? d.distance;
+    const plotData: PlotDataPoint[] = data.map((d) => {
+      const distance = distanceMap.get(d.sample_index) ?? d.distance;
       // Apply log scale if needed
       const displayDistance = scaleType === 'log' ? Math.log1p(distance) : distance;
 
@@ -314,15 +433,25 @@ export function RepetitionsChart({
       yRange: { min: yMin, max: yMax },
       statistics: stats,
     };
-  }, [repetitionData, selectedSamples, hasRepetitions, computedDistances, scaleType]);
+  }, [repetitionData, selectedSamples, hasRepetitions, computedDistances, scaleType, displayFilteredIndices, sortBy]);
+
+  // Compute Y domain with 15% padding (needed by event handlers)
+  const yDomain = useMemo(() => {
+    if (plotData.length === 0) return [0, 1] as [number, number];
+    const yValues = plotData.map(p => p.y);
+    const minY = Math.min(0, Math.min(...yValues)); // Include 0
+    const maxY = Math.max(...yValues);
+    const range = maxY - minY || 1;
+    return [minY, maxY + range * Y_AXIS_PADDING] as [number, number];
+  }, [plotData]);
 
   // Max distance for color scaling
   const maxDistance = statistics?.max_distance ?? 1;
 
-  // Get point color
+  // Get point color - handles all global color modes
   const getPointColor = useCallback((point: PlotDataPoint): string => {
-    const continuousPalette = globalColorConfig?.continuousPalette;
-    const categoricalPalette = globalColorConfig?.categoricalPalette;
+    const continuousPalette = globalColorConfig?.continuousPalette ?? 'blue_red';
+    const categoricalPalette = globalColorConfig?.categoricalPalette ?? 'default';
 
     if (globalColorConfig) {
       const mode = globalColorConfig.mode;
@@ -331,28 +460,70 @@ export function RepetitionsChart({
           if (point.targetY !== undefined) {
             return getTargetColor(point.targetY, yRange.min, yRange.max, continuousPalette);
           }
-          return 'hsl(var(--muted-foreground))';
+          return HIGHLIGHT_COLORS_CONCRETE.unselected;
+
         case 'partition':
           if (colorContext?.trainIndices?.has(point.sampleIndex)) {
-            return 'hsl(217, 70%, 50%)';
+            return PARTITION_COLORS.train;
           }
           if (colorContext?.testIndices?.has(point.sampleIndex)) {
-            return 'hsl(38, 92%, 50%)';
+            return PARTITION_COLORS.test;
           }
-          return 'hsl(var(--muted-foreground))';
-        case 'fold':
+          return HIGHLIGHT_COLORS_CONCRETE.unselected;
+
+        case 'fold': {
           const foldLabel = colorContext?.foldLabels?.[point.sampleIndex];
           if (foldLabel !== undefined && foldLabel >= 0) {
             return getCategoricalColor(foldLabel, categoricalPalette);
           }
-          return 'hsl(var(--muted-foreground))';
+          return HIGHLIGHT_COLORS_CONCRETE.unselected;
+        }
+
+        case 'selection': {
+          const isSelected = colorContext?.selectedSamples?.has(point.sampleIndex);
+          return isSelected ? HIGHLIGHT_COLORS_CONCRETE.selected : HIGHLIGHT_COLORS_CONCRETE.unselected;
+        }
+
         case 'outlier':
           if (colorContext?.outlierIndices?.has(point.sampleIndex)) {
-            return 'hsl(0, 70%, 55%)';
+            return HIGHLIGHT_COLORS_CONCRETE.outlier;
           }
-          return 'hsl(var(--muted-foreground))';
+          return HIGHLIGHT_COLORS_CONCRETE.unselected;
+
+        case 'metadata': {
+          const metadataKey = globalColorConfig.metadataKey;
+          if (!metadataKey || !colorContext?.metadata) {
+            return HIGHLIGHT_COLORS_CONCRETE.unselected;
+          }
+          const values = colorContext.metadata[metadataKey];
+          const value = values?.[point.sampleIndex];
+          if (value === undefined || value === null) {
+            return HIGHLIGHT_COLORS_CONCRETE.unselected;
+          }
+          // Determine type
+          const metadataType = globalColorConfig.metadataType ?? detectMetadataType(values);
+          if (metadataType === 'continuous' && typeof value === 'number') {
+            const numericValues = values.filter(v => typeof v === 'number') as number[];
+            const min = Math.min(...numericValues);
+            const max = Math.max(...numericValues);
+            const t = normalizeValue(value, min, max);
+            return getContinuousColor(t, continuousPalette);
+          } else {
+            // Categorical
+            const uniqueValues = [...new Set(values.filter(v => v !== null && v !== undefined))];
+            const idx = uniqueValues.indexOf(value);
+            return getCategoricalColor(idx >= 0 ? idx : 0, categoricalPalette);
+          }
+        }
+
+        case 'index': {
+          const totalSamples = colorContext?.totalSamples ?? 1;
+          const t = point.sampleIndex / Math.max(1, totalSamples - 1);
+          return getContinuousColor(t, continuousPalette);
+        }
+
         default:
-          return 'hsl(var(--primary))';
+          return HIGHLIGHT_COLORS_CONCRETE.unselected;
       }
     }
 
@@ -372,22 +543,41 @@ export function RepetitionsChart({
     } else if (event?.ctrlKey || event?.metaKey) {
       selectionCtx.toggle(indices);
     } else {
-      selectionCtx.select(indices, 'replace');
+      // If clicking on the only selected item, deselect it
+      if (selectedSamples.has(point.sampleIndex) && selectedSamples.size === 1) {
+        selectionCtx.clear();
+      } else {
+        selectionCtx.select(indices, 'replace');
+      }
     }
-  }, [selectionCtx, plotData]);
+  }, [selectionCtx, plotData, selectedSamples]);
 
-  // Handle background click
-  const handleChartBackgroundClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  // Handle background click (left click on empty space clears selection)
+  const handleChartClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only handle left clicks
+    if (e.button !== 0) return;
+
+    // Check if we were selecting (area select) - if so, don't clear
+    if (isSelecting) return;
+
     const target = e.target as HTMLElement;
+    // Only clear if clicking on the chart background, not on points
     if (target.tagName === 'svg' || target.classList.contains('recharts-surface')) {
       if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
         selectionCtx.clear();
       }
     }
-  }, [selectionCtx]);
+  }, [selectionCtx, isSelecting]);
+
+  // Prevent context menu on right-click (we use it for panning)
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+  }, []);
 
   // Handle mouse wheel for X-axis zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  // Note: We use a ref-based approach to add the wheel listener with { passive: false }
+  // to allow preventDefault() without triggering browser warnings
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
     const numSamples = bioSampleOrder.length;
@@ -402,8 +592,6 @@ export function RepetitionsChart({
     let newRange = range * zoomFactor;
 
     // Limit zoom based on min pixels per sample
-    const chartWidth = chartRef.current?.clientWidth ?? 800;
-    const minRange = (chartWidth / MIN_PIXELS_PER_SAMPLE) / numSamples * range;
     newRange = Math.max(newRange, 1); // At least 1 sample visible
     newRange = Math.min(newRange, numSamples); // Can't zoom out beyond all samples
 
@@ -413,49 +601,151 @@ export function RepetitionsChart({
     setXDomain([newStart, newEnd]);
   }, [xDomain, bioSampleOrder.length]);
 
-  // Handle mouse down for pan
+  // Attach wheel listener with { passive: false } to allow preventDefault()
+  useEffect(() => {
+    const element = chartRef.current;
+    if (!element) return;
+
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      element.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
+
+  // Handle mouse down - right click for pan, left click for selection
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 0) { // Left click
-      setIsDragging(true);
-      setDragStart(e.clientX);
+    if (e.button === 2) {
+      // Right click - start panning
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart(e.clientX);
+    } else if (e.button === 0) {
+      // Left click - start area selection
+      e.preventDefault(); // Prevent text selection and other default behaviors
+      const rect = chartRef.current?.getBoundingClientRect();
+      if (rect) {
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        setIsSelecting(true);
+        setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
+      }
     }
   }, []);
 
-  // Handle mouse move for pan
+  // Handle mouse move - pan or update selection box
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging || dragStart === null) return;
+    // Handle panning (right-click drag)
+    if (isPanning && panStart !== null) {
+      const numSamples = bioSampleOrder.length;
+      if (numSamples === 0) return;
 
-    const numSamples = bioSampleOrder.length;
-    if (numSamples === 0) return;
+      const chartWidth = chartRef.current?.clientWidth ?? 800;
+      const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
+      const range = currentDomain[1] - currentDomain[0];
 
-    const chartWidth = chartRef.current?.clientWidth ?? 800;
-    const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
-    const range = currentDomain[1] - currentDomain[0];
+      const deltaX = e.clientX - panStart;
+      const deltaSamples = -(deltaX / chartWidth) * range;
 
-    const deltaX = e.clientX - dragStart;
-    const deltaSamples = -(deltaX / chartWidth) * range;
+      let newStart = currentDomain[0] + deltaSamples;
+      let newEnd = currentDomain[1] + deltaSamples;
 
-    let newStart = currentDomain[0] + deltaSamples;
-    let newEnd = currentDomain[1] + deltaSamples;
+      // Clamp to bounds
+      if (newStart < -0.5) {
+        newEnd -= (newStart + 0.5);
+        newStart = -0.5;
+      }
+      if (newEnd > numSamples - 0.5) {
+        newStart -= (newEnd - (numSamples - 0.5));
+        newEnd = numSamples - 0.5;
+      }
 
-    // Clamp to bounds
-    if (newStart < -0.5) {
-      newEnd -= (newStart + 0.5);
-      newStart = -0.5;
+      setXDomain([Math.max(-0.5, newStart), Math.min(numSamples - 0.5, newEnd)]);
+      setPanStart(e.clientX);
     }
-    if (newEnd > numSamples - 0.5) {
-      newStart -= (newEnd - (numSamples - 0.5));
-      newEnd = numSamples - 0.5;
+
+    // Handle area selection (left-click drag)
+    if (isSelecting && selectionBox) {
+      const rect = chartRef.current?.getBoundingClientRect();
+      if (rect) {
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        setSelectionBox(prev => prev ? { ...prev, endX: x, endY: y } : null);
+      }
+    }
+  }, [isPanning, panStart, xDomain, bioSampleOrder.length, isSelecting, selectionBox]);
+
+  // Handle mouse up - finish pan or selection
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    // Finish panning
+    if (isPanning) {
+      setIsPanning(false);
+      setPanStart(null);
     }
 
-    setXDomain([Math.max(-0.5, newStart), Math.min(numSamples - 0.5, newEnd)]);
-    setDragStart(e.clientX);
-  }, [isDragging, dragStart, xDomain, bioSampleOrder.length]);
+    // Finish area selection
+    if (isSelecting && selectionBox && selectionCtx) {
+      const rect = chartRef.current?.getBoundingClientRect();
+      if (rect && plotData.length > 0) {
+        // Calculate selection bounds relative to chart area (accounting for margins)
+        const margin = { top: 10, right: 20, bottom: 30, left: 45 };
+        const chartAreaWidth = rect.width - margin.left - margin.right;
+        const chartAreaHeight = rect.height - margin.top - margin.bottom;
 
-  // Handle mouse up
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    setDragStart(null);
+        const minX = Math.min(selectionBox.startX, selectionBox.endX);
+        const maxX = Math.max(selectionBox.startX, selectionBox.endX);
+        const minY = Math.min(selectionBox.startY, selectionBox.endY);
+        const maxY = Math.max(selectionBox.startY, selectionBox.endY);
+
+        // Only process if it's a drag (not just a click)
+        const isDrag = Math.abs(selectionBox.endX - selectionBox.startX) > 5 ||
+                       Math.abs(selectionBox.endY - selectionBox.startY) > 5;
+
+        if (isDrag) {
+          // Get current X domain
+          const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
+          const xRange = effectiveXDomain[1] - effectiveXDomain[0];
+
+          // Use yDomain (computed with padding) for accurate coordinate conversion
+          const yAxisMin = yDomain[0];
+          const yAxisMax = yDomain[1];
+          const yAxisRange = yAxisMax - yAxisMin || 1;
+
+          // Convert pixel coords to data coords
+          const dataMinX = effectiveXDomain[0] + ((minX - margin.left) / chartAreaWidth) * xRange;
+          const dataMaxX = effectiveXDomain[0] + ((maxX - margin.left) / chartAreaWidth) * xRange;
+          // Y is inverted (top = max, bottom = min)
+          const dataMinY = yAxisMax - ((maxY - margin.top) / chartAreaHeight) * yAxisRange;
+          const dataMaxY = yAxisMax - ((minY - margin.top) / chartAreaHeight) * yAxisRange;
+
+          // Find points within selection
+          const selectedIndices = plotData
+            .filter(p => p.x >= dataMinX && p.x <= dataMaxX && p.y >= dataMinY && p.y <= dataMaxY)
+            .map(p => p.sampleIndex);
+
+          if (selectedIndices.length > 0) {
+            if (e.shiftKey) {
+              selectionCtx.select(selectedIndices, 'add');
+            } else if (e.ctrlKey || e.metaKey) {
+              // Ctrl+drag: toggle each point in the selection
+              selectionCtx.toggle(selectedIndices);
+            } else {
+              selectionCtx.select(selectedIndices, 'replace');
+            }
+          }
+        }
+      }
+
+      setIsSelecting(false);
+      setSelectionBox(null);
+    }
+  }, [isPanning, isSelecting, selectionBox, selectionCtx, plotData, xDomain, bioSampleOrder.length, yDomain]);
+
+  // Handle mouse leave
+  const handleMouseLeave = useCallback(() => {
+    setIsPanning(false);
+    setPanStart(null);
+    setIsSelecting(false);
+    setSelectionBox(null);
   }, []);
 
   // Reset zoom on double click
@@ -484,6 +774,29 @@ export function RepetitionsChart({
   const handleGridToggle = useCallback(() => {
     setShowGrid(prev => !prev);
   }, []);
+
+  // Set initial zoom when data loads (zoom to show ~INITIAL_VISIBLE_SAMPLES)
+  useEffect(() => {
+    if (!initialZoomSet && bioSampleOrder.length > 0) {
+      const numSamples = bioSampleOrder.length;
+      if (numSamples > INITIAL_VISIBLE_SAMPLES) {
+        // Start zoomed in to show first INITIAL_VISIBLE_SAMPLES
+        setXDomain([-0.5, INITIAL_VISIBLE_SAMPLES - 0.5]);
+      }
+      setInitialZoomSet(true);
+    }
+  }, [bioSampleOrder.length, initialZoomSet]);
+
+  // Compute zoom level for indicator
+  const zoomInfo = useMemo(() => {
+    const numSamples = bioSampleOrder.length;
+    if (numSamples === 0) return { level: 100, visible: 0, total: 0 };
+    const effectiveDomain = xDomain ?? [-0.5, numSamples - 0.5];
+    const visibleRange = effectiveDomain[1] - effectiveDomain[0];
+    const visibleSamples = Math.round(visibleRange);
+    const zoomPercent = Math.round((visibleSamples / numSamples) * 100);
+    return { level: zoomPercent, visible: visibleSamples, total: numSamples };
+  }, [xDomain, bioSampleOrder.length]);
 
   // Empty states
   if (!repetitionData) {
@@ -557,6 +870,7 @@ export function RepetitionsChart({
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: any) => {
+    if (!enableHover) return null;
     if (!active || !payload || payload.length === 0) return null;
     const point: PlotDataPoint | undefined = payload[0]?.payload;
     if (!point) return null;
@@ -582,8 +896,6 @@ export function RepetitionsChart({
   return (
     <div
       className="h-full flex flex-col"
-      ref={chartRef}
-      onClick={handleChartBackgroundClick}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
@@ -613,6 +925,88 @@ export function RepetitionsChart({
               <Separator orientation="vertical" className="h-4 mx-0.5" />
             </>
           )}
+
+          {/* Sort Dropdown */}
+          <DropdownMenu>
+            <TooltipProvider delayDuration={200}>
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant={sortBy !== 'index' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1"
+                    >
+                      <ArrowUpDown className="w-3 h-3" />
+                      {!compact && SORT_OPTIONS.find(o => o.value === sortBy)?.label}
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Sort samples by</p>
+                </TooltipContent>
+              </TooltipUI>
+            </TooltipProvider>
+            <DropdownMenuContent side="bottom" align="start" className="w-48">
+              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                Sort Samples By
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                {SORT_OPTIONS.map(option => (
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                    className="text-xs"
+                  >
+                    <div className="flex flex-col">
+                      <span>{option.label}</span>
+                      <span className="text-[10px] text-muted-foreground">{option.description}</span>
+                    </div>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Hover toggle */}
+          <TooltipProvider delayDuration={200}>
+            <TooltipUI>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={enableHover ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => setEnableHover(!enableHover)}
+                >
+                  <MousePointer2 className={cn("w-3.5 h-3.5", enableHover && "text-primary")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">{enableHover ? 'Hover enabled' : 'Hover disabled'}</p>
+              </TooltipContent>
+            </TooltipUI>
+          </TooltipProvider>
+
+          {/* Zoom Indicator */}
+          {zoomInfo.level < 100 && (
+            <TooltipProvider delayDuration={200}>
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="h-6 text-[10px] gap-1 cursor-default">
+                    <ZoomIn className="w-3 h-3" />
+                    {zoomInfo.visible}/{zoomInfo.total}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Showing {zoomInfo.visible} of {zoomInfo.total} samples ({zoomInfo.level}%)</p>
+                  <p className="text-[10px] text-muted-foreground">Double-click to reset zoom</p>
+                </TooltipContent>
+              </TooltipUI>
+            </TooltipProvider>
+          )}
+
+          <Separator orientation="vertical" className="h-4 mx-0.5" />
 
           {/* Configure */}
           {onConfigureRepetitions && (
@@ -651,16 +1045,42 @@ export function RepetitionsChart({
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart with loading overlay */}
       <div
-        className="flex-1 min-h-0 cursor-grab active:cursor-grabbing"
-        onWheel={handleWheel}
+        ref={chartRef}
+        className="flex-1 min-h-0 relative"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         onDoubleClick={handleDoubleClick}
+        onClick={handleChartClick}
+        onContextMenu={handleContextMenu}
+        style={{ cursor: isPanning ? 'grabbing' : 'crosshair' }}
       >
+        {/* Loading overlay */}
+        {isComputing && (
+          <div className="absolute inset-0 bg-background/60 flex items-center justify-center z-10">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-muted-foreground">Computing distances...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Selection box overlay */}
+        {isSelecting && selectionBox && (
+          <div
+            className="absolute border-2 border-dashed border-primary bg-primary/10 pointer-events-none z-20"
+            style={{
+              left: Math.min(selectionBox.startX, selectionBox.endX),
+              top: Math.min(selectionBox.startY, selectionBox.endY),
+              width: Math.abs(selectionBox.endX - selectionBox.startX),
+              height: Math.abs(selectionBox.endY - selectionBox.startY),
+            }}
+          />
+        )}
+
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
             {showGrid && (
@@ -694,6 +1114,7 @@ export function RepetitionsChart({
             <YAxis
               type="number"
               dataKey="y"
+              domain={yDomain}
               stroke={CHART_THEME.axisStroke}
               fontSize={CHART_THEME.axisFontSize}
               width={40}
@@ -707,9 +1128,13 @@ export function RepetitionsChart({
               }}
             />
 
-            <ZAxis range={[40, 120]} />
+            <ZAxis range={[20, 60]} />
 
-            <Tooltip isAnimationActive={false} content={<CustomTooltip />} />
+            <Tooltip
+              isAnimationActive={false}
+              cursor={enableHover ? { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '4 2' } : false}
+              content={<CustomTooltip />}
+            />
 
             {/* Quantile reference lines */}
             {quantileValues.map(({ quantile, value }) => (
@@ -743,18 +1168,13 @@ export function RepetitionsChart({
                   fill={getPointColor(point)}
                   stroke={
                     point.isSelected
-                      ? 'hsl(var(--primary))'
+                      ? 'hsl(var(--foreground))'
                       : point.isOutlier
                         ? 'hsl(var(--warning))'
-                        : 'transparent'
+                        : 'none'
                   }
-                  strokeWidth={point.isSelected ? 2 : point.isOutlier ? 1.5 : 0}
-                  opacity={
-                    selectedSamples.size === 0 || point.isSelected
-                      ? 1
-                      : 0.3
-                  }
-                  r={point.isSelected ? 6 : point.isOutlier ? 5 : 4}
+                  strokeWidth={point.isSelected ? 2 : point.isOutlier ? 1 : 0}
+                  r={point.isSelected ? POINT_RADIUS.selected : point.isOutlier ? POINT_RADIUS.outlier : POINT_RADIUS.normal}
                 />
               ))}
             </Scatter>
@@ -773,7 +1193,7 @@ export function RepetitionsChart({
               <span>({repetitionData.n_singletons} singletons hidden)</span>
             )}
             <span className="text-muted-foreground/50">
-              Scroll to zoom • Drag to pan • Double-click to reset
+              Scroll to zoom • Right-drag to pan • Left-drag to select • Double-click to reset
             </span>
           </div>
 

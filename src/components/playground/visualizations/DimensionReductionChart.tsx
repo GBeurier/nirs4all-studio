@@ -39,6 +39,7 @@ import {
   Monitor,
   Zap,
   Cpu,
+  MousePointer2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -70,11 +71,9 @@ import {
   CHART_THEME,
   CHART_MARGINS,
   ANIMATION_CONFIG,
-  getFoldColor,
   formatPercentage,
   formatFoldLabel,
   formatYValue,
-  FOLD_COLORS,
 } from './chartConfig';
 import {
   type GlobalColorConfig,
@@ -82,6 +81,7 @@ import {
   type ColorResult,
   getBaseColor as getUnifiedBaseColor,
   getUnifiedSampleColor,
+  getWebGLSampleColor,
   getCategoricalColor,
   getContinuousColor,
   normalizeValue,
@@ -187,6 +187,8 @@ interface ChartConfig {
   pointSize: 'small' | 'medium' | 'large';
   showLabels: boolean;
   preserveAspectRatio: boolean;
+  /** Whether to enable hover highlighting and tooltips */
+  enableHover: boolean;
 }
 
 // ============= Default Configuration =============
@@ -202,6 +204,7 @@ const DEFAULT_CONFIG: ChartConfig = {
   pointSize: 'medium',
   showLabels: false,
   preserveAspectRatio: false,
+  enableHover: true,
 };
 
 const POINT_SIZES = {
@@ -245,6 +248,9 @@ export function DimensionReductionChart({
   const scatter3DRef = useRef<Scatter3DHandle>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
   const [rendererType, setRendererType] = useState<ScatterRendererType>('webgl');
+
+  // Track when a box/lasso selection just completed to prevent click handler from firing
+  const selectionJustCompletedRef = useRef(false);
 
   // SelectionContext integration - always call hook, conditionally use result
   const selectionHook = useSelection();
@@ -439,10 +445,23 @@ export function DimensionReductionChart({
   const computedColorContext = useMemo<ColorContext>(() => {
     if (externalColorContext) return externalColorContext;
 
+    // Build train/test indices from first fold for partition mode
+    // Use first fold only to ensure disjoint sets (K-fold has overlapping samples)
+    let trainIndices: Set<number> | undefined;
+    let testIndices: Set<number> | undefined;
+    const foldsData = folds ?? pca;
+    if (foldsData?.folds && foldsData.folds.length > 0) {
+      const firstFold = foldsData.folds[0];
+      trainIndices = new Set<number>(firstFold.train_indices ?? []);
+      testIndices = new Set<number>(firstFold.test_indices ?? []);
+    }
+
     return {
       y,
       yMin: yRange.min,
       yMax: yRange.max,
+      trainIndices,
+      testIndices,
       foldLabels: folds?.fold_labels ?? pca?.fold_labels,
       metadata,
       selectedSamples,
@@ -451,30 +470,31 @@ export function DimensionReductionChart({
     };
   }, [externalColorContext, y, yRange, folds, pca, metadata, selectedSamples, pinnedSamples]);
 
-  // Get point color - returns CSS-compatible colors (concrete HSL, no variables)
+  // Get point color for WebGL/canvas renderers - returns only parseable HSL colors (no CSS variables)
+  // Uses getWebGLSampleColor which handles selection/outlier modes with concrete colors
   const getPointColor = useCallback((point: DataPoint) => {
     // Use unified color system if globalColorConfig is provided
     if (globalColorConfig) {
-      return getUnifiedBaseColor(point.index, globalColorConfig, computedColorContext);
+      return getWebGLSampleColor(point.index, globalColorConfig, computedColorContext);
     }
 
-    // Legacy color logic
+    // Legacy color logic (fallback when no globalColorConfig provided)
     switch (config.colorMode) {
       case 'fold':
         if (point.foldLabel !== undefined && point.foldLabel >= 0) {
-          return getFoldColor(point.foldLabel);
+          return getCategoricalColor(point.foldLabel, 'default');
         }
         return 'hsl(220, 10%, 50%)'; // Muted gray fallback
 
       case 'metadata':
         if (config.metadataKey && point.metadata?.[config.metadataKey] !== undefined) {
-          // Simple categorical coloring
+          // Simple categorical coloring using global palette
           const value = point.metadata[config.metadataKey];
           const hash = String(value).split('').reduce((a, b) => {
             a = ((a << 5) - a) + b.charCodeAt(0);
             return a & a;
           }, 0);
-          return `hsl(${Math.abs(hash) % 360}, 70%, 50%)`;
+          return getCategoricalColor(Math.abs(hash), 'default');
         }
         return 'hsl(239, 84%, 67%)'; // Primary-like indigo
 
@@ -486,56 +506,23 @@ export function DimensionReductionChart({
       default:
         if (point.yValue !== undefined && chartData.length > 0) {
           const t = (point.yValue - yRange.min) / (yRange.max - yRange.min + 0.001);
-          const hue = 240 - t * 180; // Blue to red gradient
-          return `hsl(${hue}, 70%, 50%)`;
+          return getContinuousColor(t, 'blue_red');
         }
         return 'hsl(239, 84%, 67%)'; // Primary-like indigo
     }
   }, [globalColorConfig, computedColorContext, config.colorMode, config.metadataKey, chartData, yRange]);
 
-  // Get point color for 3D view - returns only parseable HSL colors (no CSS variables)
-  // Three.js cannot parse CSS variables, so we use concrete color values
-  const getPointColor3D = useCallback((point: DataPoint) => {
-    // Use unified color system if globalColorConfig is provided
-    if (globalColorConfig) {
-      return getUnifiedBaseColor(point.index, globalColorConfig, computedColorContext);
-    }
-
-    // Legacy color logic
-    switch (config.colorMode) {
-      case 'fold':
-        if (point.foldLabel !== undefined && point.foldLabel >= 0) {
-          return getFoldColor(point.foldLabel);
-        }
-        return 'hsl(220, 10%, 50%)'; // Muted gray fallback
-
-      case 'metadata':
-        if (config.metadataKey && point.metadata?.[config.metadataKey] !== undefined) {
-          const value = point.metadata[config.metadataKey];
-          const hash = String(value).split('').reduce((a, b) => {
-            a = ((a << 5) - a) + b.charCodeAt(0);
-            return a & a;
-          }, 0);
-          return `hsl(${Math.abs(hash) % 360}, 70%, 50%)`;
-        }
-        return 'hsl(239, 84%, 67%)'; // Primary-like indigo fallback
-
-      case 'metric':
-        return 'hsl(239, 84%, 67%)'; // Primary-like indigo fallback
-
-      case 'target':
-      default:
-        if (point.yValue !== undefined && chartData.length > 0) {
-          const t = (point.yValue - yRange.min) / (yRange.max - yRange.min + 0.001);
-          const hue = 240 - t * 180; // Blue to red gradient
-          return `hsl(${hue}, 70%, 50%)`;
-        }
-        return 'hsl(239, 84%, 67%)'; // Primary-like indigo fallback
-    }
-  }, [globalColorConfig, computedColorContext, config.colorMode, config.metadataKey, chartData, yRange]);
+  // Alias for 3D view - same as getPointColor since both need concrete colors
+  const getPointColor3D = getPointColor;
 
   // Handle point click - Recharts Scatter onClick signature: (data, index, event)
   const handleClick = useCallback((data: unknown, _index: number, event: React.MouseEvent) => {
+    // Skip if a box/lasso selection just completed (prevents double-selection)
+    if (selectionJustCompletedRef.current) {
+      selectionJustCompletedRef.current = false;
+      return;
+    }
+
     const point = data as { index?: number; payload?: DataPoint };
     const idx = point?.payload?.index ?? point?.index;
     if (idx === undefined) return;
@@ -559,12 +546,13 @@ export function DimensionReductionChart({
 
   // Handle hover
   const handleMouseEnter = useCallback((data: unknown) => {
+    if (!config.enableHover) return;
     const point = data as { index?: number; payload?: DataPoint };
     const idx = point?.payload?.index ?? point?.index;
     if (idx !== undefined && selectionCtx) {
       selectionCtx.setHovered(idx);
     }
-  }, [selectionCtx]);
+  }, [selectionCtx, config.enableHover]);
 
   const handleMouseLeave = useCallback(() => {
     if (selectionCtx) {
@@ -671,6 +659,9 @@ export function DimensionReductionChart({
   // Handle box/lasso selection for WebGL/Regl renderers
   // Phase 4: Use filteredChartData to only select from visible points
   const handleSelectionCompleteWebGL = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
+    // Mark that a selection just completed to prevent click handler from firing
+    selectionJustCompletedRef.current = true;
+
     if (!selectionCtx || !chartContainerRef.current) return;
 
     const container = chartContainerRef.current;
@@ -726,6 +717,9 @@ export function DimensionReductionChart({
   // Handle box/lasso selection for 3D WebGL/Regl renderers
   // Uses the exposed getPointsInScreenRect method from the 3D component ref
   const handleSelectionComplete3D = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
+    // Mark that a selection just completed to prevent click handler from firing
+    selectionJustCompletedRef.current = true;
+
     if (!selectionCtx || !scatter3DRef.current) return;
 
     let selectedIndices: number[] = [];
@@ -767,6 +761,9 @@ export function DimensionReductionChart({
   // Strategy: Check if each scatter circle's screen position is inside the selection area
   // This is more reliable than trying to convert between coordinate systems
   const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
+    // Mark that a selection just completed to prevent click handler from firing
+    selectionJustCompletedRef.current = true;
+
     if (!selectionCtx || !chartContainerRef.current) {
       return;
     }
@@ -1138,6 +1135,7 @@ export function DimensionReductionChart({
 
         <Tooltip
           isAnimationActive={false}
+          cursor={config.enableHover ? { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '4 2' } : false}
           contentStyle={{
             backgroundColor: CHART_THEME.tooltipBg,
             border: `1px solid ${CHART_THEME.tooltipBorder}`,
@@ -1145,6 +1143,7 @@ export function DimensionReductionChart({
             fontSize: CHART_THEME.tooltipFontSize,
           }}
           content={({ payload }) => {
+            if (!config.enableHover) return null;
             if (!payload || payload.length === 0) return null;
             const data = payload[0]?.payload as DataPoint | undefined;
             if (!data) return null;
@@ -1411,6 +1410,25 @@ export function DimensionReductionChart({
             </div>
           </TooltipProvider>
 
+          {/* Hover toggle */}
+          <TooltipProvider delayDuration={200}>
+            <TooltipUI>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={config.enableHover ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => updateConfig({ enableHover: !config.enableHover })}
+                >
+                  <MousePointer2 className={cn("w-3.5 h-3.5", config.enableHover && "text-primary")} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">{config.enableHover ? 'Hover enabled' : 'Hover disabled'}</p>
+              </TooltipContent>
+            </TooltipUI>
+          </TooltipProvider>
+
           {/* Settings */}
           {renderSettingsDropdown()}
 
@@ -1456,7 +1474,7 @@ export function DimensionReductionChart({
         )}
 
         {/* Tooltip for WebGL/Regl renderers */}
-        {rendererType !== 'recharts' && hoveredSample !== null && mousePos && (() => {
+        {rendererType !== 'recharts' && config.enableHover && hoveredSample !== null && mousePos && (() => {
           const data = chartData.find(d => d.index === hoveredSample);
           if (!data) return null;
           return (

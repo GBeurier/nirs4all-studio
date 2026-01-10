@@ -355,11 +355,11 @@ export function PartitionSelector({
                     <div className="flex items-center justify-between w-full gap-4">
                       <span>Fold {fold.fold_index + 1}</span>
                       <div className="flex items-center gap-1">
-                        <Badge variant="outline" className="h-4 px-1 text-[9px] bg-blue-500/10">
+                        <Badge variant="outline" className="h-4 px-1 text-[9px]" style={{ backgroundColor: 'hsla(217, 70%, 50%, 0.1)' }}>
                           {fold.train_count}
                         </Badge>
                         <span className="text-[9px] text-muted-foreground">/</span>
-                        <Badge variant="outline" className="h-4 px-1 text-[9px] bg-orange-500/10">
+                        <Badge variant="outline" className="h-4 px-1 text-[9px]" style={{ backgroundColor: 'hsla(38, 92%, 50%, 0.1)' }}>
                           {fold.test_count}
                         </Badge>
                       </div>

@@ -62,8 +62,6 @@ import {
   CHART_THEME,
   CHART_MARGINS,
   ANIMATION_CONFIG,
-  TRAIN_TEST_COLORS,
-  getFoldColor,
   formatFoldLabel,
   formatYValue,
 } from './chartConfig';
@@ -216,6 +214,9 @@ export function FoldDistributionChartV2({
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
   const [internalSelectedFold, setInternalSelectedFold] = useState<number | null>(null);
+  // Track which partition was clicked in THIS chart (for stroke display)
+  // This is separate from selectedSamples because in k-fold CV, training sets overlap
+  const [clickedPartitionId, setClickedPartitionId] = useState<string | null>(null);
 
   // SelectionContext integration - always call hook, conditionally use result
   const selectionHook = useSelection();
@@ -526,6 +527,25 @@ export function FoldDistributionChartV2({
     return bars;
   }, [folds, y, metadata, computeSegments, displayFilteredIndices]);
 
+  // Clear clickedPartitionId when selection changes externally (from another chart)
+  // This ensures stroke is only shown on the clicked partition when clicking in THIS chart
+  React.useEffect(() => {
+    if (clickedPartitionId && partitionBarData.length > 0) {
+      const clickedPartition = partitionBarData.find(p => p.partitionId === clickedPartitionId);
+      if (clickedPartition) {
+        // Check if current selection still matches the clicked partition
+        const selectionMatchesClickedPartition =
+          selectedSamples.size === clickedPartition.indices.length &&
+          clickedPartition.indices.every(idx => selectedSamples.has(idx));
+
+        if (!selectionMatchesClickedPartition) {
+          // Selection changed (probably from another chart), clear clicked state
+          setClickedPartitionId(null);
+        }
+      }
+    }
+  }, [selectedSamples, clickedPartitionId, partitionBarData]);
+
   /**
    * Get segment keys for partition bar mode (different from stacked fold mode)
    */
@@ -598,11 +618,11 @@ export function FoldDistributionChartV2({
     return y.reduce((a, b) => a + b, 0) / y.length;
   }, [y]);
 
-  // Get train/test colors from unified config or fallback to legacy colors
-  const trainColor = globalColorConfig ? PARTITION_COLORS.train : TRAIN_TEST_COLORS.train;
-  const trainColorLight = globalColorConfig ? PARTITION_COLORS.trainLight : TRAIN_TEST_COLORS.trainLight;
-  const testColor = globalColorConfig ? PARTITION_COLORS.test : TRAIN_TEST_COLORS.test;
-  const testColorLight = globalColorConfig ? PARTITION_COLORS.testLight : TRAIN_TEST_COLORS.testLight;
+  // Get train/test colors from global palette
+  const trainColor = PARTITION_COLORS.train;
+  const trainColorLight = PARTITION_COLORS.trainLight;
+  const testColor = PARTITION_COLORS.test;
+  const testColorLight = PARTITION_COLORS.testLight;
 
   // Get held-out test color from categorical palette (index 4 = purple in default palette)
   const catPalette = globalColorConfig?.categoricalPalette ?? 'default';
@@ -737,6 +757,7 @@ export function FoldDistributionChartV2({
       if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
         selectionCtx.clear();
       }
+      setClickedPartitionId(null);
       handleSelectFold(null);
     }
   }, [selectionCtx, handleSelectFold]);
@@ -841,22 +862,39 @@ export function FoldDistributionChartV2({
   );
 
   // Handle partition bar click - select samples in the partition
+  // Note: We only do sample selection here, NOT fold selection.
+  // Fold selection (selectedFold) is a separate concept used for filtering and can be
+  // controlled via the fold selector or other UI, but clicking bars should only select samples.
   const handlePartitionBarClick = useCallback((entry: PartitionBarData, event?: React.MouseEvent) => {
     if (selectionCtx) {
+      const partitionIndices = entry.indices;
+
       if (event?.shiftKey) {
-        selectionCtx.select(entry.indices, 'add');
+        selectionCtx.select(partitionIndices, 'add');
+        // For shift-click, we add to selection but don't change clicked partition
+        // (stroke will show on partition containing selected samples)
+        setClickedPartitionId(null);
       } else if (event?.ctrlKey || event?.metaKey) {
-        selectionCtx.toggle(entry.indices);
+        selectionCtx.toggle(partitionIndices);
+        // For toggle, clear clicked partition (multiple partitions may be partially selected)
+        setClickedPartitionId(null);
       } else {
-        selectionCtx.select(entry.indices, 'replace');
+        // Check if this partition's samples are exactly the current selection
+        const isExactlyThisPartitionSelected =
+          selectedSamples.size === partitionIndices.length &&
+          partitionIndices.every((idx: number) => selectedSamples.has(idx));
+
+        if (isExactlyThisPartitionSelected) {
+          selectionCtx.clear();
+          setClickedPartitionId(null);
+        } else {
+          selectionCtx.select(partitionIndices, 'replace');
+          // Track which partition was clicked for stroke display
+          setClickedPartitionId(entry.partitionId);
+        }
       }
     }
-
-    // Update fold selection
-    if (entry.foldIndex !== null) {
-      handleSelectFold(selectedFold === entry.foldIndex ? null : entry.foldIndex);
-    }
-  }, [selectionCtx, handleSelectFold, selectedFold]);
+  }, [selectionCtx, selectedSamples]);
 
   // Render count bar chart with separate bars per partition
   const renderCountChart = () => (
@@ -1017,20 +1055,38 @@ export function FoldDistributionChartV2({
             name={`segments.${segKey}`}
             stackId="a"
             cursor="pointer"
-            onClick={(data, index, event) => {
-              handlePartitionBarClick(partitionBarData[index], event as React.MouseEvent);
+            onClick={(data: { payload?: PartitionBarData }, _index: number, event: React.MouseEvent) => {
+              // Use data.payload to get the correct entry - more reliable than index
+              const entry = data.payload;
+              if (entry) {
+                handlePartitionBarClick(entry, event);
+              }
             }}
             {...ANIMATION_CONFIG}
           >
             {partitionBarData.map((entry, idx) => {
-              const isHighlighted = selectedFold === null || selectedFold === entry.foldIndex;
+              // Determine highlighting based on both fold selection AND sample selection
+              const hasSelection = selectedSamples.size > 0;
+              const hasSelectedSamplesInPartition = hasSelection && entry.indices.some(i => selectedSamples.has(i));
+              const isFoldSelected = selectedFold !== null && selectedFold === entry.foldIndex;
+
+              // Check if this partition was the one clicked in THIS chart
+              const isThisPartitionClicked = clickedPartitionId === entry.partitionId;
+              // Selection came from another chart if there's a selection but no clicked partition in this chart
+              const selectionFromOtherChart = hasSelection && clickedPartitionId === null;
+
+              // Highlighted if: no selection, or this partition has selected samples, or this fold is selected
+              const isHighlighted = !hasSelection || hasSelectedSamplesInPartition || isFoldSelected;
+
               // In partition mode, color by partition type; otherwise by segment
               const fillColor = effectiveColorMode === 'partition'
                 ? getPartitionBarColor(entry, isHighlighted)
                 : getPartitionSegmentColor(segKey, entry);
 
-              // Only show stroke when a specific fold is selected (not when selectedFold is null)
-              const showStroke = selectedFold !== null && selectedFold === entry.foldIndex;
+              // Show stroke when:
+              // - This partition was clicked in THIS chart, OR
+              // - Selection came from ANOTHER chart AND this partition contains selected samples
+              const showStroke = isThisPartitionClicked || (selectionFromOtherChart && hasSelectedSamplesInPartition);
 
               return (
                 <Cell
@@ -1038,7 +1094,7 @@ export function FoldDistributionChartV2({
                   fill={fillColor}
                   opacity={isHighlighted ? 1 : 0.4}
                   stroke={showStroke ? 'hsl(var(--foreground))' : 'none'}
-                  strokeWidth={showStroke ? 1 : 0}
+                  strokeWidth={showStroke ? 2.5 : 0}
                 />
               );
             })}
@@ -1130,13 +1186,13 @@ export function FoldDistributionChartV2({
                   <p className="font-medium mb-1">{label}</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <p className="font-medium" style={{ color: TRAIN_TEST_COLORS.train }}>Train</p>
+                      <p className="font-medium" style={{ color: PARTITION_COLORS.train }}>Train</p>
                       <p>Mean: {formatYValue(entry.trainMean)}</p>
                       <p>Std: {formatYValue(entry.trainStd)}</p>
                       <p>Range: [{formatYValue(entry.trainMin)}, {formatYValue(entry.trainMax)}]</p>
                     </div>
                     <div>
-                      <p className="font-medium" style={{ color: TRAIN_TEST_COLORS.test }}>Test</p>
+                      <p className="font-medium" style={{ color: PARTITION_COLORS.test }}>Test</p>
                       <p>Mean: {formatYValue(entry.testMean)}</p>
                       <p>Std: {formatYValue(entry.testStd)}</p>
                       <p>Range: [{formatYValue(entry.testMin)}, {formatYValue(entry.testMax)}]</p>
@@ -1160,42 +1216,42 @@ export function FoldDistributionChartV2({
 
           <Bar
             dataKey="trainMean"
-            fill={TRAIN_TEST_COLORS.train}
+            fill={PARTITION_COLORS.train}
             barSize={12}
             {...ANIMATION_CONFIG}
           >
             {yData.map((entry) => (
               <Cell
                 key={`train-${entry.foldIndex}`}
-                fill={TRAIN_TEST_COLORS.train}
+                fill={PARTITION_COLORS.train}
                 opacity={selectedFold === null || selectedFold === entry.foldIndex ? 1 : 0.4}
               />
             ))}
             <ErrorBar
               dataKey="trainUpper"
               direction="y"
-              stroke={TRAIN_TEST_COLORS.train}
+              stroke={PARTITION_COLORS.train}
               strokeWidth={1.5}
             />
           </Bar>
 
           <Bar
             dataKey="testMean"
-            fill={TRAIN_TEST_COLORS.test}
+            fill={PARTITION_COLORS.test}
             barSize={12}
             {...ANIMATION_CONFIG}
           >
             {yData.map((entry) => (
               <Cell
                 key={`test-${entry.foldIndex}`}
-                fill={TRAIN_TEST_COLORS.test}
+                fill={PARTITION_COLORS.test}
                 opacity={selectedFold === null || selectedFold === entry.foldIndex ? 1 : 0.4}
               />
             ))}
             <ErrorBar
               dataKey="testUpper"
               direction="y"
-              stroke={TRAIN_TEST_COLORS.test}
+              stroke={PARTITION_COLORS.test}
               strokeWidth={1.5}
             />
           </Bar>
@@ -1300,8 +1356,22 @@ export function FoldDistributionChartV2({
                 )}
               </>
             )}
+            {/* Dynamic legend for fold mode - show each fold with its color */}
+            {config.showLegend && effectiveColorMode === 'fold' && partitionBarData.length > 0 && (
+              <>
+                {[...new Set(partitionBarData.map(p => p.foldIndex))].filter(f => f !== null).slice(0, 6).map((foldIdx) => (
+                  <span key={`fold-${foldIdx}`} className="flex items-center gap-1">
+                    <span
+                      className="w-2 h-2 rounded-sm"
+                      style={{ backgroundColor: getCategoricalColor(foldIdx!, globalColorConfig?.categoricalPalette ?? 'default') }}
+                    />
+                    Fold {(foldIdx ?? 0) + 1}
+                  </span>
+                ))}
+              </>
+            )}
             {/* Dynamic legend for other color modes (when showLegend is true) */}
-            {config.showLegend && effectiveColorMode !== 'partition' && partitionBarData.length > 0 && partitionSegmentKeys.slice(0, 6).map((segKey) => (
+            {config.showLegend && effectiveColorMode !== 'partition' && effectiveColorMode !== 'fold' && partitionBarData.length > 0 && partitionSegmentKeys.slice(0, 6).map((segKey) => (
               <span key={segKey} className="flex items-center gap-1">
                 <span
                   className="w-2 h-2 rounded-sm"

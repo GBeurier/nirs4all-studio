@@ -137,11 +137,11 @@ export function AppSidebar() {
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center justify-center border-b border-border/50 px-2">
+      <div className="flex h-40 items-center justify-center border-b border-border/50 px-2">
         <img
-          src="/nirs4all_logo_green.png"
+          src="/nirs4all_logo.png"
           alt="nirs4all"
-          className="h-12 w-full object-contain"
+          className="h-32 w-full object-contain"
         />
       </div>
 
