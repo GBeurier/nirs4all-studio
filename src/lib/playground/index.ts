@@ -28,3 +28,7 @@ export * from './memoryMonitor';
 
 // Phase 1: Type Safety - Zod validation schemas
 export * from './validation';
+
+// Phase 1: Unified Selection Model
+export * from './selectionHandlers';
+export * from './selectionUtils';

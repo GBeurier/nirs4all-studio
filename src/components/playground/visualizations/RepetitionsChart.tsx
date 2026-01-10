@@ -78,6 +78,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { computeRepetitionVariance } from '@/api/playground';
+import {
+  SelectionContainer,
+  isPointInBox,
+  isPointInPolygon,
+  type SelectionResult,
+} from '@/components/playground/SelectionTools';
+import {
+  computeSelectionAction,
+  executeSelectionAction,
+} from '@/lib/playground/selectionHandlers';
 
 // ============= Types =============
 
@@ -224,9 +234,7 @@ export function RepetitionsChart({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<number | null>(null);
 
-  // Selection state (left-click drag for area selection)
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  // Note: Left-click area selection is now handled by SelectionContainer
 
   // Sort state
   const [sortBy, setSortBy] = useState<SortOption>('index');
@@ -531,43 +539,99 @@ export function RepetitionsChart({
     return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
   }, [yRange, maxDistance, globalColorConfig, colorContext, scaleType]);
 
-  // Handle point click
+  // Handle point click using unified selection handler
+  // Special case: Shift+click selects entire bio-sample group (all repetitions)
   const handlePointClick = useCallback((point: PlotDataPoint, event?: React.MouseEvent) => {
     if (!selectionCtx) return;
+    // In box/lasso mode, clicking on points is disabled - area selection handles it
+    if (selectionCtx.selectionToolMode !== 'click') return;
 
-    const indices = [point.sampleIndex];
-
+    // Special case: Shift+click selects the entire bio-sample group
     if (event?.shiftKey) {
       const bioSamplePoints = plotData.filter(p => p.bioSample === point.bioSample);
       selectionCtx.select(bioSamplePoints.map(p => p.sampleIndex), 'add');
-    } else if (event?.ctrlKey || event?.metaKey) {
-      selectionCtx.toggle(indices);
-    } else {
-      // If clicking on the only selected item, deselect it
-      if (selectedSamples.has(point.sampleIndex) && selectedSamples.size === 1) {
-        selectionCtx.clear();
-      } else {
-        selectionCtx.select(indices, 'replace');
-      }
+      return;
     }
+
+    // Use unified selection handler for standard click behavior
+    const action = computeSelectionAction(
+      { indices: [point.sampleIndex] },
+      selectedSamples,
+      { shift: false, ctrl: event?.ctrlKey || event?.metaKey || false }
+    );
+    executeSelectionAction(selectionCtx, action);
   }, [selectionCtx, plotData, selectedSamples]);
 
-  // Handle background click (left click on empty space clears selection)
-  const handleChartClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Only handle left clicks
-    if (e.button !== 0) return;
-
-    // Check if we were selecting (area select) - if so, don't clear
-    if (isSelecting) return;
-
-    const target = e.target as HTMLElement;
-    // Only clear if clicking on the chart background, not on points
-    if (target.tagName === 'svg' || target.classList.contains('recharts-surface')) {
-      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
-        selectionCtx.clear();
-      }
+  // Background click handler for SelectionContainer
+  // Only clears selection in click mode when clicking on empty space
+  const handleBackgroundClick = useCallback((modifiers: { shift: boolean; ctrl: boolean }) => {
+    if (!selectionCtx) return;
+    // Only clear if no modifiers are pressed
+    if (!modifiers.shift && !modifiers.ctrl) {
+      selectionCtx.clear();
     }
-  }, [selectionCtx, isSelecting]);
+  }, [selectionCtx]);
+
+  // Handle area selection completion from SelectionContainer (box or lasso)
+  const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
+    if (!selectionCtx || plotData.length === 0) return;
+
+    const rect = chartRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    // Chart margins (must match the ScatterChart margins)
+    const margin = { top: 10, right: 20, bottom: 30, left: 45 };
+    const chartAreaWidth = rect.width - margin.left - margin.right;
+    const chartAreaHeight = rect.height - margin.top - margin.bottom;
+
+    // Get current domains
+    const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
+    const xRange = effectiveXDomain[1] - effectiveXDomain[0];
+    const yAxisMin = yDomain[0];
+    const yAxisMax = yDomain[1];
+    const yAxisRange = yAxisMax - yAxisMin || 1;
+
+    // Convert pixel point to data coordinates
+    const pixelToData = (px: number, py: number): { x: number; y: number } => {
+      const dataX = effectiveXDomain[0] + ((px - margin.left) / chartAreaWidth) * xRange;
+      // Y is inverted (top = max, bottom = min)
+      const dataY = yAxisMax - ((py - margin.top) / chartAreaHeight) * yAxisRange;
+      return { x: dataX, y: dataY };
+    };
+
+    // Find points within selection based on result type
+    let selectedIndices: number[] = [];
+
+    if ('path' in result) {
+      // Lasso selection - check if points are inside the polygon
+      // Convert lasso path to data coordinates
+      const dataPath = result.path.map(p => pixelToData(p.x, p.y));
+      selectedIndices = plotData
+        .filter(p => isPointInPolygon({ x: p.x, y: p.y }, dataPath))
+        .map(p => p.sampleIndex);
+    } else {
+      // Box selection
+      const { minX, minY, maxX, maxY } = result.bounds;
+      const dataMin = pixelToData(minX, maxY); // maxY for minY due to inversion
+      const dataMax = pixelToData(maxX, minY); // minY for maxY due to inversion
+      selectedIndices = plotData
+        .filter(p => isPointInBox(
+          { x: p.x, y: p.y },
+          { minX: dataMin.x, minY: dataMin.y, maxX: dataMax.x, maxY: dataMax.y }
+        ))
+        .map(p => p.sampleIndex);
+    }
+
+    if (selectedIndices.length === 0) return;
+
+    // Use unified selection handler
+    const action = computeSelectionAction(
+      { indices: selectedIndices },
+      selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(selectionCtx, action);
+  }, [selectionCtx, plotData, xDomain, bioSampleOrder.length, yDomain, selectedSamples]);
 
   // Prevent context menu on right-click (we use it for panning)
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -612,141 +676,63 @@ export function RepetitionsChart({
     };
   }, [handleWheel]);
 
-  // Handle mouse down - right click for pan, left click for selection
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  // Handle right-click mouse down for panning
+  // Note: Left-click area selection is now handled by SelectionContainer
+  const handlePanMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 2) {
       // Right click - start panning
       e.preventDefault();
       setIsPanning(true);
       setPanStart(e.clientX);
-    } else if (e.button === 0) {
-      // Left click - start area selection
-      e.preventDefault(); // Prevent text selection and other default behaviors
-      const rect = chartRef.current?.getBoundingClientRect();
-      if (rect) {
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        setIsSelecting(true);
-        setSelectionBox({ startX: x, startY: y, endX: x, endY: y });
-      }
     }
   }, []);
 
-  // Handle mouse move - pan or update selection box
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    // Handle panning (right-click drag)
-    if (isPanning && panStart !== null) {
-      const numSamples = bioSampleOrder.length;
-      if (numSamples === 0) return;
+  // Handle mouse move for panning only (area selection handled by SelectionContainer)
+  const handlePanMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning || panStart === null) return;
 
-      const chartWidth = chartRef.current?.clientWidth ?? 800;
-      const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
-      const range = currentDomain[1] - currentDomain[0];
+    const numSamples = bioSampleOrder.length;
+    if (numSamples === 0) return;
 
-      const deltaX = e.clientX - panStart;
-      const deltaSamples = -(deltaX / chartWidth) * range;
+    const chartWidth = chartRef.current?.clientWidth ?? 800;
+    const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
+    const range = currentDomain[1] - currentDomain[0];
 
-      let newStart = currentDomain[0] + deltaSamples;
-      let newEnd = currentDomain[1] + deltaSamples;
+    const deltaX = e.clientX - panStart;
+    const deltaSamples = -(deltaX / chartWidth) * range;
 
-      // Clamp to bounds
-      if (newStart < -0.5) {
-        newEnd -= (newStart + 0.5);
-        newStart = -0.5;
-      }
-      if (newEnd > numSamples - 0.5) {
-        newStart -= (newEnd - (numSamples - 0.5));
-        newEnd = numSamples - 0.5;
-      }
+    let newStart = currentDomain[0] + deltaSamples;
+    let newEnd = currentDomain[1] + deltaSamples;
 
-      setXDomain([Math.max(-0.5, newStart), Math.min(numSamples - 0.5, newEnd)]);
-      setPanStart(e.clientX);
+    // Clamp to bounds
+    if (newStart < -0.5) {
+      newEnd -= (newStart + 0.5);
+      newStart = -0.5;
+    }
+    if (newEnd > numSamples - 0.5) {
+      newStart -= (newEnd - (numSamples - 0.5));
+      newEnd = numSamples - 0.5;
     }
 
-    // Handle area selection (left-click drag)
-    if (isSelecting && selectionBox) {
-      const rect = chartRef.current?.getBoundingClientRect();
-      if (rect) {
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        setSelectionBox(prev => prev ? { ...prev, endX: x, endY: y } : null);
-      }
-    }
-  }, [isPanning, panStart, xDomain, bioSampleOrder.length, isSelecting, selectionBox]);
+    setXDomain([Math.max(-0.5, newStart), Math.min(numSamples - 0.5, newEnd)]);
+    setPanStart(e.clientX);
+  }, [isPanning, panStart, xDomain, bioSampleOrder.length]);
 
-  // Handle mouse up - finish pan or selection
-  const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    // Finish panning
+  // Handle mouse up - finish pan only (area selection handled by SelectionContainer)
+  const handlePanMouseUp = useCallback(() => {
     if (isPanning) {
       setIsPanning(false);
       setPanStart(null);
     }
+  }, [isPanning]);
 
-    // Finish area selection
-    if (isSelecting && selectionBox && selectionCtx) {
-      const rect = chartRef.current?.getBoundingClientRect();
-      if (rect && plotData.length > 0) {
-        // Calculate selection bounds relative to chart area (accounting for margins)
-        const margin = { top: 10, right: 20, bottom: 30, left: 45 };
-        const chartAreaWidth = rect.width - margin.left - margin.right;
-        const chartAreaHeight = rect.height - margin.top - margin.bottom;
-
-        const minX = Math.min(selectionBox.startX, selectionBox.endX);
-        const maxX = Math.max(selectionBox.startX, selectionBox.endX);
-        const minY = Math.min(selectionBox.startY, selectionBox.endY);
-        const maxY = Math.max(selectionBox.startY, selectionBox.endY);
-
-        // Only process if it's a drag (not just a click)
-        const isDrag = Math.abs(selectionBox.endX - selectionBox.startX) > 5 ||
-                       Math.abs(selectionBox.endY - selectionBox.startY) > 5;
-
-        if (isDrag) {
-          // Get current X domain
-          const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
-          const xRange = effectiveXDomain[1] - effectiveXDomain[0];
-
-          // Use yDomain (computed with padding) for accurate coordinate conversion
-          const yAxisMin = yDomain[0];
-          const yAxisMax = yDomain[1];
-          const yAxisRange = yAxisMax - yAxisMin || 1;
-
-          // Convert pixel coords to data coords
-          const dataMinX = effectiveXDomain[0] + ((minX - margin.left) / chartAreaWidth) * xRange;
-          const dataMaxX = effectiveXDomain[0] + ((maxX - margin.left) / chartAreaWidth) * xRange;
-          // Y is inverted (top = max, bottom = min)
-          const dataMinY = yAxisMax - ((maxY - margin.top) / chartAreaHeight) * yAxisRange;
-          const dataMaxY = yAxisMax - ((minY - margin.top) / chartAreaHeight) * yAxisRange;
-
-          // Find points within selection
-          const selectedIndices = plotData
-            .filter(p => p.x >= dataMinX && p.x <= dataMaxX && p.y >= dataMinY && p.y <= dataMaxY)
-            .map(p => p.sampleIndex);
-
-          if (selectedIndices.length > 0) {
-            if (e.shiftKey) {
-              selectionCtx.select(selectedIndices, 'add');
-            } else if (e.ctrlKey || e.metaKey) {
-              // Ctrl+drag: toggle each point in the selection
-              selectionCtx.toggle(selectedIndices);
-            } else {
-              selectionCtx.select(selectedIndices, 'replace');
-            }
-          }
-        }
-      }
-
-      setIsSelecting(false);
-      setSelectionBox(null);
+  // Handle mouse leave - cancel pan
+  const handlePanMouseLeave = useCallback(() => {
+    if (isPanning) {
+      setIsPanning(false);
+      setPanStart(null);
     }
-  }, [isPanning, isSelecting, selectionBox, selectionCtx, plotData, xDomain, bioSampleOrder.length, yDomain]);
-
-  // Handle mouse leave
-  const handleMouseLeave = useCallback(() => {
-    setIsPanning(false);
-    setPanStart(null);
-    setIsSelecting(false);
-    setSelectionBox(null);
-  }, []);
+  }, [isPanning]);
 
   // Reset zoom on double click
   const handleDoubleClick = useCallback(() => {
@@ -1045,41 +1031,34 @@ export function RepetitionsChart({
         </div>
       </div>
 
-      {/* Chart with loading overlay */}
-      <div
-        ref={chartRef}
-        className="flex-1 min-h-0 relative"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onDoubleClick={handleDoubleClick}
-        onClick={handleChartClick}
-        onContextMenu={handleContextMenu}
-        style={{ cursor: isPanning ? 'grabbing' : 'crosshair' }}
+      {/* Chart with loading overlay wrapped in SelectionContainer */}
+      <SelectionContainer
+        mode={selectionCtx?.selectionToolMode ?? 'click'}
+        onSelectionComplete={handleSelectionComplete}
+        onBackgroundClick={handleBackgroundClick}
+        enabled={!!selectionCtx}
+        className="flex-1 min-h-0"
       >
-        {/* Loading overlay */}
-        {isComputing && (
-          <div className="absolute inset-0 bg-background/60 flex items-center justify-center z-10">
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="text-xs text-muted-foreground">Computing distances...</span>
+        <div
+          ref={chartRef}
+          className="h-full relative"
+          onMouseDown={handlePanMouseDown}
+          onMouseMove={handlePanMouseMove}
+          onMouseUp={handlePanMouseUp}
+          onMouseLeave={handlePanMouseLeave}
+          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleContextMenu}
+          style={{ cursor: isPanning ? 'grabbing' : undefined }}
+        >
+          {/* Loading overlay */}
+          {isComputing && (
+            <div className="absolute inset-0 bg-background/60 flex items-center justify-center z-10">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs text-muted-foreground">Computing distances...</span>
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Selection box overlay */}
-        {isSelecting && selectionBox && (
-          <div
-            className="absolute border-2 border-dashed border-primary bg-primary/10 pointer-events-none z-20"
-            style={{
-              left: Math.min(selectionBox.startX, selectionBox.endX),
-              top: Math.min(selectionBox.startY, selectionBox.endY),
-              width: Math.abs(selectionBox.endX - selectionBox.startX),
-              height: Math.abs(selectionBox.endY - selectionBox.startY),
-            }}
-          />
-        )}
+          )}
 
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
@@ -1180,7 +1159,8 @@ export function RepetitionsChart({
             </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
-      </div>
+        </div>
+      </SelectionContainer>
 
       {/* Footer */}
       {!compact && (

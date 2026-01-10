@@ -1,5 +1,5 @@
 /**
- * YHistogramV2 - Enhanced Y distribution histogram (Phase 3)
+ * YHistogramV2 - Enhanced Y distribution histogram
  *
  * Features:
  * - Configurable bin count (auto, 10, 20, 50, custom)
@@ -9,6 +9,15 @@
  * - Reference lines (mean, median)
  * - Cross-chart selection highlighting via SelectionContext
  * - Export functionality (PNG, CSV)
+ * - Progressive drill-down for stacked bars (bar → segment → clear)
+ *
+ * Selection Handling (Phase 3 of Unified Selection Model):
+ * - Uses unified selection handlers from selectionHandlers.ts
+ * - handleBarSelection: Simple bar selection with computeSelectionAction
+ * - handleStackedBarSelection: Stacked bar selection with computeStackedBarAction
+ * - Range drag selection uses handleDragSelection
+ *
+ * @see docs/_internals/PLAYGROUND_SELECTION_MODEL.md
  */
 
 import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react';
@@ -74,7 +83,13 @@ import {
   HIGHLIGHT_COLORS,
 } from '@/lib/playground/colorConfig';
 import { type TargetType } from '@/lib/playground/targetTypeDetection';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection, type SelectionContextValue } from '@/context/SelectionContext';
+import {
+  computeSelectionAction,
+  computeStackedBarAction,
+  executeSelectionAction,
+} from '@/lib/playground/selectionHandlers';
+import { extractModifiers } from '@/lib/playground/selectionUtils';
 import { InlineColorLegend } from '../ColorLegend';
 import type { FoldsInfo } from '@/types/playground';
 import { cn } from '@/lib/utils';
@@ -607,6 +622,68 @@ export function YHistogramV2({
     };
   }, []);
 
+  // ============= Unified Selection Handlers (Phase 3) =============
+  // These functions use the centralized selection logic from selectionHandlers.ts
+
+  /**
+   * Handle bar click selection using unified computeSelectionAction.
+   * Used by simple (non-stacked) bar charts.
+   */
+  const handleBarSelection = useCallback((
+    samples: number[],
+    e: MouseEvent | null,
+    ctx: SelectionContextValue | null
+  ) => {
+    if (!ctx || samples.length === 0) return;
+
+    const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+    const action = computeSelectionAction(
+      { indices: samples },
+      ctx.selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(ctx, action);
+  }, []);
+
+  /**
+   * Handle stacked bar click selection using unified computeStackedBarAction.
+   * Supports progressive drill-down: bar → segment → clear.
+   * Used by partition/fold/metadata/selection stacked charts.
+   */
+  const handleStackedBarSelection = useCallback((
+    barSamples: number[],
+    segmentSamples: number[],
+    e: MouseEvent | null,
+    ctx: SelectionContextValue | null
+  ) => {
+    if (!ctx || barSamples.length === 0) return;
+
+    const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+
+    // Use stacked bar logic if segment is different from bar
+    const isSegmentClick = segmentSamples.length > 0 &&
+      (segmentSamples.length !== barSamples.length ||
+       !segmentSamples.every(s => barSamples.includes(s)));
+
+    if (isSegmentClick) {
+      const action = computeStackedBarAction(
+        { barIndices: barSamples, segmentIndices: segmentSamples },
+        ctx.selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(ctx, action);
+    } else {
+      // Fall back to simple selection for non-segment clicks
+      const action = computeSelectionAction(
+        { indices: barSamples },
+        ctx.selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(ctx, action);
+    }
+  }, []);
+
+  // ============= Range Selection Handler =============
   // Shared drag selection handler - returns true if drag was handled
   const handleDragSelection = useCallback((e: MouseEvent | null): boolean => {
     if (!rangeSelection.isSelecting || rangeSelection.start === null || rangeSelection.end === null) {
@@ -625,33 +702,24 @@ export function YHistogramV2({
 
     if (isDragSelection) {
       // Drag selection: find all bins that intersect with the selection range
-      // and select ALL samples from those bins (not just samples within the Y range)
       const samplesInRange: number[] = [];
       histogramData.forEach(bin => {
-        // Check if bin intersects with selection range
         if (bin.binEnd >= minY && bin.binStart <= maxY) {
-          // Add all samples from this bin
           samplesInRange.push(...bin.samples);
         }
       });
 
-      if (samplesInRange.length > 0 && selectionCtx) {
-        if (e?.shiftKey) {
-          selectionCtx.select(samplesInRange, 'add');
-        } else if (e?.ctrlKey || e?.metaKey) {
-          selectionCtx.toggle(samplesInRange);
-        } else {
-          selectionCtx.select(samplesInRange, 'replace');
-        }
-      }
+      // Use unified handler for range selection
+      handleBarSelection(samplesInRange, e, selectionCtx);
       setRangeSelection({ start: null, end: null, isSelecting: false });
       return true;
     }
 
     return false;
-  }, [rangeSelection, histogramData, selectionCtx]);
+  }, [rangeSelection, histogramData, selectionCtx, handleBarSelection]);
 
-  // Handle all click/mouseup interactions on the chart
+  // ============= Simple Chart Bar Click Handler =============
+  // Handle all click/mouseup interactions on simple (non-stacked) charts
   const handleMouseUp = useCallback((state: RechartsMouseEvent) => {
     const e = lastMouseEventRef.current;
 
@@ -663,39 +731,22 @@ export function YHistogramV2({
     // Reset range selection state
     setRangeSelection({ start: null, end: null, isSelecting: false });
 
-    // Check if click was on a bar - bars are path elements with class 'recharts-rectangle'
+    // Check if click was on a bar
     const target = e?.target as SVGElement | null;
     const isBar = target?.classList?.contains('recharts-rectangle') ||
       target?.closest('.recharts-bar-rectangle') !== null;
 
-    // Not a drag - check if we clicked on a bar
+    // Get clicked bar data from Recharts state
     const payload = state?.activePayload;
 
     if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
       const clickedData = payload[0].payload as BinData;
-      if (clickedData?.samples?.length && selectionCtx) {
-        const binSamples = clickedData.samples;
-
-        if (e?.shiftKey) {
-          selectionCtx.select(binSamples, 'add');
-        } else if (e?.ctrlKey || e?.metaKey) {
-          selectionCtx.toggle(binSamples);
-        } else {
-          // Check if this bin's samples are exactly the current selection
-          const isExactlyThisBinSelected =
-            selectedSamples.size === binSamples.length &&
-            binSamples.every((idx: number) => selectedSamples.has(idx));
-
-          if (isExactlyThisBinSelected) {
-            selectionCtx.clear();
-          } else {
-            selectionCtx.select(binSamples, 'replace');
-          }
-        }
-        return;
+      if (clickedData?.samples?.length) {
+        // Use unified handler
+        handleBarSelection(clickedData.samples, e, selectionCtx);
       }
     }
-  }, [handleDragSelection, selectionCtx, selectedSamples]);
+  }, [handleDragSelection, selectionCtx, handleBarSelection]);
 
   // Export handler
   const handleExport = useCallback(() => {
@@ -960,7 +1011,7 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked partition chart
+    // Handle click for stacked partition chart - uses unified stacked bar selection
     const handleStackedPartitionMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
@@ -977,27 +1028,23 @@ export function YHistogramV2({
       const payload = state?.activePayload;
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
         const clickedData = payload[0].payload as typeof stackedData[0];
-        if (clickedData?.samples?.length && selectionCtx) {
-          const samples = clickedData.samples;
-          if (e?.shiftKey) {
-            selectionCtx.select(samples, 'add');
-          } else if (e?.ctrlKey || e?.metaKey) {
-            selectionCtx.toggle(samples);
-          } else {
-            // Check if this bar is already the only selection
-            const samplesSet = new Set(samples);
-            const allSamplesInBarSelected = samples.length > 0 && samples.every((s: number) => selectedSamples.has(s));
-            const selectionMatchesBar = allSamplesInBarSelected &&
-              selectedSamples.size === samples.length &&
-              [...selectedSamples].every(s => samplesSet.has(s));
+        if (clickedData?.samples?.length) {
+          // Detect which segment was clicked based on the clicked Bar component
+          const parentBar = target?.closest('.recharts-bar');
+          let segmentSamples = clickedData.samples;
 
-            if (selectionMatchesBar) {
-              selectionCtx.clear();
-            } else {
-              selectionCtx.select(samples, 'replace');
+          if (parentBar) {
+            const barName = parentBar.querySelector('.recharts-bar-rectangle')?.getAttribute('name') ??
+              Array.from(parentBar.classList).find(c => c.includes('train') || c.includes('test'));
+            if (barName?.toLowerCase().includes('train')) {
+              segmentSamples = clickedData.samples.filter(s => colorContext?.trainIndices?.has(s));
+            } else if (barName?.toLowerCase().includes('test')) {
+              segmentSamples = clickedData.samples.filter(s => colorContext?.testIndices?.has(s));
             }
           }
-          return;
+
+          // Use unified handler with stacked bar support
+          handleStackedBarSelection(clickedData.samples, segmentSamples, e, selectionCtx);
         }
       }
     };
@@ -1164,7 +1211,7 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked fold chart
+    // Handle click for stacked fold chart - uses unified stacked bar selection
     const handleStackedFoldMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
@@ -1182,26 +1229,23 @@ export function YHistogramV2({
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
         const clickedData = payload[0].payload as typeof stackedData[0];
         const samples = clickedData?.samples as number[] | undefined;
-        if (samples?.length && selectionCtx) {
-          if (e?.shiftKey) {
-            selectionCtx.select(samples, 'add');
-          } else if (e?.ctrlKey || e?.metaKey) {
-            selectionCtx.toggle(samples);
-          } else {
-            // Check if this bar is already the only selection
-            const samplesSet = new Set(samples);
-            const allSamplesInBarSelected = samples.length > 0 && samples.every((s: number) => selectedSamples.has(s));
-            const selectionMatchesBar = allSamplesInBarSelected &&
-              selectedSamples.size === samples.length &&
-              [...selectedSamples].every(s => samplesSet.has(s));
+        if (samples?.length) {
+          // Detect which fold segment was clicked based on the Bar component index
+          const parentBar = target?.closest('.recharts-bar');
+          let segmentSamples = samples;
 
-            if (selectionMatchesBar) {
-              selectionCtx.clear();
-            } else {
-              selectionCtx.select(samples, 'replace');
+          if (parentBar && folds?.fold_labels) {
+            // Find which Bar in the stack was clicked (order matches uniqueFolds)
+            const allBars = Array.from(parentBar.parentElement?.querySelectorAll('.recharts-bar') ?? []);
+            const barIndex = allBars.indexOf(parentBar);
+            if (barIndex >= 0 && barIndex < uniqueFolds.length) {
+              const clickedFold = uniqueFolds[barIndex];
+              segmentSamples = samples.filter(s => folds.fold_labels[s] === clickedFold);
             }
           }
-          return;
+
+          // Use unified handler with stacked bar support
+          handleStackedBarSelection(samples, segmentSamples, e, selectionCtx);
         }
       }
     };
@@ -1363,7 +1407,7 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked metadata chart
+    // Handle click for stacked metadata chart - uses unified stacked bar selection
     const handleStackedMetadataMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
@@ -1381,26 +1425,24 @@ export function YHistogramV2({
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
         const clickedData = payload[0].payload as typeof stackedData[0];
         const samples = clickedData?.samples as number[] | undefined;
-        if (samples?.length && selectionCtx) {
-          if (e?.shiftKey) {
-            selectionCtx.select(samples, 'add');
-          } else if (e?.ctrlKey || e?.metaKey) {
-            selectionCtx.toggle(samples);
-          } else {
-            // Check if this bar is already the only selection
-            const samplesSet = new Set(samples);
-            const allSamplesInBarSelected = samples.length > 0 && samples.every((s: number) => selectedSamples.has(s));
-            const selectionMatchesBar = allSamplesInBarSelected &&
-              selectedSamples.size === samples.length &&
-              [...selectedSamples].every(s => samplesSet.has(s));
+        if (samples?.length) {
+          // Detect which metadata category segment was clicked
+          const parentBar = target?.closest('.recharts-bar');
+          let segmentSamples = samples;
 
-            if (selectionMatchesBar) {
-              selectionCtx.clear();
-            } else {
-              selectionCtx.select(samples, 'replace');
+          if (parentBar && metadataKey && metadata?.[metadataKey]) {
+            const metadataValues = metadata[metadataKey];
+            // Find which Bar in the stack was clicked (order matches uniqueMetaCategories)
+            const allBars = Array.from(parentBar.parentElement?.querySelectorAll('.recharts-bar') ?? []);
+            const barIndex = allBars.indexOf(parentBar);
+            if (barIndex >= 0 && barIndex < uniqueMetaCategories.length) {
+              const clickedCategory = uniqueMetaCategories[barIndex];
+              segmentSamples = samples.filter(s => String(metadataValues[s]) === clickedCategory);
             }
           }
-          return;
+
+          // Use unified handler with stacked bar support
+          handleStackedBarSelection(samples, segmentSamples, e, selectionCtx);
         }
       }
     };
@@ -1553,7 +1595,7 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked selection chart
+    // Handle click for stacked selection chart - uses unified stacked bar selection
     const handleStackedSelectionMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
@@ -1570,34 +1612,26 @@ export function YHistogramV2({
       const payload = state?.activePayload;
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
         const clickedData = payload[0].payload as typeof stackedData[0];
-        if (clickedData?.samples?.length && selectionCtx) {
-          if (e?.shiftKey) {
-            selectionCtx.select(clickedData.samples, 'add');
-          } else if (e?.ctrlKey || e?.metaKey) {
-            selectionCtx.toggle(clickedData.samples);
-          } else {
-            // Regular click: check if this bar is already the only selection
-            const samples = clickedData.samples;
-            const currentSelection = selectionCtx.selectedSamples;
-            const samplesSet = new Set(samples);
+        if (clickedData?.samples?.length) {
+          // Detect which segment (selected/unselected) was clicked
+          const parentBar = target?.closest('.recharts-bar');
+          let segmentSamples = clickedData.samples;
 
-            // Check if all samples in this bar are selected
-            const allSamplesInBarSelected = samples.length > 0 && samples.every(s => currentSelection.has(s));
-
-            // Check if selection contains ONLY samples from this bar
-            const selectionMatchesBar = allSamplesInBarSelected &&
-              currentSelection.size === samples.length &&
-              [...currentSelection].every(s => samplesSet.has(s));
-
-            if (selectionMatchesBar) {
-              // Clicking on the only selected bar - deselect
-              selectionCtx.clear();
-            } else {
-              // Select this bar (replace any existing selection)
-              selectionCtx.select(samples, 'replace');
+          if (parentBar) {
+            // Find which Bar in the stack was clicked (unselected=0, selected=1)
+            const allBars = Array.from(parentBar.parentElement?.querySelectorAll('.recharts-bar') ?? []);
+            const barIndex = allBars.indexOf(parentBar);
+            if (barIndex === 0) {
+              // Unselected segment
+              segmentSamples = clickedData.samples.filter(s => !selectedSamples.has(s));
+            } else if (barIndex === 1) {
+              // Selected segment
+              segmentSamples = clickedData.samples.filter(s => selectedSamples.has(s));
             }
           }
-          return;
+
+          // Use unified handler with stacked bar support
+          handleStackedBarSelection(clickedData.samples, segmentSamples, e, selectionCtx);
         }
       }
     };
@@ -1964,11 +1998,11 @@ export function YHistogramV2({
         : bar.count,
     }));
 
-    // Handle click for classification chart
+    // Handle click for classification chart - uses unified bar selection
     const handleClassChartMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
-      // Check if click was on a bar - bars are path elements with class 'recharts-rectangle'
+      // Check if click was on a bar
       const target = e?.target as SVGElement | null;
       const isBar = target?.classList?.contains('recharts-rectangle') ||
         target?.closest('.recharts-bar-rectangle') !== null;
@@ -1976,14 +2010,9 @@ export function YHistogramV2({
       const payload = state?.activePayload;
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
         const clickedData = payload[0].payload as ClassBarData;
-        if (clickedData?.samples?.length && selectionCtx) {
-          if (e?.shiftKey) {
-            selectionCtx.select(clickedData.samples, 'add');
-          } else if (e?.ctrlKey || e?.metaKey) {
-            selectionCtx.toggle(clickedData.samples);
-          } else {
-            selectionCtx.select(clickedData.samples, 'replace');
-          }
+        if (clickedData?.samples?.length) {
+          // Use unified handler for simple bar selection
+          handleBarSelection(clickedData.samples, e, selectionCtx);
           return;
         }
       }

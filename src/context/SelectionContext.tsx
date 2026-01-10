@@ -69,6 +69,8 @@ export type SelectionAction =
   | { type: 'TOGGLE'; indices: number[] }
   | { type: 'SELECT_ALL'; totalSamples: number }
   | { type: 'SELECT_RANGE'; toIndex: number; mode?: SelectionMode }
+  | { type: 'SELECT_RANGE_ORDERED'; toIndex: number; order: number[]; mode?: SelectionMode }
+  | { type: 'REPLACE_IF_NOT_SOLE'; indices: number[] }
   | { type: 'CLEAR' }
   | { type: 'INVERT'; totalSamples: number }
   | { type: 'PIN'; indices: number[] }
@@ -93,6 +95,10 @@ export interface SelectionContextValue extends SelectionState {
   toggle: (indices: number[]) => void;
   selectAll: (totalSamples: number) => void;
   selectRange: (toIndex: number, mode?: SelectionMode) => void;
+  /** Select range with custom ordering (e.g., sorted by Y value, bar position) */
+  selectRangeOrdered: (toIndex: number, order: number[], mode?: SelectionMode) => void;
+  /** Replace selection with indices, or clear if indices exactly match current selection */
+  replaceIfNotSole: (indices: number[]) => void;
   clear: () => void;
   invert: (totalSamples: number) => void;
 
@@ -330,6 +336,150 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
         selectionHistory: newHistory,
         historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
         lastSelectedIndex: action.toIndex,
+      };
+    }
+
+    case 'SELECT_RANGE_ORDERED': {
+      // Range selection with custom ordering (e.g., sorted by Y value, bar position)
+      // The order array defines the visual/logical order of samples
+      const order = action.order;
+      if (order.length === 0) {
+        return state;
+      }
+
+      if (state.lastSelectedIndex === null) {
+        // No previous selection, just select the target index
+        const newSelection = new Set([action.toIndex]);
+        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
+        newHistory.push(newSelection);
+        if (newHistory.length > MAX_HISTORY) {
+          newHistory.shift();
+        }
+        return {
+          ...state,
+          selectedSamples: newSelection,
+          selectionHistory: newHistory,
+          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          lastSelectedIndex: action.toIndex,
+        };
+      }
+
+      // Find positions in the order array
+      const fromPos = order.indexOf(state.lastSelectedIndex);
+      const toPos = order.indexOf(action.toIndex);
+
+      // If either index is not in the order array, fall back to single selection
+      if (fromPos === -1 || toPos === -1) {
+        const newSelection = new Set([action.toIndex]);
+        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
+        newHistory.push(newSelection);
+        if (newHistory.length > MAX_HISTORY) {
+          newHistory.shift();
+        }
+        return {
+          ...state,
+          selectedSamples: newSelection,
+          selectionHistory: newHistory,
+          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          lastSelectedIndex: action.toIndex,
+        };
+      }
+
+      // Extract indices between the two positions (inclusive)
+      const minPos = Math.min(fromPos, toPos);
+      const maxPos = Math.max(fromPos, toPos);
+      const rangeIndices = order.slice(minPos, maxPos + 1);
+
+      const mode = action.mode ?? 'add'; // Default to 'add' for range selection
+      let newSelection: Set<number>;
+
+      switch (mode) {
+        case 'replace':
+          newSelection = new Set(rangeIndices);
+          break;
+        case 'add':
+          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
+          break;
+        case 'remove':
+          newSelection = new Set(state.selectedSamples);
+          rangeIndices.forEach(i => newSelection.delete(i));
+          break;
+        case 'toggle':
+          newSelection = new Set(state.selectedSamples);
+          rangeIndices.forEach(i => {
+            if (newSelection.has(i)) {
+              newSelection.delete(i);
+            } else {
+              newSelection.add(i);
+            }
+          });
+          break;
+        default:
+          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
+      }
+
+      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
+      newHistory.push(newSelection);
+      if (newHistory.length > MAX_HISTORY) {
+        newHistory.shift();
+      }
+
+      return {
+        ...state,
+        selectedSamples: newSelection,
+        selectionHistory: newHistory,
+        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        lastSelectedIndex: action.toIndex,
+      };
+    }
+
+    case 'REPLACE_IF_NOT_SOLE': {
+      // If target indices exactly match current selection, clear
+      // Otherwise, replace selection with target indices
+      // This encapsulates the common "click selected when multi" pattern
+      const targetSet = new Set(action.indices);
+      const currentSize = state.selectedSamples.size;
+      const targetSize = targetSet.size;
+
+      // Check if selections match exactly
+      const selectionsMatch =
+        currentSize === targetSize &&
+        targetSize > 0 &&
+        action.indices.every(i => state.selectedSamples.has(i));
+
+      if (selectionsMatch) {
+        // Clear selection (same as clicking sole selected item)
+        const newSelection = new Set<number>();
+        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
+        newHistory.push(newSelection);
+        if (newHistory.length > MAX_HISTORY) {
+          newHistory.shift();
+        }
+        return {
+          ...state,
+          selectedSamples: newSelection,
+          selectionHistory: newHistory,
+          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        };
+      }
+
+      // Replace selection with target
+      const newSelection = new Set(action.indices);
+      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
+      newHistory.push(newSelection);
+      if (newHistory.length > MAX_HISTORY) {
+        newHistory.shift();
+      }
+
+      // Track last selected index for range selection
+      const lastIdx = action.indices.length > 0 ? action.indices[action.indices.length - 1] : state.lastSelectedIndex;
+
+      return {
+        ...state,
+        selectedSamples: newSelection,
+        selectionHistory: newHistory,
+        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        lastSelectedIndex: lastIdx,
       };
     }
 
@@ -788,6 +938,14 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     dispatch({ type: 'SELECT_RANGE', toIndex, mode });
   }, []);
 
+  const selectRangeOrdered = useCallback((toIndex: number, order: number[], mode?: SelectionMode) => {
+    dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode });
+  }, []);
+
+  const replaceIfNotSole = useCallback((indices: number[]) => {
+    dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices });
+  }, []);
+
   const clear = useCallback(() => {
     dispatch({ type: 'CLEAR' });
   }, []);
@@ -880,6 +1038,8 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     toggle,
     selectAll,
     selectRange,
+    selectRangeOrdered,
+    replaceIfNotSole,
     clear,
     invert,
     pin,
@@ -911,6 +1071,8 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     toggle,
     selectAll,
     selectRange,
+    selectRangeOrdered,
+    replaceIfNotSole,
     clear,
     invert,
     pin,

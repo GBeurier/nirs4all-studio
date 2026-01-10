@@ -113,6 +113,16 @@ import {
   type Scatter3DHandle,
 } from './scatter';
 
+// Import unified selection handlers (Phase 2)
+import {
+  computeSelectionAction,
+  executeSelectionAction,
+} from '@/lib/playground/selectionHandlers';
+import {
+  extractModifiers,
+  shouldClearOnBackgroundClick,
+} from '@/lib/playground/selectionUtils';
+
 // ============= Types =============
 
 export type DimensionReductionMethod = 'pca' | 'umap';
@@ -248,9 +258,6 @@ export function DimensionReductionChart({
   const scatter3DRef = useRef<Scatter3DHandle>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
   const [rendererType, setRendererType] = useState<ScatterRendererType>('webgl');
-
-  // Track when a box/lasso selection just completed to prevent click handler from firing
-  const selectionJustCompletedRef = useRef(false);
 
   // SelectionContext integration - always call hook, conditionally use result
   const selectionHook = useSelection();
@@ -516,10 +523,11 @@ export function DimensionReductionChart({
   const getPointColor3D = getPointColor;
 
   // Handle point click - Recharts Scatter onClick signature: (data, index, event)
+  // Phase 2: Uses unified selection handlers
   const handleClick = useCallback((data: unknown, _index: number, event: React.MouseEvent) => {
-    // Skip if a box/lasso selection just completed (prevents double-selection)
-    if (selectionJustCompletedRef.current) {
-      selectionJustCompletedRef.current = false;
+    // In box/lasso mode, individual item clicks are disabled to avoid conflicts
+    // This replaces the selectionJustCompletedRef anti-pattern
+    if (selectionTool !== 'click') {
       return;
     }
 
@@ -528,21 +536,18 @@ export function DimensionReductionChart({
     if (idx === undefined) return;
 
     if (selectionCtx) {
-      if (event?.shiftKey) {
-        selectionCtx.select([idx], 'add');
-      } else if (event?.ctrlKey || event?.metaKey) {
-        selectionCtx.toggle([idx]);
-      } else {
-        if (selectedSamples.has(idx) && selectedSamples.size === 1) {
-          selectionCtx.clear();
-        } else {
-          selectionCtx.select([idx], 'replace');
-        }
-      }
+      // Use unified selection handler
+      const modifiers = extractModifiers(event);
+      const action = computeSelectionAction(
+        { indices: [idx] },
+        selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(selectionCtx, action);
     } else if (externalOnSelectSample) {
       externalOnSelectSample(idx);
     }
-  }, [selectionCtx, externalOnSelectSample, selectedSamples]);
+  }, [selectionCtx, externalOnSelectSample, selectedSamples, selectionTool]);
 
   // Handle hover
   const handleMouseEnter = useCallback((data: unknown) => {
@@ -657,11 +662,8 @@ export function DimensionReductionChart({
   }, [calculateViewBounds]);
 
   // Handle box/lasso selection for WebGL/Regl renderers
-  // Phase 4: Use filteredChartData to only select from visible points
+  // Phase 2: Uses unified selection handlers, Phase 4: Uses filteredChartData
   const handleSelectionCompleteWebGL = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    // Mark that a selection just completed to prevent click handler from firing
-    selectionJustCompletedRef.current = true;
-
     if (!selectionCtx || !chartContainerRef.current) return;
 
     const container = chartContainerRef.current;
@@ -701,25 +703,18 @@ export function DimensionReductionChart({
 
     if (selectedIndices.length === 0) return;
 
-    // Apply selection based on modifiers
-    if (modifiers.shift) {
-      selectionCtx.select(selectedIndices, 'add');
-    } else if (modifiers.ctrl) {
-      const toAdd = selectedIndices.filter(i => !selectionCtx.selectedSamples.has(i));
-      const toRemove = selectedIndices.filter(i => selectionCtx.selectedSamples.has(i));
-      if (toAdd.length > 0) selectionCtx.select(toAdd, 'add');
-      toRemove.forEach(i => selectionCtx.toggle([i]));
-    } else {
-      selectionCtx.select(selectedIndices, 'replace');
-    }
+    // Use unified selection handler
+    const action = computeSelectionAction(
+      { indices: selectedIndices },
+      selectionCtx.selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(selectionCtx, action);
   }, [selectionCtx, filteredChartData, screenToData]);
 
   // Handle box/lasso selection for 3D WebGL/Regl renderers
-  // Uses the exposed getPointsInScreenRect method from the 3D component ref
+  // Phase 2: Uses unified selection handlers
   const handleSelectionComplete3D = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    // Mark that a selection just completed to prevent click handler from firing
-    selectionJustCompletedRef.current = true;
-
     if (!selectionCtx || !scatter3DRef.current) return;
 
     let selectedIndices: number[] = [];
@@ -744,26 +739,19 @@ export function DimensionReductionChart({
 
     if (selectedIndices.length === 0) return;
 
-    // Apply selection based on modifiers
-    if (modifiers.shift) {
-      selectionCtx.select(selectedIndices, 'add');
-    } else if (modifiers.ctrl) {
-      const toAdd = selectedIndices.filter(i => !selectionCtx.selectedSamples.has(i));
-      const toRemove = selectedIndices.filter(i => selectionCtx.selectedSamples.has(i));
-      if (toAdd.length > 0) selectionCtx.select(toAdd, 'add');
-      toRemove.forEach(i => selectionCtx.toggle([i]));
-    } else {
-      selectionCtx.select(selectedIndices, 'replace');
-    }
+    // Use unified selection handler
+    const action = computeSelectionAction(
+      { indices: selectedIndices },
+      selectionCtx.selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(selectionCtx, action);
   }, [selectionCtx]);
 
   // Handle box/lasso selection completion for Recharts
+  // Phase 2: Uses unified selection handlers
   // Strategy: Check if each scatter circle's screen position is inside the selection area
-  // This is more reliable than trying to convert between coordinate systems
   const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    // Mark that a selection just completed to prevent click handler from firing
-    selectionJustCompletedRef.current = true;
-
     if (!selectionCtx || !chartContainerRef.current) {
       return;
     }
@@ -853,39 +841,28 @@ export function DimensionReductionChart({
       return;
     }
 
-    // Apply selection based on modifiers
-    if (modifiers.shift) {
-      selectionCtx.select(selectedIndices, 'add');
-    } else if (modifiers.ctrl) {
-      // Toggle: add unselected, remove selected
-      const toAdd = selectedIndices.filter(i => !selectionCtx.selectedSamples.has(i));
-      const toRemove = selectedIndices.filter(i => selectionCtx.selectedSamples.has(i));
-      if (toAdd.length > 0) selectionCtx.select(toAdd, 'add');
-      toRemove.forEach(i => selectionCtx.toggle([i]));
-    } else {
-      selectionCtx.select(selectedIndices, 'replace');
-    }
+    // Use unified selection handler
+    const action = computeSelectionAction(
+      { indices: selectedIndices },
+      selectionCtx.selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(selectionCtx, action);
   }, [selectionCtx, chartData]);
 
-  // Handle background click - only clear selection when in 'click' mode
-  // In box/lasso modes, the mouseup that completes selection also triggers a click event
-  // so we must not clear selection in those modes
+  // Handle background click for Recharts chart area
+  // Phase 2: Uses shouldClearOnBackgroundClick utility for unified behavior
   const handleChartClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Only clear selection on background click when in 'click' mode
-    // In box/lasso modes, completing a selection triggers a click that would clear it
-    if (selectionTool !== 'click') {
-      return;
-    }
+    if (!selectionCtx || selectionCtx.selectedSamples.size === 0) return;
 
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'svg' || target.classList.contains('recharts-surface')) {
-      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
-        selectionCtx.clear();
-      }
+    // Use unified background click detection
+    if (shouldClearOnBackgroundClick(e, selectionTool)) {
+      selectionCtx.clear();
     }
   }, [selectionCtx, selectionTool]);
 
-  // Handle background click from SelectionContainer (box/lasso mode with small/no selection)
+  // Handle background click from SelectionContainer (for box/lasso mode empty drag)
+  // Phase 2: This is called when SelectionContainer detects a click that doesn't select anything
   const handleBackgroundClick = useCallback(() => {
     if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
       selectionCtx.clear();

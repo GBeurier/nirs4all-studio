@@ -67,6 +67,7 @@ import {
   computeDerivative,
 } from '@/lib/playground/spectraConfig';
 import { SelectionContext } from '@/context/SelectionContext';
+import { shouldClearOnBackgroundClick } from '@/lib/playground/selectionUtils';
 import { SpectraWebGL } from './SpectraWebGL';
 import { Zap } from 'lucide-react';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
@@ -169,6 +170,7 @@ export function SpectraChartV2({
 
   // Determine effective selection state
   const selectedSamples = selectionCtx?.selectedSamples ?? new Set<number>();
+  const selectionToolMode = selectionCtx?.selectionToolMode ?? 'click';
 
   const hoveredSample = selectionCtx?.hoveredSample ?? null;
   const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
@@ -564,12 +566,29 @@ export function SpectraChartV2({
     return colors;
   }, [isWebGLMode, displayIndices, globalColorConfig, computedColorContext, getBaseColor]);
 
-  // Handle chart click
+  // Handle background click to clear selection (Phase 4: Unified Selection Model)
+  // SpectraChart does not support line click-to-select, only box/lasso selection
+  // Background clicks in 'click' mode should clear the selection
+  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
+    if (!selectionCtx) return;
+
+    // Use unified background click detection
+    if (shouldClearOnBackgroundClick(e, selectionToolMode)) {
+      selectionCtx.clear();
+    }
+  }, [selectionCtx, selectionToolMode]);
+
+  // Handle chart click (Recharts onClick callback)
+  // Note: SpectraChart does NOT support click-to-select on spectrum lines.
+  // This handler only clears selection when clicking empty space within the chart area.
   const handleClick = useCallback((e: unknown, event?: React.MouseEvent) => {
     const chartEvent = e as { activePayload?: Array<{ dataKey: string }> };
+
+    // If no active payload or no valid data key, it's a background click
     if (!chartEvent?.activePayload?.[0]?.dataKey) {
-      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
-        selectionCtx.clear();
+      // Background click - delegate to unified handler
+      if (event) {
+        handleBackgroundClick(event);
       }
       return;
     }
@@ -577,30 +596,21 @@ export function SpectraChartV2({
     const key = chartEvent.activePayload[0].dataKey as string;
     const match = key.match(/[po](\d+)/);
     if (!match) {
-      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
-        selectionCtx.clear();
+      // Clicked on aggregation or reference line, not a sample - treat as background
+      if (event) {
+        handleBackgroundClick(event);
       }
       return;
     }
 
-    const displayIdx = parseInt(match[1], 10);
-    const sampleIdx = displayIndices[displayIdx];
-
-    if (selectionCtx) {
-      const mouseEvent = event as MouseEvent | undefined;
-      if (mouseEvent?.shiftKey) {
-        selectionCtx.select([sampleIdx], 'add');
-      } else if (mouseEvent?.ctrlKey || mouseEvent?.metaKey) {
-        selectionCtx.toggle([sampleIdx]);
-      } else {
-        if (selectedSamples.has(sampleIdx) && selectedSamples.size === 1) {
-          selectionCtx.clear();
-        } else {
-          selectionCtx.select([sampleIdx], 'replace');
-        }
-      }
+    // Note: Line click-to-select is intentionally NOT implemented for SpectraChart.
+    // The density of spectral lines makes click targeting impractical.
+    // Selection is done via box/lasso selection tools or cross-chart highlighting.
+    // Clicking on a line area is treated as a background click.
+    if (event) {
+      handleBackgroundClick(event);
     }
-  }, [selectionCtx, displayIndices, selectedSamples]);
+  }, [handleBackgroundClick]);
 
   // Mousewheel zoom handler for canvas mode
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -1226,6 +1236,7 @@ export function SpectraChartV2({
         <div
           ref={chartAreaRef}
           className="flex-1 min-h-0 relative"
+          onClick={handleBackgroundClick}
           onMouseUp={isWebGLMode ? undefined : (e) => {
             if (rectSelection.isSelecting) {
               handleRectMouseUp(e);

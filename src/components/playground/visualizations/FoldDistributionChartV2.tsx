@@ -80,6 +80,11 @@ import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
 import { useSelection } from '@/context/SelectionContext';
 import type { FoldsInfo, FoldData, YStats } from '@/types/playground';
 import { cn } from '@/lib/utils';
+import {
+  computeStackedBarAction,
+  executeSelectionAction,
+} from '@/lib/playground/selectionHandlers';
+import { extractModifiers } from '@/lib/playground/selectionUtils';
 
 // ============= Types =============
 
@@ -145,6 +150,8 @@ interface PartitionBarData {
   yStd?: number;
   /** Stacked segment counts for coloration modes */
   segments: Record<string, number>;
+  /** Stacked segment sample indices for selection (Phase 5: Unified Selection) */
+  segmentIndices: Record<string, number[]>;
 }
 
 interface FoldYData {
@@ -162,6 +169,15 @@ interface FoldYData {
   trainUpper: number;
   testLower: number;
   testUpper: number;
+}
+
+/**
+ * Result of computing segments - includes both counts and sample indices
+ * (Phase 5: Enhanced to support segment-level selection)
+ */
+interface SegmentResult {
+  counts: Record<string, number>;
+  indices: Record<string, number[]>;
 }
 
 // ============= Default Configuration =============
@@ -276,80 +292,114 @@ export function FoldDistributionChartV2({
   }, [globalColorConfig?.metadataKey, colorContext?.metadata]);
 
   /**
-   * Compute segment counts for a set of indices based on color mode
+   * Compute segment counts and indices for a set of indices based on color mode.
+   * Returns both counts (for rendering bar heights) and indices (for selection).
    */
-  const computeSegments = useCallback((indices: number[]): Record<string, number> => {
-    const segments: Record<string, number> = {};
+  const computeSegments = useCallback((indices: number[]): SegmentResult => {
+    const counts: Record<string, number> = {};
+    const segmentIndices: Record<string, number[]> = {};
     const total = indices.length;
 
     switch (effectiveColorMode) {
       case 'partition':
         // In partition mode, the bar itself represents the partition, so just show total
-        segments.total = total;
+        counts.total = total;
+        segmentIndices.total = [...indices];
         break;
 
       case 'target':
-        // Classification mode - count by class
+        // Classification mode - group by class
         if (isClassificationMode && classLabels.length > 0 && y) {
           classLabels.forEach((label, i) => {
-            segments[`class_${i}`] = indices.filter(idx => {
+            const segKey = `class_${i}`;
+            const matching = indices.filter(idx => {
               const yVal = y[idx];
               return yVal !== undefined && String(yVal) === label;
-            }).length;
+            });
+            counts[segKey] = matching.length;
+            segmentIndices[segKey] = matching;
           });
         } else if (y && yBins.length > 0) {
-          // Regression mode - count samples in each Y bin
+          // Regression mode - group samples by Y bin
           yBins.forEach((bin, i) => {
-            segments[`bin_${i}`] = indices.filter(idx => {
+            const segKey = `bin_${i}`;
+            const matching = indices.filter(idx => {
               const yVal = y[idx];
               return yVal !== undefined && getYBinIndex(yVal, yBins) === i;
-            }).length;
+            });
+            counts[segKey] = matching.length;
+            segmentIndices[segKey] = matching;
           });
         } else {
-          segments.total = total;
+          counts.total = total;
+          segmentIndices.total = [...indices];
         }
         break;
 
       case 'fold':
-        segments.total = total;
+        counts.total = total;
+        segmentIndices.total = [...indices];
         break;
 
       case 'outlier':
         if (colorContext?.outlierIndices) {
-          segments.outlier = indices.filter(idx => colorContext.outlierIndices!.has(idx)).length;
-          segments.normal = total - segments.outlier;
+          const outliers = indices.filter(idx => colorContext.outlierIndices!.has(idx));
+          const normals = indices.filter(idx => !colorContext.outlierIndices!.has(idx));
+          counts.outlier = outliers.length;
+          counts.normal = normals.length;
+          segmentIndices.outlier = outliers;
+          segmentIndices.normal = normals;
         } else {
-          segments.normal = total;
+          counts.normal = total;
+          segmentIndices.normal = [...indices];
         }
         break;
 
-      case 'selection':
-        segments.selected = indices.filter(idx => selectedSamples.has(idx)).length;
-        segments.unselected = total - segments.selected;
+      case 'selection': {
+        const selected = indices.filter(idx => selectedSamples.has(idx));
+        const unselected = indices.filter(idx => !selectedSamples.has(idx));
+        counts.selected = selected.length;
+        counts.unselected = unselected.length;
+        segmentIndices.selected = selected;
+        segmentIndices.unselected = unselected;
         break;
+      }
 
       case 'metadata':
         if (globalColorConfig?.metadataKey && colorContext?.metadata) {
           const values = colorContext.metadata[globalColorConfig.metadataKey];
           if (values) {
+            const uncategorized: number[] = [];
             metadataCategories.forEach((cat, i) => {
-              segments[`meta_${i}`] = indices.filter(idx => values[idx] === cat).length;
+              const segKey = `meta_${i}`;
+              const matching = indices.filter(idx => values[idx] === cat);
+              counts[segKey] = matching.length;
+              segmentIndices[segKey] = matching;
             });
-            const categorized = Object.values(segments).reduce((a, b) => a + b, 0);
-            if (categorized < total) {
-              segments.other = total - categorized;
+            // Find uncategorized samples
+            const categorizedSet = new Set(metadataCategories);
+            indices.forEach(idx => {
+              if (!categorizedSet.has(values[idx] as string)) {
+                uncategorized.push(idx);
+              }
+            });
+            if (uncategorized.length > 0) {
+              counts.other = uncategorized.length;
+              segmentIndices.other = uncategorized;
             }
           }
         } else {
-          segments.total = total;
+          counts.total = total;
+          segmentIndices.total = [...indices];
         }
         break;
 
       default:
-        segments.total = total;
+        counts.total = total;
+        segmentIndices.total = [...indices];
     }
 
-    return segments;
+    return { counts, indices: segmentIndices };
   }, [effectiveColorMode, y, yBins, isClassificationMode, classLabels, colorContext, selectedSamples, globalColorConfig?.metadataKey, metadataCategories]);
 
   // Phase 4: Get display filter from colorContext
@@ -432,6 +482,8 @@ export function FoldDistributionChartV2({
       const fold = folds.folds[0];
       const filteredTrainIndices = filterIndices(fold.train_indices);
       const filteredTestIndices = filterIndices(fold.test_indices);
+      const trainSegments = computeSegments(filteredTrainIndices);
+      const testSegments = computeSegments(filteredTestIndices);
 
       // Train bar
       bars.push({
@@ -443,7 +495,8 @@ export function FoldDistributionChartV2({
         indices: filteredTrainIndices,
         yMean: fold.y_train_stats?.mean,
         yStd: fold.y_train_stats?.std,
-        segments: computeSegments(filteredTrainIndices),
+        segments: trainSegments.counts,
+        segmentIndices: trainSegments.indices,
       });
 
       // Test bar
@@ -456,7 +509,8 @@ export function FoldDistributionChartV2({
         indices: filteredTestIndices,
         yMean: fold.y_test_stats?.mean,
         yStd: fold.y_test_stats?.std,
-        segments: computeSegments(filteredTestIndices),
+        segments: testSegments.counts,
+        segmentIndices: testSegments.indices,
       });
 
       return bars;
@@ -467,6 +521,8 @@ export function FoldDistributionChartV2({
       const foldNum = i + 1;
       const filteredTrainIndices = filterIndices(fold.train_indices);
       const filteredTestIndices = filterIndices(fold.test_indices);
+      const trainSegments = computeSegments(filteredTrainIndices);
+      const valSegments = computeSegments(filteredTestIndices);
 
       // Train bar for this fold
       bars.push({
@@ -478,7 +534,8 @@ export function FoldDistributionChartV2({
         indices: filteredTrainIndices,
         yMean: fold.y_train_stats?.mean,
         yStd: fold.y_train_stats?.std,
-        segments: computeSegments(filteredTrainIndices),
+        segments: trainSegments.counts,
+        segmentIndices: trainSegments.indices,
       });
 
       // Validation bar for this fold
@@ -491,7 +548,8 @@ export function FoldDistributionChartV2({
         indices: filteredTestIndices,
         yMean: fold.y_test_stats?.mean,
         yStd: fold.y_test_stats?.std,
-        segments: computeSegments(filteredTestIndices),
+        segments: valSegments.counts,
+        segmentIndices: valSegments.indices,
       });
     });
 
@@ -510,6 +568,7 @@ export function FoldDistributionChartV2({
           yStd = Math.sqrt(variance);
         }
       }
+      const heldOutSegments = computeSegments(filteredHeldOutIndices);
 
       bars.push({
         label: 'Test',
@@ -520,7 +579,8 @@ export function FoldDistributionChartV2({
         indices: filteredHeldOutIndices,
         yMean,
         yStd,
-        segments: computeSegments(filteredHeldOutIndices),
+        segments: heldOutSegments.counts,
+        segmentIndices: heldOutSegments.indices,
       });
     }
 
@@ -791,6 +851,58 @@ export function FoldDistributionChartV2({
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
+  /**
+   * Handle partition bar click with unified selection model (Phase 5: Unified Selection)
+   *
+   * Implements progressive drill-down for stacked bars:
+   * 1. First click: Select entire bar (all segments)
+   * 2. Second click on same bar: Select only the clicked segment
+   * 3. Third click on same segment: Clear selection
+   *
+   * @param entry - The partition bar data
+   * @param segmentKey - The clicked segment key (for stacked bars)
+   * @param event - The mouse event (for modifier keys)
+   */
+  const handlePartitionBarClick = useCallback((
+    entry: PartitionBarData,
+    segmentKey: string,
+    event?: React.MouseEvent
+  ) => {
+    if (!selectionCtx) return;
+
+    // Get all samples in the bar (entire partition)
+    const barIndices = entry.indices;
+
+    // Get samples in the clicked segment (for stacked bars)
+    // Fall back to all indices if segment key doesn't exist (non-stacked mode)
+    const segmentIndices = entry.segmentIndices[segmentKey] ?? barIndices;
+
+    // Extract modifiers from event
+    const modifiers = event ? extractModifiers(event) : { shift: false, ctrl: false };
+
+    // Use unified stacked bar action computation for progressive drill-down
+    const action = computeStackedBarAction(
+      { barIndices, segmentIndices },
+      selectedSamples,
+      modifiers
+    );
+
+    // Execute the action
+    executeSelectionAction(selectionCtx, action);
+
+    // Update clicked partition tracking for visual feedback
+    if (action.action === 'clear') {
+      setClickedPartitionId(null);
+    } else if (!modifiers.shift && !modifiers.ctrl) {
+      // For plain clicks, track which partition was clicked
+      setClickedPartitionId(entry.partitionId);
+    } else {
+      // For modifier clicks (add/toggle), clear clicked partition
+      // as multiple partitions may be partially selected
+      setClickedPartitionId(null);
+    }
+  }, [selectionCtx, selectedSamples]);
+
   // Empty state
   if (!folds || folds.n_folds === 0) {
     return (
@@ -860,41 +972,6 @@ export function FoldDistributionChartV2({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-
-  // Handle partition bar click - select samples in the partition
-  // Note: We only do sample selection here, NOT fold selection.
-  // Fold selection (selectedFold) is a separate concept used for filtering and can be
-  // controlled via the fold selector or other UI, but clicking bars should only select samples.
-  const handlePartitionBarClick = useCallback((entry: PartitionBarData, event?: React.MouseEvent) => {
-    if (selectionCtx) {
-      const partitionIndices = entry.indices;
-
-      if (event?.shiftKey) {
-        selectionCtx.select(partitionIndices, 'add');
-        // For shift-click, we add to selection but don't change clicked partition
-        // (stroke will show on partition containing selected samples)
-        setClickedPartitionId(null);
-      } else if (event?.ctrlKey || event?.metaKey) {
-        selectionCtx.toggle(partitionIndices);
-        // For toggle, clear clicked partition (multiple partitions may be partially selected)
-        setClickedPartitionId(null);
-      } else {
-        // Check if this partition's samples are exactly the current selection
-        const isExactlyThisPartitionSelected =
-          selectedSamples.size === partitionIndices.length &&
-          partitionIndices.every((idx: number) => selectedSamples.has(idx));
-
-        if (isExactlyThisPartitionSelected) {
-          selectionCtx.clear();
-          setClickedPartitionId(null);
-        } else {
-          selectionCtx.select(partitionIndices, 'replace');
-          // Track which partition was clicked for stroke display
-          setClickedPartitionId(entry.partitionId);
-        }
-      }
-    }
-  }, [selectionCtx, selectedSamples]);
 
   // Render count bar chart with separate bars per partition
   const renderCountChart = () => (
@@ -1057,9 +1134,10 @@ export function FoldDistributionChartV2({
             cursor="pointer"
             onClick={(data: { payload?: PartitionBarData }, _index: number, event: React.MouseEvent) => {
               // Use data.payload to get the correct entry - more reliable than index
+              // Pass segKey to enable segment-level selection in stacked bars (Phase 5)
               const entry = data.payload;
               if (entry) {
-                handlePartitionBarClick(entry, event);
+                handlePartitionBarClick(entry, segKey, event);
               }
             }}
             {...ANIMATION_CONFIG}

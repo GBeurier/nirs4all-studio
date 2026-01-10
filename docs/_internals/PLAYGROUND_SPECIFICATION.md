@@ -357,7 +357,34 @@ Selection {
 | `RANGE` | Shift+Click (after first) | Select range from last to current |
 | `AREA` | Drag | Select all samples within drawn area |
 
-### 5.3 Area Selection
+### 5.3 Unified Click Behavior
+
+All charts implement consistent click-to-select semantics:
+
+| Interaction | Behavior |
+|-------------|----------|
+| Click unselected | Replace selection with clicked item |
+| Click selected (only selection) | Clear selection |
+| Click selected (multi-selection) | Replace selection with clicked item |
+| Shift+click | Add to selection |
+| Ctrl/Cmd+click | Toggle (add if not selected, remove if selected) |
+| Click background | Clear selection |
+
+#### 5.3.1 Stacked Bar Progressive Selection
+
+For stacked bars (histogram, fold distribution), a 3-click drill-down model:
+
+| Click # | Current State | Action | New State |
+|---------|---------------|--------|-----------|
+| 1st | Nothing selected | Click on bar | Select entire bar (all segments) |
+| 2nd | Entire bar selected | Click on same bar | Select clicked segment only |
+| 3rd | Single segment selected | Click on same segment | Clear selection |
+
+Modifier keys bypass progressive logic and work on segment level:
+- **Shift+click**: Adds the segment to selection
+- **Ctrl+click**: Toggles the segment
+
+### 5.4 Area Selection
 
 Area selection behavior per view:
 
@@ -369,7 +396,7 @@ Area selection behavior per view:
 | Histogram | Click on bar selects all samples in that bin |
 | Partitions | Click on bar segment selects those samples |
 
-### 5.4 Selection Visualization
+### 5.5 Selection Visualization
 
 | View | Selected Appearance | Unselected Appearance |
 |------|--------------------|-----------------------|
@@ -378,7 +405,7 @@ Area selection behavior per view:
 | Histogram | Highlighted bar segment | Normal bar segment |
 | Differences | Full opacity, highlighted | Reduced opacity |
 
-### 5.5 Selection Actions
+### 5.6 Selection Actions
 
 | Action | Shortcut | Description |
 |--------|----------|-------------|
@@ -386,6 +413,45 @@ Area selection behavior per view:
 | Deselect All | Escape | Clear selection |
 | Invert Selection | Ctrl+I | Invert current selection |
 | Mark as Outliers | Ctrl+O | Mark selected samples as outliers (adds outlier flag to pipeline context) |
+
+### 5.7 Implementation Architecture
+
+The selection system uses a unified handler architecture:
+
+#### Core Files
+
+| File | Purpose |
+|------|---------|
+| `SelectionContext.tsx` | Global selection state with reducer pattern |
+| `HoverContext.tsx` | Separated hover state for performance |
+| `selectionHandlers.ts` | Pure selection logic functions |
+| `selectionUtils.ts` | Helper functions (modifier extraction, background detection) |
+| `SelectionTools.tsx` | Box/lasso selection UI overlay |
+
+#### Unified Handler Pattern
+
+All charts use the centralized selection handlers:
+
+```typescript
+import { computeSelectionAction, executeSelectionAction } from '@/lib/playground/selectionHandlers';
+import { extractModifiers } from '@/lib/playground/selectionUtils';
+
+// In any chart's click handler:
+const handleClick = (indices: number[], event: MouseEvent) => {
+  const modifiers = extractModifiers(event);
+  const action = computeSelectionAction({ indices }, selection, modifiers);
+  executeSelectionAction(selectionCtx, action);
+};
+
+// For stacked bars:
+const handleStackedClick = (barIndices: number[], segmentIndices: number[], event: MouseEvent) => {
+  const modifiers = extractModifiers(event);
+  const action = computeStackedBarAction({ barIndices, segmentIndices }, selection, modifiers);
+  executeSelectionAction(selectionCtx, action);
+};
+```
+
+For detailed implementation documentation, see [PLAYGROUND_SELECTION_MODEL.md](./PLAYGROUND_SELECTION_MODEL.md)
 
 ---
 
