@@ -3,6 +3,7 @@
  *
  * Displays nirs4all optional dependencies with installation status
  * and provides install/uninstall/update actions for each package.
+ * Supports custom virtual environment paths and caches scan results.
  */
 
 import { useState, useEffect } from "react";
@@ -19,6 +20,9 @@ import {
   AlertCircle,
   Loader2,
   ExternalLink,
+  FolderOpen,
+  RotateCcw,
+  Clock,
 } from "lucide-react";
 import {
   Card,
@@ -31,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import {
   Collapsible,
   CollapsibleContent,
@@ -59,7 +64,10 @@ import {
   uninstallDependency,
   updateDependency,
   refreshDependencies,
+  getVenvPath,
+  setVenvPath,
 } from "@/api/client";
+import { selectFolder } from "@/utils/fileDialogs";
 import type {
   DependenciesResponse,
   DependencyCategory,
@@ -301,33 +309,82 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processingPackage, setProcessingPackage] = useState<string | null>(null);
+  const [isChangingVenv, setIsChangingVenv] = useState(false);
   const [lastAction, setLastAction] = useState<{
-    type: "install" | "uninstall" | "update";
+    type: "install" | "uninstall" | "update" | "venv";
     package: string;
     success: boolean;
     message: string;
   } | null>(null);
 
-  const loadDependencies = async () => {
+  const loadDependencies = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
+      if (!forceRefresh) {
+        setIsLoading(true);
+      }
       setError(null);
-      const data = await getDependencies();
+      const data = await getDependencies(forceRefresh);
       setDependencies(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dependencies");
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshDependencies();
+    await loadDependencies(true);
+  };
+
+  const handleSelectVenv = async () => {
+    const path = await selectFolder();
+    if (path) {
+      try {
+        setIsChangingVenv(true);
+        const result = await setVenvPath(path);
+        setLastAction({
+          type: "venv",
+          package: "venv",
+          success: result.success,
+          message: result.message,
+        });
+        await loadDependencies(true);
+      } catch (err) {
+        setLastAction({
+          type: "venv",
+          package: "venv",
+          success: false,
+          message: err instanceof Error ? err.message : "Failed to set venv path",
+        });
+      } finally {
+        setIsChangingVenv(false);
+      }
+    }
+  };
+
+  const handleResetVenv = async () => {
     try {
-      setIsRefreshing(true);
-      await refreshDependencies();
-      await loadDependencies();
+      setIsChangingVenv(true);
+      const result = await setVenvPath(null);
+      setLastAction({
+        type: "venv",
+        package: "venv",
+        success: result.success,
+        message: result.message,
+      });
+      await loadDependencies(true);
+    } catch (err) {
+      setLastAction({
+        type: "venv",
+        package: "venv",
+        success: false,
+        message: err instanceof Error ? err.message : "Failed to reset venv path",
+      });
     } finally {
-      setIsRefreshing(false);
+      setIsChangingVenv(false);
     }
   };
 
@@ -342,7 +399,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         success: result.success,
         message: result.message,
       });
-      await loadDependencies();
+      await loadDependencies(true);
     } catch (err) {
       setLastAction({
         type: "install",
@@ -366,7 +423,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         success: result.success,
         message: result.message,
       });
-      await loadDependencies();
+      await loadDependencies(true);
     } catch (err) {
       setLastAction({
         type: "uninstall",
@@ -390,7 +447,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         success: result.success,
         message: result.message,
       });
-      await loadDependencies();
+      await loadDependencies(true);
     } catch (err) {
       setLastAction({
         type: "update",
@@ -436,7 +493,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
           <CardDescription className="text-destructive">{error}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" size="sm" onClick={loadDependencies}>
+          <Button variant="outline" size="sm" onClick={() => loadDependencies()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Retry
           </Button>
@@ -467,20 +524,106 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               Manage nirs4all optional packages for extended functionality
             </CardDescription>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Check for updates"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-          </Button>
+          <div className="flex items-center gap-2">
+            {dependencies.cached_at && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-xs gap-1">
+                      <Clock className="h-3 w-3" />
+                      Cached
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Last scanned: {new Date(dependencies.cached_at).toLocaleString()}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing || !!processingPackage}
+                    title="Refresh dependencies"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Force refresh (re-scan packages)
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Virtual Environment Path */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Python Environment</label>
+          <div className="flex gap-2">
+            <Input
+              value={dependencies.venv_path}
+              readOnly
+              className="flex-1 font-mono text-xs"
+            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleSelectVenv}
+                    disabled={isChangingVenv || !!processingPackage}
+                  >
+                    {isChangingVenv ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FolderOpen className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Select custom virtual environment
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {dependencies.venv_is_custom && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleResetVenv}
+                      disabled={isChangingVenv || !!processingPackage}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Reset to default managed environment
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={dependencies.venv_valid ? "default" : "destructive"}>
+              {dependencies.venv_valid ? "Valid" : "Invalid"}
+            </Badge>
+            {dependencies.venv_is_custom && (
+              <Badge variant="secondary">Custom</Badge>
+            )}
+          </div>
+        </div>
+
         {/* Summary Bar */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-4">

@@ -1610,10 +1610,13 @@ export interface DependencyCategory {
 export interface DependenciesResponse {
   categories: DependencyCategory[];
   venv_valid: boolean;
+  venv_path: string;
+  venv_is_custom: boolean;
   nirs4all_installed: boolean;
   nirs4all_version: string | null;
   total_installed: number;
   total_packages: number;
+  cached_at: string | null;
 }
 
 export interface PackageActionResponse {
@@ -1624,11 +1627,20 @@ export interface PackageActionResponse {
   output?: string[];
 }
 
+export interface VenvPathInfo {
+  current_path: string;
+  default_path: string;
+  is_custom: boolean;
+  is_valid: boolean;
+  exists: boolean;
+}
+
 /**
  * Get all nirs4all optional dependencies with installation status
  */
-export async function getDependencies(): Promise<DependenciesResponse> {
-  return api.get("/updates/dependencies");
+export async function getDependencies(forceRefresh: boolean = false): Promise<DependenciesResponse> {
+  const params = forceRefresh ? "?force_refresh=true" : "";
+  return api.get(`/updates/dependencies${params}`);
 }
 
 /**
@@ -1674,12 +1686,26 @@ export async function updateDependency(
 export async function refreshDependencies(): Promise<{
   success: boolean;
   message: string;
-  outdated_count: number;
-  outdated_packages?: Array<{
-    name: string;
-    current_version: string;
-    latest_version: string;
-  }>;
 }> {
   return api.post("/updates/dependencies/refresh");
+}
+
+/**
+ * Get current venv path configuration
+ */
+export async function getVenvPath(): Promise<VenvPathInfo> {
+  return api.get("/updates/venv/path");
+}
+
+/**
+ * Set custom venv path (pass null to reset to default)
+ */
+export async function setVenvPath(path: string | null): Promise<{
+  success: boolean;
+  message: string;
+  current_path: string;
+  is_custom: boolean;
+  is_valid: boolean;
+}> {
+  return api.post("/updates/venv/path", { path });
 }

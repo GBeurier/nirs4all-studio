@@ -30,6 +30,7 @@ class VenvInfo:
     path: str
     exists: bool
     is_valid: bool
+    is_custom: bool = False
     python_version: Optional[str] = None
     pip_version: Optional[str] = None
     created_at: Optional[str] = None
@@ -55,20 +56,118 @@ class VenvManager:
     """
     Manages a dedicated Python virtual environment for nirs4all.
 
-    The venv is stored in the user's app data directory:
+    The venv is stored in the user's app data directory by default:
     - Windows: %LOCALAPPDATA%/nirs4all-webapp/managed_venv/
     - macOS: ~/Library/Application Support/nirs4all-webapp/managed_venv/
     - Linux: ~/.local/share/nirs4all-webapp/managed_venv/
+
+    A custom path can be configured via set_custom_venv_path().
     """
 
     VENV_DIRNAME = "managed_venv"
     METADATA_FILE = "venv_metadata.json"
+    SETTINGS_FILE = "venv_settings.json"
 
     def __init__(self):
         """Initialize the venv manager."""
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
-        self._venv_path = self._app_data_dir / self.VENV_DIRNAME
-        self._metadata_path = self._venv_path / self.METADATA_FILE
+        self._settings_path = self._app_data_dir / self.SETTINGS_FILE
+        self._default_venv_path = self._app_data_dir / self.VENV_DIRNAME
+        self._custom_venv_path: Optional[Path] = None
+        self._load_settings()
+
+    def _load_settings(self) -> None:
+        """Load venv settings from file."""
+        if self._settings_path.exists():
+            try:
+                with open(self._settings_path, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+                    custom_path = settings.get("custom_venv_path")
+                    if custom_path:
+                        self._custom_venv_path = Path(custom_path)
+            except Exception as e:
+                print(f"Warning: Could not load venv settings: {e}")
+
+    def _save_settings(self) -> None:
+        """Save venv settings to file."""
+        self._app_data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            settings = {
+                "custom_venv_path": str(self._custom_venv_path) if self._custom_venv_path else None,
+            }
+            with open(self._settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save venv settings: {e}")
+
+    @property
+    def _venv_path(self) -> Path:
+        """Get the current venv path (custom or default)."""
+        return self._custom_venv_path if self._custom_venv_path else self._default_venv_path
+
+    @property
+    def _metadata_path(self) -> Path:
+        """Get the metadata file path."""
+        return self._venv_path / self.METADATA_FILE
+
+    @property
+    def is_custom_path(self) -> bool:
+        """Check if a custom venv path is configured."""
+        return self._custom_venv_path is not None
+
+    @property
+    def default_path(self) -> Path:
+        """Get the default venv path."""
+        return self._default_venv_path
+
+    def get_custom_path(self) -> Optional[str]:
+        """Get the custom venv path if configured."""
+        return str(self._custom_venv_path) if self._custom_venv_path else None
+
+    def set_custom_venv_path(self, path: Optional[str]) -> Tuple[bool, str]:
+        """
+        Set a custom virtual environment path.
+
+        Args:
+            path: The custom path, or None to reset to default
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if path is None:
+            # Reset to default
+            self._custom_venv_path = None
+            self._save_settings()
+            return True, "Reset to default virtual environment path"
+
+        custom_path = Path(path)
+
+        # Validate path
+        if not custom_path.exists():
+            return False, f"Path does not exist: {path}"
+
+        # Check if it looks like a valid venv
+        python_exec = custom_path / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
+
+        if not python_exec.exists():
+            return False, f"Not a valid Python virtual environment: {path}"
+
+        # Test the Python executable
+        try:
+            result = subprocess.run(
+                [str(python_exec), "-c", "print('ok')"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0 or "ok" not in result.stdout:
+                return False, f"Python executable is not working in: {path}"
+        except Exception as e:
+            return False, f"Failed to verify Python executable: {e}"
+
+        self._custom_venv_path = custom_path
+        self._save_settings()
+        return True, f"Custom virtual environment path set to: {path}"
 
     @property
     def venv_path(self) -> Path:
@@ -95,6 +194,7 @@ class VenvManager:
             path=str(self._venv_path),
             exists=self._venv_path.exists(),
             is_valid=self._is_valid_venv(),
+            is_custom=self.is_custom_path,
         )
 
         if info.is_valid:

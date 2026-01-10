@@ -102,8 +102,13 @@ export default function Dashboard() {
     >
       {/* Welcome Section */}
       <motion.div variants={itemVariants}>
-        <h1 className="text-3xl font-bold text-foreground">
-          Welcome to <span className="text-gradient">nirs4all</span>
+        <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+          Welcome to{" "}
+           <span>
+              <span className="text-blue-600 font-bold">nirs</span>
+              <span className="text-red-600 font-bold">4</span>
+              <span className="text-black font-bold">all</span>
+            </span>
         </h1>
         <p className="mt-1 text-muted-foreground">
           Build and run spectroscopy ML pipelines with ease

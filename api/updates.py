@@ -138,10 +138,13 @@ class DependenciesResponse(BaseModel):
     """Response with all dependencies information."""
     categories: List[DependencyCategory]
     venv_valid: bool
+    venv_path: str
+    venv_is_custom: bool
     nirs4all_installed: bool
     nirs4all_version: Optional[str] = None
     total_installed: int = 0
     total_packages: int = 0
+    cached_at: Optional[str] = None
 
 
 class PackageInstallRequest(BaseModel):
@@ -156,6 +159,11 @@ class PackageUninstallRequest(BaseModel):
     package: str
 
 
+class SetVenvPathRequest(BaseModel):
+    """Request to set custom venv path."""
+    path: Optional[str] = None  # None to reset to default
+
+
 # App identification
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
@@ -164,6 +172,68 @@ APP_AUTHOR = "nirs4all"
 DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-webapp"
 DEFAULT_PYPI_PACKAGE = "nirs4all"
 DEFAULT_CHECK_INTERVAL_HOURS = 24
+
+
+# ============= Dependencies Cache =============
+
+class DependenciesCache:
+    """Cache for dependencies scan results."""
+
+    CACHE_FILE = "dependencies_cache.json"
+
+    def __init__(self):
+        self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        self._cache_path = self._app_data_dir / self.CACHE_FILE
+        self._cache: Optional[Dict[str, Any]] = None
+        self._load_cache()
+
+    def _load_cache(self) -> None:
+        """Load cache from file."""
+        if self._cache_path.exists():
+            try:
+                with open(self._cache_path, "r", encoding="utf-8") as f:
+                    self._cache = json.load(f)
+            except Exception:
+                self._cache = None
+
+    def _save_cache(self) -> None:
+        """Save cache to file."""
+        self._app_data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(self._cache_path, "w", encoding="utf-8") as f:
+                json.dump(self._cache, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save dependencies cache: {e}")
+
+    def get(self, venv_path: str) -> Optional[Dict[str, Any]]:
+        """Get cached dependencies for a venv path."""
+        if not self._cache:
+            return None
+        if self._cache.get("venv_path") != venv_path:
+            return None
+        return self._cache
+
+    def set(self, venv_path: str, data: Dict[str, Any]) -> None:
+        """Cache dependencies data for a venv path."""
+        self._cache = {
+            "venv_path": venv_path,
+            "cached_at": datetime.now().isoformat(),
+            **data,
+        }
+        self._save_cache()
+
+    def invalidate(self) -> None:
+        """Clear the cache."""
+        self._cache = None
+        if self._cache_path.exists():
+            try:
+                self._cache_path.unlink()
+            except Exception:
+                pass
+
+
+# Global dependencies cache
+_dependencies_cache = DependenciesCache()
 
 
 # ============= Data Models =============
@@ -1090,13 +1160,32 @@ async def _get_pypi_version(package: str) -> Optional[str]:
 
 
 @router.get("/dependencies")
-async def get_dependencies() -> DependenciesResponse:
+async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     """
     Get all nirs4all optional dependencies with their installation status.
 
-    Returns categorized list of packages with version information.
+    Returns cached results if available. Use force_refresh=true to bypass cache.
     """
     venv_info = venv_manager.get_venv_info()
+    venv_path = str(venv_info.path)
+
+    # Check cache first (unless force refresh)
+    if not force_refresh:
+        cached = _dependencies_cache.get(venv_path)
+        if cached:
+            # Return cached data
+            return DependenciesResponse(
+                categories=[DependencyCategory(**cat) for cat in cached.get("categories", [])],
+                venv_valid=cached.get("venv_valid", False),
+                venv_path=venv_path,
+                venv_is_custom=venv_manager.is_custom_path,
+                nirs4all_installed=cached.get("nirs4all_installed", False),
+                nirs4all_version=cached.get("nirs4all_version"),
+                total_installed=cached.get("total_installed", 0),
+                total_packages=cached.get("total_packages", 0),
+                cached_at=cached.get("cached_at"),
+            )
+
     installed_packages = {}
 
     # Get installed packages from venv
@@ -1180,13 +1269,27 @@ async def get_dependencies() -> DependenciesResponse:
         except ImportError:
             pass
 
+    # Cache the results
+    cache_data = {
+        "categories": [cat.model_dump() for cat in categories],
+        "venv_valid": venv_info.is_valid,
+        "nirs4all_installed": nirs4all_installed,
+        "nirs4all_version": nirs4all_version,
+        "total_installed": total_installed,
+        "total_packages": total_packages,
+    }
+    _dependencies_cache.set(venv_path, cache_data)
+
     return DependenciesResponse(
         categories=categories,
         venv_valid=venv_info.is_valid,
+        venv_path=venv_path,
+        venv_is_custom=venv_manager.is_custom_path,
         nirs4all_installed=nirs4all_installed,
         nirs4all_version=nirs4all_version,
         total_installed=total_installed,
         total_packages=total_packages,
+        cached_at=datetime.now().isoformat(),
     )
 
 
@@ -1219,6 +1322,9 @@ async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
+
+    # Invalidate cache after install
+    _dependencies_cache.invalidate()
 
     # Get the installed version
     installed_version = venv_manager.get_package_version(request.package)
@@ -1254,6 +1360,9 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> Dict[str, An
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
+    # Invalidate cache after uninstall
+    _dependencies_cache.invalidate()
+
     return {
         "success": True,
         "message": message,
@@ -1288,6 +1397,9 @@ async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
+    # Invalidate cache after update
+    _dependencies_cache.invalidate()
+
     # Get the new version
     installed_version = venv_manager.get_package_version(request.package)
 
@@ -1303,22 +1415,60 @@ async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
 @router.post("/dependencies/refresh")
 async def refresh_dependencies() -> Dict[str, Any]:
     """
-    Refresh the outdated packages cache.
+    Force refresh the dependencies cache.
 
-    This forces a fresh check of which packages have updates available.
+    This invalidates the cache and forces a fresh scan.
     """
-    if not venv_manager.get_venv_info().is_valid:
-        return {
-            "success": False,
-            "message": "Virtual environment is not valid",
-            "outdated_count": 0,
-        }
+    # Invalidate cache
+    _dependencies_cache.invalidate()
 
-    outdated = venv_manager.get_outdated_packages()
+    # Return success - the next get_dependencies call will do a fresh scan
+    return {
+        "success": True,
+        "message": "Dependencies cache cleared. Next request will do a fresh scan.",
+    }
+
+
+# ============= Venv Path Management =============
+
+
+@router.get("/venv/path")
+async def get_venv_path() -> Dict[str, Any]:
+    """
+    Get the current virtual environment path configuration.
+    """
+    venv_info = venv_manager.get_venv_info()
+
+    return {
+        "current_path": str(venv_manager.venv_path),
+        "default_path": str(venv_manager.default_path),
+        "is_custom": venv_manager.is_custom_path,
+        "is_valid": venv_info.is_valid,
+        "exists": venv_info.exists,
+    }
+
+
+@router.post("/venv/path")
+async def set_venv_path(request: SetVenvPathRequest) -> Dict[str, Any]:
+    """
+    Set a custom virtual environment path.
+
+    Pass path=null to reset to default.
+    """
+    success, message = venv_manager.set_custom_venv_path(request.path)
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Invalidate dependencies cache when venv path changes
+    _dependencies_cache.invalidate()
+
+    venv_info = venv_manager.get_venv_info()
 
     return {
         "success": True,
-        "message": f"Found {len(outdated)} outdated packages",
-        "outdated_count": len(outdated),
-        "outdated_packages": outdated,
+        "message": message,
+        "current_path": str(venv_manager.venv_path),
+        "is_custom": venv_manager.is_custom_path,
+        "is_valid": venv_info.is_valid,
     }
