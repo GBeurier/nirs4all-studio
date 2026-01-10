@@ -83,6 +83,7 @@ import { N4AWorkspaceSelector } from "@/components/settings/N4AWorkspaceSelector
 import { N4AWorkspaceList } from "@/components/settings/N4AWorkspaceList";
 import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscoveryPanel";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
+import { DependenciesManager } from "@/components/settings/DependenciesManager";
 import {
   getWorkspace,
   selectWorkspace,
@@ -534,6 +535,9 @@ export default function Settings() {
 
             {/* Updates Section */}
             <UpdatesSection />
+
+            {/* Dependencies Manager */}
+            <DependenciesManager />
 
             {/* Backend Settings */}
             <Card>

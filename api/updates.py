@@ -42,6 +42,120 @@ except ImportError:
 router = APIRouter(prefix="/updates", tags=["updates"])
 
 
+# ============= nirs4all Optional Dependencies Definition =============
+
+# Define nirs4all optional dependencies organized by category
+NIRS4ALL_OPTIONAL_DEPS = {
+    "deep_learning": {
+        "name": "Deep Learning",
+        "description": "Deep learning frameworks for neural network models",
+        "packages": [
+            {"name": "tensorflow", "min_version": "2.14.0", "description": "TensorFlow deep learning framework"},
+            {"name": "torch", "min_version": "2.1.0", "description": "PyTorch deep learning framework"},
+            {"name": "keras", "min_version": "3.0.0", "description": "High-level neural networks API"},
+            {"name": "jax", "min_version": "0.4.20", "description": "JAX numerical computing library"},
+            {"name": "jaxlib", "min_version": "0.4.20", "description": "JAX backend library"},
+            {"name": "flax", "min_version": "0.8.0", "description": "Flax neural network library for JAX"},
+            {"name": "tabpfn", "min_version": "2.0.0", "description": "TabPFN tabular data model"},
+        ],
+    },
+    "pls_variants": {
+        "name": "PLS Variants",
+        "description": "Advanced Partial Least Squares implementations",
+        "packages": [
+            {"name": "ikpls", "min_version": "1.1.0", "description": "Improved kernel PLS algorithms"},
+            {"name": "pyopls", "min_version": "20.0", "description": "Orthogonal PLS (OPLS)"},
+            {"name": "trendfitter", "min_version": "0.0.6", "description": "PLS with trend analysis"},
+        ],
+    },
+    "automl": {
+        "name": "AutoML",
+        "description": "Automated machine learning frameworks",
+        "packages": [
+            {"name": "autogluon", "min_version": "1.0.0", "description": "AutoGluon AutoML toolkit"},
+        ],
+    },
+    "visualization": {
+        "name": "Visualization",
+        "description": "Plotting and visualization libraries",
+        "packages": [
+            {"name": "matplotlib", "min_version": "3.7.0", "description": "Core plotting library"},
+            {"name": "seaborn", "min_version": "0.12.0", "description": "Statistical data visualization"},
+            {"name": "plotly", "min_version": "5.0.0", "description": "Interactive plotting library"},
+        ],
+    },
+    "dimensionality": {
+        "name": "Dimensionality Reduction",
+        "description": "Advanced dimensionality reduction methods",
+        "packages": [
+            {"name": "umap-learn", "min_version": "0.5.0", "description": "UMAP dimensionality reduction"},
+        ],
+    },
+    "reports": {
+        "name": "Reports",
+        "description": "Document and report generation",
+        "packages": [
+            {"name": "pypandoc", "min_version": "1.12", "description": "Pandoc document conversion"},
+            {"name": "PyPDF2", "min_version": "3.0.0", "description": "PDF manipulation"},
+            {"name": "pdf2image", "min_version": "1.16.0", "description": "PDF to image conversion"},
+        ],
+    },
+    "export": {
+        "name": "Export",
+        "description": "Data export capabilities",
+        "packages": [
+            {"name": "openpyxl", "min_version": "3.1.0", "description": "Excel file support"},
+        ],
+    },
+}
+
+
+class DependencyInfo(BaseModel):
+    """Information about a single dependency."""
+    name: str
+    category: str
+    category_name: str
+    description: str
+    min_version: str
+    installed_version: Optional[str] = None
+    latest_version: Optional[str] = None
+    is_installed: bool = False
+    is_outdated: bool = False
+    can_update: bool = False
+
+
+class DependencyCategory(BaseModel):
+    """A category of dependencies."""
+    id: str
+    name: str
+    description: str
+    packages: List[DependencyInfo]
+    installed_count: int = 0
+    total_count: int = 0
+
+
+class DependenciesResponse(BaseModel):
+    """Response with all dependencies information."""
+    categories: List[DependencyCategory]
+    venv_valid: bool
+    nirs4all_installed: bool
+    nirs4all_version: Optional[str] = None
+    total_installed: int = 0
+    total_packages: int = 0
+
+
+class PackageInstallRequest(BaseModel):
+    """Request to install a package."""
+    package: str
+    version: Optional[str] = None
+    upgrade: bool = False
+
+
+class PackageUninstallRequest(BaseModel):
+    """Request to uninstall a package."""
+    package: str
+
+
 # App identification
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
@@ -946,4 +1060,265 @@ async def get_versions() -> Dict[str, Any]:
         "python_version": sys.version,
         "platform": platform.system(),
         "machine": platform.machine(),
+    }
+
+
+# ============= Dependency Management Endpoints =============
+
+
+async def _get_pypi_version(package: str) -> Optional[str]:
+    """Get the latest version of a package from PyPI."""
+    # Normalize package name for PyPI
+    pypi_name = package.replace("_", "-")
+    api_url = f"https://pypi.org/pypi/{pypi_name}/json"
+
+    try:
+        if HTTPX_AVAILABLE:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(api_url, timeout=10.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("info", {}).get("version")
+        else:
+            req = urllib.request.Request(api_url)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return data.get("info", {}).get("version")
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/dependencies")
+async def get_dependencies() -> DependenciesResponse:
+    """
+    Get all nirs4all optional dependencies with their installation status.
+
+    Returns categorized list of packages with version information.
+    """
+    venv_info = venv_manager.get_venv_info()
+    installed_packages = {}
+
+    # Get installed packages from venv
+    if venv_info.is_valid:
+        for pkg in venv_manager.get_installed_packages():
+            installed_packages[pkg.name.lower()] = pkg.version
+
+    # Also check current Python environment as fallback
+    try:
+        import importlib.metadata
+        for dist in importlib.metadata.distributions():
+            name = dist.metadata["Name"].lower()
+            if name not in installed_packages:
+                installed_packages[name] = dist.version
+    except Exception:
+        pass
+
+    # Get outdated packages for update detection
+    outdated_packages = {}
+    if venv_info.is_valid:
+        for pkg in venv_manager.get_outdated_packages():
+            outdated_packages[pkg["name"].lower()] = pkg["latest_version"]
+
+    categories = []
+    total_installed = 0
+    total_packages = 0
+
+    for cat_id, cat_data in NIRS4ALL_OPTIONAL_DEPS.items():
+        packages = []
+        cat_installed = 0
+
+        for pkg_def in cat_data["packages"]:
+            pkg_name = pkg_def["name"]
+            pkg_name_lower = pkg_name.lower()
+            # Also check with underscore/hyphen variants
+            pkg_name_alt = pkg_name.replace("-", "_").lower()
+
+            installed_version = installed_packages.get(pkg_name_lower) or installed_packages.get(pkg_name_alt)
+            is_installed = installed_version is not None
+            latest_version = outdated_packages.get(pkg_name_lower) or outdated_packages.get(pkg_name_alt)
+            is_outdated = latest_version is not None and is_installed
+
+            dep_info = DependencyInfo(
+                name=pkg_name,
+                category=cat_id,
+                category_name=cat_data["name"],
+                description=pkg_def["description"],
+                min_version=pkg_def["min_version"],
+                installed_version=installed_version,
+                latest_version=latest_version,
+                is_installed=is_installed,
+                is_outdated=is_outdated,
+                can_update=is_outdated,
+            )
+            packages.append(dep_info)
+
+            if is_installed:
+                cat_installed += 1
+                total_installed += 1
+            total_packages += 1
+
+        categories.append(DependencyCategory(
+            id=cat_id,
+            name=cat_data["name"],
+            description=cat_data["description"],
+            packages=packages,
+            installed_count=cat_installed,
+            total_count=len(packages),
+        ))
+
+    # Check nirs4all installation
+    nirs4all_version = venv_manager.get_nirs4all_version()
+    nirs4all_installed = nirs4all_version is not None
+
+    # Also check in current environment
+    if not nirs4all_installed:
+        try:
+            import nirs4all
+            nirs4all_version = getattr(nirs4all, "__version__", None)
+            nirs4all_installed = nirs4all_version is not None
+        except ImportError:
+            pass
+
+    return DependenciesResponse(
+        categories=categories,
+        venv_valid=venv_info.is_valid,
+        nirs4all_installed=nirs4all_installed,
+        nirs4all_version=nirs4all_version,
+        total_installed=total_installed,
+        total_packages=total_packages,
+    )
+
+
+@router.post("/dependencies/install")
+async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
+    """
+    Install a package in the managed virtual environment.
+
+    Args:
+        request: Package name and optional version
+
+    Returns:
+        Installation result with status and output
+    """
+    # Ensure venv exists
+    if not venv_manager.get_venv_info().is_valid:
+        success, message = venv_manager.create_venv()
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create virtual environment: {message}"
+            )
+
+    # Install the package
+    success, message, output = venv_manager.install_package(
+        request.package,
+        version=request.version,
+        upgrade=request.upgrade,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
+
+    # Get the installed version
+    installed_version = venv_manager.get_package_version(request.package)
+
+    return {
+        "success": True,
+        "message": message,
+        "package": request.package,
+        "version": installed_version,
+        "output": output[-30:],  # Last 30 lines
+    }
+
+
+@router.post("/dependencies/uninstall")
+async def uninstall_dependency(request: PackageUninstallRequest) -> Dict[str, Any]:
+    """
+    Uninstall a package from the managed virtual environment.
+
+    Args:
+        request: Package name
+
+    Returns:
+        Uninstallation result
+    """
+    if not venv_manager.get_venv_info().is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Virtual environment is not valid"
+        )
+
+    success, message = venv_manager.uninstall_package(request.package)
+
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
+
+    return {
+        "success": True,
+        "message": message,
+        "package": request.package,
+    }
+
+
+@router.post("/dependencies/update")
+async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
+    """
+    Update a package to the latest version.
+
+    Args:
+        request: Package name
+
+    Returns:
+        Update result with new version
+    """
+    # Ensure venv exists
+    if not venv_manager.get_venv_info().is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Virtual environment is not valid"
+        )
+
+    # Update the package
+    success, message, output = venv_manager.install_package(
+        request.package,
+        upgrade=True,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=message)
+
+    # Get the new version
+    installed_version = venv_manager.get_package_version(request.package)
+
+    return {
+        "success": True,
+        "message": message,
+        "package": request.package,
+        "version": installed_version,
+        "output": output[-30:],
+    }
+
+
+@router.post("/dependencies/refresh")
+async def refresh_dependencies() -> Dict[str, Any]:
+    """
+    Refresh the outdated packages cache.
+
+    This forces a fresh check of which packages have updates available.
+    """
+    if not venv_manager.get_venv_info().is_valid:
+        return {
+            "success": False,
+            "message": "Virtual environment is not valid",
+            "outdated_count": 0,
+        }
+
+    outdated = venv_manager.get_outdated_packages()
+
+    return {
+        "success": True,
+        "message": f"Found {len(outdated)} outdated packages",
+        "outdated_count": len(outdated),
+        "outdated_packages": outdated,
     }

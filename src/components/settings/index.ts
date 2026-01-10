@@ -15,3 +15,4 @@ export { SystemInfo } from "./SystemInfo";
 export { BackendStatus } from "./BackendStatus";
 export { ErrorLogViewer } from "./ErrorLogViewer";
 export { LanguageSelector } from "./LanguageSelector";
+export { DependenciesManager } from "./DependenciesManager";

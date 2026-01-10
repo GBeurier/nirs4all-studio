@@ -1581,3 +1581,105 @@ export async function requestRestart(): Promise<{
 export async function getVersionInfo(): Promise<VersionInfo> {
   return api.get("/updates/version");
 }
+
+
+// ============= Dependencies Management API =============
+
+export interface DependencyInfo {
+  name: string;
+  category: string;
+  category_name: string;
+  description: string;
+  min_version: string;
+  installed_version: string | null;
+  latest_version: string | null;
+  is_installed: boolean;
+  is_outdated: boolean;
+  can_update: boolean;
+}
+
+export interface DependencyCategory {
+  id: string;
+  name: string;
+  description: string;
+  packages: DependencyInfo[];
+  installed_count: number;
+  total_count: number;
+}
+
+export interface DependenciesResponse {
+  categories: DependencyCategory[];
+  venv_valid: boolean;
+  nirs4all_installed: boolean;
+  nirs4all_version: string | null;
+  total_installed: number;
+  total_packages: number;
+}
+
+export interface PackageActionResponse {
+  success: boolean;
+  message: string;
+  package: string;
+  version?: string | null;
+  output?: string[];
+}
+
+/**
+ * Get all nirs4all optional dependencies with installation status
+ */
+export async function getDependencies(): Promise<DependenciesResponse> {
+  return api.get("/updates/dependencies");
+}
+
+/**
+ * Install a dependency package
+ */
+export async function installDependency(
+  packageName: string,
+  version?: string,
+  upgrade: boolean = false
+): Promise<PackageActionResponse> {
+  return api.post("/updates/dependencies/install", {
+    package: packageName,
+    version,
+    upgrade,
+  });
+}
+
+/**
+ * Uninstall a dependency package
+ */
+export async function uninstallDependency(
+  packageName: string
+): Promise<PackageActionResponse> {
+  return api.post("/updates/dependencies/uninstall", {
+    package: packageName,
+  });
+}
+
+/**
+ * Update a dependency package to latest version
+ */
+export async function updateDependency(
+  packageName: string
+): Promise<PackageActionResponse> {
+  return api.post("/updates/dependencies/update", {
+    package: packageName,
+  });
+}
+
+/**
+ * Refresh outdated packages cache
+ */
+export async function refreshDependencies(): Promise<{
+  success: boolean;
+  message: string;
+  outdated_count: number;
+  outdated_packages?: Array<{
+    name: string;
+    current_version: string;
+    latest_version: string;
+  }>;
+}> {
+  return api.post("/updates/dependencies/refresh");
+}
