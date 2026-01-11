@@ -8,7 +8,8 @@
  * 4. Target Configuration - Select targets, task type, aggregation
  * 5. Preview & Confirm - View data preview and confirm
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { detectFiles } from "@/api/client";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import {
   Eye,
   Check,
 } from "lucide-react";
-import { WizardProvider, useWizard, STEP_ORDER } from "./WizardContext";
+import { WizardProvider, useWizard, STEP_ORDER, type WizardInitialState } from "./WizardContext";
 import { SourceStep } from "./SourceStep";
 import { FileMappingStep } from "./FileMappingStep";
 import { ParsingStep } from "./ParsingStep";
@@ -133,6 +134,32 @@ function WizardContent({ onAdd, onClose }: WizardContentProps) {
   const isFirstStep = currentIndex === 0;
   const isLastStep = currentIndex === STEP_ORDER.length - 1;
   const stepConfig = STEP_CONFIG[state.step];
+  const hasDetectedFiles = useRef(false);
+
+  // Auto-detect files when initialized from drop with a folder path but no files
+  useEffect(() => {
+    const shouldDetectFiles =
+      state.sourceType === "folder" &&
+      state.basePath &&
+      state.files.length === 0 &&
+      state.isLoading &&
+      !hasDetectedFiles.current;
+
+    if (shouldDetectFiles) {
+      hasDetectedFiles.current = true;
+      (async () => {
+        try {
+          const result = await detectFiles({ path: state.basePath, recursive: true });
+          dispatch({ type: "SET_FILES", payload: result.files });
+        } catch (error) {
+          console.warn("Auto-detection failed:", error);
+          dispatch({ type: "SET_FILES", payload: [] });
+        } finally {
+          dispatch({ type: "SET_LOADING", payload: false });
+        }
+      })();
+    }
+  }, [state.sourceType, state.basePath, state.files.length, state.isLoading, dispatch]);
 
   const handleSubmit = async () => {
     if (!state.basePath) return;
@@ -269,19 +296,24 @@ interface DatasetWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (path: string, config?: Partial<DatasetConfig>) => Promise<void>;
+  /** Initial state from drag-and-drop */
+  initialState?: WizardInitialState;
 }
 
-export function DatasetWizard({ open, onOpenChange, onAdd }: DatasetWizardProps) {
+export function DatasetWizard({ open, onOpenChange, onAdd, initialState }: DatasetWizardProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <WizardProvider>
+        <WizardProvider initialState={initialState}>
           <WizardContent onAdd={onAdd} onClose={() => onOpenChange(false)} />
         </WizardProvider>
       </DialogContent>
     </Dialog>
   );
 }
+
+// Re-export types for convenience
+export type { WizardInitialState };
 
 // Also export the old modal for backwards compatibility
 export { AddDatasetModal } from "../AddDatasetModal";

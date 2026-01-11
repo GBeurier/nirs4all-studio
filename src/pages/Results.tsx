@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -194,6 +195,7 @@ type PipelineSortField = "name" | "score" | "date";
 type SortOrder = "asc" | "desc";
 
 export default function Results() {
+  const { t } = useTranslation();
   const [datasets, setDatasets] = useState<DatasetWithResults[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -326,8 +328,8 @@ export default function Results() {
       >
         <motion.div variants={itemVariants} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Results</h1>
-            <p className="text-muted-foreground">Loading workspace results...</p>
+            <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
+            <p className="text-muted-foreground">{t("results.loading")}</p>
           </div>
         </motion.div>
         <div className="grid gap-4 md:grid-cols-5">
@@ -363,9 +365,9 @@ export default function Results() {
       >
         <motion.div variants={itemVariants}>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Results</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
             <p className="text-muted-foreground">
-              View and compare model performance across experiments
+              {t("results.subtitle")}
             </p>
           </div>
         </motion.div>
@@ -408,9 +410,9 @@ export default function Results() {
       >
         <motion.div variants={itemVariants}>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Results</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
             <p className="text-muted-foreground">
-              View and compare model performance across experiments
+              {t("results.subtitle")}
             </p>
           </div>
         </motion.div>
@@ -420,7 +422,7 @@ export default function Results() {
               <div className="flex flex-col items-center justify-center text-center">
                 <AlertCircle className="h-12 w-12 text-destructive mb-4" />
                 <h3 className="text-lg font-semibold text-foreground mb-2">
-                  Failed to load results
+                  {t("results.error")}
                 </h3>
                 <p className="text-muted-foreground mb-4">{error}</p>
                 <Button onClick={loadData} variant="outline">
@@ -448,7 +450,7 @@ export default function Results() {
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Results</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
           <p className="text-muted-foreground">
             Workspace: {activeWorkspace.name}
           </p>
@@ -473,7 +475,7 @@ export default function Results() {
               <Database className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Datasets</p>
+              <p className="text-sm text-muted-foreground">{t("results.stats.datasets")}</p>
               <p className="text-2xl font-bold text-foreground">{stats.datasetCount}</p>
             </div>
           </CardContent>
@@ -484,7 +486,7 @@ export default function Results() {
               <Layers className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Pipelines</p>
+              <p className="text-sm text-muted-foreground">{t("results.stats.pipelines")}</p>
               <p className="text-2xl font-bold text-foreground">{stats.totalPipelines}</p>
             </div>
           </CardContent>
@@ -495,7 +497,7 @@ export default function Results() {
               <CheckCircle2 className="h-5 w-5 text-chart-1" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Completed</p>
+              <p className="text-sm text-muted-foreground">{t("results.stats.completed")}</p>
               <p className="text-2xl font-bold text-foreground">{stats.completedCount}</p>
             </div>
           </CardContent>
@@ -506,7 +508,7 @@ export default function Results() {
               <AlertCircle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Failed</p>
+              <p className="text-sm text-muted-foreground">{t("results.stats.failed")}</p>
               <p className="text-2xl font-bold text-foreground">{stats.failedCount}</p>
             </div>
           </CardContent>
@@ -529,7 +531,7 @@ export default function Results() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search datasets..."
+            placeholder={t("results.filters.searchPlaceholder")}
             className="pl-9"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -707,10 +709,10 @@ export default function Results() {
                                 {pipeline.pipeline_name}
                               </span>
                               <Badge variant="outline" className="text-xs">
-                                {pipeline.model}
+                                {pipeline.model === "Unknown" ? t("results.unknown") : pipeline.model === "Model" ? t("results.model") : pipeline.model}
                               </Badge>
                               <Badge variant="secondary" className="text-xs">
-                                {pipeline.preprocessing}
+                                {pipeline.preprocessing === "None" ? t("results.none") : pipeline.preprocessing}
                               </Badge>
                             </div>
                             <div className="flex items-center gap-4">

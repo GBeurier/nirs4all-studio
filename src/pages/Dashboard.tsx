@@ -12,6 +12,7 @@ import {
   LucideIcon,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatsCard, QuickAction, RecentProject, DeveloperQuickStart } from "@/components/dashboard";
@@ -35,38 +36,38 @@ const itemVariants = {
 };
 
 interface QuickActionItem {
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: LucideIcon;
   path: string;
   color: QuickActionColor;
 }
 
-const quickActions: QuickActionItem[] = [
+const quickActionItems: QuickActionItem[] = [
   {
-    title: "Load Dataset",
-    description: "Link local spectral files",
+    titleKey: "dashboard.quickStartItems.loadDataset",
+    descriptionKey: "dashboard.quickStartItems.loadDatasetDesc",
     icon: FolderOpen,
     path: "/datasets",
     color: "primary",
   },
   {
-    title: "Build Pipeline",
-    description: "Configure preprocessing & models",
+    titleKey: "dashboard.quickStartItems.buildPipeline",
+    descriptionKey: "dashboard.quickStartItems.buildPipelineDesc",
     icon: GitBranch,
     path: "/pipelines/new",
     color: "accent",
   },
   {
-    title: "Playground",
-    description: "Explore & visualize spectra",
+    titleKey: "dashboard.quickStartItems.playground",
+    descriptionKey: "dashboard.quickStartItems.playgroundDesc",
     icon: FlaskConical,
     path: "/playground",
     color: "success",
   },
   {
-    title: "View Results",
-    description: "Analyze predictions & metrics",
+    titleKey: "dashboard.quickStartItems.viewResults",
+    descriptionKey: "dashboard.quickStartItems.viewResultsDesc",
     icon: BarChart3,
     path: "/results",
     color: "warning",
@@ -74,6 +75,7 @@ const quickActions: QuickActionItem[] = [
 ];
 
 export default function Dashboard() {
+  const { t } = useTranslation();
   const { data, isLoading, error } = useDashboard();
   const isDeveloperMode = useIsDeveloperMode();
   const navigate = useNavigate();
@@ -121,7 +123,7 @@ export default function Dashboard() {
         variants={itemVariants}
       >
         <StatsCard
-          label="Datasets"
+          label={t("dashboard.stats.datasets")}
           value={stats.datasets}
           icon={Database}
           trend="linked"
@@ -130,7 +132,7 @@ export default function Dashboard() {
           isLoading={isLoading}
         />
         <StatsCard
-          label="Pipelines"
+          label={t("dashboard.stats.pipelines")}
           value={stats.pipelines}
           icon={GitBranch}
           trend="saved"
@@ -139,7 +141,7 @@ export default function Dashboard() {
           isLoading={isLoading}
         />
         <StatsCard
-          label="Experiments"
+          label={t("dashboard.stats.experiments")}
           value={stats.runs}
           icon={Play}
           trend="completed"
@@ -148,10 +150,10 @@ export default function Dashboard() {
           isLoading={isLoading}
         />
         <StatsCard
-          label="Avg. R²"
+          label={t("dashboard.stats.avgR2")}
           value={stats.avgMetric > 0 ? stats.avgMetric.toFixed(2) : "—"}
           icon={TrendingUp}
-          trend={stats.avgMetric > 0 ? "best models" : "no data yet"}
+          trend={stats.avgMetric > 0 ? t("dashboard.stats.bestModels") : "no data yet"}
           trendValue={stats.trends.avgMetric.value}
           trendDirection={stats.trends.avgMetric.direction}
           isLoading={isLoading}
@@ -161,11 +163,18 @@ export default function Dashboard() {
       {/* Quick Actions */}
       <motion.div variants={itemVariants}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Quick Actions</h2>
+          <h2 className="text-lg font-semibold text-foreground">{t("dashboard.quickActions")}</h2>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {quickActions.map((action) => (
-            <QuickAction key={action.title} {...action} />
+          {quickActionItems.map((action) => (
+            <QuickAction
+              key={action.titleKey}
+              title={t(action.titleKey)}
+              description={t(action.descriptionKey)}
+              icon={action.icon}
+              path={action.path}
+              color={action.color}
+            />
           ))}
         </div>
       </motion.div>
@@ -187,12 +196,12 @@ export default function Dashboard() {
       <motion.div variants={itemVariants}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">
-            Recent Experiments
+            {t("dashboard.recentExperiments")}
           </h2>
           {recentRuns.length > 0 && (
             <Button variant="ghost" size="sm" className="text-muted-foreground" asChild>
               <Link to="/runs">
-                View all
+                {t("dashboard.viewAll")}
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
@@ -242,14 +251,13 @@ export default function Dashboard() {
                   <Zap className="h-8 w-8 text-muted-foreground" />
                 </div>
                 <h3 className="font-semibold text-foreground mb-1">
-                  No experiments yet
+                  {t("dashboard.empty.title")}
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  Start by loading a dataset and building a pipeline to run your
-                  first experiment.
+                  {t("dashboard.empty.description")}
                 </p>
                 <Button className="mt-4" asChild>
-                  <Link to="/datasets">Get Started</Link>
+                  <Link to="/datasets">{t("dashboard.getStarted")}</Link>
                 </Button>
               </div>
             </CardContent>

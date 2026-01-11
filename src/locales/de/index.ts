@@ -11,8 +11,18 @@ const de = {
     save: "Speichern",
     cancel: "Abbrechen",
     delete: "Löschen",
+    edit: "Bearbeiten",
+    create: "Erstellen",
     add: "Hinzufügen",
     remove: "Entfernen",
+    close: "Schließen",
+    confirm: "Bestätigen",
+    back: "Zurück",
+    next: "Weiter",
+    previous: "Zurück",
+    search: "Suchen",
+    filter: "Filtern",
+    clear: "Leeren",
     reset: "Zurücksetzen",
     apply: "Anwenden",
     refresh: "Aktualisieren",
@@ -43,8 +53,10 @@ const de = {
     optional: "Optional",
     required: "Erforderlich",
     default: "Standard",
-     creating: "Wird erstellt...",
-     custom: "Benutzerdefiniert",
+    custom: "Benutzerdefiniert",
+    creating: "Wird erstellt...",
+    saving: "Wird gespeichert...",
+    revertChanges: "Änderungen rückgängig machen",
   },
 
   // ============= Time / Date =============
@@ -77,6 +89,7 @@ const de = {
     results: "Ergebnisse",
     predictions: "Vorhersagen",
     analysis: "Analyse",
+    synthesis: "Synthese",
     settings: "Einstellungen",
     newExperiment: "Neues Experiment",
   },
@@ -234,9 +247,12 @@ const de = {
       note: "Diese Standards werden beim Hinzufügen neuer Datensätze über den Assistenten angewendet. Jeder Datensatz kann diese Einstellungen während des Ladevorgangs überschreiben.",
       selectWorkspace:
         "Wählen Sie einen Arbeitsbereich, um die Standard-Ladeparameter zu konfigurieren",
+      savedSuccess: "Standards erfolgreich gespeichert",
       parsing: {
         title: "Parsing-Optionen",
+        tooltip: "Diese Standards werden verwendet, wenn die Auto-Erkennung deaktiviert ist oder fehlschlägt",
         delimiter: "Trennzeichen",
+        delimiterDescription: "Spaltentrennzeichen",
         delimiters: {
           semicolon: "Semikolon (;)",
           comma: "Komma (,)",
@@ -244,12 +260,15 @@ const de = {
           space: "Leerzeichen",
         },
         decimal: "Dezimaltrennzeichen",
+        decimalDescription: "Dezimaltrennzeichen",
         decimals: {
           dot: "Punkt (.)",
           comma: "Komma (,)",
         },
         hasHeader: "Hat Kopfzeile",
+        hasHeaderDescription: "Erste Zeile enthält Spaltennamen",
         headerUnit: "Kopfzeilen-Einheit",
+        headerUnitDescription: "Einheit für Wellenlängen-Spaltenüberschriften",
         headerUnits: {
           nm: "Nanometer (nm)",
           "cm-1": "Wellenzahl (cm⁻¹)",
@@ -261,6 +280,7 @@ const de = {
       signal: {
         title: "Signalkonfiguration",
         type: "Signaltyp",
+        typeDescription: "Art der spektralen Messung",
         types: {
           auto: "Automatisch erkennen",
           absorbance: "Absorbanz",
@@ -272,6 +292,7 @@ const de = {
       },
       missing: {
         title: "Fehlende Werte",
+        description: "Umgang mit fehlenden oder ungültigen Werten",
         policy: "NA-Richtlinie",
         policies: {
           drop: "Zeilen entfernen",
@@ -302,6 +323,7 @@ const de = {
         urlHint: "API-Endpunkt (schreibgeschützt in Produktion)",
         status: {
           title: "Backend-Status",
+          description: "Verbindungszustand und Latenz",
           connected: "Verbunden",
           disconnected: "Getrennt",
           degraded: "Beeinträchtigt",
@@ -311,6 +333,9 @@ const de = {
           testConnection: "Verbindung testen",
           successRate: "Erfolgsrate",
           avgLatency: "Durchschnittliche Latenz",
+          recentChecks: "Letzte Prüfungen",
+          failed: "Fehlgeschlagen",
+          autoRefreshEvery: "Auto-Aktualisierung alle {{seconds}}s",
         },
       },
       system: {
@@ -388,22 +413,64 @@ const de = {
     },
   },
 
+  // ============= Layout =============
+  layout: {
+    sidebar: {
+      groups: {
+        main: "Haupt",
+        workflow: "Arbeitsablauf",
+        analysis: "Analyse",
+      },
+    },
+    header: {
+      searchPlaceholder: "Suchen...",
+      search: "Suchen",
+      toggleTheme: "Design wechseln",
+    },
+  },
+
   // ============= Dashboard =============
   dashboard: {
     title: "Dashboard",
     welcome: "Willkommen zurück",
     quickStart: "Schnellstart",
+    quickActions: "Schnellaktionen",
     recentActivity: "Letzte Aktivität",
+    recentExperiments: "Letzte Experimente",
+    viewAll: "Alle anzeigen",
+    getStarted: "Loslegen",
     stats: {
       datasets: "Datensätze",
       pipelines: "Pipelines",
       runs: "Ausführungen",
+      experiments: "Experimente",
       models: "Modelle",
+      avgR2: "Durchschn. R²",
+      bestModels: "beste Modelle",
+    },
+    quickStartItems: {
+      loadDataset: "Datensatz laden",
+      loadDatasetDesc: "Lokale Spektraldateien verknüpfen",
+      buildPipeline: "Pipeline erstellen",
+      buildPipelineDesc: "Vorverarbeitung und Modelle konfigurieren",
+      playground: "Spielwiese",
+      playgroundDesc: "Spektren erkunden und visualisieren",
+      viewResults: "Ergebnisse anzeigen",
+      viewResultsDesc: "Vorhersagen und Metriken analysieren",
+    },
+    empty: {
+      title: "Noch keine Experimente",
+      description: "Beginnen Sie, indem Sie einen Datensatz laden und eine Pipeline erstellen, um Ihr erstes Experiment zu starten.",
     },
     developer: {
       title: "Entwickler-Schnellstart",
+      devMode: "Dev-Modus",
       description: "Generieren Sie synthetische Datensätze für Tests und Entwicklung",
+      quickPresets: "Schnellvorlagen",
+      customConfig: "Benutzerdefinierte Konfiguration...",
+      advancedOptions: "Erweiterte Optionen",
       generate: "Generieren",
+      generating: "Wird generiert...",
       preset: "Vorlage",
       presets: {
         regressionSmall: "Regression (250 Proben)",
@@ -411,16 +478,63 @@ const de = {
         classification: "Klassifikation (3 Klassen)",
         custom: "Benutzerdefinierte Konfiguration",
       },
+      taskType: "Aufgabentyp",
+      regression: "Regression",
+      binaryClassification: "Binäre Klassifikation",
+      multiclassClassification: "Mehrklassen-Klassifikation",
+      samples: "Proben",
+      complexity: "Komplexität",
+      simple: "Einfach (schnell)",
+      realistic: "Realistisch",
+      complex: "Komplex (herausfordernd)",
+      numberOfClasses: "Anzahl der Klassen",
+      noiseLevel: "Rauschpegel",
+      includeMetadata: "Metadaten einschließen",
+      addBatchEffects: "Chargeneffekte hinzufügen",
+      autoLinkToWorkspace: "Automatisch mit Arbeitsbereich verknüpfen",
+      datasetName: "Datensatzname (optional)",
+      datasetNamePlaceholder: "Automatisch generiert wenn leer",
+      generationFailed: "Generierung fehlgeschlagen",
     },
   },
 
   // ============= Datasets =============
   datasets: {
     title: "Datensätze",
-    empty: "Keine Datensätze verknüpft",
-    emptyHint: "Verknüpfen Sie einen Datensatz, um zu beginnen",
+    subtitle: "Verwalten Sie Ihre Spektraldatensätze und Konfigurationen",
+    empty: "Noch keine Datensätze",
+    emptyNoMatch: "Keine Treffer",
+    emptyHint: "Beginnen Sie, indem Sie einen Datensatz zu Ihrem Arbeitsbereich hinzufügen",
+    emptyHintNoMatch: "Versuchen Sie, Ihre Such- oder Filterkriterien anzupassen.",
     addDataset: "Datensatz hinzufügen",
     generateSynthetic: "Synthetisch generieren",
+    generateSyntheticHint: "Synthetischen Datensatz generieren (Dev-Modus)",
+    selectWorkspace: "Arbeitsbereich auswählen",
+    noWorkspaceSelected: "Kein Arbeitsbereich ausgewählt",
+    change: "Ändern",
+    groups: "Gruppen",
+    refreshAll: "Alle aktualisieren",
+    loading: "Datensätze werden geladen...",
+    stats: {
+      totalDatasets: "Gesamt Datensätze",
+      totalSamples: "Gesamt Proben",
+      avgFeatures: "Durchschn. Merkmale",
+      groups: "Gruppen",
+    },
+    filters: {
+      searchPlaceholder: "Datensätze suchen...",
+      groupPlaceholder: "Nach Gruppe filtern",
+      allDatasets: "Alle Datensätze",
+      sortPlaceholder: "Sortieren nach",
+    },
+    sort: {
+      name: "Name",
+      dateAdded: "Hinzugefügt am",
+      samples: "Proben",
+      group: "Gruppe",
+      ascending: "Aufsteigend",
+      descending: "Absteigend",
+    },
     actions: {
       view: "Anzeigen",
       edit: "Bearbeiten",
@@ -435,6 +549,7 @@ const de = {
       targets: "Ziele",
       path: "Pfad",
       status: "Status",
+      spectralRange: "Spektralbereich",
     },
     synthetic: {
       title: "Synthetischen Datensatz generieren",
@@ -469,20 +584,74 @@ const de = {
       success: "Synthetischer Datensatz erfolgreich generiert",
       error: "Fehler beim Generieren des synthetischen Datensatzes",
     },
+    detail: {
+      loading: "Datensatz wird geladen...",
+      error: "Fehler beim Laden des Datensatzes",
+      notFound: "Datensatz nicht gefunden",
+      goBack: "Zurück",
+      tabs: {
+        overview: "Übersicht",
+        spectra: "Spektren",
+        targets: "Ziele",
+        rawData: "Rohdaten",
+      },
+    },
   },
 
   // ============= Pipelines =============
   pipelines: {
     title: "Pipelines",
-    empty: "Keine Pipelines erstellt",
-    emptyHint: "Erstellen Sie eine neue Pipeline, um zu beginnen",
+    subtitle: "{{total}} Pipelines • {{favorites}} Favoriten • {{withRuns}} mit Verlauf",
+    empty: "Noch keine Pipelines",
+    emptyNoMatch: "Keine passenden Pipelines",
+    emptyHint: "Erstellen Sie Ihre erste Pipeline, um ML-Workflows zu erstellen",
+    emptyHintNoMatch: "Versuchen Sie, Ihre Such- oder Filterkriterien anzupassen",
     create: "Pipeline erstellen",
+    newPipeline: "Neue Pipeline",
+    import: "Importieren",
+    importPipeline: "Pipeline importieren",
+    clearSearch: "Suche leeren",
+    filters: {
+      searchPlaceholder: "Pipelines, Tags suchen...",
+    },
+    tabs: {
+      all: "Alle",
+      favorites: "Favoriten",
+      myPipelines: "Meine Pipelines",
+      presets: "Vorlagen",
+      history: "Verlauf",
+    },
+    sort: {
+      lastModified: "Zuletzt geändert",
+      name: "Name",
+      mostRuns: "Meiste Ausführungen",
+      mostSteps: "Meiste Schritte",
+    },
+    presets: {
+      title: "Vorlagen-Pipelines",
+      description: "Starten Sie mit einer Vorlage und passen Sie sie an",
+    },
     editor: {
       title: "Pipeline-Editor",
       untitled: "Unbenannte Pipeline",
+      newPipeline: "Neue Pipeline",
+      defaultDescription: "SNV + SG → PLS",
       save: "Pipeline speichern",
       run: "Pipeline ausführen",
       validate: "Validieren",
+      backToPipelines: "Zurück zu Pipelines",
+      pipelineSettings: "Pipeline-Einstellungen",
+      randomSeed: "Zufällig",
+      favorite: "Favorit",
+      favorited: "Favorisiert",
+      addToFavorites: "Zu Favoriten hinzufügen",
+      removeFromFavorites: "Aus Favoriten entfernen",
+      loadingSamples: "Proben werden geladen...",
+      import: {
+        success: "Pipeline aus Spielwiese importiert",
+        successDetail: "{{count}} Operatoren geladen",
+        failure: "Fehler beim Importieren der Pipeline aus der Spielwiese",
+      },
     },
     steps: {
       preprocessing: "Vorverarbeitung",
@@ -495,9 +664,20 @@ const de = {
   // ============= Runs =============
   runs: {
     title: "Ausführungen",
+    subtitle: "Verfolgen und überwachen Sie aktive und historische Pipeline-Ausführungen",
     empty: "Noch keine Ausführungen",
     emptyHint: "Starten Sie ein neues Experiment, um Ausführungen hier zu sehen",
     newRun: "Neue Ausführung",
+    unknown: "Unbekannt",
+    error: "Fehler",
+    unknownError: "Unbekannter Fehler",
+    stats: {
+      running: "Laufend",
+      queued: "Warteschlange",
+      completed: "Abgeschlossen",
+      failed: "Fehlgeschlagen",
+      totalPipelines: "Gesamt Pipelines",
+    },
     status: {
       queued: "Warteschlange",
       running: "Läuft",
@@ -505,6 +685,7 @@ const de = {
       failed: "Fehlgeschlagen",
       cancelled: "Abgebrochen",
       paused: "Pausiert",
+      pending: "Ausstehend",
     },
     actions: {
       view: "Details anzeigen",
@@ -514,6 +695,141 @@ const de = {
       retry: "Wiederholen",
       delete: "Löschen",
     },
+    guide: {
+      title: "So starten Sie eine neue Ausführung",
+      selectDatasets: "Datensätze auswählen",
+      selectDatasetsDesc: "Wählen Sie einen oder mehrere Datensätze für das Training",
+      choosePipelines: "Pipelines wählen",
+      choosePipelinesDesc: "Wählen Sie Pipelines zur Ausführung auf jedem Datensatz",
+      configureAndLaunch: "Konfigurieren & Starten",
+      configureAndLaunchDesc: "Optionen festlegen und das Experiment starten",
+    },
+  },
+
+  // ============= Results =============
+  results: {
+    title: "Ergebnisse",
+    subtitle: "Experimentergebnisse anzeigen und analysieren",
+    loading: "Arbeitsbereich-Ergebnisse werden geladen...",
+    error: "Fehler beim Laden der Ergebnisse",
+    unknown: "Unbekannt",
+    none: "Keine",
+    cv: "CV",
+    model: "Modell",
+    stats: {
+      datasets: "Datensätze",
+      pipelines: "Pipelines",
+      completed: "Abgeschlossen",
+      failed: "Fehlgeschlagen",
+    },
+    filters: {
+      searchPlaceholder: "Datensätze suchen...",
+    },
+  },
+
+  // ============= Predictions =============
+  predictions: {
+    title: "Vorhersagen",
+    subtitle: "Modellvorhersagen und Leistungsmetriken anzeigen",
+    loading: "Vorhersagen werden geladen...",
+    error: "Fehler beim Laden der Vorhersagen",
+    errorLoad: "Vorhersagen konnten nicht geladen werden",
+    metrics: {
+      valScore: "Val-Score",
+      testScore: "Test-Score",
+      trainScore: "Train-Score",
+    },
+    visibleMetrics: "Sichtbare Metriken",
+    quickView: "Schnellansicht",
+    filters: {
+      searchPlaceholder: "Vorhersagen suchen...",
+      dataset: "Datensatz",
+      allDatasets: "Alle Datensätze",
+      model: "Modell",
+      allModels: "Alle Modelle",
+      partition: "Partition",
+      allPartitions: "Alle Partitionen",
+      taskType: "Aufgabentyp",
+      allTypes: "Alle Typen",
+    },
+    table: {
+      dataset: "Datensatz",
+      model: "Modell",
+      partition: "Partition",
+      preprocessing: "Vorverarbeitung",
+      fold: "Fold",
+      samples: "Proben",
+      task: "Aufgabe",
+    },
+  },
+
+  // ============= Analysis =============
+  analysis: {
+    title: "Analyse",
+    subtitle: "Erweiterte Tools zur Erkundung und Analyse Ihrer Spektraldaten",
+    badges: {
+      beta: "Beta",
+      comingSoon: "Demnächst verfügbar",
+      notAvailable: "Nicht verfügbar",
+    },
+    openTool: "Tool öffnen",
+    pca: {
+      title: "PCA-Analyse",
+      description: "Hauptkomponentenanalyse zur Dimensionsreduktion und Datenexploration",
+    },
+    variableImportance: {
+      title: "Variablenwichtigkeit",
+      description: "Identifizieren Sie die wichtigsten Wellenlängen und Spektralbereiche",
+    },
+    modelComparison: {
+      title: "Modellvergleich",
+      description: "Vergleichen Sie die Leistung verschiedener Modelle und Pipelines",
+    },
+    residualAnalysis: {
+      title: "Residuenanalyse",
+      description: "Analysieren Sie Vorhersageresiduen und identifizieren Sie Ausreißer",
+    },
+    gettingStarted: {
+      title: "Erste Schritte mit der Analyse",
+      description: "Analysetools helfen Ihnen, Ihre Spektraldaten besser zu verstehen. Beginnen Sie mit PCA, um Muster zu erkunden, und nutzen Sie dann die Variablenwichtigkeit, um Schlüsselwellenlängen zu identifizieren. Vergleichen Sie Modelle, um den besten Ansatz zu finden.",
+      requiresRuns: "Erfordert abgeschlossene Ausführungen",
+      exportFormats: "Export in CSV/PDF",
+      interactive: "Interaktive Visualisierungen",
+    },
+    empty: {
+      description: "Führen Sie zuerst Experimente durch, um Analysedaten zu generieren. Ihre Ergebnisse werden hier angezeigt, sobald Ausführungen abgeschlossen sind.",
+      viewRuns: "Ausführungen anzeigen",
+    },
+  },
+
+  // ============= New Experiment =============
+  newExperiment: {
+    title: "Neues Experiment",
+    steps: {
+      selectDatasets: "Datensätze auswählen",
+      selectPipelines: "Pipelines auswählen",
+      configure: "Konfigurieren",
+      launch: "Starten",
+    },
+    filters: {
+      searchDatasets: "Datensätze suchen...",
+      searchPipelines: "Pipelines suchen...",
+    },
+    tabs: {
+      allPipelines: "Alle Pipelines",
+      favorites: "Favoriten",
+      presets: "Vorlagen",
+    },
+    config: {
+      descriptionPlaceholder: "Optionale Beschreibung für dieses Experiment...",
+      crossValidation: "Kreuzvalidierung",
+      kfold: "K-Fold",
+      stratifiedKfold: "Stratifiziert K-Fold",
+      leaveOneOut: "Leave-One-Out",
+      holdout: "Holdout",
+      loo: "LOO",
+    },
+    summary: "Zusammenfassung",
   },
 
   // ============= Errors & Validation =============

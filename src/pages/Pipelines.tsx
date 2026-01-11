@@ -12,6 +12,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Link } from "react-router-dom";
 import {
@@ -64,6 +65,7 @@ const itemVariants = {
 };
 
 export default function Pipelines() {
+  const { t } = useTranslation();
   const {
     filteredPipelines,
     presets,
@@ -151,9 +153,9 @@ export default function Pipelines() {
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Pipelines</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("pipelines.title")}</h1>
           <p className="mt-1 text-muted-foreground">
-            {stats.total} pipelines • {stats.favorites} favorites • {stats.withRuns} with run history
+            {t("pipelines.subtitle", { total: stats.total, favorites: stats.favorites, withRuns: stats.withRuns })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -162,12 +164,12 @@ export default function Pipelines() {
           </Button>
           <Button variant="outline" onClick={() => setImportModalOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
-            Import
+            {t("pipelines.import")}
           </Button>
           <Button asChild>
             <Link to="/pipelines/new">
               <Plus className="mr-2 h-4 w-4" />
-              New Pipeline
+              {t("pipelines.newPipeline")}
             </Link>
           </Button>
         </div>
@@ -184,7 +186,7 @@ export default function Pipelines() {
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search pipelines, tags..."
+              placeholder={t("pipelines.filters.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 bg-muted/50"
@@ -195,14 +197,14 @@ export default function Pipelines() {
             onValueChange={(v) => setActiveTab(v as FilterTab)}
           >
             <TabsList className="bg-muted/50">
-              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="all">{t("pipelines.tabs.all")}</TabsTrigger>
               <TabsTrigger value="favorites" className="gap-1.5">
-                <Star className="h-3.5 w-3.5" /> Favorites
+                <Star className="h-3.5 w-3.5" /> {t("pipelines.tabs.favorites")}
               </TabsTrigger>
-              <TabsTrigger value="user">My Pipelines</TabsTrigger>
-              <TabsTrigger value="preset">Presets</TabsTrigger>
+              <TabsTrigger value="user">{t("pipelines.tabs.myPipelines")}</TabsTrigger>
+              <TabsTrigger value="preset">{t("pipelines.tabs.presets")}</TabsTrigger>
               <TabsTrigger value="history" className="gap-1.5">
-                <Clock className="h-3.5 w-3.5" /> History
+                <Clock className="h-3.5 w-3.5" /> {t("pipelines.tabs.history")}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -215,10 +217,10 @@ export default function Pipelines() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="lastModified">Last Modified</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="runCount">Most Runs</SelectItem>
-              <SelectItem value="steps">Most Steps</SelectItem>
+              <SelectItem value="lastModified">{t("pipelines.sort.lastModified")}</SelectItem>
+              <SelectItem value="name">{t("pipelines.sort.name")}</SelectItem>
+              <SelectItem value="runCount">{t("pipelines.sort.mostRuns")}</SelectItem>
+              <SelectItem value="steps">{t("pipelines.sort.mostSteps")}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -345,28 +347,28 @@ export default function Pipelines() {
         >
           <GitBranch className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-1">
-            {searchQuery ? "No matching pipelines" : "No pipelines yet"}
+            {searchQuery ? t("pipelines.emptyNoMatch") : t("pipelines.empty")}
           </h3>
           <p className="text-muted-foreground mb-4 max-w-md mx-auto">
             {searchQuery
-              ? "Try adjusting your search or filters"
-              : "Create your first pipeline to define a preprocessing, model, and evaluation workflow."}
+              ? t("pipelines.emptyHintNoMatch")
+              : t("pipelines.emptyHint")}
           </p>
           <div className="flex items-center justify-center gap-3">
             {searchQuery ? (
               <Button variant="ghost" onClick={() => setSearchQuery("")}>
-                Clear search
+                {t("pipelines.clearSearch")}
               </Button>
             ) : (
               <>
                 <Button variant="outline" onClick={() => setImportModalOpen(true)}>
                   <FileJson className="mr-2 h-4 w-4" />
-                  Import Pipeline
+                  {t("pipelines.importPipeline")}
                 </Button>
                 <Button asChild>
                   <Link to="/pipelines/new">
                     <Plus className="mr-2 h-4 w-4" />
-                    Create Pipeline
+                    {t("pipelines.create")}
                   </Link>
                 </Button>
               </>
@@ -385,10 +387,10 @@ export default function Pipelines() {
         >
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-foreground">
-              Preset Pipelines
+              {t("pipelines.presets.title")}
             </h2>
             <p className="text-sm text-muted-foreground">
-              Start with a template and customize it
+              {t("pipelines.presets.description")}
             </p>
           </div>
           <PresetSelector

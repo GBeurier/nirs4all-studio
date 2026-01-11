@@ -259,6 +259,9 @@ export function SpectraChartV2({
   }, [baseSpectra, config.wavelengthFocus]);
 
   // Apply sampling strategy with display mode consideration
+  // Always include selected samples (up to 50) even if they weren't in the sampled subset
+  const MAX_FORCED_SELECTION = 50;
+
   const samplingResult: SamplingResult = useMemo(() => {
     const totalSamples = focusedData.spectra.length;
 
@@ -274,10 +277,29 @@ export function SpectraChartV2({
       };
     }
 
-    return applySampling(totalSamples, config.sampling, {
+    const baseSampling = applySampling(totalSamples, config.sampling, {
       yValues: y,
       spectra: focusedData.spectra,
     });
+
+    // If there are selected samples, ensure they're included in the display (up to MAX_FORCED_SELECTION)
+    if (selectedSamples.size > 0) {
+      const sampledSet = new Set(baseSampling.indices);
+      const selectedIndices = Array.from(selectedSamples)
+        .filter(i => i < totalSamples && !sampledSet.has(i))
+        .slice(0, MAX_FORCED_SELECTION);
+
+      if (selectedIndices.length > 0) {
+        const mergedIndices = [...baseSampling.indices, ...selectedIndices].sort((a, b) => a - b);
+        return {
+          ...baseSampling,
+          indices: mergedIndices,
+          sampledCount: mergedIndices.length,
+        };
+      }
+    }
+
+    return baseSampling;
   }, [focusedData.spectra, config.sampling, config.displayMode, selectedSamples, y]);
 
   // Get display indices (apply display filter if active)

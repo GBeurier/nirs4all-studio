@@ -12,7 +12,7 @@
  * - Export functionality
  */
 
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
   ComposedChart,
   BarChart,
@@ -78,10 +78,11 @@ import {
   getYBinIndex,
 } from '@/lib/playground/colorConfig';
 import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection, type SelectionContextValue } from '@/context/SelectionContext';
 import type { FoldsInfo, FoldData, YStats } from '@/types/playground';
 import { cn } from '@/lib/utils';
 import {
+  computeSelectionAction,
   computeStackedBarAction,
   executeSelectionAction,
 } from '@/lib/playground/selectionHandlers';
@@ -133,6 +134,8 @@ interface ChartConfig {
  * Each bar represents a single partition (train or val/test for a specific fold)
  */
 interface PartitionBarData {
+  /** Numeric index for the bar (used for ReferenceArea) */
+  index: number;
   /** Label for the bar (e.g., "Train 1", "Val 1", "Test") */
   label: string;
   /** Unique identifier for the partition */
@@ -241,8 +244,29 @@ export function FoldDistributionChartV2({
     end: number | null;
     isSelecting: boolean;
   }>({ start: null, end: null, isSelecting: false });
-  const lastMouseEventRef = useRef<React.MouseEvent | null>(null);
-  const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Recharts provides CategoricalChartState, but we need native event for modifiers and click position
+  // Store last native events for use in Recharts handlers
+  const lastMouseEventRef = useRef<MouseEvent | null>(null);
+  const mouseDownEventRef = useRef<MouseEvent | null>(null);
+  // Track when we just completed a drag selection to prevent background click from clearing
+  const justCompletedDragRef = useRef<boolean>(false);
+
+  // Track native mouse events for modifier keys and click position
+  useEffect(() => {
+    const handleNativeMouseUp = (e: MouseEvent) => {
+      lastMouseEventRef.current = e;
+    };
+    const handleNativeMouseDown = (e: MouseEvent) => {
+      mouseDownEventRef.current = e;
+    };
+    window.addEventListener('mouseup', handleNativeMouseUp, { capture: true });
+    window.addEventListener('mousedown', handleNativeMouseDown, { capture: true });
+    return () => {
+      window.removeEventListener('mouseup', handleNativeMouseUp, { capture: true });
+      window.removeEventListener('mousedown', handleNativeMouseDown, { capture: true });
+    };
+  }, []);
 
   // SelectionContext integration - always call hook, conditionally use result
   const selectionHook = useSelection();
@@ -591,10 +615,11 @@ export function FoldDistributionChartV2({
         yStd,
         segments: heldOutSegments.counts,
         segmentIndices: heldOutSegments.indices,
-      });
+      } as Omit<PartitionBarData, 'index'>);
     }
 
-    return bars;
+    // Add numeric index to each bar for ReferenceArea support
+    return bars.map((bar, idx) => ({ ...bar, index: idx })) as PartitionBarData[];
   }, [folds, y, metadata, computeSegments, displayFilteredIndices]);
 
   // Clear clickedPartitionId when selection changes externally (from another chart)
@@ -822,6 +847,10 @@ export function FoldDistributionChartV2({
 
   // Handle background click
   const handleChartBackgroundClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Skip if we just completed a drag selection (click event fires after mouseup)
+    if (justCompletedDragRef.current) {
+      return;
+    }
     const target = e.target as HTMLElement;
     if (target.tagName === 'svg' || target.classList.contains('recharts-surface')) {
       if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
@@ -864,54 +893,68 @@ export function FoldDistributionChartV2({
   // --- Drag Selection Handlers ---
 
   /** Detect if mouse moved significantly (drag) vs click */
-  const isDrag = useCallback((e: React.MouseEvent | null): boolean => {
-    if (!e || !mouseDownPosRef.current) return false;
-    const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
-    const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
+  const isDrag = useCallback((e: MouseEvent | null): boolean => {
+    const downEvent = mouseDownEventRef.current;
+    if (!e || !downEvent) return false;
+    const dx = Math.abs(e.clientX - downEvent.clientX);
+    const dy = Math.abs(e.clientY - downEvent.clientY);
     return dx > 5 || dy > 5;
   }, []);
 
+  /**
+   * Handle bar selection using unified selection handlers.
+   * Used for drag selection to avoid stale closure issues.
+   * Pattern copied from YHistogramV2.
+   */
+  const handleBarSelection = useCallback((
+    samples: number[],
+    e: MouseEvent | null,
+    ctx: SelectionContextValue | null
+  ) => {
+    if (!ctx || samples.length === 0) return;
+
+    const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+    const action = computeSelectionAction(
+      { indices: samples },
+      ctx.selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(ctx, action);
+  }, []);
+
   /** Handle drag selection and return true if handled, false if it's a click */
-  const handleDragSelection = useCallback((e: React.MouseEvent | null): boolean => {
+  const handleDragSelection = useCallback((e: MouseEvent | null): boolean => {
     if (!e || !rangeSelection.isSelecting) return false;
     if (!isDrag(e)) return false;
 
     const { start, end } = rangeSelection;
-    if (start === null || end === null || start === end) {
+    if (start === null || end === null) {
       setRangeSelection({ start: null, end: null, isSelecting: false });
       return false;
     }
 
-    // Collect all samples in the range
+    // Collect all samples in the range (inclusive of both start and end)
     const minIdx = Math.min(start, end);
     const maxIdx = Math.max(start, end);
-    const indicesToSelect = new Set<number>();
+    const samplesInRange: number[] = [];
     partitionBarData.slice(minIdx, maxIdx + 1).forEach(entry => {
-      entry.indices.forEach(i => indicesToSelect.add(i));
+      samplesInRange.push(...entry.indices);
     });
 
-    if (indicesToSelect.size > 0 && selectionCtx) {
-      const modifiers = extractModifiers(e);
-      if (modifiers.shift) {
-        selectionCtx.add([...indicesToSelect]);
-      } else if (modifiers.ctrl) {
-        selectionCtx.toggle([...indicesToSelect]);
-      } else {
-        selectionCtx.select([...indicesToSelect]);
-      }
-      setClickedPartitionId(null);
-    }
+    // Use unified handler for range selection (same pattern as YHistogramV2)
+    handleBarSelection(samplesInRange, e, selectionCtx);
+    setClickedPartitionId(null);
+
+    // Prevent background click from clearing the selection
+    justCompletedDragRef.current = true;
+    setTimeout(() => { justCompletedDragRef.current = false; }, 100);
 
     setRangeSelection({ start: null, end: null, isSelecting: false });
     return true;
-  }, [rangeSelection, isDrag, partitionBarData, selectionCtx]);
+  }, [rangeSelection, isDrag, partitionBarData, selectionCtx, handleBarSelection]);
 
   /** Handle chart mouse down - start potential drag */
   const handleChartMouseDown = useCallback((state: { activeTooltipIndex?: number }) => {
-    const e = lastMouseEventRef.current;
-    if (e) {
-      mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
-    }
     if (state?.activeTooltipIndex !== undefined && state.activeTooltipIndex >= 0) {
       setRangeSelection({ start: state.activeTooltipIndex, end: state.activeTooltipIndex, isSelecting: true });
     }
@@ -924,73 +967,94 @@ export function FoldDistributionChartV2({
     }
   }, [rangeSelection.isSelecting]);
 
-  /** Handle chart mouse up - finalize drag or handle click */
+  /** Handle chart mouse up - finalize drag or handle click with segment detection */
   const handleChartMouseUp = useCallback((state: { activeTooltipIndex?: number }) => {
     const e = lastMouseEventRef.current;
 
     // 1. Check drag selection first
     if (handleDragSelection(e)) {
-      mouseDownPosRef.current = null;
       return;
     }
     setRangeSelection({ start: null, end: null, isSelecting: false });
-    mouseDownPosRef.current = null;
 
-    // 2. If not a drag, handle click - let onClick on Bar handle it
-    // (Bar onClick will fire after this, so we don't need to handle clicks here)
-  }, [handleDragSelection]);
+    // 2. Check if click was on a bar (accounting for ReferenceArea overlay)
+    const target = e?.target as SVGElement | null;
+    let isBar = target?.classList?.contains('recharts-rectangle') ||
+      target?.closest('.recharts-bar-rectangle') !== null;
 
-  /**
-   * Handle partition bar click with unified selection model (Phase 5: Unified Selection)
-   *
-   * Implements progressive drill-down for stacked bars:
-   * 1. First click: Select entire bar (all segments)
-   * 2. Second click on same bar: Select only the clicked segment
-   * 3. Third click on same segment: Clear selection
-   *
-   * @param entry - The partition bar data
-   * @param segmentKey - The clicked segment key (for stacked bars)
-   * @param event - The mouse event (for modifier keys)
-   */
-  const handlePartitionBarClick = useCallback((
-    entry: PartitionBarData,
-    segmentKey: string,
-    event?: React.MouseEvent
-  ) => {
-    if (!selectionCtx) return;
+    // If target is ReferenceArea, check if there's a bar underneath
+    if (!isBar && target?.classList?.contains('recharts-reference-area-rect') && e) {
+      const elements = document.elementsFromPoint(e.clientX, e.clientY);
+      isBar = elements.some(el =>
+        el.classList.contains('recharts-rectangle') &&
+        !el.classList.contains('recharts-reference-area-rect')
+      );
+    }
 
-    // Get all samples in the bar (entire partition)
+    if (!isBar) {
+      // Background click - clear selection
+      if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+        selectionCtx.clear();
+      }
+      setClickedPartitionId(null);
+      return;
+    }
+
+    // 3. Get clicked bar data from Recharts state
+    const activeIndex = state?.activeTooltipIndex;
+    if (activeIndex === undefined || activeIndex < 0 || activeIndex >= partitionBarData.length) {
+      return;
+    }
+    const entry = partitionBarData[activeIndex];
+    if (!entry || !selectionCtx) return;
+
+    // 4. Detect which segment was clicked using elementsFromPoint
+    // Find the actual bar rect at the click position - need to find the topmost one at click coords
+    let barRect: Element | null = null;
+    if (e && target) {
+      // Always use elementsFromPoint to find the rect at the exact click position
+      const elements = document.elementsFromPoint(e.clientX, e.clientY);
+      // Find the FIRST recharts-rectangle (topmost in visual stacking order at click point)
+      barRect = elements.find(el =>
+        el.classList.contains('recharts-rectangle') &&
+        !el.classList.contains('recharts-reference-area-rect')
+      ) || null;
+    }
+
+    const clickedFill = barRect?.getAttribute('fill') || '';
+
+    // Find which segment has this color
+    let clickedSegmentKey = partitionSegmentKeys[0];
+    for (const segKey of partitionSegmentKeys) {
+      const segColor = getPartitionSegmentColor(segKey, entry);
+      if (segColor === clickedFill) {
+        clickedSegmentKey = segKey;
+        break;
+      }
+    }
+
+    // Get samples for the clicked segment
     const barIndices = entry.indices;
+    const segmentIndices = entry.segmentIndices[clickedSegmentKey] ?? barIndices;
 
-    // Get samples in the clicked segment (for stacked bars)
-    // Fall back to all indices if segment key doesn't exist (non-stacked mode)
-    const segmentIndices = entry.segmentIndices[segmentKey] ?? barIndices;
-
-    // Extract modifiers from event
-    const modifiers = event ? extractModifiers(event) : { shift: false, ctrl: false };
-
-    // Use unified stacked bar action computation for progressive drill-down
+    // 5. Apply 3-click selection logic
+    const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
     const action = computeStackedBarAction(
       { barIndices, segmentIndices },
-      selectedSamples,
+      selectionCtx.selectedSamples,
       modifiers
     );
-
-    // Execute the action
     executeSelectionAction(selectionCtx, action);
 
     // Update clicked partition tracking for visual feedback
     if (action.action === 'clear') {
       setClickedPartitionId(null);
     } else if (!modifiers.shift && !modifiers.ctrl) {
-      // For plain clicks, track which partition was clicked
       setClickedPartitionId(entry.partitionId);
     } else {
-      // For modifier clicks (add/toggle), clear clicked partition
-      // as multiple partitions may be partially selected
       setClickedPartitionId(null);
     }
-  }, [selectionCtx, selectedSamples]);
+  }, [handleDragSelection, partitionBarData, partitionSegmentKeys, getPartitionSegmentColor, selectionCtx]);
 
   // Empty state
   if (!folds || folds.n_folds === 0) {
@@ -1065,19 +1129,19 @@ export function FoldDistributionChartV2({
   // Render count bar chart with separate bars per partition
   const renderCountChart = () => (
     <div className="h-full flex flex-col">
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={partitionBarData}
             margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
             layout={config.barOrientation === 'horizontal' ? 'vertical' : 'horizontal'}
-            onMouseDown={handleChartMouseDown}
-            onMouseMove={(state, e) => {
-              if (e) lastMouseEventRef.current = e as unknown as React.MouseEvent;
+            onMouseDown={(state) => {
+              handleChartMouseDown(state as { activeTooltipIndex?: number });
+            }}
+            onMouseMove={(state) => {
               handleChartMouseMove(state as { activeTooltipIndex?: number });
             }}
-            onMouseUp={(state, e) => {
-              if (e) lastMouseEventRef.current = e as unknown as React.MouseEvent;
+            onMouseUp={(state) => {
               handleChartMouseUp(state as { activeTooltipIndex?: number });
             }}
           >
@@ -1093,17 +1157,23 @@ export function FoldDistributionChartV2({
               <>
                 <XAxis type="number" stroke={CHART_THEME.axisStroke} fontSize={CHART_THEME.axisFontSize} />
                 <YAxis
-                  dataKey="label"
-                  type="category"
+                  dataKey="index"
+                  type="number"
                   stroke={CHART_THEME.axisStroke}
                   fontSize={11}
                   width={70}
+                  tickFormatter={(value: number) => partitionBarData[value]?.label ?? ''}
                   tick={{ fill: '#e4e4e7', fontWeight: 500 }}
                 />
               </>
             ) : (
               <>
-                <XAxis dataKey="label" hide />
+                <XAxis
+                  dataKey="index"
+                  type="number"
+                  hide
+                  domain={[-0.5, partitionBarData.length - 0.5]}
+                />
                 <YAxis stroke={CHART_THEME.axisStroke} fontSize={CHART_THEME.axisFontSize} width={40} />
               </>
             )}
@@ -1223,30 +1293,18 @@ export function FoldDistributionChartV2({
         />
 
         {/* Render bars based on color mode */}
-        {partitionSegmentKeys.map((segKey, segIdx) => (
+        {partitionSegmentKeys.map((segKey) => (
           <Bar
             key={segKey}
             dataKey={`segments.${segKey}`}
             name={`segments.${segKey}`}
             stackId="a"
             cursor="pointer"
-            onClick={(data: { payload?: PartitionBarData }, _index: number, event: React.MouseEvent) => {
-              // Use data.payload to get the correct entry - more reliable than index
-              // Pass segKey to enable segment-level selection in stacked bars (Phase 5)
-              const entry = data.payload;
-              if (entry) {
-                handlePartitionBarClick(entry, segKey, event);
-              }
-            }}
             {...ANIMATION_CONFIG}
           >
             {partitionBarData.map((entry) => {
-              // Determine highlighting based on both fold selection AND sample selection
-              const hasSelection = selectedSamples.size > 0;
-              const hasSelectedSamplesInPartition = hasSelection && entry.indices.some(i => selectedSamples.has(i));
-              const isFoldSelected = selectedFold !== null && selectedFold === entry.foldIndex;
-
               // Check if this SEGMENT contains selected samples (for segment-level highlighting)
+              const hasSelection = selectedSamples.size > 0;
               const segmentSamples = entry.segmentIndices[segKey] ?? [];
               const hasSelectedSamplesInSegment = hasSelection && segmentSamples.some(i => selectedSamples.has(i));
 
@@ -1255,12 +1313,10 @@ export function FoldDistributionChartV2({
               // Selection came from another chart if there's a selection but no clicked partition in this chart
               const selectionFromOtherChart = hasSelection && clickedPartitionId === null;
 
-              // Highlighted if: no selection, or this partition has selected samples, or this fold is selected
-              const isHighlighted = !hasSelection || hasSelectedSamplesInPartition || isFoldSelected;
-
               // In partition mode, color by partition type; otherwise by segment
+              // Always use full color (isHighlighted = true) - no transparency
               const fillColor = effectiveColorMode === 'partition'
-                ? getPartitionBarColor(entry, isHighlighted)
+                ? getPartitionBarColor(entry, true)
                 : getPartitionSegmentColor(segKey, entry);
 
               // Show stroke when THIS SEGMENT contains selected samples:
@@ -1273,7 +1329,6 @@ export function FoldDistributionChartV2({
                 <Cell
                   key={`${segKey}-${entry.partitionId}`}
                   fill={fillColor}
-                  opacity={isHighlighted ? 1 : 0.4}
                   stroke={showStroke ? 'hsl(var(--foreground))' : 'none'}
                   strokeWidth={showStroke ? 2.5 : 0}
                 />
@@ -1281,20 +1336,22 @@ export function FoldDistributionChartV2({
             })}
           </Bar>
         ))}
-
-        {/* Drag selection visual overlay */}
-        {rangeSelection.isSelecting && rangeSelection.start !== null && rangeSelection.end !== null && (
-          <ReferenceArea
-            x1={partitionBarData[Math.min(rangeSelection.start, rangeSelection.end)]?.label}
-            x2={partitionBarData[Math.max(rangeSelection.start, rangeSelection.end)]?.label}
-            fill="hsl(var(--primary))"
-            fillOpacity={0.15}
-            stroke="hsl(var(--primary))"
-            strokeOpacity={0.5}
-          />
-        )}
       </BarChart>
     </ResponsiveContainer>
+        {/* Drag selection visual overlay - positioned absolute over the chart */}
+        {rangeSelection.isSelecting && rangeSelection.start !== null && rangeSelection.end !== null && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: `${(Math.min(rangeSelection.start, rangeSelection.end) / partitionBarData.length) * 100}%`,
+              right: `${((partitionBarData.length - 1 - Math.max(rangeSelection.start, rangeSelection.end)) / partitionBarData.length) * 100}%`,
+              top: 0,
+              bottom: 0,
+              backgroundColor: 'hsl(var(--primary) / 0.15)',
+              border: '1px dashed hsl(var(--primary) / 0.5)',
+            }}
+          />
+        )}
       </div>
       {/* HTML labels below chart for vertical orientation */}
       {config.barOrientation !== 'horizontal' && partitionBarData.length > 0 && (

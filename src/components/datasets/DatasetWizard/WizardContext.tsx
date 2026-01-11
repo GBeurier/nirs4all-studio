@@ -3,7 +3,7 @@
  *
  * Phase 5: Added support for loading workspace defaults for parsing options
  */
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from "react";
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useRef } from "react";
 import type {
   WizardState,
   WizardStep,
@@ -68,6 +68,16 @@ const createInitialState = (parsing: ParsingOptions): WizardState => ({
 // Initial state (uses system defaults, will be updated when workspace defaults load)
 const initialState: WizardState = createInitialState(SYSTEM_DEFAULT_PARSING);
 
+/**
+ * Initial state that can be passed from drag-and-drop
+ */
+export interface WizardInitialState {
+  sourceType: WizardSourceType;
+  basePath: string;
+  files?: DetectedFile[];
+  skipToStep?: WizardStep;
+}
+
 // Action types
 type WizardAction =
   | { type: "SET_STEP"; payload: WizardStep }
@@ -88,6 +98,7 @@ type WizardAction =
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: { key: string; message: string | null } }
   | { type: "APPLY_DEFAULTS"; payload: ParsingOptions }
+  | { type: "INIT_FROM_DROP"; payload: { initial: WizardInitialState; parsing: ParsingOptions } }
   | { type: "RESET"; payload?: ParsingOptions };
 
 // Reducer
@@ -179,6 +190,22 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       // Only apply defaults if parsing hasn't been modified from initial state
       return { ...state, parsing: { ...action.payload } };
 
+    case "INIT_FROM_DROP": {
+      const { initial, parsing } = action.payload;
+      const basePath = initial.basePath;
+      const parts = basePath.split(/[/\\]/);
+      const name = parts[parts.length - 1] || "dataset";
+      return {
+        ...createInitialState(parsing),
+        step: initial.skipToStep || "files",
+        sourceType: initial.sourceType,
+        basePath: initial.basePath,
+        datasetName: name,
+        files: initial.files || [],
+        isLoading: !initial.files, // If no files yet, we're loading
+      };
+    }
+
     case "RESET":
       return action.payload
         ? createInitialState(action.payload)
@@ -203,6 +230,8 @@ interface WizardContextType {
   workspaceDefaults: ParsingOptions | null;
   isLoadingDefaults: boolean;
   reloadDefaults: () => Promise<void>;
+  // Drag-and-drop initialization
+  initFromDrop: (initial: WizardInitialState) => void;
 }
 
 const WizardContext = createContext<WizardContextType | null>(null);
@@ -210,11 +239,18 @@ const WizardContext = createContext<WizardContextType | null>(null);
 // Step order
 const STEP_ORDER: WizardStep[] = ["source", "files", "parsing", "targets", "preview"];
 
+// Provider props
+interface WizardProviderProps {
+  children: React.ReactNode;
+  initialState?: WizardInitialState;
+}
+
 // Provider
-export function WizardProvider({ children }: { children: React.ReactNode }) {
+export function WizardProvider({ children, initialState: initialProp }: WizardProviderProps) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const [workspaceDefaults, setWorkspaceDefaults] = useState<ParsingOptions | null>(null);
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(true);
+  const hasInitialized = useRef(false);
 
   // Load workspace defaults on mount
   const loadDefaults = useCallback(async () => {
@@ -237,6 +273,34 @@ export function WizardProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadDefaults();
   }, [loadDefaults]);
+
+  // Initialize from drop if initial state is provided
+  useEffect(() => {
+    if (initialProp && !hasInitialized.current && !isLoadingDefaults) {
+      hasInitialized.current = true;
+      dispatch({
+        type: "INIT_FROM_DROP",
+        payload: {
+          initial: initialProp,
+          parsing: workspaceDefaults || SYSTEM_DEFAULT_PARSING,
+        },
+      });
+    }
+  }, [initialProp, isLoadingDefaults, workspaceDefaults]);
+
+  // Function to initialize from drop (for external use)
+  const initFromDrop = useCallback(
+    (initial: WizardInitialState) => {
+      dispatch({
+        type: "INIT_FROM_DROP",
+        payload: {
+          initial,
+          parsing: workspaceDefaults || SYSTEM_DEFAULT_PARSING,
+        },
+      });
+    },
+    [workspaceDefaults]
+  );
 
   const goToStep = useCallback((step: WizardStep) => {
     dispatch({ type: "SET_STEP", payload: step });
@@ -291,6 +355,7 @@ export function WizardProvider({ children }: { children: React.ReactNode }) {
         workspaceDefaults,
         isLoadingDefaults,
         reloadDefaults: loadDefaults,
+        initFromDrop,
       }}
     >
       {children}

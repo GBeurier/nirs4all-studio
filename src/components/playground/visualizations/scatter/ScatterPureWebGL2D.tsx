@@ -339,7 +339,8 @@ export function ScatterPureWebGL2D({
   isLoading,
   clearOnBackgroundClick = true,
   preserveAspectRatio = false,
-}: ScatterRendererProps & { clearOnBackgroundClick?: boolean }) {
+  customBounds,
+}: ScatterRendererProps & { clearOnBackgroundClick?: boolean; customBounds?: DataBounds }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<WebGL2RenderingContext | null>(null);
   const mainProgramRef = useRef<ShaderProgram | null>(null);
@@ -383,8 +384,11 @@ export function ScatterPureWebGL2D({
     return (points as [number, number][]).map((_, i) => i);
   }, [indices, points]);
 
-  // Calculate data bounds
-  const bounds = useMemo(() => calculateBounds(points as [number, number][]), [points]);
+  // Calculate data bounds - use customBounds if provided, otherwise calculate from data
+  const bounds = useMemo(() => {
+    if (customBounds) return customBounds;
+    return calculateBounds(points as [number, number][]);
+  }, [points, customBounds]);
 
   // Calculate colors for each point
   const pointColors = useMemo(() => {

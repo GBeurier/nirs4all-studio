@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Moon, Sun, Monitor, Search, Command } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { Button } from "@/components/ui/button";
@@ -13,21 +14,22 @@ import {
 import { Breadcrumbs } from "./Breadcrumbs";
 import { MobileSidebar } from "./MobileSidebar";
 
-// Quick search navigation items
+// Quick search navigation items with translation keys
 const searchItems = [
-  { label: "Dashboard", path: "/", keywords: ["home", "overview"] },
-  { label: "Datasets", path: "/datasets", keywords: ["data", "import", "load"] },
-  { label: "Playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
-  { label: "Pipelines", path: "/pipelines", keywords: ["workflow", "ml", "model"] },
-  { label: "Pipeline Editor", path: "/pipelines/new", keywords: ["create", "build", "new"] },
-  { label: "Runs", path: "/runs", keywords: ["experiment", "train", "execute", "monitor", "progress"] },
-  { label: "Results", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "history"] },
-  { label: "Predictions", path: "/predictions", keywords: ["predict", "inference"] },
-  { label: "Analysis", path: "/analysis", keywords: ["pca", "importance", "explore"] },
-  { label: "Settings", path: "/settings", keywords: ["config", "preferences", "options"] },
+  { labelKey: "nav.dashboard", path: "/", keywords: ["home", "overview"] },
+  { labelKey: "nav.datasets", path: "/datasets", keywords: ["data", "import", "load"] },
+  { labelKey: "nav.playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
+  { labelKey: "nav.pipelines", path: "/pipelines", keywords: ["workflow", "ml", "model"] },
+  { labelKey: "nav.pipelineEditor", path: "/pipelines/new", keywords: ["create", "build", "new"] },
+  { labelKey: "nav.runs", path: "/runs", keywords: ["experiment", "train", "execute", "monitor", "progress"] },
+  { labelKey: "nav.results", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "history"] },
+  { labelKey: "nav.predictions", path: "/predictions", keywords: ["predict", "inference"] },
+  { labelKey: "nav.analysis", path: "/analysis", keywords: ["pca", "importance", "explore"] },
+  { labelKey: "nav.settings", path: "/settings", keywords: ["config", "preferences", "options"] },
 ];
 
 export function AppHeader() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,8 +38,9 @@ export function AppHeader() {
   const filteredItems = searchQuery.trim()
     ? searchItems.filter((item) => {
         const query = searchQuery.toLowerCase();
+        const label = t(item.labelKey).toLowerCase();
         return (
-          item.label.toLowerCase().includes(query) ||
+          label.includes(query) ||
           item.keywords.some((k) => k.includes(query))
         );
       })
@@ -79,7 +82,7 @@ export function AppHeader() {
         <div className="relative hidden sm:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search..."
+            placeholder={t("layout.header.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -106,7 +109,7 @@ export function AppHeader() {
                   onClick={() => handleSearch(item.path)}
                   className="w-full flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
                 >
-                  {item.label}
+                  {t(item.labelKey)}
                 </button>
               ))}
             </div>
@@ -116,7 +119,7 @@ export function AppHeader() {
         {/* Mobile search button */}
         <Button variant="ghost" size="icon" className="sm:hidden h-9 w-9">
           <Search className="h-4 w-4" />
-          <span className="sr-only">Search</span>
+          <span className="sr-only">{t("layout.header.search")}</span>
         </Button>
 
         {/* Theme Toggle */}
@@ -126,21 +129,21 @@ export function AppHeader() {
               {theme === "light" && <Sun className="h-4 w-4" />}
               {theme === "dark" && <Moon className="h-4 w-4" />}
               {theme === "system" && <Monitor className="h-4 w-4" />}
-              <span className="sr-only">Toggle theme</span>
+              <span className="sr-only">{t("layout.header.toggleTheme")}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => setTheme("light")}>
               <Sun className="mr-2 h-4 w-4" />
-              Light
+              {t("settings.general.appearance.themeLight")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setTheme("dark")}>
               <Moon className="mr-2 h-4 w-4" />
-              Dark
+              {t("settings.general.appearance.themeDark")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setTheme("system")}>
               <Monitor className="mr-2 h-4 w-4" />
-              System
+              {t("settings.general.appearance.themeSystem")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

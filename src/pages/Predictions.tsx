@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Link } from "react-router-dom";
 import {
@@ -80,16 +81,17 @@ import type {
 } from "@/types/linked-workspaces";
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 
-const allMetrics = [
-  { key: "val_score", label: "Val Score", higherBetter: true },
-  { key: "test_score", label: "Test Score", higherBetter: true },
-  { key: "train_score", label: "Train Score", higherBetter: true },
-];
-
 type SortField = "model_name" | "dataset_name" | "partition" | "val_score" | "test_score" | "n_samples";
 type SortOrder = "asc" | "desc";
 
 export default function Predictions() {
+  const { t } = useTranslation();
+
+  const allMetrics = [
+    { key: "val_score", label: t("predictions.metrics.valScore"), higherBetter: true },
+    { key: "test_score", label: t("predictions.metrics.testScore"), higherBetter: true },
+    { key: "train_score", label: t("predictions.metrics.trainScore"), higherBetter: true },
+  ];
   // Two-phase loading: summary (instant) + details (on-demand)
   const [summary, setSummary] = useState<PredictionSummaryResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -155,7 +157,7 @@ export default function Predictions() {
       // Auto-load first page of details
       await loadDetails(active.id, 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load predictions");
+      setError(err instanceof Error ? err.message : t("predictions.errorLoad"));
     } finally {
       setSummaryLoading(false);
     }
@@ -406,7 +408,7 @@ export default function Predictions() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading predictions...</p>
+          <p className="text-muted-foreground">{t("predictions.loading")}</p>
         </div>
       </div>
     );
@@ -419,12 +421,12 @@ export default function Predictions() {
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertCircle className="h-12 w-12 text-destructive" />
           <div>
-            <h3 className="text-lg font-semibold">Error loading predictions</h3>
+            <h3 className="text-lg font-semibold">{t("predictions.error")}</h3>
             <p className="text-muted-foreground">{error}</p>
           </div>
           <Button variant="outline" onClick={loadSummary}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -440,9 +442,9 @@ export default function Predictions() {
         animate={{ opacity: 1 }}
       >
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Predictions</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
           <p className="mt-1 text-muted-foreground">
-            Browse and analyze prediction records from your nirs4all workspace
+            {t("predictions.subtitle")}
           </p>
         </div>
 
@@ -481,7 +483,7 @@ export default function Predictions() {
         animate={{ opacity: 1 }}
       >
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Predictions</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
           <p className="mt-1 text-muted-foreground">
             Workspace: {activeWorkspace.name}
           </p>
@@ -521,7 +523,7 @@ export default function Predictions() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Predictions</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
           <p className="mt-1 text-muted-foreground">
             {stats.total.toLocaleString()} total • {filteredPredictions.length} showing •{" "}
             {activeWorkspace.name}
@@ -595,7 +597,7 @@ export default function Predictions() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search predictions..."
+            placeholder={t("predictions.filters.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 bg-muted/50"
@@ -605,10 +607,10 @@ export default function Predictions() {
         <Select value={filterDataset} onValueChange={setFilterDataset}>
           <SelectTrigger className="w-[160px] bg-muted/50">
             <Database className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Dataset" />
+            <SelectValue placeholder={t("predictions.filters.dataset")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Datasets</SelectItem>
+            <SelectItem value="all">{t("predictions.filters.allDatasets")}</SelectItem>
             {datasets.map((d) => (
               <SelectItem key={d} value={d}>
                 {d}
@@ -620,10 +622,10 @@ export default function Predictions() {
         <Select value={filterModel} onValueChange={setFilterModel}>
           <SelectTrigger className="w-[140px] bg-muted/50">
             <Brain className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Model" />
+            <SelectValue placeholder={t("predictions.filters.model")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Models</SelectItem>
+            <SelectItem value="all">{t("predictions.filters.allModels")}</SelectItem>
             {models.map((m) => (
               <SelectItem key={m} value={m}>
                 {m}
@@ -635,10 +637,10 @@ export default function Predictions() {
         <Select value={filterPartition} onValueChange={setFilterPartition}>
           <SelectTrigger className="w-[140px] bg-muted/50">
             <Scissors className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Partition" />
+            <SelectValue placeholder={t("predictions.filters.partition")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Partitions</SelectItem>
+            <SelectItem value="all">{t("predictions.filters.allPartitions")}</SelectItem>
             {partitions.map((p) => (
               <SelectItem key={p} value={p}>
                 {p}
@@ -650,13 +652,13 @@ export default function Predictions() {
         <Select value={filterTaskType} onValueChange={setFilterTaskType}>
           <SelectTrigger className="w-[150px] bg-muted/50">
             <GitBranch className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Task Type" />
+            <SelectValue placeholder={t("predictions.filters.taskType")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {taskTypes.map((t) => (
-              <SelectItem key={t} value={t!}>
-                {t}
+            <SelectItem value="all">{t("predictions.filters.allTypes")}</SelectItem>
+            {taskTypes.map((type) => (
+              <SelectItem key={type} value={type!}>
+                {type}
               </SelectItem>
             ))}
           </SelectContent>
@@ -672,7 +674,7 @@ export default function Predictions() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Visible Metrics</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("predictions.visibleMetrics")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {allMetrics.map((metric) => (
               <DropdownMenuCheckboxItem
@@ -740,7 +742,7 @@ export default function Predictions() {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDeleteSelected}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -768,11 +770,11 @@ export default function Predictions() {
                     onCheckedChange={toggleSelectAll}
                   />
                 </TableHead>
-                <SortableHeader field="dataset_name">Dataset</SortableHeader>
-                <SortableHeader field="model_name">Model</SortableHeader>
-                <SortableHeader field="partition">Partition</SortableHeader>
-                <TableHead>Preprocessing</TableHead>
-                <TableHead>Fold</TableHead>
+                <SortableHeader field="dataset_name">{t("predictions.table.dataset")}</SortableHeader>
+                <SortableHeader field="model_name">{t("predictions.table.model")}</SortableHeader>
+                <SortableHeader field="partition">{t("predictions.table.partition")}</SortableHeader>
+                <TableHead>{t("predictions.table.preprocessing")}</TableHead>
+                <TableHead>{t("predictions.table.fold")}</TableHead>
                 {allMetrics
                   .filter((m) => visibleMetrics.has(m.key))
                   .map((metric) => (
@@ -783,8 +785,8 @@ export default function Predictions() {
                       {metric.label}
                     </SortableHeader>
                   ))}
-                <SortableHeader field="n_samples">Samples</SortableHeader>
-                <TableHead>Task</TableHead>
+                <SortableHeader field="n_samples">{t("predictions.table.samples")}</SortableHeader>
+                <TableHead>{t("predictions.table.task")}</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -872,7 +874,7 @@ export default function Predictions() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={(e) => handleQuickView(pred, e)}
-                      title="Quick view"
+                      title={t("predictions.quickView")}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>

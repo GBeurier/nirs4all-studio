@@ -37,6 +37,8 @@ import {
   ArrowUpDown,
   ZoomIn,
   MousePointer2,
+  Monitor,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,6 +62,7 @@ import {
   detectMetadataType,
   PARTITION_COLORS,
   HIGHLIGHT_COLORS_CONCRETE,
+  getWebGLSampleColor,
 } from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
 import type { RepetitionResult } from '@/types/playground';
@@ -89,6 +92,10 @@ import {
   computeAreaSelectionAction,
   executeSelectionAction,
 } from '@/lib/playground/selectionHandlers';
+import {
+  ScatterPureWebGL2D,
+  type DataBounds,
+} from './scatter';
 
 // ============= Types =============
 
@@ -242,6 +249,9 @@ export function RepetitionsChart({
 
   // Track if initial zoom has been set
   const [initialZoomSet, setInitialZoomSet] = useState(false);
+
+  // Renderer type (Recharts/WebGL)
+  const [rendererType, setRendererType] = useState<'recharts' | 'webgl'>('recharts');
 
   // SelectionContext integration
   const selectionCtx = useSelectionContext ? useSelection() : null;
@@ -540,6 +550,58 @@ export function RepetitionsChart({
     return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
   }, [yRange, maxDistance, globalColorConfig, colorContext, scaleType]);
 
+  // Get point color for WebGL renderers - uses concrete HSL colors (no CSS variables)
+  const getWebGLPointColor = useCallback((point: PlotDataPoint): string => {
+    // Build a minimal colorContext for this point
+    const pointColorContext: ColorContext = {
+      y: point.targetY !== undefined ? [point.targetY] : undefined,
+      yMin: yRange.min,
+      yMax: yRange.max,
+      selectedSamples,
+      totalSamples: plotData.length,
+    };
+
+    // Use the unified WebGL color function if globalColorConfig is provided
+    if (globalColorConfig) {
+      return getWebGLSampleColor(point.sampleIndex, globalColorConfig, {
+        ...pointColorContext,
+        ...colorContext,
+      });
+    }
+
+    // Default: color by distance (same as getPointColor but with concrete colors)
+    return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
+  }, [yRange, maxDistance, globalColorConfig, colorContext, scaleType, selectedSamples, plotData.length]);
+
+  // Pre-computed WebGL props for 2D renderers (ScatterPureWebGL2D, ScatterRegl2D)
+  const webglProps = useMemo(() => {
+    const points: [number, number][] = new Array(plotData.length);
+    const indices: number[] = new Array(plotData.length);
+    const colors: string[] = new Array(plotData.length);
+    const values: number[] = new Array(plotData.length);
+
+    for (let i = 0; i < plotData.length; i++) {
+      const point = plotData[i];
+      points[i] = [point.x, point.y];
+      indices[i] = point.sampleIndex;
+      colors[i] = getWebGLPointColor(point);
+      values[i] = point.targetY ?? point.y;
+    }
+
+    return { points, indices, colors, values };
+  }, [plotData, getWebGLPointColor]);
+
+  // Calculate custom bounds for WebGL based on xDomain
+  const webglBounds = useMemo((): DataBounds => {
+    const effectiveDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
+    return {
+      minX: effectiveDomain[0],
+      maxX: effectiveDomain[1],
+      minY: yDomain[0],
+      maxY: yDomain[1],
+    };
+  }, [xDomain, yDomain, bioSampleOrder.length]);
+
   // Handle point click using unified selection handler
   // Special case: Shift+click selects entire bio-sample group (all repetitions)
   const handlePointClick = useCallback((point: PlotDataPoint, event?: React.MouseEvent) => {
@@ -663,6 +725,68 @@ export function RepetitionsChart({
     );
     executeSelectionAction(selectionCtx, action);
   }, [selectionCtx, plotData, selectedSamples]);
+
+  // Handle selection for WebGL renderers - converts screen to data coordinates
+  const handleSelectionCompleteWebGL = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
+    if (!selectionCtx || plotData.length === 0 || !chartRef.current) return;
+
+    const container = chartRef.current;
+    const containerRect = container.getBoundingClientRect();
+    // Account for axis offsets (left-10 = 40px, bottom-6 = 24px)
+    const axisLeftOffset = 40;
+    const axisBottomOffset = 24;
+    const containerWidth = containerRect.width - axisLeftOffset;
+    const containerHeight = containerRect.height - axisBottomOffset;
+
+    // Convert screen coordinates to data coordinates (accounting for axis offset)
+    const screenToData = (screenX: number, screenY: number) => {
+      const bounds = webglBounds;
+      const adjustedX = screenX - axisLeftOffset;
+      const dataX = bounds.minX + (adjustedX / containerWidth) * (bounds.maxX - bounds.minX);
+      const dataY = bounds.maxY - (screenY / containerHeight) * (bounds.maxY - bounds.minY);
+      return { x: dataX, y: dataY };
+    };
+
+    const selectedIndices: number[] = [];
+
+    if ('path' in result) {
+      // Lasso selection - convert screen path to data coordinates
+      const dataPath = result.path.map(p => screenToData(p.x, p.y));
+
+      for (const point of plotData) {
+        if (isPointInPolygon({ x: point.x, y: point.y }, dataPath)) {
+          selectedIndices.push(point.sampleIndex);
+        }
+      }
+    } else {
+      // Box selection - convert screen box to data coordinates
+      const startData = screenToData(result.start.x, result.start.y);
+      const endData = screenToData(result.end.x, result.end.y);
+
+      const dataBounds = {
+        minX: Math.min(startData.x, endData.x),
+        maxX: Math.max(startData.x, endData.x),
+        minY: Math.min(startData.y, endData.y),
+        maxY: Math.max(startData.y, endData.y),
+      };
+
+      for (const point of plotData) {
+        if (isPointInBox({ x: point.x, y: point.y }, dataBounds)) {
+          selectedIndices.push(point.sampleIndex);
+        }
+      }
+    }
+
+    if (selectedIndices.length === 0) return;
+
+    // Use area selection handler
+    const action = computeAreaSelectionAction(
+      { indices: selectedIndices },
+      selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(selectionCtx, action);
+  }, [selectionCtx, plotData, selectedSamples, webglBounds]);
 
   // Prevent context menu on right-click (we use it for panning)
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -986,6 +1110,43 @@ export function RepetitionsChart({
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Renderer toggle (SVG/WebGL) */}
+          <TooltipProvider delayDuration={200}>
+            <div className="flex items-center border rounded-md">
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={rendererType === 'recharts' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0 rounded-r-none border-r"
+                    onClick={() => setRendererType('recharts')}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">SVG renderer (Recharts)</p>
+                </TooltipContent>
+              </TooltipUI>
+
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={rendererType === 'webgl' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 w-7 p-0 rounded-l-none border-l"
+                    onClick={() => setRendererType('webgl')}
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${rendererType === 'webgl' ? 'text-yellow-500' : ''}`} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">WebGL (GPU accelerated)</p>
+                </TooltipContent>
+              </TooltipUI>
+            </div>
+          </TooltipProvider>
+
           {/* Hover toggle */}
           <TooltipProvider delayDuration={200}>
             <TooltipUI>
@@ -1065,7 +1226,7 @@ export function RepetitionsChart({
       {/* Chart with loading overlay wrapped in SelectionContainer */}
       <SelectionContainer
         mode={selectionCtx?.selectionToolMode ?? 'click'}
-        onSelectionComplete={handleSelectionComplete}
+        onSelectionComplete={rendererType === 'recharts' ? handleSelectionComplete : handleSelectionCompleteWebGL}
         onBackgroundClick={handleBackgroundClick}
         enabled={!!selectionCtx}
         className="flex-1 min-h-0"
@@ -1097,105 +1258,270 @@ export function RepetitionsChart({
             </div>
           )}
 
-        <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
-            {showGrid && (
-              <CartesianGrid
-                strokeDasharray={CHART_THEME.gridDasharray}
-                stroke={CHART_THEME.gridStroke}
-                opacity={CHART_THEME.gridOpacity}
-              />
-            )}
+          {/* WebGL indicator badge */}
+          {rendererType === 'webgl' && (
+            <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded text-[10px] font-medium">
+              <Zap className="w-3 h-3" />
+              WebGL
+            </div>
+          )}
 
-            <XAxis
-              type="number"
-              dataKey="x"
-              domain={effectiveXDomain}
-              ticks={bioSampleOrder.map((_, i) => i).filter(i =>
-                i >= Math.floor(effectiveXDomain[0]) && i <= Math.ceil(effectiveXDomain[1])
-              )}
-              tickFormatter={(value) => {
-                const label = bioSampleOrder[value];
-                return label?.length > 8 ? label.slice(0, 8) + '…' : label ?? '';
-              }}
-              stroke={CHART_THEME.axisStroke}
-              fontSize={CHART_THEME.axisFontSize}
-              interval={0}
-              angle={-45}
-              textAnchor="end"
-              height={50}
-              allowDataOverflow
-            />
+          {/* Y-axis overlay for WebGL mode */}
+          {rendererType === 'webgl' && (
+            <div className="absolute left-0 top-0 bottom-6 w-10 pointer-events-none z-[6] flex flex-col justify-between py-1">
+              {/* Y-axis label */}
+              <div className="absolute -left-1 top-1/2 -translate-y-1/2 -rotate-90 origin-center text-[9px] text-muted-foreground whitespace-nowrap">
+                {scaleType === 'log' ? 'log(1 + Distance)' : 'Distance'}
+              </div>
+              {/* Y-axis ticks */}
+              {(() => {
+                const yRange = webglBounds.maxY - webglBounds.minY;
+                const tickCount = 5;
+                const ticks: number[] = [];
+                for (let i = 0; i <= tickCount; i++) {
+                  ticks.push(webglBounds.minY + (yRange * i) / tickCount);
+                }
+                return ticks.map((tick, i) => {
+                  const yPercent = ((webglBounds.maxY - tick) / yRange) * 100;
+                  return (
+                    <div
+                      key={`y-tick-${i}`}
+                      className="absolute right-1 text-[9px] text-muted-foreground"
+                      style={{ top: `${yPercent}%`, transform: 'translateY(-50%)' }}
+                    >
+                      {tick.toFixed(2)}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
 
-            <YAxis
-              type="number"
-              dataKey="y"
-              domain={yDomain}
-              stroke={CHART_THEME.axisStroke}
-              fontSize={CHART_THEME.axisFontSize}
-              width={40}
-              scale={scaleType === 'log' ? 'linear' : 'linear'}
-              label={{
-                value: scaleType === 'log' ? 'log(1 + Distance)' : 'Distance',
-                angle: -90,
-                position: 'insideLeft',
-                fontSize: CHART_THEME.axisLabelFontSize,
-                offset: 5,
-              }}
-            />
+          {/* X-axis labels overlay for WebGL mode */}
+          {rendererType === 'webgl' && (
+            <div className="absolute left-10 right-0 bottom-0 h-6 pointer-events-none z-[6]">
+              {bioSampleOrder.map((_, sampleIndex) => {
+                const xRange = webglBounds.maxX - webglBounds.minX;
+                const xPercent = ((sampleIndex - webglBounds.minX) / xRange) * 100;
+                // Only show if in visible range and not too dense
+                if (xPercent < 0 || xPercent > 100) return null;
+                // Skip labels if too many are visible (show every nth)
+                const visibleCount = Math.ceil(webglBounds.maxX) - Math.floor(webglBounds.minX);
+                const step = Math.max(1, Math.floor(visibleCount / 20));
+                if (sampleIndex % step !== 0) return null;
+                return (
+                  <div
+                    key={`x-label-${sampleIndex}`}
+                    className="absolute text-[9px] text-muted-foreground"
+                    style={{ left: `${xPercent}%`, transform: 'translateX(-50%)' }}
+                  >
+                    {sampleIndex}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-            <ZAxis range={[20, 60]} />
+          {/* Axis lines overlay for WebGL mode */}
+          {rendererType === 'webgl' && (
+            <div className="absolute left-10 right-0 top-0 bottom-6 pointer-events-none z-[3]">
+              {/* Y-axis line (left edge) */}
+              <div className="absolute left-0 top-0 bottom-0 border-l border-muted-foreground/50" />
+              {/* X-axis line (bottom edge) */}
+              <div className="absolute left-0 right-0 bottom-0 border-b border-muted-foreground/50" />
+            </div>
+          )}
 
-            <Tooltip
-              isAnimationActive={false}
-              cursor={enableHover ? { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '4 2' } : false}
-              content={<CustomTooltip />}
-            />
+          {/* Grid lines overlay for WebGL mode */}
+          {rendererType === 'webgl' && showGrid && (
+            <div className="absolute left-10 right-0 top-0 bottom-6 pointer-events-none z-[4]">
+              {/* Vertical grid lines (at each sample) */}
+              {bioSampleOrder.map((_, sampleIndex) => {
+                const xRange = webglBounds.maxX - webglBounds.minX;
+                const xPercent = ((sampleIndex - webglBounds.minX) / xRange) * 100;
+                if (xPercent < 0 || xPercent > 100) return null;
+                return (
+                  <div
+                    key={`sample-grid-${sampleIndex}`}
+                    className="absolute top-0 bottom-0 border-l border-dashed opacity-30"
+                    style={{
+                      left: `${xPercent}%`,
+                      borderColor: 'currentColor',
+                    }}
+                  />
+                );
+              })}
+              {/* Horizontal grid lines */}
+              {(() => {
+                const yRange = webglBounds.maxY - webglBounds.minY;
+                const tickCount = 5;
+                const lines: React.ReactNode[] = [];
+                for (let i = 0; i <= tickCount; i++) {
+                  const tick = webglBounds.minY + (yRange * i) / tickCount;
+                  const yPercent = ((webglBounds.maxY - tick) / yRange) * 100;
+                  lines.push(
+                    <div
+                      key={`h-grid-${i}`}
+                      className="absolute left-0 right-0 border-t border-dashed opacity-30"
+                      style={{
+                        top: `${yPercent}%`,
+                        borderColor: 'currentColor',
+                      }}
+                    />
+                  );
+                }
+                return lines;
+              })()}
+            </div>
+          )}
 
-            {/* Quantile reference lines */}
-            {quantileValues.map(({ quantile, value }) => (
-              <ReferenceLine
-                key={`quantile-${quantile}`}
-                y={value}
-                stroke={QUANTILE_COLORS[quantile]}
-                strokeDasharray="3 3"
-                strokeWidth={1}
-                label={{
-                  value: `P${quantile}`,
-                  position: 'right',
-                  fontSize: 9,
-                  fill: QUANTILE_COLORS[quantile],
-                }}
-              />
-            ))}
+          {/* Quantile reference lines overlay for WebGL mode */}
+          {rendererType === 'webgl' && quantileValues.length > 0 && (
+            <div className="absolute left-10 right-0 top-0 bottom-6 pointer-events-none z-[5]">
+              {quantileValues.map(({ quantile, value }) => {
+                // Calculate Y position as percentage from top
+                const yRange = webglBounds.maxY - webglBounds.minY;
+                const yPercent = ((webglBounds.maxY - value) / yRange) * 100;
+                // Only show if in visible range
+                if (yPercent < 0 || yPercent > 100) return null;
+                return (
+                  <div
+                    key={`quantile-line-${quantile}`}
+                    className="absolute left-0 right-0 border-t-2 border-dashed"
+                    style={{
+                      top: `${yPercent}%`,
+                      borderColor: QUANTILE_COLORS[quantile],
+                    }}
+                  >
+                    <span
+                      className="absolute right-1 -top-3 text-[9px] font-medium"
+                      style={{ color: QUANTILE_COLORS[quantile] }}
+                    >
+                      P{quantile}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-            {/* Scatter points */}
-            <Scatter
-              data={plotData}
-              cursor="pointer"
-              onClick={(data: any, index: number, event: React.MouseEvent) => {
-                handlePointClick(plotData[index], event);
-              }}
-              isAnimationActive={false}
-            >
-              {plotData.map((point, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={getPointColor(point)}
-                  stroke={
-                    point.isSelected
-                      ? 'hsl(var(--foreground))'
-                      : point.isOutlier
-                        ? 'hsl(var(--warning))'
-                        : 'none'
-                  }
-                  strokeWidth={point.isSelected ? 2 : point.isOutlier ? 1 : 0}
-                  r={point.isSelected ? POINT_RADIUS.selected : point.isOutlier ? POINT_RADIUS.outlier : POINT_RADIUS.normal}
+          {/* Recharts SVG renderer */}
+          {rendererType === 'recharts' && (
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
+                {showGrid && (
+                  <CartesianGrid
+                    strokeDasharray={CHART_THEME.gridDasharray}
+                    stroke={CHART_THEME.gridStroke}
+                    opacity={CHART_THEME.gridOpacity}
+                  />
+                )}
+
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  domain={effectiveXDomain}
+                  ticks={bioSampleOrder.map((_, i) => i).filter(i =>
+                    i >= Math.floor(effectiveXDomain[0]) && i <= Math.ceil(effectiveXDomain[1])
+                  )}
+                  tickFormatter={(value) => String(value)}
+                  stroke={CHART_THEME.axisStroke}
+                  fontSize={CHART_THEME.axisFontSize}
+                  interval={0}
+                  height={25}
+                  allowDataOverflow
                 />
-              ))}
-            </Scatter>
-          </ScatterChart>
-        </ResponsiveContainer>
+
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  domain={yDomain}
+                  stroke={CHART_THEME.axisStroke}
+                  fontSize={CHART_THEME.axisFontSize}
+                  width={40}
+                  scale={scaleType === 'log' ? 'linear' : 'linear'}
+                  label={{
+                    value: scaleType === 'log' ? 'log(1 + Distance)' : 'Distance',
+                    angle: -90,
+                    position: 'insideLeft',
+                    fontSize: CHART_THEME.axisLabelFontSize,
+                    offset: 5,
+                  }}
+                />
+
+                <ZAxis range={[20, 60]} />
+
+                <Tooltip
+                  isAnimationActive={false}
+                  cursor={enableHover ? { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '4 2' } : false}
+                  content={<CustomTooltip />}
+                />
+
+                {/* Quantile reference lines */}
+                {quantileValues.map(({ quantile, value }) => (
+                  <ReferenceLine
+                    key={`quantile-${quantile}`}
+                    y={value}
+                    stroke={QUANTILE_COLORS[quantile]}
+                    strokeDasharray="3 3"
+                    strokeWidth={1}
+                    label={{
+                      value: `P${quantile}`,
+                      position: 'right',
+                      fontSize: 9,
+                      fill: QUANTILE_COLORS[quantile],
+                    }}
+                  />
+                ))}
+
+                {/* Scatter points */}
+                <Scatter
+                  data={plotData}
+                  cursor="pointer"
+                  onClick={(data: any, index: number, event: React.MouseEvent) => {
+                    handlePointClick(plotData[index], event);
+                  }}
+                  isAnimationActive={false}
+                >
+                  {plotData.map((point, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={getPointColor(point)}
+                      stroke={
+                        point.isSelected
+                          ? 'hsl(var(--foreground))'
+                          : point.isOutlier
+                            ? 'hsl(var(--warning))'
+                            : 'none'
+                      }
+                      strokeWidth={point.isSelected ? 2 : point.isOutlier ? 1 : 0}
+                      r={point.isSelected ? POINT_RADIUS.selected : point.isOutlier ? POINT_RADIUS.outlier : POINT_RADIUS.normal}
+                    />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          )}
+
+          {/* WebGL renderer */}
+          {rendererType === 'webgl' && (
+            <div className="absolute left-10 right-0 top-0 bottom-6">
+              <ScatterPureWebGL2D
+                points={webglProps.points}
+                indices={webglProps.indices}
+                colors={webglProps.colors}
+                values={webglProps.values}
+                useSelectionContext={useSelectionContext}
+                pointSize={6}
+                showGrid={false}
+                showAxes={false}
+                className="h-full w-full"
+                clearOnBackgroundClick={selectionCtx?.selectionToolMode === 'click'}
+                customBounds={webglBounds}
+              />
+            </div>
+          )}
+
         </div>
       </SelectionContainer>
 

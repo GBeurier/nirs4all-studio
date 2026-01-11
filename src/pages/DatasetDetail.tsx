@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
   ArrowLeft,
@@ -61,6 +62,7 @@ function formatNumber(num: number | undefined): string {
 }
 
 export default function DatasetDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -131,7 +133,7 @@ export default function DatasetDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Loading dataset...</p>
+        <p className="text-muted-foreground">{t("datasets.detail.loading")}</p>
       </div>
     );
   }
@@ -141,18 +143,18 @@ export default function DatasetDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-24">
         <AlertCircle className="h-8 w-8 text-destructive mb-4" />
-        <p className="text-destructive font-medium mb-2">Failed to load dataset</p>
+        <p className="text-destructive font-medium mb-2">{t("datasets.detail.error")}</p>
         <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
-          {error || "Dataset not found"}
+          {error || t("datasets.detail.notFound")}
         </p>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => navigate("/datasets")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Datasets
+            {t("datasets.detail.goBack")}
           </Button>
           <Button onClick={loadDataset}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -214,7 +216,7 @@ export default function DatasetDetail() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <Layers className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Samples</p>
+              <p className="text-sm text-muted-foreground">{t("datasets.info.samples")}</p>
             </div>
             <p className="text-2xl font-bold">{formatNumber(dataset.num_samples)}</p>
           </CardContent>
@@ -223,7 +225,7 @@ export default function DatasetDetail() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <Hash className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Features</p>
+              <p className="text-sm text-muted-foreground">{t("datasets.info.features")}</p>
             </div>
             <p className="text-2xl font-bold">{formatNumber(dataset.num_features)}</p>
           </CardContent>
@@ -232,7 +234,7 @@ export default function DatasetDetail() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Spectral Range</p>
+              <p className="text-sm text-muted-foreground">{t("datasets.info.spectralRange")}</p>
             </div>
             <p className="text-2xl font-bold">
               {preview?.spectra_preview
@@ -245,7 +247,7 @@ export default function DatasetDetail() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <Target className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Targets</p>
+              <p className="text-sm text-muted-foreground">{t("datasets.info.targets")}</p>
             </div>
             <p className="text-2xl font-bold">{dataset.targets?.length || 0}</p>
           </CardContent>

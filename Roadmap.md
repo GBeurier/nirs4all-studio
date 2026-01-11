@@ -14,9 +14,7 @@
 - think it as settings more than dashboard or simply remove
 
 **Settings**
-- Configure correctly workspace
-- Add space occupied / free space
-- Managed env > choose folder (or by defaut the app_folder/.venv), display package installed from pytoml
+- Configure correctly workspace (1 tab instead of two, separate web app workspace and nirs4all workspace(s))
 - On update available put a distinctive markers on settings. When clicked it goes to update.
 
 **API**
@@ -33,11 +31,12 @@ the page reload dataset each time, it should be cached
 - put the image that comes often also in cache (y histogram, spectra chart with quantiles, train/test/folds)
 - Enhance detailed view
 
+**Runs / Results**
+- Design role of both and what to focus on.
 
 **Pipeline Builder**
 - REFACTOR THE COMPONENTS. LOT LOT LOT OF REDONDANCIES
 - REVIEW PARAM WINDOWS > MANY COPIES AND USELESS DIVS
-
 - Extend the number of generators to match all existings in nirs4all > advanced checker
 - item in menu overlap except for chart oO ? reduce item width
 - Operator for sequential (the eqiuvalent of "[" "]" in nirs4all) ?? still necessary ?
@@ -82,8 +81,6 @@ the page reload dataset each time, it should be cached
 - maybe same in pipeline > the first split should generate test not fold. Verify !
 - the force colorations do not work. Classification forced on regression data bug in many view (no color variation)
 
-
-
 **Folds**
 - hover tooltip
 - combo transformed in checkable icons
@@ -103,40 +100,23 @@ the page reload dataset each time, it should be cached
 **PCA**
 - can sitch reference / final / both
 - 3D, hidden points behind are not selected
-- verify on hover same popup as canvas in regl and webgl
-installHook.js:1 Error: (regl) invalid y offset for regl.read
-    at ScatterRegl3D.tsx:656:24
-    at ScatterRegl3D.tsx:680:21
->>> Remove regl ?
-- on hover active option
-- as for spectra chart. Make the hover tooltip optional
+- verify on hover same popup as canvas in regl and webgl >>> Remove regl ?
 - 3d: show grid useless,
 - Canvas rotation and selection control should be the same as webgl.
 
 **Diff**
-- pan on right click, selection and selection area on left
 - Global filters such as selected only does not update the view
-- point should be smaller, and the initial view should be zoomed
-
-- don"t display name; display index
-
-- on zoom:
-RepetitionsChart.tsx:391 Unable to preventDefault inside passive event listener invocation.
-
-- webgl version (FULL CLONE)
-- make webgl / canvas view and switch between both.
 - repetition vaeriance ??? what does it do ?
 - linear/log either useless or radio button
 - line to display overral difference across all samples.
 - Select quantile option (to select outliers)
 - select samples when click on message (10 samples with high variability)
-- no transparency on points
 - display line based on 2 and 3 sigmas
 
 **target histogram**
 - combobox to icons for number of bars
-- allow to select sub bar
 - allow to choose targerts if multiple targets
+
 
 
 
@@ -145,7 +125,3 @@ RepetitionsChart.tsx:391 Unable to preventDefault inside passive event listener 
 - Remove animation do not work (it's actually worse)
 - Unify / clean / specify / distinguish nirs4all workspaces and app settings folder.
 
-
-
-**Runs / Results**
-- Design role of both and what to focus on.

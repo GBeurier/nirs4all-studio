@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
   Database,
@@ -36,7 +37,11 @@ import {
   DatasetWizard,
   SyntheticDataDialog,
   DatasetQuickView,
+  DropZoneOverlay,
+  useDragDrop,
+  type DroppedContent,
 } from "@/components/datasets";
+import type { WizardInitialState } from "@/components/datasets/DatasetWizard";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import {
   listDatasets,
@@ -74,6 +79,8 @@ const itemVariants = {
 type FilterGroup = "all" | string;
 
 export default function Datasets() {
+  const { t } = useTranslation();
+
   // Developer mode
   const isDeveloperMode = useIsDeveloperMode();
 
@@ -103,6 +110,31 @@ export default function Datasets() {
 
   // Quick view state - inline panel
   const [quickViewDataset, setQuickViewDataset] = useState<Dataset | null>(null);
+
+  // Drag-and-drop state
+  const [wizardInitialState, setWizardInitialState] = useState<WizardInitialState | undefined>(undefined);
+
+  // Handle files/folders dropped from OS
+  const handleDrop = useCallback(async (content: DroppedContent) => {
+    // Set initial state for the wizard
+    const initialState: WizardInitialState = {
+      sourceType: content.type,
+      basePath: content.path,
+      skipToStep: "files", // Skip source selection, go directly to file mapping
+    };
+
+    setWizardInitialState(initialState);
+    setWizardOpen(true);
+
+    // If it's a folder, detect files automatically (handled by wizard)
+    // If it's files, we could pre-populate but the wizard will handle it
+  }, []);
+
+  // Drag-and-drop hook
+  const { isDragging, dropType, itemCount } = useDragDrop({
+    onDrop: handleDrop,
+    disabled: false,
+  });
 
   // Load data
   const loadData = useCallback(async () => {
@@ -322,15 +354,15 @@ export default function Datasets() {
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Datasets</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("datasets.title")}</h1>
           <p className="text-muted-foreground">
-            Manage your spectral datasets and configurations
+            {t("datasets.subtitle")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setGroupsModalOpen(true)}>
             <Tags className="mr-2 h-4 w-4" />
-            Groups
+            {t("datasets.groups")}
           </Button>
           {isDeveloperMode && (
             <TooltipProvider>
@@ -342,18 +374,18 @@ export default function Datasets() {
                     className="border-primary/30 hover:border-primary/50"
                   >
                     <FlaskConical className="mr-2 h-4 w-4" />
-                    Generate
+                    {t("datasets.generateSynthetic")}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Generate synthetic dataset (Dev Mode)</p>
+                  <p>{t("datasets.generateSyntheticHint")}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
           <Button onClick={() => setWizardOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Dataset
+            {t("datasets.addDataset")}
           </Button>
         </div>
       </motion.div>
@@ -363,7 +395,7 @@ export default function Datasets() {
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Datasets
+              {t("datasets.stats.totalDatasets")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -373,7 +405,7 @@ export default function Datasets() {
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Samples
+              {t("datasets.stats.totalSamples")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -385,7 +417,7 @@ export default function Datasets() {
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Avg Features
+              {t("datasets.stats.avgFeatures")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -399,7 +431,7 @@ export default function Datasets() {
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Groups
+              {t("datasets.stats.groups")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -416,7 +448,7 @@ export default function Datasets() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search datasets..."
+            placeholder={t("datasets.filters.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -430,10 +462,10 @@ export default function Datasets() {
           >
             <SelectTrigger className="w-[180px]">
               <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Filter by group" />
+              <SelectValue placeholder={t("datasets.filters.groupPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Datasets</SelectItem>
+              <SelectItem value="all">{t("datasets.filters.allDatasets")}</SelectItem>
               {groups.map((group) => (
                 <SelectItem key={group.id} value={group.id}>
                   {group.name}
@@ -450,13 +482,13 @@ export default function Datasets() {
         >
           <SelectTrigger className="w-[150px]">
             <ArrowUpDown className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Sort by" />
+            <SelectValue placeholder={t("datasets.filters.sortPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="name">Name</SelectItem>
-            <SelectItem value="linked_at">Date Added</SelectItem>
-            <SelectItem value="num_samples">Samples</SelectItem>
-            <SelectItem value="group">Group</SelectItem>
+            <SelectItem value="name">{t("datasets.sort.name")}</SelectItem>
+            <SelectItem value="linked_at">{t("datasets.sort.dateAdded")}</SelectItem>
+            <SelectItem value="num_samples">{t("datasets.sort.samples")}</SelectItem>
+            <SelectItem value="group">{t("datasets.sort.group")}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -477,7 +509,7 @@ export default function Datasets() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {sortDirection === "asc" ? "Ascending" : "Descending"}
+              {sortDirection === "asc" ? t("datasets.sort.ascending") : t("datasets.sort.descending")}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -497,7 +529,7 @@ export default function Datasets() {
                   />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Refresh All</TooltipContent>
+              <TooltipContent>{t("datasets.refreshAll")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -510,7 +542,7 @@ export default function Datasets() {
             <CardContent className="p-12">
               <div className="flex flex-col items-center justify-center text-center">
                 <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin mb-4" />
-                <p className="text-muted-foreground">Loading datasets...</p>
+                <p className="text-muted-foreground">{t("datasets.loading")}</p>
               </div>
             </CardContent>
           </Card>
@@ -522,22 +554,22 @@ export default function Datasets() {
                   <Database className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-2">
-                  {normalizedDatasets.length === 0 ? "No datasets yet" : "No matches"}
+                  {normalizedDatasets.length === 0 ? t("datasets.empty") : t("datasets.emptyNoMatch")}
                 </h3>
                 <p className="text-muted-foreground max-w-md mb-6">
                   {normalizedDatasets.length === 0
-                    ? "Get started by adding a dataset. You can link a folder containing your spectral data files."
-                    : "Try adjusting your search or filter criteria."}
+                    ? t("datasets.emptyHint")
+                    : t("datasets.emptyHintNoMatch")}
                 </p>
                 {normalizedDatasets.length === 0 && (
                   <div className="flex gap-3">
                     <Button variant="outline" onClick={handleSelectWorkspace}>
                       <FolderOpen className="mr-2 h-4 w-4" />
-                      Select Workspace
+                      {t("datasets.selectWorkspace")}
                     </Button>
                     <Button onClick={() => setWizardOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Add Dataset
+                      {t("datasets.addDataset")}
                     </Button>
                   </div>
                 )}
@@ -586,11 +618,11 @@ export default function Datasets() {
             <div className="flex items-center gap-3">
               <Badge variant="outline">Workspace</Badge>
               <span className="text-sm text-muted-foreground truncate max-w-md">
-                {workspacePath || "No workspace selected"}
+                {workspacePath || t("datasets.noWorkspaceSelected")}
               </span>
             </div>
             <Button variant="ghost" size="sm" onClick={handleSelectWorkspace}>
-              {workspacePath ? "Change" : "Select Workspace"}
+              {workspacePath ? t("datasets.change") : t("datasets.selectWorkspace")}
             </Button>
           </CardContent>
         </Card>
@@ -606,8 +638,15 @@ export default function Datasets() {
       {/* New Dataset Wizard */}
       <DatasetWizard
         open={wizardOpen}
-        onOpenChange={setWizardOpen}
+        onOpenChange={(open) => {
+          setWizardOpen(open);
+          // Clear initial state when wizard closes
+          if (!open) {
+            setWizardInitialState(undefined);
+          }
+        }}
         onAdd={handleAddDataset}
+        initialState={wizardInitialState}
       />
 
       <EditDatasetPanel
@@ -641,6 +680,13 @@ export default function Datasets() {
         open={syntheticDialogOpen}
         onOpenChange={setSyntheticDialogOpen}
         onDatasetGenerated={() => loadData()}
+      />
+
+      {/* Drag & Drop Overlay */}
+      <DropZoneOverlay
+        isVisible={isDragging}
+        dropType={dropType}
+        itemCount={itemCount}
       />
     </motion.div>
   );

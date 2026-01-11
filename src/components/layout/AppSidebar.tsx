@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
   Database,
@@ -9,6 +10,7 @@ import {
   BarChart3,
   Target,
   Beaker,
+  Sparkles,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -26,31 +28,33 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 interface NavItem {
-  title: string;
+  titleKey: string;
   href: string;
   icon: LucideIcon;
   badge?: number;
 }
 
 const mainNavItems: NavItem[] = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  { title: "Datasets", href: "/datasets", icon: Database },
-  { title: "Playground", href: "/playground", icon: FlaskConical },
+  { titleKey: "nav.dashboard", href: "/", icon: LayoutDashboard },
+  { titleKey: "nav.datasets", href: "/datasets", icon: Database },
+  { titleKey: "nav.playground", href: "/playground", icon: FlaskConical },
 ];
 
 const workflowNavItems: NavItem[] = [
-  { title: "Pipelines", href: "/pipelines", icon: GitBranch },
-  { title: "New Pipeline", href: "/pipelines/new", icon: Plus },
-  { title: "Runs", href: "/runs", icon: Play },
-  { title: "Results", href: "/results", icon: BarChart3 },
+  { titleKey: "nav.pipelines", href: "/pipelines", icon: GitBranch },
+  { titleKey: "nav.newExperiment", href: "/pipelines/new", icon: Plus },
+  { titleKey: "nav.runs", href: "/runs", icon: Play },
+  { titleKey: "nav.results", href: "/results", icon: BarChart3 },
 ];
 
 const analysisNavItems: NavItem[] = [
-  { title: "Predictions", href: "/predictions", icon: Target },
-  { title: "Analysis", href: "/analysis", icon: Beaker },
+  { titleKey: "nav.predictions", href: "/predictions", icon: Target },
+  { titleKey: "nav.analysis", href: "/analysis", icon: Beaker },
+  { titleKey: "nav.synthesis", href: "/synthesis", icon: Sparkles },
 ];
 
 export function AppSidebar() {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
 
@@ -73,6 +77,7 @@ export function AppSidebar() {
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item.href);
     const Icon = item.icon;
+    const title = t(item.titleKey);
 
     const linkContent = (
       <NavLink
@@ -89,7 +94,7 @@ export function AppSidebar() {
         )}
         <Icon className={cn("h-5 w-5 shrink-0", active && "text-primary")} />
         {!collapsed && (
-          <span className="truncate">{item.title}</span>
+          <span className="truncate">{title}</span>
         )}
         {!collapsed && item.badge !== undefined && item.badge > 0 && (
           <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary">
@@ -104,7 +109,7 @@ export function AppSidebar() {
         <Tooltip key={item.href} delayDuration={0}>
           <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
           <TooltipContent side="right" className="flex items-center gap-2">
-            {item.title}
+            {title}
             {item.badge !== undefined && item.badge > 0 && (
               <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs">
                 {item.badge}
@@ -118,11 +123,11 @@ export function AppSidebar() {
     return <div key={item.href}>{linkContent}</div>;
   };
 
-  const renderNavGroup = (title: string, items: NavItem[]) => (
+  const renderNavGroup = (titleKey: string, items: NavItem[]) => (
     <div className="space-y-1">
       {!collapsed && (
         <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
-          {title}
+          {t(titleKey)}
         </h3>
       )}
       {items.map(renderNavItem)}
@@ -148,17 +153,17 @@ export function AppSidebar() {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
         <div className="space-y-6">
-          {renderNavGroup("Main", mainNavItems)}
+          {renderNavGroup("layout.sidebar.groups.main", mainNavItems)}
           <Separator className="mx-3" />
-          {renderNavGroup("Workflow", workflowNavItems)}
+          {renderNavGroup("layout.sidebar.groups.workflow", workflowNavItems)}
           <Separator className="mx-3" />
-          {renderNavGroup("Analysis", analysisNavItems)}
+          {renderNavGroup("layout.sidebar.groups.analysis", analysisNavItems)}
         </div>
       </ScrollArea>
 
       {/* Settings at bottom */}
       <div className="border-t border-border/50 p-3">
-        {renderNavItem({ title: "Settings", href: "/settings", icon: Settings })}
+        {renderNavItem({ titleKey: "nav.settings", href: "/settings", icon: Settings })}
       </div>
 
       {/* Collapse button */}

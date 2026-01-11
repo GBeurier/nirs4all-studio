@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,10 +57,10 @@ const statusIcons = {
   partial: AlertCircle,
 };
 
-function formatTimeAgo(dateString: string | null): string {
-  if (!dateString) return "Unknown";
+function formatTimeAgo(dateString: string | null, t: (key: string, options?: { count?: number }) => string): string {
+  if (!dateString) return t("runs.unknown");
   const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "Unknown";
+  if (isNaN(date.getTime())) return t("runs.unknown");
 
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -67,10 +68,10 @@ function formatTimeAgo(dateString: string | null): string {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-  return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+  if (diffMins < 1) return t("time.justNow");
+  if (diffMins < 60) return t("time.minutesAgo", { count: diffMins });
+  if (diffHours < 24) return t("time.hoursAgo", { count: diffHours });
+  return t("time.daysAgo", { count: diffDays });
 }
 
 /**
@@ -216,6 +217,7 @@ function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
 }
 
 export default function Runs() {
+  const { t } = useTranslation();
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
@@ -356,13 +358,13 @@ export default function Runs() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Runs</h1>
-          <p className="text-muted-foreground">Track and monitor active and historical pipeline executions</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("runs.title")}</h1>
+          <p className="text-muted-foreground">{t("runs.subtitle")}</p>
         </div>
         <Button asChild>
           <Link to="/runs/new">
             <Plus className="h-4 w-4 mr-2" />
-            New Run
+            {t("runs.newRun")}
           </Link>
         </Button>
       </div>
@@ -375,7 +377,7 @@ export default function Runs() {
               <RefreshCw className={cn("h-5 w-5 text-chart-2", runningCount > 0 && "animate-spin")} />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Running</p>
+              <p className="text-sm text-muted-foreground">{t("runs.stats.running")}</p>
               <p className="text-2xl font-bold text-foreground">{runningCount}</p>
             </div>
           </CardContent>
@@ -386,7 +388,7 @@ export default function Runs() {
               <Clock className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Queued</p>
+              <p className="text-sm text-muted-foreground">{t("runs.stats.queued")}</p>
               <p className="text-2xl font-bold text-foreground">{queuedCount}</p>
             </div>
           </CardContent>
@@ -397,7 +399,7 @@ export default function Runs() {
               <CheckCircle2 className="h-5 w-5 text-chart-1" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Completed</p>
+              <p className="text-sm text-muted-foreground">{t("runs.stats.completed")}</p>
               <p className="text-2xl font-bold text-foreground">{completedCount}</p>
             </div>
           </CardContent>
@@ -408,7 +410,7 @@ export default function Runs() {
               <AlertCircle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Failed</p>
+              <p className="text-sm text-muted-foreground">{t("runs.stats.failed")}</p>
               <p className="text-2xl font-bold text-foreground">{failedCount}</p>
             </div>
           </CardContent>
@@ -419,7 +421,7 @@ export default function Runs() {
               <Layers className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total Pipelines</p>
+              <p className="text-sm text-muted-foreground">{t("runs.stats.totalPipelines")}</p>
               <p className="text-2xl font-bold text-foreground">{totalPipelines}</p>
             </div>
           </CardContent>
@@ -478,16 +480,15 @@ export default function Runs() {
                   <Play className="h-10 w-10 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-2">
-                  No runs yet
+                  {t("runs.empty")}
                 </h3>
                 <p className="text-muted-foreground max-w-md mb-6">
-                  Start a new run to train models on your datasets using your
-                  configured pipelines. Track progress and monitor execution.
+                  {t("runs.emptyHint")}
                 </p>
                 <Button asChild>
                   <Link to="/runs/new">
                     <Plus className="mr-2 h-4 w-4" />
-                    Start New Run
+                    {t("runs.newRun")}
                   </Link>
                 </Button>
               </div>
@@ -603,7 +604,7 @@ export default function Runs() {
                           )}
 
                           <div className="text-right text-sm text-muted-foreground">
-                            <div>{formatTimeAgo(run.created_at)}</div>
+                            <div>{formatTimeAgo(run.created_at, t)}</div>
                             {run.duration && <div className="text-xs">{run.duration}</div>}
                           </div>
 
@@ -622,14 +623,14 @@ export default function Runs() {
                             <Button variant="outline" size="sm" asChild onClick={(e) => e.stopPropagation()}>
                               <Link to={`/results`}>
                                 <BarChart3 className="h-4 w-4 mr-2" />
-                                Results
+                                {t("results.title")}
                               </Link>
                             </Button>
                           )}
                           {run.status === "failed" && (
                             <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
                               <RefreshCw className="h-4 w-4 mr-2" />
-                              Retry
+                              {t("runs.actions.retry")}
                             </Button>
                           )}
                           <Button
@@ -638,7 +639,7 @@ export default function Runs() {
                             onClick={(e) => openRunDetails(run, e)}
                           >
                             <Eye className="h-4 w-4 mr-2" />
-                            Details
+                            {t("runs.actions.view")}
                           </Button>
                         </div>
                       </div>
@@ -650,7 +651,7 @@ export default function Runs() {
                       {/* Error message for failed runs */}
                       {run.status === "failed" && (
                         <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
-                          Error: {run.datasets.flatMap(d => d.pipelines).find(p => p.error_message)?.error_message || "Unknown error"}
+                          {t("runs.error")}: {run.datasets.flatMap(d => d.pipelines).find(p => p.error_message)?.error_message || t("runs.unknownError")}
                         </div>
                       )}
 
@@ -728,7 +729,7 @@ export default function Runs() {
                                             onClick={(e) => e.stopPropagation()}
                                           >
                                             <Target className="h-3 w-3" />
-                                            Predictions
+                                            {t("predictions.title")}
                                           </Link>
                                         )}
                                         <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -756,16 +757,16 @@ export default function Runs() {
       {runs.length > 0 && runs.every(r => r.status === "completed" || r.status === "failed") && (
         <Card className="border-dashed">
           <CardContent className="p-6">
-            <h3 className="font-semibold mb-4">How to start a new run</h3>
+            <h3 className="font-semibold mb-4">{t("runs.guide.title")}</h3>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="flex gap-3">
                 <Badge className="h-6 w-6 rounded-full flex items-center justify-center shrink-0">
                   1
                 </Badge>
                 <div>
-                  <p className="font-medium text-sm">Select Dataset(s)</p>
+                  <p className="font-medium text-sm">{t("runs.guide.selectDatasets")}</p>
                   <p className="text-xs text-muted-foreground">
-                    Choose one or more datasets for training
+                    {t("runs.guide.selectDatasetsDesc")}
                   </p>
                 </div>
               </div>
@@ -774,9 +775,9 @@ export default function Runs() {
                   2
                 </Badge>
                 <div>
-                  <p className="font-medium text-sm">Choose Pipeline(s)</p>
+                  <p className="font-medium text-sm">{t("runs.guide.choosePipelines")}</p>
                   <p className="text-xs text-muted-foreground">
-                    Select pipelines to run on each dataset
+                    {t("runs.guide.choosePipelinesDesc")}
                   </p>
                 </div>
               </div>
@@ -785,9 +786,9 @@ export default function Runs() {
                   3
                 </Badge>
                 <div>
-                  <p className="font-medium text-sm">Configure & Launch</p>
+                  <p className="font-medium text-sm">{t("runs.guide.configureAndLaunch")}</p>
                   <p className="text-xs text-muted-foreground">
-                    Set options and start the experiment
+                    {t("runs.guide.configureAndLaunchDesc")}
                   </p>
                 </div>
               </div>
