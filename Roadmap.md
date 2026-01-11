@@ -87,8 +87,8 @@ the page reload dataset each time, it should be cached
 **Folds**
 - hover tooltip
 - combo transformed in checkable icons
-- the bar are not selected when others select
 - Bug on some metadata columns
+- On color 'partition", validation/test colors are not uniform with other charts
 
 **Spectra**
 - Selected should be placed above. Test also. Hover also.
@@ -131,6 +131,7 @@ RepetitionsChart.tsx:391 Unable to preventDefault inside passive event listener 
 - Select quantile option (to select outliers)
 - select samples when click on message (10 samples with high variability)
 - no transparency on points
+- display line based on 2 and 3 sigmas
 
 **target histogram**
 - combobox to icons for number of bars

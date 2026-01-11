@@ -111,6 +111,55 @@ export function computeSelectionAction(
 }
 
 /**
+ * Area selection logic for box/lasso selection (drag-based).
+ *
+ * Unlike point clicks, area selection does NOT toggle/clear when selecting the same area.
+ * This is because dragging a box over points always means "I want these selected".
+ *
+ * Implements the following interaction model:
+ * - Drag select: Replace selection with all points in the area
+ * - Shift+drag: Add all points in area to selection
+ * - Ctrl/Cmd+drag: Toggle all points in area
+ *
+ * @param target - The target with sample indices in the selection area
+ * @param currentSelection - The current selection state (not used for plain drag, only for modifiers)
+ * @param modifiers - Keyboard modifiers (shift, ctrl)
+ * @returns The action to dispatch to SelectionContext
+ *
+ * @example
+ * ```ts
+ * const action = computeAreaSelectionAction(
+ *   { indices: selectedIndicesInBox },
+ *   selectionCtx.selectedSamples,
+ *   { shift: modifiers.shift, ctrl: modifiers.ctrl }
+ * );
+ * executeSelectionAction(selectionCtx, action);
+ * ```
+ */
+export function computeAreaSelectionAction(
+  target: SelectionTarget,
+  _currentSelection: Set<number>,
+  modifiers: ClickModifiers
+): SelectionActionResult {
+  const { indices } = target;
+  const { shift, ctrl } = modifiers;
+
+  // Shift+drag: Add to selection
+  if (shift) {
+    return { action: 'select', indices, mode: 'add' };
+  }
+
+  // Ctrl/Cmd+drag: Toggle selection
+  if (ctrl) {
+    return { action: 'toggle', indices };
+  }
+
+  // Plain drag: Always replace selection with the dragged area
+  // (never clear even if selecting the same points again)
+  return { action: 'select', indices, mode: 'replace' };
+}
+
+/**
  * Stacked bar progressive selection logic.
  *
  * Implements a 3-click drill-down model for stacked bars:

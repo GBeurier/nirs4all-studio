@@ -116,6 +116,7 @@ import {
 // Import unified selection handlers (Phase 2)
 import {
   computeSelectionAction,
+  computeAreaSelectionAction,
   executeSelectionAction,
 } from '@/lib/playground/selectionHandlers';
 import {
@@ -604,6 +605,7 @@ export function DimensionReductionChart({
 
   // Calculate view bounds for WebGL/Regl renderers (matches their internal calculation)
   // Phase 4: Use filteredChartData to match what's actually rendered
+  // IMPORTANT: Must match the exact bounds calculation used by ScatterRegl2D/ScatterPureWebGL2D
   const calculateViewBounds = useCallback((containerWidth: number, containerHeight: number) => {
     // Calculate data bounds with padding (same as WebGL/Regl renderers)
     let minX = Infinity, maxX = -Infinity;
@@ -625,29 +627,34 @@ export function DimensionReductionChart({
     minY -= padY;
     maxY += padY;
 
-    // Calculate view bounds maintaining aspect ratio
-    const aspect = containerWidth / containerHeight;
-    const dataW = maxX - minX;
-    const dataH = maxY - minY;
-    const dataAspect = dataW / dataH;
-
     let left = minX, right = maxX;
     let bottom = minY, top = maxY;
 
-    if (dataAspect > aspect) {
-      const newH = dataW / aspect;
-      const pad = (newH - dataH) / 2;
-      bottom -= pad;
-      top += pad;
-    } else {
-      const newW = dataH * aspect;
-      const pad = (newW - dataW) / 2;
-      left -= pad;
-      right += pad;
+    // Only apply aspect ratio adjustment when preserveAspectRatio is enabled
+    // This must match the WebGL/Regl renderer behavior exactly
+    if (config.preserveAspectRatio) {
+      const aspect = containerWidth / containerHeight;
+      const dataW = maxX - minX;
+      const dataH = maxY - minY;
+      const dataAspect = dataW / dataH;
+
+      if (dataAspect > aspect) {
+        const newH = dataW / aspect;
+        const pad = (newH - dataH) / 2;
+        bottom -= pad;
+        top += pad;
+      } else {
+        const newW = dataH * aspect;
+        const pad = (newW - dataW) / 2;
+        left -= pad;
+        right += pad;
+      }
     }
+    // When preserveAspectRatio is false, the data stretches to fill the container
+    // (no aspect ratio adjustment needed - left/right/bottom/top already match data bounds)
 
     return { left, right, bottom, top };
-  }, [filteredChartData]);
+  }, [filteredChartData, config.preserveAspectRatio]);
 
   // Convert screen coordinates to data coordinates for WebGL/Regl
   const screenToData = useCallback((screenX: number, screenY: number, containerWidth: number, containerHeight: number) => {
@@ -703,8 +710,8 @@ export function DimensionReductionChart({
 
     if (selectedIndices.length === 0) return;
 
-    // Use unified selection handler
-    const action = computeSelectionAction(
+    // Use area selection handler (doesn't clear when re-selecting same points)
+    const action = computeAreaSelectionAction(
       { indices: selectedIndices },
       selectionCtx.selectedSamples,
       modifiers
@@ -739,8 +746,8 @@ export function DimensionReductionChart({
 
     if (selectedIndices.length === 0) return;
 
-    // Use unified selection handler
-    const action = computeSelectionAction(
+    // Use area selection handler (doesn't clear when re-selecting same points)
+    const action = computeAreaSelectionAction(
       { indices: selectedIndices },
       selectionCtx.selectedSamples,
       modifiers
@@ -841,8 +848,8 @@ export function DimensionReductionChart({
       return;
     }
 
-    // Use unified selection handler
-    const action = computeSelectionAction(
+    // Use area selection handler (doesn't clear when re-selecting same points)
+    const action = computeAreaSelectionAction(
       { indices: selectedIndices },
       selectionCtx.selectedSamples,
       modifiers

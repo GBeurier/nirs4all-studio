@@ -86,6 +86,7 @@ import {
 } from '@/components/playground/SelectionTools';
 import {
   computeSelectionAction,
+  computeAreaSelectionAction,
   executeSelectionAction,
 } from '@/lib/playground/selectionHandlers';
 
@@ -573,65 +574,95 @@ export function RepetitionsChart({
   }, [selectionCtx]);
 
   // Handle area selection completion from SelectionContainer (box or lasso)
+  // Uses DOM-based point detection for accuracy (similar to DimensionReductionChart)
   const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    if (!selectionCtx || plotData.length === 0) return;
+    if (!selectionCtx || plotData.length === 0 || !chartRef.current) return;
 
-    const rect = chartRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    const container = chartRef.current;
+    const containerRect = container.getBoundingClientRect();
 
-    // Chart margins (must match the ScatterChart margins)
-    const margin = { top: 10, right: 20, bottom: 30, left: 45 };
-    const chartAreaWidth = rect.width - margin.left - margin.right;
-    const chartAreaHeight = rect.height - margin.top - margin.bottom;
+    // Find all scatter symbols using DOM queries (more robust than coordinate calculation)
+    // Recharts renders symbols inside layer groups
+    const selectors = [
+      '.recharts-scatter-symbol',
+      '.recharts-symbols',
+      '.recharts-layer.recharts-scatter .recharts-symbols',
+      '.recharts-scatter path',
+      '.recharts-layer path[fill]',
+    ];
 
-    // Get current domains
-    const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
-    const xRange = effectiveXDomain[1] - effectiveXDomain[0];
-    const yAxisMin = yDomain[0];
-    const yAxisMax = yDomain[1];
-    const yAxisRange = yAxisMax - yAxisMin || 1;
+    let scatterSymbols: NodeListOf<Element> | null = null;
+    for (const selector of selectors) {
+      const elements = container.querySelectorAll(selector);
+      if (elements.length > 0) {
+        scatterSymbols = elements;
+        break;
+      }
+    }
 
-    // Convert pixel point to data coordinates
-    const pixelToData = (px: number, py: number): { x: number; y: number } => {
-      const dataX = effectiveXDomain[0] + ((px - margin.left) / chartAreaWidth) * xRange;
-      // Y is inverted (top = max, bottom = min)
-      const dataY = yAxisMax - ((py - margin.top) / chartAreaHeight) * yAxisRange;
-      return { x: dataX, y: dataY };
-    };
+    if (!scatterSymbols || scatterSymbols.length === 0) {
+      return;
+    }
 
-    // Find points within selection based on result type
-    let selectedIndices: number[] = [];
+    // Build array of screen positions for each point using getBoundingClientRect
+    const pointScreenPositions: Array<{ screenX: number; screenY: number; dataIndex: number }> = [];
+
+    scatterSymbols.forEach((symbol, idx) => {
+      if (idx < plotData.length) {
+        const rect = symbol.getBoundingClientRect();
+        // Get the center of the symbol relative to container
+        const centerX = rect.left + rect.width / 2 - containerRect.left;
+        const centerY = rect.top + rect.height / 2 - containerRect.top;
+
+        if (Number.isFinite(centerX) && Number.isFinite(centerY) && rect.width > 0) {
+          pointScreenPositions.push({
+            screenX: centerX,
+            screenY: centerY,
+            dataIndex: plotData[idx].sampleIndex,
+          });
+        }
+      }
+    });
+
+    // Find points inside the selection using their screen coordinates
+    const selectedIndices: number[] = [];
 
     if ('path' in result) {
-      // Lasso selection - check if points are inside the polygon
-      // Convert lasso path to data coordinates
-      const dataPath = result.path.map(p => pixelToData(p.x, p.y));
-      selectedIndices = plotData
-        .filter(p => isPointInPolygon({ x: p.x, y: p.y }, dataPath))
-        .map(p => p.sampleIndex);
+      // Lasso selection - check if each point's screen position is inside the lasso path
+      const screenPath = result.path;
+      if (screenPath.length < 3) return;
+
+      pointScreenPositions.forEach(point => {
+        if (isPointInPolygon({ x: point.screenX, y: point.screenY }, screenPath)) {
+          selectedIndices.push(point.dataIndex);
+        }
+      });
     } else {
-      // Box selection
-      const { minX, minY, maxX, maxY } = result.bounds;
-      const dataMin = pixelToData(minX, maxY); // maxY for minY due to inversion
-      const dataMax = pixelToData(maxX, minY); // minY for maxY due to inversion
-      selectedIndices = plotData
-        .filter(p => isPointInBox(
-          { x: p.x, y: p.y },
-          { minX: dataMin.x, minY: dataMin.y, maxX: dataMax.x, maxY: dataMax.y }
-        ))
-        .map(p => p.sampleIndex);
+      // Box selection - check if each point's screen position is inside the box
+      const bounds = {
+        minX: Math.min(result.start.x, result.end.x),
+        maxX: Math.max(result.start.x, result.end.x),
+        minY: Math.min(result.start.y, result.end.y),
+        maxY: Math.max(result.start.y, result.end.y),
+      };
+
+      pointScreenPositions.forEach(point => {
+        if (isPointInBox({ x: point.screenX, y: point.screenY }, bounds)) {
+          selectedIndices.push(point.dataIndex);
+        }
+      });
     }
 
     if (selectedIndices.length === 0) return;
 
-    // Use unified selection handler
-    const action = computeSelectionAction(
+    // Use area selection handler (doesn't clear when re-selecting same points)
+    const action = computeAreaSelectionAction(
       { indices: selectedIndices },
       selectedSamples,
       modifiers
     );
     executeSelectionAction(selectionCtx, action);
-  }, [selectionCtx, plotData, xDomain, bioSampleOrder.length, yDomain, selectedSamples]);
+  }, [selectionCtx, plotData, selectedSamples]);
 
   // Prevent context menu on right-click (we use it for panning)
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -1048,7 +1079,13 @@ export function RepetitionsChart({
           onMouseLeave={handlePanMouseLeave}
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
-          style={{ cursor: isPanning ? 'grabbing' : undefined }}
+          style={{
+            cursor: isPanning
+              ? 'grabbing'
+              : (selectionCtx?.selectionToolMode === 'box' || selectionCtx?.selectionToolMode === 'lasso')
+                ? 'crosshair'
+                : undefined
+          }}
         >
           {/* Loading overlay */}
           {isComputing && (

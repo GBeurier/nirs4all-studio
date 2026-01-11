@@ -660,27 +660,16 @@ export function YHistogramV2({
 
     const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
 
-    // Use stacked bar logic if segment is different from bar
-    const isSegmentClick = segmentSamples.length > 0 &&
-      (segmentSamples.length !== barSamples.length ||
-       !segmentSamples.every(s => barSamples.includes(s)));
+    // Always use stacked bar logic for progressive drill-down (bar → segment → clear)
+    // If segment samples not detected, use bar samples as segment (first click selects bar)
+    const effectiveSegment = segmentSamples.length > 0 ? segmentSamples : barSamples;
 
-    if (isSegmentClick) {
-      const action = computeStackedBarAction(
-        { barIndices: barSamples, segmentIndices: segmentSamples },
-        ctx.selectedSamples,
-        modifiers
-      );
-      executeSelectionAction(ctx, action);
-    } else {
-      // Fall back to simple selection for non-segment clicks
-      const action = computeSelectionAction(
-        { indices: barSamples },
-        ctx.selectedSamples,
-        modifiers
-      );
-      executeSelectionAction(ctx, action);
-    }
+    const action = computeStackedBarAction(
+      { barIndices: barSamples, segmentIndices: effectiveSegment },
+      ctx.selectedSamples,
+      modifiers
+    );
+    executeSelectionAction(ctx, action);
   }, []);
 
   // ============= Range Selection Handler =============
@@ -991,18 +980,20 @@ export function YHistogramV2({
   const renderStackedByPartition = () => {
     // Transform data for partition stacking
     const stackedData = histogramData.map(bin => {
-      const trainCount = bin.samples.filter(s => colorContext?.trainIndices?.has(s)).length;
-      const testCount = bin.samples.filter(s => colorContext?.testIndices?.has(s)).length;
+      const trainSamples = bin.samples.filter(s => colorContext?.trainIndices?.has(s));
+      const testSamples = bin.samples.filter(s => colorContext?.testIndices?.has(s));
       return {
         binCenter: bin.binCenter,
         binStart: bin.binStart,
         binEnd: bin.binEnd,
         samples: bin.samples,
         label: bin.label,
-        train: getYValue(trainCount),
-        test: getYValue(testCount),
-        trainCount,
-        testCount,
+        train: getYValue(trainSamples.length),
+        test: getYValue(testSamples.length),
+        trainCount: trainSamples.length,
+        testCount: testSamples.length,
+        trainSamples,
+        testSamples,
       };
     });
 
@@ -1011,42 +1002,69 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked partition chart - uses unified stacked bar selection
+    // Unified mouseUp handler - handles EVERYTHING: drag selection, bar clicks, segment clicks
     const handleStackedPartitionMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
-      // Check drag selection first
+      // 1. Check drag selection first (mouse moved between down and up)
       if (handleDragSelection(e)) {
         return;
       }
       setRangeSelection({ start: null, end: null, isSelecting: false });
 
+      // 2. Check if click was on a bar
       const target = e?.target as SVGElement | null;
       const isBar = target?.classList?.contains('recharts-rectangle') ||
         target?.closest('.recharts-bar-rectangle') !== null;
 
-      const payload = state?.activePayload;
-      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
-        const clickedData = payload[0].payload as typeof stackedData[0];
-        if (clickedData?.samples?.length) {
-          // Detect which segment was clicked based on the clicked Bar component
-          const parentBar = target?.closest('.recharts-bar');
-          let segmentSamples = clickedData.samples;
+      if (!isBar) {
+        // Background click - clear selection
+        if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+          selectionCtx.clear();
+        }
+        return;
+      }
 
-          if (parentBar) {
-            const barName = parentBar.querySelector('.recharts-bar-rectangle')?.getAttribute('name') ??
-              Array.from(parentBar.classList).find(c => c.includes('train') || c.includes('test'));
-            if (barName?.toLowerCase().includes('train')) {
-              segmentSamples = clickedData.samples.filter(s => colorContext?.trainIndices?.has(s));
-            } else if (barName?.toLowerCase().includes('test')) {
-              segmentSamples = clickedData.samples.filter(s => colorContext?.testIndices?.has(s));
-            }
-          }
+      // 3. Get clicked bar data from Recharts state
+      const activeIndex = state?.activeTooltipIndex;
+      if (activeIndex === undefined || activeIndex < 0 || activeIndex >= stackedData.length) {
+        return;
+      }
+      const entry = stackedData[activeIndex];
+      if (!entry || !selectionCtx) return;
 
-          // Use unified handler with stacked bar support
-          handleStackedBarSelection(clickedData.samples, segmentSamples, e, selectionCtx);
+      // 4. Detect which segment was clicked
+      // Find the actual bar rect - if target is the ReferenceArea overlay, look underneath it
+      let barRect: Element | null = null;
+      if (e && target) {
+        if (target.classList.contains('recharts-reference-area-rect')) {
+          // Target is the overlay - find bar underneath using elementsFromPoint
+          const elements = document.elementsFromPoint(e.clientX, e.clientY);
+          barRect = elements.find(el =>
+            el.classList.contains('recharts-rectangle') &&
+            !el.classList.contains('recharts-reference-area-rect')
+          ) || null;
+        } else if (target.tagName.toLowerCase() === 'rect') {
+          barRect = target;
+        } else {
+          barRect = target.closest('rect');
         }
       }
+
+      const clickedFill = barRect?.getAttribute('fill') || '';
+
+      const segmentSamples = clickedFill === PARTITION_COLORS.test
+        ? entry.testSamples
+        : entry.trainSamples;
+
+      // 5. Apply 3-click selection logic
+      const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+      const action = computeStackedBarAction(
+        { barIndices: entry.samples, segmentIndices: segmentSamples },
+        selectionCtx.selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(selectionCtx, action);
     };
 
     return (
@@ -1134,14 +1152,15 @@ export function YHistogramV2({
             {...ANIMATION_CONFIG}
           >
             {stackedData.map((entry, index) => {
-              const isSelected = selectedBins.has(index);
+              // Check if this segment has selected samples (segment-level highlighting)
+              const hasSelectedInSegment = entry.trainSamples.some(s => selectedSamples.has(s));
               const isHovered = hoveredBin === index;
               return (
                 <Cell
                   key={`train-${index}`}
                   fill={PARTITION_COLORS.train}
-                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                  stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                 />
               );
             })}
@@ -1156,14 +1175,15 @@ export function YHistogramV2({
             {...ANIMATION_CONFIG}
           >
             {stackedData.map((entry, index) => {
-              const isSelected = selectedBins.has(index);
+              // Check if this segment has selected samples (segment-level highlighting)
+              const hasSelectedInSegment = entry.testSamples.some(s => selectedSamples.has(s));
               const isHovered = hoveredBin === index;
               return (
                 <Cell
                   key={`test-${index}`}
                   fill={PARTITION_COLORS.test}
-                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                  stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                 />
               );
             })}
@@ -1211,43 +1231,77 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked fold chart - uses unified stacked bar selection
+    // Unified mouseUp handler - handles EVERYTHING: drag selection, bar clicks, segment clicks
     const handleStackedFoldMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
-      // Check drag selection first
+      // 1. Check drag selection first
       if (handleDragSelection(e)) {
         return;
       }
       setRangeSelection({ start: null, end: null, isSelecting: false });
 
+      // 2. Check if click was on a bar
       const target = e?.target as SVGElement | null;
       const isBar = target?.classList?.contains('recharts-rectangle') ||
         target?.closest('.recharts-bar-rectangle') !== null;
 
-      const payload = state?.activePayload;
-      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
-        const clickedData = payload[0].payload as typeof stackedData[0];
-        const samples = clickedData?.samples as number[] | undefined;
-        if (samples?.length) {
-          // Detect which fold segment was clicked based on the Bar component index
-          const parentBar = target?.closest('.recharts-bar');
-          let segmentSamples = samples;
+      if (!isBar) {
+        // Background click - clear selection
+        if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+          selectionCtx.clear();
+        }
+        return;
+      }
 
-          if (parentBar && folds?.fold_labels) {
-            // Find which Bar in the stack was clicked (order matches uniqueFolds)
-            const allBars = Array.from(parentBar.parentElement?.querySelectorAll('.recharts-bar') ?? []);
-            const barIndex = allBars.indexOf(parentBar);
-            if (barIndex >= 0 && barIndex < uniqueFolds.length) {
-              const clickedFold = uniqueFolds[barIndex];
-              segmentSamples = samples.filter(s => folds.fold_labels[s] === clickedFold);
-            }
-          }
+      // 3. Get clicked bar data from Recharts state
+      const activeIndex = state?.activeTooltipIndex;
+      if (activeIndex === undefined || activeIndex < 0 || activeIndex >= stackedData.length) {
+        return;
+      }
+      const entry = stackedData[activeIndex];
+      if (!entry || !selectionCtx) return;
 
-          // Use unified handler with stacked bar support
-          handleStackedBarSelection(samples, segmentSamples, e, selectionCtx);
+      // 4. Detect which fold segment was clicked
+      // Find the actual bar rect - if target is the ReferenceArea overlay, look underneath it
+      let barRect: Element | null = null;
+      if (e && target) {
+        if (target.classList.contains('recharts-reference-area-rect')) {
+          const elements = document.elementsFromPoint(e.clientX, e.clientY);
+          barRect = elements.find(el =>
+            el.classList.contains('recharts-rectangle') &&
+            !el.classList.contains('recharts-reference-area-rect')
+          ) || null;
+        } else if (target.tagName.toLowerCase() === 'rect') {
+          barRect = target;
+        } else {
+          barRect = target.closest('rect');
         }
       }
+
+      const clickedFill = barRect?.getAttribute('fill') || '';
+      const palette = globalColorConfig?.categoricalPalette ?? 'default';
+
+      // Find which fold has this color
+      let clickedFoldIdx = uniqueFolds[0];
+      for (const foldIdx of uniqueFolds) {
+        if (getCategoricalColor(foldIdx, palette) === clickedFill) {
+          clickedFoldIdx = foldIdx;
+          break;
+        }
+      }
+
+      const barSamples = entry.samples as number[];
+      const segmentSamples = (entry[`fold${clickedFoldIdx}Samples`] as number[] | undefined) ?? [];
+
+      // 5. Apply 3-click selection logic
+      const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+      const action = computeStackedBarAction(
+        { barIndices: barSamples, segmentIndices: segmentSamples },
+        selectionCtx.selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(selectionCtx, action);
     };
 
     return (
@@ -1336,6 +1390,7 @@ export function YHistogramV2({
             <Bar
               key={`fold-${foldIdx}`}
               dataKey={`fold${foldIdx}`}
+              name={`fold${foldIdx}`}
               stackId="folds"
               fill={getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default')}
               radius={foldIdx === uniqueFolds[uniqueFolds.length - 1] ? [2, 2, 0, 0] : undefined}
@@ -1343,14 +1398,16 @@ export function YHistogramV2({
               {...ANIMATION_CONFIG}
             >
               {stackedData.map((entry, index) => {
-                const isSelected = selectedBins.has(index);
+                // Check if this segment has selected samples (segment-level highlighting)
+                const segmentSamples = (entry[`fold${foldIdx}Samples`] as number[] | undefined) ?? [];
+                const hasSelectedInSegment = segmentSamples.some(s => selectedSamples.has(s));
                 const isHovered = hoveredBin === index;
                 return (
                   <Cell
                     key={`fold-${foldIdx}-${index}`}
                     fill={getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default')}
-                    stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                    strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                    stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                    strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                   />
                 );
               })}
@@ -1392,12 +1449,13 @@ export function YHistogramV2({
         samples: bin.samples,
         label: bin.label,
       };
-      // Count samples per category in this bin
+      // Count samples per category in this bin and store sample indices
       metadataCategories.forEach((category, catIdx) => {
-        const count = bin.samples.filter(sampleIdx => String(metadataValues[sampleIdx]) === category).length;
-        row[`cat${catIdx}`] = getYValue(count);
-        row[`cat${catIdx}Count`] = count;
+        const categorySamples = bin.samples.filter(sampleIdx => String(metadataValues[sampleIdx]) === category);
+        row[`cat${catIdx}`] = getYValue(categorySamples.length);
+        row[`cat${catIdx}Count`] = categorySamples.length;
         row[`cat${catIdx}Label`] = category;
+        row[`cat${catIdx}Samples`] = categorySamples;
       });
       return row;
     });
@@ -1407,44 +1465,77 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked metadata chart - uses unified stacked bar selection
+    // Unified mouseUp handler - handles EVERYTHING: drag selection, bar clicks, segment clicks
     const handleStackedMetadataMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
-      // Check drag selection first
+      // 1. Check drag selection first
       if (handleDragSelection(e)) {
         return;
       }
       setRangeSelection({ start: null, end: null, isSelecting: false });
 
+      // 2. Check if click was on a bar
       const target = e?.target as SVGElement | null;
       const isBar = target?.classList?.contains('recharts-rectangle') ||
         target?.closest('.recharts-bar-rectangle') !== null;
 
-      const payload = state?.activePayload;
-      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
-        const clickedData = payload[0].payload as typeof stackedData[0];
-        const samples = clickedData?.samples as number[] | undefined;
-        if (samples?.length) {
-          // Detect which metadata category segment was clicked
-          const parentBar = target?.closest('.recharts-bar');
-          let segmentSamples = samples;
+      if (!isBar) {
+        // Background click - clear selection
+        if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+          selectionCtx.clear();
+        }
+        return;
+      }
 
-          if (parentBar && metadataKey && metadata?.[metadataKey]) {
-            const metadataValues = metadata[metadataKey];
-            // Find which Bar in the stack was clicked (order matches uniqueMetaCategories)
-            const allBars = Array.from(parentBar.parentElement?.querySelectorAll('.recharts-bar') ?? []);
-            const barIndex = allBars.indexOf(parentBar);
-            if (barIndex >= 0 && barIndex < uniqueMetaCategories.length) {
-              const clickedCategory = uniqueMetaCategories[barIndex];
-              segmentSamples = samples.filter(s => String(metadataValues[s]) === clickedCategory);
-            }
-          }
+      // 3. Get clicked bar data from Recharts state
+      const activeIndex = state?.activeTooltipIndex;
+      if (activeIndex === undefined || activeIndex < 0 || activeIndex >= stackedData.length) {
+        return;
+      }
+      const entry = stackedData[activeIndex];
+      if (!entry || !selectionCtx) return;
 
-          // Use unified handler with stacked bar support
-          handleStackedBarSelection(samples, segmentSamples, e, selectionCtx);
+      // 4. Detect which category segment was clicked
+      // Find the actual bar rect - if target is the ReferenceArea overlay, look underneath it
+      let barRect: Element | null = null;
+      if (e && target) {
+        if (target.classList.contains('recharts-reference-area-rect')) {
+          const elements = document.elementsFromPoint(e.clientX, e.clientY);
+          barRect = elements.find(el =>
+            el.classList.contains('recharts-rectangle') &&
+            !el.classList.contains('recharts-reference-area-rect')
+          ) || null;
+        } else if (target.tagName.toLowerCase() === 'rect') {
+          barRect = target;
+        } else {
+          barRect = target.closest('rect');
         }
       }
+
+      const clickedFill = barRect?.getAttribute('fill') || '';
+      const palette = globalColorConfig?.categoricalPalette ?? 'default';
+
+      // Find which category has this color
+      let clickedCatIdx = 0;
+      for (let catIdx = 0; catIdx < metadataCategories.length; catIdx++) {
+        if (getCategoricalColor(catIdx, palette) === clickedFill) {
+          clickedCatIdx = catIdx;
+          break;
+        }
+      }
+
+      const barSamples = entry.samples as number[];
+      const segmentSamples = (entry[`cat${clickedCatIdx}Samples`] as number[] | undefined) ?? [];
+
+      // 5. Apply 3-click selection logic
+      const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+      const action = computeStackedBarAction(
+        { barIndices: barSamples, segmentIndices: segmentSamples },
+        selectionCtx.selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(selectionCtx, action);
     };
 
     return (
@@ -1540,14 +1631,16 @@ export function YHistogramV2({
               {...ANIMATION_CONFIG}
             >
               {stackedData.map((entry, index) => {
-                const isSelected = selectedBins.has(index);
+                // Check if this segment has selected samples (segment-level highlighting)
+                const segmentSamples = (entry[`cat${catIdx}Samples`] as number[] | undefined) ?? [];
+                const hasSelectedInSegment = segmentSamples.some(s => selectedSamples.has(s));
                 const isHovered = hoveredBin === index;
                 return (
                   <Cell
                     key={`cat-${catIdx}-${index}`}
                     fill={getCategoricalColor(catIdx, globalColorConfig?.categoricalPalette ?? 'default')}
-                    stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                    strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                    stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                    strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                   />
                 );
               })}
@@ -1575,18 +1668,20 @@ export function YHistogramV2({
   const renderStackedBySelection = () => {
     // Transform data for selection stacking
     const stackedData = histogramData.map(bin => {
-      const selectedCount = bin.samples.filter(s => selectedSamples.has(s)).length;
-      const unselectedCount = bin.count - selectedCount;
+      const selectedSamplesInBin = bin.samples.filter(s => selectedSamples.has(s));
+      const unselectedSamplesInBin = bin.samples.filter(s => !selectedSamples.has(s));
       return {
         binCenter: bin.binCenter,
         binStart: bin.binStart,
         binEnd: bin.binEnd,
         samples: bin.samples,
         label: bin.label,
-        selected: getYValue(selectedCount),
-        unselected: getYValue(unselectedCount),
-        selectedCount,
-        unselectedCount,
+        selected: getYValue(selectedSamplesInBin.length),
+        unselected: getYValue(unselectedSamplesInBin.length),
+        selectedCount: selectedSamplesInBin.length,
+        unselectedCount: unselectedSamplesInBin.length,
+        selectedSamples: selectedSamplesInBin,
+        unselectedSamples: unselectedSamplesInBin,
       };
     });
 
@@ -1595,45 +1690,69 @@ export function YHistogramV2({
       ? { min: Math.min(rangeSelection.start, rangeSelection.end), max: Math.max(rangeSelection.start, rangeSelection.end) }
       : null;
 
-    // Handle click for stacked selection chart - uses unified stacked bar selection
+    // Handle mouseUp for drag selection and background clicks only
+    // Unified mouseUp handler - handles EVERYTHING: drag selection, bar clicks, segment clicks
     const handleStackedSelectionMouseUp = (state: RechartsMouseEvent) => {
       const e = lastMouseEventRef.current;
 
-      // Check drag selection first
+      // 1. Check drag selection first
       if (handleDragSelection(e)) {
         return;
       }
       setRangeSelection({ start: null, end: null, isSelecting: false });
 
+      // 2. Check if click was on a bar
       const target = e?.target as SVGElement | null;
       const isBar = target?.classList?.contains('recharts-rectangle') ||
         target?.closest('.recharts-bar-rectangle') !== null;
 
-      const payload = state?.activePayload;
-      if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
-        const clickedData = payload[0].payload as typeof stackedData[0];
-        if (clickedData?.samples?.length) {
-          // Detect which segment (selected/unselected) was clicked
-          const parentBar = target?.closest('.recharts-bar');
-          let segmentSamples = clickedData.samples;
+      if (!isBar) {
+        // Background click - clear selection
+        if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
+          selectionCtx.clear();
+        }
+        return;
+      }
 
-          if (parentBar) {
-            // Find which Bar in the stack was clicked (unselected=0, selected=1)
-            const allBars = Array.from(parentBar.parentElement?.querySelectorAll('.recharts-bar') ?? []);
-            const barIndex = allBars.indexOf(parentBar);
-            if (barIndex === 0) {
-              // Unselected segment
-              segmentSamples = clickedData.samples.filter(s => !selectedSamples.has(s));
-            } else if (barIndex === 1) {
-              // Selected segment
-              segmentSamples = clickedData.samples.filter(s => selectedSamples.has(s));
-            }
-          }
+      // 3. Get clicked bar data from Recharts state
+      const activeIndex = state?.activeTooltipIndex;
+      if (activeIndex === undefined || activeIndex < 0 || activeIndex >= stackedData.length) {
+        return;
+      }
+      const entry = stackedData[activeIndex];
+      if (!entry || !selectionCtx) return;
 
-          // Use unified handler with stacked bar support
-          handleStackedBarSelection(clickedData.samples, segmentSamples, e, selectionCtx);
+      // 4. Detect which segment was clicked
+      // Find the actual bar rect - if target is the ReferenceArea overlay, look underneath it
+      let barRect: Element | null = null;
+      if (e && target) {
+        if (target.classList.contains('recharts-reference-area-rect')) {
+          const elements = document.elementsFromPoint(e.clientX, e.clientY);
+          barRect = elements.find(el =>
+            el.classList.contains('recharts-rectangle') &&
+            !el.classList.contains('recharts-reference-area-rect')
+          ) || null;
+        } else if (target.tagName.toLowerCase() === 'rect') {
+          barRect = target;
+        } else {
+          barRect = target.closest('rect');
         }
       }
+
+      const clickedFill = barRect?.getAttribute('fill') || '';
+
+      // Determine segment based on fill color (selected uses HIGHLIGHT_COLORS.selected)
+      const isSelectedSegment = clickedFill === HIGHLIGHT_COLORS.selected;
+      const segmentSamples = isSelectedSegment ? entry.selectedSamples : entry.unselectedSamples;
+
+      // 5. Apply 3-click selection logic
+      const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
+      const action = computeStackedBarAction(
+        { barIndices: entry.samples, segmentIndices: segmentSamples },
+        selectionCtx.selectedSamples,
+        modifiers
+      );
+      executeSelectionAction(selectionCtx, action);
     };
 
     return (
@@ -1721,14 +1840,16 @@ export function YHistogramV2({
             isAnimationActive={false}
           >
             {stackedData.map((entry, index) => {
-              const isSelected = selectedBins.has(index);
+              // For the "unselected" segment, show border if any of its samples are now selected
+              // (This can happen when click selects the whole bar first, then segment drill-down)
+              const hasSelectedInSegment = entry.unselectedSamples.some(s => selectedSamples.has(s));
               const isHovered = hoveredBin === index;
               return (
                 <Cell
                   key={`unselected-${index}`}
                   fill="hsl(var(--muted-foreground) / 0.4)"
-                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                  stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                 />
               );
             })}
@@ -1743,14 +1864,15 @@ export function YHistogramV2({
             isAnimationActive={false}
           >
             {stackedData.map((entry, index) => {
-              const isSelected = selectedBins.has(index);
+              // For the "selected" segment, show border if any of its samples are selected
+              const hasSelectedInSegment = entry.selectedSamples.some(s => selectedSamples.has(s));
               const isHovered = hoveredBin === index;
               return (
                 <Cell
                   key={`selected-${index}`}
                   fill={HIGHLIGHT_COLORS.selected}
-                  stroke={isSelected ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                  strokeWidth={isSelected ? 2.5 : isHovered ? 2 : 0}
+                  stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                 />
               );
             })}

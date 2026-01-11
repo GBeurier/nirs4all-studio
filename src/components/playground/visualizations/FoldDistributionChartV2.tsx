@@ -26,6 +26,7 @@ import {
   Legend,
   ErrorBar,
   ReferenceLine,
+  ReferenceArea,
 } from 'recharts';
 import {
   LayoutGrid,
@@ -233,6 +234,15 @@ export function FoldDistributionChartV2({
   // Track which partition was clicked in THIS chart (for stroke display)
   // This is separate from selectedSamples because in k-fold CV, training sets overlap
   const [clickedPartitionId, setClickedPartitionId] = useState<string | null>(null);
+
+  // Drag selection state
+  const [rangeSelection, setRangeSelection] = useState<{
+    start: number | null;
+    end: number | null;
+    isSelecting: boolean;
+  }>({ start: null, end: null, isSelecting: false });
+  const lastMouseEventRef = useRef<React.MouseEvent | null>(null);
+  const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // SelectionContext integration - always call hook, conditionally use result
   const selectionHook = useSelection();
@@ -851,6 +861,85 @@ export function FoldDistributionChartV2({
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
+  // --- Drag Selection Handlers ---
+
+  /** Detect if mouse moved significantly (drag) vs click */
+  const isDrag = useCallback((e: React.MouseEvent | null): boolean => {
+    if (!e || !mouseDownPosRef.current) return false;
+    const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
+    const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
+    return dx > 5 || dy > 5;
+  }, []);
+
+  /** Handle drag selection and return true if handled, false if it's a click */
+  const handleDragSelection = useCallback((e: React.MouseEvent | null): boolean => {
+    if (!e || !rangeSelection.isSelecting) return false;
+    if (!isDrag(e)) return false;
+
+    const { start, end } = rangeSelection;
+    if (start === null || end === null || start === end) {
+      setRangeSelection({ start: null, end: null, isSelecting: false });
+      return false;
+    }
+
+    // Collect all samples in the range
+    const minIdx = Math.min(start, end);
+    const maxIdx = Math.max(start, end);
+    const indicesToSelect = new Set<number>();
+    partitionBarData.slice(minIdx, maxIdx + 1).forEach(entry => {
+      entry.indices.forEach(i => indicesToSelect.add(i));
+    });
+
+    if (indicesToSelect.size > 0 && selectionCtx) {
+      const modifiers = extractModifiers(e);
+      if (modifiers.shift) {
+        selectionCtx.add([...indicesToSelect]);
+      } else if (modifiers.ctrl) {
+        selectionCtx.toggle([...indicesToSelect]);
+      } else {
+        selectionCtx.select([...indicesToSelect]);
+      }
+      setClickedPartitionId(null);
+    }
+
+    setRangeSelection({ start: null, end: null, isSelecting: false });
+    return true;
+  }, [rangeSelection, isDrag, partitionBarData, selectionCtx]);
+
+  /** Handle chart mouse down - start potential drag */
+  const handleChartMouseDown = useCallback((state: { activeTooltipIndex?: number }) => {
+    const e = lastMouseEventRef.current;
+    if (e) {
+      mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
+    }
+    if (state?.activeTooltipIndex !== undefined && state.activeTooltipIndex >= 0) {
+      setRangeSelection({ start: state.activeTooltipIndex, end: state.activeTooltipIndex, isSelecting: true });
+    }
+  }, []);
+
+  /** Handle chart mouse move - update drag range */
+  const handleChartMouseMove = useCallback((state: { activeTooltipIndex?: number }) => {
+    if (rangeSelection.isSelecting && state?.activeTooltipIndex !== undefined && state.activeTooltipIndex >= 0) {
+      setRangeSelection(prev => ({ ...prev, end: state.activeTooltipIndex! }));
+    }
+  }, [rangeSelection.isSelecting]);
+
+  /** Handle chart mouse up - finalize drag or handle click */
+  const handleChartMouseUp = useCallback((state: { activeTooltipIndex?: number }) => {
+    const e = lastMouseEventRef.current;
+
+    // 1. Check drag selection first
+    if (handleDragSelection(e)) {
+      mouseDownPosRef.current = null;
+      return;
+    }
+    setRangeSelection({ start: null, end: null, isSelecting: false });
+    mouseDownPosRef.current = null;
+
+    // 2. If not a drag, handle click - let onClick on Bar handle it
+    // (Bar onClick will fire after this, so we don't need to handle clicks here)
+  }, [handleDragSelection]);
+
   /**
    * Handle partition bar click with unified selection model (Phase 5: Unified Selection)
    *
@@ -982,6 +1071,15 @@ export function FoldDistributionChartV2({
             data={partitionBarData}
             margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
             layout={config.barOrientation === 'horizontal' ? 'vertical' : 'horizontal'}
+            onMouseDown={handleChartMouseDown}
+            onMouseMove={(state, e) => {
+              if (e) lastMouseEventRef.current = e as unknown as React.MouseEvent;
+              handleChartMouseMove(state as { activeTooltipIndex?: number });
+            }}
+            onMouseUp={(state, e) => {
+              if (e) lastMouseEventRef.current = e as unknown as React.MouseEvent;
+              handleChartMouseUp(state as { activeTooltipIndex?: number });
+            }}
           >
             <CartesianGrid
               strokeDasharray={CHART_THEME.gridDasharray}
@@ -1142,11 +1240,15 @@ export function FoldDistributionChartV2({
             }}
             {...ANIMATION_CONFIG}
           >
-            {partitionBarData.map((entry, idx) => {
+            {partitionBarData.map((entry) => {
               // Determine highlighting based on both fold selection AND sample selection
               const hasSelection = selectedSamples.size > 0;
               const hasSelectedSamplesInPartition = hasSelection && entry.indices.some(i => selectedSamples.has(i));
               const isFoldSelected = selectedFold !== null && selectedFold === entry.foldIndex;
+
+              // Check if this SEGMENT contains selected samples (for segment-level highlighting)
+              const segmentSamples = entry.segmentIndices[segKey] ?? [];
+              const hasSelectedSamplesInSegment = hasSelection && segmentSamples.some(i => selectedSamples.has(i));
 
               // Check if this partition was the one clicked in THIS chart
               const isThisPartitionClicked = clickedPartitionId === entry.partitionId;
@@ -1161,10 +1263,11 @@ export function FoldDistributionChartV2({
                 ? getPartitionBarColor(entry, isHighlighted)
                 : getPartitionSegmentColor(segKey, entry);
 
-              // Show stroke when:
-              // - This partition was clicked in THIS chart, OR
-              // - Selection came from ANOTHER chart AND this partition contains selected samples
-              const showStroke = isThisPartitionClicked || (selectionFromOtherChart && hasSelectedSamplesInPartition);
+              // Show stroke when THIS SEGMENT contains selected samples:
+              // - This partition was clicked in THIS chart AND this segment has selected samples, OR
+              // - Selection came from ANOTHER chart AND this segment contains selected samples
+              const showStroke = hasSelectedSamplesInSegment &&
+                (isThisPartitionClicked || selectionFromOtherChart);
 
               return (
                 <Cell
@@ -1178,6 +1281,18 @@ export function FoldDistributionChartV2({
             })}
           </Bar>
         ))}
+
+        {/* Drag selection visual overlay */}
+        {rangeSelection.isSelecting && rangeSelection.start !== null && rangeSelection.end !== null && (
+          <ReferenceArea
+            x1={partitionBarData[Math.min(rangeSelection.start, rangeSelection.end)]?.label}
+            x2={partitionBarData[Math.max(rangeSelection.start, rangeSelection.end)]?.label}
+            fill="hsl(var(--primary))"
+            fillOpacity={0.15}
+            stroke="hsl(var(--primary))"
+            strokeOpacity={0.5}
+          />
+        )}
       </BarChart>
     </ResponsiveContainer>
       </div>
