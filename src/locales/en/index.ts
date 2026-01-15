@@ -132,6 +132,11 @@ const en = {
         title: "Reduce animations",
         description: "Minimize motion for accessibility or performance",
       },
+      // Zoom
+      zoom: {
+        title: "UI Zoom",
+        description: "Adjust the overall interface scale for better readability",
+      },
       // Language
       language: {
         title: "Language",
@@ -791,6 +796,10 @@ const en = {
       title: "Residual Analysis",
       description: "Analyze prediction residuals and identify outliers",
     },
+    transfer: {
+      title: "Transfer Analysis",
+      description: "Evaluate preprocessing impact on inter-dataset distances for calibration transfer",
+    },
     gettingStarted: {
       title: "Getting Started with Analysis",
       description: "Analysis tools help you understand your spectral data better. Start with PCA to explore patterns, then use variable importance to identify key wavelengths. Compare models to find the best approach for your application.",
@@ -801,6 +810,64 @@ const en = {
     empty: {
       description: "Run experiments first to generate data for analysis. Your results will appear here once you have completed runs.",
       viewRuns: "View Runs",
+    },
+  },
+
+  // ============= SHAP Variable Importance =============
+  shap: {
+    title: "Variable Importance",
+    computing: "Computing...",
+    compute: "Compute Explanations",
+    selectModel: "Select a model to explain",
+    loadingModels: "Loading models...",
+    noRuns: "No completed runs with models found",
+    noBundles: "No exported bundles found",
+    noResults: "No Results Yet",
+    instructions: "Select a trained model and dataset, then click \"Compute Explanations\" to analyze which wavelengths are most important for predictions.",
+    features: {
+      spectral: "Spectral importance",
+      beeswarm: "SHAP distribution",
+      waterfall: "Sample breakdown",
+    },
+    form: {
+      modelSource: "Model Source",
+      fromRun: "From Training Run",
+      fromBundle: "From Exported Bundle",
+      model: "Model",
+      dataset: "Dataset to Explain",
+      selectDataset: "Select dataset...",
+      partition: "Partition",
+      partitionHelp: "Use the test partition for unbiased importance estimates",
+      explainerType: "Explainer Type",
+      explainerHelp: "Auto will select the best explainer based on your model type",
+      advancedOptions: "Advanced Options",
+      sampleLimit: "Sample Limit",
+      sampleLimitHelp: "0 = use all samples (slower)",
+      binSize: "Bin Size",
+      binStride: "Bin Stride",
+      aggregation: "Aggregation",
+    },
+    results: {
+      title: "SHAP Analysis Results",
+      samples: "samples",
+    },
+    tabs: {
+      spectral: "Spectral",
+      beeswarm: "Beeswarm",
+      waterfall: "Waterfall",
+      ranking: "Ranking",
+    },
+    spectral: {
+      description: "Important wavelength regions highlighted on the mean spectrum. Darker colors indicate higher importance.",
+    },
+    beeswarm: {
+      description: "Distribution of SHAP values across samples. Each point is a sample, colored by feature value.",
+    },
+    waterfall: {
+      description: "How features contribute to the prediction for a single sample.",
+    },
+    ranking: {
+      description: "Top wavelength regions ranked by mean absolute SHAP value.",
     },
   },
 

@@ -144,10 +144,10 @@ launch_web_dev() {
     check_node_modules
     stop_servers
 
-    # Start backend
+    # Start backend with multiple workers for better concurrency
     echo -e "${BLUE}Starting backend (FastAPI)...${NC}"
     source .venv/bin/activate
-    python main.py > /tmp/nirs4all_backend.log 2>&1 &
+    .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port $PORT_BACKEND --workers 2 --log-level warning > /tmp/nirs4all_backend.log 2>&1 &
     BACKEND_PID=$!
     echo -e "${GREEN}✓ Backend started (PID: $BACKEND_PID)${NC}"
 
@@ -228,22 +228,44 @@ launch_desktop_dev() {
     check_node_modules
     stop_servers
 
-    # Start backend
-    echo -e "${BLUE}Starting backend (FastAPI)...${NC}"
     source .venv/bin/activate
-    python main.py > /tmp/nirs4all_backend.log 2>&1 &
+
+    # Start backend and frontend in parallel for faster startup
+    echo -e "${BLUE}Starting backend (FastAPI) and frontend (Vite) in parallel...${NC}"
+
+    # Set desktop mode for optimizations (skip CORS, etc.)
+    export NIRS4ALL_DESKTOP=true
+
+    # Start backend with multiple workers
+    .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port $PORT_BACKEND --workers 2 --log-level warning > /tmp/nirs4all_backend.log 2>&1 &
     BACKEND_PID=$!
-    echo -e "${GREEN}✓ Backend started (PID: $BACKEND_PID)${NC}"
 
-    wait_for_backend
-
-    # Start Vite dev server
-    echo -e "${BLUE}Starting frontend (Vite)...${NC}"
+    # Start frontend immediately (don't wait for backend)
     npm run dev > /tmp/nirs4all_frontend.log 2>&1 &
     FRONTEND_PID=$!
+
+    echo -e "${GREEN}✓ Backend started (PID: $BACKEND_PID)${NC}"
     echo -e "${GREEN}✓ Frontend started (PID: $FRONTEND_PID)${NC}"
 
-    wait_for_frontend
+    # Wait for both servers in parallel
+    echo -e "${BLUE}Waiting for servers to be ready...${NC}"
+    backend_ready=false
+    frontend_ready=false
+
+    for i in {1..30}; do
+        if ! $backend_ready && curl -s "http://127.0.0.1:$PORT_BACKEND/api/health" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ Backend ready${NC}"
+            backend_ready=true
+        fi
+        if ! $frontend_ready && curl -s "http://127.0.0.1:$PORT_FRONTEND" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ Frontend ready${NC}"
+            frontend_ready=true
+        fi
+        if $backend_ready && $frontend_ready; then
+            break
+        fi
+        sleep 0.5
+    done
 
     # Launch desktop window
     echo -e "${BLUE}Launching desktop window...${NC}"

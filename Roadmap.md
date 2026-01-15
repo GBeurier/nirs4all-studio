@@ -53,33 +53,32 @@ the page reload dataset each time, it should be cached
 
 
 **Playground**
+- all possible view opened by default
+- reup maximize, minimize
+
+- step inverted; it affects preprocessed instead of original (rename step, change reference)
+- single and selection area should be by default together. on click, select one, on click drag select area. Option only for non squared area
+- OUTLIERS !
+- export images does not work. It should have a popup with properties for the export (extension, title, name, etc.)
+
+- desktop is very slow
 - Ensure CACHE on transformations and dataviz is working: cache on processing not working (at least in desktop)
 - the page reload dataset each time, it should be cached
 - Global filter of sample (quartiles, stf max min, all) and local filter for spectra and pca
-- OUTLIERS !
-- step inverted; it affects preprocessed instead of original (rename step, change reference)
 - make text of chart component unselectable. They are selected when drawing it's annoying
-- better top ux menu - separate purpose (selection, coloration, views, reference, save/load) - autoresize in two lines if screen is too small
-- select inside stacked bars
-- single and selection area should be by default together. on click, select one, on click drag select area. Option only for non squared area
-- reup maximize, minimize
-- all possible view opened by default
-- Selection of reference (not final) should be by default raw with a combo in menu bar to choose another step
-- organize global menu to distinguish, selection icon, charts icon, reference combo, reference Dataset/step, color
-- Add save configuration (pipeline, views, options) and load. Just a name and a list for now
-- check export
-- add export to pipeline editor (and vice-versa) / import from or export to in pipeline editor
-- why diff here ???
-- export images does not work. It should have a popup with properties for the export (extension, title, name, etc.)
-- I should be possible to select sub bar in stacked bars
-- the zoom on
-- Finish / clean / fix / review EXPORT GLOBAL
-- Review the coloration by metadata. Some columns are bugged
 - add different level of resets (dataset, pipeline, views, views params)
-- Why warning ("one splitter only allowed") when opening view ? > I think there is a default splitter. Remove it.
-- desktop is very slow
 - maybe same in pipeline > the first split should generate test not fold. Verify !
-- the force colorations do not work. Classification forced on regression data bug in many view (no color variation)
+
+- Selection of reference (not final) should be by default raw with a combo in menu bar to choose another step
+- Add save configuration (pipeline, views, options) and load. Just a name and a list for now
+- Finish / clean / fix / review EXPORT GLOBAL
+- add export to pipeline editor (and vice-versa) / import from or export to in pipeline editor
+- Why warning ("one splitter only allowed") when opening view ? > I think there is a default splitter. Remove it.
+- verify coloration, warning on classification
+- Review the coloration by metadata. Some columns are bugged
+
+- the zoom on
+- why diff here ???
 
 **Folds**
 - hover tooltip
@@ -96,6 +95,7 @@ the page reload dataset each time, it should be cached
 - in selected color, "Keep color"
 - deactivate tooltip during panning (and click)
 - add colormap for quantiles drawing
+- some views in webgl don't have the zoom/pan
 
 **PCA**
 - can sitch reference / final / both
@@ -103,6 +103,7 @@ the page reload dataset each time, it should be cached
 - verify on hover same popup as canvas in regl and webgl >>> Remove regl ?
 - 3d: show grid useless,
 - Canvas rotation and selection control should be the same as webgl.
+- Add skewness and kurtosis as metrics for PCA/Embedding
 
 **Diff**
 - Global filters such as selected only does not update the view
@@ -116,9 +117,6 @@ the page reload dataset each time, it should be cached
 **target histogram**
 - combobox to icons for number of bars
 - allow to choose targerts if multiple targets
-
-
-
 
 **Settings**
 - Add chinese

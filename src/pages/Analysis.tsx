@@ -1,6 +1,7 @@
 import { motion } from "@/lib/motion";
 import { useTranslation } from "react-i18next";
-import { Beaker, BarChart3, TrendingUp, Layers, Settings2, type LucideIcon } from "lucide-react";
+import { Beaker, BarChart3, TrendingUp, Layers, Settings2, ArrowLeftRight, type LucideIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,13 @@ interface AnalysisToolProps {
 }
 
 const analysisTools: AnalysisToolProps[] = [
+  {
+    titleKey: "analysis.transfer.title",
+    descriptionKey: "analysis.transfer.description",
+    icon: ArrowLeftRight,
+    status: "available",
+    href: "/analysis/transfer",
+  },
   {
     titleKey: "analysis.pca.title",
     descriptionKey: "analysis.pca.description",
@@ -57,10 +65,21 @@ const analysisTools: AnalysisToolProps[] = [
   },
 ];
 
-function AnalysisToolCard({ titleKey, descriptionKey, icon: Icon, status }: AnalysisToolProps) {
+function AnalysisToolCard({ titleKey, descriptionKey, icon: Icon, status, href }: AnalysisToolProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    if (status !== "coming-soon" && href) {
+      navigate(href);
+    }
+  };
+
   return (
-    <Card className="step-card cursor-pointer transition-all duration-300 hover:border-primary/40">
+    <Card
+      className="step-card cursor-pointer transition-all duration-300 hover:border-primary/40"
+      onClick={handleClick}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">

@@ -1,12 +1,12 @@
 /**
- * SynthesisPreviewChart
+ * SpectraChart - Main spectra visualization component
  *
- * A simple spectra chart for displaying synthetic NIRS data preview.
- * Uses Recharts for visualization with support for:
- * - Multiple spectra lines with configurable opacity
- * - Mean spectrum overlay
- * - Target coloring (regression/classification)
- * - Responsive layout
+ * A responsive Recharts-based visualization for synthetic NIRS data.
+ * Features:
+ * - Multiple spectra lines with target-based coloring
+ * - Optional mean spectrum overlay
+ * - Optional standard deviation band
+ * - Configurable appearance
  */
 
 import { useMemo } from "react";
@@ -18,14 +18,57 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
-  Legend,
   Area,
+  type TooltipProps,
 } from "recharts";
-import type { PreviewData } from "./contexts";
+import type { PreviewData } from "../contexts";
+import { cn } from "@/lib/utils";
 
-// ============= Types =============
+// Custom tooltip that shows only aggregate stats (not individual spectra)
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: TooltipProps<number, string>) {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
 
-interface SynthesisPreviewChartProps {
+  // Find mean, upper, lower from payload
+  const meanEntry = payload.find((p) => p.dataKey === "mean");
+  const upperEntry = payload.find((p) => p.dataKey === "upper");
+  const lowerEntry = payload.find((p) => p.dataKey === "lower");
+
+  const mean = meanEntry?.value as number | undefined;
+  const upper = upperEntry?.value as number | undefined;
+  const lower = lowerEntry?.value as number | undefined;
+
+  return (
+    <div className="bg-popover border border-border rounded-md px-3 py-2 shadow-md">
+      <div className="text-xs font-medium text-foreground mb-1">
+        {Math.round(label as number)} nm
+      </div>
+      <div className="space-y-0.5 text-xs">
+        {mean !== undefined && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Mean:</span>
+            <span className="font-mono">{mean.toFixed(4)}</span>
+          </div>
+        )}
+        {upper !== undefined && lower !== undefined && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Range:</span>
+            <span className="font-mono">
+              {lower.toFixed(3)} - {upper.toFixed(3)}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface SpectraChartProps {
   data: PreviewData;
   showMean?: boolean;
   showStdBand?: boolean;
@@ -33,17 +76,13 @@ interface SynthesisPreviewChartProps {
   className?: string;
 }
 
-// ============= Color Utilities =============
-
 function getColorForTarget(
   target: number,
   targetType: "regression" | "classification",
   minTarget: number,
-  maxTarget: number,
-  classCount?: number
+  maxTarget: number
 ): string {
   if (targetType === "classification") {
-    // Use categorical colors for classification
     const classColors = [
       "#3b82f6", // blue
       "#ef4444", // red
@@ -64,7 +103,6 @@ function getColorForTarget(
       ? (target - minTarget) / (maxTarget - minTarget)
       : 0.5;
 
-  // Interpolate between blue (0) and red (1)
   const r = Math.round(normalizedTarget * 239 + (1 - normalizedTarget) * 59);
   const g = Math.round(normalizedTarget * 68 + (1 - normalizedTarget) * 130);
   const b = Math.round(normalizedTarget * 68 + (1 - normalizedTarget) * 246);
@@ -72,27 +110,23 @@ function getColorForTarget(
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-// ============= Component =============
-
-export function SynthesisPreviewChart({
+export function SpectraChart({
   data,
   showMean = true,
   showStdBand = true,
   maxSpectraLines = 50,
   className,
-}: SynthesisPreviewChartProps) {
-  // Process data for chart
+}: SpectraChartProps) {
   const chartData = useMemo(() => {
     const { spectra, wavelengths, targets, target_type } = data;
 
     if (spectra.length === 0 || wavelengths.length === 0) {
-      return { points: [], meanLine: [], spectraLines: [] };
+      return { points: [], spectraLines: [] };
     }
 
     const numWavelengths = wavelengths.length;
     const numSpectra = spectra.length;
 
-    // Calculate target range for color mapping
     const minTarget = Math.min(...targets);
     const maxTarget = Math.max(...targets);
 
@@ -116,7 +150,6 @@ export function SynthesisPreviewChart({
       stds.push(std);
     }
 
-    // Build data points for mean/std
     const points = wavelengths.map((wl, i) => ({
       wavelength: wl,
       mean: means[i],
@@ -124,42 +157,35 @@ export function SynthesisPreviewChart({
       lower: means[i] - stds[i],
     }));
 
-    // Sample spectra for individual lines (to avoid overwhelming the chart)
+    // Sample spectra for individual lines
     const sampleIndices: number[] = [];
     if (numSpectra <= maxSpectraLines) {
       for (let i = 0; i < numSpectra; i++) {
         sampleIndices.push(i);
       }
     } else {
-      // Stratified sampling based on target values
       const step = numSpectra / maxSpectraLines;
       for (let i = 0; i < maxSpectraLines; i++) {
         sampleIndices.push(Math.floor(i * step));
       }
     }
 
-    // Build spectra lines data
     const spectraLines = sampleIndices.map((idx) => ({
       index: idx,
       target: targets[idx],
-      color: getColorForTarget(
-        targets[idx],
-        target_type,
-        minTarget,
-        maxTarget
-      ),
+      color: getColorForTarget(targets[idx], target_type, minTarget, maxTarget),
       data: wavelengths.map((wl, w) => ({
         wavelength: wl,
         value: spectra[idx][w],
       })),
     }));
 
-    return { points, spectraLines, minTarget, maxTarget };
+    return { points, spectraLines };
   }, [data, maxSpectraLines]);
 
   if (chartData.points.length === 0) {
     return (
-      <div className={`flex items-center justify-center h-full ${className}`}>
+      <div className={cn("flex items-center justify-center h-full", className)}>
         <p className="text-muted-foreground">No data to display</p>
       </div>
     );
@@ -174,7 +200,6 @@ export function SynthesisPreviewChart({
       lower: point.lower,
     };
 
-    // Add individual spectra values
     chartData.spectraLines.forEach((spectrum, sIdx) => {
       entry[`spectrum_${sIdx}`] = spectrum.data[idx].value;
     });
@@ -183,13 +208,17 @@ export function SynthesisPreviewChart({
   });
 
   return (
-    <div className={className}>
+    <div className={cn("w-full h-full", className)}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={mergedData}
-          margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+          margin={{ top: 10, right: 20, left: 0, bottom: 30 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+            opacity={0.5}
+          />
           <XAxis
             dataKey="wavelength"
             type="number"
@@ -200,7 +229,7 @@ export function SynthesisPreviewChart({
             label={{
               value: "Wavelength (nm)",
               position: "insideBottom",
-              offset: -5,
+              offset: -20,
               fontSize: 11,
               fill: "hsl(var(--muted-foreground))",
             }}
@@ -217,16 +246,7 @@ export function SynthesisPreviewChart({
               fill: "hsl(var(--muted-foreground))",
             }}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--popover))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "6px",
-              fontSize: 12,
-            }}
-            labelFormatter={(label) => `Wavelength: ${Math.round(label as number)} nm`}
-            formatter={(value: number) => [value.toFixed(4), "Absorbance"]}
-          />
+          <Tooltip content={<CustomTooltip />} />
 
           {/* Individual spectra lines */}
           {chartData.spectraLines.map((spectrum, idx) => (

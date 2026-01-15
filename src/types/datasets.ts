@@ -55,6 +55,122 @@ export interface ParsingOptions {
   sheet_name?: string;
   /** Skip rows at start */
   skip_rows?: number;
+  /** File encoding (utf-8, latin-1, cp1252, iso-8859-1) */
+  encoding?: string;
+}
+
+// ============= Advanced Configuration Types =============
+
+/**
+ * Partition method for single-file datasets
+ */
+export type PartitionMethod = "files" | "column" | "percentage" | "stratified" | "index";
+
+/**
+ * Partition configuration for train/test splitting
+ */
+export interface PartitionConfig {
+  method: PartitionMethod;
+  /** Column name for column-based partitioning */
+  column?: string;
+  /** Values indicating training data */
+  train_values?: string[];
+  /** Values indicating test data */
+  test_values?: string[];
+  /** Training percentage (0-100) for percentage-based split */
+  train_percent?: number;
+  /** Whether to shuffle before splitting */
+  shuffle?: boolean;
+  /** Random seed for reproducibility */
+  random_state?: number;
+  /** Column to stratify by */
+  stratify_column?: string;
+  /** Explicit training indices */
+  train_indices?: number[];
+  /** Explicit test indices */
+  test_indices?: number[];
+}
+
+/**
+ * Fold source type for cross-validation
+ */
+export type FoldSource = "none" | "column" | "file" | "inline";
+
+/**
+ * Single fold definition
+ */
+export interface FoldDefinition {
+  train: number[];
+  val: number[];
+}
+
+/**
+ * Cross-validation fold configuration
+ */
+export interface FoldConfig {
+  source: FoldSource;
+  /** Column name containing fold assignments */
+  column?: string;
+  /** Path to fold file */
+  file?: string;
+  /** Inline fold definitions */
+  folds?: FoldDefinition[];
+}
+
+/**
+ * Variation mode for feature variations
+ */
+export type VariationMode = "separate" | "concat" | "select" | "compare";
+
+/**
+ * Preprocessing provenance for variations
+ */
+export interface PreprocessingProvenance {
+  type: string;
+  description?: string;
+  software?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Single feature variation configuration
+ */
+export interface VariationConfig {
+  name: string;
+  description?: string;
+  files: DetectedFile[];
+  preprocessing_applied?: PreprocessingProvenance[];
+}
+
+/**
+ * Feature variations configuration
+ */
+export interface VariationsConfig {
+  mode: VariationMode;
+  variations: VariationConfig[];
+  /** Selected variation names when mode="select" */
+  selected_variations?: string[];
+}
+
+/**
+ * Source configuration for multi-source datasets
+ */
+export interface SourceConfig {
+  id: number;
+  name: string;
+  files: DetectedFile[];
+  params?: Partial<ParsingOptions>;
+}
+
+/**
+ * Multi-source dataset configuration
+ */
+export interface MultiSourceConfig {
+  sources: SourceConfig[];
+  /** Column to link samples across sources */
+  link_by?: string;
+  /** Whether targets file is shared across sources */
+  shared_targets?: boolean;
 }
 
 /**
@@ -428,6 +544,16 @@ export interface WizardState {
   preview: PreviewDataResponse | null;
   isLoading: boolean;
   errors: Record<string, string>;
+
+  // Advanced configuration (Phase 7 extensions)
+  /** Multi-source configuration */
+  multiSource: MultiSourceConfig | null;
+  /** Partition configuration for train/test splitting */
+  partition: PartitionConfig;
+  /** Cross-validation fold configuration */
+  folds: FoldConfig | null;
+  /** Feature variations configuration */
+  variations: VariationsConfig | null;
 }
 
 // ============= Phase 2: Versioning & Integrity Types =============

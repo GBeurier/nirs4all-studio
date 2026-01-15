@@ -162,6 +162,11 @@ export type ThemeOption = "light" | "dark" | "system";
 export type UIDensity = "compact" | "comfortable" | "spacious";
 
 /**
+ * UI zoom level options (percentage)
+ */
+export type UIZoomLevel = 75 | 80 | 90 | 100 | 110 | 125 | 150;
+
+/**
  * Application settings (local, not workspace-specific)
  */
 export interface AppSettings {
@@ -184,6 +189,7 @@ export interface GeneralSettings {
   reduce_animations: boolean;
   sidebar_collapsed: boolean;
   language?: LanguageCode;
+  zoom_level?: UIZoomLevel;
 }
 
 /**
@@ -208,6 +214,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   reduce_animations: false,
   sidebar_collapsed: false,
   language: "en",
+  zoom_level: 100,
 };
 
 /**

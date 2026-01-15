@@ -173,6 +173,7 @@ interface HistogramConfig {
 interface RechartsMouseEvent {
   activeLabel?: number | string;
   activePayload?: Array<{ payload?: BinData }>;
+  activeTooltipIndex?: number;
 }
 
 // ============= KDE Calculation =============
@@ -2131,7 +2132,7 @@ export function YHistogramV2({
 
       const payload = state?.activePayload;
       if (isBar && payload && payload.length > 0 && payload[0]?.payload) {
-        const clickedData = payload[0].payload as ClassBarData;
+        const clickedData = payload[0].payload as unknown as ClassBarData;
         if (clickedData?.samples?.length) {
           // Use unified handler for simple bar selection
           handleBarSelection(clickedData.samples, e, selectionCtx);

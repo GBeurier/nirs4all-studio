@@ -29,6 +29,7 @@ import {
   Sparkles,
   FolderPlus,
   FileArchive,
+  ZoomIn,
 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useDeveloperMode } from "@/context/DeveloperModeContext";
@@ -89,7 +90,7 @@ import {
   selectWorkspace,
   getLinkedWorkspaces,
 } from "@/api/client";
-import type { UIDensity } from "@/types/settings";
+import type { UIDensity, UIZoomLevel } from "@/types/settings";
 import type { LinkedWorkspace } from "@/types/linked-workspaces";
 
 const containerVariants = {
@@ -109,7 +110,7 @@ export default function Settings() {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { isDeveloperMode, setDeveloperMode, isLoading: isLoadingDevMode } = useDeveloperMode();
-  const { density, setDensity, reduceAnimations, setReduceAnimations, isLoading: isLoadingUI } = useUISettings();
+  const { density, setDensity, reduceAnimations, setReduceAnimations, zoomLevel, setZoomLevel, isLoading: isLoadingUI } = useUISettings();
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
@@ -278,6 +279,34 @@ export default function Settings() {
                     <ToggleGroupItem value="spacious" aria-label={t("settings.general.density.spacious")}>
                       {t("settings.general.density.spacious")}
                     </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+
+                <Separator />
+
+                {/* UI Zoom Level */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                    <label className="text-sm font-medium">{t("settings.general.zoom.title")}</label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    {t("settings.general.zoom.description")}
+                  </p>
+                  <ToggleGroup
+                    type="single"
+                    value={String(zoomLevel)}
+                    onValueChange={(value) => value && setZoomLevel(parseInt(value, 10) as UIZoomLevel)}
+                    className="justify-start flex-wrap"
+                    disabled={isLoadingUI}
+                  >
+                    <ToggleGroupItem value="75" aria-label="75%">75%</ToggleGroupItem>
+                    <ToggleGroupItem value="80" aria-label="80%">80%</ToggleGroupItem>
+                    <ToggleGroupItem value="90" aria-label="90%">90%</ToggleGroupItem>
+                    <ToggleGroupItem value="100" aria-label="100%">100%</ToggleGroupItem>
+                    <ToggleGroupItem value="110" aria-label="110%">110%</ToggleGroupItem>
+                    <ToggleGroupItem value="125" aria-label="125%">125%</ToggleGroupItem>
+                    <ToggleGroupItem value="150" aria-label="150%">150%</ToggleGroupItem>
                   </ToggleGroup>
                 </div>
 

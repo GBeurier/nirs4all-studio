@@ -314,14 +314,13 @@ class UpdateManager:
     VERSION_FILE = "version.json"
 
     def __init__(self):
-        """Initialize the update manager."""
+        """Initialize the update manager with lazy loading."""
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._settings: Optional[UpdateSettings] = None
-        self._cache: Dict[str, Any] = {}
-        self._load_settings()
-        self._load_cache()
+        self._cache: Optional[Dict[str, Any]] = None
+        # Defer disk I/O until first access for faster startup
 
     def _load_settings(self) -> None:
         """Load settings from file."""
@@ -357,6 +356,12 @@ class UpdateManager:
                 self._cache = {}
         else:
             self._cache = {}
+
+    def _ensure_cache_loaded(self) -> Dict[str, Any]:
+        """Ensure cache is loaded and return it."""
+        if self._cache is None:
+            self._load_cache()
+        return self._cache
 
     def _save_cache(self) -> None:
         """Save cache to file."""
@@ -441,10 +446,11 @@ class UpdateManager:
         current_version = self.get_webapp_version()
         info = WebappUpdateInfo(current_version=current_version)
 
-        # Check cache
+        # Check cache (lazy load on first access)
         cache_key = "github_release"
-        if not force and cache_key in self._cache:
-            cached = self._cache[cache_key]
+        cache = self._ensure_cache_loaded()
+        if not force and cache_key in cache:
+            cached = cache[cache_key]
             cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
             if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
                 # Use cached data
@@ -502,7 +508,7 @@ class UpdateManager:
             )
 
             # Cache results
-            self._cache[cache_key] = {
+            cache[cache_key] = {
                 "cached_at": datetime.now().isoformat(),
                 "latest_version": info.latest_version,
                 "release_url": info.release_url,
@@ -572,10 +578,11 @@ class UpdateManager:
         current_version = self.get_nirs4all_version()
         info = Nirs4allUpdateInfo(current_version=current_version)
 
-        # Check cache
+        # Check cache (lazy load on first access)
         cache_key = "pypi_release"
-        if not force and cache_key in self._cache:
-            cached = self._cache[cache_key]
+        cache = self._ensure_cache_loaded()
+        if not force and cache_key in cache:
+            cached = cache[cache_key]
             cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
             if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
                 info.latest_version = cached.get("latest_version")
@@ -615,7 +622,7 @@ class UpdateManager:
                 )
 
             # Cache results
-            self._cache[cache_key] = {
+            cache[cache_key] = {
                 "cached_at": datetime.now().isoformat(),
                 "latest_version": info.latest_version,
                 "pypi_url": info.pypi_url,
@@ -673,8 +680,27 @@ class UpdateManager:
         )
 
 
-# Global update manager instance
-update_manager = UpdateManager()
+# Lazy-initialized global update manager instance
+_update_manager: Optional[UpdateManager] = None
+
+
+def get_update_manager() -> UpdateManager:
+    """Get the global update manager instance (lazy initialization)."""
+    global _update_manager
+    if _update_manager is None:
+        _update_manager = UpdateManager()
+    return _update_manager
+
+
+# For backward compatibility - will be lazily initialized on first access
+class _LazyUpdateManager:
+    """Proxy class for lazy access to update_manager."""
+
+    def __getattr__(self, name):
+        return getattr(get_update_manager(), name)
+
+
+update_manager = _LazyUpdateManager()
 
 
 # ============= API Endpoints =============

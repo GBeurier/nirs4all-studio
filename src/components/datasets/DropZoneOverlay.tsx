@@ -235,6 +235,8 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
               if (filePath) {
                 paths.push(filePath);
               }
+              // Always add to fileList so we know something was dropped
+              fileList.push(file);
             }
           } else if (entry?.isFile) {
             const file = files?.[i];
@@ -256,10 +258,11 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
         }
       }
 
-      if (paths.length > 0) {
+      // Call onDrop if we have either paths (desktop) or files (browser)
+      if (paths.length > 0 || fileList.length > 0) {
         onDrop({
           type: isFolder ? "folder" : "files",
-          path: paths[0],
+          path: paths[0] || "",
           paths,
           items: fileList,
         });

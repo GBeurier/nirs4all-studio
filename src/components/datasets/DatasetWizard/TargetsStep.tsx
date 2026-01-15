@@ -18,6 +18,9 @@ import {
   Loader2,
   RefreshCw,
   Pencil,
+  Split,
+  Repeat,
+  GitBranch,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -39,13 +42,20 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
 import { useWizard } from "./WizardContext";
 import { detectFormat } from "@/api/client";
-import type { TaskType, TargetConfig } from "@/types/datasets";
+import type { TaskType, TargetConfig, PartitionMethod, FoldSource } from "@/types/datasets";
 
 const TASK_TYPE_OPTIONS: { value: TaskType; label: string; description: string }[] = [
   {
@@ -87,6 +97,19 @@ const COMMON_UNITS = [
   "°Brix",
   "pH",
   "mS/cm",
+];
+
+const PARTITION_METHOD_OPTIONS: { value: PartitionMethod; label: string; description: string }[] = [
+  { value: "files", label: "File-based", description: "Use file mapping from previous step" },
+  { value: "column", label: "Column-based", description: "Split based on a column value" },
+  { value: "percentage", label: "Percentage", description: "Random split by percentage" },
+  { value: "stratified", label: "Stratified", description: "Stratified split maintaining class proportions" },
+];
+
+const FOLD_SOURCE_OPTIONS: { value: FoldSource; label: string }[] = [
+  { value: "none", label: "No cross-validation folds" },
+  { value: "column", label: "From column in metadata" },
+  { value: "file", label: "From external file" },
 ];
 
 // Detected column from Y file
@@ -656,6 +679,366 @@ export function TargetsStep() {
           </CollapsibleContent>
         </div>
       </Collapsible>
+
+      {/* Advanced Configuration Accordions */}
+      <Accordion type="multiple" className="space-y-2">
+        {/* Partition Configuration */}
+        <AccordionItem value="partition" className="border rounded-lg">
+          <AccordionTrigger className="px-4 py-3 hover:no-underline">
+            <div className="flex items-center gap-2 text-sm">
+              <Split className="h-4 w-4 text-muted-foreground" />
+              <span>Partition Configuration</span>
+              <Badge variant="outline" className="ml-2 text-xs font-normal">
+                Optional
+              </Badge>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Configure how data is split into training and test sets. By default, the split is based on file mapping from the previous step.
+                </p>
+              </div>
+
+              {/* Partition Method */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-2 block">
+                  Partition Method
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {PARTITION_METHOD_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() =>
+                        dispatch({ type: "SET_PARTITION", payload: { method: opt.value } })
+                      }
+                      className={`
+                        p-3 rounded-lg border text-left transition-colors
+                        ${
+                          state.partition.method === opt.value
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        }
+                      `}
+                    >
+                      <div className="font-medium text-sm">{opt.label}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {opt.description}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Column-based partition options */}
+              {state.partition.method === "column" && (
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Partition Column
+                    </Label>
+                    <Input
+                      value={state.partition.column || ""}
+                      onChange={(e) =>
+                        dispatch({ type: "SET_PARTITION", payload: { column: e.target.value } })
+                      }
+                      placeholder="e.g., split"
+                      className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Train Values
+                    </Label>
+                    <Input
+                      value={state.partition.train_values?.join(", ") || ""}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "SET_PARTITION",
+                          payload: { train_values: e.target.value.split(",").map((s) => s.trim()) },
+                        })
+                      }
+                      placeholder="train, calibration"
+                      className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Test Values
+                    </Label>
+                    <Input
+                      value={state.partition.test_values?.join(", ") || ""}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "SET_PARTITION",
+                          payload: { test_values: e.target.value.split(",").map((s) => s.trim()) },
+                        })
+                      }
+                      placeholder="test, validation"
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Percentage-based partition options */}
+              {state.partition.method === "percentage" && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-xs text-muted-foreground">
+                        Training Percentage
+                      </Label>
+                      <span className="text-sm font-medium">
+                        {state.partition.train_percent || 80}%
+                      </span>
+                    </div>
+                    <Slider
+                      value={[state.partition.train_percent || 80]}
+                      onValueChange={([v]) =>
+                        dispatch({ type: "SET_PARTITION", payload: { train_percent: v } })
+                      }
+                      min={50}
+                      max={95}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={state.partition.shuffle ?? true}
+                        onCheckedChange={(v) =>
+                          dispatch({ type: "SET_PARTITION", payload: { shuffle: v as boolean } })
+                        }
+                      />
+                      <Label className="text-sm">Shuffle data</Label>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">
+                        Random Seed
+                      </Label>
+                      <Input
+                        type="number"
+                        value={state.partition.random_state || 42}
+                        onChange={(e) =>
+                          dispatch({
+                            type: "SET_PARTITION",
+                            payload: { random_state: parseInt(e.target.value) || 42 },
+                          })
+                        }
+                        className="h-8 w-24"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stratified partition options */}
+              {state.partition.method === "stratified" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-muted-foreground mb-1 block">
+                        Stratify By Column
+                      </Label>
+                      <Input
+                        value={state.partition.stratify_column || ""}
+                        onChange={(e) =>
+                          dispatch({
+                            type: "SET_PARTITION",
+                            payload: { stratify_column: e.target.value },
+                          })
+                        }
+                        placeholder="target column"
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Training Percentage
+                        </Label>
+                        <span className="text-sm font-medium">
+                          {state.partition.train_percent || 70}%
+                        </span>
+                      </div>
+                      <Slider
+                        value={[state.partition.train_percent || 70]}
+                        onValueChange={([v]) =>
+                          dispatch({ type: "SET_PARTITION", payload: { train_percent: v } })
+                        }
+                        min={50}
+                        max={90}
+                        step={5}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Cross-Validation Folds */}
+        <AccordionItem value="folds" className="border rounded-lg">
+          <AccordionTrigger className="px-4 py-3 hover:no-underline">
+            <div className="flex items-center gap-2 text-sm">
+              <Repeat className="h-4 w-4 text-muted-foreground" />
+              <span>Cross-Validation Folds</span>
+              <Badge variant="outline" className="ml-2 text-xs font-normal">
+                Optional
+              </Badge>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Define custom cross-validation folds. If not specified, folds will be generated automatically during training.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">
+                  Fold Source
+                </Label>
+                <Select
+                  value={state.folds?.source || "none"}
+                  onValueChange={(v) =>
+                    dispatch({
+                      type: "SET_FOLDS",
+                      payload: v === "none" ? null : { source: v as FoldSource },
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FOLD_SOURCE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {state.folds?.source === "column" && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    Fold Column
+                  </Label>
+                  <Input
+                    value={state.folds?.column || ""}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_FOLDS",
+                        payload: { ...state.folds!, column: e.target.value },
+                      })
+                    }
+                    placeholder="e.g., cv_fold"
+                    className="h-9"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Column containing fold assignments (values become validation folds)
+                  </p>
+                </div>
+              )}
+
+              {state.folds?.source === "file" && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    Folds File Path
+                  </Label>
+                  <Input
+                    value={state.folds?.file || ""}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_FOLDS",
+                        payload: { ...state.folds!, file: e.target.value },
+                      })
+                    }
+                    placeholder="path/to/folds.csv"
+                    className="h-9"
+                  />
+                </div>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Feature Variations */}
+        <AccordionItem value="variations" className="border rounded-lg">
+          <AccordionTrigger className="px-4 py-3 hover:no-underline">
+            <div className="flex items-center gap-2 text-sm">
+              <GitBranch className="h-4 w-4 text-muted-foreground" />
+              <span>Feature Variations</span>
+              <Badge variant="outline" className="ml-2 text-xs font-normal">
+                Advanced
+              </Badge>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Configure multiple preprocessed versions of the same spectral data. Useful when comparing raw vs. preprocessed spectra.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={state.variations !== null}
+                  onCheckedChange={(v) =>
+                    dispatch({
+                      type: "SET_VARIATIONS",
+                      payload: v ? { mode: "separate", variations: [] } : null,
+                    })
+                  }
+                />
+                <Label className="text-sm">Enable feature variations</Label>
+              </div>
+
+              {state.variations && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    Variation Mode
+                  </Label>
+                  <Select
+                    value={state.variations.mode}
+                    onValueChange={(v) =>
+                      dispatch({
+                        type: "SET_VARIATIONS",
+                        payload: { ...state.variations!, mode: v as "separate" | "concat" | "select" | "compare" },
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="separate">Separate (run each independently)</SelectItem>
+                      <SelectItem value="concat">Concatenate (combine features)</SelectItem>
+                      <SelectItem value="select">Select (use specific variations)</SelectItem>
+                      <SelectItem value="compare">Compare (run and rank by performance)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Variations are configured by mapping files in the File Mapping step with different source assignments.
+                  </p>
+                </div>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }

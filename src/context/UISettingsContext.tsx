@@ -18,7 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
-import type { UIDensity, GeneralSettings } from "@/types/settings";
+import type { UIDensity, UIZoomLevel, GeneralSettings } from "@/types/settings";
 import { DEFAULT_GENERAL_SETTINGS } from "@/types/settings";
 
 interface UISettingsContextType {
@@ -30,6 +30,10 @@ interface UISettingsContextType {
   reduceAnimations: boolean;
   /** Set reduce animations */
   setReduceAnimations: (reduce: boolean) => Promise<void>;
+  /** Current zoom level (percentage) */
+  zoomLevel: UIZoomLevel;
+  /** Set zoom level */
+  setZoomLevel: (level: UIZoomLevel) => Promise<void>;
   /** Whether settings are loading */
   isLoading: boolean;
   /** Refresh settings from backend */
@@ -42,6 +46,9 @@ const UISettingsContext = createContext<UISettingsContextType | undefined>(
 
 const STORAGE_KEY_DENSITY = "nirs4all-ui-density";
 const STORAGE_KEY_ANIMATIONS = "nirs4all-reduce-animations";
+const STORAGE_KEY_ZOOM = "nirs4all-ui-zoom";
+
+const VALID_ZOOM_LEVELS: UIZoomLevel[] = [75, 80, 90, 100, 110, 125, 150];
 
 // Safe localStorage access - returns null if localStorage is unavailable
 function safeGetItem(key: string): string | null {
@@ -82,6 +89,17 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
     return safeGetItem(STORAGE_KEY_ANIMATIONS) === "true";
   });
 
+  const [zoomLevel, setZoomLevelState] = useState<UIZoomLevel>(() => {
+    const stored = safeGetItem(STORAGE_KEY_ZOOM);
+    if (stored) {
+      const parsed = parseInt(stored, 10) as UIZoomLevel;
+      if (VALID_ZOOM_LEVELS.includes(parsed)) {
+        return parsed;
+      }
+    }
+    return 100;
+  });
+
   const [isLoading, setIsLoading] = useState(true);
   const [hasWorkspace, setHasWorkspace] = useState(false);
 
@@ -102,6 +120,17 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
     }
   }, [reduceAnimations]);
 
+  // Apply zoom level via CSS custom property
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.style.setProperty("--ui-zoom", String(zoomLevel / 100));
+    // Add zoom class for CSS styling
+    VALID_ZOOM_LEVELS.forEach(level => {
+      root.classList.remove(`zoom-${level}`);
+    });
+    root.classList.add(`zoom-${zoomLevel}`);
+  }, [zoomLevel]);
+
   // Load settings from workspace
   const loadFromWorkspace = useCallback(async () => {
     try {
@@ -113,6 +142,9 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
         }
         if (typeof settings.general.reduce_animations === "boolean") {
           setReduceAnimationsState(settings.general.reduce_animations);
+        }
+        if (settings.general.zoom_level && VALID_ZOOM_LEVELS.includes(settings.general.zoom_level)) {
+          setZoomLevelState(settings.general.zoom_level);
         }
         setHasWorkspace(true);
       }
@@ -173,11 +205,30 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
     }
   }, [hasWorkspace, getCurrentGeneral]);
 
+  // Set zoom level with backend sync
+  const setZoomLevel = useCallback(async (level: UIZoomLevel) => {
+    setZoomLevelState(level);
+    safeSetItem(STORAGE_KEY_ZOOM, String(level));
+
+    if (hasWorkspace) {
+      try {
+        const currentGeneral = await getCurrentGeneral();
+        await updateWorkspaceSettings({
+          general: { ...currentGeneral, zoom_level: level },
+        });
+      } catch (error) {
+        console.debug("Failed to sync zoom level to workspace:", error);
+      }
+    }
+  }, [hasWorkspace, getCurrentGeneral]);
+
   const value: UISettingsContextType = {
     density,
     setDensity,
     reduceAnimations,
     setReduceAnimations,
+    zoomLevel,
+    setZoomLevel,
     isLoading,
     refresh: loadFromWorkspace,
   };
@@ -214,4 +265,12 @@ export function useUIDensity(): UIDensity {
 export function useReduceAnimations(): boolean {
   const context = useContext(UISettingsContext);
   return context?.reduceAnimations ?? false;
+}
+
+/**
+ * Hook to get just the UI zoom level
+ */
+export function useUIZoomLevel(): UIZoomLevel {
+  const context = useContext(UISettingsContext);
+  return context?.zoomLevel ?? 100;
 }

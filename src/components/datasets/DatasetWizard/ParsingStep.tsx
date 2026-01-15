@@ -13,6 +13,7 @@ import {
   ChevronRight,
   RotateCcw,
   Wand2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useWizard, DEFAULT_PARSING } from "./WizardContext";
@@ -73,6 +80,13 @@ const NA_POLICY_OPTIONS: { value: NaPolicy; label: string }[] = [
   { value: "fill_median", label: "Fill with median" },
   { value: "fill_zero", label: "Fill with zero" },
   { value: "error", label: "Error on NA" },
+];
+
+const ENCODING_OPTIONS = [
+  { value: "utf-8", label: "UTF-8 (default)" },
+  { value: "latin-1", label: "Latin-1 (ISO-8859-1)" },
+  { value: "cp1252", label: "Windows-1252" },
+  { value: "iso-8859-1", label: "ISO-8859-1" },
 ];
 
 // Parsing options form component
@@ -392,6 +406,87 @@ export function ParsingStep() {
             dispatch({ type: "SET_PARSING", payload: updates })
           }
         />
+
+        {/* Advanced Loading Options Accordion */}
+        <Accordion type="single" collapsible className="mt-4">
+          <AccordionItem value="advanced-loading" className="border-none">
+            <AccordionTrigger className="py-2 hover:no-underline">
+              <div className="flex items-center gap-2 text-sm">
+                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                <span>Advanced Loading Options</span>
+                <Badge variant="outline" className="ml-2 text-xs font-normal">
+                  Optional
+                </Badge>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="grid grid-cols-3 gap-4 pt-2">
+                {/* Encoding */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    File Encoding
+                  </Label>
+                  <Select
+                    value={state.parsing.encoding || "utf-8"}
+                    onValueChange={(v) =>
+                      dispatch({ type: "SET_PARSING", payload: { encoding: v } })
+                    }
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ENCODING_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Skip Rows */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    Skip Rows at Start
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={state.parsing.skip_rows || 0}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_PARSING",
+                        payload: { skip_rows: parseInt(e.target.value) || 0 },
+                      })
+                    }
+                    className="h-9"
+                  />
+                </div>
+
+                {/* Sheet Name (for Excel files) */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    Sheet Name (Excel)
+                  </Label>
+                  <Input
+                    type="text"
+                    placeholder="First sheet (default)"
+                    value={state.parsing.sheet_name || ""}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_PARSING",
+                        payload: { sheet_name: e.target.value || undefined },
+                      })
+                    }
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       {/* Per-file overrides */}

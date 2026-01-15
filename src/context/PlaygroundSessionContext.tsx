@@ -33,7 +33,7 @@ export interface ChartVisibility {
 export interface SerializedOperator {
   id: string;
   name: string;
-  type: 'preprocessing' | 'splitting' | 'filter';
+  type: 'preprocessing' | 'splitting' | 'filter' | 'augmentation';
   params: Record<string, unknown>;
   enabled: boolean;
 }

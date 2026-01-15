@@ -131,6 +131,11 @@ const fr = {
         title: "Réduire les animations",
         description: "Minimiser les mouvements pour l'accessibilité ou les performances",
       },
+      // Zoom
+      zoom: {
+        title: "Zoom de l'interface",
+        description: "Ajustez l'échelle globale de l'interface pour une meilleure lisibilité",
+      },
       // Language
       language: {
         title: "Langue",

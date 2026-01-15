@@ -19,7 +19,6 @@ export { FoldDistributionChartV2 } from './FoldDistributionChartV2';
 // Unified components (no V1/V2 variants)
 export { DimensionReductionChart } from './DimensionReductionChart';
 export { RepetitionsChart } from './RepetitionsChart';
-export type { RepetitionColorMode, DistanceMetric } from './RepetitionsChart';
 export { ScatterPlot3D } from './ScatterPlot3D';
 
 // ============= Utility Components =============

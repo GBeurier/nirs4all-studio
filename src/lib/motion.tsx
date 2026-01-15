@@ -12,8 +12,9 @@ export const isFirefox = typeof navigator !== "undefined" &&
 
 // Create a simple div wrapper that ignores motion props
 const StaticDiv = forwardRef<HTMLDivElement, HTMLMotionProps<"div">>(
-  ({ initial, animate, exit, variants, transition, whileHover, whileTap, whileFocus, whileInView, layout, layoutId, ...props }, ref) => {
-    return <div ref={ref} {...props} />;
+  ({ initial, animate, exit, variants, transition, whileHover, whileTap, whileFocus, whileInView, layout, layoutId, style, children, ...props }, ref) => {
+    // Cast props to strip motion-specific types
+    return <div ref={ref} style={style as React.CSSProperties} {...(props as React.HTMLAttributes<HTMLDivElement>)}>{children as React.ReactNode}</div>;
   }
 );
 StaticDiv.displayName = "StaticDiv";

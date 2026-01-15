@@ -120,6 +120,19 @@
     scroll-behavior: auto !important;
   }
 
+  /* UI Zoom - Global zoom levels for desktop mode */
+  :root {
+    --ui-zoom: 1;
+  }
+
+  .zoom-75 { font-size: 75%; }
+  .zoom-80 { font-size: 80%; }
+  .zoom-90 { font-size: 90%; }
+  .zoom-100 { font-size: 100%; }
+  .zoom-110 { font-size: 110%; }
+  .zoom-125 { font-size: 125%; }
+  .zoom-150 { font-size: 150%; }
+
   .dark {
     /* Core palette - Dark scientific theme */
     --background: 222 47% 6%;

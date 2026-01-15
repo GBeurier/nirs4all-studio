@@ -536,3 +536,76 @@ export function getWavelengthDownsampleFactor(
   const targetPoints = Math.min(containerWidth, 500);
   return Math.max(1, Math.ceil(wavelengthCount / targetPoints));
 }
+
+// ============= Shared Binning Utilities =============
+
+/**
+ * Uniform bin structure used by both Y Histogram and Fold Distribution charts.
+ * Ensures consistent binning across all visualizations.
+ */
+export interface UniformBin {
+  min: number;
+  max: number;
+  label: string;
+}
+
+/**
+ * Calculate optimal bin count using Freedman-Diaconis rule.
+ * Used by both Y Histogram and Fold Distribution charts.
+ */
+export function calculateOptimalBinCount(values: number[], minBins = 5, maxBins = 50): number {
+  if (values.length < 2) return 10;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  const q1 = sorted[Math.floor(n * 0.25)];
+  const q3 = sorted[Math.floor(n * 0.75)];
+  const iqr = q3 - q1;
+
+  if (iqr === 0) return Math.min(10, maxBins);
+
+  const binWidth = 2 * iqr * Math.pow(n, -1 / 3);
+  const range = sorted[n - 1] - sorted[0];
+  const binCount = Math.ceil(range / binWidth);
+
+  return Math.max(minBins, Math.min(maxBins, binCount));
+}
+
+/**
+ * Compute uniform-width bins for Y values.
+ * This is the single source of truth for Y binning across all charts.
+ * Both Y Histogram and Fold Distribution chart should use this function
+ * to ensure consistent bin ranges and labels.
+ */
+export function computeUniformBins(y: number[], numBins: number): UniformBin[] {
+  if (y.length === 0) return [];
+
+  const min = Math.min(...y);
+  const max = Math.max(...y);
+  const range = max - min;
+  const binWidth = range / numBins || 1;
+
+  return Array.from({ length: numBins }, (_, i) => ({
+    min: min + i * binWidth,
+    max: min + (i + 1) * binWidth,
+    label: `${formatYValue(min + i * binWidth, 2)} - ${formatYValue(min + (i + 1) * binWidth, 2)}`,
+  }));
+}
+
+/**
+ * Get the bin index for a Y value using uniform bins.
+ * Matches the logic used in Y Histogram.
+ */
+export function getUniformBinIndex(yValue: number, bins: UniformBin[]): number {
+  if (bins.length === 0) return 0;
+
+  const min = bins[0].min;
+  const max = bins[bins.length - 1].max;
+  const binWidth = (max - min) / bins.length;
+
+  let binIndex = Math.floor((yValue - min) / binWidth);
+  if (binIndex >= bins.length) binIndex = bins.length - 1;
+  if (binIndex < 0) binIndex = 0;
+
+  return binIndex;
+}

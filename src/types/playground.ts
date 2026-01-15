@@ -97,6 +97,7 @@ export interface ExecuteOptions {
   max_folds_returned?: number;
   split_index?: number;
   use_cache?: boolean;
+  bio_sample_column?: string;
 }
 
 /**
@@ -176,7 +177,7 @@ export interface FoldsInfo {
   splitter_name: string;
   n_folds: number;
   folds: FoldData[];
-  fold_labels: number[];
+  fold_labels?: number[];
   split_index?: number;
 }
 

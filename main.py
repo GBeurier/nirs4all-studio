@@ -17,6 +17,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi import HTTPException
 import uvicorn
 from pathlib import Path
+import os
+
+# Desktop mode detection - skip unnecessary middleware when running in pywebview
+DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
 
 from api.workspace import router as workspace_router
 from api.datasets import router as datasets_router
@@ -35,6 +39,8 @@ from api.runs import router as runs_router
 from api.playground import router as playground_router
 from api.updates import router as updates_router
 from api.synthesis import router as synthesis_router
+from api.transfer import router as transfer_router
+from api.shap import router as shap_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -81,19 +87,20 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Add CORS middleware for development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add CORS middleware for development (skip in desktop mode - same origin)
+if not DESKTOP_MODE:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:8000",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Include API routes
 app.include_router(workspace_router, prefix="/api", tags=["workspace"])
@@ -113,6 +120,8 @@ app.include_router(runs_router, prefix="/api", tags=["runs"])
 app.include_router(playground_router, prefix="/api", tags=["playground"])
 app.include_router(updates_router, prefix="/api", tags=["updates"])
 app.include_router(synthesis_router, prefix="/api", tags=["synthesis"])
+app.include_router(transfer_router, prefix="/api", tags=["transfer"])
+app.include_router(shap_router, prefix="/api", tags=["shap"])
 
 
 # ============= Startup Events =============

@@ -65,6 +65,9 @@ import {
   ANIMATION_CONFIG,
   formatFoldLabel,
   formatYValue,
+  computeUniformBins,
+  getUniformBinIndex,
+  calculateOptimalBinCount,
 } from './chartConfig';
 import {
   type GlobalColorConfig,
@@ -74,8 +77,6 @@ import {
   PARTITION_COLORS,
   HIGHLIGHT_COLORS,
   normalizeValue,
-  computeYBins,
-  getYBinIndex,
 } from '@/lib/playground/colorConfig';
 import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
 import { useSelection, type SelectionContextValue } from '@/context/SelectionContext';
@@ -289,32 +290,18 @@ export function FoldDistributionChartV2({
   const classLabels = colorContext?.classLabels ?? [];
 
   // Calculate optimal bin count using Freedman-Diaconis rule (same as YHistogram)
+  // Use shared utility to ensure consistency with Y Histogram
   const optimalBinCount = useMemo(() => {
     if (!y || y.length < 4) return 5;
-
-    const sorted = [...y].sort((a, b) => a - b);
-    const n = sorted.length;
-
-    // Calculate IQR
-    const q1Idx = Math.floor(n * 0.25);
-    const q3Idx = Math.floor(n * 0.75);
-    const iqr = sorted[q3Idx] - sorted[q1Idx];
-
-    if (iqr === 0) return 5;
-
-    // Freedman-Diaconis rule
-    const binWidth = 2 * iqr * Math.pow(n, -1 / 3);
-    const range = sorted[n - 1] - sorted[0];
-    const binCount = Math.ceil(range / binWidth);
-
-    // Clamp to reasonable range (5-20 for fold chart, fewer than histogram for readability)
-    return Math.max(5, Math.min(20, binCount));
+    // Use same bin count range as Y Histogram for consistency
+    return calculateOptimalBinCount(y, 5, 50);
   }, [y]);
 
-  // Compute Y bins for target mode (regression) - use auto-calculated bin count
+  // Compute Y bins for target mode (regression) using UNIFORM binning
+  // This ensures bins match exactly with Y Histogram ranges
   const yBins = useMemo(() => {
     if (!y || y.length === 0 || isClassificationMode) return [];
-    return computeYBins(y, optimalBinCount);
+    return computeUniformBins(y, optimalBinCount);
   }, [y, isClassificationMode, optimalBinCount]);
 
   // Get unique metadata values for metadata mode
@@ -354,12 +341,12 @@ export function FoldDistributionChartV2({
             segmentIndices[segKey] = matching;
           });
         } else if (y && yBins.length > 0) {
-          // Regression mode - group samples by Y bin
+          // Regression mode - group samples by Y bin using uniform binning
           yBins.forEach((bin, i) => {
             const segKey = `bin_${i}`;
             const matching = indices.filter(idx => {
               const yVal = y[idx];
-              return yVal !== undefined && getYBinIndex(yVal, yBins) === i;
+              return yVal !== undefined && getUniformBinIndex(yVal, yBins) === i;
             });
             counts[segKey] = matching.length;
             segmentIndices[segKey] = matching;
@@ -444,10 +431,10 @@ export function FoldDistributionChartV2({
    * Creates separate bars for each partition: Train 1, Val 1, Train 2, Val 2, ..., Test
    * Phase 4: Filters by displayFilteredIndices when present (selected only / unselected only)
    */
-  const partitionBarData = useMemo<PartitionBarData[]>(() => {
+  const partitionBarData = useMemo((): PartitionBarData[] => {
     if (!folds || !folds.folds || folds.folds.length === 0) return [];
 
-    const bars: PartitionBarData[] = [];
+    const bars: Omit<PartitionBarData, 'index'>[] = [];
 
     // Helper to filter indices by display filter
     const filterIndices = (indices: number[]): number[] => {
@@ -547,7 +534,8 @@ export function FoldDistributionChartV2({
         segmentIndices: testSegments.indices,
       });
 
-      return bars;
+      // Add numeric index to each bar for ReferenceArea support
+      return bars.map((bar, idx) => ({ ...bar, index: idx }));
     }
 
     // For k-fold CV (n_folds > 1), show Train i, Val i for each fold
@@ -615,7 +603,7 @@ export function FoldDistributionChartV2({
         yStd,
         segments: heldOutSegments.counts,
         segmentIndices: heldOutSegments.indices,
-      } as Omit<PartitionBarData, 'index'>);
+      });
     }
 
     // Add numeric index to each bar for ReferenceArea support
@@ -977,22 +965,12 @@ export function FoldDistributionChartV2({
     }
     setRangeSelection({ start: null, end: null, isSelecting: false });
 
-    // 2. Check if click was on a bar (accounting for ReferenceArea overlay)
-    const target = e?.target as SVGElement | null;
-    let isBar = target?.classList?.contains('recharts-rectangle') ||
-      target?.closest('.recharts-bar-rectangle') !== null;
-
-    // If target is ReferenceArea, check if there's a bar underneath
-    if (!isBar && target?.classList?.contains('recharts-reference-area-rect') && e) {
-      const elements = document.elementsFromPoint(e.clientX, e.clientY);
-      isBar = elements.some(el =>
-        el.classList.contains('recharts-rectangle') &&
-        !el.classList.contains('recharts-reference-area-rect')
-      );
-    }
-
-    if (!isBar) {
-      // Background click - clear selection
+    // 2. Get clicked bar data from Recharts state FIRST (same as YHistogramV2)
+    // activeTooltipIndex is populated when clicking anywhere in a bar's column zone,
+    // even if not clicking directly on the visible bar rect
+    const activeIndex = state?.activeTooltipIndex;
+    if (activeIndex === undefined || activeIndex < 0 || activeIndex >= partitionBarData.length) {
+      // No valid bar column clicked - clear selection (true background click)
       if (selectionCtx && selectionCtx.selectedSamples.size > 0) {
         selectionCtx.clear();
       }
@@ -1000,16 +978,12 @@ export function FoldDistributionChartV2({
       return;
     }
 
-    // 3. Get clicked bar data from Recharts state
-    const activeIndex = state?.activeTooltipIndex;
-    if (activeIndex === undefined || activeIndex < 0 || activeIndex >= partitionBarData.length) {
-      return;
-    }
     const entry = partitionBarData[activeIndex];
     if (!entry || !selectionCtx) return;
 
-    // 4. Detect which segment was clicked using elementsFromPoint
+    // 3. Detect which segment was clicked using elementsFromPoint (for stacked bars)
     // Find the actual bar rect at the click position - need to find the topmost one at click coords
+    const target = e?.target as SVGElement | null;
     let barRect: Element | null = null;
     if (e && target) {
       // Always use elementsFromPoint to find the rect at the exact click position
@@ -1023,7 +997,7 @@ export function FoldDistributionChartV2({
 
     const clickedFill = barRect?.getAttribute('fill') || '';
 
-    // Find which segment has this color
+    // Find which segment has this color (default to first segment if clicking in column zone above bar)
     let clickedSegmentKey = partitionSegmentKeys[0];
     for (const segKey of partitionSegmentKeys) {
       const segColor = getPartitionSegmentColor(segKey, entry);
@@ -1037,7 +1011,7 @@ export function FoldDistributionChartV2({
     const barIndices = entry.indices;
     const segmentIndices = entry.segmentIndices[clickedSegmentKey] ?? barIndices;
 
-    // 5. Apply 3-click selection logic
+    // 4. Apply 3-click selection logic
     const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
     const action = computeStackedBarAction(
       { barIndices, segmentIndices },
@@ -1584,7 +1558,7 @@ export function FoldDistributionChartV2({
       {/* Footer */}
       {!compact && (
         <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {/* Partition type legend (always shown for partition mode when showLegend is true) */}
             {config.showLegend && effectiveColorMode === 'partition' && partitionBarData.length > 0 && (
               <>
@@ -1609,7 +1583,7 @@ export function FoldDistributionChartV2({
             {/* Dynamic legend for fold mode - show each fold with its color */}
             {config.showLegend && effectiveColorMode === 'fold' && partitionBarData.length > 0 && (
               <>
-                {[...new Set(partitionBarData.map(p => p.foldIndex))].filter(f => f !== null).slice(0, 6).map((foldIdx) => (
+                {[...new Set(partitionBarData.map(p => p.foldIndex))].filter(f => f !== null).map((foldIdx) => (
                   <span key={`fold-${foldIdx}`} className="flex items-center gap-1">
                     <span
                       className="w-2 h-2 rounded-sm"
@@ -1621,7 +1595,7 @@ export function FoldDistributionChartV2({
               </>
             )}
             {/* Dynamic legend for other color modes (when showLegend is true) */}
-            {config.showLegend && effectiveColorMode !== 'partition' && effectiveColorMode !== 'fold' && partitionBarData.length > 0 && partitionSegmentKeys.slice(0, 6).map((segKey) => (
+            {config.showLegend && effectiveColorMode !== 'partition' && effectiveColorMode !== 'fold' && partitionBarData.length > 0 && partitionSegmentKeys.map((segKey) => (
               <span key={segKey} className="flex items-center gap-1">
                 <span
                   className="w-2 h-2 rounded-sm"
@@ -1650,9 +1624,9 @@ export function FoldDistributionChartV2({
       {config.showYLegend && effectiveColorMode === 'target' && y && y.length > 0 && !compact && (
         isClassificationMode ? (
           // Phase 5: Classification mode - show class swatches
-          <div className="flex items-center gap-2 mt-1 text-[10px]">
+          <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px]">
             <span className="text-muted-foreground">Class:</span>
-            {classLabels.slice(0, 6).map((label, idx) => (
+            {classLabels.map((label, idx) => (
               <div key={label} className="flex items-center gap-0.5">
                 <span
                   className="w-3 h-2 rounded-sm"
@@ -1661,9 +1635,6 @@ export function FoldDistributionChartV2({
                 <span className="truncate max-w-[50px]">{label}</span>
               </div>
             ))}
-            {classLabels.length > 6 && (
-              <span className="text-muted-foreground">+{classLabels.length - 6} more</span>
-            )}
           </div>
         ) : (
           // Regression mode - gradient legend

@@ -111,6 +111,7 @@ export interface ParameterDefinition {
   options?: ParameterOption[];
   allowNull?: boolean;
   dynamicOptions?: string;  // e.g., "components" to get from features step
+  group?: string;  // Parameter grouping for UI organization
 }
 
 export type ParameterType =

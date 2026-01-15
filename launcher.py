@@ -6,26 +6,128 @@ that displays the React application, with native file dialogs
 exposed via the JavaScript API.
 """
 
-import webview
 import os
 import sys
+import platform
+import subprocess
 import threading
 import time
 from pathlib import Path
 
-# WebGL Configuration for Desktop App
-# Use GTK/WebKit2 backend on Linux for better WebGL support
-os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
 
-# For Qt/Chromium fallback: enable software WebGL via SwiftShader/ANGLE
-# These flags enable WebGL even without hardware GPU acceleration
-os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
-    "--enable-webgl "
-    "--ignore-gpu-blocklist "
-    "--enable-gpu-rasterization "
-    "--use-gl=angle "
-    "--use-angle=swiftshader "
-)
+def is_wsl() -> bool:
+    """Check if running in Windows Subsystem for Linux."""
+    try:
+        with open("/proc/version", "r") as f:
+            return "microsoft" in f.read().lower()
+    except (FileNotFoundError, PermissionError):
+        return False
+
+
+def detect_gpu_support() -> bool:
+    """Check if hardware GPU acceleration is available."""
+    system = platform.system().lower()
+
+    if system == "linux":
+        # WSL2 has limited GPU support - GBM often unavailable
+        if is_wsl():
+            return False
+
+        # Check for DRI devices first (fast check)
+        if not Path("/dev/dri/card0").exists():
+            return False
+
+        # Verify actual rendering capability via glxinfo
+        try:
+            result = subprocess.run(
+                ["glxinfo", "-B"],
+                capture_output=True,
+                text=True,
+                timeout=3
+            )
+            if result.returncode == 0 and "direct rendering: Yes" in result.stdout:
+                return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        return False
+
+    elif system == "darwin":
+        return True  # macOS always has GPU acceleration
+
+    elif system == "windows":
+        return True  # Assume GPU available on Windows
+
+    return False
+
+
+def select_optimal_backend() -> str:
+    """Select the best available pywebview backend for performance."""
+    system = platform.system().lower()
+
+    if system == "windows":
+        # Prefer EdgeChromium (WebView2) on Windows - fastest option
+        return "edgechromium"
+
+    elif system == "darwin":
+        # macOS: WKWebView via Cocoa is well-optimized
+        return "cocoa"
+
+    elif system == "linux":
+        # Linux: Prefer Qt/Chromium if available (faster than GTK/WebKit2)
+        # Qt uses Chromium's V8 engine, similar performance to Chrome
+        try:
+            from PyQt6.QtWebEngineWidgets import QWebEngineView
+            return "qt"
+        except ImportError:
+            pass
+        try:
+            from PyQt5.QtWebEngineWidgets import QWebEngineView
+            return "qt"
+        except ImportError:
+            pass
+        # Fall back to GTK/WebKit2
+        return "gtk"
+
+    return "gtk"  # Default fallback
+
+
+def configure_webview_environment():
+    """Configure optimal pywebview environment based on platform and GPU."""
+    # Select backend if not already set
+    if "PYWEBVIEW_GUI" not in os.environ:
+        backend = select_optimal_backend()
+        os.environ["PYWEBVIEW_GUI"] = backend
+        print(f"[launcher] Selected pywebview backend: {backend}")
+    else:
+        print(f"[launcher] Using configured backend: {os.environ['PYWEBVIEW_GUI']}")
+
+    # Configure GPU/WebGL flags based on detection
+    has_gpu = detect_gpu_support()
+    if has_gpu:
+        # Hardware GPU acceleration available
+        # Use ANGLE with OpenGL ES backend for better compatibility (avoids Vulkan issues)
+        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
+            "--enable-webgl "
+            "--ignore-gpu-blocklist "
+            "--enable-gpu-rasterization "
+            "--enable-zero-copy "
+            "--use-gl=angle "
+            "--use-angle=gl "
+            "--disable-vulkan"
+        )
+        print("[launcher] GPU detected - using hardware acceleration (OpenGL)")
+    else:
+        # Software rendering fallback
+        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
+            "--disable-gpu"
+        )
+        print("[launcher] No GPU detected - using software rendering")
+
+
+# Configure environment before importing webview
+configure_webview_environment()
+
+import webview
 
 
 # Store window reference for API methods
@@ -173,7 +275,8 @@ def main():
     # Production mode is either when packaged OR when NIRS4ALL_PRODUCTION env is set
     is_prod = is_packaged() or os.environ.get("NIRS4ALL_PRODUCTION", "false").lower() == "true"
     is_dev = os.environ.get("VITE_DEV", "false").lower() == "true"
-    show_debug = not is_prod or os.environ.get("NIRS4ALL_DEBUG", "false").lower() == "true"
+    # Only enable debug mode when explicitly requested (avoids WebKit inspector overhead)
+    show_debug = os.environ.get("NIRS4ALL_DEBUG", "false").lower() == "true"
 
     # Start backend server in a separate thread (in production mode, not dev mode)
     backend_ready = False

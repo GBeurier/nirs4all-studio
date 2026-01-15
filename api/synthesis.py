@@ -8,6 +8,8 @@ using the nirs4all SyntheticDatasetBuilder API.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from pathlib import Path
 import time
 
 router = APIRouter(prefix="/synthesis", tags=["synthesis"])
@@ -22,6 +24,14 @@ except ImportError:
     NIRS4ALL_AVAILABLE = False
     nirs4all = None
     SyntheticDatasetBuilder = None
+
+# Import workspace manager for linking datasets
+try:
+    from .workspace_manager import workspace_manager
+    WORKSPACE_AVAILABLE = True
+except ImportError:
+    WORKSPACE_AVAILABLE = False
+    workspace_manager = None
 
 
 def require_nirs4all():
@@ -90,17 +100,20 @@ class PreviewResponse(BaseModel):
 class GenerateRequest(BaseModel):
     """Request for full dataset generation."""
     config: SynthesisConfig
-    export_path: Optional[str] = None  # Save to workspace
-    export_format: str = "dataset"  # dataset, csv, folder
+    export_to_workspace: bool = False  # Save to workspace and link
+    export_to_csv: Optional[str] = None  # Custom CSV export path
+    dataset_name: Optional[str] = None  # Override dataset name
 
 
 class GenerateResponse(BaseModel):
     """Full generation response."""
     success: bool
     dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = None
     export_path: Optional[str] = None
     shape: Tuple[int, int]
     execution_time_ms: float
+    linked_to_workspace: bool = False
     error: Optional[str] = None
 
 
@@ -170,6 +183,13 @@ def build_from_config(config: SynthesisConfig):
                 if isinstance(r, list):
                     params['range'] = tuple(r)
 
+            # Handle "custom" complexity - pass physics params directly
+            if step.type == 'features' and params.get('complexity') == 'custom':
+                # When custom, don't pass complexity - just use the individual physics params
+                # Use 'realistic' as base complexity to get reasonable defaults
+                params['complexity'] = 'realistic'
+                # Physics params are kept as-is (they're already individual kwargs)
+
             # Remove None values
             params = {k: v for k, v in params.items() if v is not None}
 
@@ -209,7 +229,17 @@ async def generate_preview(request: PreviewRequest):
 
         X = dataset.x({}, layout='2d')
         y = dataset.y({})
-        wavelengths = dataset.wavelengths
+
+        # Handle multi-component targets (2D array) - use first component
+        if y.ndim > 1:
+            y = y[:, 0]
+        # Get wavelengths from headers (they are stored as strings like "1000.0")
+        # Use float_headers() if available, otherwise convert headers manually
+        if hasattr(dataset, 'float_headers') and callable(dataset.float_headers):
+            wavelengths = np.array(dataset.float_headers(0))
+        else:
+            headers = dataset.headers(0)
+            wavelengths = np.array([float(h) for h in headers])
 
         # Determine target type
         target_type = "classification" if any(
@@ -271,7 +301,7 @@ async def generate_preview(request: PreviewRequest):
 async def generate_dataset(request: GenerateRequest):
     """
     Generate full synthetic dataset.
-    Optionally exports to workspace.
+    Optionally exports to workspace or custom CSV path.
     """
     require_nirs4all()
 
@@ -279,18 +309,85 @@ async def generate_dataset(request: GenerateRequest):
 
     try:
         builder = build_from_config(request.config)
-        dataset = builder.build()
 
+        # Generate dataset name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dataset_name = request.dataset_name or request.config.name or f"synthetic_{timestamp}"
+
+        export_path = None
+        dataset_id = None
+        linked = False
+
+        # Handle export to workspace
+        if request.export_to_workspace:
+            if not WORKSPACE_AVAILABLE or workspace_manager is None:
+                raise HTTPException(status_code=503, detail="Workspace manager not available")
+
+            workspace = workspace_manager.get_current_workspace()
+            if not workspace:
+                raise HTTPException(status_code=409, detail="No workspace selected")
+
+            # Create output directory
+            workspace_path = Path(workspace.path)
+            datasets_dir = workspace_path / "datasets" / "synthetic"
+            datasets_dir.mkdir(parents=True, exist_ok=True)
+            output_path = datasets_dir / dataset_name
+
+            # Export using builder
+            export_path = str(builder.export(str(output_path), format="standard"))
+
+            # Link to workspace
+            try:
+                # Determine task type
+                target_type = "regression"
+                for step in request.config.steps:
+                    if step.type == "classification" and step.enabled:
+                        target_type = "classification"
+                        break
+
+                link_config = {
+                    "synthetic": True,
+                    "generated_at": datetime.now().isoformat(),
+                    "generation_params": {
+                        "n_samples": request.config.n_samples,
+                        "steps": [s.type for s in request.config.steps if s.enabled],
+                    },
+                    "targets": [{
+                        "column": "target",
+                        "type": target_type,
+                        "is_default": True,
+                    }],
+                    "default_target": "target",
+                }
+
+                dataset_info = workspace_manager.link_dataset(
+                    export_path,
+                    config=link_config
+                )
+                linked = True
+                dataset_id = dataset_info.get("id")
+            except Exception as e:
+                # Linking failed but dataset was still created
+                pass
+
+        elif request.export_to_csv:
+            # Export to custom CSV path
+            export_path = str(builder.export(request.export_to_csv, format="standard"))
+
+        # Build the dataset to get shape info
+        dataset = builder.build()
         X = dataset.x({}, layout='2d')
 
         execution_time = (time.time() - start_time) * 1000
 
-        # TODO: Handle export to workspace
-
         return GenerateResponse(
             success=True,
+            dataset_id=dataset_id,
+            dataset_name=dataset_name,
+            export_path=export_path,
             shape=(X.shape[0], X.shape[1]),
             execution_time_ms=execution_time,
+            linked_to_workspace=linked,
         )
 
     except HTTPException:

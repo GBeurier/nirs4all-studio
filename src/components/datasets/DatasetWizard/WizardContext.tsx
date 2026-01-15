@@ -14,6 +14,11 @@ import type {
   TaskType,
   AggregationConfig,
   PreviewDataResponse,
+  // Advanced configuration types
+  MultiSourceConfig,
+  PartitionConfig,
+  FoldConfig,
+  VariationsConfig,
 } from "@/types/datasets";
 import { getDataLoadingDefaults } from "@/api/client";
 import type { DataLoadingDefaults } from "@/types/settings";
@@ -47,6 +52,11 @@ const DEFAULT_AGGREGATION: AggregationConfig = {
   exclude_outliers: false,
 };
 
+// Default partition (file-based - default behavior)
+const DEFAULT_PARTITION: PartitionConfig = {
+  method: "files",
+};
+
 // Initial state factory (needs defaults parameter)
 const createInitialState = (parsing: ParsingOptions): WizardState => ({
   step: "source",
@@ -63,6 +73,11 @@ const createInitialState = (parsing: ParsingOptions): WizardState => ({
   preview: null,
   isLoading: false,
   errors: {},
+  // Advanced configuration (Phase 7 extensions)
+  multiSource: null,
+  partition: { ...DEFAULT_PARTITION },
+  folds: null,
+  variations: null,
 });
 
 // Initial state (uses system defaults, will be updated when workspace defaults load)
@@ -99,7 +114,12 @@ type WizardAction =
   | { type: "SET_ERROR"; payload: { key: string; message: string | null } }
   | { type: "APPLY_DEFAULTS"; payload: ParsingOptions }
   | { type: "INIT_FROM_DROP"; payload: { initial: WizardInitialState; parsing: ParsingOptions } }
-  | { type: "RESET"; payload?: ParsingOptions };
+  | { type: "RESET"; payload?: ParsingOptions }
+  // Advanced configuration actions (Phase 7)
+  | { type: "SET_MULTI_SOURCE"; payload: MultiSourceConfig | null }
+  | { type: "SET_PARTITION"; payload: Partial<PartitionConfig> }
+  | { type: "SET_FOLDS"; payload: FoldConfig | null }
+  | { type: "SET_VARIATIONS"; payload: VariationsConfig | null };
 
 // Reducer
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -210,6 +230,22 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       return action.payload
         ? createInitialState(action.payload)
         : { ...initialState };
+
+    // Advanced configuration cases (Phase 7)
+    case "SET_MULTI_SOURCE":
+      return { ...state, multiSource: action.payload };
+
+    case "SET_PARTITION":
+      return {
+        ...state,
+        partition: { ...state.partition, ...action.payload },
+      };
+
+    case "SET_FOLDS":
+      return { ...state, folds: action.payload };
+
+    case "SET_VARIATIONS":
+      return { ...state, variations: action.payload };
 
     default:
       return state;
@@ -373,4 +409,4 @@ export function useWizard() {
 }
 
 // Export defaults for reuse
-export { SYSTEM_DEFAULT_PARSING as DEFAULT_PARSING, DEFAULT_AGGREGATION, STEP_ORDER };
+export { SYSTEM_DEFAULT_PARSING as DEFAULT_PARSING, DEFAULT_AGGREGATION, DEFAULT_PARTITION, STEP_ORDER };

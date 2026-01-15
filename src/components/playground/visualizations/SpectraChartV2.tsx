@@ -1291,7 +1291,7 @@ export function SpectraChartV2({
                 wavelengths={focusedData.wavelengths}
                 y={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : y}
                 sampleIds={sampleIds}
-                folds={folds}
+                folds={folds ?? undefined}
                 visibleIndices={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : displayIndices}
                 sampleColors={
                   config.displayMode === 'grouped' && groupedStats

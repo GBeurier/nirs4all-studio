@@ -200,6 +200,8 @@ interface ChartConfig {
   preserveAspectRatio: boolean;
   /** Whether to enable hover highlighting and tooltips */
   enableHover: boolean;
+  /** Whether to show crosshairs at origin */
+  showCrosshairs: boolean;
 }
 
 // ============= Default Configuration =============
@@ -216,6 +218,7 @@ const DEFAULT_CONFIG: ChartConfig = {
   showLabels: false,
   preserveAspectRatio: false,
   enableHover: true,
+  showCrosshairs: false,
 };
 
 const POINT_SIZES = {
@@ -457,9 +460,8 @@ export function DimensionReductionChart({
     // Use first fold only to ensure disjoint sets (K-fold has overlapping samples)
     let trainIndices: Set<number> | undefined;
     let testIndices: Set<number> | undefined;
-    const foldsData = folds ?? pca;
-    if (foldsData?.folds && foldsData.folds.length > 0) {
-      const firstFold = foldsData.folds[0];
+    if (folds?.folds && folds.folds.length > 0) {
+      const firstFold = folds.folds[0];
       trainIndices = new Set<number>(firstFold.train_indices ?? []);
       testIndices = new Set<number>(firstFold.test_indices ?? []);
     }

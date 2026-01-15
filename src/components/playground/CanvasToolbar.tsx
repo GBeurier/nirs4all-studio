@@ -1,18 +1,15 @@
 /**
- * CanvasToolbar - Extracted toolbar controls for MainCanvas
+ * CanvasToolbar - Ribbon-style toolbar for MainCanvas (Word-like banner)
  *
  * Phase 1 Refactoring: Component Modularization
+ * Phase 10: Ribbon-style organization with two rows and category groups
  *
- * Features:
- * - Chart visibility toggles
- * - Selection count and filter-to-selection button
- * - Partition filtering
- * - Advanced filtering (metrics, outliers, similarity)
- * - Step comparison slider
- * - Color mode selector
- * - Render mode selector
- * - Saved selections
- * - Export menu
+ * Categories (organized in ribbon groups):
+ * - VIEW: Chart visibility, step comparison, diff mode
+ * - SELECTION: Selection tools, selection count, saved selections
+ * - FILTER: Partition filter, display filters, metrics, outliers, similarity
+ * - COLORATION: Color mode, palette selection
+ * - ACTIONS: Export, reset, reference mode
  */
 
 import { useCallback, memo, useMemo, useState } from 'react';
@@ -29,6 +26,10 @@ import {
   RotateCcw,
   AlertCircle,
   ArrowLeftRight,
+  MousePointer2,
+  Layers,
+  Paintbrush,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -386,6 +387,29 @@ const ColorModeSelector = memo(function ColorModeSelector({
   );
 });
 
+// ============= Ribbon Group Component =============
+
+interface RibbonGroupProps {
+  label: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}
+
+const RibbonGroup = memo(function RibbonGroup({ label, icon, children, className }: RibbonGroupProps) {
+  return (
+    <div className={cn('flex items-center gap-2 pl-3 pr-4 border-r-2 border-border/60 last:border-r-0 last:pr-3', className)}>
+      <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-medium uppercase tracking-wider shrink-0 select-none">
+        {icon}
+        <span className="border-b border-muted-foreground/30">{label}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        {children}
+      </div>
+    </div>
+  );
+});
+
 // ============= Main Component =============
 
 export const CanvasToolbar = memo(function CanvasToolbar({
@@ -488,204 +512,193 @@ export const CanvasToolbar = memo(function CanvasToolbar({
 
   return (
     <div
-      className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border bg-card/50"
+      className="flex flex-col border-b border-border bg-card/50"
       role="toolbar"
       aria-label="Chart controls"
     >
-      <div className="flex items-center gap-1.5" role="group" aria-label="Chart visibility toggles">
-        {/* Step comparison slider (compact) - at far left for visibility */}
-        {hasOperators && onStepComparisonEnabledChange && (
-          <>
-            <StepComparisonSlider
-              operators={operators}
-              currentStep={activeStep}
-              onStepChange={handleActiveStepChange}
-              enabled={stepComparisonEnabled}
-              onEnabledChange={handleStepComparisonEnabledChange}
-              onInteractionStart={onInteractionStart}
-              isLoading={isFetching}
-              compact
-            />
-            <Separator orientation="vertical" className="h-4 mx-1" />
-          </>
-        )}
+      {/* ============= ROW 1: View, Selection, Filter ============= */}
+      <div className="flex items-stretch px-2 py-1 gap-0">
 
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-[10px] text-muted-foreground mr-1 cursor-help">Show:</span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              Toggle which charts are visible in the playground
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        {CHART_CONFIG.map(({ id, label, requiresFolds, requiresRepetitions }) => {
-          const isVisible = effectiveVisibleCharts.has(id);
-          const isDisabled = (requiresFolds && !hasFolds) || (requiresRepetitions && !hasRepetitions);
-          const tooltipText = isDisabled
-            ? (requiresFolds ? 'Add a splitter operator to see folds' : 'No repetitions detected in dataset')
-            : `${isVisible ? 'Hide' : 'Show'} ${label} chart (press ${CHART_CONFIG.findIndex(c => c.id === id) + 1})`;
+        {/* VIEW GROUP */}
+        <RibbonGroup label="View" icon={<Layers className="w-2.5 h-2.5" />}>
+          {/* Chart visibility toggles */}
+          {CHART_CONFIG.map(({ id, label, requiresFolds, requiresRepetitions }) => {
+            const isVisible = effectiveVisibleCharts.has(id);
+            const isDisabled = (requiresFolds && !hasFolds) || (requiresRepetitions && !hasRepetitions);
+            const tooltipText = isDisabled
+              ? (requiresFolds ? 'Add a splitter operator to see folds' : 'No repetitions detected in dataset')
+              : `${isVisible ? 'Hide' : 'Show'} ${label} chart (press ${CHART_CONFIG.findIndex(c => c.id === id) + 1})`;
 
-          return (
-            <TooltipProvider key={id} delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={isVisible ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className={cn(
-                      'h-6 text-[10px] gap-1 px-2',
-                      !isVisible && 'opacity-50',
-                      isDisabled && 'cursor-not-allowed opacity-30'
-                    )}
-                    onMouseDown={onInteractionStart}
-                    onClick={() => !isDisabled && onToggleChart(id)}
-                    disabled={isDisabled}
-                  >
-                    {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    {label}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{tooltipText}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          );
-        })}
+            return (
+              <TooltipProvider key={id} delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={isVisible ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className={cn(
+                        'h-5 text-[10px] gap-1 px-1.5',
+                        !isVisible && 'opacity-50',
+                        isDisabled && 'cursor-not-allowed opacity-30'
+                      )}
+                      onMouseDown={onInteractionStart}
+                      onClick={() => !isDisabled && onToggleChart(id)}
+                      disabled={isDisabled}
+                    >
+                      {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      {label}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{tooltipText}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
 
-        {/* Loading indicator */}
-        {isFetching && (
-          <Loader2 className="w-3 h-3 animate-spin text-primary ml-2" />
-        )}
+          {/* Step comparison slider */}
+          {hasOperators && onStepComparisonEnabledChange && (
+            <>
+              <Separator orientation="vertical" className="h-4 mx-1" />
+              <StepComparisonSlider
+                operators={operators}
+                currentStep={activeStep}
+                onStepChange={handleActiveStepChange}
+                enabled={stepComparisonEnabled}
+                onEnabledChange={handleStepComparisonEnabledChange}
+                onInteractionStart={onInteractionStart}
+                isLoading={isFetching}
+                compact
+              />
+            </>
+          )}
 
-        {/* Phase 7: Diff Mode Toggle */}
-        {onSpectraViewModeChange && (
-          <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={spectraViewMode === 'difference' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className={cn(
-                      'h-6 text-[10px] gap-1 px-2',
-                      spectraViewMode === 'difference' && 'bg-orange-500/20 text-orange-600 dark:text-orange-400'
-                    )}
-                    onMouseDown={onInteractionStart}
-                    onClick={() => onSpectraViewModeChange(spectraViewMode === 'difference' ? 'processed' : 'difference')}
-                  >
-                    <ArrowLeftRight className="w-3 h-3" />
-                    Diff
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {spectraViewMode === 'difference'
-                    ? 'Exit difference mode (show processed spectra)'
-                    : 'Enter difference mode (show per-sample distances)'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {spectraViewMode === 'difference' && onToggleAbsoluteDifference && (
+          {/* Diff Mode Toggle */}
+          {onSpectraViewModeChange && (
+            <>
+              <Separator orientation="vertical" className="h-4 mx-1" />
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant={showAbsoluteDifference ? 'secondary' : 'ghost'}
+                      variant={spectraViewMode === 'difference' ? 'secondary' : 'ghost'}
                       size="sm"
-                      className="h-6 text-[10px] px-2"
-                      onClick={onToggleAbsoluteDifference}
+                      className={cn(
+                        'h-5 text-[10px] gap-1 px-1.5',
+                        spectraViewMode === 'difference' && 'bg-orange-500/20 text-orange-600 dark:text-orange-400'
+                      )}
+                      onMouseDown={onInteractionStart}
+                      onClick={() => onSpectraViewModeChange(spectraViewMode === 'difference' ? 'processed' : 'difference')}
                     >
-                      {showAbsoluteDifference ? '|Δ|' : '±Δ'}
+                      <ArrowLeftRight className="w-3 h-3" />
+                      Diff
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    {showAbsoluteDifference ? 'Show signed differences' : 'Show absolute differences'}
+                    {spectraViewMode === 'difference'
+                      ? 'Exit difference mode (show processed spectra)'
+                      : 'Enter difference mode (show per-sample distances)'}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-          </div>
-        )}
+              {spectraViewMode === 'difference' && onToggleAbsoluteDifference && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={showAbsoluteDifference ? 'secondary' : 'ghost'}
+                        size="sm"
+                        className="h-5 text-[10px] px-1.5"
+                        onClick={onToggleAbsoluteDifference}
+                      >
+                        {showAbsoluteDifference ? '|Δ|' : '±Δ'}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {showAbsoluteDifference ? 'Show signed differences' : 'Show absolute differences'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </>
+          )}
 
-        {/* Phase 9: Selection Tool Mode Toggle */}
-        <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
+          {/* Loading indicator */}
+          {isFetching && (
+            <Loader2 className="w-3 h-3 animate-spin text-primary ml-1" />
+          )}
+        </RibbonGroup>
+
+        {/* SELECTION GROUP */}
+        <RibbonGroup label="Selection" icon={<MousePointer2 className="w-2.5 h-2.5" />}>
+          {/* Selection Tool Mode Toggle */}
           <SelectionModeToggle
             mode={selectionCtx.selectionToolMode}
             onChange={selectionCtx.setSelectionToolMode}
           />
-          {/* Show mode indicator when not in click mode */}
           {selectionCtx.selectionToolMode !== 'click' && (
             <span className="text-[9px] text-primary font-medium px-1 py-0.5 bg-primary/10 rounded">
               {selectionCtx.selectionToolMode === 'box' ? 'Box' : 'Lasso'}
             </span>
           )}
-        </div>
 
-        {/* Selection by metadata/fold filter */}
-        <SelectionFilters
-          folds={folds}
-          metadata={metadata}
-          sampleIds={sampleIds}
-          totalSamples={totalSamples}
-          compact
-        />
+          {/* Selection by metadata/fold filter */}
+          <SelectionFilters
+            folds={folds}
+            metadata={metadata}
+            sampleIds={sampleIds}
+            totalSamples={totalSamples}
+            compact
+          />
 
-        {/* Selection count and filter button */}
-        {selectedCount > 0 && (
-          <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium cursor-help">
-                    {selectedCount} selected
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {selectedCount} sample{selectedCount !== 1 ? 's' : ''} currently selected. Press Esc to clear.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {onFilterToSelection && (
+          {/* Selection count badge */}
+          {selectedCount > 0 && (
+            <>
+              <Separator orientation="vertical" className="h-4 mx-1" />
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-6 text-[10px] gap-1 px-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400"
-                      onClick={onFilterToSelection}
-                    >
-                      <Filter className="w-3 h-3" />
-                      Filter to Selection
-                    </Button>
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-medium cursor-help">
+                      {selectedCount} sel.
+                    </Badge>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p className="text-xs">
-                      Add a filter that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}.
-                      Other samples will be removed from the pipeline.
-                    </p>
+                  <TooltipContent side="bottom">
+                    {selectedCount} sample{selectedCount !== 1 ? 's' : ''} currently selected. Press Esc to clear.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-          </div>
-        )}
-      </div>
+              {onFilterToSelection && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-5 text-[10px] gap-1 px-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400"
+                        onClick={onFilterToSelection}
+                      >
+                        <Filter className="w-3 h-3" />
+                        Keep
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      <p className="text-xs">
+                        Add a filter that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </>
+          )}
 
-      <div className="flex items-center gap-3">
-        {/* Partition filter (Phase 3) */}
-        {hasFolds && (
-          <>
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-[10px] text-muted-foreground cursor-help">View:</span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Filter displayed samples by partition (train/test/fold)
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+          {/* Saved Selections */}
+          <SavedSelections compact sampleIds={sampleIds} />
+        </RibbonGroup>
+
+        {/* FILTER GROUP */}
+        <RibbonGroup label="Filter" icon={<Filter className="w-2.5 h-2.5" />}>
+          {/* Partition filter */}
+          {hasFolds && (
             <PartitionSelector
               value={partitionFilter}
               onChange={onPartitionFilterChange}
@@ -693,76 +706,69 @@ export const CanvasToolbar = memo(function CanvasToolbar({
               totalSamples={totalSamples}
               compact
             />
-          </>
-        )}
+          )}
 
-        {/* Display Filters (Phase 4) */}
-        <DisplayFilters
-          hasOutliers={hasOutliers}
-          outlierCount={outlierCount}
-          selectedCount={selectedCount}
-          totalSamples={totalSamples}
-          compact
-        />
+          {/* Display Filters */}
+          <DisplayFilters
+            hasOutliers={hasOutliers}
+            outlierCount={outlierCount}
+            selectedCount={selectedCount}
+            totalSamples={totalSamples}
+            compact
+          />
 
+          {/* Advanced Filtering: Metrics, Outliers, Similarity */}
+          {metrics && onMetricFiltersChange && (
+            <MetricsFilterPanel
+              metrics={metrics}
+              activeFilters={metricFilters ?? []}
+              onFiltersChange={onMetricFiltersChange}
+              totalSamples={totalSamples}
+              compact
+            />
+          )}
 
-        {/* Phase 5: Advanced Filtering & Metrics */}
-        {(metrics || onDetectOutliers || onFindSimilar) && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-1.5">
-              <Activity className="w-3 h-3 text-muted-foreground" />
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-[10px] text-muted-foreground cursor-help">Filter:</span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    Advanced filtering by metrics, outliers, or similarity
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+          {onDetectOutliers && (
+            <OutlierSelector
+              onDetectOutliers={onDetectOutliers}
+              totalSamples={totalSamples}
+              useSelectionContext
+              compact
+            />
+          )}
 
-              {/* Metrics Filter Panel */}
-              {metrics && onMetricFiltersChange && (
-                <MetricsFilterPanel
-                  metrics={metrics}
-                  activeFilters={metricFilters ?? []}
-                  onFiltersChange={onMetricFiltersChange}
-                  totalSamples={totalSamples}
-                  compact
-                />
-              )}
+          {onFindSimilar && (
+            <SimilarityFilter
+              onFindSimilar={onFindSimilar}
+              selectedSample={selectedSample ?? null}
+              sampleIds={sampleIds}
+              useSelectionContext
+              totalSamples={totalSamples}
+              compact
+            />
+          )}
+        </RibbonGroup>
+      </div>
 
-              {/* Outlier Selector */}
-              {onDetectOutliers && (
-                <OutlierSelector
-                  onDetectOutliers={onDetectOutliers}
-                  totalSamples={totalSamples}
-                  useSelectionContext
-                  compact
-                />
-              )}
+      {/* ============= ROW 2: Coloration, Reference, Actions ============= */}
+      <div className="flex items-stretch px-2 py-1 gap-0 border-t border-border/30">
 
-              {/* Similarity Filter */}
-              {onFindSimilar && (
-                <SimilarityFilter
-                  onFindSimilar={onFindSimilar}
-                  selectedSample={selectedSample ?? null}
-                  sampleIds={sampleIds}
-                  useSelectionContext
-                  totalSamples={totalSamples}
-                  compact
-                />
-              )}
-            </div>
-          </>
-        )}
+        {/* COLORATION GROUP */}
+        <RibbonGroup label="Coloration" icon={<Paintbrush className="w-2.5 h-2.5" />}>
+          <ColorModeSelector
+            colorConfig={colorConfig}
+            onChange={handleColorConfigChange}
+            hasFolds={hasFolds}
+            hasPartition={hasPartition}
+            hasOutliers={hasOutliers}
+            metadataColumns={metadataColumns}
+            colorContext={colorContext}
+          />
+        </RibbonGroup>
 
-        {/* Phase 6: Reference Mode Controls */}
+        {/* REFERENCE GROUP (only when operators exist) */}
         {hasOperators && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
+          <RibbonGroup label="Reference" icon={<Layers className="w-2.5 h-2.5" />}>
             <ReferenceModeControls
               stepComparisonEnabled={stepComparisonEnabled}
               onDisableStepComparison={() => onStepComparisonEnabledChange?.(false)}
@@ -770,110 +776,100 @@ export const CanvasToolbar = memo(function CanvasToolbar({
               onInteractionStart={onInteractionStart}
               compact
             />
-          </>
+          </RibbonGroup>
         )}
 
-        <ColorModeSelector
-          colorConfig={colorConfig}
-          onChange={handleColorConfigChange}
-          hasFolds={hasFolds}
-          hasPartition={hasPartition}
-          hasOutliers={hasOutliers}
-          metadataColumns={metadataColumns}
-          colorContext={colorContext}
-        />
-
-        {/* Phase 6: Saved Selections */}
-        <SavedSelections compact sampleIds={sampleIds} />
-
-        {/* Phase 8: Reset View button */}
-        {onResetPlayground && (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'h-6 px-2 text-[10px] gap-1',
-                    hasStateToReset && 'text-orange-600 dark:text-orange-400 hover:bg-orange-500/10'
-                  )}
-                  onClick={handleResetClick}
-                  disabled={!hasStateToReset}
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  Reset
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {hasStateToReset
-                  ? 'Reset all selections, filters, and settings (Ctrl+Shift+R)'
-                  : 'Nothing to reset'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-        {/* Phase 6: Export menu */}
-        <DropdownMenu>
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1">
-                    <Download className="w-3 h-3" />
-                    Export
+        {/* ACTIONS GROUP */}
+        <RibbonGroup label="Actions" icon={<Zap className="w-2.5 h-2.5" />}>
+          {/* Reset View button */}
+          {onResetPlayground && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'h-5 px-1.5 text-[10px] gap-1',
+                      hasStateToReset && 'text-orange-600 dark:text-orange-400 hover:bg-orange-500/10'
+                    )}
+                    onClick={handleResetClick}
+                    disabled={!hasStateToReset}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset
                   </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                Export charts as PNG, data as CSV, or combined report
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => onExportChartPng('spectra')}>
-              <Image className="w-4 h-4 mr-2" />
-              Spectra as PNG
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onExportChartPng('pca')}>
-              <Image className="w-4 h-4 mr-2" />
-              PCA Plot as PNG
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onExportChartPng('histogram')}>
-              <Image className="w-4 h-4 mr-2" />
-              Histogram as PNG
-            </DropdownMenuItem>
-            {hasFolds && (
-              <DropdownMenuItem onClick={() => onExportChartPng('folds')}>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {hasStateToReset
+                    ? 'Reset all selections, filters, and settings (Ctrl+Shift+R)'
+                    : 'Nothing to reset'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* Export menu */}
+          <DropdownMenu>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] gap-1">
+                      <Download className="w-3 h-3" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Export charts as PNG, data as CSV, or combined report
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => onExportChartPng('spectra')}>
                 <Image className="w-4 h-4 mr-2" />
-                Folds as PNG
+                Spectra as PNG
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onBatchExport}>
-              <Image className="w-4 h-4 mr-2" />
-              All Charts as PNG
-            </DropdownMenuItem>
-            {onExportCombinedReport && (
-              <DropdownMenuItem onClick={onExportCombinedReport}>
+              <DropdownMenuItem onClick={() => onExportChartPng('pca')}>
+                <Image className="w-4 h-4 mr-2" />
+                PCA Plot as PNG
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExportChartPng('histogram')}>
+                <Image className="w-4 h-4 mr-2" />
+                Histogram as PNG
+              </DropdownMenuItem>
+              {hasFolds && (
+                <DropdownMenuItem onClick={() => onExportChartPng('folds')}>
+                  <Image className="w-4 h-4 mr-2" />
+                  Folds as PNG
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onBatchExport}>
+                <Image className="w-4 h-4 mr-2" />
+                All Charts as PNG
+              </DropdownMenuItem>
+              {onExportCombinedReport && (
+                <DropdownMenuItem onClick={onExportCombinedReport}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Combined Report
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onExportSpectraCsv}>
                 <FileText className="w-4 h-4 mr-2" />
-                Combined Report
+                Spectra as CSV
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onExportSpectraCsv}>
-              <FileText className="w-4 h-4 mr-2" />
-              Spectra as CSV
-            </DropdownMenuItem>
-            {selectedCount > 0 && (
-              <DropdownMenuItem onClick={onExportSelectionsJson}>
-                <FileText className="w-4 h-4 mr-2" />
-                Selection as JSON
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {selectedCount > 0 && (
+                <DropdownMenuItem onClick={onExportSelectionsJson}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Selection as JSON
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </RibbonGroup>
       </div>
 
       {/* Phase 8: Reset Confirmation Dialog */}

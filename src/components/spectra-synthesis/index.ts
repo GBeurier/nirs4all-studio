@@ -1,13 +1,32 @@
 // Contexts
-export { SynthesisBuilderProvider, useSynthesisBuilder, useSynthesisBuilderOptional } from "./contexts";
+export {
+  SynthesisBuilderProvider,
+  useSynthesisBuilder,
+  useSynthesisBuilderOptional,
+  SynthesisPreviewProvider,
+  useSynthesisPreview,
+  useSynthesisPreviewOptional,
+} from "./contexts";
 
-// Components
-export { SynthesisPalette } from "./SynthesisPalette";
-export { SynthesisBuilder } from "./SynthesisBuilder";
-export { SynthesisStepCard } from "./SynthesisStepCard";
-export { SynthesisConfigPanel } from "./SynthesisConfigPanel";
-export { CoreConfigCard } from "./CoreConfigCard";
-export { ChainConnector } from "./ChainConnector";
+// Chart components
+export {
+  ChartPanel,
+  ChartToolbar,
+  SpectraChart,
+  TargetHistogram,
+  MetadataView,
+  StatsBar,
+} from "./chart";
+
+// Configuration components
+export {
+  ConfigurationPanel,
+  CoreConfigSection,
+  StepsList,
+} from "./configuration";
+
+// Export dialog
+export { ExportDialog } from "./ExportDialog";
 
 // Types
 export * from "./types";

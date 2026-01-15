@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Sparkles,
   AlertCircle,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -407,6 +415,126 @@ export function FileMappingStep() {
             source{maxSource !== 1 ? "s" : ""}
           </div>
         </div>
+      )}
+
+      {/* Multi-Source Settings Accordion */}
+      {maxSource > 1 && (
+        <Accordion type="single" collapsible className="border rounded-lg">
+          <AccordionItem value="multi-source" className="border-none">
+            <AccordionTrigger className="px-4 py-3 hover:no-underline">
+              <div className="flex items-center gap-2 text-sm">
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                <span>Multi-Source Settings</span>
+                <Badge variant="secondary" className="ml-2">
+                  {maxSource} sources
+                </Badge>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="space-y-4">
+                {/* Source Names */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">
+                    Source Names
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Array.from({ length: maxSource }, (_, i) => (
+                      <div key={i + 1} className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-16">
+                          Source {i + 1}:
+                        </span>
+                        <Input
+                          className="h-8 text-sm"
+                          placeholder={`Source ${i + 1}`}
+                          value={
+                            state.multiSource?.sources?.find((s) => s.id === i + 1)
+                              ?.name || ""
+                          }
+                          onChange={(e) => {
+                            const sources = state.multiSource?.sources || [];
+                            const existingIndex = sources.findIndex(
+                              (s) => s.id === i + 1
+                            );
+                            const updatedSources = [...sources];
+
+                            if (existingIndex >= 0) {
+                              updatedSources[existingIndex] = {
+                                ...updatedSources[existingIndex],
+                                name: e.target.value,
+                              };
+                            } else {
+                              updatedSources.push({
+                                id: i + 1,
+                                name: e.target.value,
+                                files: [],
+                              });
+                            }
+
+                            dispatch({
+                              type: "SET_MULTI_SOURCE",
+                              payload: {
+                                ...(state.multiSource || {
+                                  sources: [],
+                                }),
+                                sources: updatedSources,
+                              },
+                            });
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Link-by Column */}
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    Link-by Column
+                  </Label>
+                  <Input
+                    className="h-9"
+                    placeholder="sample_id (column to link samples across sources)"
+                    value={state.multiSource?.link_by || ""}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "SET_MULTI_SOURCE",
+                        payload: {
+                          ...(state.multiSource || { sources: [] }),
+                          link_by: e.target.value || undefined,
+                        },
+                      })
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Column name used to match samples across different sources
+                  </p>
+                </div>
+
+                {/* Shared Targets Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm">Shared Targets</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Same target file applies to all sources
+                    </p>
+                  </div>
+                  <Switch
+                    checked={state.multiSource?.shared_targets ?? true}
+                    onCheckedChange={(checked) =>
+                      dispatch({
+                        type: "SET_MULTI_SOURCE",
+                        payload: {
+                          ...(state.multiSource || { sources: [] }),
+                          shared_targets: checked,
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       )}
     </div>
   );

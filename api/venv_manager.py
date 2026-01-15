@@ -69,12 +69,19 @@ class VenvManager:
     SETTINGS_FILE = "venv_settings.json"
 
     def __init__(self):
-        """Initialize the venv manager."""
+        """Initialize the venv manager with lazy loading."""
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         self._default_venv_path = self._app_data_dir / self.VENV_DIRNAME
         self._custom_venv_path: Optional[Path] = None
-        self._load_settings()
+        self._settings_loaded = False
+        # Defer disk I/O until first access for faster startup
+
+    def _ensure_settings_loaded(self) -> None:
+        """Ensure settings are loaded (lazy initialization)."""
+        if not self._settings_loaded:
+            self._load_settings()
+            self._settings_loaded = True
 
     def _load_settings(self) -> None:
         """Load venv settings from file."""
@@ -103,6 +110,7 @@ class VenvManager:
     @property
     def _venv_path(self) -> Path:
         """Get the current venv path (custom or default)."""
+        self._ensure_settings_loaded()
         return self._custom_venv_path if self._custom_venv_path else self._default_venv_path
 
     @property
@@ -597,5 +605,24 @@ class VenvManager:
         return None
 
 
-# Global venv manager instance
-venv_manager = VenvManager()
+# Lazy-initialized global venv manager instance
+_venv_manager: Optional[VenvManager] = None
+
+
+def get_venv_manager() -> VenvManager:
+    """Get the global venv manager instance (lazy initialization)."""
+    global _venv_manager
+    if _venv_manager is None:
+        _venv_manager = VenvManager()
+    return _venv_manager
+
+
+# For backward compatibility - will be lazily initialized on first access
+class _LazyVenvManager:
+    """Proxy class for lazy access to venv_manager."""
+
+    def __getattr__(self, name):
+        return getattr(get_venv_manager(), name)
+
+
+venv_manager = _LazyVenvManager()

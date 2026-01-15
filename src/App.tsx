@@ -12,6 +12,8 @@ import NewExperiment from "@/pages/NewExperiment";
 import Results from "@/pages/Results";
 import Predictions from "@/pages/Predictions";
 import Analysis from "@/pages/Analysis";
+import TransferAnalysis from "@/pages/TransferAnalysis";
+import VariableImportance from "@/pages/VariableImportance";
 import SpectraSynthesis from "@/pages/SpectraSynthesis";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/NotFound";
@@ -33,6 +35,8 @@ function App() {
         <Route path="results" element={<Results />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="analysis" element={<Analysis />} />
+        <Route path="analysis/transfer" element={<TransferAnalysis />} />
+        <Route path="analysis/importance" element={<VariableImportance />} />
         <Route path="synthesis" element={<SpectraSynthesis />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />

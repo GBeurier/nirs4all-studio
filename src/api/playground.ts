@@ -356,7 +356,7 @@ export interface DiffComputeResponse {
 export interface RepetitionVarianceRequest {
   X: number[][];
   group_ids: string[];
-  reference: 'group_mean' | 'leave_one_out' | 'first';
+  reference: 'group_mean' | 'leave_one_out' | 'first' | 'selected';
   metric?: DiffDistanceMetric;
 }
 

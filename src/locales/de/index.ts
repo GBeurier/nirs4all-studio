@@ -130,6 +130,11 @@ const de = {
         title: "Animationen reduzieren",
         description: "Bewegungen für Barrierefreiheit oder Leistung minimieren",
       },
+      // Zoom
+      zoom: {
+        title: "UI-Zoom",
+        description: "Passen Sie die Gesamtgröße der Benutzeroberfläche für bessere Lesbarkeit an",
+      },
       // Language
       language: {
         title: "Sprache",
