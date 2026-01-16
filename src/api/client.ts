@@ -467,11 +467,16 @@ export interface PipelineInfo {
   is_favorite?: boolean;
 }
 
+// Note: This is a minimal type for API transport. The full pipeline step type
+// with branches, generators, etc. is in @/components/pipeline-editor/types.ts
+// We use Record<string, unknown> to preserve all fields during save/load.
 export interface PipelineStep {
   id: string;
-  type: "preprocessing" | "splitting" | "model" | "metrics";
+  type: string;  // Allow any step type
   name: string;
   params: Record<string, unknown>;
+  // Additional fields are preserved via spread during serialization
+  [key: string]: unknown;
 }
 
 export async function listPipelines(): Promise<{ pipelines: PipelineInfo[] }> {
@@ -529,6 +534,10 @@ export async function listRuns(): Promise<RunListResponse> {
 
 export async function getRun(runId: string): Promise<Run> {
   return api.get(`/runs/${runId}`);
+}
+
+export async function getActiveRuns(): Promise<RunListResponse> {
+  return api.get("/runs?status=running,queued");
 }
 
 export async function getRunStats(): Promise<RunStatsResponse> {
@@ -1296,6 +1305,44 @@ export async function removeFavorite(
   pipelineId: string
 ): Promise<{ success: boolean; favorites: string[]; message: string }> {
   return api.delete(`/app/favorites/${pipelineId}`);
+}
+
+// ============= Config Path Management =============
+
+export interface ConfigPathResponse {
+  current_path: string;
+  default_path: string;
+  is_custom: boolean;
+}
+
+export interface SetConfigPathResponse {
+  success: boolean;
+  message: string;
+  current_path: string;
+  requires_restart: boolean;
+}
+
+/**
+ * Get the current and default app config folder paths
+ */
+export async function getConfigPath(): Promise<ConfigPathResponse> {
+  return api.get("/app/config-path");
+}
+
+/**
+ * Set a custom app config folder path
+ */
+export async function setConfigPath(
+  path: string
+): Promise<SetConfigPathResponse> {
+  return api.post("/app/config-path", { path });
+}
+
+/**
+ * Reset the app config folder to the default location
+ */
+export async function resetConfigPath(): Promise<SetConfigPathResponse> {
+  return api.delete("/app/config-path");
 }
 
 // ============= Updates API =============

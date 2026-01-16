@@ -1,0 +1,22 @@
+{
+  "data_loading_defaults": {
+    "delimiter": ";",
+    "decimal_separator": ".",
+    "has_header": true,
+    "header_unit": "nm",
+    "signal_type": "auto",
+    "na_policy": "drop",
+    "auto_detect": true
+  },
+  "developer_mode": false,
+  "cache_enabled": true,
+  "general": {
+    "theme": "system",
+    "ui_density": "spacious",
+    "reduce_animations": false,
+    "sidebar_collapsed": false,
+    "language": "en",
+    "zoom_level": 75
+  },
+  "last_updated": "2026-01-16T16:09:06.192961"
+}

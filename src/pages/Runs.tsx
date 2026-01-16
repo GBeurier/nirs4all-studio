@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -34,11 +35,13 @@ import {
   LayoutTemplate,
   GitBranch,
   Settings2,
+  Terminal,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
+import { NoWorkspaceState, EmptyState, CardSkeleton } from "@/components/ui/state-display";
 import { Run, DatasetRun, PipelineRun, RunStatus, runStatusConfig, PipelineTemplate, RunDatasetInfo } from "@/types/runs";
 import {
   listRuns,
@@ -432,68 +435,23 @@ export default function Runs() {
       <div className="space-y-4">
         {isLoading ? (
           // Loading skeleton
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <Skeleton className="h-10 w-10 rounded-lg" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-5 w-48" />
-                      <Skeleton className="h-4 w-32" />
-                    </div>
-                    <Skeleton className="h-8 w-24" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <CardSkeleton count={3} />
         ) : !hasActiveWorkspace ? (
           // No workspace linked
-          <Card>
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted/50 mb-4">
-                  <FolderOpen className="h-10 w-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  No workspace linked
-                </h3>
-                <p className="text-muted-foreground max-w-md mb-6">
-                  Link a nirs4all workspace to see your runs and training results.
-                  Go to Settings to link a workspace directory.
-                </p>
-                <Button asChild variant="outline">
-                  <Link to="/settings">
-                    <FolderOpen className="mr-2 h-4 w-4" />
-                    Link Workspace
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <NoWorkspaceState
+            title={t("runs.noWorkspace", { defaultValue: "No workspace linked" })}
+            description={t("runs.noWorkspaceHint", { defaultValue: "Link a nirs4all workspace to see your runs and training results. Go to Settings to link a workspace directory." })}
+          />
         ) : runs.length === 0 ? (
-          <Card>
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-4">
-                  <Play className="h-10 w-10 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  {t("runs.empty")}
-                </h3>
-                <p className="text-muted-foreground max-w-md mb-6">
-                  {t("runs.emptyHint")}
-                </p>
-                <Button asChild>
-                  <Link to="/runs/new">
-                    <Plus className="mr-2 h-4 w-4" />
-                    {t("runs.newRun")}
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={Play}
+            title={t("runs.empty")}
+            description={t("runs.emptyHint")}
+            action={{
+              label: t("runs.newRun"),
+              href: "/runs/new",
+            }}
+          />
         ) : (
           runs.map((run) => {
             const StatusIcon = statusIcons[run.status] || statusIcons.completed;
@@ -648,10 +606,102 @@ export default function Runs() {
 
                   <CollapsibleContent>
                     <CardContent className="px-4 pb-4 pt-0 space-y-3">
-                      {/* Error message for failed runs */}
+                      {/* Progress and logs for running runs */}
+                      {run.status === "running" && (
+                        <div className="space-y-3">
+                          {/* Overall progress bar */}
+                          <div className="p-3 rounded-lg bg-chart-2/10 border border-chart-2/20">
+                            <div className="flex items-center justify-between text-sm mb-2">
+                              <span className="font-medium text-foreground flex items-center gap-2">
+                                <RefreshCw className="h-4 w-4 animate-spin text-chart-2" />
+                                {t("runs.status.running")}
+                              </span>
+                              <span className="text-muted-foreground">{Math.round(progress)}% complete</span>
+                            </div>
+                            <Progress value={progress} className="h-2" />
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>
+                                {run.completed_pipelines || 0}/{run.total_pipelines || 0} pipelines
+                              </span>
+                              {run.duration && <span>Elapsed: {run.duration}</span>}
+                            </div>
+                          </div>
+                          {/* Live logs for running */}
+                          {(() => {
+                            const allLogs = run.datasets.flatMap(d => d.pipelines).flatMap(p => p.logs || []);
+                            if (allLogs.length > 0) {
+                              return (
+                                <div className="rounded-lg border bg-muted/30">
+                                  <div className="flex items-center gap-2 px-3 py-2 border-b">
+                                    <Terminal className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-xs font-medium text-muted-foreground">Live Log</span>
+                                    <Badge variant="outline" className="text-[10px] animate-pulse">Live</Badge>
+                                  </div>
+                                  <ScrollArea className="h-24">
+                                    <div className="p-3 font-mono text-xs space-y-0.5">
+                                      {allLogs.slice(-20).map((log, i) => (
+                                        <div
+                                          key={i}
+                                          className={cn(
+                                            log.includes("[ERROR]") && "text-destructive",
+                                            log.includes("[WARN]") && "text-amber-500",
+                                            log.includes("[INFO]") && "text-muted-foreground"
+                                          )}
+                                        >
+                                          {log}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Error message and logs for failed runs */}
                       {run.status === "failed" && (
-                        <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
-                          {t("runs.error")}: {run.datasets.flatMap(d => d.pipelines).find(p => p.error_message)?.error_message || t("runs.unknownError")}
+                        <div className="space-y-2">
+                          <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+                            <div className="flex items-center gap-2 font-medium mb-1">
+                              <AlertCircle className="h-4 w-4" />
+                              {t("runs.error")}
+                            </div>
+                            {run.datasets.flatMap(d => d.pipelines).find(p => p.error_message)?.error_message || t("runs.unknownError")}
+                          </div>
+                          {/* Show logs if available */}
+                          {(() => {
+                            const allLogs = run.datasets.flatMap(d => d.pipelines).flatMap(p => p.logs || []);
+                            if (allLogs.length > 0) {
+                              return (
+                                <div className="rounded-lg border bg-muted/30">
+                                  <div className="flex items-center gap-2 px-3 py-2 border-b">
+                                    <Terminal className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-xs font-medium text-muted-foreground">Execution Log</span>
+                                  </div>
+                                  <ScrollArea className="h-32">
+                                    <div className="p-3 font-mono text-xs space-y-0.5">
+                                      {allLogs.map((log, i) => (
+                                        <div
+                                          key={i}
+                                          className={cn(
+                                            log.includes("[ERROR]") && "text-destructive",
+                                            log.includes("[WARN]") && "text-amber-500",
+                                            log.includes("[INFO]") && "text-muted-foreground"
+                                          )}
+                                        >
+                                          {log}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       )}
 
@@ -716,10 +766,10 @@ export default function Runs() {
                                             <span className="text-xs text-muted-foreground">{pipeline.progress}%</span>
                                           </div>
                                         )}
-                                        {pipeline.metrics && (
+                                        {pipeline.metrics && (pipeline.metrics.r2 != null || pipeline.metrics.rmse != null) && (
                                           <div className="flex gap-2 text-xs">
-                                            <span className="text-chart-1 font-mono">R²={pipeline.metrics.r2.toFixed(3)}</span>
-                                            <span className="text-muted-foreground font-mono">RMSE={pipeline.metrics.rmse.toFixed(2)}</span>
+                                            {pipeline.metrics.r2 != null && <span className="text-chart-1 font-mono">R²={pipeline.metrics.r2.toFixed(3)}</span>}
+                                            {pipeline.metrics.rmse != null && <span className="text-muted-foreground font-mono">RMSE={pipeline.metrics.rmse.toFixed(2)}</span>}
                                           </div>
                                         )}
                                         {pipeline.status === "completed" && (

@@ -74,6 +74,11 @@ class PipelineValidateRequest(BaseModel):
     steps: List[Dict[str, Any]]
 
 
+class PipelineCountRequest(BaseModel):
+    """Request model for counting pipeline variants."""
+    steps: List[Dict[str, Any]]
+
+
 class PipelineExecuteRequest(BaseModel):
     """Request model for preparing pipeline execution."""
 
@@ -322,6 +327,31 @@ async def get_pipeline_presets():
 
 
 # ============================================================================
+# NOTE: Routes with static paths MUST be defined BEFORE routes with path parameters!
+# The routes below forward to their implementations defined later in the file.
+# This is necessary because FastAPI matches routes in order of definition.
+# ============================================================================
+
+
+@router.get("/pipelines/operators")
+async def list_operators_forward():
+    """Forward to the list_operators implementation."""
+    return await _list_operators_impl()
+
+
+@router.post("/pipelines/validate")
+async def validate_pipeline_forward(request: PipelineValidateRequest):
+    """Forward to the validate_pipeline implementation."""
+    return await _validate_pipeline_impl(request)
+
+
+@router.post("/pipelines/count-variants")
+async def count_variants_forward(request: PipelineCountRequest):
+    """Forward to the count_pipeline_variants implementation."""
+    return await _count_variants_impl(request)
+
+
+# ============================================================================
 
 
 @router.get("/pipelines/{pipeline_id}")
@@ -438,8 +468,8 @@ async def clone_pipeline(pipeline_id: str, new_name: Optional[str] = None):
         )
 
 
-@router.get("/pipelines/operators")
-async def list_operators():
+# Implementation function - called by forwarding route defined earlier
+async def _list_operators_impl():
     """
     List all available operators for pipeline building.
 
@@ -796,8 +826,8 @@ async def list_operators():
     return {"operators": operators, "total": total, "nirs4all_available": NIRS4ALL_AVAILABLE}
 
 
-@router.post("/pipelines/validate")
-async def validate_pipeline(request: PipelineValidateRequest):
+# Implementation function - called by forwarding route defined earlier
+async def _validate_pipeline_impl(request: PipelineValidateRequest):
     """
     Validate a pipeline configuration.
 
@@ -812,7 +842,7 @@ async def validate_pipeline(request: PipelineValidateRequest):
     }
 
     # Get available operators
-    operators_response = await list_operators()
+    operators_response = await _list_operators_impl()
     all_operators = operators_response["operators"]
 
     # Flatten operators into a lookup dict
@@ -1597,11 +1627,6 @@ async def create_pipeline_from_preset(preset_id: str, name: Optional[str] = None
 # ============= Pipeline Variant Counting =============
 
 
-class PipelineCountRequest(BaseModel):
-    """Request model for counting pipeline variants."""
-    steps: List[Dict[str, Any]]
-
-
 def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any]:
     """
     Convert frontend pipeline step format to nirs4all generator format.
@@ -1704,8 +1729,8 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
     return result
 
 
-@router.post("/pipelines/count-variants")
-async def count_pipeline_variants(request: PipelineCountRequest):
+# Implementation function - called by forwarding route defined earlier
+async def _count_variants_impl(request: PipelineCountRequest):
     """
     Count the number of pipeline variants without generating them.
 

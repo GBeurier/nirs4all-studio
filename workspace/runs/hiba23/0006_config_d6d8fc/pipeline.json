@@ -1,0 +1,46 @@
+[
+  "nirs4all.operators.transforms.scalers.StandardNormalVariate",
+  {
+    "class": "nirs4all.operators.transforms.nirs.SavitzkyGolay",
+    "params": {
+      "polyorder": 2,
+      "deriv": 1
+    }
+  },
+  {
+    "class": "sklearn.model_selection._split.KFold",
+    "params": {
+      "shuffle": true,
+      "random_state": 42
+    }
+  },
+  {
+    "model": {
+      "class": "sklearn.cross_decomposition._pls.PLSRegression",
+      "params": {
+        "n_components": 10
+      }
+    },
+    "finetune_params": {
+      "n_trials": 50,
+      "model_params": {},
+      "approach": "grouped",
+      "eval_mode": "best"
+    }
+  },
+  {
+    "model": {
+      "class": "sklearn.ensemble._forest.RandomForestRegressor",
+      "params": {
+        "max_depth": 10,
+        "random_state": 42
+      }
+    },
+    "finetune_params": {
+      "n_trials": 50,
+      "model_params": {},
+      "approach": "grouped",
+      "eval_mode": "best"
+    }
+  }
+]

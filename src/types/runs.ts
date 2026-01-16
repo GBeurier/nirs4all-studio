@@ -63,6 +63,20 @@ export interface PipelineRun {
   completed_at?: string;
   error_message?: string;
   template_id?: string; // Which template this came from (v2)
+  // Variant tracking (sweeps, branches, finetuning)
+  estimated_variants?: number; // Number of pipeline variants to test
+  tested_variants?: number; // Actual variants tested after completion
+  has_generators?: boolean; // True if pipeline has sweeps/finetuning
+  // Model count breakdown (folds × branches × variants)
+  fold_count?: number; // Number of CV folds
+  branch_count?: number; // Number of pipeline branches
+  total_model_count?: number; // Total models: folds × branches × variants
+  model_count_breakdown?: string; // Human-readable: "5 folds × 3 branches = 15 models"
+  // Granular progress tracking
+  current_fold?: number; // Current fold being trained (1-based)
+  current_branch?: string; // Current branch name
+  current_variant?: number; // Current variant index (1-based)
+  fold_metrics?: Record<number, RunMetrics>; // Per-fold metrics
 }
 
 export interface DatasetRun {
@@ -203,6 +217,11 @@ export interface ExperimentConfig {
   test_size?: number;
   shuffle?: boolean;
   random_state?: number;
+  /** Inline pipeline from editor (for unsaved pipelines) */
+  inline_pipeline?: {
+    name: string;
+    steps: unknown[];
+  };
 }
 
 // API responses

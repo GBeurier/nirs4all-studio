@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { DeveloperModeProvider } from "@/context/DeveloperModeContext";
 import { UISettingsProvider } from "@/context/UISettingsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
+import { ActiveRunProvider } from "@/context/ActiveRunContext";
 import { Toaster } from "@/components/ui/sonner";
 import App from "./App";
 import "./index.css";
@@ -31,8 +32,10 @@ createRoot(document.getElementById("root")!).render(
             <LanguageProvider>
               <UISettingsProvider>
                 <DeveloperModeProvider>
-                  <App />
-                  <Toaster position="bottom-right" />
+                  <ActiveRunProvider>
+                    <App />
+                    <Toaster position="bottom-right" />
+                  </ActiveRunProvider>
                 </DeveloperModeProvider>
               </UISettingsProvider>
             </LanguageProvider>

@@ -14,6 +14,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "@/lib/motion";
 import {
   Dialog,
@@ -184,7 +185,7 @@ function ResultsDisplay({ result }: { result: ExecutionResult }) {
       {/* Metrics summary */}
       {result.metrics && Object.keys(result.metrics).length > 0 && (
         <div className="grid grid-cols-3 gap-4">
-          {result.metrics.rmse !== undefined && (
+          {result.metrics.rmse != null && (
             <div className="rounded-lg border bg-card p-3 text-center">
               <div className="text-2xl font-bold text-emerald-500">
                 {result.metrics.rmse.toFixed(4)}
@@ -192,7 +193,7 @@ function ResultsDisplay({ result }: { result: ExecutionResult }) {
               <div className="text-xs text-muted-foreground">RMSE</div>
             </div>
           )}
-          {result.metrics.r2 !== undefined && (
+          {result.metrics.r2 != null && (
             <div className="rounded-lg border bg-card p-3 text-center">
               <div className="text-2xl font-bold text-blue-500">
                 {(result.metrics.r2 * 100).toFixed(2)}%
@@ -359,6 +360,7 @@ export function PipelineExecutionDialog({
   variantCount,
 }: PipelineExecutionDialogProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedDataset, setSelectedDataset] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"execute" | "export">("execute");
   const [isQuickRunning, setIsQuickRunning] = useState(false);
@@ -418,6 +420,10 @@ export function PipelineExecutionDialog({
         cv_folds: 5,
       });
 
+      // Invalidate runs queries so the new run appears in the list
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["run-stats"] });
+
       toast.success("Run started! Redirecting to progress page...");
       onOpenChange(false);
       navigate(`/runs/${run.id}`);
@@ -427,8 +433,49 @@ export function PipelineExecutionDialog({
     }
   };
 
-  // Can close if not running
-  const canClose = status !== "running" && status !== "starting" && !isQuickRunning;
+  // Handle background run (starts run but stays on current page)
+  const handleBackgroundRun = async () => {
+    if (!selectedDataset) {
+      toast.error("Please select a dataset");
+      return;
+    }
+
+    setIsQuickRunning(true);
+    try {
+      const run = await quickRun({
+        pipeline_id: pipelineId,
+        dataset_id: selectedDataset,
+        name: `${pipelineName} Run`,
+        export_model: true,
+        cv_folds: 5,
+      });
+
+      // Invalidate runs queries so the new run appears in the list
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["run-stats"] });
+
+      toast.success(
+        <div className="flex flex-col gap-1">
+          <span>Run started in background!</span>
+          <button
+            onClick={() => navigate(`/runs/${run.id}`)}
+            className="text-xs text-primary underline text-left"
+          >
+            View Progress →
+          </button>
+        </div>,
+        { duration: 5000 }
+      );
+      onOpenChange(false);
+    } catch (err) {
+      toast.error("Failed to start run");
+    } finally {
+      setIsQuickRunning(false);
+    }
+  };
+
+  // Can close if not starting (allow closing during running - it's background)
+  const canClose = status !== "starting" && !isQuickRunning;
 
   return (
     <Dialog open={open} onOpenChange={canClose ? onOpenChange : undefined}>
@@ -553,11 +600,20 @@ export function PipelineExecutionDialog({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 flex-wrap">
           {status === "idle" && !isQuickRunning && (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleBackgroundRun}
+                disabled={!selectedDataset}
+                className="gap-2"
+              >
+                <Play className="h-4 w-4" />
+                Start in Background
               </Button>
               <Button
                 variant="outline"
@@ -587,17 +643,25 @@ export function PipelineExecutionDialog({
           )}
 
           {(status === "starting" || status === "running") && (
-            <Button variant="destructive" onClick={cancel} className="gap-2">
-              <Square className="h-4 w-4" />
-              Stop Execution
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="gap-2">
+                Continue Working
+              </Button>
+              <Button variant="destructive" onClick={cancel} className="gap-2">
+                <Square className="h-4 w-4" />
+                Stop Execution
+              </Button>
+            </>
           )}
 
           {(status === "completed" ||
             status === "failed" ||
             status === "cancelled") && (
             <>
-              <Button variant="outline" onClick={reset}>
+              <Button variant="outline" onClick={() => {
+                reset();
+                setIsQuickRunning(false);
+              }}>
                 Run Again
               </Button>
               <Button onClick={() => onOpenChange(false)}>Done</Button>

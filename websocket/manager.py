@@ -37,6 +37,15 @@ class MessageType(str, Enum):
     TRAINING_BATCH = "training_batch"
     TRAINING_CHECKPOINT = "training_checkpoint"
 
+    # Granular progress messages (folds, branches, variants)
+    FOLD_STARTED = "fold_started"
+    FOLD_COMPLETED = "fold_completed"
+    BRANCH_ENTERED = "branch_entered"
+    BRANCH_EXITED = "branch_exited"
+    VARIANT_STARTED = "variant_started"
+    VARIANT_COMPLETED = "variant_completed"
+    STEP_PROGRESS = "step_progress"
+
     # System messages
     PING = "ping"
     PONG = "pong"
@@ -496,6 +505,160 @@ async def notify_job_metrics(job_id: str, metrics: Dict[str, Any]) -> None:
         data={
             "job_id": job_id,
             "metrics": metrics,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_job_log(job_id: str, log_entry: str, level: str = "info", context: Optional[Dict[str, Any]] = None) -> None:
+    """
+    Notify subscribers of a new log entry.
+
+    Args:
+        job_id: Job identifier
+        log_entry: Log message
+        level: Log level (info, warn, error)
+        context: Optional context dict with fold_id, branch_name, variant_index
+    """
+    channel = f"job:{job_id}"
+    message = WebSocketMessage(
+        type=MessageType.JOB_PROGRESS,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "log": log_entry,
+            "level": level,
+            "log_context": context,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+# ============================================================================
+# Granular Progress Notification Functions
+# ============================================================================
+
+
+async def notify_fold_progress(
+    job_id: str,
+    current_fold: int,
+    total_folds: int,
+    status: str = "started",
+    metrics: Optional[Dict[str, float]] = None,
+) -> None:
+    """
+    Notify subscribers of fold progress.
+
+    Args:
+        job_id: Job identifier
+        current_fold: Current fold number (1-based)
+        total_folds: Total number of folds
+        status: "started" or "completed"
+        metrics: Metrics for completed fold
+    """
+    channel = f"job:{job_id}"
+    msg_type = MessageType.FOLD_STARTED if status == "started" else MessageType.FOLD_COMPLETED
+    message = WebSocketMessage(
+        type=msg_type,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "current_fold": current_fold,
+            "total_folds": total_folds,
+            "metrics": metrics,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_branch_progress(
+    job_id: str,
+    branch_path: list,
+    branch_name: str,
+    status: str = "entered",
+) -> None:
+    """
+    Notify subscribers of branch traversal.
+
+    Args:
+        job_id: Job identifier
+        branch_path: List of branch indices (e.g., [0, 1])
+        branch_name: Human-readable branch name
+        status: "entered" or "exited"
+    """
+    channel = f"job:{job_id}"
+    msg_type = MessageType.BRANCH_ENTERED if status == "entered" else MessageType.BRANCH_EXITED
+    message = WebSocketMessage(
+        type=msg_type,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "branch_path": branch_path,
+            "branch_name": branch_name,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_variant_progress(
+    job_id: str,
+    current_variant: int,
+    total_variants: int,
+    variant_description: str,
+    status: str = "started",
+) -> None:
+    """
+    Notify subscribers of variant progress.
+
+    Args:
+        job_id: Job identifier
+        current_variant: Current variant number (1-based)
+        total_variants: Total number of variants
+        variant_description: Description of variant (e.g., "n_components=10")
+        status: "started" or "completed"
+    """
+    channel = f"job:{job_id}"
+    msg_type = MessageType.VARIANT_STARTED if status == "started" else MessageType.VARIANT_COMPLETED
+    message = WebSocketMessage(
+        type=msg_type,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "current_variant": current_variant,
+            "total_variants": total_variants,
+            "variant_description": variant_description,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_step_progress(
+    job_id: str,
+    current_step: int,
+    total_steps: int,
+    step_name: str,
+    step_type: str,
+) -> None:
+    """
+    Notify subscribers of step-level progress.
+
+    Args:
+        job_id: Job identifier
+        current_step: Current step number (1-based)
+        total_steps: Total number of steps
+        step_name: Name of the current step
+        step_type: Type of step (preprocessing, model, splitter, etc.)
+    """
+    channel = f"job:{job_id}"
+    message = WebSocketMessage(
+        type=MessageType.STEP_PROGRESS,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "current_step": current_step,
+            "total_steps": total_steps,
+            "step_name": step_name,
+            "step_type": step_type,
         },
     )
     await ws_manager.broadcast_to_channel(channel, message)

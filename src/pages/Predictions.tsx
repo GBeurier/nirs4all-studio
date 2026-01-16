@@ -67,6 +67,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { NoWorkspaceState, EmptyState, LoadingState, ErrorState } from "@/components/ui/state-display";
 import {
   getLinkedWorkspaces,
   getN4AWorkspacePredictionsData,
@@ -404,32 +405,18 @@ export default function Predictions() {
 
   // Loading state (initial summary load)
   if (summaryLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">{t("predictions.loading")}</p>
-        </div>
-      </div>
-    );
+    return <LoadingState message={t("predictions.loading")} className="min-h-[400px]" />;
   }
 
   // Error state
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-          <div>
-            <h3 className="text-lg font-semibold">{t("predictions.error")}</h3>
-            <p className="text-muted-foreground">{error}</p>
-          </div>
-          <Button variant="outline" onClick={loadSummary}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            {t("common.refresh")}
-          </Button>
-        </div>
-      </div>
+      <ErrorState
+        title={t("predictions.error")}
+        message={error}
+        onRetry={loadSummary}
+        retryLabel={t("common.refresh")}
+      />
     );
   }
 
@@ -447,29 +434,10 @@ export default function Predictions() {
             {t("predictions.subtitle")}
           </p>
         </div>
-
-        <Card>
-          <CardContent className="p-12">
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-4">
-                <FolderOpen className="h-10 w-10 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">
-                No workspace linked
-              </h3>
-              <p className="text-muted-foreground max-w-md mb-6">
-                Link a nirs4all workspace in Settings to view prediction records
-                from your experiments.
-              </p>
-              <Link to="/settings">
-                <Button>
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  Go to Settings
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+        <NoWorkspaceState
+          title={t("predictions.noWorkspace", { defaultValue: "No workspace linked" })}
+          description={t("predictions.noWorkspaceHint", { defaultValue: "Link a nirs4all workspace in Settings to view prediction records from your experiments." })}
+        />
       </motion.div>
     );
   }
@@ -488,28 +456,15 @@ export default function Predictions() {
             Workspace: {activeWorkspace.name}
           </p>
         </div>
-
-        <Card>
-          <CardContent className="p-12">
-            <div className="flex flex-col items-center justify-center text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-4">
-                <Target className="h-10 w-10 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">
-                No predictions yet
-              </h3>
-              <p className="text-muted-foreground max-w-md mb-6">
-                Predictions will appear here after running experiments with
-                nirs4all. Run <code className="text-primary">nirs4all.run()</code>{" "}
-                to generate predictions.
-              </p>
-              <Button variant="outline" onClick={loadSummary}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Target}
+          title={t("predictions.noPredictions", { defaultValue: "No predictions yet" })}
+          description={t("predictions.noPredictionsHint", { defaultValue: "Predictions will appear here after running experiments with nirs4all. Run nirs4all.run() to generate predictions." })}
+          action={{
+            label: t("common.refresh"),
+            onClick: loadSummary,
+          }}
+        />
       </motion.div>
     );
   }

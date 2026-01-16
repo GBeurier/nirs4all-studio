@@ -15,6 +15,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { InlineError } from "@/components/ui/state-display";
 import { StatsCard, QuickAction, RecentProject, DeveloperQuickStart } from "@/components/dashboard";
 import { useDashboard, formatRelativeTime } from "@/hooks/useDashboard";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
@@ -268,13 +269,7 @@ export default function Dashboard() {
       {/* Error state */}
       {error && (
         <motion.div variants={itemVariants}>
-          <Card className="border-destructive/50">
-            <CardContent className="p-4">
-              <p className="text-sm text-destructive">
-                Failed to load dashboard data. Please try refreshing the page.
-              </p>
-            </CardContent>
-          </Card>
+          <InlineError message="Failed to load dashboard data. Please try refreshing the page." />
         </motion.div>
       )}
     </motion.div>

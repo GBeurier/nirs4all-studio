@@ -1,0 +1,727 @@
+schema_version: '2.0'
+uid: 235ea990-4fcd-427f-ba2b-408c4f4e5b52
+pipeline_id: 0001_config_cb28c7
+name: config_cb28c7
+dataset: digestibility_0
+created_at: '2026-01-15T15:02:48.784653+00:00'
+pipeline:
+  steps:
+  - class: sklearn.model_selection._split.KFold
+    params:
+      shuffle: true
+      random_state: 42
+  - nirs4all.operators.transforms.scalers.StandardNormalVariate
+  - model:
+      class: sklearn.cross_decomposition._pls.PLSRegression
+      params:
+        n_components: 10
+  - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+    params:
+      polyorder: 2
+      deriv: 1
+  - model:
+      class: sklearn.cross_decomposition._pls.PLSRegression
+      params:
+        n_components: 10
+  - model:
+      class: sklearn.cross_decomposition._pls.PLSRegression
+      params:
+        n_components: 10
+generator_choices: []
+metadata: {}
+dataset_info: {}
+artifacts:
+  schema_version: '2.0'
+  items:
+  - artifact_id: 0001_config_cb28c7$6a465e7f4168:all
+    content_hash: sha256:f1b0d49d100fdce0b1f766631a2fc34c1b2477ed43ee4a120b8aedc3581c1d26
+    path: transformer_StandardNormalVariate_f1b0d49d100f.joblib
+    chain_path: s2.StandardNormalVariate[src=0,sub=0]
+    source_index: 0
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 2
+    substep_index: 0
+    fold_id: null
+    artifact_type: transformer
+    class_name: StandardNormalVariate
+    custom_name: ''
+    depends_on: []
+    format: joblib
+    format_version: ''
+    nirs4all_version: 0.6.2
+    size_bytes: 132
+    created_at: '2026-01-15T15:02:48.848262+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$2d4cd0b32aa0:0
+    content_hash: sha256:0d21c643b47181c29c1640a88419730b47369c23632389f7fdc4951a674d17cc
+    path: model_PLSRegression_0d21c643b471.joblib
+    chain_path: s3.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 3
+    substep_index: 0
+    fold_id: 0
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 932698
+    created_at: '2026-01-15T15:02:55.237454+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$2d4cd0b32aa0:1
+    content_hash: sha256:1544387e2bdc647f32f85cf7160a7bce386818083e0d5e2f6bfdb8d5d5acef77
+    path: model_PLSRegression_1544387e2bdc.joblib
+    chain_path: s3.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 3
+    substep_index: 0
+    fold_id: 1
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 932957
+    created_at: '2026-01-15T15:02:55.272057+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$2d4cd0b32aa0:2
+    content_hash: sha256:871cac3308c53bd63887ec51f2c9ca59beaee791b1925230e2a706f65908af4b
+    path: model_PLSRegression_871cac3308c5.joblib
+    chain_path: s3.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 3
+    substep_index: 0
+    fold_id: 2
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933095
+    created_at: '2026-01-15T15:02:55.295994+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$2d4cd0b32aa0:3
+    content_hash: sha256:701d21f59e2e6926b09c1ae977d94cd5633c1fd6da0bdbc0bbbb7d2bf77021e4
+    path: model_PLSRegression_701d21f59e2e.joblib
+    chain_path: s3.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 3
+    substep_index: 0
+    fold_id: 3
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933141
+    created_at: '2026-01-15T15:02:55.319447+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$2d4cd0b32aa0:4
+    content_hash: sha256:59a4fc9854672771fa0c2d934fe2e48c7be21cf5d1f8cc0d6769e54841dd9f78
+    path: model_PLSRegression_59a4fc985467.joblib
+    chain_path: s3.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 3
+    substep_index: 0
+    fold_id: 4
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933144
+    created_at: '2026-01-15T15:02:55.343589+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$87cf5839166c:all
+    content_hash: sha256:16d9f426ef43141be7d05201a490ea644ec19ceb8f3720d471d68fccf68f3c32
+    path: transformer_SavitzkyGolay_16d9f426ef43.joblib
+    chain_path: s4.SavitzkyGolay[src=0,sub=0]
+    source_index: 0
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 4
+    substep_index: 0
+    fold_id: null
+    artifact_type: transformer
+    class_name: SavitzkyGolay
+    custom_name: ''
+    depends_on: []
+    format: joblib
+    format_version: ''
+    nirs4all_version: 0.6.2
+    size_bytes: 137
+    created_at: '2026-01-15T15:02:55.614630+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$58777bccd886:0
+    content_hash: sha256:0c770d7b58b2cdbe906d99ee95db9ad5e5f12e4dd248bfdd405a4e20fde9884c
+    path: model_PLSRegression_0c770d7b58b2.joblib
+    chain_path: s5.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 5
+    substep_index: 0
+    fold_id: 0
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 932708
+    created_at: '2026-01-15T15:03:01.914097+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$58777bccd886:1
+    content_hash: sha256:323598077eca4ea41fb6395ded691df97114da3e6450d10d0aba5bed20246522
+    path: model_PLSRegression_323598077eca.joblib
+    chain_path: s5.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 5
+    substep_index: 0
+    fold_id: 1
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933178
+    created_at: '2026-01-15T15:03:01.941485+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$58777bccd886:2
+    content_hash: sha256:e3d8e49eb5bccb190abea5372805eaea8d9536ad381ba44091acecf2ac1b1bd6
+    path: model_PLSRegression_e3d8e49eb5bc.joblib
+    chain_path: s5.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 5
+    substep_index: 0
+    fold_id: 2
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933174
+    created_at: '2026-01-15T15:03:01.965276+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$58777bccd886:3
+    content_hash: sha256:39fb4c11b87f868cfc519adbf43314f22de8ef95f8cd8bcd40176f371b7283a0
+    path: model_PLSRegression_39fb4c11b87f.joblib
+    chain_path: s5.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 5
+    substep_index: 0
+    fold_id: 3
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933198
+    created_at: '2026-01-15T15:03:01.988925+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$58777bccd886:4
+    content_hash: sha256:525b021fa6506648516b067197c950721255e54b1ecb51050abe2a15936bc13c
+    path: model_PLSRegression_525b021fa650.joblib
+    chain_path: s5.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 5
+    substep_index: 0
+    fold_id: 4
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 932973
+    created_at: '2026-01-15T15:03:02.012641+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$9f79d59455ab:0
+    content_hash: sha256:0c770d7b58b2cdbe906d99ee95db9ad5e5f12e4dd248bfdd405a4e20fde9884c
+    path: model_PLSRegression_0c770d7b58b2.joblib
+    chain_path: s6.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 6
+    substep_index: 0
+    fold_id: 0
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 932708
+    created_at: '2026-01-15T15:03:08.435595+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$9f79d59455ab:1
+    content_hash: sha256:323598077eca4ea41fb6395ded691df97114da3e6450d10d0aba5bed20246522
+    path: model_PLSRegression_323598077eca.joblib
+    chain_path: s6.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 6
+    substep_index: 0
+    fold_id: 1
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933178
+    created_at: '2026-01-15T15:03:08.464850+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$9f79d59455ab:2
+    content_hash: sha256:e3d8e49eb5bccb190abea5372805eaea8d9536ad381ba44091acecf2ac1b1bd6
+    path: model_PLSRegression_e3d8e49eb5bc.joblib
+    chain_path: s6.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 6
+    substep_index: 0
+    fold_id: 2
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933174
+    created_at: '2026-01-15T15:03:08.489831+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$9f79d59455ab:3
+    content_hash: sha256:39fb4c11b87f868cfc519adbf43314f22de8ef95f8cd8bcd40176f371b7283a0
+    path: model_PLSRegression_39fb4c11b87f.joblib
+    chain_path: s6.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 6
+    substep_index: 0
+    fold_id: 3
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 933198
+    created_at: '2026-01-15T15:03:08.513130+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0001_config_cb28c7$9f79d59455ab:4
+    content_hash: sha256:525b021fa6506648516b067197c950721255e54b1ecb51050abe2a15936bc13c
+    path: model_PLSRegression_525b021fa650.joblib
+    chain_path: s6.PLSRegression[sub=0]
+    source_index: null
+    pipeline_id: 0001_config_cb28c7
+    branch_path: []
+    step_index: 6
+    substep_index: 0
+    fold_id: 4
+    artifact_type: model
+    class_name: PLSRegression
+    custom_name: PLSRegression
+    depends_on: []
+    format: joblib
+    format_version: sklearn==1.8.0
+    nirs4all_version: 0.6.2
+    size_bytes: 932973
+    created_at: '2026-01-15T15:03:08.535901+00:00'
+    params: {}
+    version: 3
+predictions: []
+execution_traces:
+  0fd2250e-fa6:
+    trace_id: 0fd2250e-fa6
+    pipeline_uid: 0001_config_cb28c7
+    created_at: '2026-01-15T15:02:48.785867+00:00'
+    steps:
+    - step_index: 1
+      operator_type: splitter
+      operator_class: KFold
+      operator_config:
+        class: sklearn.model_selection._split.KFold
+        params:
+          shuffle: true
+          random_state: 42
+      execution_mode: train
+      artifacts:
+        artifact_ids: []
+        primary_artifact_id: null
+        fold_artifact_ids: {}
+        primary_artifacts: {}
+        by_branch: {}
+        by_source: {}
+        by_chain: {}
+        metadata: {}
+      branch_path: []
+      branch_name: ''
+      duration_ms: 32.18221664428711
+      metadata: {}
+      input_chain_path: ''
+      output_chain_paths: []
+      source_count: 1
+      produces_branches: false
+      substep_index: null
+      input_shape:
+      - 3556
+      - 949
+      output_shape:
+      - 3556
+      - 949
+      input_features_shape:
+      - - 3556
+        - 1
+        - 949
+      output_features_shape:
+      - - 3556
+        - 1
+        - 949
+    - step_index: 2
+      operator_type: transform
+      operator_class: StandardNormalVariate
+      operator_config: {}
+      execution_mode: train
+      artifacts:
+        artifact_ids:
+        - 0001_config_cb28c7$6a465e7f4168:all
+        primary_artifact_id: null
+        fold_artifact_ids: {}
+        primary_artifacts: {}
+        by_branch:
+          ? ''
+          : - 0001_config_cb28c7$6a465e7f4168:all
+        by_source:
+          0:
+          - 0001_config_cb28c7$6a465e7f4168:all
+        by_chain:
+          s2.StandardNormalVariate[src=0,sub=0]: 0001_config_cb28c7$6a465e7f4168:all
+        metadata:
+          class_name: StandardNormalVariate
+          name: StandardNormalVariate_1
+      branch_path: []
+      branch_name: ''
+      duration_ms: 80.57522773742676
+      metadata: {}
+      input_chain_path: ''
+      output_chain_paths:
+      - s2.StandardNormalVariate[src=0,sub=0]
+      source_count: 1
+      produces_branches: false
+      substep_index: null
+      input_shape:
+      - 3556
+      - 949
+      output_shape:
+      - 3556
+      - 949
+      input_features_shape:
+      - - 3556
+        - 1
+        - 949
+      output_features_shape:
+      - - 3556
+        - 1
+        - 949
+    - step_index: 3
+      operator_type: model
+      operator_class: PLSRegression
+      operator_config:
+        model:
+          class: sklearn.cross_decomposition._pls.PLSRegression
+          params:
+            n_components: 10
+      execution_mode: train
+      artifacts:
+        artifact_ids:
+        - 0001_config_cb28c7$2d4cd0b32aa0:0
+        - 0001_config_cb28c7$2d4cd0b32aa0:1
+        - 0001_config_cb28c7$2d4cd0b32aa0:2
+        - 0001_config_cb28c7$2d4cd0b32aa0:3
+        - 0001_config_cb28c7$2d4cd0b32aa0:4
+        primary_artifact_id: null
+        fold_artifact_ids:
+          0: 0001_config_cb28c7$2d4cd0b32aa0:0
+          1: 0001_config_cb28c7$2d4cd0b32aa0:1
+          2: 0001_config_cb28c7$2d4cd0b32aa0:2
+          3: 0001_config_cb28c7$2d4cd0b32aa0:3
+          4: 0001_config_cb28c7$2d4cd0b32aa0:4
+        primary_artifacts: {}
+        by_branch:
+          ? ''
+          : - 0001_config_cb28c7$2d4cd0b32aa0:0
+            - 0001_config_cb28c7$2d4cd0b32aa0:1
+            - 0001_config_cb28c7$2d4cd0b32aa0:2
+            - 0001_config_cb28c7$2d4cd0b32aa0:3
+            - 0001_config_cb28c7$2d4cd0b32aa0:4
+        by_source: {}
+        by_chain:
+          s3.PLSRegression[sub=0]: 0001_config_cb28c7$2d4cd0b32aa0:4
+        metadata:
+          class_name: PLSRegression
+          custom_name: PLSRegression
+      branch_path: []
+      branch_name: ''
+      duration_ms: 6644.104957580566
+      metadata: {}
+      input_chain_path: ''
+      output_chain_paths:
+      - s3.PLSRegression[sub=0]
+      source_count: 1
+      produces_branches: false
+      substep_index: null
+      input_shape:
+      - 3556
+      - 949
+      output_shape:
+      - 3556
+      - 949
+      input_features_shape:
+      - - 3556
+        - 1
+        - 949
+      output_features_shape:
+      - - 3556
+        - 1
+        - 949
+    - step_index: 4
+      operator_type: operator
+      operator_class: SavitzkyGolay
+      operator_config:
+        class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          polyorder: 2
+          deriv: 1
+      execution_mode: train
+      artifacts:
+        artifact_ids:
+        - 0001_config_cb28c7$87cf5839166c:all
+        primary_artifact_id: null
+        fold_artifact_ids: {}
+        primary_artifacts: {}
+        by_branch:
+          ? ''
+          : - 0001_config_cb28c7$87cf5839166c:all
+        by_source:
+          0:
+          - 0001_config_cb28c7$87cf5839166c:all
+        by_chain:
+          s4.SavitzkyGolay[src=0,sub=0]: 0001_config_cb28c7$87cf5839166c:all
+        metadata:
+          class_name: SavitzkyGolay
+          name: SavitzkyGolay_1
+      branch_path: []
+      branch_name: ''
+      duration_ms: 183.1531524658203
+      metadata: {}
+      input_chain_path: ''
+      output_chain_paths:
+      - s4.SavitzkyGolay[src=0,sub=0]
+      source_count: 1
+      produces_branches: false
+      substep_index: null
+      input_shape:
+      - 3556
+      - 949
+      output_shape:
+      - 3556
+      - 949
+      input_features_shape:
+      - - 3556
+        - 1
+        - 949
+      output_features_shape:
+      - - 3556
+        - 1
+        - 949
+    - step_index: 5
+      operator_type: model
+      operator_class: PLSRegression
+      operator_config:
+        model:
+          class: sklearn.cross_decomposition._pls.PLSRegression
+          params:
+            n_components: 10
+      execution_mode: train
+      artifacts:
+        artifact_ids:
+        - 0001_config_cb28c7$58777bccd886:0
+        - 0001_config_cb28c7$58777bccd886:1
+        - 0001_config_cb28c7$58777bccd886:2
+        - 0001_config_cb28c7$58777bccd886:3
+        - 0001_config_cb28c7$58777bccd886:4
+        primary_artifact_id: null
+        fold_artifact_ids:
+          0: 0001_config_cb28c7$58777bccd886:0
+          1: 0001_config_cb28c7$58777bccd886:1
+          2: 0001_config_cb28c7$58777bccd886:2
+          3: 0001_config_cb28c7$58777bccd886:3
+          4: 0001_config_cb28c7$58777bccd886:4
+        primary_artifacts: {}
+        by_branch:
+          ? ''
+          : - 0001_config_cb28c7$58777bccd886:0
+            - 0001_config_cb28c7$58777bccd886:1
+            - 0001_config_cb28c7$58777bccd886:2
+            - 0001_config_cb28c7$58777bccd886:3
+            - 0001_config_cb28c7$58777bccd886:4
+        by_source: {}
+        by_chain:
+          s5.PLSRegression[sub=0]: 0001_config_cb28c7$58777bccd886:4
+        metadata:
+          class_name: PLSRegression
+          custom_name: PLSRegression
+      branch_path: []
+      branch_name: ''
+      duration_ms: 6559.865713119507
+      metadata: {}
+      input_chain_path: ''
+      output_chain_paths:
+      - s5.PLSRegression[sub=0]
+      source_count: 1
+      produces_branches: false
+      substep_index: null
+      input_shape:
+      - 3556
+      - 949
+      output_shape:
+      - 3556
+      - 949
+      input_features_shape:
+      - - 3556
+        - 1
+        - 949
+      output_features_shape:
+      - - 3556
+        - 1
+        - 949
+    - step_index: 6
+      operator_type: model
+      operator_class: PLSRegression
+      operator_config:
+        model:
+          class: sklearn.cross_decomposition._pls.PLSRegression
+          params:
+            n_components: 10
+      execution_mode: train
+      artifacts:
+        artifact_ids:
+        - 0001_config_cb28c7$9f79d59455ab:0
+        - 0001_config_cb28c7$9f79d59455ab:1
+        - 0001_config_cb28c7$9f79d59455ab:2
+        - 0001_config_cb28c7$9f79d59455ab:3
+        - 0001_config_cb28c7$9f79d59455ab:4
+        primary_artifact_id: null
+        fold_artifact_ids:
+          0: 0001_config_cb28c7$9f79d59455ab:0
+          1: 0001_config_cb28c7$9f79d59455ab:1
+          2: 0001_config_cb28c7$9f79d59455ab:2
+          3: 0001_config_cb28c7$9f79d59455ab:3
+          4: 0001_config_cb28c7$9f79d59455ab:4
+        primary_artifacts: {}
+        by_branch:
+          ? ''
+          : - 0001_config_cb28c7$9f79d59455ab:0
+            - 0001_config_cb28c7$9f79d59455ab:1
+            - 0001_config_cb28c7$9f79d59455ab:2
+            - 0001_config_cb28c7$9f79d59455ab:3
+            - 0001_config_cb28c7$9f79d59455ab:4
+        by_source: {}
+        by_chain:
+          s6.PLSRegression[sub=0]: 0001_config_cb28c7$9f79d59455ab:4
+        metadata:
+          class_name: PLSRegression
+          custom_name: PLSRegression
+      branch_path: []
+      branch_name: ''
+      duration_ms: 6557.6207637786865
+      metadata: {}
+      input_chain_path: ''
+      output_chain_paths:
+      - s6.PLSRegression[sub=0]
+      source_count: 1
+      produces_branches: false
+      substep_index: null
+      input_shape:
+      - 3556
+      - 949
+      output_shape:
+      - 3556
+      - 949
+      input_features_shape:
+      - - 3556
+        - 1
+        - 949
+      output_features_shape:
+      - - 3556
+        - 1
+        - 949
+    model_step_index: 6
+    fold_weights: null
+    preprocessing_chain: SNV>SG
+    metadata:
+      dataset: digestibility_0
+      config_name: config_cb28c7
+      n_steps: 6
+      n_artifacts: 17

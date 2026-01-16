@@ -239,7 +239,7 @@ function WizardContent({ onAdd, onClose }: WizardContentProps) {
 
       <StepIndicator />
 
-      <div className="flex-1 overflow-hidden flex flex-col min-h-[400px]">
+      <div className="flex-1 overflow-y-auto flex flex-col min-h-[400px]">
         {renderStep()}
       </div>
 

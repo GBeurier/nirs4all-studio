@@ -151,8 +151,8 @@ async def system_status():
         status["workspace"] = {
             "name": workspace.name,
             "path": workspace.path,
-            "datasets_count": len(workspace.linked_datasets),
-            "last_modified": workspace.last_modified.isoformat() if workspace.last_modified else None,
+            "datasets_count": len(workspace.datasets),
+            "last_accessed": workspace.last_accessed if hasattr(workspace, 'last_accessed') else None,
         }
 
     try:

@@ -39,6 +39,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PipelineRun, runStatusConfig, RunStatus } from "@/types/runs";
 import { ResultDetailSheet } from "@/components/results/ResultDetailSheet";
+import { NoWorkspaceState, ErrorState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import {
   getLinkedWorkspaces,
   getN4AWorkspaceRuns,
@@ -341,15 +342,7 @@ export default function Results() {
             </Card>
           ))}
         </div>
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <Skeleton className="h-16 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <CardSkeleton count={3} />
       </motion.div>
     );
   }
@@ -372,28 +365,10 @@ export default function Results() {
           </div>
         </motion.div>
         <motion.div variants={itemVariants}>
-          <Card>
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-4">
-                  <FolderOpen className="h-10 w-10 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  No workspace linked
-                </h3>
-                <p className="text-muted-foreground max-w-md mb-6">
-                  Link a nirs4all workspace to view results and training history.
-                  Go to Settings to configure your workspace.
-                </p>
-                <Button asChild>
-                  <Link to="/settings">
-                    <Settings2 className="mr-2 h-4 w-4" />
-                    Go to Settings
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <NoWorkspaceState
+            title={t("results.noWorkspace", { defaultValue: "No workspace linked" })}
+            description={t("results.noWorkspaceHint", { defaultValue: "Link a nirs4all workspace to view results and training history. Go to Settings to configure your workspace." })}
+          />
         </motion.div>
       </motion.div>
     );
@@ -417,21 +392,11 @@ export default function Results() {
           </div>
         </motion.div>
         <motion.div variants={itemVariants}>
-          <Card className="border-destructive/50">
-            <CardContent className="p-8">
-              <div className="flex flex-col items-center justify-center text-center">
-                <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-2">
-                  {t("results.error")}
-                </h3>
-                <p className="text-muted-foreground mb-4">{error}</p>
-                <Button onClick={loadData} variant="outline">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Retry
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <ErrorState
+            title={t("results.error", { defaultValue: "Failed to load results" })}
+            message={error}
+            onRetry={loadData}
+          />
         </motion.div>
       </motion.div>
     );
@@ -542,28 +507,10 @@ export default function Results() {
       {/* Datasets with Results List */}
       {filteredDatasets.length === 0 ? (
         <div>
-          <Card>
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 mb-4">
-                  <BarChart3 className="h-10 w-10 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  No results found
-                </h3>
-                <p className="text-muted-foreground max-w-md mb-6">
-                  Run experiments to generate results. Compare model performance,
-                  view prediction plots, and analyze residuals.
-                </p>
-                <Button asChild>
-                  <Link to="/runs">
-                    <Play className="mr-2 h-4 w-4" />
-                    Go to Runs
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <NoResultsState
+            title={t("results.noResults", { defaultValue: "No results found" })}
+            description={t("results.noResultsHint", { defaultValue: "Run experiments to generate results. Compare model performance, view prediction plots, and analyze residuals." })}
+          />
         </div>
       ) : (
         <div className="space-y-4">
@@ -727,12 +674,14 @@ export default function Results() {
                                   </span>
                                 </div>
                               )}
-                              {pipeline.metrics && (
+                              {pipeline.metrics && (pipeline.metrics.r2 != null || pipeline.metrics.rmse != null) && (
                                 <div className="flex gap-3 text-xs">
-                                  <span className="text-chart-1 font-semibold">
-                                    R² {pipeline.metrics.r2.toFixed(3)}
-                                  </span>
-                                  {pipeline.metrics.rmse > 0 && (
+                                  {pipeline.metrics.r2 != null && (
+                                    <span className="text-chart-1 font-semibold">
+                                      R² {pipeline.metrics.r2.toFixed(3)}
+                                    </span>
+                                  )}
+                                  {pipeline.metrics.rmse != null && pipeline.metrics.rmse > 0 && (
                                     <span className="text-muted-foreground">
                                       RMSE {pipeline.metrics.rmse.toFixed(2)}
                                     </span>

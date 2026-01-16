@@ -3,12 +3,12 @@ Workspace API routes for nirs4all webapp.
 
 This module provides FastAPI routes for workspace management operations.
 
-Phase 6 Implementation:
-- Create workspace
-- List workspaces (all and recent)
-- Load/save workspace configuration
-- Export workspace to archive
-- Enhanced workspace management
+Phase 8 Implementation:
+- Clear separation between App Config folder and Workspace folders
+- Global dataset management (accessible across all workspaces)
+- Linked workspace management for multiple nirs4all workspaces
+- Default workspace auto-creation in current directory
+- Workspace discovery for runs, exports, predictions, templates
 """
 
 from datetime import datetime
@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceConfig, LinkedWorkspace, WorkspaceScanner
+from .app_config import app_config
 
 
 # Simple TTL cache for workspace discovery operations
@@ -178,9 +179,32 @@ async def reload_workspace():
         )
 
 
+# ============= Global Dataset Management =============
+
+
+@router.get("/datasets")
+async def list_datasets():
+    """List all globally linked datasets.
+
+    Datasets are stored globally and accessible across all workspaces.
+    """
+    try:
+        datasets = app_config.get_datasets()
+        groups = app_config.get_dataset_groups()
+        return {
+            "datasets": [d.to_dict() for d in datasets],
+            "groups": [g.to_dict() for g in groups],
+            "total": len(datasets),
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list datasets: {str(e)}"
+        )
+
+
 @router.post("/datasets/link")
 async def link_dataset(request: LinkDatasetRequest):
-    """Link a dataset to the current workspace."""
+    """Link a dataset globally (accessible across all workspaces)."""
     try:
         dataset_info = workspace_manager.link_dataset(request.path, config=request.config)
 
@@ -226,14 +250,16 @@ async def link_dataset(request: LinkDatasetRequest):
                     elif "targets" in config:
                         dataset_info["targets"] = config["targets"]
 
-                    # Update stored info
-                    workspace = workspace_manager.get_current_workspace()
-                    if workspace:
-                        for ds_info in workspace.datasets:
-                            if ds_info.get("id") == dataset_info["id"]:
-                                ds_info.update(dataset_info)
-                                break
-                        workspace_manager._save_workspace_config()
+                    # Update stored info in global dataset registry
+                    update_data = {}
+                    if "num_samples" in dataset_info:
+                        update_data["stats"] = dataset_info.get("stats", {})
+                        update_data["stats"]["num_samples"] = dataset_info["num_samples"]
+                        update_data["stats"]["num_features"] = dataset_info.get("num_features", 0)
+                    if "config" in dataset_info:
+                        update_data["config"] = dataset_info["config"]
+                    if update_data:
+                        workspace_manager.update_dataset(dataset_info["id"], update_data)
         except ImportError:
             pass
         except Exception as e:
@@ -257,7 +283,7 @@ async def link_dataset(request: LinkDatasetRequest):
 
 @router.delete("/datasets/{dataset_id}")
 async def unlink_dataset(dataset_id: str):
-    """Unlink a dataset from the current workspace."""
+    """Unlink a dataset globally (does not delete files)."""
     try:
         success = workspace_manager.unlink_dataset(dataset_id)
         if not success:
@@ -2174,4 +2200,95 @@ async def remove_favorite_pipeline(pipeline_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to remove favorite: {str(e)}"
+        )
+
+
+# ============= Config Path Management Endpoints =============
+
+
+class SetConfigPathRequest(BaseModel):
+    """Request model for setting the app config folder path."""
+    path: str = Field(..., description="Path to the new config folder")
+
+
+@router.get("/app/config-path")
+async def get_config_path():
+    """Get the current and default app config folder paths.
+
+    The app config folder stores:
+    - app_settings.json: UI preferences, linked workspaces, favorites
+    - dataset_links.json: Global dataset registry
+
+    The config path can be customized via:
+    1. NIRS4ALL_CONFIG environment variable
+    2. Redirect file in the default location
+    """
+    try:
+        return {
+            "current_path": app_config.get_config_path(),
+            "default_path": app_config.get_default_config_path(),
+            "is_custom": app_config.is_using_custom_path(),
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get config path: {str(e)}"
+        )
+
+
+@router.post("/app/config-path")
+async def set_config_path(request: SetConfigPathRequest):
+    """Set a custom app config folder path.
+
+    This creates a redirect file in the default config location pointing
+    to the new path. The new path must exist.
+
+    Note: The application may need to be restarted for changes to take
+    full effect.
+    """
+    try:
+        success = app_config.set_config_path(request.path)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to set config path")
+
+        return {
+            "success": True,
+            "message": "Config path updated",
+            "current_path": app_config.get_config_path(),
+            "requires_restart": True,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set config path: {str(e)}"
+        )
+
+
+@router.delete("/app/config-path")
+async def reset_config_path():
+    """Reset the app config folder to the default location.
+
+    This removes the redirect file if it exists.
+
+    Note: The application may need to be restarted for changes to take
+    full effect.
+    """
+    try:
+        success = app_config.reset_config_path()
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to reset config path")
+
+        return {
+            "success": True,
+            "message": "Config path reset to default",
+            "current_path": app_config.get_config_path(),
+            "requires_restart": True,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reset config path: {str(e)}"
         )

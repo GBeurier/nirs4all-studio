@@ -34,6 +34,7 @@ the page reload dataset each time, it should be cached
 **Runs / Results**
 - Design role of both and what to focus on.
 
+
 **Pipeline Builder**
 - REFACTOR THE COMPONENTS. LOT LOT LOT OF REDONDANCIES
 - REVIEW PARAM WINDOWS > MANY COPIES AND USELESS DIVS
@@ -122,4 +123,6 @@ the page reload dataset each time, it should be cached
 - Add chinese
 - Remove animation do not work (it's actually worse)
 - Unify / clean / specify / distinguish nirs4all workspaces and app settings folder.
-
+- Reinstall lib in advanced. GPU / CPU version ?.
+- Reduce pin to backend
+- Display installation problem

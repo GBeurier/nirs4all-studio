@@ -375,7 +375,7 @@ export function ParsingStep() {
   };
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col gap-4 py-2">
+    <div className="flex-1 flex flex-col gap-4 py-2">
       {/* Global settings */}
       <div className="border rounded-lg p-4">
         <div className="flex items-center justify-between mb-4">
@@ -490,7 +490,7 @@ export function ParsingStep() {
       </div>
 
       {/* Per-file overrides */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <Label className="text-base font-medium">Per-File Overrides</Label>
           <span className="text-xs text-muted-foreground">

@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { FloatingRunWidget } from "./FloatingRunWidget";
 
 export function AppLayout() {
   return (
@@ -19,6 +20,8 @@ export function AppLayout() {
             </div>
           </main>
         </div>
+        {/* Floating run progress widget */}
+        <FloatingRunWidget />
       </div>
     </TooltipProvider>
   );

@@ -7,6 +7,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Folder, FileSpreadsheet, Upload } from "lucide-react";
+import { isPyWebView, selectFolder, selectFile } from "@/utils/fileDialogs";
 
 interface DropZoneOverlayProps {
   /** Whether the overlay is visible */
@@ -230,7 +231,7 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
             // For folders, we need the path - use the File API path if available
             const file = files?.[i];
             if (file) {
-              // In Electron/pywebview, file.path contains the actual path
+              // In Electron, file.path contains the actual path
               const filePath = (file as File & { path?: string }).path;
               if (filePath) {
                 paths.push(filePath);
@@ -256,6 +257,43 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
             paths.push(filePath);
           }
         }
+      }
+
+      // PyWebView fallback: File.path is not available (it's Electron-specific)
+      // Fall back to native file dialogs when in pywebview and no paths available
+      if (paths.length === 0 && isPyWebView()) {
+        try {
+          if (isFolder) {
+            // Open folder dialog
+            const folderPath = await selectFolder();
+            if (folderPath) {
+              onDrop({
+                type: "folder",
+                path: folderPath,
+                paths: [folderPath],
+                items: fileList,
+              });
+            }
+          } else {
+            // Open file dialog for multiple files
+            const result = await selectFile(
+              ["Data files (*.csv;*.xlsx;*.xls;*.parquet;*.npy;*.npz;*.mat)"],
+              true
+            );
+            if (result) {
+              const filePaths = Array.isArray(result) ? result : [result];
+              onDrop({
+                type: "files",
+                path: filePaths[0],
+                paths: filePaths,
+                items: fileList,
+              });
+            }
+          }
+        } catch (error) {
+          console.error("File dialog failed:", error);
+        }
+        return;
       }
 
       // Call onDrop if we have either paths (desktop) or files (browser)

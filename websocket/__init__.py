@@ -15,6 +15,7 @@ from .manager import (
     notify_job_completed,
     notify_job_failed,
     notify_job_metrics,
+    notify_job_log,
     notify_training_epoch,
 )
 
@@ -28,5 +29,6 @@ __all__ = [
     "notify_job_completed",
     "notify_job_failed",
     "notify_job_metrics",
+    "notify_job_log",
     "notify_training_epoch",
 ]

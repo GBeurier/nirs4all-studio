@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  InlineLoading,
+  InlineError,
+  NoDatasetsState,
+  NoPipelinesState,
+  SearchEmptyState,
+} from "@/components/ui/state-display";
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,6 +26,7 @@ import {
   Star,
   Search,
   Filter,
+  Loader2,
 } from "lucide-react";
 import {
   Select,
@@ -27,6 +36,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { listDatasets, listPipelines, createRun } from "@/api/client";
+import type { Dataset } from "@/types/datasets";
+import type { PipelineInfo } from "@/api/client";
+import type { ExperimentConfig } from "@/types/runs";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -41,106 +55,13 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-// Mock datasets
-const mockDatasets = [
-  {
-    id: "1",
-    name: "wheat_nir.csv",
-    samples: 240,
-    features: 2150,
-    target: "Protein",
-  },
-  {
-    id: "2",
-    name: "corn_moisture.csv",
-    samples: 180,
-    features: 1850,
-    target: "Moisture",
-  },
-  {
-    id: "3",
-    name: "soybean_oil.spc",
-    samples: 320,
-    features: 2048,
-    target: "Oil",
-  },
-  {
-    id: "4",
-    name: "rice_quality.jdx",
-    samples: 150,
-    features: 1900,
-    target: "Quality",
-  },
-  {
-    id: "5",
-    name: "dairy_fat.csv",
-    samples: 420,
-    features: 2200,
-    target: "Fat",
-  },
-];
+// Helper to summarize pipeline steps
+function summarizePipelineSteps(steps: PipelineInfo["steps"]): string {
+  if (!steps || steps.length === 0) return "Empty pipeline";
+  return steps.map(s => s.name).join(" → ");
+}
 
-// Mock pipelines
-const mockPipelines = [
-  {
-    id: "1",
-    name: "SNV + PLS Optimal",
-    preset: true,
-    favorite: true,
-    steps: "SNV → SG(1,2) → PLS(3-15)",
-  },
-  {
-    id: "2",
-    name: "MSC Standard",
-    preset: true,
-    favorite: false,
-    steps: "MSC → KFold(5) → PLS(10)",
-  },
-  {
-    id: "3",
-    name: "Deep Learning CNN",
-    preset: true,
-    favorite: true,
-    steps: "SNV → Normalize → CNN1D",
-  },
-  {
-    id: "4",
-    name: "Ensemble Grid Search",
-    preset: false,
-    favorite: true,
-    steps: "Alternatives[SNV,MSC] → RF+XGB",
-  },
-  {
-    id: "5",
-    name: "SVR Optimized",
-    preset: false,
-    favorite: false,
-    steps: "SG(2) → PCA(20) → SVR",
-  },
-  {
-    id: "6",
-    name: "Custom PLS Range",
-    preset: false,
-    favorite: true,
-    steps: "SNV → PLS(Range[5,20,1])",
-  },
-  {
-    id: "7",
-    name: "Multi-Target PLS",
-    preset: true,
-    favorite: false,
-    steps: "MSC → MultiPLS → Optuna",
-  },
-  {
-    id: "8",
-    name: "Baseline Standard",
-    preset: true,
-    favorite: false,
-    steps: "Center → Scale → PLS(8)",
-  },
-];
-
-const steps = [
+const wizardSteps = [
   { id: 1, label: "Select Datasets", icon: Database },
   { id: 2, label: "Select Pipelines", icon: GitBranch },
   { id: 3, label: "Configure", icon: Settings },
@@ -149,6 +70,8 @@ const steps = [
 
 export default function NewExperiment() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [currentStep, setCurrentStep] = useState(1);
   const [experimentName, setExperimentName] = useState("");
   const [experimentDescription, setExperimentDescription] = useState("");
@@ -163,6 +86,109 @@ export default function NewExperiment() {
   const [cvStrategy, setCvStrategy] = useState("kfold");
   const [shuffle, setShuffle] = useState(true);
 
+  // Current edited pipeline from editor (unsaved)
+  const [currentEditedPipeline, setCurrentEditedPipeline] = useState<{
+    id?: string;
+    name: string;
+    steps: unknown[];
+    isDirty: boolean;
+  } | null>(null);
+
+  // Fetch datasets from API
+  const { data: datasetsData, isLoading: loadingDatasets, error: datasetsError } = useQuery({
+    queryKey: ["datasets"],
+    queryFn: async () => {
+      const response = await listDatasets();
+      return response;
+    },
+  });
+
+  // Fetch pipelines from API
+  const { data: pipelinesData, isLoading: loadingPipelines, error: pipelinesError } = useQuery({
+    queryKey: ["pipelines"],
+    queryFn: async () => {
+      const response = await listPipelines();
+      return response;
+    },
+  });
+
+  // Transform datasets to display format
+  const datasets = (datasetsData?.datasets || []).map((d: Dataset) => ({
+    id: d.id,
+    name: d.name || d.path?.split("/").pop() || "Unknown",
+    samples: d.num_samples || 0,
+    features: d.num_features || 0,
+    target: d.default_target || d.y_columns?.[0] || "Unknown",
+  }));
+
+  // Transform pipelines to display format
+  const pipelines = (pipelinesData?.pipelines || []).map((p: PipelineInfo) => ({
+    id: p.id,
+    name: p.name,
+    preset: p.category === "preset",
+    favorite: p.is_favorite || false,
+    steps: summarizePipelineSteps(p.steps),
+  }));
+
+  // Combined pipelines including current edited pipeline if available
+  const allPipelines = useMemo(() => {
+    if (currentEditedPipeline) {
+      const editedEntry = {
+        id: "__current_edited__",
+        name: `📝 ${currentEditedPipeline.name}${currentEditedPipeline.isDirty ? " (unsaved)" : ""}`,
+        preset: false,
+        favorite: false,
+        steps: "Current edited pipeline from editor",
+        isCurrentEdited: true,
+      };
+      return [editedEntry, ...pipelines];
+    }
+    return pipelines;
+  }, [pipelines, currentEditedPipeline]);
+
+  // Handle auto-selection from pipeline editor
+  useEffect(() => {
+    const pipelineId = searchParams.get('pipeline');
+    const source = searchParams.get('source');
+
+    if (source === 'editor') {
+      // Load current edited pipeline from sessionStorage
+      try {
+        const stored = sessionStorage.getItem('current-edited-pipeline');
+        if (stored) {
+          const data = JSON.parse(stored);
+          setCurrentEditedPipeline({
+            id: data.id,
+            name: data.name,
+            steps: data.steps,
+            isDirty: data.isDirty,
+          });
+          // Auto-select the current edited pipeline
+          setSelectedPipelines(["__current_edited__"]);
+          toast.info(`Pipeline "${data.name}" ready for experiment`);
+          // Clear the stored data
+          sessionStorage.removeItem('current-edited-pipeline');
+        }
+      } catch (e) {
+        console.error('Failed to load current edited pipeline:', e);
+      }
+      // Clean up URL
+      navigate('/runs/new', { replace: true });
+    } else if (pipelineId && pipelinesData?.pipelines) {
+      // Check if the pipeline exists in the loaded pipelines
+      const exists = pipelinesData.pipelines.some(p => p.id === pipelineId);
+      if (exists && !selectedPipelines.includes(pipelineId)) {
+        setSelectedPipelines([pipelineId]);
+        const pipeline = pipelinesData.pipelines.find(p => p.id === pipelineId);
+        if (pipeline) {
+          toast.info(`Pipeline "${pipeline.name}" selected`);
+        }
+      }
+      // Clean up URL
+      navigate('/runs/new', { replace: true });
+    }
+  }, [searchParams, pipelinesData, navigate]); // Intentionally not including selectedPipelines
+
   const toggleDataset = (id: string) => {
     setSelectedDatasets((prev) =>
       prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
@@ -175,14 +201,18 @@ export default function NewExperiment() {
     );
   };
 
-  const filteredDatasets = mockDatasets.filter((d) =>
+  const filteredDatasets = datasets.filter((d) =>
     d.name.toLowerCase().includes(datasetSearch.toLowerCase())
   );
 
-  const filteredPipelines = mockPipelines.filter((p) => {
+  const filteredPipelines = allPipelines.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(pipelineSearch.toLowerCase()) ||
       p.steps.toLowerCase().includes(pipelineSearch.toLowerCase());
+    // Current edited pipeline is always shown in "all" filter
+    if ("isCurrentEdited" in p && p.isCurrentEdited) {
+      return matchesSearch;
+    }
     if (pipelineFilter === "favorites") return matchesSearch && p.favorite;
     if (pipelineFilter === "presets") return matchesSearch && p.preset;
     return matchesSearch;
@@ -197,18 +227,44 @@ export default function NewExperiment() {
 
   const totalRuns = selectedDatasets.length * selectedPipelines.length;
 
+  // Create run mutation
+  const createRunMutation = useMutation({
+    mutationFn: async (config: ExperimentConfig) => {
+      return createRun(config);
+    },
+    onSuccess: (run) => {
+      toast.success("Experiment started!");
+      // Invalidate runs cache
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      // Navigate to run progress page
+      navigate(`/runs/${run.id}`);
+    },
+    onError: (error) => {
+      toast.error(`Failed to start: ${error instanceof Error ? error.message : "Unknown error"}`);
+    },
+  });
+
   const handleLaunch = () => {
-    // TODO: Call API to create and start the run
-    console.log("Launching experiment:", {
+    // Filter out the current edited pipeline and handle it separately
+    const regularPipelineIds = selectedPipelines.filter(id => id !== "__current_edited__");
+    const hasCurrentEdited = selectedPipelines.includes("__current_edited__");
+
+    const config: ExperimentConfig = {
       name: experimentName,
-      description: experimentDescription,
-      datasets: selectedDatasets,
-      pipelines: selectedPipelines,
-      cvFolds,
-      cvStrategy,
+      description: experimentDescription || undefined,
+      dataset_ids: selectedDatasets,
+      pipeline_ids: regularPipelineIds,
+      cv_folds: parseInt(cvFolds, 10),
+      cv_strategy: cvStrategy as ExperimentConfig["cv_strategy"],
+      test_size: 0.2,
       shuffle,
-    });
-    navigate("/runs");
+      // Include inline pipeline if current edited pipeline is selected
+      inline_pipeline: hasCurrentEdited && currentEditedPipeline ? {
+        name: currentEditedPipeline.name,
+        steps: currentEditedPipeline.steps,
+      } : undefined,
+    };
+    createRunMutation.mutate(config);
   };
 
   return (
@@ -236,7 +292,7 @@ export default function NewExperiment() {
         variants={itemVariants}
         className="flex items-center justify-between max-w-2xl mx-auto"
       >
-        {steps.map((step, index) => {
+        {wizardSteps.map((step, index) => {
           const StepIcon = step.icon;
           const isActive = step.id === currentStep;
           const isCompleted = step.id < currentStep;
@@ -270,7 +326,7 @@ export default function NewExperiment() {
                   {step.label}
                 </span>
               </div>
-              {index < steps.length - 1 && (
+              {index < wizardSteps.length - 1 && (
                 <div
                   className={cn(
                     "w-24 h-0.5 mx-2",
@@ -307,36 +363,63 @@ export default function NewExperiment() {
                     className="pl-9"
                   />
                 </div>
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {filteredDatasets.map((dataset) => (
-                    <div
-                      key={dataset.id}
-                      onClick={() => toggleDataset(dataset.id)}
-                      className={cn(
-                        "p-4 border rounded-lg cursor-pointer transition-colors",
-                        selectedDatasets.includes(dataset.id)
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          checked={selectedDatasets.includes(dataset.id)}
-                          onCheckedChange={() => toggleDataset(dataset.id)}
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">
-                            {dataset.name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {dataset.samples} samples • {dataset.features}{" "}
-                            features • Target: {dataset.target}
-                          </p>
+
+                {/* Loading state */}
+                {loadingDatasets && <InlineLoading message="Loading datasets..." />}
+
+                {/* Error state */}
+                {datasetsError && (
+                  <InlineError message={datasetsError instanceof Error ? datasetsError.message : "Failed to load datasets"} />
+                )}
+
+                {/* Empty state - no workspace or no datasets */}
+                {!loadingDatasets && !datasetsError && datasets.length === 0 && (
+                  <NoDatasetsState
+                    title="No datasets available"
+                    description="Link a workspace with datasets in Settings, or import a dataset."
+                    actionLabel="Go to Settings"
+                    actionPath="/settings"
+                  />
+                )}
+
+                {/* Dataset list */}
+                {!loadingDatasets && !datasetsError && datasets.length > 0 && (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {filteredDatasets.map((dataset) => (
+                      <div
+                        key={dataset.id}
+                        onClick={() => toggleDataset(dataset.id)}
+                        className={cn(
+                          "p-4 border rounded-lg cursor-pointer transition-colors",
+                          selectedDatasets.includes(dataset.id)
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            checked={selectedDatasets.includes(dataset.id)}
+                            onCheckedChange={() => toggleDataset(dataset.id)}
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-foreground">
+                              {dataset.name}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {dataset.samples} samples • {dataset.features}{" "}
+                              features • Target: {dataset.target}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                    {filteredDatasets.length === 0 && datasetSearch && (
+                      <div className="text-center py-4 text-muted-foreground">
+                        No datasets match "{datasetSearch}"
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -378,45 +461,72 @@ export default function NewExperiment() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {filteredPipelines.map((pipeline) => (
-                    <div
-                      key={pipeline.id}
-                      onClick={() => togglePipeline(pipeline.id)}
-                      className={cn(
-                        "p-4 border rounded-lg cursor-pointer transition-colors",
-                        selectedPipelines.includes(pipeline.id)
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          checked={selectedPipelines.includes(pipeline.id)}
-                          onCheckedChange={() => togglePipeline(pipeline.id)}
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-foreground">
-                              {pipeline.name}
-                            </p>
-                            {pipeline.favorite && (
-                              <Star className="h-3 w-3 fill-chart-2 text-chart-2" />
-                            )}
-                            {pipeline.preset && (
-                              <Badge variant="outline" className="text-xs">
-                                Preset
-                              </Badge>
-                            )}
+
+                {/* Loading state */}
+                {loadingPipelines && <InlineLoading message="Loading pipelines..." />}
+
+                {/* Error state */}
+                {pipelinesError && (
+                  <InlineError message={pipelinesError instanceof Error ? pipelinesError.message : "Failed to load pipelines"} />
+                )}
+
+                {/* Empty state */}
+                {!loadingPipelines && !pipelinesError && pipelines.length === 0 && (
+                  <NoPipelinesState
+                    title="No pipelines available"
+                    description="Create a pipeline in the Pipeline Editor first."
+                    actionLabel="Create Pipeline"
+                    actionPath="/pipelines/new"
+                  />
+                )}
+
+                {/* Pipeline list */}
+                {!loadingPipelines && !pipelinesError && pipelines.length > 0 && (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {filteredPipelines.map((pipeline) => (
+                      <div
+                        key={pipeline.id}
+                        onClick={() => togglePipeline(pipeline.id)}
+                        className={cn(
+                          "p-4 border rounded-lg cursor-pointer transition-colors",
+                          selectedPipelines.includes(pipeline.id)
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            checked={selectedPipelines.includes(pipeline.id)}
+                            onCheckedChange={() => togglePipeline(pipeline.id)}
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-foreground">
+                                {pipeline.name}
+                              </p>
+                              {pipeline.favorite && (
+                                <Star className="h-3 w-3 fill-chart-2 text-chart-2" />
+                              )}
+                              {pipeline.preset && (
+                                <Badge variant="outline" className="text-xs">
+                                  Preset
+                                </Badge>
+                              )}
+                            </div>
+                            <code className="text-sm text-muted-foreground">
+                              {pipeline.steps}
+                            </code>
                           </div>
-                          <code className="text-sm text-muted-foreground">
-                            {pipeline.steps}
-                          </code>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                    {filteredPipelines.length === 0 && pipelineSearch && (
+                      <div className="text-center py-4 text-muted-foreground">
+                        No pipelines match "{pipelineSearch}"
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -559,17 +669,30 @@ export default function NewExperiment() {
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
                   {selectedDatasets.map((id) => {
-                    const dataset = mockDatasets.find((d) => d.id === id);
+                    const dataset = datasets.find((d) => d.id === id);
                     return (
                       <Badge key={id} variant="secondary">
-                        {dataset?.name}
+                        {dataset?.name || id}
                       </Badge>
                     );
                   })}
                 </div>
-                <Button size="lg" onClick={handleLaunch}>
-                  <Play className="h-4 w-4 mr-2" />
-                  Launch Experiment
+                <Button
+                  size="lg"
+                  onClick={handleLaunch}
+                  disabled={createRunMutation.isPending}
+                >
+                  {createRunMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 mr-2" />
+                      Launch Experiment
+                    </>
+                  )}
                 </Button>
               </div>
             )}

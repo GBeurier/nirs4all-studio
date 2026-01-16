@@ -1,0 +1,85 @@
+schema_version: '2.0'
+uid: 25ec3acd-cd65-4041-a5e7-597e14e60679
+pipeline_id: 0006_config_d6d8fc
+name: config_d6d8fc
+dataset: hiba23
+created_at: '2026-01-16T09:19:00.176193+00:00'
+pipeline:
+  steps:
+  - nirs4all.operators.transforms.scalers.StandardNormalVariate
+  - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+    params:
+      polyorder: 2
+      deriv: 1
+  - class: sklearn.model_selection._split.KFold
+    params:
+      shuffle: true
+      random_state: 42
+  - model:
+      class: sklearn.cross_decomposition._pls.PLSRegression
+      params:
+        n_components: 10
+    finetune_params:
+      n_trials: 50
+      model_params: {}
+      approach: grouped
+      eval_mode: best
+  - model:
+      class: sklearn.ensemble._forest.RandomForestRegressor
+      params:
+        max_depth: 10
+        random_state: 42
+    finetune_params:
+      n_trials: 50
+      model_params: {}
+      approach: grouped
+      eval_mode: best
+generator_choices: []
+metadata: {}
+dataset_info: {}
+artifacts:
+  schema_version: '2.0'
+  items:
+  - artifact_id: 0006_config_d6d8fc$2944da1daa16:all
+    content_hash: sha256:f1b0d49d100fdce0b1f766631a2fc34c1b2477ed43ee4a120b8aedc3581c1d26
+    path: transformer_StandardNormalVariate_f1b0d49d100f.joblib
+    chain_path: s1.StandardNormalVariate[src=0,sub=0]
+    source_index: 0
+    pipeline_id: 0006_config_d6d8fc
+    branch_path: []
+    step_index: 1
+    substep_index: 0
+    fold_id: null
+    artifact_type: transformer
+    class_name: StandardNormalVariate
+    custom_name: ''
+    depends_on: []
+    format: joblib
+    format_version: ''
+    nirs4all_version: 0.6.2
+    size_bytes: 132
+    created_at: '2026-01-16T09:19:00.194012+00:00'
+    params: {}
+    version: 3
+  - artifact_id: 0006_config_d6d8fc$81107a0c8f77:all
+    content_hash: sha256:16d9f426ef43141be7d05201a490ea644ec19ceb8f3720d471d68fccf68f3c32
+    path: transformer_SavitzkyGolay_16d9f426ef43.joblib
+    chain_path: s2.SavitzkyGolay[src=0,sub=0]
+    source_index: 0
+    pipeline_id: 0006_config_d6d8fc
+    branch_path: []
+    step_index: 2
+    substep_index: 0
+    fold_id: null
+    artifact_type: transformer
+    class_name: SavitzkyGolay
+    custom_name: ''
+    depends_on: []
+    format: joblib
+    format_version: ''
+    nirs4all_version: 0.6.2
+    size_bytes: 137
+    created_at: '2026-01-16T09:19:00.229993+00:00'
+    params: {}
+    version: 3
+predictions: []

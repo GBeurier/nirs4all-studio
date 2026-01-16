@@ -286,6 +286,96 @@ class FullPipelineBuildResult:
     finetuning_config: Optional[Dict[str, Any]]
     has_generators: bool
     estimated_variants: int
+    fold_count: int = 1
+    branch_count: int = 1
+    total_model_count: int = 1
+    model_count_breakdown: str = ""
+
+
+def extract_fold_count(steps: List[Dict[str, Any]], cv_folds: Optional[int] = None) -> int:
+    """
+    Extract fold count from pipeline steps.
+
+    Looks for splitter steps (KFold, ShuffleSplit, etc.) and extracts n_splits.
+    Falls back to cv_folds config if provided, or 1 if no splitter found.
+    """
+    for step in steps:
+        step_type = step.get("type", "")
+        step_name = step.get("name", "")
+        params = step.get("params", {})
+
+        # Check if this is a splitting step
+        if step_type == "splitting":
+            # Common splitter parameters for fold count
+            if "n_splits" in params:
+                return int(params["n_splits"])
+            if "n_folds" in params:
+                return int(params["n_folds"])
+            # Default for known splitters without explicit param
+            if step_name in ("KFold", "StratifiedKFold", "RepeatedKFold"):
+                return 5  # sklearn default
+            if step_name in ("ShuffleSplit", "StratifiedShuffleSplit"):
+                return int(params.get("n_splits", 10))  # sklearn default
+            if step_name in ("SPXYGFold",):
+                return int(params.get("n_folds", 5))
+
+        # Check for generator steps that may contain splitters
+        branches = step.get("branches", [])
+        children = step.get("children", [])
+        for nested_steps in [branches, children]:
+            for nested in nested_steps:
+                if isinstance(nested, list):
+                    nested_fold = extract_fold_count(nested, cv_folds)
+                    if nested_fold > 1:
+                        return nested_fold
+
+    # Fall back to cv_folds config or 1
+    return cv_folds if cv_folds and cv_folds > 1 else 1
+
+
+def extract_branch_count(steps: List[Dict[str, Any]]) -> int:
+    """
+    Extract branch count from pipeline steps.
+
+    Counts alternatives from {"branch": [...]} steps.
+    For nested branches, returns the product of branch counts.
+    """
+    total_branches = 1
+
+    for step in steps:
+        step_type = step.get("type", "")
+        branches = step.get("branches", [])
+
+        # Direct branch step
+        if step_type == "branch" and branches:
+            total_branches *= len(branches)
+            # Check for nested branches within each branch
+            for branch in branches:
+                if isinstance(branch, list):
+                    nested_count = extract_branch_count(branch)
+                    if nested_count > 1:
+                        total_branches *= nested_count
+
+        # Generator step with branches (alternatives)
+        elif step_type == "generator" and branches:
+            generator_kind = step.get("generatorKind", "or")
+            if generator_kind == "or":
+                # Each branch is an alternative (only one runs)
+                total_branches *= len(branches)
+            elif generator_kind == "cartesian":
+                # Cartesian product - each branch runs with every other
+                # This is handled by estimated_variants, not branch_count
+                pass
+
+        # Check children for nested branches
+        children = step.get("children", [])
+        for child in children:
+            if isinstance(child, dict):
+                nested_count = extract_branch_count([child])
+                if nested_count > 1:
+                    total_branches *= nested_count
+
+    return total_branches
 
 
 def _build_generator_sweep(sweep: Dict[str, Any], param_name: str) -> Dict[str, Any]:
@@ -407,6 +497,12 @@ def build_full_step(step: Dict[str, Any]) -> Any:
     """
     Build a single pipeline step with full generator/finetuning support.
 
+    Handles editor format with:
+    - generatorKind: "or" | "cartesian"
+    - generatorOptions: {pick, arrange, count, ...}
+    - branches: [[...], [...]] for branch/generator steps
+    - stepGenerator: step-level generators like _range_
+
     Returns the nirs4all-compatible step representation.
     """
     step_type = step.get("type", "")
@@ -416,12 +512,34 @@ def build_full_step(step: Dict[str, Any]) -> Any:
     finetune = step.get("finetuneConfig")
     children = step.get("children", [])
     branches = step.get("branches", [])
+    # Editor format fields
+    generator_kind = step.get("generatorKind")  # "or" or "cartesian"
+    generator_options = step.get("generatorOptions", {})
+    step_generator = step.get("stepGenerator")  # step-level generator like _range_
 
     # Handle branch nodes
     if step_type == "branch" and branches:
         return _build_branch(branches)
 
-    # Handle OR generator (choice)
+    # Handle generator steps (editor format with generatorKind="or" and branches)
+    if step_type == "generator" and branches:
+        alternatives = []
+        for branch in branches:
+            if len(branch) == 1:
+                alternatives.append(build_full_step(branch[0]))
+            else:
+                alternatives.append([build_full_step(s) for s in branch])
+        result = {"_or_": alternatives}
+        # Apply generator options (pick, arrange, count)
+        if generator_options.get("pick"):
+            result["pick"] = generator_options["pick"]
+        if generator_options.get("arrange"):
+            result["arrange"] = generator_options["arrange"]
+        if generator_options.get("count"):
+            result["count"] = generator_options["count"]
+        return result
+
+    # Handle OR generator (choice) - legacy format
     if step_type == "choice" or step.get("generator", {}).get("_or_"):
         return _build_or_generator(children, step.get("generator"))
 
@@ -531,12 +649,19 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
             metrics.append(step.get("name", ""))
             continue
 
-        # Check for generators or finetuning
+        # Check for generators or finetuning (supporting both legacy and editor formats)
         if step.get("paramSweeps"):
             has_generators = True
         if step.get("finetuneConfig", {}).get("enabled"):
             finetuning_config = step.get("finetuneConfig")
         if step.get("generator"):
+            has_generators = True
+        # Editor format: generatorKind, stepGenerator, branches
+        if step.get("generatorKind") in ("or", "cartesian"):
+            has_generators = True
+        if step.get("stepGenerator"):
+            has_generators = True
+        if step_type == "generator" and step.get("branches"):
             has_generators = True
 
         built_step = build_full_step(step)
@@ -552,6 +677,28 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
         except Exception:
             pass
 
+    # Extract fold and branch counts
+    cv_folds = config.get("cv_folds")
+    fold_count = extract_fold_count(steps, cv_folds)
+    branch_count = extract_branch_count(steps)
+
+    # Calculate total model count
+    total_model_count = fold_count * branch_count * estimated_variants
+
+    # Build breakdown string
+    breakdown_parts = []
+    if fold_count > 1:
+        breakdown_parts.append(f"{fold_count} folds")
+    if branch_count > 1:
+        breakdown_parts.append(f"{branch_count} branches")
+    if estimated_variants > 1:
+        breakdown_parts.append(f"{estimated_variants} variants")
+
+    if breakdown_parts:
+        model_count_breakdown = " × ".join(breakdown_parts) + f" = {total_model_count} models"
+    else:
+        model_count_breakdown = f"{total_model_count} model" if total_model_count == 1 else f"{total_model_count} models"
+
     return FullPipelineBuildResult(
         steps=pipeline_steps,
         metrics=metrics,
@@ -559,7 +706,236 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
         finetuning_config=finetuning_config,
         has_generators=has_generators,
         estimated_variants=estimated_variants,
+        fold_count=fold_count,
+        branch_count=branch_count,
+        total_model_count=total_model_count,
+        model_count_breakdown=model_count_breakdown,
     )
+
+
+@dataclass
+class PipelineVariant:
+    """Represents a single expanded pipeline variant."""
+    index: int
+    steps: List[Any]  # nirs4all-compatible steps
+    description: str  # Human-readable description of choices
+    choices: Dict[str, Any]  # Mapping of parameter -> value for this variant
+    model_name: str  # Primary model name for this variant
+    preprocessing_names: List[str]  # Preprocessing steps for this variant
+
+
+def expand_pipeline_variants(steps: List[Dict[str, Any]]) -> List[PipelineVariant]:
+    """
+    Expand pipeline steps into all concrete variants.
+
+    This creates separate variant entries for:
+    - Each branch alternative
+    - Each sweep value combination
+    - Does NOT include finetuning trials (those are internal optimization)
+
+    Args:
+        steps: Frontend pipeline steps with generators/sweeps
+
+    Returns:
+        List of PipelineVariant, each representing a concrete pipeline
+    """
+    if not NIRS4ALL_AVAILABLE:
+        # Fallback: single variant
+        return [PipelineVariant(
+            index=0,
+            steps=_build_simple_fallback(steps),
+            description="Default configuration",
+            choices={},
+            model_name=_extract_first_model(steps),
+            preprocessing_names=_extract_preprocessing_names(steps),
+        )]
+
+    try:
+        from nirs4all.pipeline.config.generator import expand_spec_with_choices
+    except ImportError:
+        return [PipelineVariant(
+            index=0,
+            steps=_build_simple_fallback(steps),
+            description="Default configuration",
+            choices={},
+            model_name=_extract_first_model(steps),
+            preprocessing_names=_extract_preprocessing_names(steps),
+        )]
+
+    # Build the pipeline with generators intact
+    build_result = build_full_pipeline(steps)
+
+    if not build_result.has_generators:
+        # No generators, single variant
+        return [PipelineVariant(
+            index=0,
+            steps=build_result.steps,
+            description="Single configuration",
+            choices={},
+            model_name=_extract_first_model(steps),
+            preprocessing_names=_extract_preprocessing_names(steps),
+        )]
+
+    # Expand with choice tracking
+    try:
+        expanded = expand_spec_with_choices(build_result.steps)
+    except Exception as e:
+        print(f"Failed to expand pipeline variants: {e}")
+        return [PipelineVariant(
+            index=0,
+            steps=build_result.steps,
+            description="Could not expand variants",
+            choices={},
+            model_name=_extract_first_model(steps),
+            preprocessing_names=_extract_preprocessing_names(steps),
+        )]
+
+    variants = []
+    for idx, (config, choices_list) in enumerate(expanded):
+        # Build human-readable description from choices
+        choices_dict = {}
+        desc_parts = []
+        for choice in choices_list:
+            for key, value in choice.items():
+                if key.startswith("_"):
+                    # Generator choice (_or_, _range_, etc)
+                    if isinstance(value, type):
+                        value_str = value.__name__
+                    elif hasattr(value, '__name__'):
+                        value_str = value.__name__
+                    elif isinstance(value, dict) and "model" in value:
+                        model = value.get("model")
+                        if hasattr(model, '__class__'):
+                            value_str = model.__class__.__name__
+                        else:
+                            value_str = str(value)
+                    else:
+                        value_str = str(value)
+
+                    # Simplify key name
+                    clean_key = key.strip("_")
+                    choices_dict[clean_key] = value
+                    desc_parts.append(f"{value_str}")
+                else:
+                    # Regular parameter choice
+                    choices_dict[key] = value
+                    desc_parts.append(f"{key}={value}")
+
+        description = " | ".join(desc_parts) if desc_parts else f"Variant {idx + 1}"
+
+        # Extract model and preprocessing from the expanded config
+        model_name = _extract_model_from_config(config)
+        preprocessing = _extract_preprocessing_from_config(config)
+
+        variants.append(PipelineVariant(
+            index=idx,
+            steps=config if isinstance(config, list) else [config],
+            description=description,
+            choices=choices_dict,
+            model_name=model_name,
+            preprocessing_names=preprocessing,
+        ))
+
+    return variants
+
+
+def _extract_first_model(steps: List[Dict[str, Any]]) -> str:
+    """Extract the first model name from frontend steps."""
+    for step in steps:
+        if step.get("type") == "model":
+            return step.get("name", "Unknown")
+        for branch in step.get("branches", []):
+            for substep in branch:
+                if substep.get("type") == "model":
+                    return substep.get("name", "Unknown")
+    return "Unknown"
+
+
+def _extract_preprocessing_names(steps: List[Dict[str, Any]]) -> List[str]:
+    """Extract preprocessing names from frontend steps."""
+    names = []
+    for step in steps:
+        if step.get("type") == "preprocessing":
+            names.append(step.get("name", "Unknown"))
+        for branch in step.get("branches", []):
+            for substep in branch:
+                if substep.get("type") == "preprocessing":
+                    names.append(substep.get("name", "Unknown"))
+    return names
+
+
+def _extract_model_from_config(config) -> str:
+    """Extract model name from expanded nirs4all config."""
+    if isinstance(config, list):
+        for item in config:
+            result = _extract_model_from_config(item)
+            if result != "Unknown":
+                return result
+    elif isinstance(config, dict):
+        if "model" in config:
+            model = config["model"]
+            if hasattr(model, '__class__'):
+                return model.__class__.__name__
+            return str(model)
+        for value in config.values():
+            result = _extract_model_from_config(value)
+            if result != "Unknown":
+                return result
+    elif hasattr(config, '__class__'):
+        # Could be a model instance
+        class_name = config.__class__.__name__
+        if "Regressor" in class_name or "Classifier" in class_name or "PLS" in class_name:
+            return class_name
+    return "Unknown"
+
+
+def _extract_preprocessing_from_config(config) -> List[str]:
+    """Extract preprocessing names from expanded nirs4all config."""
+    names = []
+    if isinstance(config, list):
+        for item in config:
+            names.extend(_extract_preprocessing_from_config(item))
+    elif isinstance(config, dict):
+        for key, value in config.items():
+            if key not in ("model", "y_processing"):
+                names.extend(_extract_preprocessing_from_config(value))
+    elif hasattr(config, '__class__'):
+        class_name = config.__class__.__name__
+        # Common preprocessing classes
+        if class_name in ("StandardNormalVariate", "SNV", "MultiplicativeScatterCorrection", "MSC",
+                          "SavitzkyGolay", "FirstDerivative", "SecondDerivative", "Detrend",
+                          "StandardScaler", "MinMaxScaler", "RobustScaler", "MaxAbsScaler",
+                          "Baseline", "Gaussian", "CropTransformer"):
+            names.append(class_name)
+    return names
+
+
+def _build_simple_fallback(steps: List[Dict[str, Any]]) -> List[Any]:
+    """Build simple pipeline when expansion isn't possible."""
+    from sklearn.model_selection import KFold
+    pipeline_steps = [KFold(n_splits=5, shuffle=True, random_state=42)]
+
+    for step in steps:
+        step_type = step.get("type", "")
+        step_name = step.get("name", "")
+        step_params = step.get("params", {})
+
+        if step_type == "preprocessing":
+            try:
+                operator_class = _resolve_operator_class(step_name, "preprocessing")
+                normalized = _normalize_params(PREPROCESSING_ALIASES.get(step_name, step_name), step_params)
+                pipeline_steps.append(operator_class(**normalized))
+            except Exception:
+                pass
+        elif step_type == "model":
+            try:
+                operator_class = _resolve_operator_class(step_name, "model")
+                pipeline_steps.append({"model": operator_class(**step_params)})
+            except Exception:
+                from sklearn.cross_decomposition import PLSRegression
+                pipeline_steps.append({"model": PLSRegression(n_components=10)})
+
+    return pipeline_steps
 
 
 # ============================================================================

@@ -302,7 +302,7 @@ export function TargetsStep() {
   };
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col gap-4 py-2">
+    <div className="flex-1 flex flex-col gap-4 py-2">
       {/* Task Type */}
       <div className="border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-4">
@@ -335,7 +335,7 @@ export function TargetsStep() {
       </div>
 
       {/* Target Columns */}
-      <div className="flex-1 overflow-hidden flex flex-col border rounded-lg">
+      <div className="flex-1 min-h-0 flex flex-col border rounded-lg">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-muted-foreground" />

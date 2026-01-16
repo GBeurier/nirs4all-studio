@@ -116,7 +116,7 @@ export function ModelSelector({ source, selectedId, onSelect }: ModelSelectorPro
                   <Badge variant="outline" className="text-xs shrink-0">
                     {model.model_type}
                   </Badge>
-                  {model.metrics.rmse && (
+                  {model.metrics.rmse != null && (
                     <span className="text-xs text-muted-foreground shrink-0">
                       RMSE: {model.metrics.rmse.toFixed(3)}
                     </span>

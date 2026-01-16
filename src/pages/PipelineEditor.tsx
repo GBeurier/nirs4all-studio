@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Save,
@@ -23,6 +24,7 @@ import {
   Settings,
   Workflow,
 } from "lucide-react";
+import { savePipeline } from "@/api/client";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -326,11 +328,40 @@ export default function PipelineEditor() {
     handleReorder(activeId, overId, data);
   }, [handleReorder]);
 
+  // Query client for cache invalidation
+  const queryClient = useQueryClient();
+
+  // Save pipeline mutation
+  const savePipelineMutation = useMutation({
+    mutationFn: async () => {
+      const pipelineData = exportPipeline();
+      // Save steps with all fields (including branches, generatorKind, generatorOptions, etc.)
+      // This is critical for generators and branching to work correctly
+      return savePipeline({
+        id: isNew ? undefined : pipelineId,
+        name: pipelineName,
+        description: "",
+        steps: pipelineData.steps,
+        is_favorite: isFavorite,
+      });
+    },
+    onSuccess: (result) => {
+      toast.success(`"${pipelineName}" saved to library`);
+      // Invalidate pipelines cache
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      // If it was a new pipeline, navigate to the saved pipeline's ID
+      if (isNew && result?.pipeline?.id) {
+        navigate(`/pipelines/${result.pipeline.id}`, { replace: true });
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to save: ${error instanceof Error ? error.message : "Unknown error"}`);
+    },
+  });
+
   // Actions
   const handleSave = () => {
-    const pipeline = exportPipeline();
-    console.log("Saving pipeline:", pipeline);
-    toast.success(`"${pipelineName}" saved to library`);
+    savePipelineMutation.mutate();
   };
 
   const handleToggleFavorite = () => {
@@ -928,12 +959,32 @@ export default function PipelineEditor() {
                 </Button>
 
                 {/* Use in Experiment */}
-                <Link to="/runs/new">
-                  <Button size="sm" disabled={totalSteps === 0}>
-                    <Play className="h-4 w-4 mr-2" />
-                    Use in Experiment
-                  </Button>
-                </Link>
+                <Button
+                  size="sm"
+                  disabled={totalSteps === 0}
+                  onClick={() => {
+                    // Store current pipeline state in sessionStorage for "current edited pipeline" option
+                    const pipelineData = exportPipeline();
+                    const currentPipelineExport = {
+                      id: isNew ? undefined : pipelineId,
+                      name: pipelineName,
+                      steps: pipelineData.steps,
+                      isDirty,
+                      timestamp: Date.now(),
+                    };
+                    sessionStorage.setItem('current-edited-pipeline', JSON.stringify(currentPipelineExport));
+
+                    // Navigate with pipeline ID if saved, or with flag for current edited
+                    if (!isNew && !isDirty) {
+                      navigate(`/runs/new?pipeline=${pipelineId}`);
+                    } else {
+                      navigate('/runs/new?source=editor');
+                    }
+                  }}
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Use in Experiment
+                </Button>
               </div>
             </div>
           </header>

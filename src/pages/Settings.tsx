@@ -68,13 +68,10 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group";
-import { selectFolder } from "@/utils/fileDialogs";
 import { WorkspaceStats } from "@/components/settings/WorkspaceStats";
 import { DataLoadingDefaultsForm } from "@/components/settings/DataLoadingDefaultsForm";
 import { KeyboardShortcuts } from "@/components/settings/KeyboardShortcuts";
-import { RecentWorkspacesList } from "@/components/settings/RecentWorkspacesList";
 import { CreateWorkspaceDialog } from "@/components/settings/CreateWorkspaceDialog";
-import { ExportImportDialog } from "@/components/settings/ExportImportDialog";
 
 import { SystemInfo } from "@/components/settings/SystemInfo";
 import { BackendStatus } from "@/components/settings/BackendStatus";
@@ -85,9 +82,9 @@ import { N4AWorkspaceList } from "@/components/settings/N4AWorkspaceList";
 import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscoveryPanel";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { DependenciesManager } from "@/components/settings/DependenciesManager";
+import { ConfigPathSettings } from "@/components/settings/ConfigPathSettings";
 import {
   getWorkspace,
-  selectWorkspace,
   getLinkedWorkspaces,
 } from "@/api/client";
 import type { UIDensity, UIZoomLevel } from "@/types/settings";
@@ -146,20 +143,6 @@ export default function Settings() {
     }
   };
 
-  const handleSelectWorkspace = async () => {
-    const path = await selectFolder();
-    if (path) {
-      try {
-        await selectWorkspace(path);
-        setWorkspacePath(path);
-        // Reload to get the name
-        loadWorkspace();
-      } catch (error) {
-        console.error("Failed to set workspace:", error);
-      }
-    }
-  };
-
   const handleDeveloperModeChange = async (enabled: boolean) => {
     try {
       await setDeveloperMode(enabled);
@@ -199,10 +182,9 @@ export default function Settings() {
       {/* Tabs for organization */}
       <motion.div variants={itemVariants}>
         <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="general">{t("settings.tabs.general")}</TabsTrigger>
-            <TabsTrigger value="workspace">{t("settings.tabs.workspace")}</TabsTrigger>
-            <TabsTrigger value="n4a">N4A Workspaces</TabsTrigger>
+            <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
             <TabsTrigger value="data">{t("settings.tabs.data")}</TabsTrigger>
             <TabsTrigger value="advanced">{t("settings.tabs.advanced")}</TabsTrigger>
           </TabsList>
@@ -341,123 +323,34 @@ export default function Settings() {
             <KeyboardShortcuts />
           </TabsContent>
 
-          {/* Workspace Tab */}
-          <TabsContent value="workspace" className="space-y-6">
-            {/* Current Workspace */}
+          {/* Workspaces Tab (Merged) */}
+          <TabsContent value="workspaces" className="space-y-6">
+            {/* Linked Workspaces Management */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FolderOpen className="h-5 w-5" />
-                  {t("settings.workspace.current.title")}
+                  Workspaces
                 </CardTitle>
                 <CardDescription>
-                  {t("settings.workspace.current.description")}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-3">
-                  <Input
-                    placeholder={t("settings.workspace.current.placeholder")}
-                    value={workspacePath || ""}
-                    readOnly
-                    className="flex-1"
-                  />
-                  <Button variant="outline" onClick={handleSelectWorkspace}>
-                    <FolderOpen className="mr-2 h-4 w-4" />
-                    {t("settings.workspace.current.browseButton")}
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Badge variant={workspacePath ? "default" : "outline"}>
-                    {workspacePath ? t("common.active") : t("common.notConfigured")}
-                  </Badge>
-                  {workspaceName && (
-                    <span className="font-medium">{workspaceName}</span>
-                  )}
-                </div>
-                {/* Workspace action buttons */}
-                <div className="flex gap-2 pt-2">
-                  <CreateWorkspaceDialog
-                    onWorkspaceCreated={() => loadWorkspace()}
-                    trigger={
-                      <Button variant="outline" size="sm">
-                        <FolderPlus className="mr-2 h-4 w-4" />
-                        {t("settings.workspace.create.createButton")}
-                      </Button>
-                    }
-                  />
-                  {workspacePath && (
-                    <ExportImportDialog
-                      onComplete={() => loadWorkspace()}
-                      trigger={
-                        <Button variant="outline" size="sm">
-                          <FileArchive className="mr-2 h-4 w-4" />
-                          {t("common.export")}/{t("common.import")}
-                        </Button>
-                      }
-                    />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Workspace Statistics */}
-            {workspacePath ? (
-              <WorkspaceStats />
-            ) : (
-              <Card className="border-dashed">
-                <CardContent className="p-6 text-center text-muted-foreground">
-                  <FolderOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>{t("settings.workspace.current.selectButton")}</p>
-                </CardContent>
-              </Card>
-            )}
-
-
-
-            {/* Recent Workspaces */}
-            <Collapsible defaultOpen>
-              <Card>
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <ChevronRight className="h-4 w-4 transition-transform [[data-state=open]>&]:rotate-90" />
-                      {t("settings.workspace.recent.title")}
-                    </CardTitle>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent>
-                    <RecentWorkspacesList
-                      currentWorkspacePath={workspacePath}
-                      limit={5}
-                      onWorkspaceSwitch={(path) => {
-                        setWorkspacePath(path);
-                        loadWorkspace();
-                      }}
-                    />
-                  </CardContent>
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          </TabsContent>
-
-          {/* N4A Workspaces Tab */}
-          <TabsContent value="n4a" className="space-y-6">
-            {/* Link New Workspace */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FolderPlus className="h-5 w-5" />
-                  nirs4all Workspaces
-                </CardTitle>
-                <CardDescription>
-                  Link nirs4all workspaces to discover runs, exports, and predictions.
+                  Manage nirs4all workspaces. The active workspace is where all runs and artifacts are saved.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex gap-2">
                   <N4AWorkspaceSelector onWorkspaceLinked={loadN4AWorkspaces} />
+                  <CreateWorkspaceDialog
+                    onWorkspaceCreated={() => {
+                      loadWorkspace();
+                      loadN4AWorkspaces();
+                    }}
+                    trigger={
+                      <Button variant="outline">
+                        <FolderPlus className="mr-2 h-4 w-4" />
+                        Create New
+                      </Button>
+                    }
+                  />
                 </div>
 
                 <Separator />
@@ -466,6 +359,9 @@ export default function Settings() {
                 <N4AWorkspaceList onWorkspaceChange={loadN4AWorkspaces} />
               </CardContent>
             </Card>
+
+            {/* Workspace Statistics */}
+            {workspacePath && <WorkspaceStats />}
 
             {/* Discovery Panel */}
             {activeN4AWorkspaceId && (
@@ -489,8 +385,8 @@ export default function Settings() {
             <Card className="bg-muted/50">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> Linking a workspace allows the app to discover and display
-                  runs, predictions, and exported pipelines. Your files remain in their original location.
+                  <strong>Note:</strong> The active workspace is where nirs4all saves all runs, predictions,
+                  and exported pipelines. You can link multiple workspaces and switch between them.
                 </p>
               </CardContent>
             </Card>
@@ -498,24 +394,7 @@ export default function Settings() {
 
           {/* Data Defaults Tab */}
           <TabsContent value="data" className="space-y-6">
-            {workspacePath ? (
-              <DataLoadingDefaultsForm />
-            ) : (
-              <Card className="border-dashed">
-                <CardContent className="p-6 text-center text-muted-foreground">
-                  <FolderOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>{t("settings.dataDefaults.selectWorkspace")}</p>
-                  <Button
-                    variant="outline"
-                    className="mt-4"
-                    onClick={handleSelectWorkspace}
-                  >
-                    <FolderOpen className="mr-2 h-4 w-4" />
-                    {t("settings.workspace.current.selectButton")}
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+            <DataLoadingDefaultsForm />
 
             {/* Info about defaults */}
             <Card className="bg-muted/50">
@@ -561,6 +440,9 @@ export default function Settings() {
 
             {/* Backend Status - Always visible */}
             <BackendStatus checkInterval={30} />
+
+            {/* Config Path Settings */}
+            <ConfigPathSettings />
 
             {/* Updates Section */}
             <UpdatesSection />

@@ -1,0 +1,10 @@
+# Test dependencies for nirs4all webapp
+
+# Core testing
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+pytest-timeout>=2.3.0
+pytest-cov>=6.0.0
+
+# HTTP testing
+httpx>=0.27.0

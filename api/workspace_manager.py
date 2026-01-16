@@ -3,17 +3,13 @@ Workspace management utilities for nirs4all webapp.
 
 This module handles workspace persistence, configuration, and state management.
 
-Phase 6 Implementation:
-- List all workspaces
-- Recent workspaces tracking
-- Workspace export utilities
-- Enhanced configuration management
-
-Phase 7 Implementation:
-- Clear separation between App Settings and nirs4all Workspaces
+Phase 8 Implementation:
+- Clear separation between App Config folder and Workspace folders
+- App Config (global): UI preferences, linked workspaces, dataset links
+- Workspace (local): Runs, predictions, artifacts, pipelines, exports
 - WorkspaceScanner for auto-discovery of runs, exports, predictions
 - LinkedWorkspace management for multiple nirs4all workspaces
-- Dataset versioning with run-compatibility tracking
+- Default workspace auto-creation in current directory
 """
 
 import json
@@ -24,7 +20,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
-import platformdirs
+
+from .app_config import app_config, AppConfigManager
 
 # Try to import nirs4all components (optional)
 try:
@@ -1679,484 +1676,346 @@ class WorkspaceConfig:
 
 
 class WorkspaceManager:
-    """Manages workspace operations and persistence."""
+    """Manages nirs4all workspace operations.
+
+    The workspace manager now uses the global AppConfigManager for:
+    - App settings (UI preferences, favorites)
+    - Linked workspaces list
+    - Global dataset links
+
+    Workspace-specific data is stored in each workspace folder.
+    """
 
     def __init__(self):
-        # Get app data directory for persistence
-        self.app_data_dir = Path(platformdirs.user_data_dir("nirs4all-webapp", "nirs4all"))
-        self.app_data_dir.mkdir(parents=True, exist_ok=True)
-        self.config_file = self.app_data_dir / "workspace_config.json"
-        self.recent_workspaces_file = self.app_data_dir / "recent_workspaces.json"
+        # Use the global app config manager
+        self.app_config = app_config
 
-        # Load current workspace
-        self._current_workspace_path: Optional[str] = None
-        self._workspace_config: Optional[WorkspaceConfig] = None
-        self._recent_workspaces: List[Dict[str, Any]] = []
-        self._load_recent_workspaces()
-        self._load_current_workspace()
+        # For backward compatibility, keep app_data_dir reference
+        self.app_data_dir = self.app_config.config_dir
+
+        # Ensure default workspace exists on first launch
+        self.ensure_default_workspace()
+
+    def ensure_default_workspace(self) -> Optional[LinkedWorkspace]:
+        """Create and link a default workspace if none exists.
+
+        This is called on first launch to ensure users have a workspace
+        ready to use. The default workspace is created in the current
+        working directory as ./workspace.
+
+        Returns:
+            The active LinkedWorkspace, or None if creation fails
+        """
+        workspaces = self.get_linked_workspaces()
+
+        # If workspaces exist, return the active one
+        if workspaces:
+            active = self.get_active_workspace()
+            if active:
+                return active
+            # If no active, activate the first one
+            return self.activate_workspace(workspaces[0].id)
+
+        # No workspaces linked - create default workspace
+        default_path = Path.cwd() / "workspace"
+
+        try:
+            # Create workspace directory structure
+            default_path.mkdir(parents=True, exist_ok=True)
+            (default_path / "runs").mkdir(exist_ok=True)
+            (default_path / "exports").mkdir(exist_ok=True)
+            (default_path / "library").mkdir(exist_ok=True)
+            (default_path / "library" / "templates").mkdir(exist_ok=True)
+            (default_path / "library" / "trained").mkdir(exist_ok=True)
+
+            # Create workspace.json
+            workspace_json = {
+                "name": "Default Workspace",
+                "created_at": datetime.now().isoformat(),
+                "settings": {},
+            }
+            workspace_config_file = default_path / "workspace.json"
+            with open(workspace_config_file, "w", encoding="utf-8") as f:
+                json.dump(workspace_json, f, indent=2)
+
+            # Link and activate the workspace
+            # Use internal method to bypass validation (workspace is empty but valid)
+            return self._link_workspace_internal(str(default_path), "Default Workspace", is_new=True)
+
+        except Exception as e:
+            print(f"Failed to create default workspace: {e}")
+            return None
+
+    def _link_workspace_internal(
+        self, path: str, name: str, is_new: bool = False
+    ) -> LinkedWorkspace:
+        """Internal method to link a workspace without validation.
+
+        Used for creating new workspaces where the directory structure
+        is already set up but may not have runs/exports yet.
+        """
+        workspace_path = Path(path).resolve()
+        now = datetime.now().isoformat()
+
+        settings = self.app_config.get_app_settings()
+        workspaces = settings.get("linked_workspaces", [])
+
+        # Check if already linked
+        for ws in workspaces:
+            if ws.get("path") == str(workspace_path):
+                return LinkedWorkspace.from_dict(ws)
+
+        # Create linked workspace entry
+        linked_ws = LinkedWorkspace(
+            id=f"ws_{int(datetime.now().timestamp())}_{len(workspaces)}",
+            path=str(workspace_path),
+            name=name or workspace_path.name,
+            is_active=len(workspaces) == 0,  # First workspace is active by default
+            linked_at=now,
+            last_scanned=now if is_new else None,
+            discovered={
+                "runs_count": 0,
+                "datasets_count": 0,
+                "exports_count": 0,
+                "templates_count": 0,
+            },
+        )
+
+        workspaces.append(linked_ws.to_dict())
+        settings["linked_workspaces"] = workspaces
+        self.app_config.save_app_settings(settings)
+
+        return linked_ws
+
+    # ----------------------- Legacy Methods (Deprecated) -----------------------
+    # The following methods are kept for backward compatibility but delegate
+    # to the new architecture where possible.
 
     def _load_recent_workspaces(self) -> None:
-        """Load the list of recent workspaces from persistent storage."""
-        if self.recent_workspaces_file.exists():
-            try:
-                with open(self.recent_workspaces_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    self._recent_workspaces = data.get("workspaces", [])
-            except Exception as e:
-                print(f"Failed to load recent workspaces: {e}")
-                self._recent_workspaces = []
+        """Legacy: Load recent workspaces - now uses linked workspaces instead."""
+        pass  # No longer used - linked workspaces replace recent workspaces
 
     def _save_recent_workspaces(self) -> None:
-        """Save the list of recent workspaces to persistent storage."""
-        try:
-            data = {
-                "workspaces": self._recent_workspaces,
-                "last_updated": datetime.now().isoformat(),
-            }
-            with open(self.recent_workspaces_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"Failed to save recent workspaces: {e}")
+        """Legacy: Save recent workspaces - now uses linked workspaces instead."""
+        pass  # No longer used
 
     def _load_current_workspace(self) -> None:
-        """Load the current workspace from persistent storage."""
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, "r", encoding="utf-8") as f:
-                    config_data = json.load(f)
-                    workspace_path = config_data.get("current_workspace_path")
-                    if workspace_path and Path(workspace_path).exists():
-                        self._current_workspace_path = workspace_path
-                        self._load_workspace_config()
-            except Exception as e:
-                print(f"Failed to load workspace config: {e}")
+        """Legacy: Load current workspace - now uses active linked workspace."""
+        pass  # No longer used - active linked workspace is the current one
 
     def _save_current_workspace(self) -> None:
-        """Save the current workspace to persistent storage."""
-        try:
-            config_data = {
-                "current_workspace_path": self._current_workspace_path,
-                "last_updated": datetime.now().isoformat(),
-            }
-            with open(self.config_file, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=2)
-        except Exception as e:
-            print(f"Failed to save workspace config: {e}")
+        """Legacy: Save current workspace."""
+        pass  # No longer used
 
     def _load_workspace_config(self) -> None:
-        """Load workspace configuration from the workspace folder."""
-        if not self._current_workspace_path:
-            return
+        """Legacy: Load workspace config."""
+        pass  # No longer used
 
-        workspace_path = Path(self._current_workspace_path)
+    def _create_default_workspace_config(self) -> None:
+        """Legacy: Create default workspace config."""
+        pass  # No longer used
+
+    def _save_workspace_config(self) -> None:
+        """Legacy: Save workspace config."""
+        pass  # No longer used
+
+    def set_workspace(self, path: str) -> "WorkspaceConfig":
+        """Legacy: Set current workspace - now links and activates the workspace.
+
+        For backward compatibility, this method links the workspace if not
+        already linked, then activates it.
+        """
+        workspace_path = Path(path)
+        if not workspace_path.exists():
+            raise ValueError(f"Workspace path does not exist: {path}")
+        if not workspace_path.is_dir():
+            raise ValueError(f"Workspace path is not a directory: {path}")
+
+        # Check if already linked
+        for ws in self.get_linked_workspaces():
+            if ws.path == str(workspace_path.resolve()):
+                self.activate_workspace(ws.id)
+                return self._create_workspace_config_from_linked(ws)
+
+        # Link and activate
+        linked_ws = self.link_workspace(str(workspace_path))
+        self.activate_workspace(linked_ws.id)
+        return self._create_workspace_config_from_linked(linked_ws)
+
+    def get_current_workspace(self) -> Optional["WorkspaceConfig"]:
+        """Legacy: Get current workspace config.
+
+        Returns a WorkspaceConfig for the active linked workspace.
+        Datasets are now global (via app_config), not per-workspace.
+        """
+        active = self.get_active_workspace()
+        if not active:
+            return None
+        return self._create_workspace_config_from_linked(active)
+
+    def _create_workspace_config_from_linked(self, ws: LinkedWorkspace) -> "WorkspaceConfig":
+        """Create a WorkspaceConfig from a LinkedWorkspace for backward compatibility."""
+        # Load workspace.json if it exists
+        workspace_path = Path(ws.path)
         config_file = workspace_path / "workspace.json"
+        config_data = {}
 
         if config_file.exists():
             try:
                 with open(config_file, "r", encoding="utf-8") as f:
                     config_data = json.load(f)
-                    self._workspace_config = WorkspaceConfig.from_dict(config_data)
-                    self._workspace_config.last_accessed = datetime.now().isoformat()
-                    self._save_workspace_config()
-            except Exception as e:
-                print(f"Failed to load workspace config: {e}")
-                self._create_default_workspace_config()
-        else:
-            self._create_default_workspace_config()
+            except Exception:
+                pass
 
-    def _create_default_workspace_config(self) -> None:
-        """Create a default workspace configuration."""
-        if not self._current_workspace_path:
-            return
+        # Datasets are now global - get from app_config
+        datasets = [d.to_dict() for d in self.app_config.get_datasets()]
 
-        workspace_path = Path(self._current_workspace_path)
-        now = datetime.now().isoformat()
-
-        self._workspace_config = WorkspaceConfig(
-            path=str(workspace_path),
-            name=workspace_path.name,
-            created_at=now,
-            last_accessed=now,
-            datasets=[],
-            pipelines=[],
+        return WorkspaceConfig(
+            path=ws.path,
+            name=ws.name or config_data.get("name", workspace_path.name),
+            created_at=ws.linked_at or config_data.get("created_at", datetime.now().isoformat()),
+            last_accessed=ws.last_scanned or config_data.get("last_accessed", datetime.now().isoformat()),
+            datasets=datasets,
+            pipelines=config_data.get("pipelines", []),
+            groups=[g.to_dict() for g in self.app_config.get_dataset_groups()],
         )
 
-        # Create required directories
-        (workspace_path / "results").mkdir(exist_ok=True)
-        (workspace_path / "pipelines").mkdir(exist_ok=True)
+    def reload_workspace(self) -> Optional["WorkspaceConfig"]:
+        """Legacy: Reload workspace config."""
+        return self.get_current_workspace()
 
-        self._save_workspace_config()
-
-    def _save_workspace_config(self) -> None:
-        """Save workspace configuration to the workspace folder."""
-        if not self._current_workspace_path or not self._workspace_config:
-            return
-
-        workspace_path = Path(self._current_workspace_path)
-        config_file = workspace_path / "workspace.json"
-
-        try:
-            with open(config_file, "w", encoding="utf-8") as f:
-                json.dump(self._workspace_config.to_dict(), f, indent=2)
-        except Exception as e:
-            print(f"Failed to save workspace config: {e}")
-
-    def set_workspace(self, path: str) -> WorkspaceConfig:
-        """Set the current workspace and create necessary structure."""
-        workspace_path = Path(path)
-
-        if not workspace_path.exists():
-            raise ValueError(f"Workspace path does not exist: {path}")
-
-        if not workspace_path.is_dir():
-            raise ValueError(f"Workspace path is not a directory: {path}")
-
-        self._current_workspace_path = str(workspace_path.resolve())
-        self._save_current_workspace()
-        self._load_workspace_config()
-
-        if not self._workspace_config:
-            raise RuntimeError("Failed to create workspace configuration")
-
-        # Add to recent workspaces
-        self.add_to_recent(self._current_workspace_path, self._workspace_config.name)
-
-        return self._workspace_config
-
-    def get_current_workspace(self) -> Optional[WorkspaceConfig]:
-        """Get the current workspace configuration."""
-        return self._workspace_config
-
-    def reload_workspace(self) -> Optional[WorkspaceConfig]:
-        """Reload the workspace configuration from disk.
-
-        This is useful when the workspace.json file may have been modified
-        externally or to ensure the in-memory state matches the disk state.
-
-        Returns:
-            The reloaded workspace configuration, or None if no workspace is set.
-        """
-        if not self._current_workspace_path:
-            return None
-
-        self._load_workspace_config()
-        return self._workspace_config
+    # ----------------------- Dataset Management (Now Global) -----------------------
+    # These methods now delegate to app_config for global dataset management.
 
     def link_dataset(self, dataset_path: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Link a dataset to the current workspace."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-
-        dataset_path = str(Path(dataset_path).resolve())
-
-        if not Path(dataset_path).exists():
-            raise ValueError(f"Dataset path does not exist: {dataset_path}")
-
-        # Check if already linked
-        for existing in self._workspace_config.datasets:
-            if existing["path"] == dataset_path:
-                raise ValueError("Dataset already linked")
-
-        # Compute hash for integrity tracking (Phase 2)
-        dataset_hash = self._compute_dataset_hash(Path(dataset_path))
-        dataset_stats = self._compute_dataset_stats(Path(dataset_path))
-        now = datetime.now().isoformat()
-
-        # Create dataset info
-        dataset_info = {
-            "id": f"dataset_{len(self._workspace_config.datasets) + 1}_{int(datetime.now().timestamp())}",
-            "name": Path(dataset_path).name,
-            "path": dataset_path,
-            "linked_at": now,
-            "num_samples": 0,
-            "num_features": 0,
-            "num_targets": 0,
-            "config": config or {},
-            # Phase 2: Versioning fields
-            "hash": dataset_hash,
-            "version": 1,
-            "version_status": "current",
-            "last_verified": now,
-            "_stats": dataset_stats,
-        }
-
-        # Add to workspace
-        self._workspace_config.datasets.append(dataset_info)
-        self._workspace_config.last_accessed = now
-        self._save_workspace_config()
-
-        return dataset_info
-
-    def _compute_dataset_hash(self, dataset_path: Path) -> str:
-        """Compute SHA-256 hash of dataset files for integrity checking."""
-        import hashlib
-
-        hasher = hashlib.sha256()
-        extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
-        compressed = {".gz", ".bz2", ".xz", ".zip"}
-
-        if dataset_path.is_file():
-            hasher.update(dataset_path.read_bytes())
-        elif dataset_path.is_dir():
-            for file in sorted(dataset_path.rglob("*")):
-                if not file.is_file():
-                    continue
-                suffix = file.suffix.lower()
-                if suffix in compressed:
-                    inner_suffix = Path(file.stem).suffix.lower()
-                    if inner_suffix and inner_suffix in extensions:
-                        hasher.update(file.read_bytes())
-                elif suffix in extensions:
-                    hasher.update(file.read_bytes())
-
-        return hasher.hexdigest()[:16]
-
-    def _compute_dataset_stats(self, dataset_path: Path) -> Dict[str, Any]:
-        """Compute basic statistics about a dataset for change detection."""
-        stats = {
-            "file_count": 0,
-            "total_size_bytes": 0,
-            "files": [],
-        }
-        extensions = {".csv", ".xlsx", ".xls", ".parquet", ".npy", ".npz", ".mat"}
-        compressed = {".gz", ".bz2", ".xz", ".zip"}
-
-        if dataset_path.is_file():
-            stats["file_count"] = 1
-            stats["total_size_bytes"] = dataset_path.stat().st_size
-            stats["files"] = [dataset_path.name]
-        elif dataset_path.is_dir():
-            for file in sorted(dataset_path.rglob("*")):
-                if not file.is_file():
-                    continue
-                suffix = file.suffix.lower()
-                is_data_file = suffix in extensions
-                if suffix in compressed:
-                    inner_suffix = Path(file.stem).suffix.lower()
-                    is_data_file = inner_suffix in extensions
-                if is_data_file:
-                    stats["file_count"] += 1
-                    stats["total_size_bytes"] += file.stat().st_size
-                    stats["files"].append(str(file.relative_to(dataset_path)))
-
-        return stats
+        """Link a dataset globally (accessible across all workspaces)."""
+        dataset = self.app_config.link_dataset(dataset_path, config)
+        return dataset.to_dict()
 
     def unlink_dataset(self, dataset_id: str) -> bool:
-        """Unlink a dataset from the current workspace."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-
-        original_count = len(self._workspace_config.datasets)
-        self._workspace_config.datasets = [
-            d for d in self._workspace_config.datasets if d["id"] != dataset_id
-        ]
-
-        if len(self._workspace_config.datasets) == original_count:
-            return False
-
-        self._workspace_config.last_accessed = datetime.now().isoformat()
-        self._save_workspace_config()
-        return True
+        """Unlink a dataset globally."""
+        return self.app_config.unlink_dataset(dataset_id)
 
     def update_dataset(self, dataset_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Update a dataset's configuration in the current workspace."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-
-        dataset_info = next(
-            (d for d in self._workspace_config.datasets if d.get("id") == dataset_id),
-            None,
-        )
-        if not dataset_info:
-            return None
-
-        # Update allowed fields
-        allowed_fields = {"name", "description", "config", "targets", "default_target"}
-        for key, value in updates.items():
-            if key in allowed_fields:
-                dataset_info[key] = value
-            elif key == "config" and isinstance(value, dict):
-                # Merge config updates
-                if "config" not in dataset_info:
-                    dataset_info["config"] = {}
-                dataset_info["config"].update(value)
-
-        dataset_info["last_updated"] = datetime.now().isoformat()
-        self._workspace_config.last_accessed = datetime.now().isoformat()
-        self._save_workspace_config()
-
-        return dataset_info
+        """Update a dataset's configuration."""
+        dataset = self.app_config.update_dataset(dataset_id, updates)
+        return dataset.to_dict() if dataset else None
 
     def refresh_dataset(self, dataset_id: str) -> Optional[Dict[str, Any]]:
-        """Refresh dataset information."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
+        """Refresh dataset information (hash, stats)."""
+        dataset = self.app_config.refresh_dataset(dataset_id)
+        return dataset.to_dict() if dataset else None
 
-        dataset_info = next(
-            (d for d in self._workspace_config.datasets if d.get("id") == dataset_id),
-            None,
-        )
-        if dataset_info:
-            dataset_info["last_refreshed"] = datetime.now().isoformat()
-            self._save_workspace_config()
+    # ----------------------- Groups Management (Now Global) -----------------------
 
-        return dataset_info
-
-    def get_results_path(self) -> Optional[str]:
-        """Get the results directory path for the current workspace."""
-        if not self._current_workspace_path:
-            return None
-        return str(Path(self._current_workspace_path) / "results")
-
-    def get_pipelines_path(self) -> Optional[str]:
-        """Get the pipelines directory path for the current workspace."""
-        if not self._current_workspace_path:
-            return None
-        return str(Path(self._current_workspace_path) / "pipelines")
-
-    def get_predictions_path(self) -> Optional[str]:
-        """Get the predictions directory path for the current workspace."""
-        if not self._current_workspace_path:
-            return None
-        return str(Path(self._current_workspace_path) / "predictions")
-
-    # ----------------------- Groups management -----------------------
     def get_groups(self) -> List[Dict[str, Any]]:
-        if not self._workspace_config:
-            return []
-        return self._workspace_config.groups
+        """Get all dataset groups."""
+        return [g.to_dict() for g in self.app_config.get_dataset_groups()]
 
     def create_group(self, name: str) -> Dict[str, Any]:
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-        group = {
-            "id": f"group_{len(self._workspace_config.groups) + 1}_{int(datetime.now().timestamp())}",
-            "name": name,
-            "dataset_ids": [],
-            "created_at": datetime.now().isoformat(),
-        }
-        self._workspace_config.groups.append(group)
-        self._save_workspace_config()
-        return group
+        """Create a new dataset group."""
+        group = self.app_config.create_dataset_group(name)
+        return group.to_dict()
 
     def rename_group(self, group_id: str, new_name: str) -> bool:
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-        for g in self._workspace_config.groups:
+        """Rename a dataset group."""
+        # Update via the full group structure
+        data = self.app_config._load_dataset_links()
+        groups = data.get("groups", [])
+        for g in groups:
             if g.get("id") == group_id:
                 g["name"] = new_name
-                self._save_workspace_config()
-                return True
+                data["groups"] = groups
+                return self.app_config._save_dataset_links(data)
         return False
 
     def delete_group(self, group_id: str) -> bool:
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-        original = len(self._workspace_config.groups)
-        self._workspace_config.groups = [
-            g for g in self._workspace_config.groups if g.get("id") != group_id
-        ]
-        if len(self._workspace_config.groups) != original:
-            self._save_workspace_config()
-            return True
-        return False
+        """Delete a dataset group."""
+        return self.app_config.delete_dataset_group(group_id)
 
     def add_dataset_to_group(self, group_id: str, dataset_id: str) -> bool:
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-        for g in self._workspace_config.groups:
-            if g.get("id") == group_id:
-                if dataset_id not in g.get("dataset_ids", []):
-                    g.setdefault("dataset_ids", []).append(dataset_id)
-                    self._save_workspace_config()
-                return True
-        return False
+        """Add a dataset to a group."""
+        return self.app_config.add_dataset_to_group(dataset_id, group_id)
 
     def remove_dataset_from_group(self, group_id: str, dataset_id: str) -> bool:
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
-        for g in self._workspace_config.groups:
-            if g.get("id") == group_id:
-                if dataset_id in g.get("dataset_ids", []):
-                    g["dataset_ids"] = [d for d in g["dataset_ids"] if d != dataset_id]
-                    self._save_workspace_config()
-                return True
-        return False
+        """Remove a dataset from its group."""
+        return self.app_config.remove_dataset_from_group(dataset_id)
 
-    # ----------------------- Recent Workspaces Management (Phase 6) -----------------------
+    # ----------------------- Workspace Paths -----------------------
+
+    def get_active_workspace_path(self) -> Optional[str]:
+        """Get the path to the active workspace for nirs4all runs."""
+        active = self.get_active_workspace()
+        return active.path if active else None
+
+    def get_results_path(self) -> Optional[str]:
+        """Get the results directory path for the active workspace."""
+        ws_path = self.get_active_workspace_path()
+        if not ws_path:
+            return None
+        return str(Path(ws_path) / "runs")
+
+    def get_pipelines_path(self) -> Optional[str]:
+        """Get the pipelines directory path for the active workspace."""
+        ws_path = self.get_active_workspace_path()
+        if not ws_path:
+            return None
+        return str(Path(ws_path) / "pipelines")
+
+    def get_predictions_path(self) -> Optional[str]:
+        """Get the predictions directory path for the active workspace."""
+        ws_path = self.get_active_workspace_path()
+        if not ws_path:
+            return None
+        # Predictions are stored at workspace root as .meta.parquet files
+        return ws_path
+
+    # ----------------------- Recent Workspaces (Legacy -> Linked) -----------------------
 
     def add_to_recent(self, workspace_path: str, name: Optional[str] = None) -> None:
-        """Add a workspace to the recent workspaces list."""
+        """Legacy: Add to recent workspaces - now links workspace instead."""
+        # For backward compatibility, link the workspace if not already linked
         workspace_path = str(Path(workspace_path).resolve())
-        now = datetime.now().isoformat()
-
-        # Remove if already exists
-        self._recent_workspaces = [
-            ws for ws in self._recent_workspaces
-            if ws.get("path") != workspace_path
-        ]
-
-        # Load config for additional info
-        config = self.load_workspace_config(workspace_path)
-        num_datasets = len(config.get("datasets", [])) if config else 0
-        num_pipelines = len(config.get("pipelines", [])) if config else 0
-        description = config.get("description") if config else None
-
-        # Add to front of list
-        self._recent_workspaces.insert(0, {
-            "path": workspace_path,
-            "name": name or (config.get("name") if config else None) or Path(workspace_path).name,
-            "created_at": config.get("created_at", now) if config else now,
-            "last_accessed": now,
-            "num_datasets": num_datasets,
-            "num_pipelines": num_pipelines,
-            "description": description,
-        })
-
-        # Keep only last 20 workspaces
-        self._recent_workspaces = self._recent_workspaces[:20]
-        self._save_recent_workspaces()
+        for ws in self.get_linked_workspaces():
+            if ws.path == workspace_path:
+                return  # Already linked
+        try:
+            self.link_workspace(workspace_path, name)
+        except ValueError:
+            pass  # Already linked or invalid
 
     def remove_from_recent(self, workspace_path: str) -> bool:
-        """Remove a workspace from the recent workspaces list."""
+        """Legacy: Remove from recent - unlinks the workspace."""
         workspace_path = str(Path(workspace_path).resolve())
-        original_len = len(self._recent_workspaces)
-        self._recent_workspaces = [
-            ws for ws in self._recent_workspaces
-            if ws.get("path") != workspace_path
-        ]
-        if len(self._recent_workspaces) != original_len:
-            self._save_recent_workspaces()
-            return True
+        for ws in self.get_linked_workspaces():
+            if ws.path == workspace_path:
+                return self.unlink_workspace(ws.id)
         return False
 
     def get_recent_workspaces(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get the list of recent workspaces."""
-        # Filter out workspaces that no longer exist
-        valid_workspaces = []
-        for ws in self._recent_workspaces:
-            path = ws.get("path", "")
-            if path and Path(path).exists():
-                valid_workspaces.append(ws)
-
-        # Update list if some were invalid
-        if len(valid_workspaces) != len(self._recent_workspaces):
-            self._recent_workspaces = valid_workspaces
-            self._save_recent_workspaces()
-
-        return valid_workspaces[:limit]
+        """Legacy: Get recent workspaces - returns linked workspaces instead."""
+        workspaces = []
+        for ws in self.get_linked_workspaces()[:limit]:
+            workspaces.append({
+                "path": ws.path,
+                "name": ws.name,
+                "created_at": ws.linked_at,
+                "last_accessed": ws.last_scanned or ws.linked_at,
+                "num_datasets": ws.discovered.get("datasets_count", 0),
+                "num_pipelines": 0,  # Pipelines are per-workspace, not tracked here
+                "description": None,
+            })
+        return workspaces
 
     def list_workspaces(self) -> List[Dict[str, Any]]:
-        """List all known workspaces (from recent list)."""
+        """List all linked workspaces."""
         return self.get_recent_workspaces(limit=100)
 
     def find_workspace_by_name(self, name: str) -> Optional[str]:
         """Find a workspace path by its name."""
-        for ws in self._recent_workspaces:
-            if ws.get("name") == name:
-                path = ws.get("path")
-                if path and Path(path).exists():
-                    return path
+        for ws in self.get_linked_workspaces():
+            if ws.name == name:
+                return ws.path
         return None
 
     def load_workspace_config(self, workspace_path: str) -> Optional[Dict[str, Any]]:
@@ -2172,11 +2031,7 @@ class WorkspaceManager:
             print(f"Failed to load workspace config: {e}")
             return None
 
-    def update_workspace_config(
-        self,
-        workspace_path: str,
-        updates: Dict[str, Any]
-    ) -> bool:
+    def update_workspace_config(self, workspace_path: str, updates: Dict[str, Any]) -> bool:
         """Update workspace configuration."""
         config_file = Path(workspace_path) / "workspace.json"
         if not config_file.exists():
@@ -2187,7 +2042,7 @@ class WorkspaceManager:
                 config = json.load(f)
 
             # Only allow updating certain fields
-            allowed_fields = {"name", "description"}
+            allowed_fields = {"name", "description", "settings"}
             for key, value in updates.items():
                 if key in allowed_fields:
                     config[key] = value
@@ -2197,38 +2052,26 @@ class WorkspaceManager:
             with open(config_file, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
 
-            # Update recent workspaces list
-            for ws in self._recent_workspaces:
-                if ws.get("path") == workspace_path:
-                    for key in allowed_fields:
-                        if key in updates:
-                            ws[key] = updates[key]
-                    ws["last_accessed"] = config["last_accessed"]
-            self._save_recent_workspaces()
-
-            # Update current workspace if it's the same
-            if self._current_workspace_path == workspace_path:
-                self._load_workspace_config()
-
             return True
 
         except Exception as e:
             print(f"Failed to update workspace config: {e}")
             return False
 
-    # ----------------------- Custom Nodes Management (Phase 5) -----------------------
+    # ----------------------- Custom Nodes Management -----------------------
 
     def get_custom_nodes_path(self) -> Optional[Path]:
-        """Get the path to the custom nodes file for the current workspace."""
-        if not self._current_workspace_path:
+        """Get the path to the custom nodes file for the active workspace."""
+        ws_path = self.get_active_workspace_path()
+        if not ws_path:
             return None
-        workspace_path = Path(self._current_workspace_path)
+        workspace_path = Path(ws_path)
         nirs4all_dir = workspace_path / ".nirs4all"
         nirs4all_dir.mkdir(exist_ok=True)
         return nirs4all_dir / "custom_nodes.json"
 
     def get_custom_nodes(self) -> List[Dict[str, Any]]:
-        """Get all custom nodes for the current workspace."""
+        """Get all custom nodes for the active workspace."""
         nodes_path = self.get_custom_nodes_path()
         if not nodes_path or not nodes_path.exists():
             return []
@@ -2242,7 +2085,7 @@ class WorkspaceManager:
             return []
 
     def save_custom_nodes(self, nodes: List[Dict[str, Any]]) -> bool:
-        """Save all custom nodes for the current workspace."""
+        """Save all custom nodes for the active workspace."""
         nodes_path = self.get_custom_nodes_path()
         if not nodes_path:
             return False
@@ -2262,8 +2105,8 @@ class WorkspaceManager:
 
     def add_custom_node(self, node: Dict[str, Any]) -> Dict[str, Any]:
         """Add a new custom node to the workspace."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
+        if not self.get_active_workspace_path():
+            raise RuntimeError("No active workspace")
 
         nodes = self.get_custom_nodes()
 
@@ -2283,8 +2126,8 @@ class WorkspaceManager:
 
     def update_custom_node(self, node_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update an existing custom node."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
+        if not self.get_active_workspace_path():
+            raise RuntimeError("No active workspace")
 
         nodes = self.get_custom_nodes()
         for i, node in enumerate(nodes):
@@ -2301,8 +2144,8 @@ class WorkspaceManager:
 
     def delete_custom_node(self, node_id: str) -> bool:
         """Delete a custom node from the workspace."""
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
+        if not self.get_active_workspace_path():
+            raise RuntimeError("No active workspace")
 
         nodes = self.get_custom_nodes()
         original_len = len(nodes)
@@ -2314,17 +2157,9 @@ class WorkspaceManager:
         return False
 
     def import_custom_nodes(self, nodes_to_import: List[Dict[str, Any]], overwrite: bool = False) -> Dict[str, Any]:
-        """Import custom nodes from an external source.
-
-        Args:
-            nodes_to_import: List of node definitions to import
-            overwrite: If True, overwrite existing nodes with same ID
-
-        Returns:
-            Dict with 'imported', 'skipped', 'errors' counts
-        """
-        if not self._workspace_config:
-            raise RuntimeError("No workspace selected")
+        """Import custom nodes from an external source."""
+        if not self.get_active_workspace_path():
+            raise RuntimeError("No active workspace")
 
         existing_nodes = self.get_custom_nodes()
         existing_ids = {n.get("id") for n in existing_nodes}
@@ -2342,68 +2177,26 @@ class WorkspaceManager:
 
                 if node_id in existing_ids:
                     if overwrite:
-                        # Remove old version
                         existing_nodes = [n for n in existing_nodes if n.get("id") != node_id]
                         existing_ids.discard(node_id)
                     else:
                         skipped += 1
                         continue
 
-                # Add metadata
-                node["imported_at"] = datetime.now().isoformat()
-                node["updated_at"] = node["imported_at"]
-                node["source"] = "workspace"
-
+                node["created_at"] = datetime.now().isoformat()
+                node["updated_at"] = node["created_at"]
+                node["source"] = "imported"
                 existing_nodes.append(node)
                 existing_ids.add(node_id)
                 imported += 1
-
-            except Exception as e:
-                print(f"Failed to import node: {e}")
+            except Exception:
                 errors += 1
 
         self.save_custom_nodes(existing_nodes)
         return {"imported": imported, "skipped": skipped, "errors": errors}
 
-    def get_custom_node_settings(self) -> Dict[str, Any]:
-        """Get custom node settings for the workspace."""
-        nodes_path = self.get_custom_nodes_path()
-        if not nodes_path or not nodes_path.exists():
-            return self._default_custom_node_settings()
-
-        try:
-            with open(nodes_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("settings", self._default_custom_node_settings())
-        except Exception:
-            return self._default_custom_node_settings()
-
-    def save_custom_node_settings(self, settings: Dict[str, Any]) -> bool:
-        """Save custom node settings for the workspace."""
-        nodes_path = self.get_custom_nodes_path()
-        if not nodes_path:
-            return False
-
-        try:
-            # Load existing data or create new
-            if nodes_path.exists():
-                with open(nodes_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            else:
-                data = {"nodes": [], "version": "1.0"}
-
-            data["settings"] = settings
-            data["last_updated"] = datetime.now().isoformat()
-
-            with open(nodes_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            return True
-        except Exception as e:
-            print(f"Failed to save custom node settings: {e}")
-            return False
-
-    def _default_custom_node_settings(self) -> Dict[str, Any]:
-        """Get default custom node settings."""
+    def get_sandbox_settings(self) -> Dict[str, Any]:
+        """Get sandbox settings for code execution."""
         return {
             "enabled": True,
             "allowedPackages": ["nirs4all", "sklearn", "scipy", "numpy", "pandas"],
@@ -2411,13 +2204,14 @@ class WorkspaceManager:
             "allowUserNodes": True,
         }
 
-    # ----------------------- Workspace Settings (Phase 5) -----------------------
+    # ----------------------- Workspace Settings -----------------------
 
     def get_settings_path(self) -> Optional[Path]:
         """Get the path to the workspace settings file."""
-        if not self._current_workspace_path:
+        ws_path = self.get_active_workspace_path()
+        if not ws_path:
             return None
-        workspace_path = Path(self._current_workspace_path)
+        workspace_path = Path(ws_path)
         nirs4all_dir = workspace_path / ".nirs4all"
         nirs4all_dir.mkdir(exist_ok=True)
         return nirs4all_dir / "settings.json"
@@ -2431,7 +2225,6 @@ class WorkspaceManager:
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Merge with defaults to ensure all fields exist
                 defaults = self._default_workspace_settings()
                 return self._deep_merge(defaults, data)
         except Exception as e:
@@ -2440,20 +2233,10 @@ class WorkspaceManager:
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
-        """Deep-merge two dicts.
-
-        Values from overrides take precedence. Nested dicts are merged recursively.
-        This is important for partial settings updates (e.g. updating general.language
-        should not overwrite other general.* fields).
-        """
-
+        """Deep-merge two dicts."""
         merged: Dict[str, Any] = dict(base)
         for key, value in overrides.items():
-            if (
-                key in merged
-                and isinstance(merged[key], dict)
-                and isinstance(value, dict)
-            ):
+            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
                 merged[key] = WorkspaceManager._deep_merge(merged[key], value)
             else:
                 merged[key] = value
@@ -2466,7 +2249,6 @@ class WorkspaceManager:
             return False
 
         try:
-            # Merge with existing settings (deep merge to avoid overwriting nested dicts)
             existing = self.get_workspace_settings()
             merged = self._deep_merge(existing, settings)
             merged["last_updated"] = datetime.now().isoformat()
@@ -2512,64 +2294,37 @@ class WorkspaceManager:
         settings["data_loading_defaults"] = defaults
         return self.save_workspace_settings(settings)
 
-    # ----------------------- Linked Workspaces Management (Phase 7) -----------------------
+    # ----------------------- App Settings (Delegate to AppConfig) -----------------------
 
     def _get_app_settings_path(self) -> Path:
         """Get the path to the app settings file."""
-        return self.app_data_dir / "app_settings.json"
+        return self.app_config._app_settings_path
 
     def _load_app_settings(self) -> Dict[str, Any]:
         """Load app settings from persistent storage."""
-        settings_path = self._get_app_settings_path()
-        if settings_path.exists():
-            try:
-                with open(settings_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                print(f"Failed to load app settings: {e}")
-        return self._default_app_settings()
+        return self.app_config.get_app_settings()
 
     def _save_app_settings(self, settings: Dict[str, Any]) -> None:
         """Save app settings to persistent storage."""
-        settings_path = self._get_app_settings_path()
-        try:
-            settings["last_updated"] = datetime.now().isoformat()
-            with open(settings_path, "w", encoding="utf-8") as f:
-                json.dump(settings, f, indent=2)
-        except Exception as e:
-            print(f"Failed to save app settings: {e}")
+        self.app_config.save_app_settings(settings)
 
     def _default_app_settings(self) -> Dict[str, Any]:
         """Get default app settings."""
-        return {
-            "version": "2.0",
-            "linked_workspaces": [],
-            "favorite_pipelines": [],
-            "ui_preferences": {
-                "theme": "system",
-                "density": "comfortable",
-                "language": "en",
-            },
-        }
+        return self.app_config._default_app_settings()
 
     def get_app_settings(self) -> Dict[str, Any]:
         """Get app settings (webapp-specific, not workspace-specific)."""
-        return self._load_app_settings()
+        return self.app_config.get_app_settings()
 
     def save_app_settings(self, settings: Dict[str, Any]) -> bool:
         """Save app settings."""
-        try:
-            current = self._load_app_settings()
-            merged = self._deep_merge(current, settings)
-            self._save_app_settings(merged)
-            return True
-        except Exception as e:
-            print(f"Failed to save app settings: {e}")
-            return False
+        return self.app_config.update_app_settings(settings)
+
+    # ----------------------- Linked Workspaces -----------------------
 
     def get_linked_workspaces(self) -> List[LinkedWorkspace]:
         """Get all linked nirs4all workspaces."""
-        settings = self._load_app_settings()
+        settings = self.app_config.get_app_settings()
         workspaces_data = settings.get("linked_workspaces", [])
         return [LinkedWorkspace.from_dict(ws) for ws in workspaces_data]
 
@@ -2582,18 +2337,7 @@ class WorkspaceManager:
         return None
 
     def link_workspace(self, path: str, name: Optional[str] = None) -> LinkedWorkspace:
-        """Link a nirs4all workspace for discovery.
-
-        Args:
-            path: Path to the nirs4all workspace
-            name: Optional display name (defaults to directory name)
-
-        Returns:
-            The created LinkedWorkspace
-
-        Raises:
-            ValueError: If path is invalid or already linked
-        """
+        """Link a nirs4all workspace for discovery."""
         workspace_path = Path(path).resolve()
 
         # Validate workspace
@@ -2603,7 +2347,7 @@ class WorkspaceManager:
             raise ValueError(f"Invalid nirs4all workspace: {reason}")
 
         # Check if already linked
-        settings = self._load_app_settings()
+        settings = self.app_config.get_app_settings()
         workspaces = settings.get("linked_workspaces", [])
         for ws in workspaces:
             if ws.get("path") == str(workspace_path):
@@ -2615,7 +2359,7 @@ class WorkspaceManager:
             id=f"ws_{int(datetime.now().timestamp())}_{len(workspaces)}",
             path=str(workspace_path),
             name=name or workspace_path.name,
-            is_active=len(workspaces) == 0,  # First workspace is active by default
+            is_active=len(workspaces) == 0,
             linked_at=now,
         )
 
@@ -2629,23 +2373,15 @@ class WorkspaceManager:
             "templates_count": scan_result["summary"]["templates_count"],
         }
 
-        # Save
         workspaces.append(linked_ws.to_dict())
         settings["linked_workspaces"] = workspaces
-        self._save_app_settings(settings)
+        self.app_config.save_app_settings(settings)
 
         return linked_ws
 
     def unlink_workspace(self, workspace_id: str) -> bool:
-        """Unlink a nirs4all workspace (doesn't delete files).
-
-        Args:
-            workspace_id: ID of the workspace to unlink
-
-        Returns:
-            True if workspace was unlinked
-        """
-        settings = self._load_app_settings()
+        """Unlink a nirs4all workspace (doesn't delete files)."""
+        settings = self.app_config.get_app_settings()
         workspaces = settings.get("linked_workspaces", [])
         original_len = len(workspaces)
 
@@ -2660,24 +2396,16 @@ class WorkspaceManager:
         if len(workspaces) == original_len:
             return False
 
-        # If we removed the active workspace, activate another one
         if was_active and workspaces:
             workspaces[0]["is_active"] = True
 
         settings["linked_workspaces"] = workspaces
-        self._save_app_settings(settings)
+        self.app_config.save_app_settings(settings)
         return True
 
     def activate_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
-        """Set a linked workspace as active.
-
-        Args:
-            workspace_id: ID of the workspace to activate
-
-        Returns:
-            The activated LinkedWorkspace or None if not found
-        """
-        settings = self._load_app_settings()
+        """Set a linked workspace as active."""
+        settings = self.app_config.get_app_settings()
         workspaces = settings.get("linked_workspaces", [])
 
         found = None
@@ -2690,23 +2418,16 @@ class WorkspaceManager:
 
         if found:
             settings["linked_workspaces"] = workspaces
-            self._save_app_settings(settings)
+            self.app_config.save_app_settings(settings)
+
+            # Set environment variable for nirs4all
+            os.environ["NIRS4ALL_WORKSPACE"] = found.path
 
         return found
 
     def scan_workspace(self, workspace_id: str) -> Dict[str, Any]:
-        """Trigger a scan of a linked workspace.
-
-        Args:
-            workspace_id: ID of the workspace to scan
-
-        Returns:
-            Scan results dict
-
-        Raises:
-            ValueError: If workspace not found
-        """
-        settings = self._load_app_settings()
+        """Trigger a scan of a linked workspace."""
+        settings = self.app_config.get_app_settings()
         workspaces = settings.get("linked_workspaces", [])
 
         for ws in workspaces:
@@ -2728,72 +2449,48 @@ class WorkspaceManager:
                 }
 
                 settings["linked_workspaces"] = workspaces
-                self._save_app_settings(settings)
+                self.app_config.save_app_settings(settings)
 
                 return scan_result
 
         raise ValueError(f"Workspace not found: {workspace_id}")
 
-    def get_workspace_runs(self, workspace_id: str) -> List[Dict[str, Any]]:
-        """Get discovered runs from a linked workspace.
+    # ----------------------- Workspace Discovery -----------------------
 
-        Args:
-            workspace_id: ID of the workspace
-
-        Returns:
-            List of run information dicts
-        """
+    def get_workspace_runs(
+        self, workspace_id: str, source: str = "unified"
+    ) -> List[Dict[str, Any]]:
+        """Get discovered runs from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
-            return []
+            raise ValueError(f"Workspace not found: {workspace_id}")
 
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_runs()
 
     def get_workspace_predictions(self, workspace_id: str) -> List[Dict[str, Any]]:
-        """Get discovered predictions from a linked workspace.
-
-        Args:
-            workspace_id: ID of the workspace
-
-        Returns:
-            List of prediction database info
-        """
+        """Get discovered predictions from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
-            return []
+            raise ValueError(f"Workspace not found: {workspace_id}")
 
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_predictions()
 
     def get_workspace_exports(self, workspace_id: str) -> List[Dict[str, Any]]:
-        """Get discovered exports from a linked workspace.
-
-        Args:
-            workspace_id: ID of the workspace
-
-        Returns:
-            List of export information dicts
-        """
+        """Get discovered exports from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
-            return []
+            raise ValueError(f"Workspace not found: {workspace_id}")
 
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_exports()
 
     def get_workspace_templates(self, workspace_id: str) -> List[Dict[str, Any]]:
-        """Get discovered templates from a linked workspace.
-
-        Args:
-            workspace_id: ID of the workspace
-
-        Returns:
-            List of template information dicts
-        """
+        """Get discovered templates from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
-            return []
+            raise ValueError(f"Workspace not found: {workspace_id}")
 
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_templates()
@@ -2805,52 +2502,19 @@ class WorkspaceManager:
                 return ws
         return None
 
-    # ----------------------- Favorite Pipelines (Phase 7) -----------------------
+    # ----------------------- Favorite Pipelines -----------------------
 
     def get_favorite_pipelines(self) -> List[str]:
         """Get list of favorite pipeline IDs."""
-        settings = self._load_app_settings()
-        return settings.get("favorite_pipelines", [])
+        return self.app_config.get_favorites()
 
     def add_favorite_pipeline(self, pipeline_id: str) -> bool:
-        """Add a pipeline to favorites.
-
-        Args:
-            pipeline_id: ID of the pipeline to favorite
-
-        Returns:
-            True if added (False if already favorited)
-        """
-        settings = self._load_app_settings()
-        favorites = settings.get("favorite_pipelines", [])
-
-        if pipeline_id in favorites:
-            return False
-
-        favorites.append(pipeline_id)
-        settings["favorite_pipelines"] = favorites
-        self._save_app_settings(settings)
-        return True
+        """Add a pipeline to favorites."""
+        return self.app_config.add_favorite(pipeline_id)
 
     def remove_favorite_pipeline(self, pipeline_id: str) -> bool:
-        """Remove a pipeline from favorites.
-
-        Args:
-            pipeline_id: ID of the pipeline to unfavorite
-
-        Returns:
-            True if removed
-        """
-        settings = self._load_app_settings()
-        favorites = settings.get("favorite_pipelines", [])
-
-        if pipeline_id not in favorites:
-            return False
-
-        favorites.remove(pipeline_id)
-        settings["favorite_pipelines"] = favorites
-        self._save_app_settings(settings)
-        return True
+        """Remove a pipeline from favorites."""
+        return self.app_config.remove_favorite(pipeline_id)
 
 
 # Global workspace manager instance

@@ -18,7 +18,6 @@ import { Link } from "react-router-dom";
 import {
   Plus,
   Search,
-  GitBranch,
   Star,
   Clock,
   ArrowUpDown,
@@ -40,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { usePipelines } from "@/hooks/usePipelines";
+import { NoPipelinesState, InlineError, SearchEmptyState } from "@/components/ui/state-display";
 import {
   PipelineCard,
   PipelineRow,
@@ -253,13 +253,8 @@ export default function Pipelines() {
 
       {/* Error state */}
       {error && (
-        <motion.div
-          variants={itemVariants}
-          initial="hidden"
-          animate="visible"
-          className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive"
-        >
-          {error}
+        <motion.div variants={itemVariants} initial="hidden" animate="visible">
+          <InlineError message={error} onRetry={() => fetchPipelines()} />
         </motion.div>
       )}
 
@@ -339,41 +334,15 @@ export default function Pipelines() {
 
       {/* Empty state */}
       {!loading && filteredPipelines.length === 0 && (
-        <motion.div
-          variants={itemVariants}
-          initial="hidden"
-          animate="visible"
-          className="text-center py-12 border border-dashed border-border/60 rounded-xl bg-muted/10"
-        >
-          <GitBranch className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-semibold text-foreground mb-1">
-            {searchQuery ? t("pipelines.emptyNoMatch") : t("pipelines.empty")}
-          </h3>
-          <p className="text-muted-foreground mb-4 max-w-md mx-auto">
-            {searchQuery
-              ? t("pipelines.emptyHintNoMatch")
-              : t("pipelines.emptyHint")}
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            {searchQuery ? (
-              <Button variant="ghost" onClick={() => setSearchQuery("")}>
-                {t("pipelines.clearSearch")}
-              </Button>
-            ) : (
-              <>
-                <Button variant="outline" onClick={() => setImportModalOpen(true)}>
-                  <FileJson className="mr-2 h-4 w-4" />
-                  {t("pipelines.importPipeline")}
-                </Button>
-                <Button asChild>
-                  <Link to="/pipelines/new">
-                    <Plus className="mr-2 h-4 w-4" />
-                    {t("pipelines.create")}
-                  </Link>
-                </Button>
-              </>
-            )}
-          </div>
+        <motion.div variants={itemVariants} initial="hidden" animate="visible">
+          {searchQuery ? (
+            <SearchEmptyState query={searchQuery} onClear={() => setSearchQuery("")} />
+          ) : (
+            <NoPipelinesState
+              title={t("pipelines.empty")}
+              description={t("pipelines.emptyHint")}
+            />
+          )}
         </motion.div>
       )}
 

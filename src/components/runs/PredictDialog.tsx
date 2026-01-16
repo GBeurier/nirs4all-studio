@@ -313,13 +313,13 @@ function ResultsDisplay({
           </div>
           {result.metrics && (
             <div className="flex items-center gap-3 text-sm">
-              {result.metrics.r2 !== undefined && (
+              {result.metrics.r2 != null && (
                 <Badge variant="outline" className="gap-1">
                   <TrendingUp className="h-3 w-3" />
                   R² = {(result.metrics.r2 * 100).toFixed(2)}%
                 </Badge>
               )}
-              {result.metrics.rmse !== undefined && (
+              {result.metrics.rmse != null && (
                 <Badge variant="outline">
                   RMSE = {result.metrics.rmse.toFixed(4)}
                 </Badge>
