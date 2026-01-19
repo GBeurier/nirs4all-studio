@@ -11,6 +11,8 @@ Phase 6 Implementation:
 - Search space configuration
 """
 
+from __future__ import annotations
+
 import sys
 import time
 from datetime import datetime

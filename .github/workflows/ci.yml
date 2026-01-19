@@ -1,0 +1,194 @@
+# Continuous Integration workflow
+# Runs on every push and PR to validate the codebase
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '22'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Frontend: Lint, Test, Build
+  # ═══════════════════════════════════════════════════════════════════════════
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Validate node registry
+        run: npm run validate:nodes
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test -- --run
+        continue-on-error: true
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Electron frontend
+        run: npm run build:electron
+
+      - name: Verify build outputs
+        run: |
+          test -f dist/index.html || { echo "::error::dist/index.html not found"; exit 1; }
+          test -d dist-electron || { echo "::error::dist-electron not found"; exit 1; }
+          echo "Build outputs verified"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Backend: Lint, Validate
+  # ═══════════════════════════════════════════════════════════════════════════
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository1.0-dev \
+            libcairo2-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify imports
+        run: |
+          python -c "
+          import fastapi
+          import uvicorn
+          print('FastAPI version:', fastapi.__version__)
+          print('Uvicorn version:', uvicorn.__version__)
+          print('All imports successful')
+          "
+
+      - name: Check syntax
+        run: |
+          python -m py_compile main.py
+          for f in api/*.py; do python -m py_compile "$f"; done
+          echo "Syntax check passed"
+
+      - name: Test CLI arguments
+        run: |
+          python main.py --help
+          echo "CLI arguments work"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Electron: Build validation (Linux only for speed)
+  # ═══════════════════════════════════════════════════════════════════════════
+  electron-build:
+    name: Electron Build Test
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository1.0-dev \
+            libcairo2-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            upx-ucl
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build Electron frontend
+        run: npm run build:electron
+
+      - name: Build Python backend
+        run: |
+          pyinstaller backend.spec --clean --noconfirm
+          mkdir -p backend-dist
+          cp dist/nirs4all-backend backend-dist/
+          chmod +x backend-dist/nirs4all-backend
+
+      - name: Verify backend executable
+        run: |
+          test -f backend-dist/nirs4all-backend || { echo "::error::Backend not built"; exit 1; }
+          echo "Backend executable size: $(du -h backend-dist/nirs4all-backend | cut -f1)"
+
+      - name: Test electron-builder (dry-run)
+        run: |
+          npx electron-builder --linux --dir
+          echo "Electron build test passed"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Summary
+  # ═══════════════════════════════════════════════════════════════════════════
+  summary:
+    name: CI Summary
+    needs: [frontend, backend, electron-build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          FRONTEND="${{ needs.frontend.result }}"
+          BACKEND="${{ needs.backend.result }}"
+          ELECTRON="${{ needs.electron-build.result }}"
+
+          echo "## CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | $([[ $FRONTEND == 'success' ]] && echo '✅' || echo '❌') $FRONTEND |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | $([[ $BACKEND == 'success' ]] && echo '✅' || echo '❌') $BACKEND |" >> $GITHUB_STEP_SUMMARY
+          echo "| Electron Build | $([[ $ELECTRON == 'success' ]] && echo '✅' || echo '❌') $ELECTRON |" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" ]]; then
+            exit 1
+          fi

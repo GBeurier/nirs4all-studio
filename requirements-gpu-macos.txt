@@ -1,0 +1,18 @@
+# nirs4all webapp Python dependencies (macOS GPU build with Metal)
+# For Apple Silicon (M1/M2/M3) GPU acceleration
+
+# Include all CPU dependencies
+-r requirements-cpu.txt
+
+# TensorFlow with Metal support for macOS
+# Note: tensorflow-macos and tensorflow-metal are Apple-specific packages
+tensorflow-macos>=2.15.0
+tensorflow-metal>=1.1.0
+
+# PyTorch with MPS support is built-in since PyTorch 1.12+
+# MPS (Metal Performance Shaders) backend is automatically available
+# torch>=2.0.0  # Uncomment if needed
+
+# nirs4all with macOS GPU support
+# Install with: pip install nirs4all[macos-gpu]
+# Or manually: pip install tensorflow-macos tensorflow-metal

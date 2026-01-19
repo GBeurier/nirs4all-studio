@@ -5,6 +5,8 @@ This module provides FastAPI routes for listing available preprocessing methods,
 getting their parameters, and applying preprocessing to spectral data.
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 from typing import Any, Dict, List

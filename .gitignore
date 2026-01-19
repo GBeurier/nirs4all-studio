@@ -30,6 +30,10 @@ package-lock.json
 
 # PyInstaller
 release/
+backend-dist/
 *.spec.bak
 *.manifest
 warn-*.txt
+
+# Electron
+dist-electron/

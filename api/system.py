@@ -164,6 +164,126 @@ async def system_status():
     return {"status": status}
 
 
+def _get_build_info() -> Dict[str, Any]:
+    """Get build flavor information from bundled build_info.json."""
+    import json
+
+    # Default values for development mode
+    build_info = {
+        "flavor": "development",
+        "gpu_enabled": False,
+    }
+
+    # Check for bundled build_info.json (present in PyInstaller builds)
+    try:
+        # In PyInstaller builds, files are extracted to sys._MEIPASS
+        if hasattr(sys, "_MEIPASS"):
+            build_info_path = Path(sys._MEIPASS) / "build_info.json"
+            if build_info_path.exists():
+                with open(build_info_path, "r") as f:
+                    build_info = json.load(f)
+    except Exception:
+        pass
+
+    return build_info
+
+
+def _get_gpu_info() -> Dict[str, Any]:
+    """Get detailed GPU information."""
+    is_macos = platform.system() == "Darwin"
+
+    gpu_info: Dict[str, Any] = {
+        "cuda_available": False,
+        "mps_available": False,
+        "metal_available": False,
+        "device_name": None,
+        "device_count": 0,
+        "backends": {},
+    }
+
+    # Check TensorFlow GPU (CUDA or Metal on macOS)
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            gpu_info["device_count"] = len(gpus)
+            if is_macos:
+                # On macOS, TensorFlow uses Metal via tensorflow-metal
+                gpu_info["metal_available"] = True
+                gpu_info["backends"]["tensorflow_metal"] = {
+                    "available": True,
+                    "devices": [g.name for g in gpus],
+                }
+            else:
+                # On Linux/Windows, TensorFlow uses CUDA
+                gpu_info["cuda_available"] = True
+            gpu_info["backends"]["tensorflow"] = {
+                "available": True,
+                "devices": [g.name for g in gpus],
+            }
+    except ImportError:
+        pass
+    except Exception as e:
+        gpu_info["backends"]["tensorflow"] = {"available": False, "error": str(e)}
+
+    # Check PyTorch GPU (CUDA or MPS on macOS)
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_info["cuda_available"] = True
+            gpu_info["device_count"] = max(gpu_info["device_count"], torch.cuda.device_count())
+            gpu_info["device_name"] = torch.cuda.get_device_name(0)
+            gpu_info["backends"]["pytorch_cuda"] = {
+                "available": True,
+                "device_name": gpu_info["device_name"],
+                "device_count": torch.cuda.device_count(),
+            }
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            gpu_info["mps_available"] = True
+            gpu_info["metal_available"] = True  # MPS uses Metal
+            gpu_info["backends"]["pytorch_mps"] = {"available": True}
+    except ImportError:
+        pass
+    except Exception as e:
+        gpu_info["backends"]["pytorch"] = {"available": False, "error": str(e)}
+
+    # Check nirs4all backend utilities if available
+    try:
+        from nirs4all.utils.backend import get_gpu_info as n4a_gpu_info
+        gpu_info["nirs4all_gpu_info"] = n4a_gpu_info()
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    return gpu_info
+
+
+@router.get("/system/build")
+async def system_build():
+    """Get build information including flavor (CPU/GPU) and GPU availability."""
+    build_info = _get_build_info()
+    gpu_info = _get_gpu_info()
+
+    gpu_available = (
+        gpu_info["cuda_available"] or
+        gpu_info["mps_available"] or
+        gpu_info["metal_available"]
+    )
+
+    return {
+        "build": build_info,
+        "gpu": gpu_info,
+        "summary": {
+            "flavor": build_info.get("flavor", "unknown"),
+            "gpu_build": build_info.get("gpu_enabled", False),
+            "gpu_available": gpu_available,
+            "gpu_type": "metal" if gpu_info["metal_available"] else ("cuda" if gpu_info["cuda_available"] else None),
+            "gpu_device": gpu_info.get("device_name"),
+        },
+    }
+
+
 @router.get("/system/capabilities")
 async def system_capabilities():
     """Get available capabilities based on installed packages."""

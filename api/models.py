@@ -12,6 +12,8 @@ Phase 3 Implementation:
 - Model comparison endpoints
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import sys

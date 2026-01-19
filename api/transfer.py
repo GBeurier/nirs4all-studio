@@ -6,6 +6,8 @@ evaluating how preprocessing affects inter-dataset distances and
 transfer potential using PCA-based metrics (Grassmann, CKA, RV, etc.).
 """
 
+from __future__ import annotations
+
 import sys
 import time
 from pathlib import Path

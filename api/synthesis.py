@@ -5,6 +5,8 @@ This module provides FastAPI endpoints for generating synthetic NIRS data
 using the nirs4all SyntheticDatasetBuilder API.
 """
 
+from __future__ import annotations
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Tuple

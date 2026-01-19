@@ -6,32 +6,39 @@ This document describes how nirs4all-webapp is built, packaged, and released.
 
 1. [Overview](#overview)
 2. [Architecture](#architecture)
-3. [Local Development Builds](#local-development-builds)
-4. [CI/CD Pipeline](#cicd-pipeline)
-5. [Release Process](#release-process)
-6. [Asset Naming Convention](#asset-naming-convention)
-7. [Code Signing](#code-signing)
-8. [Troubleshooting](#troubleshooting)
+3. [Build Flavors (CPU/GPU)](#build-flavors-cpugpu)
+4. [Local Development Builds](#local-development-builds)
+5. [CI/CD Pipeline](#cicd-pipeline)
+6. [Release Process](#release-process)
+7. [Asset Naming Convention](#asset-naming-convention)
+8. [Code Signing](#code-signing)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
 The packaging system produces standalone desktop applications for:
-- **Linux** (x64) - `.tar.gz`
-- **Windows** (x64) - `.zip` (portable) + `.exe` installer (NSIS), with optional code signing
-- **macOS Intel** (x64) - `.tar.gz`
-- **macOS Apple Silicon** (arm64) - `.tar.gz`
+- **Linux** (x64) - AppImage, DEB
+- **Windows** (x64) - NSIS installer, portable ZIP
+
+> **Note**: macOS builds are temporarily disabled and will be added in a future release.
+
+Each platform is available in **CPU** and **GPU** editions:
+- **CPU Edition**: Lightweight, maximum compatibility
+- **GPU Edition**: CUDA acceleration (Linux/Windows)
 
 ### Key Principles
 
-1. **PyInstaller Bundling**: The webapp core (FastAPI backend + PyWebView launcher) is bundled using PyInstaller.
+1. **Electron Shell**: The desktop application uses Electron for a consistent Chromium-based WebGL experience across all platforms.
 
-2. **Separate Library Management**: The nirs4all library and ML backends are NOT bundled. They're installed in a managed virtual environment on first run.
+2. **Separate Backend**: The Python backend (FastAPI + nirs4all) is packaged separately with PyInstaller and spawned as a subprocess by Electron.
 
-3. **Automated CI/CD**: GitHub Actions builds all platforms automatically on release tag push.
+3. **CPU/GPU Flavors**: Two build variants allow users to choose based on their hardware capabilities.
 
-4. **Updater Integration**: Release assets follow a naming convention that the built-in updater recognizes.
+4. **Automated CI/CD**: GitHub Actions builds all platforms and flavors automatically on release tag push.
+
+5. **Auto-Updater**: Built-in electron-updater for seamless updates.
 
 ---
 
@@ -42,21 +49,30 @@ The packaging system produces standalone desktop applications for:
 │                           BUILD PROCESS                                   │
 │                                                                           │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌───────────┐ │
-│  │   Source    │───▶│  Frontend   │───▶│ PyInstaller │───▶│  Archive  │ │
-│  │   Code      │    │  Build      │    │   Bundle    │    │  + SHA256 │ │
-│  └─────────────┘    │  (Vite)     │    └─────────────┘    └───────────┘ │
-│                     └─────────────┘                                       │
+│  │   Source    │───▶│  Frontend   │───▶│  Electron   │───▶│  Package  │ │
+│  │   Code      │    │  Build      │    │   Build     │    │  (DMG/    │ │
+│  └─────────────┘    │  (Vite)     │    │             │    │  AppImage)│ │
+│                     └─────────────┘    └─────────────┘    └───────────┘ │
+│                                                                           │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                   │
+│  │   Python    │───▶│ PyInstaller │───▶│  Backend    │  Bundled with    │
+│  │   Backend   │    │   Build     │    │  Binary     │  Electron app    │
+│  └─────────────┘    └─────────────┘    └─────────────┘                   │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        RELEASE ARTIFACTS                                  │
 │                                                                           │
-│  nirs4all-webapp-{version}-linux-x64.tar.gz       (+ .sha256)           │
-│  nirs4all-webapp-{version}-windows-x64.zip        (+ .sha256) portable  │
-│  nirs4all-webapp-{version}-windows-x64-setup.exe  (+ .sha256) installer │
-│  nirs4all-webapp-{version}-macos-x64.tar.gz       (+ .sha256)           │
-│  nirs4all-webapp-{version}-macos-arm64.tar.gz     (+ .sha256)           │
+│  CPU Edition:                                                             │
+│    nirs4all-{version}-linux-x64.AppImage                                 │
+│    nirs4all-{version}-linux-x64.deb                                      │
+│    nirs4all-{version}-win-x64.exe                                        │
+│                                                                           │
+│  GPU Edition (CUDA):                                                      │
+│    nirs4all-{version}-gpu-linux-x64.AppImage                             │
+│    nirs4all-{version}-gpu-linux-x64.deb                                  │
+│    nirs4all-{version}-gpu-win-x64.exe                                    │
 │                                                                           │
 └─────────────────────────────────────────────────────────────────────────┘
                                 │
@@ -64,36 +80,110 @@ The packaging system produces standalone desktop applications for:
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         GITHUB RELEASE                                    │
 │  - Automatic on tag push (v*)                                            │
-│  - Contains all platform archives                                         │
-│  - Detected by webapp's built-in updater                                  │
+│  - Contains all platform/flavor combinations                              │
+│  - Detected by electron-updater                                           │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Bundle Contents
+### Application Structure
 
-The PyInstaller bundle (`dist/nirs4all-webapp/`) contains:
+The packaged Electron application contains:
 
 ```
-nirs4all-webapp/
-├── nirs4all-webapp          # Main executable (or .exe on Windows)
-└── _internal/
-    ├── dist/                # React frontend build
-    │   ├── index.html
-    │   └── assets/
-    ├── public/              # Static assets (icons, etc.)
-    ├── version.json         # Version info (injected at build time)
-    ├── api/                 # FastAPI backend modules
-    ├── websocket/           # WebSocket manager
-    ├── updater/             # Self-update modules
-    └── [Python libraries]   # Bundled dependencies
+nirs4all.app/  (or nirs4all.exe on Windows)
+├── resources/
+│   ├── app.asar              # React frontend (bundled)
+│   └── backend/
+│       └── nirs4all-backend  # PyInstaller-packaged Python backend
+├── Contents/                 # macOS app bundle structure
+└── nirs4all                  # Electron main process
 ```
 
-### What's NOT Bundled
+### Runtime Architecture
 
-To keep the bundle size manageable (~50-150 MB compressed), these are excluded:
-- `nirs4all` library (installed via managed venv)
-- TensorFlow, PyTorch, JAX (installed on demand)
-- NumPy, SciPy, scikit-learn (part of nirs4all)
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Electron Application                                   │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                 Main Process (Node.js)                              │ │
+│  │   - BrowserWindow management                                        │ │
+│  │   - Backend lifecycle (spawn/kill via backend-manager.ts)           │ │
+│  │   - File dialogs (Electron API)                                     │ │
+│  │   - Auto-updater                                                    │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                           │                                              │
+│                           │ IPC (contextBridge)                          │
+│                           ▼                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │              Renderer Process (Chromium)                            │ │
+│  │   - React 19 App                                                    │ │
+│  │   - WebGL (uniform across all platforms)                            │ │
+│  │   - Pipeline Editor (dnd-kit)                                       │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                           │
+                           │ HTTP/WebSocket (localhost:PORT)
+                           ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│              Backend Python (Subprocess)                                  │
+│   - FastAPI + Uvicorn                                                    │
+│   - Packaged with PyInstaller                                            │
+│   - nirs4all library (lazy-loaded ML frameworks)                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Build Flavors (CPU/GPU)
+
+### CPU Edition (Default)
+
+Lightweight build excluding heavy ML frameworks:
+- TensorFlow, PyTorch, JAX excluded
+- Smaller download size (~200MB)
+- Works on any hardware
+
+```bash
+npm run build:backend:cpu
+npm run build:release:cpu
+```
+
+### GPU Edition (CUDA)
+
+For Linux/Windows with NVIDIA GPUs:
+- Includes TensorFlow with CUDA support
+- Requires NVIDIA drivers on target system
+- Larger download size (~500MB+)
+
+```bash
+npm run build:backend:gpu
+npm run build:release:gpu
+```
+
+### GPU Detection at Runtime
+
+The backend provides GPU detection via `/api/system/build`:
+
+```json
+{
+  "build": {
+    "flavor": "gpu",
+    "gpu_enabled": true
+  },
+  "gpu": {
+    "cuda_available": true,
+    "backends": {
+      "tensorflow_cuda": { "available": true }
+    }
+  },
+  "summary": {
+    "flavor": "gpu",
+    "gpu_build": true,
+    "gpu_available": true,
+    "gpu_type": "cuda"
+  }
+}
+```
 
 ---
 
@@ -110,62 +200,91 @@ To keep the bundle size manageable (~50-150 MB compressed), these are excluded:
 
 ```bash
 sudo apt-get install -y \
-    libgirepository1.0-dev \
-    libcairo2-dev \
-    gir1.2-gtk-3.0 \
-    gir1.2-webkit2-4.1 \
-    upx-ucl
+    build-essential \
+    libfuse2 \
+    rpm
 ```
+
+### Windows Dependencies
+
+- Visual Studio Build Tools (for native modules)
+- NSIS (for installer creation, installed automatically by electron-builder)
 
 ### Building Locally
 
-#### Using the Build Script (Recommended)
+#### Quick Start (CPU Build)
 
 ```bash
-# Full build with archive
-python scripts/build.py --version 1.0.0
+# 1. Install dependencies
+npm install
+pip install -r requirements-cpu.txt
 
-# Skip frontend if already built
-python scripts/build.py --version 1.0.0 --skip-frontend
+# 2. Build Python backend
+npm run build:backend:cpu
 
-# Skip archive creation (just build executable)
-python scripts/build.py --version 1.0.0 --skip-archive
+# 3. Build and package Electron app
+npm run build:electron
+npm run dist
+```
+
+#### Full Release Build
+
+```bash
+# CPU Edition
+./scripts/build-release.sh --flavor cpu
+
+# GPU Edition (CUDA on Linux/Windows, Metal on macOS)
+./scripts/build-release.sh --flavor gpu
 ```
 
 The build script:
-1. Updates `version.json` with version, commit hash, and build timestamp
-2. Builds the frontend (`npm run build`)
-3. Runs PyInstaller with the spec file
-4. Creates a platform-specific archive
-5. Generates SHA256 checksum
+1. Builds the React frontend (`npm run build`)
+2. Packages the Python backend with PyInstaller
+3. Builds the Electron main process
+4. Packages everything with electron-builder
+5. Generates platform-specific installers
 
 #### Output Locations
 
-- **Executable**: `dist/nirs4all-webapp/nirs4all-webapp`
-- **Archive**: `release/nirs4all-webapp-{version}-{platform}-{arch}.{ext}`
-- **Checksum**: `release/nirs4all-webapp-{version}-{platform}-{arch}.{ext}.sha256`
+- **Backend Binary**: `backend-dist/nirs4all-backend`
+- **Electron App**: `release/` (platform-specific formats)
 
-#### Manual Build (Advanced)
+#### Manual Build Steps (Advanced)
 
 ```bash
-# 1. Build frontend
+# 1. Build React frontend
 npm ci
 npm run build
 
-# 2. Update version.json manually
-cat > version.json << EOF
-{
-  "version": "1.0.0",
-  "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "commit": "$(git rev-parse --short HEAD)"
-}
-EOF
+# 2. Build Python backend (choose flavor)
+NIRS4ALL_BUILD_FLAVOR=cpu pyinstaller backend.spec --clean --noconfirm
+mkdir -p backend-dist && cp dist/nirs4all-backend backend-dist/
 
-# 3. Run PyInstaller
-pyinstaller nirs4all-webapp.spec --clean --noconfirm
+# 3. Build Electron main process
+npm run build:electron
 
-# 4. Test the executable
-./dist/nirs4all-webapp/nirs4all-webapp
+# 4. Package with electron-builder
+npm run dist
+
+# 5. Test the application
+# Linux: ./release/*.AppImage
+# macOS: open release/*.dmg
+# Windows: ./release/*.exe
+```
+
+#### Development Mode
+
+For development with hot reload:
+
+```bash
+# Terminal 1: Start Vite dev server
+npm run dev
+
+# Terminal 2: Start Python backend
+python main.py --port 8000 --reload
+
+# Terminal 3: Start Electron in dev mode
+npm run electron:dev
 ```
 
 ---
@@ -174,9 +293,22 @@ pyinstaller nirs4all-webapp.spec --clean --noconfirm
 
 ### Workflows
 
-Two GitHub Actions workflows handle the build and release process:
+Three GitHub Actions workflows handle the build and release process:
 
-#### 1. Pre-Release Validation (`pre-release.yml`)
+#### 1. CI Validation (`ci.yml`)
+
+**Purpose**: Validate PRs and pushes to main branch.
+
+**Trigger**: Pull requests, pushes to main.
+
+**Jobs**:
+| Job | Description | Runner |
+|-----|-------------|--------|
+| `frontend` | Lint, typecheck, test, build React app | ubuntu-latest |
+| `backend` | Python syntax check, import validation | ubuntu-latest |
+| `electron-build` | Test Electron main process compilation | ubuntu-latest |
+
+#### 2. Pre-Release Validation (`pre-release.yml`)
 
 **Purpose**: Validate everything works before creating a release tag.
 
@@ -188,7 +320,7 @@ Two GitHub Actions workflows handle the build and release process:
 | `validate-version` | Check version format, compare with package.json | ubuntu-latest |
 | `test-frontend` | Lint, test, build frontend | ubuntu-latest |
 | `test-backend` | Verify Python imports, syntax check | ubuntu-latest |
-| `test-build` | Full PyInstaller build test | ubuntu-latest |
+| `test-build` | Full build test (backend + Electron) | ubuntu-latest |
 | `summary` | Report pass/fail status | ubuntu-latest |
 
 **Usage**:
@@ -198,23 +330,25 @@ Two GitHub Actions workflows handle the build and release process:
 4. Optionally skip build test for faster validation
 5. Review the summary
 
-#### 2. Build & Release (`release.yml`)
+#### 3. Electron Release (`electron-release.yml`)
 
-**Purpose**: Build for all platforms and create GitHub Release.
+**Purpose**: Build for Linux/Windows and create GitHub Release.
 
 **Trigger**:
 - Push tag matching `v*` (e.g., `v1.0.0`, `v1.2.0-beta.1`)
-- Manual dispatch with tag input
+- Manual dispatch with options for CPU-only or GPU builds
 
 **Jobs**:
 | Job | Description | Runner |
 |-----|-------------|--------|
-| `prepare` | Extract version, build frontend, update version.json | ubuntu-latest |
-| `build-linux` | Build Linux x64 tarball | ubuntu-22.04 |
-| `build-windows` | Build Windows x64 zip (with optional signing) | windows-latest |
-| `build-macos-x64` | Build macOS Intel tarball | macos-13 |
-| `build-macos-arm64` | Build macOS Apple Silicon tarball | macos-14 |
+| `prepare` | Extract version, validate | ubuntu-latest |
+| `build-linux-cpu` | Build Linux x64 CPU edition | ubuntu-22.04 |
+| `build-linux-gpu` | Build Linux x64 GPU edition (CUDA) | ubuntu-22.04 |
+| `build-windows-cpu` | Build Windows x64 CPU edition | windows-latest |
+| `build-windows-gpu` | Build Windows x64 GPU edition (CUDA) | windows-latest |
 | `release` | Create GitHub Release with all assets | ubuntu-latest |
+
+> **Note**: macOS builds are temporarily disabled.
 
 **Workflow Diagram**:
 
@@ -223,31 +357,40 @@ Two GitHub Actions workflows handle the build and release process:
         │
         ▼
    ┌─────────┐
-   │ prepare │  Build frontend, update version.json
+   │ prepare │  Extract version, validate
    └────┬────┘
         │
-   ┌────┴────┬────────────┬────────────┐
-   ▼         ▼            ▼            ▼
-┌──────┐ ┌───────┐ ┌──────────┐ ┌──────────┐
-│linux │ │windows│ │macos-x64 │ │macos-arm │
-└──┬───┘ └───┬───┘ └────┬─────┘ └────┬─────┘
-   │         │          │            │
-   └────┬────┴──────────┴────────────┘
-        │
-        ▼
-   ┌─────────┐
-   │ release │  Create GitHub Release
-   └─────────┘
+        ├─────────────────────────────┐
+        │                             │
+        ▼ CPU Builds                  ▼ GPU Builds
+   ┌────┴────┬────────────┐    ┌──────┴────┬────────────┐
+   ▼         ▼            │    ▼           ▼            │
+┌──────┐ ┌───────┐        │ ┌──────┐  ┌───────┐         │
+│linux │ │windows│        │ │linux │  │windows│         │
+│ cpu  │ │  cpu  │        │ │ gpu  │  │  gpu  │         │
+└──┬───┘ └───┬───┘        │ └──┬───┘  └───┬───┘         │
+   │         │            │    │          │             │
+   └─────────┴────────────┴────┴──────────┴─────────────┘
+                          │
+                          ▼
+                     ┌─────────┐
+                     │ release │  Create GitHub Release
+                     └─────────┘
 ```
 
 ### Build Matrix
 
-| Platform | Runner | Architecture | Output Format |
-|----------|--------|--------------|---------------|
-| Linux | ubuntu-22.04 | x64 | `.tar.gz` |
-| Windows | windows-latest | x64 | `.zip` |
-| macOS Intel | macos-13 | x64 | `.tar.gz` |
-| macOS Apple Silicon | macos-14 | arm64 | `.tar.gz` |
+| Platform | Runner | Architecture | CPU Format | GPU Format |
+|----------|--------|--------------|------------|------------|
+| Linux | ubuntu-22.04 | x64 | AppImage, DEB | AppImage, DEB (CUDA) |
+| Windows | windows-latest | x64 | NSIS, portable | NSIS, portable (CUDA) |
+
+### GPU Build Specifics
+
+**Linux/Windows GPU (CUDA)**:
+- Uses `requirements-gpu.txt`
+- Bundles TensorFlow with CUDA support
+- Requires NVIDIA drivers on target system
 
 ---
 
@@ -279,13 +422,13 @@ Two GitHub Actions workflows handle the build and release process:
    ```
 
 5. **Monitor the build**:
-   - Go to GitHub Actions → Build & Release
+   - Go to GitHub Actions → Electron Release
    - Watch the workflow progress
-   - All 4 platform builds run in parallel
+   - All platform/flavor combinations build in parallel
 
 6. **Verify the release**:
    - Go to Releases page
-   - Check all 8 assets are present (4 archives + 4 checksums)
+   - Check all assets are present (CPU + GPU editions for each platform)
    - Verify release notes are correct
 
 ### Version Numbering
@@ -301,35 +444,41 @@ For urgent fixes:
 2. Increment patch version: `1.2.0` → `1.2.1`
 3. Tag and push
 
+### CPU-Only Release
+
+To build only CPU editions (faster builds):
+1. Go to GitHub Actions → Electron Release
+2. Click "Run workflow"
+3. Uncheck "Build GPU editions"
+4. Enter the version tag
+
 ---
 
 ## Asset Naming Convention
 
-Assets must follow this naming pattern for the updater to detect them:
+Assets follow electron-builder's naming convention:
 
 ```
-nirs4all-webapp-{version}-{platform}-{arch}.{ext}
+nirs4all-{version}-{platform}-{arch}[-gpu].{ext}
 ```
 
 ### Examples
 
 | Platform | Asset Name | Type |
 |----------|------------|------|
-| Linux x64 | `nirs4all-webapp-1.2.0-linux-x64.tar.gz` | Archive |
-| Windows x64 | `nirs4all-webapp-1.2.0-windows-x64.zip` | Portable |
-| Windows x64 | `nirs4all-webapp-1.2.0-windows-x64-setup.exe` | Installer |
-| macOS Intel | `nirs4all-webapp-1.2.0-macos-x64.tar.gz` | Archive |
-| macOS Apple Silicon | `nirs4all-webapp-1.2.0-macos-arm64.tar.gz` | Archive |
+| Linux x64 CPU | `nirs4all-1.2.0-linux-x64.AppImage` | AppImage |
+| Linux x64 CPU | `nirs4all-1.2.0-linux-x64.deb` | DEB package |
+| Linux x64 GPU | `nirs4all-1.2.0-gpu-linux-x64.AppImage` | AppImage (CUDA) |
+| Linux x64 GPU | `nirs4all-1.2.0-gpu-linux-x64.deb` | DEB (CUDA) |
+| Windows x64 CPU | `nirs4all-1.2.0-win-x64.exe` | NSIS Installer |
+| Windows x64 GPU | `nirs4all-1.2.0-gpu-win-x64.exe` | NSIS (CUDA) |
 
-### Platform Detection Keywords
+### Platform Detection
 
-The updater (`api/updates.py`) uses these keywords to find the right asset:
-
-| Platform | Detection Keywords |
-|----------|-------------------|
-| Windows | `windows`, `win64`, `win32`, `.exe`, `.msi` |
-| macOS | `macos`, `darwin`, `osx`, `.dmg`, `.app` |
-| Linux | `linux`, `.appimage`, `.deb`, `.tar.gz` |
+electron-updater automatically detects the correct asset based on:
+- Operating system
+- Architecture (x64)
+- GPU suffix (if user installed GPU edition)
 
 ---
 
@@ -350,8 +499,8 @@ Windows executables can be signed to avoid SmartScreen warnings.
 
 3. **Add GitHub Secrets**:
    ```
-   WINDOWS_CERT_BASE64    = base64-encoded .pfx file
-   WINDOWS_CERT_PASSWORD  = certificate password
+   WIN_CSC_LINK     = base64-encoded .pfx file
+   WIN_CSC_KEY_PASSWORD = certificate password
    ```
 
 4. **Encode the certificate**:
@@ -361,24 +510,13 @@ Windows executables can be signed to avoid SmartScreen warnings.
 
 #### How It Works
 
-The release workflow automatically signs if secrets are present:
+electron-builder automatically signs when environment variables are set:
 
 ```yaml
-- name: Sign executable
-  if: ${{ env.WINDOWS_CERT_BASE64 != '' }}
-  run: |
-    signtool sign /f cert.pfx /p $PASSWORD \
-      /tr http://timestamp.digicert.com \
-      /td sha256 /fd sha256 \
-      dist/nirs4all-webapp/nirs4all-webapp.exe
+env:
+  WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+  WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 ```
-
-### macOS Code Signing (Future)
-
-Currently not implemented. For App Store distribution:
-1. Apple Developer account required
-2. Code signing with Developer ID certificate
-3. Notarization with `xcrun notarytool`
 
 ---
 
@@ -386,11 +524,11 @@ Currently not implemented. For App Store distribution:
 
 ### Common Build Issues
 
-#### "ModuleNotFoundError" at Runtime
+#### "ModuleNotFoundError" at Runtime (Backend)
 
 The module is missing from `hiddenimports` in the spec file.
 
-**Fix**: Add the module to `hiddenimports` in `nirs4all-webapp.spec`:
+**Fix**: Add the module to `hiddenimports` in `backend.spec`:
 ```python
 hiddenimports = [
     # ... existing imports
@@ -398,17 +536,17 @@ hiddenimports = [
 ]
 ```
 
-#### Bundle Size Too Large
+#### Backend Binary Size Too Large
 
 Check for accidentally included large dependencies.
 
 **Debug**:
 ```bash
 # List largest files in bundle
-du -ah dist/nirs4all-webapp/_internal/ | sort -rh | head -20
+du -ah dist/nirs4all-backend | sort -rh | head -20
 ```
 
-**Fix**: Add exclusions in the spec file:
+**Fix**: Add exclusions in `backend.spec`:
 ```python
 excludes = [
     # ... existing excludes
@@ -416,39 +554,42 @@ excludes = [
 ]
 ```
 
-#### Frontend Not Bundled
+#### Backend Fails to Start
 
-The frontend build is missing or not copied.
-
-**Check**:
+Check if the backend binary runs standalone:
 ```bash
-ls dist/nirs4all-webapp/_internal/dist/
+./backend-dist/nirs4all-backend --port 8000
 ```
 
-**Fix**: Ensure `npm run build` ran successfully before PyInstaller.
+If it fails, check:
+- Missing dependencies in `hiddenimports`
+- Missing data files in `datas`
+- Platform-specific issues (check PyInstaller logs)
 
-#### "Failed to execute script" on Windows
+#### Electron Can't Find Backend
 
-Missing Visual C++ Redistributable.
+Check `electron-builder.yml` extraResources configuration:
+```yaml
+extraResources:
+  - from: backend-dist/
+    to: backend/
+```
 
-**Fix**: Include vcruntime in bundle or document the requirement.
+Verify the backend is copied:
+```bash
+ls release/*/resources/backend/
+```
 
 ### CI/CD Issues
 
 #### Build Timeout
 
-Default timeout is 360 minutes. Increase if needed:
+Default timeout is 60 minutes. Increase if needed:
 ```yaml
 jobs:
-  build-linux:
-    timeout-minutes: 60
+  build-linux-gpu:
+    timeout-minutes: 90  # GPU builds are larger
 ```
-
-#### macOS Build Fails
-
-Check runner version compatibility:
-- `macos-13`: Intel (x64)
-- `macos-14`: Apple Silicon (arm64)
 
 #### Windows Signing Fails
 
@@ -457,9 +598,32 @@ Check certificate validity:
 certutil -v -dump cert.pfx
 ```
 
-### Testing Updates
+### Testing
 
-To test the updater integration:
+#### Testing Backend Independently
+
+```bash
+# Build and run backend directly
+npm run build:backend:cpu
+./backend-dist/nirs4all-backend --port 8000
+
+# Test endpoints
+curl http://localhost:8000/api/health
+curl http://localhost:8000/api/system/build
+```
+
+#### Testing Electron Locally
+
+```bash
+# Build everything
+npm run build
+npm run build:backend:cpu
+
+# Run Electron in preview mode
+npm run electron:preview
+```
+
+#### Testing Auto-Updater
 
 1. Build and install an older version (e.g., `0.9.0`)
 2. Create a new release (e.g., `1.0.0`)
@@ -474,12 +638,19 @@ To test the updater integration:
 
 | File | Purpose |
 |------|---------|
-| `nirs4all-webapp.spec` | PyInstaller configuration |
-| `scripts/build.py` | Local build orchestration |
-| `installer/nsis/nirs4all-webapp.nsi` | Windows NSIS installer script |
+| `backend.spec` | PyInstaller configuration for Python backend |
+| `electron-builder.yml` | Electron packaging configuration |
+| `electron/main.ts` | Electron main process entry point |
+| `electron/preload.ts` | IPC bridge (contextBridge) |
+| `electron/backend-manager.ts` | Backend lifecycle management |
+| `scripts/build-backend.sh` | Backend build script with flavor support |
+| `scripts/build-release.sh` | Full release build orchestration |
+| `requirements-cpu.txt` | Python dependencies (CPU build) |
+| `requirements-gpu.txt` | Python dependencies (GPU/CUDA build) |
+| `.github/workflows/ci.yml` | PR validation workflow |
 | `.github/workflows/pre-release.yml` | Pre-release validation |
-| `.github/workflows/release.yml` | Build & release automation |
-| `version.json` | Version info (updated at build time) |
+| `.github/workflows/electron-release.yml` | Full release automation (Linux/Windows) |
+| `src/types/electron.d.ts` | TypeScript types for Electron IPC |
 | `docs/UPDATE_SYSTEM.md` | Updater documentation |
 
 ---
@@ -487,5 +658,7 @@ To test the updater integration:
 ## See Also
 
 - [UPDATE_SYSTEM.md](UPDATE_SYSTEM.md) - How the auto-updater works
+- [Electron Documentation](https://www.electronjs.org/docs)
+- [electron-builder Documentation](https://www.electron.build/)
 - [PyInstaller Documentation](https://pyinstaller.org/en/stable/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)

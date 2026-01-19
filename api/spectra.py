@@ -5,6 +5,8 @@ This module provides FastAPI routes for accessing spectral data from datasets,
 including raw spectra, processed spectra, statistics, and outlier detection.
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union

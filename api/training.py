@@ -13,6 +13,8 @@ Phase 5 Enhancement:
 - WebSocket integration for real-time training updates
 """
 
+from __future__ import annotations
+
 import sys
 from datetime import datetime
 from pathlib import Path

@@ -1,0 +1,24 @@
+# nirs4all webapp Python dependencies (CPU-only build)
+# This is a lightweight build without GPU-accelerated ML libraries
+
+# Core backend
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+
+# Desktop packaging
+pyinstaller>=6.12.0
+
+# Additional utilities
+python-multipart>=0.0.20
+aiofiles>=24.0.0
+
+# Update system
+httpx>=0.27.0
+pyyaml>=6.0
+packaging>=24.0
+platformdirs>=4.0.0
+
+# nirs4all core (CPU-only installation)
+# Install with: pip install nirs4all
+# This installs sklearn-based functionality without GPU dependencies

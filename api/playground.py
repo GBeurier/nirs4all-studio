@@ -11,6 +11,8 @@ enabling users to:
 Phase 1 Feature: Backend API for Playground V1
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import sys

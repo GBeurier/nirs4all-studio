@@ -6,6 +6,8 @@ computing feature importance and generating visualizations for model
 interpretability.
 """
 
+from __future__ import annotations
+
 import sys
 import time
 import uuid

@@ -11,6 +11,8 @@ Phase 2 Implementation:
 - Pipeline execution preparation
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import sys

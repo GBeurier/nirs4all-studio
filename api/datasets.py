@@ -8,6 +8,8 @@ This module provides FastAPI routes for dataset operations including:
 - Phase 2: Dataset versioning and integrity (hash, verify, relink)
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import sys

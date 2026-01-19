@@ -1,0 +1,103 @@
+appId: com.nirs4all.webapp
+productName: nirs4all
+copyright: Copyright 2024
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - "!**/*.map"
+
+# Backend executable (packaged separately with PyInstaller)
+# The build script copies it to backend-dist/ before electron-builder runs
+extraResources:
+  - from: backend-dist/
+    to: backend/
+    filter:
+      - "**/*"
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: public/nirs4all.ico
+  artifactName: "${productName}-${version}-win-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/nirs4all.ico
+  uninstallerIcon: public/nirs4all.ico
+  installerHeaderIcon: public/nirs4all.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: nirs4all
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: public/nirs4all_logo.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: "${productName}-${version}-mac-${arch}.${ext}"
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  icon: public/nirs4all_logo.png
+  category: Science
+  maintainer: nirs4all
+  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+
+appImage:
+  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+
+# Publish configuration (for auto-updates)
+# publish:
+#   provider: github
+#   owner: your-org
+#   repo: nirs4all-webapp

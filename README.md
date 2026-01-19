@@ -10,7 +10,8 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 - 🔬 **Pipeline Builder** - Visual drag-and-drop pipeline construction
 - 🎯 **Prediction Engine** - Run trained models on new samples
 - 📁 **Workspace Management** - Organize datasets, pipelines, and results
-- 🖥️ **Native Desktop Experience** - Runs as a standalone desktop app
+- 🖥️ **Native Desktop Experience** - Runs as a standalone desktop app via Electron
+- ⚡ **GPU Acceleration** - CUDA (Linux/Windows) and Metal (macOS) support
 
 ## Tech Stack
 
@@ -22,16 +23,21 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 - **TanStack Query** for API state management
 - **Framer Motion** for smooth animations
 
+### Desktop Shell
+- **Electron 40** for cross-platform desktop experience
+- **Chromium** for consistent WebGL support across all platforms
+- **IPC Bridge** for secure main/renderer communication
+
 ### Backend
 - **FastAPI** for high-performance REST API
 - **nirs4all** Python library for NIRS analysis
-- **PyWebView** for native desktop window
+- **PyInstaller** for standalone backend packaging
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+ (recommended: use `nvm` + the version in `.nvmrc`)
+- Node.js 22+ (recommended: use `nvm` + the version in `.nvmrc`)
 - Python 3.11+
 - nirs4all library (optional for UI development)
 
@@ -72,7 +78,7 @@ which npm
 
 2. **Install Python dependencies:**
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements-cpu.txt  # or requirements-gpu.txt for GPU support
    ```
 
 3. **Start development servers:**
@@ -90,17 +96,19 @@ which npm
 4. **Open in browser:**
    Navigate to http://localhost:5173
 
-### Desktop Mode
+### Desktop Mode (Electron)
 
 To run as a desktop application:
 
 ```bash
 # Development mode (with hot reload)
-VITE_DEV=true python launcher.py
+npm run electron:dev
 
-# Production mode
-python launcher.py
+# Build and preview (production mode)
+npm run electron:preview
 ```
+
+The Electron main process automatically spawns the Python backend and manages its lifecycle.
 
 ## Project Structure
 
@@ -116,18 +124,30 @@ nirs4all_webapp/
 │   │   └── nodes/          # Node registry system
 │   ├── lib/                # Utilities and helpers
 │   ├── api/                # API client
+│   ├── types/              # TypeScript type definitions
+│   │   └── electron.d.ts   # Electron IPC types
 │   └── pages/              # Route components
+├── electron/               # Electron main process
+│   ├── main.ts             # Main entry point (window management)
+│   ├── preload.ts          # Secure IPC bridge (contextBridge)
+│   └── backend-manager.ts  # Python backend lifecycle management
 ├── api/                    # FastAPI backend
 │   ├── workspace.py        # Workspace management routes
 │   ├── datasets.py         # Dataset operations
 │   ├── pipelines.py        # Pipeline CRUD
 │   ├── predictions.py      # Prediction storage
-│   └── system.py           # Health and system info
+│   └── system.py           # Health, system info, and GPU detection
+├── scripts/                # Build scripts
+│   ├── build-backend.sh    # Python backend packaging (PyInstaller)
+│   └── build-release.sh    # Full release build (backend + electron)
+├── build/                  # Build configuration
+│   └── entitlements.mac.plist  # macOS code signing entitlements
 ├── docs/                   # Documentation
 │   └── _internals/         # Developer guides
 ├── public/                 # Static assets
 ├── main.py                 # FastAPI application entry
-├── launcher.py             # PyWebView desktop launcher
+├── backend.spec            # PyInstaller spec file
+├── electron-builder.yml    # Electron packaging config
 └── package.json            # Node dependencies
 ```
 
@@ -260,17 +280,36 @@ Stories are located in `__stories__/` directories next to components.
 
 ## Scripts
 
+### Development
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start Vite dev server |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
+| `npm run electron:dev` | Start Electron with hot reload |
 | `npm run lint` | Run ESLint |
 | `npm run test` | Run Vitest tests |
 | `npm run test:coverage` | Run tests with coverage |
 | `npm run test:ui` | Open Vitest UI |
 | `npm run storybook` | Start Storybook dev server |
-| `npm run build-storybook` | Build static Storybook |
+
+### Production Builds
+| Command | Description |
+|---------|-------------|
+| `npm run build` | Build frontend for production |
+| `npm run build:electron` | Build Electron app |
+| `npm run electron:preview` | Preview Electron production build |
+| `npm run build:backend:cpu` | Build Python backend (CPU) |
+| `npm run build:backend:gpu` | Build Python backend (GPU/CUDA) |
+| `npm run build:backend:gpu-metal` | Build Python backend (GPU/Metal for macOS) |
+| `npm run build:release:cpu` | Full release build (CPU edition) |
+| `npm run build:release:gpu` | Full release build (GPU edition) |
+
+### Packaging
+| Command | Description |
+|---------|-------------|
+| `npm run dist:linux` | Package for Linux (AppImage, DEB) |
+| `npm run dist:win` | Package for Windows (NSIS, portable) |
+| `npm run dist:mac` | Package for macOS (DMG) |
+| `npm run dist` | Package for current platform |
 
 ## Design System
 
@@ -280,6 +319,15 @@ The application uses a teal/cyan scientific theme inspired by spectral-explorer,
 - **Glow effects** for interactive elements
 - **Dark/Light mode** with smooth transitions
 - **Inter + JetBrains Mono** typography
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/ELECTRON.md](docs/ELECTRON.md) | Electron architecture and development guide |
+| [docs/PACKAGING.md](docs/PACKAGING.md) | Build system, CI/CD, and release process |
+| [docs/UPDATE_SYSTEM.md](docs/UPDATE_SYSTEM.md) | Auto-updater implementation |
+| [docs/sources/custom-nodes-guide.md](docs/sources/custom-nodes-guide.md) | Custom node development |
 
 ## License
 

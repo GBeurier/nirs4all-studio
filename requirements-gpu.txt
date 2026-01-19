@@ -1,0 +1,21 @@
+# nirs4all webapp Python dependencies (GPU build)
+# Includes GPU-accelerated ML libraries for CUDA support
+
+# Include all CPU dependencies
+-r requirements-cpu.txt
+
+# GPU-accelerated nirs4all (includes TensorFlow with CUDA)
+# Install with: pip install nirs4all[gpu]
+# This provides:
+# - tensorflow[and-cuda] for GPU-accelerated deep learning
+# - Full NICON neural network support
+# - GPU-accelerated preprocessing where applicable
+
+# Note: The nirs4all[gpu] extra includes:
+# - tensorflow>=2.15.0 with CUDA support
+# - Required CUDA runtime libraries (via pip)
+#
+# System requirements:
+# - NVIDIA GPU with CUDA support
+# - NVIDIA drivers installed (GPU driver only, not full CUDA toolkit)
+# - Linux or Windows (macOS uses Metal via tensorflow-metal separately)
