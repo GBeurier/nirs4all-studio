@@ -960,7 +960,6 @@ async def _execute_pipeline_training(
     # Get pipeline config
     config = pipeline.config or {}
     steps = config.get("steps", [])
-    pipeline_name = config.get("name", pipeline.pipeline_name)
 
     # Extract step info for progress messages
     model_name = pipeline.model or "Unknown"
@@ -987,10 +986,8 @@ async def _execute_pipeline_training(
         # Import nirs4all in thread to avoid blocking event loop during heavy import
         try:
             import nirs4all
-            nirs4all_available = True
-        except ImportError:
-            nirs4all_available = False
-            log("[WARN] nirs4all not available, falling back to sklearn")
+        except ImportError as e:
+            raise ValueError(f"nirs4all is required for training: {e}")
 
         # Resolve dataset path
         from .nirs4all_adapter import resolve_dataset_path, build_full_pipeline, ensure_models_dir, expand_pipeline_variants
@@ -1009,7 +1006,7 @@ async def _execute_pipeline_training(
         is_expanded_variant = pipeline.is_expanded_variant or False
         variant_index = pipeline.variant_index
 
-        if nirs4all_available and steps:
+        if steps:
             try:
                 if is_expanded_variant and variant_index is not None:
                     # This is a specific variant - get its pre-expanded steps
@@ -1023,12 +1020,13 @@ async def _execute_pipeline_training(
                         if variants:
                             nirs4all_steps = variants[0].steps
                         else:
-                            nirs4all_steps = _build_simple_pipeline(steps, cv_folds)
+                            build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
+                            nirs4all_steps = build_result.steps
                     estimated_variants = 1  # Only running this one variant
                     has_generators = False
                 else:
                     # Full pipeline with all generators
-                    build_result = build_full_pipeline(steps)
+                    build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
                     nirs4all_steps = build_result.steps
                     estimated_variants = build_result.estimated_variants
                     has_generators = build_result.has_generators
@@ -1041,124 +1039,107 @@ async def _execute_pipeline_training(
                         log(f"[INFO] Finetuning enabled: {build_result.finetuning_config.get('n_trials', 50)} trials")
 
             except Exception as e:
-                log(f"[WARN] Pipeline build failed: {e}, falling back to simple pipeline")
-                nirs4all_steps = _build_simple_pipeline(steps, cv_folds)
+                raise ValueError(f"Pipeline build failed: {e}")
         else:
-            nirs4all_steps = _build_simple_pipeline(steps, cv_folds)
+            raise ValueError("No pipeline steps provided")
 
         # Execute using nirs4all.run()
-        if nirs4all_available and nirs4all_steps:
-            log(f"[INFO] Executing nirs4all.run() on {dataset_path}...")
-            log(f"[INFO] Training {model_name}...")
+        log(f"[INFO] Executing nirs4all.run() on {dataset_path}...")
+        log(f"[INFO] Training {model_name}...")
 
-            result = nirs4all.run(
-                pipeline=nirs4all_steps,
-                dataset=dataset_path,
-                verbose=1,
-                save_artifacts=True,
-                save_charts=False,
-                plots_visible=False,
-            )
+        result = nirs4all.run(
+            pipeline=nirs4all_steps,
+            dataset=dataset_path,
+            verbose=1,
+            save_artifacts=True,
+            save_charts=False,
+            plots_visible=False,
+        )
 
-            log("[INFO] Training completed, extracting metrics...")
+        log("[INFO] Training completed, extracting metrics...")
 
-            # Extract metrics from result
-            metrics = {}
-            if hasattr(result, 'best_rmse') and result.best_rmse is not None:
-                metrics['rmse'] = float(result.best_rmse)
-            if hasattr(result, 'best_r2') and result.best_r2 is not None:
-                metrics['r2'] = float(result.best_r2)
-            if hasattr(result, 'best_score') and result.best_score is not None:
-                metrics['score'] = float(result.best_score)
+        # Extract metrics using RunResult properties
+        metrics = {}
+        if hasattr(result, 'best_rmse') and result.best_rmse is not None:
+            metrics['rmse'] = float(result.best_rmse)
+        if hasattr(result, 'best_r2') and result.best_r2 is not None:
+            metrics['r2'] = float(result.best_r2)
+        if hasattr(result, 'best_score') and result.best_score is not None:
+            metrics['score'] = float(result.best_score)
 
-            # Compute RPD if we have rmse
-            if 'rmse' in metrics and metrics['rmse'] > 0:
-                try:
-                    if hasattr(result, 'predictions') and result.predictions:
-                        best_pred = result.predictions.best()
-                        if best_pred and hasattr(best_pred, 'y_true'):
-                            import numpy as np
-                            std_dev = float(np.std(best_pred.y_true))
-                            metrics['rpd'] = std_dev / metrics['rmse']
-                except Exception:
-                    pass
+        # Compute RPD if we have rmse
+        if 'rmse' in metrics and metrics['rmse'] > 0:
+            try:
+                if hasattr(result, 'predictions') and result.predictions:
+                    best_pred = result.predictions.best()
+                    if best_pred and hasattr(best_pred, 'y_true'):
+                        import numpy as np
+                        std_dev = float(np.std(best_pred.y_true))
+                        metrics['rpd'] = std_dev / metrics['rmse']
+            except Exception:
+                pass
 
-            # Ensure required metrics exist with defaults
-            if 'r2' not in metrics or metrics['r2'] is None:
-                metrics['r2'] = 0.0
-            if 'rmse' not in metrics or metrics['rmse'] is None:
-                metrics['rmse'] = 999.0
-            if 'mae' not in metrics or metrics['mae'] is None:
-                metrics['mae'] = metrics.get('rmse', 0.0)
-            if 'rpd' not in metrics or metrics['rpd'] is None:
-                metrics['rpd'] = 0.0
+        # Ensure required metrics exist with defaults
+        if 'r2' not in metrics or metrics['r2'] is None:
+            metrics['r2'] = 0.0
+        if 'rmse' not in metrics or metrics['rmse'] is None:
+            metrics['rmse'] = 999.0
+        if 'mae' not in metrics or metrics['mae'] is None:
+            metrics['mae'] = metrics.get('rmse', 0.0)
+        if 'rpd' not in metrics or metrics['rpd'] is None:
+            metrics['rpd'] = 0.0
 
-            # Sanitize all metrics to handle NaN/Inf values
-            metrics = _sanitize_metrics(metrics)
+        # Sanitize all metrics to handle NaN/Inf values
+        metrics = _sanitize_metrics(metrics)
 
-            # Get count of variants tested
-            num_predictions = 1
-            if hasattr(result, 'num_predictions'):
-                num_predictions = result.num_predictions
-            elif hasattr(result, 'predictions') and result.predictions:
-                num_predictions = len(result.predictions)
+        # Get count of variants tested
+        num_predictions = 1
+        if hasattr(result, 'num_predictions'):
+            num_predictions = result.num_predictions
+        elif hasattr(result, 'predictions') and result.predictions:
+            num_predictions = len(result.predictions)
 
-            log(f"[INFO] Tested {num_predictions} pipeline variant(s)")
-            r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
-            rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
-            log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
+        log(f"[INFO] Tested {num_predictions} pipeline variant(s)")
+        r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
+        rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
+        log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
 
-            # Get top results for logging
-            if has_generators and hasattr(result, 'top'):
-                try:
-                    top_3 = list(result.top(3))
-                    log("[INFO] Top 3 configurations:")
-                    for i, pred in enumerate(top_3, 1):
-                        pred_rmse = getattr(pred, 'rmse', getattr(pred, 'test_rmse', None))
-                        pred_r2 = getattr(pred, 'r2', getattr(pred, 'test_r2', None))
-                        if pred_rmse is not None and pred_r2 is not None:
-                            log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}, R²={pred_r2:.4f}")
-                        elif pred_rmse is not None:
-                            log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}")
-                except Exception:
-                    pass
+        # Get top results for logging
+        if has_generators and hasattr(result, 'top'):
+            try:
+                top_3 = list(result.top(3))
+                log("[INFO] Top 3 configurations:")
+                for i, pred in enumerate(top_3, 1):
+                    pred_rmse = getattr(pred, 'rmse', getattr(pred, 'test_rmse', None))
+                    pred_r2 = getattr(pred, 'r2', getattr(pred, 'test_r2', None))
+                    if pred_rmse is not None and pred_r2 is not None:
+                        log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}, R²={pred_r2:.4f}")
+                    elif pred_rmse is not None:
+                        log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}")
+            except Exception:
+                pass
 
-            # Export model bundle (.n4a)
-            model_path = None
-            if workspace_path:
-                log("[INFO] Exporting model...")
-                try:
-                    models_dir = ensure_models_dir(workspace_path)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.n4a"
-                    model_path = str(models_dir / model_filename)
+        # Export model bundle (.n4a) using RunResult.export()
+        model_path = None
+        if workspace_path:
+            log("[INFO] Exporting model...")
+            try:
+                models_dir = ensure_models_dir(workspace_path)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.n4a"
+                model_path = str(models_dir / model_filename)
 
-                    result.export(model_path)
-                    log(f"[INFO] Model exported: {model_filename}")
-                except Exception as e:
-                    log(f"[WARN] Model export failed: {e}")
-                    # Try joblib fallback
-                    try:
-                        import joblib
-                        if hasattr(result, 'best') and result.best:
-                            best_pred = result.best
-                            if hasattr(best_pred, 'model'):
-                                model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.joblib"
-                                model_path = str(models_dir / model_filename)
-                                joblib.dump(best_pred.model, model_path)
-                                log(f"[INFO] Model saved (joblib): {model_filename}")
-                    except Exception as e2:
-                        log(f"[WARN] Joblib fallback failed: {e2}")
+                result.export(model_path)
+                log(f"[INFO] Model exported: {model_filename}")
+            except Exception as e:
+                log(f"[WARN] Model export failed: {e}")
 
-            return {
-                "metrics": metrics,
-                "model_path": model_path,
-                "logs": thread_logs,
-                "variants_tested": num_predictions,
-            }
-        else:
-            # Fallback to sklearn - this also needs to run here
-            raise ValueError("nirs4all not available for training")
+        return {
+            "metrics": metrics,
+            "model_path": model_path,
+            "logs": thread_logs,
+            "variants_tested": num_predictions,
+        }
 
     # Run the pipeline in a thread pool
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -1237,188 +1218,14 @@ async def _execute_pipeline_training(
                 break
 
         # Get result or raise exception
-        try:
-            result = future.result()
-            # Logs already streamed via queue, but add any missed ones
-            for log_entry in result.get("logs", []):
-                if log_entry not in logs:
-                    logs.append(log_entry)
-            await report_progress(100, "Complete!")
-            await stream_log("[INFO] Pipeline execution complete!")
-            return result
-        except Exception as e:
-            import traceback
-            error_msg = f"[ERROR] Pipeline execution failed: {e}"
-            await stream_log(error_msg, "error")
-            logs.append(error_msg)
-            logs.append(f"[ERROR] {traceback.format_exc()}")
-            # Fall through to sklearn fallback
-
-    # Fallback to sklearn-based training
-    await stream_log("[INFO] Using sklearn fallback...")
-    return await _execute_sklearn_training(
-        pipeline, dataset_id, cv_folds, workspace_path, run_id, progress_callback, logs
-    )
-
-
-def _build_simple_pipeline(steps: List[Dict[str, Any]], cv_folds: int) -> List[Any]:
-    """Build a simple sklearn-compatible pipeline from frontend steps."""
-    from sklearn.model_selection import KFold
-
-    pipeline_steps = []
-
-    # Add cross-validation splitter
-    pipeline_steps.append(KFold(n_splits=cv_folds, shuffle=True, random_state=42))
-
-    for step in steps:
-        step_type = step.get("type", "")
-        step_name = step.get("name", "")
-        step_params = step.get("params", {})
-
-        if step_type == "preprocessing":
-            from .nirs4all_adapter import _resolve_operator_class, _normalize_params, PREPROCESSING_ALIASES
-            try:
-                operator_class = _resolve_operator_class(step_name, "preprocessing")
-                normalized = _normalize_params(PREPROCESSING_ALIASES.get(step_name, step_name), step_params)
-                pipeline_steps.append(operator_class(**normalized))
-            except Exception:
-                pass
-
-        elif step_type == "model":
-            from .nirs4all_adapter import _resolve_operator_class, _normalize_params
-            try:
-                operator_class = _resolve_operator_class(step_name, "model")
-                pipeline_steps.append({"model": operator_class(**step_params)})
-            except Exception:
-                # Fallback to PLS
-                from sklearn.cross_decomposition import PLSRegression
-                n_components = step_params.get("n_components", 10)
-                pipeline_steps.append({"model": PLSRegression(n_components=n_components)})
-
-    # If no model was added, add default PLS
-    has_model = any(isinstance(s, dict) and "model" in s for s in pipeline_steps)
-    if not has_model:
-        from sklearn.cross_decomposition import PLSRegression
-        pipeline_steps.append({"model": PLSRegression(n_components=10)})
-
-    return pipeline_steps
-
-
-async def _execute_sklearn_training(
-    pipeline: PipelineRun,
-    dataset_id: str,
-    cv_folds: int,
-    workspace_path: Optional[str],
-    run_id: str,
-    progress_callback: Optional[Any],
-    logs: List[str],
-) -> Dict[str, Any]:
-    """Fallback sklearn-based training when nirs4all is unavailable."""
-    import numpy as np
-
-    async def report_progress(progress: float, message: str):
-        pipeline.progress = int(progress)
-        if progress_callback:
-            await progress_callback(progress, message)
-
-    # Load dataset
-    from .spectra import _load_dataset
-    dataset = _load_dataset(dataset_id)
-    if not dataset:
-        raise ValueError(f"Dataset '{dataset_id}' not found")
-
-    await report_progress(20, "Loading dataset...")
-
-    X = dataset.x({}, layout="2d")
-    if isinstance(X, list):
-        X = X[0]
-
-    y = None
-    try:
-        y = dataset.y({})
-    except Exception:
-        pass
-
-    if y is None:
-        raise ValueError("Dataset has no target values for training")
-
-    logs.append(f"[INFO] Loaded dataset: {X.shape[0]} samples, {X.shape[1]} features")
-
-    # Get model from config
-    config = pipeline.config or {}
-    steps = config.get("steps", [])
-    model_step = None
-    model_params = {}
-
-    for step in steps:
-        if step.get("type") == "model":
-            model_step = step.get("name")
-            model_params = step.get("params", {})
-            break
-
-    await report_progress(30, "Training model...")
-
-    # Get model instance
-    if model_step:
-        from .training import _get_model_instance
-        model = _get_model_instance(model_step, model_params)
-    else:
-        from sklearn.cross_decomposition import PLSRegression
-        n_components = min(10, X.shape[1], X.shape[0] - 1)
-        model = PLSRegression(n_components=n_components)
-
-    if model is None:
-        from sklearn.cross_decomposition import PLSRegression
-        model = PLSRegression(n_components=10)
-
-    # Cross-validation
-    from sklearn.model_selection import cross_val_predict, KFold
-    from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-
-    kfold = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
-    y_flat = y.ravel() if y.ndim > 1 else y
-
-    await report_progress(50, f"Running {cv_folds}-fold CV...")
-
-    y_pred = cross_val_predict(model, X, y_flat, cv=kfold)
-
-    await report_progress(80, "Computing metrics...")
-
-    r2 = float(r2_score(y_flat, y_pred))
-    rmse = float(np.sqrt(mean_squared_error(y_flat, y_pred)))
-    mae = float(mean_absolute_error(y_flat, y_pred))
-    std_dev = float(np.std(y_flat))
-    rpd = std_dev / rmse if rmse > 0 else 0
-
-    # Sanitize all metrics to handle NaN/Inf values
-    metrics = _sanitize_metrics({"r2": r2, "rmse": rmse, "mae": mae, "rpd": rpd})
-    r2_val = metrics.get('r2') or 0
-    rmse_val = metrics.get('rmse') or 0
-    mae_val = metrics.get('mae') or 0
-    logs.append(f"[INFO] R² = {r2_val:.4f}, RMSE = {rmse_val:.4f}, MAE = {mae_val:.4f}")
-
-    await report_progress(90, "Saving model...")
-
-    # Fit final model and save
-    model.fit(X, y_flat)
-    model_path = None
-
-    if workspace_path:
-        try:
-            import joblib
-            models_dir = Path(workspace_path) / "models"
-            models_dir.mkdir(exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.joblib"
-            model_path = str(models_dir / model_filename)
-            joblib.dump(model, model_path)
-            logs.append(f"[INFO] Model saved: {model_filename}")
-        except Exception as e:
-            logs.append(f"[WARN] Failed to save model: {e}")
-
-    await report_progress(100, "Complete!")
-
-    return {"metrics": metrics, "model_path": model_path, "logs": logs, "variants_tested": 1}
+        result = future.result()
+        # Logs already streamed via queue, but add any missed ones
+        for log_entry in result.get("logs", []):
+            if log_entry not in logs:
+                logs.append(log_entry)
+        await report_progress(100, "Complete!")
+        await stream_log("[INFO] Pipeline execution complete!")
+        return result
 
 
 # ============================================================================
@@ -1679,151 +1486,23 @@ def _estimate_pipeline_variants(pipeline_config: dict, cv_folds: Optional[int] =
     """
     Estimate the number of pipeline variants and model count from a configuration.
 
-    Handles both legacy format and editor format (generatorKind, branches, etc.)
+    Uses build_full_pipeline() from nirs4all_adapter which handles all formats
+    (legacy and editor) and uses nirs4all's count_combinations for accurate counts.
 
     Returns PipelineEstimate with variant count, fold/branch counts, and breakdown.
     """
     steps = pipeline_config.get("steps", [])
 
-    # Try using nirs4all build_full_pipeline for accurate counts
-    try:
-        from .nirs4all_adapter import build_full_pipeline
-        config = {"cv_folds": cv_folds} if cv_folds else {}
-        build_result = build_full_pipeline(steps, config)
-        return PipelineEstimate(
-            estimated_variants=build_result.estimated_variants,
-            has_generators=build_result.has_generators,
-            fold_count=build_result.fold_count,
-            branch_count=build_result.branch_count,
-            total_model_count=build_result.total_model_count,
-            model_count_breakdown=build_result.model_count_breakdown,
-        )
-    except Exception:
-        pass
-
-    # Fallback: simple heuristic based on step attributes
-    has_generators = False
-    multiplier = 1
-
-    def estimate_from_step(step: dict) -> int:
-        """Recursively estimate variants from a step."""
-        nonlocal has_generators
-        step_multiplier = 1
-
-        # Check for paramSweeps (legacy format)
-        sweeps = step.get("paramSweeps", {})
-        for sweep_config in sweeps.values():
-            if sweep_config.get("enabled"):
-                has_generators = True
-                sweep_type = sweep_config.get("type", "range")
-                if sweep_type == "range":
-                    start = sweep_config.get("start", 1)
-                    end = sweep_config.get("end", 10)
-                    sweep_step = sweep_config.get("step", 1)
-                    step_multiplier *= max(1, (end - start) // sweep_step + 1)
-                elif sweep_type == "choices":
-                    choices = sweep_config.get("choices", [])
-                    step_multiplier *= max(1, len(choices))
-
-        # Check for generator field (legacy format)
-        generator = step.get("generator", {})
-        if generator.get("_or_"):
-            has_generators = True
-            step_multiplier *= len(generator["_or_"])
-        if generator.get("_range_"):
-            has_generators = True
-            r = generator["_range_"]
-            if len(r) >= 2:
-                step_val = r[2] if len(r) > 2 else 1
-                step_multiplier *= max(1, (r[1] - r[0]) // step_val + 1)
-
-        # Editor format: generatorKind with branches
-        step_type = step.get("type", "")
-        generator_kind = step.get("generatorKind")
-        branches = step.get("branches", [])
-
-        if step_type == "generator" and branches:
-            has_generators = True
-            # Count variants from branches
-            generator_options = step.get("generatorOptions", {})
-            pick = generator_options.get("pick")
-
-            if pick:
-                # Combinations C(n, k)
-                n = len(branches)
-                k = pick if isinstance(pick, int) else pick[1] if isinstance(pick, list) and len(pick) > 1 else 1
-                from math import comb
-                step_multiplier *= max(1, comb(n, min(k, n)))
-            else:
-                # Just count the branches (each is an alternative)
-                step_multiplier *= max(1, len(branches))
-
-            # Process each branch recursively
-            for branch in branches:
-                if isinstance(branch, list):
-                    for b_step in branch:
-                        sub_mult = estimate_from_step(b_step)
-                        if sub_mult > 1:
-                            step_multiplier *= sub_mult
-
-        # Check for stepGenerator (step-level _range_, etc.)
-        step_generator = step.get("stepGenerator", {})
-        if step_generator:
-            has_generators = True
-            gen_type = step_generator.get("type", "")
-            if gen_type == "_range_":
-                values = step_generator.get("values", [])
-                if len(values) >= 2:
-                    step_val = values[2] if len(values) > 2 else 1
-                    step_multiplier *= max(1, int((values[1] - values[0]) // step_val + 1))
-            elif gen_type == "_or_":
-                values = step_generator.get("values", [])
-                step_multiplier *= max(1, len(values))
-
-        # Check for children (container steps)
-        for child in step.get("children", []):
-            sub_mult = estimate_from_step(child)
-            if sub_mult > 1:
-                step_multiplier *= sub_mult
-
-        return step_multiplier
-
-    for step in steps:
-        step_mult = estimate_from_step(step)
-        multiplier *= step_mult
-
-    # Fallback fold count from cv_folds config or 1
-    fold_count = cv_folds if cv_folds and cv_folds > 1 else 1
-
-    # Simple branch count from branch steps
-    branch_count = 1
-    for step in steps:
-        if step.get("type") == "branch" and step.get("branches"):
-            branch_count *= len(step["branches"])
-
-    total_model_count = fold_count * branch_count * multiplier
-
-    # Build breakdown string
-    breakdown_parts = []
-    if fold_count > 1:
-        breakdown_parts.append(f"{fold_count} folds")
-    if branch_count > 1:
-        breakdown_parts.append(f"{branch_count} branches")
-    if multiplier > 1:
-        breakdown_parts.append(f"{multiplier} variants")
-
-    if breakdown_parts:
-        breakdown = " × ".join(breakdown_parts) + f" = {total_model_count} models"
-    else:
-        breakdown = f"{total_model_count} model" if total_model_count == 1 else f"{total_model_count} models"
-
+    from .nirs4all_adapter import build_full_pipeline
+    config = {"cv_folds": cv_folds} if cv_folds else {}
+    build_result = build_full_pipeline(steps, config)
     return PipelineEstimate(
-        estimated_variants=multiplier,
-        has_generators=has_generators,
-        fold_count=fold_count,
-        branch_count=branch_count,
-        total_model_count=total_model_count,
-        model_count_breakdown=breakdown,
+        estimated_variants=build_result.estimated_variants,
+        has_generators=build_result.has_generators,
+        fold_count=build_result.fold_count,
+        branch_count=build_result.branch_count,
+        total_model_count=build_result.total_model_count,
+        model_count_breakdown=build_result.model_count_breakdown,
     )
 
 

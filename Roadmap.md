@@ -1,38 +1,77 @@
 **Global**
 - Add multi target handling (select target(s) in run and pipeline; in playground, how to sort ? prediction viz (2d / 3d / pca ?), etc. )
 - clear console.log
-- Review the whole runs/predictions/results loading process with the right table in the parquet (see nirs4all parquet format extension)
+REVIEW: the whole runs/predictions/results loading process with the right table in the parquet (see nirs4all parquet format extension)
 - add the capabilities to browse predictions parquet directly. or workspaces also (for runs, results, predictions)
+- Infer CUDA/Macos et display GPU enabled. Pre configure lib install depending > torch gpu windows, tf torch jax linux, etc. Provides hints and clues visible for user.
+
 
 **Desktop**
 - Mouse wheel or zoom menu.
 - Resize to window size (it's too small on my big screen)
-- build problems
-- VERY VERY VERY SLOW
 
 **Dashboard**
 - think it as settings more than dashboard or simply remove
 
 **Settings**
-- Configure correctly workspace (1 tab instead of two, separate web app workspace and nirs4all workspace(s))
-- On update available put a distinctive markers on settings. When clicked it goes to update.
+
 
 **API**
-- verify that if functions shouldn't go to nirs4all (ie. umap)
+REVIEW: verify if functions shouldn't go to nirs4all (ie. umap)
 
 **Datasets**
+- Add multiple targets
 - Add drag n drop folder or files. Directly to create datasets, or into the dataset wizard. ANYWHERE IN THE APP.
 - ScrollBar in list of files in wizard
-- Add multiple targets
-- Test/train not kept after wizard. So no test in playground. It's weird.
-- by the way preview should allow to see all/test/or train
-- To ease futur dataviz, the initial loading process (and refresh) should store quantiles / min / max / etc.
-the page reload dataset each time, it should be cached
-- put the image that comes often also in cache (y histogram, spectra chart with quantiles, train/test/folds)
 - Enhance detailed view
 
+*Cache*
+- To ease futur dataviz, the initial loading process (and refresh) should store quantiles / min / max / etc.
+- The page reload dataset each time, it should be cached
+- put the image that comes often also in cache (y histogram, spectra chart with quantiles, train/test/folds)
+
+- Test/train not kept after wizard. So no test in playground. It's weird.
+- by the way preview should allow to see all/test/or train
+- Managing version and hash and update history
+
+*BUGS*
+- Datasetname as folder name per default
+- signal type should be autodetected
+- NA handling should allow keep NA
+- skip rows is useless
+- task type should disappear from parsing options. And go to target
+- Preview still failing: Preview failed: Row count mismatch: X(0) Y(48)
+
+- Parsing options: initial state != autodetect state. Ensure auto-detect work for all settings
+- Activation of per-file overrides should open the fold. And should allow auto-detect (if not automatic)
+--- Actually the auto detection should be per file and global if all files are compatible.
+- After parsing options, it should display shapes of csv
+- Task type as parsing option. Auto detect give a pre config that we can reset or redo.
+- Aggregation settings activated without metadata should propose the targets columns as aggregation key. The aggregation method should be explicit (it's for providing default scoring per sample) and should be conditionned by the type of task. Exlude outliers should be removed.
+- The load preview fails with all datasets
+- Here for targets and sources we should be able to switch the view.
+- Basically at preview the dataset is validated and the preview should be cached as "id card". Then they are recalculated only if the user do a refresh on the dataset.
+
+
+
+
 **Runs / Results**
-- Design role of both and what to focus on.
+REVIEW: - Design role of both and what to focus on.
+
+**Settings**
+- Add chinese
+- Remove animation do not work (it's actually worse)
+- Reduce ping to backend
+
+*Update/Package*
+REVIEW: Ensure the robustness of update mechanism
+- Reinstall lib in advanced. GPU / CPU version ?.
+- Display installation problem
+
+
+
+
+
 
 
 **Pipeline Builder**
@@ -51,6 +90,13 @@ the page reload dataset each time, it should be cached
 - Add documentation and link to rtd for steps
 - Add pipeline diagram preview when dataset is linked. Allow direct run creation with dataset linked. Validate shape when run or diagram.
 - Review Seed.
+
+
+
+
+
+
+
 
 
 **Playground**
@@ -119,10 +165,3 @@ the page reload dataset each time, it should be cached
 - combobox to icons for number of bars
 - allow to choose targerts if multiple targets
 
-**Settings**
-- Add chinese
-- Remove animation do not work (it's actually worse)
-- Unify / clean / specify / distinguish nirs4all workspaces and app settings folder.
-- Reinstall lib in advanced. GPU / CPU version ?.
-- Reduce pin to backend
-- Display installation problem

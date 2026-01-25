@@ -138,6 +138,55 @@ backend_server = None
 class Api:
     """API class to expose Python functions to JavaScript."""
 
+    def resize_window(self, width: int, height: int):
+        """Resize the window to specified dimensions."""
+        global window
+        if window:
+            window.resize(width, height)
+            return True
+        return False
+
+    def minimize_window(self):
+        """Minimize the window."""
+        global window
+        if window:
+            window.minimize()
+            return True
+        return False
+
+    def maximize_window(self):
+        """Toggle maximize/restore the window."""
+        global window
+        if window:
+            # pywebview doesn't have a direct maximize method, use toggle_fullscreen
+            # or resize to screen size
+            try:
+                window.toggle_fullscreen()
+            except AttributeError:
+                # Fallback: try to get screen size and resize
+                pass
+            return True
+        return False
+
+    def restore_window(self):
+        """Restore the window from minimized/maximized state."""
+        global window
+        if window:
+            window.restore()
+            return True
+        return False
+
+    def get_window_size(self):
+        """Get current window size."""
+        global window
+        if window:
+            return {"width": window.width, "height": window.height}
+        return None
+
+    def is_desktop_mode(self):
+        """Check if running in desktop mode (pywebview)."""
+        return True
+
     def select_folder(self):
         """Open native folder picker dialog."""
         global window
@@ -306,6 +355,28 @@ def main():
                     print(f"Waiting... ({i + 1}/{max_retries})")
                 continue
 
+    # Wait for Vite dev server to be ready (when launched directly with VITE_DEV=true)
+    if is_dev:
+        import urllib.request
+
+        print("Waiting for Vite dev server...")
+        max_retries = 30  # Vite can take longer on first compile
+        for i in range(max_retries):
+            try:
+                response = urllib.request.urlopen("http://127.0.0.1:5173", timeout=2)
+                html = response.read().decode("utf-8", errors="ignore")
+                # Verify Vite has finished compiling (page contains the root div)
+                if '<div id="root">' in html:
+                    print("Vite dev server ready!")
+                    break
+                # Page responding but not fully compiled yet
+                print(f"Vite compiling... ({i + 1}/{max_retries})")
+            except Exception:
+                print(f"Waiting for Vite... ({i + 1}/{max_retries})")
+            time.sleep(0.5)
+        else:
+            print("Warning: Vite dev server may not be fully ready")
+
     print(f"Opening application window (backend_ready={backend_ready})...")
 
     url = get_url()
@@ -346,7 +417,16 @@ def main():
         "fullscreen": False,
         "min_size": (1024, 768),
         "js_api": api,
+        "easy_drag": False,  # Don't use easy drag - it can interfere with normal interactions
     }
+
+    # On Linux/WSL, explicitly set frameless to False to ensure native window decorations
+    system = platform.system().lower()
+    if system == "linux":
+        create_kwargs["frameless"] = False
+        if is_wsl():
+            # WSL2/WSLg may need additional hints for proper window decoration
+            print("[launcher] Running on WSL2 - using native window decorations")
 
     if icon_path:
         try:

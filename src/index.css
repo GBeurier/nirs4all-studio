@@ -120,19 +120,6 @@
     scroll-behavior: auto !important;
   }
 
-  /* UI Zoom - Global zoom levels for desktop mode */
-  :root {
-    --ui-zoom: 1;
-  }
-
-  .zoom-75 { font-size: 75%; }
-  .zoom-80 { font-size: 80%; }
-  .zoom-90 { font-size: 90%; }
-  .zoom-100 { font-size: 100%; }
-  .zoom-110 { font-size: 110%; }
-  .zoom-125 { font-size: 125%; }
-  .zoom-150 { font-size: 150%; }
-
   .dark {
     /* Core palette - Dark scientific theme */
     --background: 222 47% 6%;
@@ -201,10 +188,29 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: "Inter", system-ui, sans-serif;
+    font-size: var(--density-font-size);
+    line-height: var(--density-line-height);
   }
 
   .font-mono {
     font-family: "JetBrains Mono", monospace;
+  }
+
+  /* Apply density to common elements */
+  h1 {
+    font-size: calc(var(--density-font-size) * 1.75);
+  }
+
+  h2 {
+    font-size: calc(var(--density-font-size) * 1.5);
+  }
+
+  h3 {
+    font-size: calc(var(--density-font-size) * 1.25);
+  }
+
+  p {
+    margin-bottom: var(--density-spacing-sm);
   }
 }
 
@@ -212,6 +218,7 @@
   .glass-card {
     @apply rounded-xl border border-border/50;
     background: var(--glass-bg);
+    padding: var(--density-padding-card);
     /* backdrop-filter disabled - causes severe performance issues in Firefox */
     /* backdrop-filter: blur(12px); */
   }
@@ -234,7 +241,8 @@
   }
 
   .step-card {
-    @apply relative overflow-hidden rounded-lg border border-border/60 bg-card p-4 transition-all duration-300;
+    @apply relative overflow-hidden rounded-lg border border-border/60 bg-card transition-all duration-300;
+    padding: var(--density-padding-card);
   }
 
   .step-card:hover {
@@ -243,12 +251,14 @@
   }
 
   .data-grid {
-    @apply font-mono text-sm;
+    @apply font-mono;
+    font-size: var(--density-font-size);
   }
 
   /* Stats card styling */
   .stats-card {
-    @apply relative overflow-hidden rounded-xl border border-border/50 bg-card p-6 transition-all duration-300;
+    @apply relative overflow-hidden rounded-xl border border-border/50 bg-card transition-all duration-300;
+    padding: var(--density-padding-card);
   }
 
   .stats-card:hover {
@@ -259,7 +269,9 @@
 
   /* Quick action card styling */
   .action-card {
-    @apply flex flex-col items-center justify-center gap-3 rounded-xl border border-border/50 bg-card p-6 cursor-pointer transition-all duration-300;
+    @apply flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card cursor-pointer transition-all duration-300;
+    padding: var(--density-padding-card);
+    gap: var(--density-gap);
   }
 
   .action-card:hover {
@@ -312,6 +324,86 @@
   }
 }
 
+/* ================================================
+   Density-aware component overrides
+   Apply density CSS variables to shadcn components
+   ================================================ */
+
+/* Card components - density-aware padding */
+:root:not(.density-comfortable) [data-slot="card-header"],
+:root:not(.density-comfortable) .card-header-density {
+  padding: var(--density-padding-card);
+  padding-bottom: 0;
+}
+
+:root:not(.density-comfortable) [data-slot="card-content"],
+:root:not(.density-comfortable) .card-content-density {
+  padding: var(--density-padding-card);
+  padding-top: var(--density-spacing-sm);
+}
+
+:root:not(.density-comfortable) [data-slot="card-footer"],
+:root:not(.density-comfortable) .card-footer-density {
+  padding: var(--density-padding-card);
+  padding-top: 0;
+}
+
+/* Space-y adjustments based on density */
+.density-compact .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(var(--density-spacing-lg) * (1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(var(--density-spacing-lg) * var(--tw-space-y-reverse));
+}
+
+.density-compact .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(var(--density-spacing-md) * (1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(var(--density-spacing-md) * var(--tw-space-y-reverse));
+}
+
+.density-spacious .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(var(--density-spacing-xl) * (1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(var(--density-spacing-xl) * var(--tw-space-y-reverse));
+}
+
+.density-spacious .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(var(--density-spacing-lg) * (1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(var(--density-spacing-lg) * var(--tw-space-y-reverse));
+}
+
+/* Gap adjustments based on density */
+.density-compact .gap-2 { gap: var(--density-spacing-xs); }
+.density-compact .gap-3 { gap: var(--density-spacing-sm); }
+.density-compact .gap-4 { gap: var(--density-spacing-sm); }
+.density-compact .gap-6 { gap: var(--density-spacing-md); }
+
+.density-spacious .gap-2 { gap: var(--density-spacing-sm); }
+.density-spacious .gap-3 { gap: var(--density-spacing-md); }
+.density-spacious .gap-4 { gap: var(--density-spacing-md); }
+.density-spacious .gap-6 { gap: var(--density-spacing-lg); }
+
+/* Padding adjustments for common patterns */
+.density-compact .p-4 { padding: var(--density-spacing-md); }
+.density-compact .p-6 { padding: var(--density-padding-card); }
+.density-compact .px-4 { padding-left: var(--density-spacing-md); padding-right: var(--density-spacing-md); }
+.density-compact .py-2 { padding-top: var(--density-spacing-sm); padding-bottom: var(--density-spacing-sm); }
+
+.density-spacious .p-4 { padding: var(--density-spacing-lg); }
+.density-spacious .p-6 { padding: var(--density-padding-card); }
+.density-spacious .px-4 { padding-left: var(--density-spacing-lg); padding-right: var(--density-spacing-lg); }
+.density-spacious .py-2 { padding-top: var(--density-spacing-sm); padding-bottom: var(--density-spacing-sm); }
+
+/* Text size adjustments based on density */
+.density-compact .text-sm { font-size: calc(var(--density-font-size) * 0.9); }
+.density-compact .text-xs { font-size: calc(var(--density-font-size) * 0.75); }
+.density-compact .text-2xl { font-size: calc(var(--density-font-size) * 1.5); }
+
+.density-spacious .text-sm { font-size: var(--density-font-size); }
+.density-spacious .text-xs { font-size: calc(var(--density-font-size) * 0.85); }
+.density-spacious .text-2xl { font-size: calc(var(--density-font-size) * 1.75); }
+
 /* Custom scrollbar - adapts to theme */
 ::-webkit-scrollbar {
   width: 8px;
@@ -360,4 +452,68 @@ body.dragging * {
 
 .drop-zone-active {
   animation: dropZonePulse 1s ease-in-out infinite;
+}
+
+/* ================================================
+   UI Zoom - Global zoom levels
+   IMPORTANT: This must be OUTSIDE @layer for proper specificity.
+   Uses CSS zoom property which scales the entire UI proportionally.
+   Note: CSS zoom is widely supported (Chrome, Edge, Safari, Firefox 126+)
+   ================================================ */
+
+/* CSS variable for programmatic access */
+:root {
+  --ui-zoom: 1;
+}
+
+/* Apply zoom to html element - scales entire document */
+html.zoom-75 { zoom: 0.75 !important; }
+html.zoom-80 { zoom: 0.80 !important; }
+html.zoom-90 { zoom: 0.90 !important; }
+html.zoom-100 { zoom: 1 !important; }
+html.zoom-110 { zoom: 1.10 !important; }
+html.zoom-125 { zoom: 1.25 !important; }
+html.zoom-150 { zoom: 1.50 !important; }
+
+/* Fallback for browsers that don't support CSS zoom (older Firefox pre-126) */
+@supports not (zoom: 1) {
+  html.zoom-75 {
+    transform: scale(0.75) !important;
+    transform-origin: top left;
+    width: 133.33vw;
+    min-height: 133.33vh;
+  }
+  html.zoom-80 {
+    transform: scale(0.80) !important;
+    transform-origin: top left;
+    width: 125vw;
+    min-height: 125vh;
+  }
+  html.zoom-90 {
+    transform: scale(0.90) !important;
+    transform-origin: top left;
+    width: 111.11vw;
+    min-height: 111.11vh;
+  }
+  html.zoom-100 {
+    transform: scale(1) !important;
+  }
+  html.zoom-110 {
+    transform: scale(1.10) !important;
+    transform-origin: top left;
+    width: 90.91vw;
+    overflow-x: hidden;
+  }
+  html.zoom-125 {
+    transform: scale(1.25) !important;
+    transform-origin: top left;
+    width: 80vw;
+    overflow-x: hidden;
+  }
+  html.zoom-150 {
+    transform: scale(1.50) !important;
+    transform-origin: top left;
+    width: 66.67vw;
+    overflow-x: hidden;
+  }
 }

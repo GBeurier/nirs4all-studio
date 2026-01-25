@@ -2,20 +2,21 @@
 Spectra API routes for nirs4all webapp.
 
 This module provides FastAPI routes for accessing spectral data from datasets,
-including raw spectra, processed spectra, statistics, and outlier detection.
+including raw spectra, processed spectra, and statistics.
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .workspace_manager import workspace_manager
+from .shared.pipeline_service import instantiate_operator
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -24,8 +25,6 @@ if str(nirs4all_path) not in sys.path:
 
 try:
     from nirs4all.data.dataset import SpectroDataset
-    from nirs4all.data.loaders.loader import handle_data
-    from nirs4all.data.config_parser import parse_config
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -41,14 +40,6 @@ class SpectraRequest(BaseModel):
 
     preprocessing_chain: List[Dict[str, Any]] = []
     indices: Optional[List[int]] = None
-    partition: str = "train"
-
-
-class OutlierRequest(BaseModel):
-    """Request model for outlier detection."""
-
-    method: str = "isolation_forest"
-    params: Dict[str, Any] = {}
     partition: str = "train"
 
 
@@ -631,177 +622,30 @@ async def get_spectra_statistics(
         )
 
 
-@router.post("/spectra/{dataset_id}/outliers")
-async def detect_outliers(dataset_id: str, request: OutlierRequest):
-    """
-    Detect outliers in spectral data.
-
-    Supports multiple outlier detection methods:
-    - isolation_forest: Isolation Forest algorithm
-    - local_outlier_factor: Local Outlier Factor
-    - elliptic_envelope: Elliptic Envelope (Mahalanobis distance)
-    - hotelling_t2: Hotelling's T² statistic
-    """
-    if not NIRS4ALL_AVAILABLE:
-        raise HTTPException(
-            status_code=501, detail="nirs4all library not available for outlier detection"
-        )
-
-    dataset = _load_dataset(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
-
-    try:
-        selector = {"partition": request.partition}
-        X = dataset.x(selector, layout="2d")
-
-        if isinstance(X, list):
-            X = X[0]
-
-        outlier_mask = np.zeros(X.shape[0], dtype=bool)
-        scores = np.zeros(X.shape[0])
-
-        if request.method == "isolation_forest":
-            from sklearn.ensemble import IsolationForest
-
-            contamination = request.params.get("contamination", 0.1)
-            clf = IsolationForest(contamination=contamination, random_state=42)
-            predictions = clf.fit_predict(X)
-            outlier_mask = predictions == -1
-            scores = -clf.decision_function(X)  # Higher score = more outlier-like
-
-        elif request.method == "local_outlier_factor":
-            from sklearn.neighbors import LocalOutlierFactor
-
-            n_neighbors = request.params.get("n_neighbors", 20)
-            contamination = request.params.get("contamination", 0.1)
-            clf = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
-            predictions = clf.fit_predict(X)
-            outlier_mask = predictions == -1
-            scores = -clf.negative_outlier_factor_
-
-        elif request.method == "elliptic_envelope":
-            from sklearn.covariance import EllipticEnvelope
-
-            contamination = request.params.get("contamination", 0.1)
-            clf = EllipticEnvelope(contamination=contamination, random_state=42)
-            predictions = clf.fit_predict(X)
-            outlier_mask = predictions == -1
-            scores = -clf.decision_function(X)
-
-        elif request.method == "hotelling_t2":
-            # Hotelling's T² using PCA
-            from sklearn.decomposition import PCA
-
-            n_components = request.params.get("n_components", min(10, X.shape[1], X.shape[0]))
-            threshold = request.params.get("threshold", 0.95)
-
-            pca = PCA(n_components=n_components)
-            X_pca = pca.fit_transform(X)
-
-            # Compute T² statistic
-            mean = np.mean(X_pca, axis=0)
-            cov_inv = np.linalg.pinv(np.cov(X_pca.T))
-            t2_scores = np.array(
-                [
-                    (x - mean).T @ cov_inv @ (x - mean)
-                    for x in X_pca
-                ]
-            )
-            scores = t2_scores
-
-            # Determine threshold using chi-squared distribution
-            from scipy import stats
-
-            chi2_threshold = stats.chi2.ppf(threshold, df=n_components)
-            outlier_mask = t2_scores > chi2_threshold
-
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown outlier detection method: {request.method}. "
-                "Supported: isolation_forest, local_outlier_factor, elliptic_envelope, hotelling_t2",
-            )
-
-        outlier_indices = np.where(outlier_mask)[0].tolist()
-
-        return {
-            "dataset_id": dataset_id,
-            "partition": request.partition,
-            "method": request.method,
-            "params": request.params,
-            "total_samples": X.shape[0],
-            "num_outliers": int(outlier_mask.sum()),
-            "outlier_indices": outlier_indices,
-            "scores": scores.tolist(),
-            "outlier_mask": outlier_mask.tolist(),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to detect outliers: {str(e)}")
-
-
 def _apply_preprocessing_chain(X: np.ndarray, chain: List[Dict[str, Any]]) -> np.ndarray:
-    """Apply a chain of preprocessing steps to spectral data."""
+    """Apply a chain of preprocessing steps to spectral data.
+
+    Uses shared pipeline_service for operator resolution to avoid duplicating
+    the transformer mapping logic.
+    """
     if not NIRS4ALL_AVAILABLE:
         return X
 
-    try:
-        from nirs4all.operators import transforms
+    for step in chain:
+        name = step.get("name", "")
+        params = step.get("params", {})
 
-        for step in chain:
-            name = step.get("name", "")
-            params = step.get("params", {})
+        if not name:
+            continue
 
-            # Map common names to nirs4all transformers
-            transformer_map = {
-                "snv": transforms.StandardNormalVariate,
-                "standardnormalvariate": transforms.StandardNormalVariate,
-                "msc": transforms.MultiplicativeScatterCorrection,
-                "savitzkygolay": transforms.SavitzkyGolay,
-                "savgol": transforms.SavitzkyGolay,
-                "firstderivative": transforms.FirstDerivative,
-                "secondderivative": transforms.SecondDerivative,
-                "detrend": transforms.Detrend,
-                "gaussian": transforms.Gaussian,
-                "baseline": transforms.Baseline,
-                "normalize": transforms.Normalize,
-                "logtransform": transforms.LogTransform,
-            }
-
-            # Also try sklearn transformers
-            sklearn_map = {
-                "standardscaler": "sklearn.preprocessing.StandardScaler",
-                "minmaxscaler": "sklearn.preprocessing.MinMaxScaler",
-                "robustscaler": "sklearn.preprocessing.RobustScaler",
-            }
-
-            name_lower = name.lower().replace("_", "").replace("-", "")
-
-            if name_lower in transformer_map:
-                transformer_cls = transformer_map[name_lower]
-                transformer = transformer_cls(**params)
-                X = transformer.fit_transform(X)
-            elif name_lower in sklearn_map:
-                import importlib
-
-                module_path, class_name = sklearn_map[name_lower].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                transformer_cls = getattr(module, class_name)
-                transformer = transformer_cls(**params)
+        try:
+            # Use shared pipeline service for operator resolution
+            transformer = instantiate_operator(name, params, operator_type="preprocessing")
+            if transformer is not None:
                 X = transformer.fit_transform(X)
             else:
-                # Try to find transformer by name in nirs4all.operators.transforms
-                transformer_cls = getattr(transforms, name, None)
-                if transformer_cls:
-                    transformer = transformer_cls(**params)
-                    X = transformer.fit_transform(X)
-                else:
-                    print(f"Warning: Unknown preprocessing step '{name}', skipping")
-
-    except Exception as e:
-        print(f"Error applying preprocessing chain: {e}")
+                print(f"Warning: Unknown preprocessing step '{name}', skipping")
+        except Exception as e:
+            print(f"Warning: Failed to apply preprocessing step '{name}': {e}")
 
     return X

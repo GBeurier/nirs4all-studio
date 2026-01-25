@@ -22,7 +22,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager, WorkspaceConfig, LinkedWorkspace, WorkspaceScanner
+from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
 
 

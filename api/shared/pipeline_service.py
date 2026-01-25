@@ -3,13 +3,16 @@ Pipeline service utilities shared between playground and preprocessing APIs.
 
 This module provides unified operator resolution and conversion functions
 that are used by both the playground and preprocessing endpoints.
+
+Uses dynamic introspection of nirs4all operators instead of hardcoded mappings.
 """
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type
 import importlib
 import inspect
+import re
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent.parent / "nirs4all"
@@ -21,6 +24,7 @@ try:
     from nirs4all.operators import splitters as nirs_splitters
     from nirs4all.operators.augmentation import spectral as augmentation_spectral
     from nirs4all.operators.augmentation import random as augmentation_random
+    from sklearn.base import TransformerMixin
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -30,84 +34,137 @@ except ImportError as e:
     nirs_splitters = None
     augmentation_spectral = None
     augmentation_random = None
+    TransformerMixin = None
 
 
-# Mapping of frontend operator names to nirs4all/sklearn classes
-PREPROCESSING_CLASS_MAP: Dict[str, str] = {
-    # Scatter correction
-    "snv": "StandardNormalVariate",
-    "standardnormalvariate": "StandardNormalVariate",
-    "msc": "MultiplicativeScatterCorrection",
-    "multiplicativescattercorrection": "MultiplicativeScatterCorrection",
-    # Derivatives
-    "savitzkygolay": "SavitzkyGolay",
-    "savgol": "SavitzkyGolay",
-    "firstderivative": "FirstDerivative",
-    "secondderivative": "SecondDerivative",
-    "derivate": "Derivate",
-    # Smoothing
-    "gaussian": "Gaussian",
-    "movingaverage": "MovingAverage",
-    # Baseline
-    "baseline": "Baseline",
-    "detrend": "Detrend",
-    "aslsbaseline": "ASLSBaseline",
-    "airpls": "AirPLS",
-    "arpls": "ArPLS",
-    "snip": "SNIP",
-    # Scaling
-    "normalize": "Normalize",
-    "standardscaler": "StandardScaler",
-    "minmaxscaler": "MinMaxScaler",
-    "robustscaler": "RobustScaler",
-    # Features
-    "croptransformer": "CropTransformer",
-    "resampler": "Resampler",
-    "resampletransformer": "ResampleTransformer",
-    # Conversion
-    "logtransform": "LogTransform",
-    "reflectancetoabsorbance": "ReflectanceToAbsorbance",
-    # Wavelets
-    "haar": "Haar",
-    "wavelet": "Wavelet",
-    "waveletpca": "WaveletPCA",
-}
+# Cache for dynamically discovered operators
+_preprocessing_cache: Optional[Dict[str, Type]] = None
+_splitter_cache: Optional[Dict[str, Tuple[str, str]]] = None
 
-# Mapping of frontend splitter names to sklearn/nirs4all classes
-SPLITTER_CLASS_MAP: Dict[str, Tuple[str, str]] = {
+
+def _build_preprocessing_cache() -> Dict[str, Type]:
+    """Build cache of preprocessing operators from nirs4all.operators.transforms.
+
+    Uses the module's __all__ exports and TransformerMixin detection for discovery.
+    Also includes common abbreviation aliases for user convenience.
+
+    Returns:
+        Dict mapping lowercase names to operator classes
+    """
+    cache = {}
+
+    if not NIRS4ALL_AVAILABLE or transforms is None:
+        return cache
+
+    # Common abbreviation aliases for user convenience
+    # Maps lowercase alias -> full class name (also lowercase)
+    common_aliases = {
+        "snv": "standardnormalvariate",
+        "msc": "multiplicativescattercorrection",
+        "savgol": "savitzkygolay",
+    }
+
+    # Get all exported names from transforms module
+    exported_names = getattr(transforms, "__all__", [])
+
+    for name in exported_names:
+        obj = getattr(transforms, name, None)
+        if obj is None:
+            continue
+
+        # Only include classes that are transformers
+        if not inspect.isclass(obj):
+            continue
+
+        if not hasattr(obj, "fit_transform"):
+            continue
+
+        # Add with multiple key variants for flexible lookup
+        cache[name.lower()] = obj
+        # Also add without common suffixes
+        name_normalized = name.lower().replace("_", "").replace("-", "")
+        cache[name_normalized] = obj
+
+    # Add common aliases pointing to their full class names
+    for alias, full_name in common_aliases.items():
+        if full_name in cache:
+            cache[alias] = cache[full_name]
+
+    # Add sklearn scalers
+    sklearn_scalers = [
+        ("sklearn.preprocessing", "StandardScaler"),
+        ("sklearn.preprocessing", "MinMaxScaler"),
+        ("sklearn.preprocessing", "RobustScaler"),
+    ]
+
+    for module_path, class_name in sklearn_scalers:
+        try:
+            module = importlib.import_module(module_path)
+            obj = getattr(module, class_name, None)
+            if obj:
+                cache[class_name.lower()] = obj
+        except ImportError:
+            pass
+
+    return cache
+
+
+def _build_splitter_cache() -> Dict[str, Tuple[str, str]]:
+    """Build cache of splitter operators from sklearn and nirs4all.
+
+    Returns:
+        Dict mapping lowercase names to (module_path, class_name) tuples
+    """
+    cache = {}
+
     # sklearn splitters
-    "kfold": ("sklearn.model_selection", "KFold"),
-    "stratifiedkfold": ("sklearn.model_selection", "StratifiedKFold"),
-    "groupkfold": ("sklearn.model_selection", "GroupKFold"),
-    "shufflesplit": ("sklearn.model_selection", "ShuffleSplit"),
-    "stratifiedshufflesplit": ("sklearn.model_selection", "StratifiedShuffleSplit"),
-    "groupshufflesplit": ("sklearn.model_selection", "GroupShuffleSplit"),
-    "leaveoneout": ("sklearn.model_selection", "LeaveOneOut"),
-    "leavepgroupsout": ("sklearn.model_selection", "LeavePGroupsOut"),
-    "timeseriessplit": ("sklearn.model_selection", "TimeSeriesSplit"),
-    # nirs4all splitters
-    "kennardstone": ("nirs4all.operators.splitters", "KennardStoneSplitter"),
-    "kennardstonesplitter": ("nirs4all.operators.splitters", "KennardStoneSplitter"),
-    "spxy": ("nirs4all.operators.splitters", "SPXYSplitter"),
-    "spxysplitter": ("nirs4all.operators.splitters", "SPXYSplitter"),
-    "spxygfold": ("nirs4all.operators.splitters", "SPXYGFold"),
-    "kmeanssplitter": ("nirs4all.operators.splitters", "KMeansSplitter"),
-    "binnedstratifiedgroupkfold": ("nirs4all.operators.splitters", "BinnedStratifiedGroupKFold"),
-}
+    sklearn_splitters = [
+        "KFold", "StratifiedKFold", "GroupKFold",
+        "ShuffleSplit", "StratifiedShuffleSplit", "GroupShuffleSplit",
+        "LeaveOneOut", "LeavePGroupsOut", "TimeSeriesSplit",
+    ]
 
-# sklearn scalers that need special import
-SKLEARN_SCALERS = {
-    "StandardScaler": ("sklearn.preprocessing", "StandardScaler"),
-    "MinMaxScaler": ("sklearn.preprocessing", "MinMaxScaler"),
-    "RobustScaler": ("sklearn.preprocessing", "RobustScaler"),
-}
+    for name in sklearn_splitters:
+        key = name.lower().replace("_", "")
+        cache[key] = ("sklearn.model_selection", name)
+
+    # nirs4all splitters - use module's __all__ exports
+    if nirs_splitters is not None:
+        exported_names = getattr(nirs_splitters, "__all__", [])
+        for name in exported_names:
+            obj = getattr(nirs_splitters, name, None)
+            if obj is None or not inspect.isclass(obj):
+                continue
+            # Check if it has a split method (splitter interface)
+            if not hasattr(obj, "split"):
+                continue
+            key = name.lower().replace("_", "")
+            cache[key] = ("nirs4all.operators.splitters", name)
+
+    return cache
+
+
+def _get_preprocessing_cache() -> Dict[str, Type]:
+    """Get or build preprocessing operator cache."""
+    global _preprocessing_cache
+    if _preprocessing_cache is None:
+        _preprocessing_cache = _build_preprocessing_cache()
+    return _preprocessing_cache
+
+
+def _get_splitter_cache() -> Dict[str, Tuple[str, str]]:
+    """Get or build splitter operator cache."""
+    global _splitter_cache
+    if _splitter_cache is None:
+        _splitter_cache = _build_splitter_cache()
+    return _splitter_cache
 
 
 def resolve_operator(
     name: str,
     operator_type: str = "preprocessing"
 ) -> Optional[Type]:
-    """Resolve an operator name to its class.
+    """Resolve an operator name to its class using dynamic introspection.
 
     Args:
         name: Operator name (case-insensitive)
@@ -119,12 +176,14 @@ def resolve_operator(
     if not NIRS4ALL_AVAILABLE:
         return None
 
-    name_lower = name.lower().replace("_", "").replace("-", "")
+    name_normalized = name.lower().replace("_", "").replace("-", "")
 
     if operator_type == "splitting":
-        # Try splitter class map
-        if name_lower in SPLITTER_CLASS_MAP:
-            module_path, class_name = SPLITTER_CLASS_MAP[name_lower]
+        cache = _get_splitter_cache()
+
+        # Try normalized name in cache
+        if name_normalized in cache:
+            module_path, class_name = cache[name_normalized]
             try:
                 module = importlib.import_module(module_path)
                 return getattr(module, class_name, None)
@@ -140,7 +199,7 @@ def resolve_operator(
         except ImportError:
             pass
 
-        # Try nirs4all splitters
+        # Try nirs4all splitters direct lookup
         if nirs_splitters:
             splitter_cls = getattr(nirs_splitters, name, None)
             if splitter_cls:
@@ -149,24 +208,19 @@ def resolve_operator(
         return None
 
     else:  # preprocessing
-        # Try preprocessing class map
-        if name_lower in PREPROCESSING_CLASS_MAP:
-            resolved_name = PREPROCESSING_CLASS_MAP[name_lower]
-        else:
-            resolved_name = name
+        cache = _get_preprocessing_cache()
 
-        # Check sklearn scalers first
-        if resolved_name in SKLEARN_SCALERS:
-            module_path, class_name = SKLEARN_SCALERS[resolved_name]
-            try:
-                module = importlib.import_module(module_path)
-                return getattr(module, class_name, None)
-            except ImportError:
-                return None
+        # Try normalized name in cache
+        if name_normalized in cache:
+            return cache[name_normalized]
 
-        # Try nirs4all transforms
+        # Try exact name match
+        if name.lower() in cache:
+            return cache[name.lower()]
+
+        # Try direct lookup from transforms module
         if transforms:
-            transformer_cls = getattr(transforms, resolved_name, None)
+            transformer_cls = getattr(transforms, name, None)
             if transformer_cls:
                 return transformer_cls
 
@@ -234,7 +288,7 @@ def instantiate_operator(
 
     try:
         return operator_cls(**params)
-    except TypeError as e:
+    except TypeError:
         # Try without invalid params
         valid_params = get_valid_params(operator_cls, params)
         try:
@@ -280,6 +334,8 @@ def validate_step_params(
 ) -> Tuple[bool, List[str], List[str]]:
     """Validate parameters for an operator.
 
+    Uses dynamic introspection to validate operator parameters.
+
     Args:
         name: Operator class name
         params: Parameters to validate
@@ -296,7 +352,7 @@ def validate_step_params(
         errors.append(f"Unknown {operator_type} operator: {name}")
         return False, errors, warnings
 
-    # Get valid parameter names
+    # Get valid parameter names via introspection
     try:
         sig = inspect.signature(operator_cls.__init__)
         valid_params = set(sig.parameters.keys()) - {"self"}
@@ -327,6 +383,8 @@ def validate_step_params(
 def get_preprocessing_methods() -> List[Dict[str, Any]]:
     """Get list of available preprocessing methods with metadata.
 
+    Uses dynamic introspection of nirs4all.operators.transforms module.
+
     Returns:
         List of method info dicts with name, display_name, category, params
     """
@@ -334,31 +392,46 @@ def get_preprocessing_methods() -> List[Dict[str, Any]]:
         return []
 
     methods = []
+    seen_names = set()
 
-    # Scan nirs4all.operators.transforms
-    for name in dir(transforms):
+    # Scan nirs4all.operators.transforms using __all__ exports
+    exported_names = getattr(transforms, "__all__", [])
+
+    for name in exported_names:
         if name.startswith("_"):
             continue
 
-        obj = getattr(transforms, name)
-        if not inspect.isclass(obj):
+        obj = getattr(transforms, name, None)
+        if obj is None or not inspect.isclass(obj):
             continue
 
         # Check if it's a transformer
         if not hasattr(obj, "fit_transform"):
             continue
 
+        # Skip duplicates
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+
         # Extract method info
         method_info = _extract_method_info(obj, name, "preprocessing")
         if method_info:
+            method_info["source"] = "nirs4all"
             methods.append(method_info)
 
     # Add sklearn scalers
-    for name, (module_path, class_name) in SKLEARN_SCALERS.items():
+    sklearn_scalers = [
+        ("sklearn.preprocessing", "StandardScaler"),
+        ("sklearn.preprocessing", "MinMaxScaler"),
+        ("sklearn.preprocessing", "RobustScaler"),
+    ]
+
+    for module_path, class_name in sklearn_scalers:
         try:
             module = importlib.import_module(module_path)
             obj = getattr(module, class_name)
-            method_info = _extract_method_info(obj, name, "preprocessing")
+            method_info = _extract_method_info(obj, class_name, "preprocessing")
             if method_info:
                 method_info["source"] = "sklearn"
                 methods.append(method_info)
@@ -370,6 +443,8 @@ def get_preprocessing_methods() -> List[Dict[str, Any]]:
 
 def get_splitter_methods() -> List[Dict[str, Any]]:
     """Get list of available splitter methods with metadata.
+
+    Uses dynamic introspection of sklearn and nirs4all splitter modules.
 
     Returns:
         List of method info dicts with name, display_name, category, params
@@ -396,20 +471,22 @@ def get_splitter_methods() -> List[Dict[str, Any]]:
     except ImportError:
         pass
 
-    # nirs4all splitters
+    # nirs4all splitters - use __all__ exports for dynamic discovery
     if nirs_splitters:
-        nirs_splitter_names = [
-            "KennardStoneSplitter", "SPXYSplitter", "SPXYGFold",
-            "KMeansSplitter", "BinnedStratifiedGroupKFold",
-        ]
+        exported_names = getattr(nirs_splitters, "__all__", [])
 
-        for name in nirs_splitter_names:
+        for name in exported_names:
             obj = getattr(nirs_splitters, name, None)
-            if obj:
-                method_info = _extract_method_info(obj, name, "splitting")
-                if method_info:
-                    method_info["source"] = "nirs4all"
-                    methods.append(method_info)
+            if obj is None or not inspect.isclass(obj):
+                continue
+            # Check if it has a split method
+            if not hasattr(obj, "split"):
+                continue
+
+            method_info = _extract_method_info(obj, name, "splitting")
+            if method_info:
+                method_info["source"] = "nirs4all"
+                methods.append(method_info)
 
     return methods
 
@@ -438,12 +515,15 @@ def get_augmentation_methods() -> List[Dict[str, Any]]:
         if module is None:
             continue
 
-        for name in dir(module):
+        # Use __all__ if available, otherwise scan module
+        exported_names = getattr(module, "__all__", dir(module))
+
+        for name in exported_names:
             if name.startswith("_"):
                 continue
 
-            obj = getattr(module, name)
-            if not inspect.isclass(obj):
+            obj = getattr(module, name, None)
+            if obj is None or not inspect.isclass(obj):
                 continue
 
             # Check if it's an augmenter (has augment or fit_transform method)
@@ -593,8 +673,6 @@ def _categorize_operator(name: str, operator_type: str) -> str:
 
 def _to_display_name(name: str) -> str:
     """Convert class name to human-readable display name."""
-    import re
-
     # Handle common abbreviations
     abbreviations = {
         "SNV": "SNV",

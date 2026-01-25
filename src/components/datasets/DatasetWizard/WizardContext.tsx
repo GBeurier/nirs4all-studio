@@ -14,11 +14,10 @@ import type {
   TaskType,
   AggregationConfig,
   PreviewDataResponse,
+  DetectionConfidence,
   // Advanced configuration types
   MultiSourceConfig,
-  PartitionConfig,
   FoldConfig,
-  VariationsConfig,
 } from "@/types/datasets";
 import { getDataLoadingDefaults } from "@/api/client";
 import type { DataLoadingDefaults } from "@/types/settings";
@@ -30,7 +29,7 @@ const SYSTEM_DEFAULT_PARSING: ParsingOptions = {
   has_header: true,
   header_unit: "cm-1",
   signal_type: "auto",
-  na_policy: "drop",
+  na_policy: "keep",
 };
 
 // Convert DataLoadingDefaults to ParsingOptions
@@ -49,12 +48,6 @@ function convertDefaultsToParsing(defaults: DataLoadingDefaults): ParsingOptions
 const DEFAULT_AGGREGATION: AggregationConfig = {
   enabled: false,
   method: "mean",
-  exclude_outliers: false,
-};
-
-// Default partition (file-based - default behavior)
-const DEFAULT_PARTITION: PartitionConfig = {
-  method: "files",
 };
 
 // Initial state factory (needs defaults parameter)
@@ -73,11 +66,20 @@ const createInitialState = (parsing: ParsingOptions): WizardState => ({
   preview: null,
   isLoading: false,
   errors: {},
-  // Advanced configuration (Phase 7 extensions)
+  // Detection results from unified detection
+  hasFoldFile: false,
+  foldFilePath: null,
+  metadataColumns: [],
+  confidence: {},
+  // Advanced configuration
   multiSource: null,
-  partition: { ...DEFAULT_PARTITION },
   folds: null,
-  variations: null,
+  // Web mode support
+  fileBlobs: new Map(),
+  // Validated shapes
+  validatedShapes: {},
+  isValidating: false,
+  validationError: null,
 });
 
 // Initial state (uses system defaults, will be updated when workspace defaults load)
@@ -91,6 +93,14 @@ export interface WizardInitialState {
   basePath: string;
   files?: DetectedFile[];
   skipToStep?: WizardStep;
+  // Detection results from unified detection
+  detectedParsing?: Partial<ParsingOptions>;
+  hasFoldFile?: boolean;
+  foldFilePath?: string;
+  metadataColumns?: string[];
+  confidence?: DetectionConfidence;
+  // Web mode - File objects for reading content when filesystem paths aren't available
+  fileBlobs?: Map<string, File>;
 }
 
 // Action types
@@ -115,11 +125,22 @@ type WizardAction =
   | { type: "APPLY_DEFAULTS"; payload: ParsingOptions }
   | { type: "INIT_FROM_DROP"; payload: { initial: WizardInitialState; parsing: ParsingOptions } }
   | { type: "RESET"; payload?: ParsingOptions }
-  // Advanced configuration actions (Phase 7)
+  // Detection results action
+  | { type: "SET_DETECTION_RESULTS"; payload: {
+      files?: DetectedFile[];
+      parsing?: Partial<ParsingOptions>;
+      hasFoldFile?: boolean;
+      foldFilePath?: string | null;
+      metadataColumns?: string[];
+      confidence?: DetectionConfidence;
+    }}
+  // Advanced configuration actions
   | { type: "SET_MULTI_SOURCE"; payload: MultiSourceConfig | null }
-  | { type: "SET_PARTITION"; payload: Partial<PartitionConfig> }
   | { type: "SET_FOLDS"; payload: FoldConfig | null }
-  | { type: "SET_VARIATIONS"; payload: VariationsConfig | null };
+  // Validation actions
+  | { type: "SET_VALIDATING"; payload: boolean }
+  | { type: "SET_VALIDATED_SHAPES"; payload: Record<string, { num_rows?: number; num_columns?: number; error?: string }> }
+  | { type: "SET_VALIDATION_ERROR"; payload: string | null };
 
 // Reducer
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -137,32 +158,40 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, datasetName: action.payload };
 
     case "SET_FILES":
-      return { ...state, files: action.payload };
+      // Clear preview when files change
+      return { ...state, files: action.payload, preview: null };
 
     case "UPDATE_FILE":
+      // Clear preview when file configuration changes
       return {
         ...state,
         files: state.files.map((f, i) =>
           i === action.payload.index ? { ...f, ...action.payload.updates } : f
         ),
+        preview: null,
       };
 
     case "REMOVE_FILE":
+      // Clear preview when file is removed
       return {
         ...state,
         files: state.files.filter((_, i) => i !== action.payload),
+        preview: null,
       };
 
     case "ADD_FILES":
-      return { ...state, files: [...state.files, ...action.payload] };
+      // Clear preview when files are added
+      return { ...state, files: [...state.files, ...action.payload], preview: null };
 
     case "SET_PARSING":
-      return { ...state, parsing: { ...state.parsing, ...action.payload } };
+      // Clear preview when parsing options change
+      return { ...state, parsing: { ...state.parsing, ...action.payload }, preview: null };
 
     case "SET_FILE_OVERRIDE":
+      // Clear preview when file overrides change
       if (action.payload.options === null) {
         const { [action.payload.path]: _, ...rest } = state.perFileOverrides;
-        return { ...state, perFileOverrides: rest };
+        return { ...state, perFileOverrides: rest, preview: null };
       }
       return {
         ...state,
@@ -173,10 +202,12 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
             ...action.payload.options,
           },
         },
+        preview: null,
       };
 
     case "SET_TARGETS":
-      return { ...state, targets: action.payload };
+      // Clear preview when targets change
+      return { ...state, targets: action.payload, preview: null };
 
     case "SET_DEFAULT_TARGET":
       return { ...state, defaultTarget: action.payload };
@@ -215,14 +246,39 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       const basePath = initial.basePath;
       const parts = basePath.split(/[/\\]/);
       const name = parts[parts.length - 1] || "dataset";
+      // Merge detected parsing options with defaults
+      const mergedParsing = initial.detectedParsing
+        ? { ...parsing, ...initial.detectedParsing }
+        : parsing;
       return {
-        ...createInitialState(parsing),
+        ...createInitialState(mergedParsing),
         step: initial.skipToStep || "files",
         sourceType: initial.sourceType,
         basePath: initial.basePath,
         datasetName: name,
         files: initial.files || [],
         isLoading: !initial.files, // If no files yet, we're loading
+        // Detection results
+        hasFoldFile: initial.hasFoldFile || false,
+        foldFilePath: initial.foldFilePath || null,
+        metadataColumns: initial.metadataColumns || [],
+        confidence: initial.confidence || {},
+        // Web mode File objects
+        fileBlobs: initial.fileBlobs || new Map(),
+      };
+    }
+
+    case "SET_DETECTION_RESULTS": {
+      const { files, parsing, hasFoldFile, foldFilePath, metadataColumns, confidence } = action.payload;
+      return {
+        ...state,
+        ...(files !== undefined && { files }),
+        ...(parsing && { parsing: { ...state.parsing, ...parsing } }),
+        ...(hasFoldFile !== undefined && { hasFoldFile }),
+        ...(foldFilePath !== undefined && { foldFilePath }),
+        ...(metadataColumns !== undefined && { metadataColumns }),
+        ...(confidence !== undefined && { confidence }),
+        isLoading: false,
       };
     }
 
@@ -231,21 +287,22 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         ? createInitialState(action.payload)
         : { ...initialState };
 
-    // Advanced configuration cases (Phase 7)
+    // Advanced configuration cases
     case "SET_MULTI_SOURCE":
       return { ...state, multiSource: action.payload };
-
-    case "SET_PARTITION":
-      return {
-        ...state,
-        partition: { ...state.partition, ...action.payload },
-      };
 
     case "SET_FOLDS":
       return { ...state, folds: action.payload };
 
-    case "SET_VARIATIONS":
-      return { ...state, variations: action.payload };
+    // Validation cases
+    case "SET_VALIDATING":
+      return { ...state, isValidating: action.payload };
+
+    case "SET_VALIDATED_SHAPES":
+      return { ...state, validatedShapes: action.payload, isValidating: false, validationError: null };
+
+    case "SET_VALIDATION_ERROR":
+      return { ...state, validationError: action.payload, isValidating: false };
 
     default:
       return state;
@@ -409,4 +466,4 @@ export function useWizard() {
 }
 
 // Export defaults for reuse
-export { SYSTEM_DEFAULT_PARSING as DEFAULT_PARSING, DEFAULT_AGGREGATION, DEFAULT_PARTITION, STEP_ORDER };
+export { SYSTEM_DEFAULT_PARSING as DEFAULT_PARSING, DEFAULT_AGGREGATION, STEP_ORDER };

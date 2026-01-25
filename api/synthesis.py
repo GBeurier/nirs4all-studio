@@ -20,12 +20,20 @@ router = APIRouter(prefix="/synthesis", tags=["synthesis"])
 
 try:
     import nirs4all
-    from nirs4all.data.synthetic import SyntheticDatasetBuilder
+    from nirs4all.data.synthetic import (
+        SyntheticDatasetBuilder,
+        available_components,
+        get_component,
+        list_categories,
+    )
     NIRS4ALL_AVAILABLE = True
 except ImportError:
     NIRS4ALL_AVAILABLE = False
     nirs4all = None
     SyntheticDatasetBuilder = None
+    available_components = None
+    get_component = None
+    list_categories = None
 
 # Import workspace manager for linking datasets
 try:
@@ -406,29 +414,29 @@ async def generate_dataset(request: GenerateRequest):
 
 @router.get("/components", response_model=List[ComponentInfo])
 async def list_components():
-    """List all available predefined components."""
-    # Return hardcoded list - matches the frontend definitions
-    components = [
-        # Water
-        ComponentInfo(name="water", display_name="Water", description="H2O absorption bands", category="water"),
-        ComponentInfo(name="moisture", display_name="Moisture", description="Sample moisture content", category="water"),
-        # Proteins
-        ComponentInfo(name="protein", display_name="Protein", description="General protein content", category="proteins"),
-        ComponentInfo(name="nitrogen_compound", display_name="Nitrogen Compound", description="N-H bonds", category="proteins"),
-        ComponentInfo(name="casein", display_name="Casein", description="Milk protein", category="proteins"),
-        ComponentInfo(name="gluten", display_name="Gluten", description="Wheat protein", category="proteins"),
-        # Carbohydrates
-        ComponentInfo(name="starch", display_name="Starch", description="Starch content", category="carbohydrates"),
-        ComponentInfo(name="cellulose", display_name="Cellulose", description="Cellulose fiber", category="carbohydrates"),
-        ComponentInfo(name="glucose", display_name="Glucose", description="Simple sugar", category="carbohydrates"),
-        ComponentInfo(name="sucrose", display_name="Sucrose", description="Table sugar", category="carbohydrates"),
-        ComponentInfo(name="lactose", display_name="Lactose", description="Milk sugar", category="carbohydrates"),
-        # Lipids
-        ComponentInfo(name="lipid", display_name="Lipid", description="General fat content", category="lipids"),
-        ComponentInfo(name="oil", display_name="Oil", description="Liquid fats", category="lipids"),
-        # Alcohols
-        ComponentInfo(name="ethanol", display_name="Ethanol", description="Alcohol content", category="alcohols"),
-    ]
+    """List all available predefined components from nirs4all."""
+    require_nirs4all()
+
+    components = []
+    for name in available_components():
+        comp = get_component(name)
+        # Generate display name from component name (e.g., "oleic_acid" -> "Oleic Acid")
+        display_name = name.replace("_", " ").title()
+        # Use formula as description if available, otherwise generate from bands
+        if comp.formula:
+            description = f"{comp.formula} absorption bands"
+        elif comp.bands:
+            description = f"{len(comp.bands)} absorption band(s)"
+        else:
+            description = "Spectral component"
+        # Use category from component metadata
+        category = comp.category or "other"
+        components.append(ComponentInfo(
+            name=name,
+            display_name=display_name,
+            description=description,
+            category=category,
+        ))
     return components
 
 

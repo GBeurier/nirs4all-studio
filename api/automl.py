@@ -9,6 +9,10 @@ Phase 6 Implementation:
 - Trial tracking and results
 - Best model selection
 - Search space configuration
+
+Refactored to use nirs4all pipeline generators (_or_, _range_, _log_range_)
+instead of manual random search. Uses nirs4all.run() for training and
+RunResult.export() for model saving.
 """
 
 from __future__ import annotations
@@ -19,7 +23,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -32,6 +35,7 @@ if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 try:
+    import nirs4all
     from nirs4all.data.dataset import SpectroDataset
 
     NIRS4ALL_AVAILABLE = True
@@ -541,291 +545,89 @@ async def list_available_models(task_type: str = "regression"):
     }
 
 
-# ============= AutoML Task Implementation =============
+# ============= Pipeline Generator Helpers =============
 
 
-def _run_automl_task(
-    job: Job,
-    progress_callback: Callable[[float, str], bool],
-) -> Dict[str, Any]:
+def _build_model_generator_step(models_config: List[Dict[str, Any]], n_trials: int) -> Dict[str, Any]:
     """
-    Execute the AutoML search task.
+    Build a pipeline model step using nirs4all generator syntax.
 
-    This function runs in a background thread and performs the actual
-    hyperparameter optimization using cross-validation.
+    Converts AutoML search space configuration to nirs4all's _or_ and _range_/_log_range_
+    generator keywords for automated hyperparameter search.
 
     Args:
-        job: The job instance
-        progress_callback: Callback to report progress
+        models_config: List of model configurations with search spaces
+        n_trials: Maximum number of trials (used for count limiting)
 
     Returns:
-        AutoML result dictionary
+        Pipeline step dict using generator syntax
     """
-    config = job.config
+    model_choices = []
 
-    # Load dataset
-    from .spectra import _load_dataset
-
-    dataset = _load_dataset(config["dataset_id"])
-    if not dataset:
-        raise ValueError(f"Dataset '{config['dataset_id']}' not found")
-
-    # Get training data
-    selector = {"partition": config.get("partition", "train")}
-    X = dataset.x(selector, layout="2d")
-    if isinstance(X, list):
-        X = X[0]
-
-    y = None
-    try:
-        y = dataset.y(selector)
-    except Exception:
-        pass
-
-    if y is None:
-        raise ValueError("Dataset has no target values for AutoML")
-
-    y = y.ravel() if y.ndim > 1 else y
-
-    # Apply preprocessing if specified
-    preprocessing_chain = config.get("preprocessing_chain")
-    if preprocessing_chain:
-        from .spectra import _apply_preprocessing_chain
-
-        X = _apply_preprocessing_chain(X, preprocessing_chain)
-
-    # Get search configuration
-    n_trials = config.get("n_trials", 50)
-    cv_folds = config.get("cv_folds", 5)
-    metric = config.get("metric", "r2")
-    task_type = config.get("task_type", "regression")
-    timeout = config.get("timeout_seconds")
-    random_state = config.get("random_state", 42)
-    models_config = config.get("models", [])
-
-    # Scoring function
-    from sklearn.model_selection import cross_val_score
-
-    scoring = _get_sklearn_scorer(metric, task_type)
-
-    # Track results
-    trials: List[Dict[str, Any]] = []
-    best_score = float("-inf")
-    best_model_name = ""
-    best_params: Dict[str, Any] = {}
-    best_model_instance = None
-
-    start_time = time.time()
-    trial_idx = 0
-
-    # Random search across models and parameters
-    np.random.seed(random_state)
-
-    while trial_idx < n_trials:
-        # Check for cancellation
-        elapsed = time.time() - start_time
-        if timeout and elapsed > timeout:
-            break
-
-        progress = (trial_idx / n_trials) * 100
-        if not progress_callback(progress, f"Trial {trial_idx + 1}/{n_trials}"):
-            break
-
-        # Select a random model
-        model_config = models_config[np.random.randint(len(models_config))]
+    for model_config in models_config:
         model_name = model_config["model_name"]
+        params = model_config.get("params", [])
 
-        # Sample hyperparameters
-        params = _sample_params(model_config.get("params", []))
+        # Build the model class reference
+        model_class = _get_model_class(model_name)
+        if model_class is None:
+            continue
 
-        trial_start = time.time()
-        trial_result: Dict[str, Any] = {
-            "trial_id": trial_idx,
-            "model_name": model_name,
-            "params": params,
-            "status": "failed",
-            "score": 0.0,
-            "std": None,
-            "duration_seconds": 0.0,
-            "error": None,
-        }
+        if not params:
+            # No hyperparameters to tune - use model directly
+            model_choices.append(model_class)
+        else:
+            # Build parameter generators using nirs4all syntax
+            param_generators = {}
+            for p in params:
+                param_name = p.get("name")
+                p_type = p.get("type", "float")
 
-        try:
-            # Create model instance
-            model = _get_model_instance(model_name, params)
-            if model is None:
-                raise ValueError(f"Model '{model_name}' not found")
+                if p_type == "categorical":
+                    choices = p.get("choices", [])
+                    if choices:
+                        param_generators[param_name] = {"_or_": choices}
 
-            # Evaluate with cross-validation
-            cv_scores = cross_val_score(
-                model, X, y,
-                cv=cv_folds,
-                scoring=scoring,
-            )
+                elif p_type == "int":
+                    low = int(p.get("low", 1))
+                    high = int(p.get("high", 100))
+                    if p.get("log", False):
+                        # Use log range for log-scale parameters
+                        param_generators[param_name] = {"_log_range_": [low, high, 10]}
+                    else:
+                        # Use range with step calculated for reasonable coverage
+                        step = max(1, (high - low) // 10)
+                        param_generators[param_name] = {"_range_": [low, high, step]}
 
-            score = cv_scores.mean()
-            std = cv_scores.std()
+                elif p_type == "float":
+                    low = float(p.get("low", 0.0))
+                    high = float(p.get("high", 1.0))
+                    if p.get("log", False):
+                        # Use log range for log-scale parameters
+                        param_generators[param_name] = {"_log_range_": [low, high, 10]}
+                    else:
+                        # Use range with 10 steps
+                        step = (high - low) / 10
+                        param_generators[param_name] = {"_range_": [low, high, step]}
 
-            trial_result["status"] = "completed"
-            trial_result["score"] = float(score)
-            trial_result["std"] = float(std)
+            # Create model config dict with parameter generators
+            model_step = {"class": model_class, **param_generators}
+            model_choices.append(model_step)
 
-            # Track best
-            if score > best_score:
-                best_score = score
-                best_model_name = model_name
-                best_params = params
-                # Retrain on full data for the best model
-                best_model_instance = model.fit(X, y)
-
-        except Exception as e:
-            trial_result["status"] = "failed"
-            trial_result["error"] = str(e)
-
-        trial_result["duration_seconds"] = time.time() - trial_start
-        trials.append(trial_result)
-
-        # Update job metrics
-        job_manager.update_job_metrics(
-            job.id,
-            {
-                "trials_completed": trial_idx + 1,
-                "best_score": best_score if best_score > float("-inf") else None,
-                "best_model": best_model_name,
-                "last_trial": trial_result,
-            },
-            append_history=True,
-        )
-
-        # Send WebSocket notification
-        _send_trial_notification(job.id, trial_result, trial_idx + 1, n_trials)
-
-        trial_idx += 1
-
-    # Save best model if we have one
-    model_path = None
-    if best_model_instance is not None:
-        model_path = _save_automl_model(
-            best_model_instance,
-            config["workspace_path"],
-            job.id,
-            best_model_name,
-        )
-
-    # Sort trials by score
-    completed_trials = [t for t in trials if t["status"] == "completed"]
-    completed_trials.sort(key=lambda t: t["score"], reverse=True)
-    failed_trials = [t for t in trials if t["status"] != "completed"]
-    sorted_trials = completed_trials + failed_trials
-
-    # Final result
-    result = {
-        "best_score": best_score if best_score > float("-inf") else 0.0,
-        "best_model": best_model_name,
-        "best_params": best_params,
-        "trials": sorted_trials,
-        "model_path": model_path,
-        "total_trials": len(trials),
-        "completed_trials": len(completed_trials),
-        "search_duration_seconds": time.time() - start_time,
-    }
-
-    return result
+    # Wrap in _or_ generator with count limit
+    return {"model": {"_or_": model_choices}, "count": n_trials}
 
 
-def _sample_params(param_configs: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _get_model_class(model_name: str):
     """
-    Sample hyperparameters from search space definitions.
-
-    Args:
-        param_configs: List of parameter configurations
-
-    Returns:
-        Dictionary of sampled parameters
-    """
-    params = {}
-
-    for p in param_configs:
-        name = p.get("name")
-        p_type = p.get("type", "float")
-
-        if p_type == "categorical":
-            choices = p.get("choices", [])
-            if choices:
-                params[name] = choices[np.random.randint(len(choices))]
-
-        elif p_type == "int":
-            low = int(p.get("low", 1))
-            high = int(p.get("high", 100))
-            if p.get("log", False):
-                # Log-uniform sampling for integers
-                log_low = np.log(max(low, 1))
-                log_high = np.log(max(high, 1))
-                params[name] = int(np.exp(np.random.uniform(log_low, log_high)))
-            else:
-                params[name] = np.random.randint(low, high + 1)
-
-        elif p_type == "float":
-            low = float(p.get("low", 0.0))
-            high = float(p.get("high", 1.0))
-            if p.get("log", False):
-                # Log-uniform sampling
-                log_low = np.log(max(low, 1e-10))
-                log_high = np.log(max(high, 1e-10))
-                params[name] = float(np.exp(np.random.uniform(log_low, log_high)))
-            else:
-                params[name] = float(np.random.uniform(low, high))
-
-    return params
-
-
-def _get_sklearn_scorer(metric: str, task_type: str) -> str:
-    """
-    Convert metric name to sklearn scorer string.
-
-    Args:
-        metric: Metric name (r2, rmse, mae, accuracy, f1, etc.)
-        task_type: Task type (regression or classification)
-
-    Returns:
-        sklearn scorer string
-    """
-    regression_scorers = {
-        "r2": "r2",
-        "rmse": "neg_root_mean_squared_error",
-        "mse": "neg_mean_squared_error",
-        "mae": "neg_mean_absolute_error",
-    }
-
-    classification_scorers = {
-        "accuracy": "accuracy",
-        "f1": "f1_weighted",
-        "precision": "precision_weighted",
-        "recall": "recall_weighted",
-        "roc_auc": "roc_auc",
-    }
-
-    if task_type == "classification":
-        return classification_scorers.get(metric, "accuracy")
-    else:
-        return regression_scorers.get(metric, "r2")
-
-
-def _get_model_instance(model_name: str, params: Dict[str, Any]) -> Any:
-    """
-    Get a model instance by name.
+    Get the model class for a given model name.
 
     Args:
         model_name: Name of the model class
-        params: Model parameters
 
     Returns:
-        Model instance or None if not found
+        Model class or None if not found
     """
-    if not model_name:
-        return None
-
-    # sklearn models
     sklearn_models = {
         "PLSRegression": ("sklearn.cross_decomposition", "PLSRegression"),
         "RandomForestRegressor": ("sklearn.ensemble", "RandomForestRegressor"),
@@ -845,12 +647,10 @@ def _get_model_instance(model_name: str, params: Dict[str, Any]) -> Any:
 
     if model_name in sklearn_models:
         import importlib
-
         module_name, class_name = sklearn_models[model_name]
         try:
             module = importlib.import_module(module_name)
-            model_class = getattr(module, class_name)
-            return model_class(**params)
+            return getattr(module, class_name)
         except Exception as e:
             print(f"Error loading model {model_name}: {e}")
             return None
@@ -858,40 +658,186 @@ def _get_model_instance(model_name: str, params: Dict[str, Any]) -> Any:
     return None
 
 
-def _save_automl_model(
-    model: Any,
-    workspace_path: str,
-    job_id: str,
-    model_name: str,
-) -> Optional[str]:
+# ============= AutoML Task Implementation =============
+
+
+def _run_automl_task(
+    job: Job,
+    progress_callback: Callable[[float, str], bool],
+) -> Dict[str, Any]:
     """
-    Save the best AutoML model to disk.
+    Execute the AutoML search task using nirs4all.run() with generator pipelines.
+
+    This function runs in a background thread and performs hyperparameter
+    optimization using nirs4all's built-in generator expansion and cross-validation.
 
     Args:
-        model: The trained model
-        workspace_path: Path to the workspace
-        job_id: AutoML job ID
-        model_name: Name of the model class
+        job: The job instance
+        progress_callback: Callback to report progress
 
     Returns:
-        Path to the saved model or None if saving failed
+        AutoML result dictionary
     """
-    import joblib
+    config = job.config
+    start_time = time.time()
 
+    # Load dataset
+    from .spectra import _load_dataset
+
+    dataset = _load_dataset(config["dataset_id"])
+    if not dataset:
+        raise ValueError(f"Dataset '{config['dataset_id']}' not found")
+
+    # Get configuration
+    n_trials = config.get("n_trials", 50)
+    cv_folds = config.get("cv_folds", 5)
+    random_state = config.get("random_state", 42)
+    models_config = config.get("models", [])
+    preprocessing_chain = config.get("preprocessing_chain")
+    workspace_path = config.get("workspace_path")
+
+    progress_callback(5.0, "Building pipeline with generators...")
+
+    # Build pipeline using generator syntax
+    pipeline_steps = []
+
+    # Add preprocessing if specified
+    if preprocessing_chain:
+        for step in preprocessing_chain:
+            step_name = step.get("name", "")
+            step_params = step.get("params", {})
+            transformer_class = _get_transformer_class(step_name)
+            if transformer_class:
+                pipeline_steps.append(transformer_class(**step_params))
+
+    # Add cross-validation splitter
+    from sklearn.model_selection import KFold
+    pipeline_steps.append(KFold(n_splits=cv_folds, shuffle=True, random_state=random_state))
+
+    # Build model generator step
+    model_step = _build_model_generator_step(models_config, n_trials)
+    pipeline_steps.append(model_step)
+
+    progress_callback(10.0, f"Running {n_trials} trial configurations...")
+
+    # Run pipeline using nirs4all.run()
     try:
-        models_dir = Path(workspace_path) / "models"
-        models_dir.mkdir(exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_filename = f"automl_{model_name}_{job_id}_{timestamp}.joblib"
-        model_path = models_dir / model_filename
-
-        joblib.dump(model, model_path)
-
-        return str(model_path)
-
+        result = nirs4all.run(
+            pipeline=pipeline_steps,
+            dataset=dataset,
+            verbose=0,
+            save_artifacts=True,
+            random_state=random_state,
+            max_generation_count=n_trials,
+        )
     except Exception as e:
-        print(f"Error saving AutoML model: {e}")
+        raise ValueError(f"Pipeline execution failed: {e}")
+
+    progress_callback(90.0, "Processing results...")
+
+    # Extract trials from predictions
+    trials = []
+    all_predictions = result.predictions.top(n=n_trials * 10)  # Get all predictions
+
+    for idx, pred in enumerate(all_predictions):
+        model_name = pred.get("model_name", "Unknown")
+        params = pred.get("model_params", {})
+        test_score = pred.get("test_score", 0.0)
+        scores = pred.get("scores", {})
+        test_scores = scores.get("test", {}) if isinstance(scores, dict) else {}
+
+        trials.append({
+            "trial_id": idx,
+            "model_name": model_name,
+            "params": params,
+            "score": float(test_score) if test_score else 0.0,
+            "std": None,  # CV std not directly available from predictions
+            "duration_seconds": 0.0,  # Timing not tracked per-trial in batch mode
+            "status": "completed",
+            "error": None,
+        })
+
+        # Update job metrics periodically
+        if idx % 10 == 0:
+            job_manager.update_job_metrics(
+                job.id,
+                {
+                    "trials_completed": idx + 1,
+                    "best_score": result.best_score if result.best else None,
+                    "best_model": result.best.get("model_name") if result.best else None,
+                },
+            )
+            progress = 10.0 + (idx / len(all_predictions)) * 80.0
+            if not progress_callback(progress, f"Processed {idx + 1} trials..."):
+                break
+
+    # Get best result
+    best = result.best
+    best_score = result.best_score if best else 0.0
+    best_model_name = best.get("model_name", "Unknown") if best else "Unknown"
+    best_params = best.get("model_params", {}) if best else {}
+
+    # Export best model using RunResult.export()
+    model_path = None
+    if best and workspace_path:
+        try:
+            models_dir = Path(workspace_path) / "models"
+            models_dir.mkdir(exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_filename = f"automl_{best_model_name}_{job.id}_{timestamp}.n4a"
+            export_path = models_dir / model_filename
+
+            result.export(str(export_path))
+            model_path = str(export_path)
+        except Exception as e:
+            print(f"Error exporting AutoML model: {e}")
+
+    progress_callback(100.0, "AutoML search complete")
+
+    # Sort trials by score
+    completed_trials = [t for t in trials if t["status"] == "completed"]
+    completed_trials.sort(key=lambda t: t["score"], reverse=True)
+
+    return {
+        "best_score": float(best_score) if best_score else 0.0,
+        "best_model": best_model_name,
+        "best_params": best_params,
+        "trials": completed_trials,
+        "model_path": model_path,
+        "total_trials": len(trials),
+        "completed_trials": len(completed_trials),
+        "search_duration_seconds": time.time() - start_time,
+    }
+
+
+def _get_transformer_class(name: str):
+    """
+    Get a transformer class by name from nirs4all operators.
+
+    Args:
+        name: Transformer name
+
+    Returns:
+        Transformer class or None
+    """
+    try:
+        from nirs4all.operators import transforms
+
+        # Map common names to transformer classes
+        transformer_map = {
+            "snv": transforms.SNV,
+            "msc": transforms.MSC,
+            "detrend": transforms.Detrend,
+            "savitzky_golay": transforms.SavitzkyGolay,
+            "savgol": transforms.SavitzkyGolay,
+            "normalize": transforms.Normalize,
+            "center": transforms.Center,
+            "autoscale": transforms.Autoscale,
+        }
+
+        return transformer_map.get(name.lower())
+    except ImportError:
         return None
 
 

@@ -11,12 +11,12 @@
   "developer_mode": false,
   "cache_enabled": true,
   "general": {
-    "theme": "system",
-    "ui_density": "spacious",
+    "theme": "light",
+    "ui_density": "compact",
     "reduce_animations": false,
     "sidebar_collapsed": false,
     "language": "en",
-    "zoom_level": 75
+    "zoom_level": 90
   },
-  "last_updated": "2026-01-16T16:09:06.192961"
+  "last_updated": "2026-01-22T22:03:33.092356"
 }

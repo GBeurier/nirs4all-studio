@@ -18,12 +18,20 @@ import {
   Hash,
   Target,
   Loader2,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useWizard } from "./WizardContext";
-import { previewDataset } from "@/api/client";
+import { previewDataset, previewDatasetWithUploads } from "@/api/client";
 import { SpectraChart, TargetHistogram } from "../charts";
 import type { DatasetFile } from "@/types/datasets";
 
@@ -34,6 +42,8 @@ export function PreviewStep() {
   const { state, dispatch } = useWizard();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<number>(0);
+  const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
 
   const loadPreview = useCallback(async () => {
     if (state.files.length === 0) return;
@@ -43,7 +53,7 @@ export function PreviewStep() {
 
     try {
       // Convert DetectedFile to DatasetFile for API
-      const files: DatasetFile[] = state.files
+      const fileConfigs: DatasetFile[] = state.files
         .filter((f) => f.type !== "unknown")
         .map((f) => ({
           path: f.path,
@@ -53,12 +63,40 @@ export function PreviewStep() {
           overrides: state.perFileOverrides[f.path],
         }));
 
-      const result = await previewDataset({
-        path: state.basePath,
-        files,
-        parsing: state.parsing,
-        max_samples: 100,
-      });
+      let result;
+
+      // Check if in web mode (no basePath but has fileBlobs)
+      const isWebMode = !state.basePath && state.fileBlobs.size > 0;
+
+      if (isWebMode) {
+        // Web mode: upload files for preview
+        const filesToUpload: File[] = [];
+        for (const fileConfig of fileConfigs) {
+          const blob = state.fileBlobs.get(fileConfig.path);
+          if (blob) {
+            filesToUpload.push(blob);
+          }
+        }
+
+        if (filesToUpload.length === 0) {
+          throw new Error("No files available for preview. Please try re-selecting your files.");
+        }
+
+        result = await previewDatasetWithUploads(
+          filesToUpload,
+          fileConfigs,
+          state.parsing,
+          100
+        );
+      } else {
+        // Desktop mode: use filesystem paths
+        result = await previewDataset({
+          path: state.basePath,
+          files: fileConfigs,
+          parsing: state.parsing,
+          max_samples: 100,
+        });
+      }
 
       dispatch({ type: "SET_PREVIEW", payload: result });
 
@@ -72,7 +110,7 @@ export function PreviewStep() {
     } finally {
       setLoading(false);
     }
-  }, [state.files, state.basePath, state.parsing, state.perFileOverrides, dispatch]);
+  }, [state.files, state.basePath, state.parsing, state.perFileOverrides, state.fileBlobs, dispatch]);
 
   // Load preview on mount
   useEffect(() => {
@@ -102,13 +140,23 @@ export function PreviewStep() {
           <p className="text-destructive font-medium mb-2">
             Failed to load preview
           </p>
-          <p className="text-sm text-muted-foreground mb-4 max-w-md text-center">
+          <p className="text-sm text-muted-foreground mb-4 max-w-md text-center whitespace-pre-wrap">
             {error}
           </p>
-          <Button onClick={loadPreview} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={loadPreview} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigator.clipboard.writeText(error)}
+              title="Copy error to clipboard"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
 
@@ -176,24 +224,56 @@ export function PreviewStep() {
           {/* Spectra Preview */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Spectra Preview
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Spectra Preview
+                </CardTitle>
+                {preview.summary.n_sources > 1 && preview.spectra_per_source && (
+                  <Select
+                    value={String(selectedSource)}
+                    onValueChange={(v) => setSelectedSource(Number(v))}
+                  >
+                    <SelectTrigger className="w-[140px] h-8">
+                      <SelectValue placeholder="Select source" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(preview.spectra_per_source).map((sourceIdx) => (
+                        <SelectItem key={sourceIdx} value={sourceIdx}>
+                          Source {Number(sourceIdx) + 1}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              {preview.spectra_preview ? (
-                <SpectraChart
-                  wavelengths={preview.spectra_preview.wavelengths}
-                  meanSpectrum={preview.spectra_preview.mean_spectrum}
-                  minSpectrum={preview.spectra_preview.min_spectrum}
-                  maxSpectrum={preview.spectra_preview.max_spectrum}
-                />
-              ) : (
-                <div className="h-48 flex items-center justify-center text-muted-foreground">
-                  No spectra data available
-                </div>
-              )}
+              {(() => {
+                // Use per-source data if available and multi-source, otherwise fall back to global
+                const spectraData =
+                  preview.summary.n_sources > 1 &&
+                  preview.spectra_per_source &&
+                  preview.spectra_per_source[selectedSource]
+                    ? preview.spectra_per_source[selectedSource]
+                    : preview.spectra_preview;
+
+                if (spectraData) {
+                  return (
+                    <SpectraChart
+                      wavelengths={spectraData.wavelengths}
+                      meanSpectrum={spectraData.mean_spectrum}
+                      minSpectrum={spectraData.min_spectrum}
+                      maxSpectrum={spectraData.max_spectrum}
+                    />
+                  );
+                }
+                return (
+                  <div className="h-48 flex items-center justify-center text-muted-foreground">
+                    No spectra data available
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
@@ -201,65 +281,103 @@ export function PreviewStep() {
           {preview.target_distribution && (
             <Card className="col-span-2">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Target className="h-4 w-4" />
-                  Target Distribution
-                  <Badge variant="outline" className="ml-2">
-                    {preview.target_distribution.type}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  {preview.target_distribution.histogram && (
-                    <Histogram
-                      data={preview.target_distribution.histogram}
-                      type={preview.target_distribution.type}
-                    />
-                  )}
-                  <div className="space-y-2">
-                    {preview.target_distribution.type === "regression" && (
-                      <>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Min</span>
-                          <span>{preview.target_distribution.min?.toFixed(3)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Max</span>
-                          <span>{preview.target_distribution.max?.toFixed(3)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Mean</span>
-                          <span>{preview.target_distribution.mean?.toFixed(3)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Std</span>
-                          <span>{preview.target_distribution.std?.toFixed(3)}</span>
-                        </div>
-                      </>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Target Distribution
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {preview.target_distributions && Object.keys(preview.target_distributions).length > 1 && (
+                      <Select
+                        value={selectedTarget || ""}
+                        onValueChange={(v) => setSelectedTarget(v || null)}
+                      >
+                        <SelectTrigger className="w-[160px] h-8">
+                          <SelectValue placeholder="Select target" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">All (default)</SelectItem>
+                          {Object.keys(preview.target_distributions).map((targetName) => (
+                            <SelectItem key={targetName} value={targetName}>
+                              {targetName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     )}
-                    {preview.target_distribution.type === "classification" && (
-                      <>
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">Classes: </span>
-                          {preview.target_distribution.classes?.join(", ")}
-                        </div>
-                        {preview.target_distribution.class_counts && (
-                          <div className="space-y-1">
-                            {Object.entries(preview.target_distribution.class_counts).map(
-                              ([cls, count]) => (
-                                <div key={cls} className="flex justify-between text-sm">
-                                  <span className="text-muted-foreground">{cls}</span>
-                                  <span>{count}</span>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
+                    <Badge variant="outline">
+                      {(() => {
+                        const dist = selectedTarget && preview.target_distributions?.[selectedTarget]
+                          ? preview.target_distributions[selectedTarget]
+                          : preview.target_distribution;
+                        return dist?.type || "unknown";
+                      })()}
+                    </Badge>
                   </div>
                 </div>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  // Use selected target data if available, otherwise fall back to global
+                  const targetDist = selectedTarget && preview.target_distributions?.[selectedTarget]
+                    ? preview.target_distributions[selectedTarget]
+                    : preview.target_distribution;
+
+                  if (!targetDist) return null;
+
+                  return (
+                    <div className="grid grid-cols-2 gap-4">
+                      {targetDist.histogram && (
+                        <Histogram
+                          data={targetDist.histogram}
+                          type={targetDist.type}
+                        />
+                      )}
+                      <div className="space-y-2">
+                        {targetDist.type === "regression" && (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Min</span>
+                              <span>{targetDist.min?.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Max</span>
+                              <span>{targetDist.max?.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Mean</span>
+                              <span>{targetDist.mean?.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Std</span>
+                              <span>{targetDist.std?.toFixed(3)}</span>
+                            </div>
+                          </>
+                        )}
+                        {targetDist.type === "classification" && (
+                          <>
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Classes: </span>
+                              {targetDist.classes?.join(", ")}
+                            </div>
+                            {targetDist.class_counts && (
+                              <div className="space-y-1">
+                                {Object.entries(targetDist.class_counts).map(
+                                  ([cls, count]) => (
+                                    <div key={cls} className="flex justify-between text-sm">
+                                      <span className="text-muted-foreground">{cls}</span>
+                                      <span>{count}</span>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           )}

@@ -1,6 +1,8 @@
 /**
- * Motion wrapper that disables animations in Firefox
- * Firefox has performance issues with framer-motion
+ * Motion wrapper that disables animations when:
+ * - Firefox browser (performance issues)
+ * - User has enabled "Reduce animations" in settings
+ * - System prefers reduced motion
  */
 import { motion as framerMotion, AnimatePresence as FramerAnimatePresence, LayoutGroup as FramerLayoutGroup } from "framer-motion";
 import type { HTMLMotionProps } from "framer-motion";
@@ -10,26 +12,74 @@ import { forwardRef, type ReactNode } from "react";
 export const isFirefox = typeof navigator !== "undefined" &&
   navigator.userAgent.toLowerCase().includes("firefox");
 
+// Check if motion should be reduced (called at render time for reactivity)
+export function shouldReduceMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    isFirefox ||
+    document.documentElement.classList.contains("reduce-motion") ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 // Create a simple div wrapper that ignores motion props
 const StaticDiv = forwardRef<HTMLDivElement, HTMLMotionProps<"div">>(
   ({ initial, animate, exit, variants, transition, whileHover, whileTap, whileFocus, whileInView, layout, layoutId, style, children, ...props }, ref) => {
-    // Cast props to strip motion-specific types
     return <div ref={ref} style={style as React.CSSProperties} {...(props as React.HTMLAttributes<HTMLDivElement>)}>{children as React.ReactNode}</div>;
   }
 );
 StaticDiv.displayName = "StaticDiv";
 
-// Export motion that's either real or static based on browser
-export const motion = isFirefox
-  ? { div: StaticDiv, span: StaticDiv, section: StaticDiv, article: StaticDiv, main: StaticDiv, header: StaticDiv, footer: StaticDiv, nav: StaticDiv, aside: StaticDiv, ul: StaticDiv, li: StaticDiv, a: StaticDiv, button: StaticDiv, p: StaticDiv, h1: StaticDiv, h2: StaticDiv, h3: StaticDiv, h4: StaticDiv, h5: StaticDiv, h6: StaticDiv }
-  : framerMotion;
+// Create wrapper that checks condition at render time
+function createMotionWrapper<T extends keyof typeof framerMotion>(element: T) {
+  const FramerComponent = framerMotion[element] as React.ComponentType<HTMLMotionProps<"div">>;
+  const Wrapper = forwardRef<HTMLDivElement, HTMLMotionProps<"div">>((props, ref) => {
+    if (shouldReduceMotion()) {
+      const { initial, animate, exit, variants, transition, whileHover, whileTap, whileFocus, whileInView, layout, layoutId, style, children, ...rest } = props;
+      return <div ref={ref} style={style as React.CSSProperties} {...(rest as React.HTMLAttributes<HTMLDivElement>)}>{children as React.ReactNode}</div>;
+    }
+    return <FramerComponent ref={ref} {...props} />;
+  });
+  Wrapper.displayName = `Motion${element.charAt(0).toUpperCase() + element.slice(1)}`;
+  return Wrapper;
+}
 
-// AnimatePresence that does nothing in Firefox
-export const AnimatePresence = isFirefox
-  ? ({ children }: { children: ReactNode; mode?: string; initial?: boolean }) => <>{children}</>
-  : FramerAnimatePresence;
+// Export motion with reactive checking
+export const motion = {
+  div: createMotionWrapper("div"),
+  span: createMotionWrapper("span"),
+  section: createMotionWrapper("section"),
+  article: createMotionWrapper("article"),
+  main: createMotionWrapper("main"),
+  header: createMotionWrapper("header"),
+  footer: createMotionWrapper("footer"),
+  nav: createMotionWrapper("nav"),
+  aside: createMotionWrapper("aside"),
+  ul: createMotionWrapper("ul"),
+  li: createMotionWrapper("li"),
+  a: createMotionWrapper("a"),
+  button: createMotionWrapper("button"),
+  p: createMotionWrapper("p"),
+  h1: createMotionWrapper("h1"),
+  h2: createMotionWrapper("h2"),
+  h3: createMotionWrapper("h3"),
+  h4: createMotionWrapper("h4"),
+  h5: createMotionWrapper("h5"),
+  h6: createMotionWrapper("h6"),
+};
 
-// LayoutGroup that does nothing in Firefox
-export const LayoutGroup = isFirefox
-  ? ({ children }: { children: ReactNode; id?: string }) => <>{children}</>
-  : FramerLayoutGroup;
+// AnimatePresence that checks at render time
+export const AnimatePresence = ({ children, ...props }: { children: ReactNode; mode?: "sync" | "wait" | "popLayout"; initial?: boolean }) => {
+  if (shouldReduceMotion()) {
+    return <>{children}</>;
+  }
+  return <FramerAnimatePresence {...props}>{children}</FramerAnimatePresence>;
+};
+
+// LayoutGroup that checks at render time
+export const LayoutGroup = ({ children, ...props }: { children: ReactNode; id?: string }) => {
+  if (shouldReduceMotion()) {
+    return <>{children}</>;
+  }
+  return <FramerLayoutGroup {...props}>{children}</FramerLayoutGroup>;
+};

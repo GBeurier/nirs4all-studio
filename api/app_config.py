@@ -425,7 +425,8 @@ class AppConfigManager:
 
         datasets.append(dataset.to_dict())
         data["datasets"] = datasets
-        self._save_dataset_links(data)
+        if not self._save_dataset_links(data):
+            raise RuntimeError("Failed to save dataset link to disk")
 
         return dataset
 

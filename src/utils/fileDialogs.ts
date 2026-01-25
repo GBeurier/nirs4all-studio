@@ -101,3 +101,63 @@ export async function openExternal(url: string): Promise<void> {
   // Browser fallback
   window.open(url, "_blank");
 }
+
+/**
+ * Resize the desktop window
+ * Only available in desktop mode (PyWebView/Electron)
+ */
+export async function resizeWindow(width: number, height: number): Promise<boolean> {
+  if (isPyWebView() && window.pywebview) {
+    return await window.pywebview.api.resize_window(width, height);
+  }
+  // Not available in browser
+  return false;
+}
+
+/**
+ * Minimize the desktop window
+ * Only available in desktop mode
+ */
+export async function minimizeWindow(): Promise<boolean> {
+  if (isPyWebView() && window.pywebview) {
+    return await window.pywebview.api.minimize_window();
+  }
+  return false;
+}
+
+/**
+ * Toggle maximize/restore the desktop window
+ * Only available in desktop mode
+ */
+export async function maximizeWindow(): Promise<boolean> {
+  if (isPyWebView() && window.pywebview) {
+    return await window.pywebview.api.maximize_window();
+  }
+  return false;
+}
+
+/**
+ * Restore the desktop window from minimized/maximized state
+ * Only available in desktop mode
+ */
+export async function restoreWindow(): Promise<boolean> {
+  if (isPyWebView() && window.pywebview) {
+    return await window.pywebview.api.restore_window();
+  }
+  return false;
+}
+
+/**
+ * Get current window size
+ * Only available in desktop mode
+ */
+export async function getWindowSize(): Promise<{ width: number; height: number } | null> {
+  if (isPyWebView() && window.pywebview) {
+    return await window.pywebview.api.get_window_size();
+  }
+  // Browser fallback - return viewport size
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+}

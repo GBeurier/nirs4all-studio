@@ -7,7 +7,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Folder, FileSpreadsheet, Upload } from "lucide-react";
-import { isPyWebView, selectFolder, selectFile } from "@/utils/fileDialogs";
 
 interface DropZoneOverlayProps {
   /** Whether the overlay is visible */
@@ -119,6 +118,54 @@ export function DropZoneOverlay({
 }
 
 /**
+ * Recursively read directory contents using FileSystem API
+ * Used in web mode when folder paths aren't available
+ */
+async function readDirectoryRecursive(
+  dirEntry: FileSystemDirectoryEntry
+): Promise<{ files: File[]; relativePaths: string[] }> {
+  const files: File[] = [];
+  const relativePaths: string[] = [];
+
+  async function readEntries(
+    entry: FileSystemDirectoryEntry,
+    pathPrefix: string
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const reader = entry.createReader();
+      const readBatch = () => {
+        reader.readEntries(async (entries) => {
+          if (entries.length === 0) {
+            resolve();
+            return;
+          }
+
+          for (const e of entries) {
+            const entryPath = pathPrefix ? `${pathPrefix}/${e.name}` : e.name;
+            if (e.isFile) {
+              const fileEntry = e as FileSystemFileEntry;
+              const file = await new Promise<File>((res) =>
+                fileEntry.file(res)
+              );
+              files.push(file);
+              relativePaths.push(entryPath);
+            } else if (e.isDirectory) {
+              await readEntries(e as FileSystemDirectoryEntry, entryPath);
+            }
+          }
+
+          readBatch(); // Continue reading (batched)
+        });
+      };
+      readBatch();
+    });
+  }
+
+  await readEntries(dirEntry, "");
+  return { files, relativePaths };
+}
+
+/**
  * Hook to manage drag-and-drop state
  */
 export interface DroppedContent {
@@ -126,6 +173,10 @@ export interface DroppedContent {
   path: string;
   paths: string[];
   items: File[];
+  /** Relative paths within dropped folder (for web mode) */
+  relativePaths?: string[];
+  /** Folder name (for web mode when path is empty) */
+  folderName?: string;
 }
 
 export interface UseDragDropOptions {
@@ -259,41 +310,29 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
         }
       }
 
-      // PyWebView fallback: File.path is not available (it's Electron-specific)
-      // Fall back to native file dialogs when in pywebview and no paths available
-      if (paths.length === 0 && isPyWebView()) {
-        try {
-          if (isFolder) {
-            // Open folder dialog
-            const folderPath = await selectFolder();
-            if (folderPath) {
+      // Folder exploration using FileSystem API (web mode and PyWebView without file paths)
+      if (isFolder && paths.length === 0 && items.length > 0) {
+        const firstItem = items[0];
+        if (firstItem.webkitGetAsEntry) {
+          const entry = firstItem.webkitGetAsEntry();
+          if (entry?.isDirectory) {
+            try {
+              const { files: folderFiles, relativePaths } =
+                await readDirectoryRecursive(entry as FileSystemDirectoryEntry);
               onDrop({
                 type: "folder",
-                path: folderPath,
-                paths: [folderPath],
-                items: fileList,
+                path: "", // No filesystem path in web mode
+                paths: relativePaths,
+                items: folderFiles,
+                relativePaths,
+                folderName: entry.name,
               });
-            }
-          } else {
-            // Open file dialog for multiple files
-            const result = await selectFile(
-              ["Data files (*.csv;*.xlsx;*.xls;*.parquet;*.npy;*.npz;*.mat)"],
-              true
-            );
-            if (result) {
-              const filePaths = Array.isArray(result) ? result : [result];
-              onDrop({
-                type: "files",
-                path: filePaths[0],
-                paths: filePaths,
-                items: fileList,
-              });
+              return;
+            } catch (error) {
+              console.error("Failed to read folder contents:", error);
             }
           }
-        } catch (error) {
-          console.error("File dialog failed:", error);
         }
-        return;
       }
 
       // Call onDrop if we have either paths (desktop) or files (browser)

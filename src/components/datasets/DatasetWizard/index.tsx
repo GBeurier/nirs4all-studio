@@ -8,8 +8,8 @@
  * 4. Target Configuration - Select targets, task type, aggregation
  * 5. Preview & Confirm - View data preview and confirm
  */
-import { useEffect, useRef } from "react";
-import { detectFiles } from "@/api/client";
+import { useEffect, useRef, useCallback } from "react";
+import { detectUnified, validateFiles } from "@/api/client";
 import {
   Dialog,
   DialogContent,
@@ -76,7 +76,7 @@ function StepIndicator() {
   const currentIndex = STEP_ORDER.indexOf(state.step);
 
   return (
-    <div className="flex items-center gap-2 mb-6">
+    <div className="flex items-center gap-2 mb-4">
       {STEP_ORDER.map((step, index) => {
         const config = STEP_CONFIG[step];
         const isActive = step === state.step;
@@ -122,6 +122,220 @@ function StepIndicator() {
   );
 }
 
+// Data statistics display - shows shapes for train/test X/Y
+function DataStats() {
+  const { state, dispatch } = useWizard();
+  const validationTriggeredRef = useRef(false);
+
+  // Group files by type and split
+  const xTrainFiles = state.files.filter(f => f.type === "X" && f.split === "train");
+  const xTestFiles = state.files.filter(f => f.type === "X" && f.split === "test");
+  const yTrainFiles = state.files.filter(f => f.type === "Y" && f.split === "train");
+  const yTestFiles = state.files.filter(f => f.type === "Y" && f.split === "test");
+  const xFiles = state.files.filter(f => f.type === "X");
+  const yFiles = state.files.filter(f => f.type === "Y");
+
+  // Trigger validation when files are detected
+  const runValidation = useCallback(async () => {
+    if (!state.basePath || state.files.length === 0 || state.isValidating) return;
+
+    // Only validate X and Y files
+    const filesToValidate = state.files.filter(f => f.type === "X" || f.type === "Y");
+    if (filesToValidate.length === 0) return;
+
+    dispatch({ type: "SET_VALIDATING", payload: true });
+
+    try {
+      const result = await validateFiles(state.basePath, filesToValidate, state.parsing);
+
+      if (result.error) {
+        dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error });
+      } else {
+        dispatch({ type: "SET_VALIDATED_SHAPES", payload: result.shapes });
+      }
+    } catch (error) {
+      dispatch({
+        type: "SET_VALIDATION_ERROR",
+        payload: error instanceof Error ? error.message : "Failed to validate files",
+      });
+    }
+  }, [state.basePath, state.files, state.parsing, state.isValidating, dispatch]);
+
+  // Auto-validate when files change (but only once per file set)
+  useEffect(() => {
+    const hasXFiles = state.files.some(f => f.type === "X");
+    const hasValidatedShapes = Object.keys(state.validatedShapes).length > 0;
+
+    if (hasXFiles && !hasValidatedShapes && !state.isValidating && !state.validationError && !validationTriggeredRef.current) {
+      validationTriggeredRef.current = true;
+      runValidation();
+    }
+  }, [state.files, state.validatedShapes, state.isValidating, state.validationError, runValidation]);
+
+  // Reset trigger when files change
+  useEffect(() => {
+    validationTriggeredRef.current = false;
+  }, [state.files]);
+
+  // Helper to get shape from validated shapes
+  const getShape = (filePath: string) => {
+    return state.validatedShapes[filePath];
+  };
+
+  // Calculate shapes from validated data
+  const getGroupShape = (files: typeof xTrainFiles) => {
+    let totalRows = 0;
+    let cols = 0;
+    let hasError = false;
+
+    for (const f of files) {
+      const shape = getShape(f.path);
+      if (shape?.error) {
+        hasError = true;
+      } else if (shape?.num_rows && shape?.num_columns) {
+        totalRows += shape.num_rows;
+        if (cols === 0) cols = shape.num_columns;
+      }
+    }
+
+    return { rows: totalRows, cols, hasError };
+  };
+
+  const xTrainShape = getGroupShape(xTrainFiles);
+  const xTestShape = getGroupShape(xTestFiles);
+  const yTrainShape = getGroupShape(yTrainFiles);
+  const yTestShape = getGroupShape(yTestFiles);
+
+  // Check for any validation errors
+  const hasAnyError = state.validationError ||
+    xTrainShape.hasError || xTestShape.hasError ||
+    yTrainShape.hasError || yTestShape.hasError;
+
+  // Loading states
+  if (state.isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 px-1">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        <span>Detecting files...</span>
+      </div>
+    );
+  }
+
+  if (state.isValidating) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 px-1">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        <span>Loading files...</span>
+      </div>
+    );
+  }
+
+  // No files yet
+  if (state.files.length === 0) {
+    return null;
+  }
+
+  // If no X files mapped yet
+  if (xFiles.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-amber-600 mb-4 px-1">
+        <span>No X files mapped - select file roles below</span>
+      </div>
+    );
+  }
+
+  // Global validation error
+  if (state.validationError) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-destructive mb-4 px-2 py-2 bg-destructive/10 rounded-md">
+        <span>Error loading files: {state.validationError}</span>
+      </div>
+    );
+  }
+
+  // Helper to format shape or error
+  const formatShape = (shape: { rows: number; cols: number; hasError: boolean }, rowsOverride?: number) => {
+    if (shape.hasError) {
+      return <span className="text-destructive">Error</span>;
+    }
+    const rows = rowsOverride ?? shape.rows;
+    if (rows > 0 && shape.cols > 0) {
+      return <span className="text-foreground">({rows}, {shape.cols})</span>;
+    }
+    return <span className="text-muted-foreground">?</span>;
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mb-4 px-2 py-2 bg-muted/30 rounded-md font-mono">
+      {/* Train shapes */}
+      {(xTrainFiles.length > 0 || yTrainFiles.length > 0) && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground font-sans">Train:</span>
+          {xTrainFiles.length > 0 && (
+            <span>
+              <span className="text-primary">X</span>
+              <span className="text-muted-foreground">=</span>
+              {formatShape(xTrainShape)}
+            </span>
+          )}
+          {yTrainFiles.length > 0 && (
+            <span>
+              <span className="text-primary">Y</span>
+              <span className="text-muted-foreground">=</span>
+              {formatShape(yTrainShape, xTrainShape.rows)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Test shapes */}
+      {(xTestFiles.length > 0 || yTestFiles.length > 0) && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground font-sans">Test:</span>
+          {xTestFiles.length > 0 && (
+            <span>
+              <span className="text-primary">X</span>
+              <span className="text-muted-foreground">=</span>
+              {formatShape(xTestShape)}
+            </span>
+          )}
+          {yTestFiles.length > 0 && (
+            <span>
+              <span className="text-primary">Y</span>
+              <span className="text-muted-foreground">=</span>
+              {formatShape(yTestShape, xTestShape.rows)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Fallback if no train/test split */}
+      {xTrainFiles.length === 0 && xTestFiles.length === 0 && xFiles.length > 0 && (
+        <span className="text-muted-foreground font-sans">
+          {xFiles.length} X file{xFiles.length !== 1 ? "s" : ""}
+          {yFiles.length > 0 && `, ${yFiles.length} Y file${yFiles.length !== 1 ? "s" : ""}`}
+        </span>
+      )}
+
+      {/* Signal type if detected */}
+      {state.parsing.signal_type && state.parsing.signal_type !== "auto" && (
+        <>
+          <span className="text-border">|</span>
+          <span className="text-muted-foreground font-sans">{state.parsing.signal_type}</span>
+        </>
+      )}
+
+      {/* Fold file indicator */}
+      {state.hasFoldFile && (
+        <>
+          <span className="text-border">|</span>
+          <span className="text-primary font-sans">folds</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Wizard content component
 interface WizardContentProps {
   onAdd: (path: string, config: Partial<DatasetConfig>) => Promise<void>;
@@ -149,8 +363,19 @@ function WizardContent({ onAdd, onClose }: WizardContentProps) {
       hasDetectedFiles.current = true;
       (async () => {
         try {
-          const result = await detectFiles({ path: state.basePath, recursive: true });
+          const result = await detectUnified({ path: state.basePath, recursive: true });
           dispatch({ type: "SET_FILES", payload: result.files });
+          // Store detection results including parsing options and confidence
+          dispatch({
+            type: "SET_DETECTION_RESULTS",
+            payload: {
+              parsing: result.parsing_options,
+              hasFoldFile: result.has_fold_file,
+              foldFilePath: result.fold_file_path,
+              metadataColumns: result.metadata_columns,
+              confidence: result.confidence,
+            },
+          });
         } catch (error) {
           console.warn("Auto-detection failed:", error);
           dispatch({ type: "SET_FILES", payload: [] });
@@ -238,6 +463,7 @@ function WizardContent({ onAdd, onClose }: WizardContentProps) {
       </DialogHeader>
 
       <StepIndicator />
+      <DataStats />
 
       <div className="flex-1 overflow-y-auto flex flex-col min-h-[400px]">
         {renderStep()}
@@ -303,7 +529,11 @@ interface DatasetWizardProps {
 export function DatasetWizard({ open, onOpenChange, onAdd, initialState }: DatasetWizardProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+      >
         <WizardProvider initialState={initialState}>
           <WizardContent onAdd={onAdd} onClose={() => onOpenChange(false)} />
         </WizardProvider>

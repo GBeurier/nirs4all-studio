@@ -267,6 +267,18 @@ launch_desktop_dev() {
         sleep 0.5
     done
 
+    # Wait for Vite to fully compile on first launch
+    # The HTTP check passes before compilation is complete, so we verify the page content
+    echo -e "${BLUE}Waiting for Vite compilation to complete...${NC}"
+    for i in {1..30}; do
+        # Check if the response contains the Vite-injected script (indicates compilation done)
+        if curl -s "http://127.0.0.1:$PORT_FRONTEND" 2>/dev/null | grep -q '<div id="root">'; then
+            echo -e "${GREEN}✓ Vite compilation complete${NC}"
+            break
+        fi
+        sleep 0.5
+    done
+
     # Launch desktop window
     echo -e "${BLUE}Launching desktop window...${NC}"
     export VITE_DEV=true

@@ -34,7 +34,7 @@ export type HeaderUnit = "nm" | "cm-1" | "text" | "none" | "index";
 /**
  * NA handling policy
  */
-export type NaPolicy = "drop" | "fill_mean" | "fill_median" | "fill_zero" | "error";
+export type NaPolicy = "keep" | "drop" | "fill_mean" | "fill_median" | "fill_zero" | "error";
 
 /**
  * Task type for the dataset
@@ -62,36 +62,6 @@ export interface ParsingOptions {
 // ============= Advanced Configuration Types =============
 
 /**
- * Partition method for single-file datasets
- */
-export type PartitionMethod = "files" | "column" | "percentage" | "stratified" | "index";
-
-/**
- * Partition configuration for train/test splitting
- */
-export interface PartitionConfig {
-  method: PartitionMethod;
-  /** Column name for column-based partitioning */
-  column?: string;
-  /** Values indicating training data */
-  train_values?: string[];
-  /** Values indicating test data */
-  test_values?: string[];
-  /** Training percentage (0-100) for percentage-based split */
-  train_percent?: number;
-  /** Whether to shuffle before splitting */
-  shuffle?: boolean;
-  /** Random seed for reproducibility */
-  random_state?: number;
-  /** Column to stratify by */
-  stratify_column?: string;
-  /** Explicit training indices */
-  train_indices?: number[];
-  /** Explicit test indices */
-  test_indices?: number[];
-}
-
-/**
  * Fold source type for cross-validation
  */
 export type FoldSource = "none" | "column" | "file" | "inline";
@@ -115,41 +85,6 @@ export interface FoldConfig {
   file?: string;
   /** Inline fold definitions */
   folds?: FoldDefinition[];
-}
-
-/**
- * Variation mode for feature variations
- */
-export type VariationMode = "separate" | "concat" | "select" | "compare";
-
-/**
- * Preprocessing provenance for variations
- */
-export interface PreprocessingProvenance {
-  type: string;
-  description?: string;
-  software?: string;
-  params?: Record<string, unknown>;
-}
-
-/**
- * Single feature variation configuration
- */
-export interface VariationConfig {
-  name: string;
-  description?: string;
-  files: DetectedFile[];
-  preprocessing_applied?: PreprocessingProvenance[];
-}
-
-/**
- * Feature variations configuration
- */
-export interface VariationsConfig {
-  mode: VariationMode;
-  variations: VariationConfig[];
-  /** Selected variation names when mode="select" */
-  selected_variations?: string[];
 }
 
 /**
@@ -196,7 +131,6 @@ export interface AggregationConfig {
   enabled: boolean;
   column?: string;
   method: "mean" | "median" | "vote";
-  exclude_outliers: boolean;
 }
 
 /**
@@ -433,6 +367,10 @@ export interface DetectedFile {
   size_bytes: number;
   confidence: number;
   detected: boolean;
+  /** Number of rows in the file (from backend detection) */
+  num_rows?: number;
+  /** Number of columns in the file (from backend detection) */
+  num_columns?: number;
 }
 
 /**
@@ -451,6 +389,65 @@ export interface DetectFilesResponse {
   folder_name: string;
   total_size_bytes: number;
   has_standard_structure: boolean;
+}
+
+/**
+ * Confidence scores for auto-detected parameters
+ */
+export interface DetectionConfidence {
+  delimiter?: number;
+  decimal_separator?: number;
+  has_header?: number;
+  header_unit?: number;
+  signal_type?: number;
+}
+
+/**
+ * Unified detection response using nirs4all
+ */
+export interface UnifiedDetectionResponse {
+  files: DetectedFile[];
+  folder_name: string;
+  total_size_bytes: number;
+  has_standard_structure: boolean;
+  parsing_options: {
+    delimiter?: string;
+    decimal_separator?: string;
+    has_header?: boolean;
+    header_unit?: string;
+    signal_type?: string;
+    encoding?: string;
+  };
+  confidence?: DetectionConfidence;
+  has_fold_file: boolean;
+  fold_file_path?: string;
+  metadata_columns: string[];
+  warnings: string[];
+}
+
+/**
+ * Auto-detect request for single file
+ */
+export interface AutoDetectRequest {
+  path: string;
+  attempt_load?: boolean;
+}
+
+/**
+ * Auto-detect response for single file
+ */
+export interface AutoDetectResponse {
+  success: boolean;
+  delimiter: string;
+  decimal_separator: string;
+  has_header: boolean;
+  header_unit: string;
+  signal_type?: string;
+  encoding: string;
+  confidence: DetectionConfidence;
+  num_rows?: number;
+  num_columns?: number;
+  warnings: string[];
 }
 
 /**
@@ -524,6 +521,25 @@ export interface PreviewDataResponse {
     classes?: string[];
     class_counts?: Record<string, number>;
   };
+  /** Per-source spectra data for multi-source datasets */
+  spectra_per_source?: Record<number, {
+    wavelengths: number[];
+    mean_spectrum: number[];
+    std_spectrum: number[];
+    min_spectrum: number[];
+    max_spectrum: number[];
+  }>;
+  /** Per-target distribution data for multi-target datasets */
+  target_distributions?: Record<string, {
+    type: "regression" | "classification";
+    min?: number;
+    max?: number;
+    mean?: number;
+    std?: number;
+    histogram?: { bin: number; count: number }[];
+    classes?: string[];
+    class_counts?: Record<string, number>;
+  }>;
 }
 
 /**
@@ -545,15 +561,33 @@ export interface WizardState {
   isLoading: boolean;
   errors: Record<string, string>;
 
-  // Advanced configuration (Phase 7 extensions)
-  /** Multi-source configuration */
+  // Detection results from unified detection
+  /** Whether a fold file was detected in the folder */
+  hasFoldFile: boolean;
+  /** Path to the detected fold file */
+  foldFilePath: string | null;
+  /** Detected metadata columns (for aggregation column dropdown) */
+  metadataColumns: string[];
+  /** Confidence scores for auto-detected parameters */
+  confidence: DetectionConfidence;
+
+  // Advanced configuration
+  /** Multi-source configuration (auto-detected) */
   multiSource: MultiSourceConfig | null;
-  /** Partition configuration for train/test splitting */
-  partition: PartitionConfig;
   /** Cross-validation fold configuration */
   folds: FoldConfig | null;
-  /** Feature variations configuration */
-  variations: VariationsConfig | null;
+
+  // Web mode support - File objects for reading content when filesystem paths aren't available
+  /** Map of relative path to File object for web mode */
+  fileBlobs: Map<string, File>;
+
+  // Validated shapes from actual file loading
+  /** Validated shapes from loading files (path -> {num_rows, num_columns, error}) */
+  validatedShapes: Record<string, { num_rows?: number; num_columns?: number; error?: string }>;
+  /** Whether validation is in progress */
+  isValidating: boolean;
+  /** Global validation error */
+  validationError: string | null;
 }
 
 // ============= Phase 2: Versioning & Integrity Types =============

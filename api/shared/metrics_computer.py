@@ -13,26 +13,30 @@ Metric Categories:
 - Noise: hf_variance, snr_estimate, smoothness
 - Quality: nan_count, inf_count, saturation_count, zero_count
 - Chemometric (requires PCA): hotelling_t2, q_residual, leverage, distance_to_centroid, lof_score
+
+Note: Chemometric metrics are delegated to nirs4all.operators.filters for computation.
 """
 
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
-
-try:
-    from sklearn.decomposition import PCA
-    from sklearn.neighbors import LocalOutlierFactor
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
 
 try:
     from scipy import stats
     from scipy.signal import find_peaks
-    from scipy.ndimage import uniform_filter1d
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
+
+# Import nirs4all filters for chemometric metrics
+try:
+    from nirs4all.operators.filters import (
+        XOutlierFilter,
+        SpectralQualityFilter,
+        HighLeverageFilter,
+    )
+    NIRS4ALL_FILTERS_AVAILABLE = True
+except ImportError:
+    NIRS4ALL_FILTERS_AVAILABLE = False
 
 
 # ============= Metric Categories =============
@@ -92,6 +96,9 @@ class MetricsComputer:
     This class provides methods to compute various metrics for spectral data,
     organized by category. Metrics can be computed individually or in batches.
 
+    Chemometric metrics (hotelling_t2, q_residual, leverage, lof_score, distance_to_centroid)
+    are delegated to nirs4all.operators.filters for computation.
+
     Attributes:
         saturation_threshold: Threshold value for saturation detection
         n_pca_components: Number of PCA components for chemometric metrics
@@ -119,10 +126,6 @@ class MetricsComputer:
         self.lof_n_neighbors = lof_n_neighbors
         self.lof_contamination = lof_contamination
 
-        # Cache for expensive computations
-        self._pca_cache: Dict[str, Any] = {}
-        self._lof_cache: Dict[str, np.ndarray] = {}
-
     def compute(
         self,
         X: np.ndarray,
@@ -135,7 +138,7 @@ class MetricsComputer:
         Args:
             X: Feature matrix (n_samples, n_features)
             metrics: List of metrics to compute. If None, computes all fast metrics.
-            pca_result: Pre-computed PCA result (for chemometric metrics)
+            pca_result: Pre-computed PCA result (for chemometric metrics) - ignored, filters compute their own PCA
             wavelengths: Wavelength array (for proper AUC computation)
 
         Returns:
@@ -144,12 +147,11 @@ class MetricsComputer:
         if metrics is None:
             metrics = FAST_METRICS
 
-        n_samples, n_features = X.shape
         results: Dict[str, np.ndarray] = {}
 
         for metric in metrics:
             try:
-                value = self._compute_metric(X, metric, pca_result, wavelengths)
+                value = self._compute_metric(X, metric, wavelengths)
                 if value is not None:
                     results[metric] = value
             except Exception as e:
@@ -163,7 +165,6 @@ class MetricsComputer:
         self,
         X: np.ndarray,
         metric: str,
-        pca_result: Optional[Dict[str, Any]] = None,
         wavelengths: Optional[np.ndarray] = None,
     ) -> Optional[np.ndarray]:
         """Compute a single metric.
@@ -171,7 +172,6 @@ class MetricsComputer:
         Args:
             X: Feature matrix
             metric: Metric name
-            pca_result: Pre-computed PCA result
             wavelengths: Wavelength array
 
         Returns:
@@ -281,7 +281,7 @@ class MetricsComputer:
             hf_var[hf_var == 0] = 1e-10
             return 1.0 / hf_var
 
-        # ======== Quality Metrics ========
+        # ======== Quality Metrics (simple numpy, not using SpectralQualityFilter) ========
         elif metric == 'nan_count':
             return np.sum(np.isnan(X), axis=1).astype(float)
 
@@ -297,193 +297,91 @@ class MetricsComputer:
         elif metric == 'zero_count':
             return np.sum(X == 0, axis=1).astype(float)
 
-        # ======== Chemometric Metrics ========
+        # ======== Chemometric Metrics (delegated to nirs4all filters) ========
         elif metric == 'hotelling_t2':
-            return self._compute_hotelling_t2(X, pca_result)
+            return self._compute_chemometric_via_filter(X, 'pca_leverage')
 
         elif metric == 'q_residual':
-            return self._compute_q_residual(X, pca_result)
+            return self._compute_chemometric_via_filter(X, 'pca_residual')
 
         elif metric == 'leverage':
-            return self._compute_leverage(X)
+            return self._compute_leverage_via_filter(X)
 
         elif metric == 'distance_to_centroid':
-            centroid = np.nanmean(X, axis=0)
-            return np.sqrt(np.nansum((X - centroid) ** 2, axis=1))
+            return self._compute_chemometric_via_filter(X, 'mahalanobis')
 
         elif metric == 'lof_score':
-            return self._compute_lof_score(X)
+            return self._compute_chemometric_via_filter(X, 'lof')
 
         else:
             return None
 
-    def _compute_hotelling_t2(
+    def _compute_chemometric_via_filter(
         self,
         X: np.ndarray,
-        pca_result: Optional[Dict[str, Any]] = None,
+        method: str,
     ) -> Optional[np.ndarray]:
-        """Compute Hotelling's T² statistic for each sample.
-
-        T² measures the distance from the center in PCA score space,
-        weighted by the explained variance of each component.
+        """Compute chemometric metric using nirs4all XOutlierFilter.
 
         Args:
             X: Feature matrix
-            pca_result: Pre-computed PCA result with 'coordinates' and 'explained_variance'
+            method: Filter method ('pca_leverage', 'pca_residual', 'mahalanobis', 'lof')
 
         Returns:
-            Array of T² values
+            Array of metric values, or None if computation failed
         """
-        if not SKLEARN_AVAILABLE:
+        if not NIRS4ALL_FILTERS_AVAILABLE:
             return None
 
         n_samples = X.shape[0]
-
-        if pca_result is not None and 'coordinates' in pca_result and 'explained_variance' in pca_result:
-            # Use pre-computed PCA
-            coords = np.array(pca_result['coordinates'])
-            variance = np.array(pca_result['explained_variance'])
-
-            # Use only as many components as we have variance values
-            n_components = min(coords.shape[1], len(variance))
-            coords = coords[:, :n_components]
-            variance = variance[:n_components]
-
-            # Avoid division by zero
-            variance[variance == 0] = 1e-10
-
-            # T² = Σ(score_i² / variance_i)
-            t2 = np.sum((coords ** 2) / variance, axis=1)
-            return t2
-        else:
-            # Compute PCA on the fly
-            n_components = min(self.n_pca_components, X.shape[0] - 1, X.shape[1])
-            if n_components < 1:
-                return None
-
-            try:
-                pca = PCA(n_components=n_components)
-                scores = pca.fit_transform(np.nan_to_num(X, nan=0))
-                variance = pca.explained_variance_
-                variance[variance == 0] = 1e-10
-                t2 = np.sum((scores ** 2) / variance, axis=1)
-                return t2
-            except Exception:
-                return None
-
-    def _compute_q_residual(
-        self,
-        X: np.ndarray,
-        pca_result: Optional[Dict[str, Any]] = None,
-    ) -> Optional[np.ndarray]:
-        """Compute Q-residual (SPE) for each sample.
-
-        Q-residual measures the reconstruction error after PCA projection.
-        High Q-residual indicates the sample doesn't fit the PCA model well.
-
-        Args:
-            X: Feature matrix
-            pca_result: Pre-computed PCA result
-
-        Returns:
-            Array of Q-residual values
-        """
-        if not SKLEARN_AVAILABLE:
-            return None
-
-        n_samples, n_features = X.shape
-        n_components = min(self.n_pca_components, n_samples - 1, n_features)
-
-        if n_components < 1:
-            return None
-
-        try:
-            # Need to fit PCA to get the components for reconstruction
-            pca = PCA(n_components=n_components)
-            X_clean = np.nan_to_num(X, nan=0)
-            scores = pca.fit_transform(X_clean)
-            X_reconstructed = pca.inverse_transform(scores)
-
-            # Q = ||X - X_reconstructed||²
-            residuals = X_clean - X_reconstructed
-            q = np.sum(residuals ** 2, axis=1)
-            return q
-        except Exception:
-            return None
-
-    def _compute_leverage(self, X: np.ndarray) -> Optional[np.ndarray]:
-        """Compute leverage (hat values) for each sample.
-
-        Leverage measures how much influence each sample has on the model.
-        High leverage samples are potentially influential outliers.
-
-        Args:
-            X: Feature matrix
-
-        Returns:
-            Array of leverage values
-        """
-        n_samples, n_features = X.shape
-
-        try:
-            X_clean = np.nan_to_num(X, nan=0)
-            # Center the data
-            X_centered = X_clean - np.mean(X_clean, axis=0)
-
-            # Compute leverage using SVD for numerical stability
-            # H = X @ (X'X)^-1 @ X'
-            # Leverage = diag(H)
-
-            # Use reduced SVD for efficiency
-            n_components = min(n_samples - 1, n_features, 50)  # Limit to 50 for speed
-            if SKLEARN_AVAILABLE:
-                from sklearn.decomposition import TruncatedSVD
-                svd = TruncatedSVD(n_components=n_components)
-                X_reduced = svd.fit_transform(X_centered)
-            else:
-                # Simple fallback using numpy
-                U, s, Vt = np.linalg.svd(X_centered, full_matrices=False)
-                X_reduced = U[:, :n_components] * s[:n_components]
-
-            # Leverage in reduced space
-            XtX_inv = np.linalg.pinv(X_reduced.T @ X_reduced)
-            leverage = np.sum((X_reduced @ XtX_inv) * X_reduced, axis=1)
-
-            return leverage
-        except Exception:
-            return None
-
-    def _compute_lof_score(self, X: np.ndarray) -> Optional[np.ndarray]:
-        """Compute Local Outlier Factor scores.
-
-        LOF measures local density deviation of a sample compared to its neighbors.
-        Values significantly greater than 1 indicate outliers.
-
-        Args:
-            X: Feature matrix
-
-        Returns:
-            Array of LOF scores (negative = outlier in sklearn convention)
-        """
-        if not SKLEARN_AVAILABLE:
-            return None
-
-        n_samples = X.shape[0]
-        n_neighbors = min(self.lof_n_neighbors, n_samples - 1)
-
-        if n_neighbors < 2:
+        if n_samples < 2:
             return None
 
         try:
             X_clean = np.nan_to_num(X, nan=0)
-            lof = LocalOutlierFactor(
-                n_neighbors=n_neighbors,
+
+            filter_obj = XOutlierFilter(
+                method=method,
+                n_components=min(self.n_pca_components, n_samples - 1, X.shape[1]),
                 contamination=self.lof_contamination,
-                novelty=False,
             )
-            lof.fit(X_clean)
-            # Return negative outlier factor (more negative = more outlier)
-            return -lof.negative_outlier_factor_
+            filter_obj.fit(X_clean)
+
+            # Access internal distances computed during fit
+            if filter_obj._distances_ is not None:
+                return filter_obj._distances_.copy()
+
+            return None
+        except Exception:
+            return None
+
+    def _compute_leverage_via_filter(self, X: np.ndarray) -> Optional[np.ndarray]:
+        """Compute leverage using nirs4all HighLeverageFilter.
+
+        Args:
+            X: Feature matrix
+
+        Returns:
+            Array of leverage values, or None if computation failed
+        """
+        if not NIRS4ALL_FILTERS_AVAILABLE:
+            return None
+
+        n_samples = X.shape[0]
+        if n_samples < 2:
+            return None
+
+        try:
+            X_clean = np.nan_to_num(X, nan=0)
+
+            filter_obj = HighLeverageFilter(
+                method="pca" if X.shape[1] > n_samples else "hat",
+                n_components=min(self.n_pca_components, n_samples - 1, X.shape[1], 50),
+            )
+            filter_obj.fit(X_clean)
+
+            # Use get_leverages method to get the actual values
+            return filter_obj.get_leverages(X_clean)
         except Exception:
             return None
 
@@ -519,91 +417,6 @@ class MetricsComputer:
             'p95': float(np.percentile(valid_values, 95)),
         }
 
-    def get_outlier_mask(
-        self,
-        X: np.ndarray,
-        method: str = 'hotelling_t2',
-        threshold: float = 0.95,
-        pca_result: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Get mask of samples identified as outliers.
-
-        Args:
-            X: Feature matrix
-            method: Detection method ('hotelling_t2', 'q_residual', 'lof', 'distance')
-            threshold: Threshold for outlier detection (interpretation depends on method)
-            pca_result: Pre-computed PCA result
-
-        Returns:
-            Tuple of (boolean mask where True = inlier, info dict)
-        """
-        n_samples = X.shape[0]
-
-        if method == 'hotelling_t2':
-            values = self._compute_hotelling_t2(X, pca_result)
-            if values is None:
-                return np.ones(n_samples, dtype=bool), {'error': 'Failed to compute T²'}
-
-            # Use chi-squared threshold
-            if SCIPY_AVAILABLE:
-                n_components = min(self.n_pca_components, X.shape[0] - 1, X.shape[1])
-                critical_value = stats.chi2.ppf(threshold, n_components)
-            else:
-                critical_value = np.percentile(values, threshold * 100)
-
-            mask = values <= critical_value
-            return mask, {
-                'method': 'hotelling_t2',
-                'threshold': float(critical_value),
-                'n_outliers': int(np.sum(~mask)),
-                'values': values.tolist(),
-            }
-
-        elif method == 'q_residual':
-            values = self._compute_q_residual(X, pca_result)
-            if values is None:
-                return np.ones(n_samples, dtype=bool), {'error': 'Failed to compute Q-residual'}
-
-            # Use percentile threshold
-            critical_value = np.percentile(values, threshold * 100)
-            mask = values <= critical_value
-            return mask, {
-                'method': 'q_residual',
-                'threshold': float(critical_value),
-                'n_outliers': int(np.sum(~mask)),
-                'values': values.tolist(),
-            }
-
-        elif method == 'lof':
-            values = self._compute_lof_score(X)
-            if values is None:
-                return np.ones(n_samples, dtype=bool), {'error': 'Failed to compute LOF'}
-
-            # LOF > threshold indicates outlier
-            # Typical threshold: 1.5-2.0 for moderate outliers
-            lof_threshold = 1.0 + (1.0 - threshold) * 5  # Map 0.95 -> 1.25, 0.9 -> 1.5
-            mask = values <= lof_threshold
-            return mask, {
-                'method': 'lof',
-                'threshold': float(lof_threshold),
-                'n_outliers': int(np.sum(~mask)),
-                'values': values.tolist(),
-            }
-
-        elif method == 'distance':
-            values = self.compute(X, metrics=['distance_to_centroid'])['distance_to_centroid']
-            critical_value = np.percentile(values, threshold * 100)
-            mask = values <= critical_value
-            return mask, {
-                'method': 'distance_to_centroid',
-                'threshold': float(critical_value),
-                'n_outliers': int(np.sum(~mask)),
-                'values': values.tolist(),
-            }
-
-        else:
-            return np.ones(n_samples, dtype=bool), {'error': f'Unknown method: {method}'}
-
     def get_similar_samples(
         self,
         X: np.ndarray,
@@ -613,6 +426,8 @@ class MetricsComputer:
         top_k: Optional[int] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Find samples similar to a reference sample.
+
+        This is a UI-specific feature for interactive sample exploration.
 
         Args:
             X: Feature matrix
@@ -675,6 +490,8 @@ class MetricsComputer:
     ) -> np.ndarray:
         """Compute per-sample distance between reference and final spectra.
 
+        This is a UI-specific feature for preprocessing difference visualization.
+
         Args:
             X_ref: Reference spectra (n_samples, n_features)
             X_final: Final spectra (n_samples, n_features)
@@ -699,7 +516,6 @@ class MetricsComputer:
             return np.sum(np.abs(X_ref - X_final), axis=1)
 
         elif metric == 'cosine':
-            # Cosine distance = 1 - cosine_similarity
             from scipy.spatial.distance import cdist
             # Compute diagonal of pairwise cosine distance matrix
             return np.array([cdist(X_ref[i:i+1], X_final[i:i+1], 'cosine')[0, 0]
@@ -723,18 +539,15 @@ class MetricsComputer:
 
         elif metric == 'mahalanobis':
             # Mahalanobis using combined covariance
-            if not SKLEARN_AVAILABLE:
-                # Fall back to euclidean
-                return np.linalg.norm(X_ref - X_final, axis=1)
-
-            # Need enough samples for covariance estimation
-            min_samples_for_cov = X_ref.shape[1] + 2
-            if n_samples < min_samples_for_cov:
-                # Fall back to euclidean for small sample sizes
-                return np.linalg.norm(X_ref - X_final, axis=1)
-
-            from sklearn.covariance import LedoitWolf
             try:
+                from sklearn.covariance import LedoitWolf
+
+                # Need enough samples for covariance estimation
+                min_samples_for_cov = X_ref.shape[1] + 2
+                if n_samples < min_samples_for_cov:
+                    # Fall back to euclidean for small sample sizes
+                    return np.linalg.norm(X_ref - X_final, axis=1)
+
                 X_combined = np.vstack([X_ref, X_final])
                 # Use LedoitWolf for more stable covariance estimation (shrinkage)
                 cov = LedoitWolf().fit(X_combined)
@@ -759,15 +572,12 @@ class MetricsComputer:
 
         elif metric == 'pca_distance':
             # Distance in PCA score space (first n_components)
-            if not SKLEARN_AVAILABLE:
-                return np.linalg.norm(X_ref - X_final, axis=1)
-
-            from sklearn.decomposition import PCA
-            n_components = min(10, X_ref.shape[1], n_samples - 1)
-            if n_components < 1:
-                return np.linalg.norm(X_ref - X_final, axis=1)
-
             try:
+                from sklearn.decomposition import PCA
+                n_components = min(10, X_ref.shape[1], n_samples - 1)
+                if n_components < 1:
+                    return np.linalg.norm(X_ref - X_final, axis=1)
+
                 pca = PCA(n_components=n_components)
                 pca.fit(np.vstack([X_ref, X_final]))
                 scores_ref = pca.transform(X_ref)
@@ -788,6 +598,8 @@ class MetricsComputer:
     ) -> Dict[str, Any]:
         """Compute variance within repetition groups.
 
+        This is a UI-specific feature for analyzing measurement repeatability.
+
         Args:
             X: Spectral data (n_samples, n_features)
             group_ids: Array of group identifiers for each sample
@@ -795,7 +607,6 @@ class MetricsComputer:
                 - 'group_mean': Distance from group mean
                 - 'leave_one_out': Distance from mean of other samples in group
                 - 'first': Distance from first sample in group
-                - 'selected': Not implemented (requires additional parameter)
             metric: Distance metric (default 'euclidean')
 
         Returns:
@@ -811,19 +622,6 @@ class MetricsComputer:
         sample_indices = []
         group_labels = []
         per_group_stats = {}
-
-        # Pre-compute precision matrix for Mahalanobis (using all data)
-        precision_matrix = None
-        if metric == 'mahalanobis' and SKLEARN_AVAILABLE:
-            try:
-                from sklearn.covariance import LedoitWolf
-                n_samples, n_features = X.shape
-                if n_samples >= n_features + 2:
-                    cov = LedoitWolf().fit(X)
-                    if np.all(np.isfinite(cov.precision_)):
-                        precision_matrix = cov.precision_
-            except Exception:
-                pass
 
         def compute_distance(spectrum: np.ndarray, ref: np.ndarray) -> float:
             """Compute distance between spectrum and reference."""
@@ -854,21 +652,6 @@ class MetricsComputer:
             elif metric == 'correlation':
                 r = np.corrcoef(spectrum, ref)[0, 1]
                 return float(1 - r) if np.isfinite(r) else 1.0
-
-            elif metric == 'mahalanobis':
-                if precision_matrix is not None:
-                    try:
-                        d = np.sqrt(np.dot(np.dot(diff, precision_matrix), diff))
-                        if np.isfinite(d):
-                            return float(d)
-                    except Exception:
-                        pass
-                # Fall back to euclidean
-                return float(np.linalg.norm(diff))
-
-            elif metric == 'pca_distance':
-                # For single-point comparison, just use euclidean
-                return float(np.linalg.norm(diff))
 
             else:
                 return float(np.linalg.norm(diff))
@@ -989,11 +772,11 @@ def get_available_metrics() -> Dict[str, List[Dict[str, Any]]]:
             {'name': 'zero_count', 'display_name': 'Zero Count', 'description': 'Number of zero values'},
         ],
         'chemometric': [
-            {'name': 'hotelling_t2', 'display_name': "Hotelling's T²", 'description': 'Distance in PCA space (requires PCA)', 'requires_pca': True},
-            {'name': 'q_residual', 'display_name': 'Q-Residual (SPE)', 'description': 'PCA reconstruction error (requires PCA)', 'requires_pca': True},
-            {'name': 'leverage', 'display_name': 'Leverage', 'description': 'Sample influence on model'},
-            {'name': 'distance_to_centroid', 'display_name': 'Distance to Centroid', 'description': 'Euclidean distance from data center'},
-            {'name': 'lof_score', 'display_name': 'LOF Score', 'description': 'Local Outlier Factor (density-based)'},
+            {'name': 'hotelling_t2', 'display_name': "Hotelling's T²", 'description': 'Distance in PCA space (via nirs4all)', 'requires_pca': True},
+            {'name': 'q_residual', 'display_name': 'Q-Residual (SPE)', 'description': 'PCA reconstruction error (via nirs4all)', 'requires_pca': True},
+            {'name': 'leverage', 'display_name': 'Leverage', 'description': 'Sample influence on model (via nirs4all)'},
+            {'name': 'distance_to_centroid', 'display_name': 'Distance to Centroid', 'description': 'Mahalanobis distance from data center (via nirs4all)'},
+            {'name': 'lof_score', 'display_name': 'LOF Score', 'description': 'Local Outlier Factor (via nirs4all)'},
         ],
     }
 

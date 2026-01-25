@@ -6,12 +6,10 @@ This module provides FastAPI routes for dashboard statistics and recent activity
 
 from fastapi import APIRouter
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
 from pydantic import BaseModel
-import json
 from pathlib import Path
 
-from .workspace_manager import workspace_manager
+from .workspace_manager import workspace_manager, WorkspaceScanner
 
 router = APIRouter()
 
@@ -70,56 +68,58 @@ def _count_pipelines() -> int:
     return count
 
 
+def _get_workspace_scanner() -> Optional[WorkspaceScanner]:
+    """Get a WorkspaceScanner for the active workspace."""
+    ws_path = workspace_manager.get_active_workspace_path()
+    if not ws_path:
+        return None
+    return WorkspaceScanner(Path(ws_path))
+
+
 def _count_runs() -> int:
-    """Count completed runs in the current workspace."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
+    """Count completed runs in the current workspace using WorkspaceScanner."""
+    scanner = _get_workspace_scanner()
+    if not scanner:
         return 0
 
-    results_path = workspace_manager.get_results_path()
-    if not results_path or not Path(results_path).exists():
-        return 0
-
-    # Count result directories or files
-    results_dir = Path(results_path)
-    count = 0
-
-    # Count subdirectories (each run typically creates a folder)
-    for item in results_dir.iterdir():
-        if item.is_dir():
-            count += 1
-
-    return count
+    runs = scanner.discover_runs()
+    return len(runs)
 
 
 def _get_avg_metric() -> float:
-    """Calculate average R² or other primary metric from recent runs."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
+    """Calculate average R² or other primary metric from recent runs using WorkspaceScanner."""
+    scanner = _get_workspace_scanner()
+    if not scanner:
         return 0.0
 
-    results_path = workspace_manager.get_results_path()
-    if not results_path or not Path(results_path).exists():
+    runs = scanner.discover_runs()
+    if not runs:
         return 0.0
 
-    results_dir = Path(results_path)
     metrics = []
+    for run in runs:
+        # Extract metrics from run summary or best_result
+        summary = run.get("summary", {})
+        best_result = run.get("best_result", {}) or summary.get("best_result", {})
 
-    # Try to load metrics from result files
-    for result_dir in results_dir.iterdir():
-        if result_dir.is_dir():
-            metrics_file = result_dir / "metrics.json"
-            if metrics_file.exists():
-                try:
-                    with open(metrics_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        # Look for R² or similar metric
-                        for key in ["r2", "R2", "r2_score", "R2_score", "accuracy", "Accuracy"]:
-                            if key in data:
-                                metrics.append(float(data[key]))
-                                break
-                except Exception:
-                    pass
+        # Try to get R² or accuracy from best_result
+        if best_result:
+            for key in ["r2", "R2", "r2_score", "best_r2"]:
+                if key in best_result:
+                    try:
+                        metrics.append(float(best_result[key]))
+                    except (ValueError, TypeError):
+                        pass
+                    break
+            else:
+                # Check for accuracy
+                for key in ["accuracy", "Accuracy", "best_accuracy"]:
+                    if key in best_result:
+                        try:
+                            metrics.append(float(best_result[key]))
+                        except (ValueError, TypeError):
+                            pass
+                        break
 
     if not metrics:
         return 0.0
@@ -128,69 +128,68 @@ def _get_avg_metric() -> float:
 
 
 def _get_recent_runs(limit: int = 6) -> List[Dict[str, Any]]:
-    """Get recent runs from the workspace."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
+    """Get recent runs from the workspace using WorkspaceScanner."""
+    scanner = _get_workspace_scanner()
+    if not scanner:
         return []
 
-    results_path = workspace_manager.get_results_path()
-    if not results_path or not Path(results_path).exists():
+    discovered_runs = scanner.discover_runs()
+    if not discovered_runs:
         return []
 
-    results_dir = Path(results_path)
     runs = []
+    for run in discovered_runs:
+        # Extract metric info from summary/best_result
+        summary = run.get("summary", {})
+        best_result = run.get("best_result", {}) or summary.get("best_result", {})
 
-    for result_dir in results_dir.iterdir():
-        if result_dir.is_dir():
-            run_info = {
-                "id": result_dir.name,
-                "name": result_dir.name.replace("_", " ").title(),
-                "dataset_name": "Unknown",
-                "pipeline_name": "Unknown",
-                "status": "completed",
-                "metric_name": None,
-                "metric_value": None,
-                "created_at": datetime.fromtimestamp(result_dir.stat().st_ctime).isoformat(),
-                "completed_at": datetime.fromtimestamp(result_dir.stat().st_mtime).isoformat(),
-            }
+        metric_name = None
+        metric_value = None
+        if best_result:
+            for key in ["r2", "R2", "r2_score", "best_r2"]:
+                if key in best_result:
+                    metric_name = "R²"
+                    try:
+                        metric_value = float(best_result[key])
+                    except (ValueError, TypeError):
+                        pass
+                    break
+            if not metric_name:
+                for key in ["accuracy", "Accuracy", "best_accuracy"]:
+                    if key in best_result:
+                        metric_name = "Accuracy"
+                        try:
+                            metric_value = float(best_result[key])
+                        except (ValueError, TypeError):
+                            pass
+                        break
 
-            # Try to load run metadata
-            run_file = result_dir / "run.json"
-            if run_file.exists():
-                try:
-                    with open(run_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        run_info["name"] = data.get("name", run_info["name"])
-                        run_info["dataset_name"] = data.get("dataset_name", "Unknown")
-                        run_info["pipeline_name"] = data.get("pipeline_name", "Unknown")
-                        run_info["status"] = data.get("status", "completed")
-                        run_info["created_at"] = data.get("created_at", run_info["created_at"])
-                        run_info["completed_at"] = data.get("completed_at", run_info["completed_at"])
-                except Exception:
-                    pass
+        # Determine dataset name (new format has list, legacy has single string)
+        datasets = run.get("datasets", [])
+        if isinstance(datasets, list) and datasets:
+            dataset_name = datasets[0].get("name", "Unknown") if isinstance(datasets[0], dict) else str(datasets[0])
+        else:
+            dataset_name = run.get("dataset", "Unknown")
 
-            # Try to load metrics
-            metrics_file = result_dir / "metrics.json"
-            if metrics_file.exists():
-                try:
-                    with open(metrics_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        # Look for primary metric
-                        for key in ["r2", "R2", "r2_score", "R2_score"]:
-                            if key in data:
-                                run_info["metric_name"] = "R²"
-                                run_info["metric_value"] = float(data[key])
-                                break
-                        if not run_info["metric_name"]:
-                            for key in ["accuracy", "Accuracy"]:
-                                if key in data:
-                                    run_info["metric_name"] = "Accuracy"
-                                    run_info["metric_value"] = float(data[key])
-                                    break
-                except Exception:
-                    pass
+        # Determine pipeline name from templates or name
+        templates = run.get("templates", [])
+        if templates and isinstance(templates[0], dict):
+            pipeline_name = templates[0].get("name", run.get("name", "Unknown"))
+        else:
+            pipeline_name = run.get("name", "Unknown")
 
-            runs.append(run_info)
+        run_info = {
+            "id": run.get("id", ""),
+            "name": run.get("name", ""),
+            "dataset_name": dataset_name,
+            "pipeline_name": pipeline_name,
+            "status": run.get("status", "completed"),
+            "metric_name": metric_name,
+            "metric_value": metric_value,
+            "created_at": run.get("created_at", ""),
+            "completed_at": run.get("completed_at", run.get("created_at", "")),
+        }
+        runs.append(run_info)
 
     # Sort by created_at descending
     runs.sort(key=lambda x: x["created_at"], reverse=True)

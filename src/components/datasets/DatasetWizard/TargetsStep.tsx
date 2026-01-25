@@ -10,7 +10,6 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import {
-  Target,
   Layers,
   Settings,
   AlertCircle,
@@ -18,9 +17,7 @@ import {
   Loader2,
   RefreshCw,
   Pencil,
-  Split,
   Repeat,
-  GitBranch,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -52,33 +49,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
 import { useWizard } from "./WizardContext";
 import { detectFormat } from "@/api/client";
-import type { TaskType, TargetConfig, PartitionMethod, FoldSource } from "@/types/datasets";
-
-const TASK_TYPE_OPTIONS: { value: TaskType; label: string; description: string }[] = [
-  {
-    value: "auto",
-    label: "Auto-detect",
-    description: "Automatically determine task type from data",
-  },
-  {
-    value: "regression",
-    label: "Regression",
-    description: "Predict continuous numeric values",
-  },
-  {
-    value: "binary_classification",
-    label: "Binary Classification",
-    description: "Predict one of two classes",
-  },
-  {
-    value: "multiclass_classification",
-    label: "Multiclass Classification",
-    description: "Predict one of multiple classes",
-  },
-];
+import type { TaskType, TargetConfig, FoldSource } from "@/types/datasets";
 
 const AGGREGATION_METHOD_OPTIONS = [
   { value: "mean", label: "Mean", description: "Average predictions" },
@@ -97,13 +70,6 @@ const COMMON_UNITS = [
   "°Brix",
   "pH",
   "mS/cm",
-];
-
-const PARTITION_METHOD_OPTIONS: { value: PartitionMethod; label: string; description: string }[] = [
-  { value: "files", label: "File-based", description: "Use file mapping from previous step" },
-  { value: "column", label: "Column-based", description: "Split based on a column value" },
-  { value: "percentage", label: "Percentage", description: "Random split by percentage" },
-  { value: "stratified", label: "Stratified", description: "Stratified split maintaining class proportions" },
 ];
 
 const FOLD_SOURCE_OPTIONS: { value: FoldSource; label: string }[] = [
@@ -137,6 +103,50 @@ export function TargetsStep() {
   // Detected columns from Y files
   const [detectedColumns, setDetectedColumns] = useState<DetectedColumn[]>([]);
 
+  // Parse columns from response data
+  const parseColumnsFromData = (columnNames: string[], sampleData: string[][]) => {
+    return columnNames.map((colName, idx) => {
+      const sampleValues = sampleData
+        .slice(1)
+        .map((row) => row[idx])
+        .filter((v) => v !== null && v !== undefined && v !== "");
+
+      const numericValues = sampleValues?.filter((v) => !isNaN(parseFloat(v)));
+      const isNumeric = numericValues && numericValues.length > sampleValues!.length * 0.8;
+      const uniqueCount = new Set(sampleValues).size;
+
+      let colType: "numeric" | "categorical" | "text" = "text";
+      let classes: string[] | undefined;
+      let min: number | undefined;
+      let max: number | undefined;
+      let mean: number | undefined;
+
+      if (isNumeric) {
+        colType = "numeric";
+        const nums = numericValues!.map((v) => parseFloat(v));
+        min = Math.min(...nums);
+        max = Math.max(...nums);
+        mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+      } else if (uniqueCount <= 10) {
+        colType = "categorical";
+        classes = [...new Set(sampleValues)] as string[];
+      }
+
+      return {
+        name: String(colName),
+        type: colType,
+        unique_values: uniqueCount,
+        sample_values: sampleValues?.slice(0, 5) as (string | number)[],
+        is_target_candidate: colType !== "text",
+        is_metadata_candidate: colType === "text" || colType === "categorical",
+        min,
+        max,
+        mean,
+        classes,
+      };
+    });
+  };
+
   // Load target columns from Y file
   const loadTargetColumns = useCallback(async () => {
     // Find Y files
@@ -150,57 +160,44 @@ export function TargetsStep() {
     setError(null);
 
     try {
-      // Get the first Y file for detection
       const yFile = yFiles[0];
+
+      // Web mode: use File objects directly if basePath is empty
+      if (!state.basePath && state.fileBlobs.size > 0) {
+        const fileBlob = state.fileBlobs.get(yFile.path);
+        if (fileBlob) {
+          const text = await fileBlob.text();
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length > 0) {
+            // Detect delimiter
+            const firstLine = lines[0];
+            const delimiters = [";", ",", "\t", "|"];
+            const delimiterCounts = delimiters.map(d => ({ d, count: firstLine.split(d).length }));
+            const bestDelim = delimiterCounts.reduce((a, b) => a.count > b.count ? a : b).d;
+
+            // Parse CSV
+            const rows = lines.slice(0, 101).map(line => line.split(bestDelim));
+            if (rows.length > 0) {
+              const columnNames = rows[0];
+              const sampleData = rows.slice(0, 6);
+              const columns = parseColumnsFromData(columnNames, sampleData);
+              setDetectedColumns(columns);
+              return;
+            }
+          }
+        }
+        setError("Could not read Y file content");
+        return;
+      }
+
+      // Desktop mode: use backend API
       const result = await detectFormat({
         path: yFile.path,
         sample_rows: 100,
       });
 
       if (result.column_names && result.sample_data) {
-        const columns: DetectedColumn[] = result.column_names.map((colName, idx) => {
-          // Get sample values for this column
-          const sampleValues = result.sample_data
-            ?.slice(1)
-            .map((row) => row[idx])
-            .filter((v) => v !== null && v !== undefined && v !== "");
-
-          // Detect column type
-          const numericValues = sampleValues?.filter((v) => !isNaN(parseFloat(v)));
-          const isNumeric = numericValues && numericValues.length > sampleValues!.length * 0.8;
-          const uniqueCount = new Set(sampleValues).size;
-
-          let colType: "numeric" | "categorical" | "text" = "text";
-          let classes: string[] | undefined;
-          let min: number | undefined;
-          let max: number | undefined;
-          let mean: number | undefined;
-
-          if (isNumeric) {
-            colType = "numeric";
-            const nums = numericValues!.map((v) => parseFloat(v));
-            min = Math.min(...nums);
-            max = Math.max(...nums);
-            mean = nums.reduce((a, b) => a + b, 0) / nums.length;
-          } else if (uniqueCount <= 10) {
-            colType = "categorical";
-            classes = [...new Set(sampleValues)] as string[];
-          }
-
-          return {
-            name: String(colName),
-            type: colType,
-            unique_values: uniqueCount,
-            sample_values: sampleValues?.slice(0, 5) as (string | number)[],
-            is_target_candidate: colType !== "text",
-            is_metadata_candidate: colType === "text" || colType === "categorical",
-            min,
-            max,
-            mean,
-            classes,
-          };
-        });
-
+        const columns = parseColumnsFromData(result.column_names, result.sample_data);
         setDetectedColumns(columns);
       }
     } catch (e) {
@@ -209,7 +206,7 @@ export function TargetsStep() {
     } finally {
       setLoading(false);
     }
-  }, [state.files]);
+  }, [state.files, state.basePath, state.fileBlobs]);
 
   // Load columns when Y files change
   useEffect(() => {
@@ -246,6 +243,29 @@ export function TargetsStep() {
       }
     }
   }, [detectedColumns, state.targets.length, dispatch]);
+
+  // Auto-update aggregation method when task type changes
+  useEffect(() => {
+    if (!state.aggregation.enabled) return;
+
+    const isClassification = state.taskType.includes("classification");
+    const currentMethod = state.aggregation.method;
+
+    // If classification but method is not "vote", switch to "vote"
+    if (isClassification && currentMethod !== "vote") {
+      dispatch({
+        type: "SET_AGGREGATION",
+        payload: { method: "vote" },
+      });
+    }
+    // If regression/auto but method is "vote", switch to "mean"
+    else if (!isClassification && currentMethod === "vote") {
+      dispatch({
+        type: "SET_AGGREGATION",
+        payload: { method: "mean" },
+      });
+    }
+  }, [state.taskType, state.aggregation.enabled, state.aggregation.method, dispatch]);
 
   const handleTargetToggle = (column: DetectedColumn) => {
     const existing = state.targets.find((t) => t.column === column.name);
@@ -303,37 +323,6 @@ export function TargetsStep() {
 
   return (
     <div className="flex-1 flex flex-col gap-4 py-2">
-      {/* Task Type */}
-      <div className="border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Target className="h-4 w-4 text-muted-foreground" />
-          <Label className="text-base font-medium">Global Task Type</Label>
-          <Badge variant="outline" className="text-xs">Optional</Badge>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {TASK_TYPE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => dispatch({ type: "SET_TASK_TYPE", payload: opt.value })}
-              className={`
-                p-3 rounded-lg border text-left transition-colors
-                ${
-                  state.taskType === opt.value
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                }
-              `}
-            >
-              <div className="font-medium text-sm">{opt.label}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {opt.description}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Target Columns */}
       <div className="flex-1 min-h-0 flex flex-col border rounded-lg">
         <div className="flex items-center justify-between p-4 border-b">
@@ -554,30 +543,6 @@ export function TargetsStep() {
             </div>
           )}
         </ScrollArea>
-
-        {/* Selected targets summary */}
-        {state.targets.length > 0 && (
-          <div className="p-3 border-t bg-muted/30">
-            <div className="text-xs text-muted-foreground mb-2">
-              Selected targets:
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {state.targets.map((target) => (
-                <Badge
-                  key={target.column}
-                  variant={target.is_default ? "default" : "outline"}
-                  className="text-xs"
-                >
-                  {target.column}
-                  {target.unit && ` (${target.unit})`}
-                  <span className="ml-1 opacity-60">
-                    • {target.type === "regression" ? "reg" : "cls"}
-                  </span>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Aggregation Settings */}
@@ -620,403 +585,141 @@ export function TargetsStep() {
                     <Label className="text-xs text-muted-foreground mb-1 block">
                       Aggregate By Column
                     </Label>
-                    <Input
-                      value={state.aggregation.column || ""}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_AGGREGATION",
-                          payload: { column: e.target.value },
-                        })
+                    {(() => {
+                      // Use metadata columns if available, otherwise fall back to target columns
+                      const availableColumns = state.metadataColumns.length > 0
+                        ? state.metadataColumns
+                        : state.targets.map(t => t.column);
+
+                      if (availableColumns.length > 0) {
+                        return (
+                          <>
+                            <Select
+                              value={state.aggregation.column || ""}
+                              onValueChange={(v) =>
+                                dispatch({
+                                  type: "SET_AGGREGATION",
+                                  payload: { column: v },
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Select column..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableColumns.map((col) => (
+                                  <SelectItem key={col} value={col}>
+                                    {col}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {state.metadataColumns.length === 0 && state.targets.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Using target columns (no metadata file detected)
+                              </p>
+                            )}
+                          </>
+                        );
                       }
-                      placeholder="e.g., sample_id"
-                      className="h-9"
-                    />
+
+                      return (
+                        <Input
+                          value={state.aggregation.column || ""}
+                          onChange={(e) =>
+                            dispatch({
+                              type: "SET_AGGREGATION",
+                              payload: { column: e.target.value },
+                            })
+                          }
+                          placeholder="e.g., sample_id"
+                          className="h-9"
+                        />
+                      );
+                    })()}
                   </div>
 
                   <div>
                     <Label className="text-xs text-muted-foreground mb-1 block">
                       Aggregation Method
                     </Label>
-                    <Select
-                      value={state.aggregation.method}
-                      onValueChange={(v) =>
-                        dispatch({
-                          type: "SET_AGGREGATION",
-                          payload: { method: v as "mean" | "median" | "vote" },
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {AGGREGATION_METHOD_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {(() => {
+                      // Filter methods based on task type
+                      const isClassification = state.taskType.includes("classification");
+                      const filteredMethods = AGGREGATION_METHOD_OPTIONS.filter((opt) => {
+                        if (isClassification) {
+                          return opt.value === "vote";
+                        }
+                        // Regression or auto: show mean and median
+                        return opt.value === "mean" || opt.value === "median";
+                      });
+
+                      return (
+                        <Select
+                          value={state.aggregation.method}
+                          onValueChange={(v) =>
+                            dispatch({
+                              type: "SET_AGGREGATION",
+                              payload: { method: v as "mean" | "median" | "vote" },
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredMethods.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={state.aggregation.exclude_outliers}
-                    onCheckedChange={(v) =>
-                      dispatch({
-                        type: "SET_AGGREGATION",
-                        payload: { exclude_outliers: v as boolean },
-                      })
-                    }
-                  />
-                  <Label className="text-sm cursor-pointer">
-                    Exclude outliers before aggregation (Hotelling T²)
-                  </Label>
-                </div>
               </div>
             )}
           </CollapsibleContent>
         </div>
       </Collapsible>
 
-      {/* Advanced Configuration Accordions */}
+      {/* Cross-Validation Folds - Only show if fold file was detected */}
       <Accordion type="multiple" className="space-y-2">
-        {/* Partition Configuration */}
-        <AccordionItem value="partition" className="border rounded-lg">
-          <AccordionTrigger className="px-4 py-3 hover:no-underline">
-            <div className="flex items-center gap-2 text-sm">
-              <Split className="h-4 w-4 text-muted-foreground" />
-              <span>Partition Configuration</span>
-              <Badge variant="outline" className="ml-2 text-xs font-normal">
-                Optional
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <div className="space-y-4">
-              <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
-                <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <p className="text-xs text-muted-foreground">
-                  Configure how data is split into training and test sets. By default, the split is based on file mapping from the previous step.
-                </p>
+        {state.hasFoldFile && (
+          <AccordionItem value="folds" className="border rounded-lg">
+            <AccordionTrigger className="px-4 py-3 hover:no-underline">
+              <div className="flex items-center gap-2 text-sm">
+                <Repeat className="h-4 w-4 text-muted-foreground" />
+                <span>Cross-Validation Folds</span>
+                <Badge variant="secondary" className="ml-2 text-xs font-normal">
+                  Detected
+                </Badge>
               </div>
-
-              {/* Partition Method */}
-              <div>
-                <Label className="text-xs text-muted-foreground mb-2 block">
-                  Partition Method
-                </Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {PARTITION_METHOD_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() =>
-                        dispatch({ type: "SET_PARTITION", payload: { method: opt.value } })
-                      }
-                      className={`
-                        p-3 rounded-lg border text-left transition-colors
-                        ${
-                          state.partition.method === opt.value
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/50"
-                        }
-                      `}
-                    >
-                      <div className="font-medium text-sm">{opt.label}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {opt.description}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Column-based partition options */}
-              {state.partition.method === "column" && (
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Partition Column
-                    </Label>
-                    <Input
-                      value={state.partition.column || ""}
-                      onChange={(e) =>
-                        dispatch({ type: "SET_PARTITION", payload: { column: e.target.value } })
-                      }
-                      placeholder="e.g., split"
-                      className="h-9"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Train Values
-                    </Label>
-                    <Input
-                      value={state.partition.train_values?.join(", ") || ""}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_PARTITION",
-                          payload: { train_values: e.target.value.split(",").map((s) => s.trim()) },
-                        })
-                      }
-                      placeholder="train, calibration"
-                      className="h-9"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Test Values
-                    </Label>
-                    <Input
-                      value={state.partition.test_values?.join(", ") || ""}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_PARTITION",
-                          payload: { test_values: e.target.value.split(",").map((s) => s.trim()) },
-                        })
-                      }
-                      placeholder="test, validation"
-                      className="h-9"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Percentage-based partition options */}
-              {state.partition.method === "percentage" && (
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-xs text-muted-foreground">
-                        Training Percentage
-                      </Label>
-                      <span className="text-sm font-medium">
-                        {state.partition.train_percent || 80}%
-                      </span>
-                    </div>
-                    <Slider
-                      value={[state.partition.train_percent || 80]}
-                      onValueChange={([v]) =>
-                        dispatch({ type: "SET_PARTITION", payload: { train_percent: v } })
-                      }
-                      min={50}
-                      max={95}
-                      step={5}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        checked={state.partition.shuffle ?? true}
-                        onCheckedChange={(v) =>
-                          dispatch({ type: "SET_PARTITION", payload: { shuffle: v as boolean } })
-                        }
-                      />
-                      <Label className="text-sm">Shuffle data</Label>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1 block">
-                        Random Seed
-                      </Label>
-                      <Input
-                        type="number"
-                        value={state.partition.random_state || 42}
-                        onChange={(e) =>
-                          dispatch({
-                            type: "SET_PARTITION",
-                            payload: { random_state: parseInt(e.target.value) || 42 },
-                          })
-                        }
-                        className="h-8 w-24"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Stratified partition options */}
-              {state.partition.method === "stratified" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs text-muted-foreground mb-1 block">
-                        Stratify By Column
-                      </Label>
-                      <Input
-                        value={state.partition.stratify_column || ""}
-                        onChange={(e) =>
-                          dispatch({
-                            type: "SET_PARTITION",
-                            payload: { stratify_column: e.target.value },
-                          })
-                        }
-                        placeholder="target column"
-                        className="h-9"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-xs text-muted-foreground">
-                          Training Percentage
-                        </Label>
-                        <span className="text-sm font-medium">
-                          {state.partition.train_percent || 70}%
-                        </span>
-                      </div>
-                      <Slider
-                        value={[state.partition.train_percent || 70]}
-                        onValueChange={([v]) =>
-                          dispatch({ type: "SET_PARTITION", payload: { train_percent: v } })
-                        }
-                        min={50}
-                        max={90}
-                        step={5}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Cross-Validation Folds */}
-        <AccordionItem value="folds" className="border rounded-lg">
-          <AccordionTrigger className="px-4 py-3 hover:no-underline">
-            <div className="flex items-center gap-2 text-sm">
-              <Repeat className="h-4 w-4 text-muted-foreground" />
-              <span>Cross-Validation Folds</span>
-              <Badge variant="outline" className="ml-2 text-xs font-normal">
-                Optional
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <div className="space-y-4">
-              <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
-                <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <p className="text-xs text-muted-foreground">
-                  Define custom cross-validation folds. If not specified, folds will be generated automatically during training.
-                </p>
-              </div>
-
-              <div>
-                <Label className="text-xs text-muted-foreground mb-1 block">
-                  Fold Source
-                </Label>
-                <Select
-                  value={state.folds?.source || "none"}
-                  onValueChange={(v) =>
-                    dispatch({
-                      type: "SET_FOLDS",
-                      payload: v === "none" ? null : { source: v as FoldSource },
-                    })
-                  }
-                >
-                  <SelectTrigger className="w-full h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FOLD_SOURCE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {state.folds?.source === "column" && (
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1 block">
-                    Fold Column
-                  </Label>
-                  <Input
-                    value={state.folds?.column || ""}
-                    onChange={(e) =>
-                      dispatch({
-                        type: "SET_FOLDS",
-                        payload: { ...state.folds!, column: e.target.value },
-                      })
-                    }
-                    placeholder="e.g., cv_fold"
-                    className="h-9"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Column containing fold assignments (values become validation folds)
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="space-y-4">
+                <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
+                  <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <p className="text-xs text-muted-foreground">
+                    A fold file was detected in your dataset folder
+                    {state.foldFilePath && `: ${state.foldFilePath.split(/[/\\]/).pop()}`}.
+                    Configure how to use it for cross-validation.
                   </p>
                 </div>
-              )}
 
-              {state.folds?.source === "file" && (
                 <div>
                   <Label className="text-xs text-muted-foreground mb-1 block">
-                    Folds File Path
-                  </Label>
-                  <Input
-                    value={state.folds?.file || ""}
-                    onChange={(e) =>
-                      dispatch({
-                        type: "SET_FOLDS",
-                        payload: { ...state.folds!, file: e.target.value },
-                      })
-                    }
-                    placeholder="path/to/folds.csv"
-                    className="h-9"
-                  />
-                </div>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Feature Variations */}
-        <AccordionItem value="variations" className="border rounded-lg">
-          <AccordionTrigger className="px-4 py-3 hover:no-underline">
-            <div className="flex items-center gap-2 text-sm">
-              <GitBranch className="h-4 w-4 text-muted-foreground" />
-              <span>Feature Variations</span>
-              <Badge variant="outline" className="ml-2 text-xs font-normal">
-                Advanced
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <div className="space-y-4">
-              <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
-                <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <p className="text-xs text-muted-foreground">
-                  Configure multiple preprocessed versions of the same spectral data. Useful when comparing raw vs. preprocessed spectra.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={state.variations !== null}
-                  onCheckedChange={(v) =>
-                    dispatch({
-                      type: "SET_VARIATIONS",
-                      payload: v ? { mode: "separate", variations: [] } : null,
-                    })
-                  }
-                />
-                <Label className="text-sm">Enable feature variations</Label>
-              </div>
-
-              {state.variations && (
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1 block">
-                    Variation Mode
+                    Fold Source
                   </Label>
                   <Select
-                    value={state.variations.mode}
+                    value={state.folds?.source || "file"}
                     onValueChange={(v) =>
                       dispatch({
-                        type: "SET_VARIATIONS",
-                        payload: { ...state.variations!, mode: v as "separate" | "concat" | "select" | "compare" },
+                        type: "SET_FOLDS",
+                        payload: v === "none" ? null : { source: v as FoldSource },
                       })
                     }
                   >
@@ -1024,20 +727,60 @@ export function TargetsStep() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="separate">Separate (run each independently)</SelectItem>
-                      <SelectItem value="concat">Concatenate (combine features)</SelectItem>
-                      <SelectItem value="select">Select (use specific variations)</SelectItem>
-                      <SelectItem value="compare">Compare (run and rank by performance)</SelectItem>
+                      {FOLD_SOURCE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Variations are configured by mapping files in the File Mapping step with different source assignments.
-                  </p>
                 </div>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
+
+                {state.folds?.source === "column" && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Fold Column
+                    </Label>
+                    <Input
+                      value={state.folds?.column || ""}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "SET_FOLDS",
+                          payload: { ...state.folds!, column: e.target.value },
+                        })
+                      }
+                      placeholder="e.g., cv_fold"
+                      className="h-9"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Column containing fold assignments (values become validation folds)
+                    </p>
+                  </div>
+                )}
+
+                {state.folds?.source === "file" && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Folds File Path
+                    </Label>
+                    <Input
+                      value={state.folds?.file || state.foldFilePath || ""}
+                      onChange={(e) =>
+                        dispatch({
+                          type: "SET_FOLDS",
+                          payload: { ...state.folds!, file: e.target.value },
+                        })
+                      }
+                      placeholder="path/to/folds.csv"
+                      className="h-9"
+                    />
+                  </div>
+                )}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+
       </Accordion>
     </div>
   );

@@ -4,16 +4,21 @@ Analysis API routes for nirs4all webapp.
 This module provides FastAPI routes for dimensionality reduction and feature analysis,
 including PCA, t-SNE, UMAP, feature importance, and correlation analysis.
 
-Phase 4 Implementation:
+Dimensionality Reduction:
 - PCA with scores, loadings, and explained variance
 - t-SNE embedding computation
 - UMAP dimensionality reduction
-- Feature importance analysis
+
+Feature Analysis:
+- Feature importance (delegates to nirs4all.explain() for SHAP, sklearn for permutation)
+- Feature selection (variance, mutual_info, f_score)
 - Correlation matrix computation
-- Wavelength importance extraction
+- Important wavelengths extraction
+
+Note: For NIRS-specific feature selection (CARS, MCUVE), use those operators
+directly via nirs4all pipelines.
 """
 
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,11 +27,6 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
-
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
 
 try:
     from sklearn.decomposition import PCA
@@ -129,13 +129,13 @@ class UMAPResult(BaseModel):
 class ImportanceRequest(BaseModel):
     """Request model for feature importance computation."""
 
-    model_id: str = Field(..., description="ID of the trained model")
+    model_id: str = Field(..., description="ID of the trained model (without extension)")
     dataset_id: str = Field(..., description="ID of the dataset for evaluation")
     method: str = Field(
-        "permutation", description="Importance method: permutation, model, shap"
+        "permutation", description="Importance method: shap, permutation, model"
     )
     partition: str = Field("test", description="Dataset partition to use")
-    n_repeats: int = Field(10, ge=1, le=100, description="Number of repeats for permutation")
+    n_repeats: int = Field(10, ge=1, le=100, description="Number of repeats for permutation method")
     preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
 
 
@@ -451,51 +451,96 @@ async def feature_importance(request: ImportanceRequest):
     """
     Compute feature importance for a trained model.
 
-    Supports permutation importance, model-based importance, and SHAP values.
+    Supports:
+    - 'shap': Uses nirs4all.explain() for SHAP-based importance (requires .n4a bundle)
+    - 'permutation': sklearn permutation importance (works with any model)
+    - 'model': Model's built-in feature importance (if available)
     """
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
-
-    # Load model
-    import joblib
-
-    model_path = Path(workspace.path) / "models" / f"{request.model_id}.joblib"
-    if not model_path.exists():
-        raise HTTPException(
-            status_code=404, detail=f"Model '{request.model_id}' not found"
-        )
-
-    try:
-        model = joblib.load(model_path)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error loading model: {str(e)}"
-        )
 
     # Load dataset
     dataset, X, wavelengths = _load_analysis_data(
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
-    # Get targets
+    # Get targets (needed for permutation importance)
+    from contextlib import suppress
     from .spectra import _load_dataset
 
     ds = _load_dataset(request.dataset_id)
     selector = {"partition": request.partition}
     y = None
-    try:
+    with suppress(Exception):
         y = ds.y(selector)
-    except Exception:
-        pass
-
-    if y is None:
-        raise HTTPException(
-            status_code=400, detail="Dataset has no target values for importance computation"
-        )
 
     # Compute importance based on method
-    if request.method == "permutation":
+    if request.method == "shap":
+        # Use nirs4all.explain() for SHAP-based importance
+        import nirs4all
+
+        # Look for .n4a bundle first
+        bundle_path = Path(workspace.path) / "exports" / f"{request.model_id}.n4a"
+        if not bundle_path.exists():
+            # Try workspace/exports subdirectory
+            bundle_path = Path(workspace.path) / "workspace" / "exports" / f"{request.model_id}.n4a"
+
+        if not bundle_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model bundle '{request.model_id}.n4a' not found. SHAP method requires .n4a bundle."
+            )
+
+        try:
+            explain_result = nirs4all.explain(
+                model=str(bundle_path),
+                data=X,
+                verbose=0,
+                plots_visible=False
+            )
+            importance = explain_result.mean_abs_shap
+            importance_std = None  # SHAP doesn't provide std in the same way
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error computing SHAP importance: {str(e)}"
+            ) from None
+
+    elif request.method == "permutation":
+        if y is None:
+            raise HTTPException(
+                status_code=400, detail="Dataset has no target values for permutation importance"
+            )
+
+        # Try to load .n4a bundle first, then fall back to .joblib
+        model = None
+        bundle_path = Path(workspace.path) / "exports" / f"{request.model_id}.n4a"
+        if not bundle_path.exists():
+            bundle_path = Path(workspace.path) / "workspace" / "exports" / f"{request.model_id}.n4a"
+
+        if bundle_path.exists():
+            try:
+                from nirs4all.sklearn import NIRSPipeline
+                model = NIRSPipeline.from_bundle(str(bundle_path))
+            except Exception:
+                pass
+
+        if model is None:
+            # Fall back to .joblib
+            import joblib
+            model_path = Path(workspace.path) / "models" / f"{request.model_id}.joblib"
+            if not model_path.exists():
+                raise HTTPException(
+                    status_code=404, detail=f"Model '{request.model_id}' not found"
+                )
+            try:
+                model = joblib.load(model_path)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"Error loading model: {str(e)}"
+                ) from None
+
         from sklearn.inspection import permutation_importance
 
         result = permutation_importance(
@@ -508,6 +553,33 @@ async def feature_importance(request: ImportanceRequest):
         importance_std = result.importances_std
 
     elif request.method == "model":
+        # Load model for built-in feature importance
+        model = None
+        bundle_path = Path(workspace.path) / "exports" / f"{request.model_id}.n4a"
+        if not bundle_path.exists():
+            bundle_path = Path(workspace.path) / "workspace" / "exports" / f"{request.model_id}.n4a"
+
+        if bundle_path.exists():
+            try:
+                from nirs4all.sklearn import NIRSPipeline
+                model = NIRSPipeline.from_bundle(str(bundle_path))
+            except Exception:
+                pass
+
+        if model is None:
+            import joblib
+            model_path = Path(workspace.path) / "models" / f"{request.model_id}.joblib"
+            if not model_path.exists():
+                raise HTTPException(
+                    status_code=404, detail=f"Model '{request.model_id}' not found"
+                )
+            try:
+                model = joblib.load(model_path)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"Error loading model: {str(e)}"
+                ) from None
+
         # Use model's built-in feature importance if available
         if hasattr(model, "feature_importances_"):
             importance = model.feature_importances_
@@ -518,13 +590,13 @@ async def feature_importance(request: ImportanceRequest):
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Model does not have built-in feature importance. Use 'permutation' method.",
+                detail="Model does not have built-in feature importance. Use 'permutation' or 'shap' method.",
             )
 
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown importance method: {request.method}. Supported: permutation, model",
+            detail=f"Unknown importance method: {request.method}. Supported: shap, permutation, model",
         )
 
     # Get top wavelengths
@@ -625,6 +697,10 @@ async def select_features(request: FeatureSelectionRequest):
     Select top features based on various criteria.
 
     Supports variance-based, mutual information, and F-score selection.
+
+    Note: For NIRS-specific wavelength selection methods (CARS, MCUVE),
+    use those operators directly in nirs4all pipelines. They provide
+    chemometrics-specific selection based on PLS regression coefficients.
     """
     # Load dataset
     dataset, X, wavelengths = _load_analysis_data(
@@ -762,6 +838,12 @@ async def list_analysis_methods():
             },
         ],
         "feature_importance": [
+            {
+                "name": "shap",
+                "display_name": "SHAP Values",
+                "description": "SHAP-based feature importance via nirs4all.explain() (requires .n4a bundle)",
+                "available": True,
+            },
             {
                 "name": "permutation",
                 "display_name": "Permutation Importance",

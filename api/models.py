@@ -2,26 +2,19 @@
 Models API routes for nirs4all webapp.
 
 This module provides FastAPI routes for model management,
-including listing available models, loading trained models,
-getting model parameters, and model comparison.
+including listing available model types and trained model bundles.
 
-Phase 3 Implementation:
-- List available model types (sklearn, nirs4all)
-- Load and inspect trained models
-- Model parameter schemas
-- Model comparison endpoints
+Uses nirs4all BundleLoader for .n4a bundle operations.
 """
 
 from __future__ import annotations
 
 import inspect
-import json
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, get_type_hints
 
-import joblib
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -35,11 +28,15 @@ if str(nirs4all_path) not in sys.path:
 
 try:
     from nirs4all.operators import models as nirs4all_models
+    from nirs4all.pipeline.bundle import BundleLoader
+    import nirs4all
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     print(f"Note: nirs4all not available for models API: {e}")
     NIRS4ALL_AVAILABLE = False
+    BundleLoader = None
+    nirs4all = None
 
 
 router = APIRouter()
@@ -62,48 +59,49 @@ class ModelInfo(BaseModel):
 
 
 class TrainedModelInfo(BaseModel):
-    """Information about a trained model file."""
+    """Information about a trained model bundle (.n4a)."""
 
     id: str
     name: str
     path: str
-    model_type: str
+    model_type: str = "n4a_bundle"
     created_at: str
     file_size: int
-    pipeline_id: Optional[str] = None
-    job_id: Optional[str] = None
-    metrics: Dict[str, Any] = {}
+    dataset_name: Optional[str] = None
+    pipeline_uid: Optional[str] = None
+    nirs4all_version: Optional[str] = None
+    preprocessing_chain: Optional[str] = None
 
 
-class ModelSummary(BaseModel):
-    """Summary of a loaded model."""
+class BundleSummary(BaseModel):
+    """Summary of a loaded .n4a bundle from BundleLoader.metadata."""
 
-    model_type: str
-    n_features_in: Optional[int] = None
-    n_targets: Optional[int] = None
-    params: Dict[str, Any] = {}
-    is_fitted: bool = False
-    coefficients_shape: Optional[List[int]] = None
+    pipeline_uid: str = ""
+    nirs4all_version: str = ""
+    created_at: str = ""
+    preprocessing_chain: str = ""
+    fold_strategy: str = "weighted_average"
+    model_step_index: Optional[int] = None
+    step_count: int = 0
 
 
 class CompareModelsRequest(BaseModel):
-    """Request for comparing multiple models."""
+    """Request for comparing multiple models (.n4a bundles)."""
 
-    model_ids: List[str] = Field(..., min_length=2, description="IDs of models to compare")
-    dataset_id: str = Field(..., description="Dataset to use for comparison")
-    partition: str = Field("test", description="Dataset partition to use")
+    model_paths: List[str] = Field(..., min_length=2, description="Paths to .n4a bundles to compare")
+    dataset_path: str = Field(..., description="Path to dataset for comparison")
 
 
 class ModelComparisonResult(BaseModel):
     """Result of model comparison."""
 
     models: List[Dict[str, Any]]
-    best_model_id: str
+    best_model_path: str
     comparison_metric: str
-    dataset_id: str
+    dataset_path: str
 
 
-# ============= Model Registry =============
+# ============= Model Registry (KEEP - UI metadata) =============
 
 
 # Sklearn model definitions
@@ -296,7 +294,7 @@ if NIRS4ALL_AVAILABLE:
             }
 
 
-# ============= Model Routes =============
+# ============= Model Type Routes =============
 
 
 @router.get("/models", response_model=List[ModelInfo])
@@ -397,50 +395,65 @@ async def get_model_params(model_name: str):
     )
 
 
+# ============= Trained Model Bundle Routes =============
+
+
 @router.get("/models/trained")
 async def list_trained_models():
     """
-    List all trained models in the current workspace.
+    List all trained model bundles (.n4a) in the current workspace.
 
-    Returns models that have been trained and saved to disk.
+    Scans workspace/exports for .n4a bundles and returns their metadata.
     """
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    models_dir = Path(workspace.path) / "models"
-    if not models_dir.exists():
+    # Scan exports directory for .n4a bundles
+    exports_dir = Path(workspace.path) / "workspace" / "exports"
+    if not exports_dir.exists():
         return {"models": [], "total": 0}
 
     models = []
-    for model_file in models_dir.glob("*.joblib"):
+    for n4a_file in exports_dir.rglob("*.n4a"):
         try:
-            stat = model_file.stat()
+            stat = n4a_file.stat()
 
-            # Parse filename for metadata
-            parts = model_file.stem.split("_")
-            pipeline_id = parts[0] if len(parts) > 0 else None
-            job_id = parts[1] if len(parts) > 1 else None
+            # Extract dataset name from parent directory
+            dataset_name = n4a_file.parent.name if n4a_file.parent != exports_dir else None
 
-            # Try to load model to get type
-            model = joblib.load(model_file)
-            model_type = type(model).__name__
+            # Try to load bundle metadata using BundleLoader
+            pipeline_uid = None
+            nirs4all_version = None
+            preprocessing_chain = None
+
+            if BundleLoader is not None:
+                try:
+                    loader = BundleLoader(str(n4a_file))
+                    if loader.metadata:
+                        pipeline_uid = loader.metadata.pipeline_uid
+                        nirs4all_version = loader.metadata.nirs4all_version
+                        preprocessing_chain = loader.metadata.preprocessing_chain
+                except Exception:
+                    pass
 
             models.append(
                 TrainedModelInfo(
-                    id=model_file.stem,
-                    name=model_file.name,
-                    path=str(model_file),
-                    model_type=model_type,
-                    created_at=datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                    id=n4a_file.stem,
+                    name=n4a_file.name,
+                    path=str(n4a_file),
+                    model_type="n4a_bundle",
+                    created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
                     file_size=stat.st_size,
-                    pipeline_id=pipeline_id,
-                    job_id=job_id,
+                    dataset_name=dataset_name,
+                    pipeline_uid=pipeline_uid,
+                    nirs4all_version=nirs4all_version,
+                    preprocessing_chain=preprocessing_chain,
                 )
             )
 
         except Exception as e:
-            print(f"Error loading model {model_file}: {e}")
+            print(f"Error reading bundle {n4a_file}: {e}")
             continue
 
     # Sort by creation date
@@ -449,215 +462,117 @@ async def list_trained_models():
     return {"models": models, "total": len(models)}
 
 
-@router.get("/models/trained/{model_id}")
-async def get_trained_model(model_id: str):
+@router.get("/models/trained/{model_id:path}/summary", response_model=BundleSummary)
+async def get_bundle_summary(model_id: str):
     """
-    Get information about a specific trained model.
-    """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
+    Get summary of a trained model bundle (.n4a) using BundleLoader.
 
-    model_path = Path(workspace.path) / "models" / f"{model_id}.joblib"
-    if not model_path.exists():
-        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
+    The model_id can be:
+    - A bundle filename (will search in exports)
+    - An absolute path to a .n4a file
+    """
+    if not NIRS4ALL_AVAILABLE or BundleLoader is None:
+        raise HTTPException(status_code=503, detail="nirs4all not available")
+
+    bundle_path = _resolve_bundle_path(model_id)
 
     try:
-        model = joblib.load(model_path)
-        stat = model_path.stat()
+        loader = BundleLoader(str(bundle_path))
+        metadata = loader.metadata
 
-        # Get model summary
-        summary = _get_model_summary(model)
-
-        # Parse filename for metadata
-        parts = model_id.split("_")
-        pipeline_id = parts[0] if len(parts) > 0 else None
-        job_id = parts[1] if len(parts) > 1 else None
-
-        return {
-            "model": {
-                "id": model_id,
-                "name": model_path.name,
-                "path": str(model_path),
-                "model_type": type(model).__name__,
-                "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-                "file_size": stat.st_size,
-                "pipeline_id": pipeline_id,
-                "job_id": job_id,
-            },
-            "summary": summary,
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading model '{model_id}': {str(e)}",
+        return BundleSummary(
+            pipeline_uid=metadata.pipeline_uid if metadata else "",
+            nirs4all_version=metadata.nirs4all_version if metadata else "",
+            created_at=metadata.created_at if metadata else "",
+            preprocessing_chain=metadata.preprocessing_chain if metadata else "",
+            fold_strategy=metadata.fold_strategy if metadata else "weighted_average",
+            model_step_index=metadata.model_step_index if metadata else None,
+            step_count=len(loader.get_step_info()),
         )
 
-
-@router.get("/models/trained/{model_id}/summary", response_model=ModelSummary)
-async def get_model_summary(model_id: str):
-    """
-    Get a summary of a trained model including parameters and structure.
-    """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
-    model_path = Path(workspace.path) / "models" / f"{model_id}.joblib"
-    if not model_path.exists():
-        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
-
-    try:
-        model = joblib.load(model_path)
-        summary = _get_model_summary(model)
-        return ModelSummary(**summary)
-
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading model '{model_id}': {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail=f"Error loading bundle: {str(e)}")
 
 
-@router.post("/models/trained/{model_id}/load")
-async def load_model(model_id: str):
-    """
-    Load a trained model into memory for predictions.
-
-    Returns a confirmation that the model is loaded and ready.
-    """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
-    model_path = Path(workspace.path) / "models" / f"{model_id}.joblib"
-    if not model_path.exists():
-        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
-
-    try:
-        model = joblib.load(model_path)
-
-        # Cache in global model store
-        global _loaded_models
-        _loaded_models[model_id] = {
-            "model": model,
-            "path": str(model_path),
-            "loaded_at": datetime.now().isoformat(),
-        }
-
-        return {
-            "success": True,
-            "model_id": model_id,
-            "model_type": type(model).__name__,
-            "message": "Model loaded and ready for predictions",
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error loading model '{model_id}': {str(e)}",
-        )
-
-
-@router.delete("/models/trained/{model_id}")
+@router.delete("/models/trained/{model_id:path}")
 async def delete_trained_model(model_id: str):
     """
-    Delete a trained model from disk.
+    Delete a trained model bundle (.n4a) from disk.
     """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
-    model_path = Path(workspace.path) / "models" / f"{model_id}.joblib"
-    if not model_path.exists():
-        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
+    bundle_path = _resolve_bundle_path(model_id)
 
     try:
-        model_path.unlink()
-
-        # Remove from cache if loaded
-        global _loaded_models
-        if model_id in _loaded_models:
-            del _loaded_models[model_id]
-
+        bundle_path.unlink()
         return {
             "success": True,
             "model_id": model_id,
-            "message": "Model deleted successfully",
+            "message": "Bundle deleted successfully",
         }
 
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error deleting model '{model_id}': {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail=f"Error deleting bundle: {str(e)}")
 
 
 @router.post("/models/compare", response_model=ModelComparisonResult)
 async def compare_models(request: CompareModelsRequest):
     """
-    Compare multiple trained models on a dataset.
+    Compare multiple trained model bundles (.n4a) on a dataset.
 
-    Evaluates each model on the specified dataset partition and returns
-    comparative metrics.
+    Uses nirs4all.predict() to evaluate each bundle on the dataset.
     """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
+    if not NIRS4ALL_AVAILABLE or nirs4all is None:
+        raise HTTPException(status_code=503, detail="nirs4all not available")
 
     # Load dataset
     from .spectra import _load_dataset
 
-    dataset = _load_dataset(request.dataset_id)
+    dataset = _load_dataset(request.dataset_path)
     if not dataset:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Dataset '{request.dataset_id}' not found",
-        )
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {request.dataset_path}")
 
-    selector = {"partition": request.partition}
-    X = dataset.x(selector, layout="2d")
+    X = dataset.x(layout="2d")
     if isinstance(X, list):
         X = X[0]
 
     y = None
     try:
-        y = dataset.y(selector)
+        y = dataset.y()
     except Exception:
         pass
 
     if y is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Dataset has no target values for comparison",
-        )
+        raise HTTPException(status_code=400, detail="Dataset has no target values for comparison")
 
-    # Evaluate each model
+    # Evaluate each model using nirs4all.predict()
     results = []
     best_score = float("-inf")
-    best_model_id = None
+    best_model_path = None
 
-    for model_id in request.model_ids:
-        model_path = Path(workspace.path) / "models" / f"{model_id}.joblib"
-        if not model_path.exists():
+    for model_path in request.model_paths:
+        bundle_path = Path(model_path)
+        if not bundle_path.exists():
             results.append({
-                "model_id": model_id,
-                "error": "Model not found",
+                "model_path": model_path,
+                "error": "Bundle not found",
             })
             continue
 
         try:
-            model = joblib.load(model_path)
-            y_pred = model.predict(X)
+            # Use nirs4all.predict() to get predictions
+            pred_result = nirs4all.predict(model=str(bundle_path), data=X)
+            y_pred = pred_result.y_pred
 
-            from .training import _compute_metrics
-
-            metrics = _compute_metrics(y, y_pred)
+            # Compute metrics
+            from nirs4all.core.metrics import eval_multi
+            metrics = eval_multi(y, y_pred, "regression")
 
             results.append({
-                "model_id": model_id,
-                "model_type": type(model).__name__,
+                "model_path": model_path,
+                "model_name": bundle_path.stem,
                 "metrics": metrics,
             })
 
@@ -665,25 +580,22 @@ async def compare_models(request: CompareModelsRequest):
             r2 = metrics.get("r2", float("-inf"))
             if r2 > best_score:
                 best_score = r2
-                best_model_id = model_id
+                best_model_path = model_path
 
         except Exception as e:
             results.append({
-                "model_id": model_id,
+                "model_path": model_path,
                 "error": str(e),
             })
 
-    if best_model_id is None:
-        raise HTTPException(
-            status_code=500,
-            detail="No models could be evaluated",
-        )
+    if best_model_path is None:
+        raise HTTPException(status_code=500, detail="No models could be evaluated")
 
     return ModelComparisonResult(
         models=results,
-        best_model_id=best_model_id,
+        best_model_path=best_model_path,
         comparison_metric="r2",
-        dataset_id=request.dataset_id,
+        dataset_path=request.dataset_path,
     )
 
 
@@ -696,14 +608,11 @@ async def instantiate_model(model_name: str, params: Dict[str, Any] = {}):
     This is useful for validating parameters before training.
     """
     try:
-        from .training import _get_model_instance
+        from .nirs4all_adapter import _resolve_operator_class, _normalize_params
 
-        model = _get_model_instance(model_name, params)
-        if model is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Model '{model_name}' not found",
-            )
+        model_class = _resolve_operator_class(model_name, "model")
+        normalized_params = _normalize_params(model_name, params)
+        model = model_class(**normalized_params)
 
         return {
             "success": True,
@@ -722,71 +631,50 @@ async def instantiate_model(model_name: str, params: Dict[str, Any] = {}):
         )
 
 
-# ============= Helper Functions =============
-
-# Cache for loaded models
-_loaded_models: Dict[str, Dict[str, Any]] = {}
+# ============= Helper Functions (KEEP - UI introspection) =============
 
 
-def get_loaded_model(model_id: str) -> Optional[Any]:
-    """Get a loaded model by ID.
+def _resolve_bundle_path(model_id: str) -> Path:
+    """Resolve a model ID to a bundle path.
 
     Args:
-        model_id: Model ID
+        model_id: Bundle filename or absolute path
 
     Returns:
-        Model instance or None if not loaded
+        Path to the bundle file
+
+    Raises:
+        HTTPException if workspace not selected or bundle not found
     """
-    if model_id in _loaded_models:
-        return _loaded_models[model_id]["model"]
-    return None
+    # Check if it's an absolute path
+    if Path(model_id).is_absolute():
+        bundle_path = Path(model_id)
+        if bundle_path.exists():
+            return bundle_path
+        raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
 
+    # Search in workspace exports
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
 
-def _get_model_summary(model: Any) -> Dict[str, Any]:
-    """Extract summary information from a model.
+    exports_dir = Path(workspace.path) / "workspace" / "exports"
 
-    Args:
-        model: Trained model instance
+    # Try direct match
+    if not model_id.endswith(".n4a"):
+        model_id = f"{model_id}.n4a"
 
-    Returns:
-        Summary dictionary
-    """
-    summary = {
-        "model_type": type(model).__name__,
-        "is_fitted": False,
-        "params": {},
-    }
+    # Search recursively
+    for n4a_file in exports_dir.rglob(model_id):
+        return n4a_file
 
-    # Get parameters
-    if hasattr(model, "get_params"):
-        try:
-            summary["params"] = model.get_params()
-        except Exception:
-            pass
+    # Also search by stem
+    stem = model_id.replace(".n4a", "")
+    for n4a_file in exports_dir.rglob("*.n4a"):
+        if n4a_file.stem == stem:
+            return n4a_file
 
-    # Check if fitted
-    try:
-        if hasattr(model, "coef_"):
-            summary["is_fitted"] = True
-            if hasattr(model.coef_, "shape"):
-                summary["coefficients_shape"] = list(model.coef_.shape)
-        elif hasattr(model, "n_iter_"):
-            summary["is_fitted"] = True
-        elif hasattr(model, "feature_importances_"):
-            summary["is_fitted"] = True
-        elif hasattr(model, "components_"):
-            summary["is_fitted"] = True
-    except Exception:
-        pass
-
-    # Get input/output dimensions
-    if hasattr(model, "n_features_in_"):
-        summary["n_features_in"] = model.n_features_in_
-
-    if hasattr(model, "n_targets_"):
-        summary["n_targets"] = model.n_targets_
-
-    return summary
+    raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
 
 
 def _extract_params_from_class(cls) -> Dict[str, Any]:

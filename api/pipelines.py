@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Dict, List, Any, Optional, Type, get_type_hints
 from enum import Enum
 
@@ -32,13 +32,22 @@ if str(nirs4all_path) not in sys.path:
 
 try:
     from nirs4all.controllers import CONTROLLER_REGISTRY
-    from nirs4all.operators import transforms, splitters
+    from nirs4all.pipeline.config.generator import (
+        count_combinations,
+        validate_spec,
+        ValidationResult,
+    )
+    from nirs4all.pipeline.config import PipelineConfigs
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     print(f"Note: nirs4all not available for pipelines API: {e}")
     CONTROLLER_REGISTRY = []
     NIRS4ALL_AVAILABLE = False
+    count_combinations = None
+    validate_spec = None
+    ValidationResult = None
+    PipelineConfigs = None
 
 
 class OperatorCategory(str, Enum):
@@ -158,100 +167,6 @@ async def list_pipelines():
         raise HTTPException(
             status_code=500, detail=f"Failed to list pipelines: {str(e)}"
         )
-
-
-# ============================================================================
-# Pipeline Samples API (MUST BE BEFORE /pipelines/{pipeline_id})
-# ============================================================================
-
-
-def _get_samples_dir_inline() -> Path:
-    """Get the pipeline samples directory from nirs4all."""
-    # Try relative to nirs4all_webapp (sibling directory)
-    samples_path = Path(__file__).parent.parent.parent / "nirs4all" / "examples" / "pipeline_samples"
-    if samples_path.exists():
-        return samples_path
-    # Try absolute path for development
-    samples_path = Path("/home/delete/nirs4all/examples/pipeline_samples")
-    if samples_path.exists():
-        return samples_path
-    raise HTTPException(status_code=404, detail="Pipeline samples directory not found")
-
-
-@router.get("/pipelines/samples")
-async def list_pipeline_samples():
-    """
-    List all available pipeline sample files.
-
-    Returns the list of sample files from nirs4all/examples/pipeline_samples.
-    """
-    samples_dir = _get_samples_dir_inline()
-
-    samples = []
-    for filepath in sorted(samples_dir.glob("*.json")) + sorted(samples_dir.glob("*.yaml")):
-        # Skip test and export scripts
-        if filepath.stem in ("test_all_pipelines", "export_canonical"):
-            continue
-
-        try:
-            data = _load_sample_file(filepath)
-            name = data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem
-            description = data.get("description", "") if isinstance(data, dict) else ""
-        except Exception:
-            name = filepath.stem
-            description = ""
-
-        samples.append({
-            "id": filepath.stem,
-            "filename": filepath.name,
-            "format": filepath.suffix[1:],
-            "name": name,
-            "description": description,
-        })
-
-    return {
-        "samples": samples,
-        "total": len(samples),
-        "samples_dir": str(samples_dir),
-    }
-
-
-@router.get("/pipelines/samples/{sample_id}")
-async def get_pipeline_sample(sample_id: str, canonical: bool = True):
-    """
-    Get a specific pipeline sample.
-
-    Args:
-        sample_id: The sample file stem (e.g., "01_basic_regression")
-        canonical: If True, return canonical serialized form via nirs4all
-
-    Returns:
-        Pipeline definition in nirs4all format.
-    """
-    samples_dir = _get_samples_dir_inline()
-
-    # Try both JSON and YAML
-    filepath = None
-    for ext in [".json", ".yaml", ".yml"]:
-        candidate = samples_dir / f"{sample_id}{ext}"
-        if candidate.exists():
-            filepath = candidate
-            break
-
-    if not filepath:
-        raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found")
-
-    if canonical:
-        result = _get_canonical_pipeline(filepath)
-    else:
-        result = _load_sample_file(filepath)
-        if isinstance(result, dict) and "pipeline" in result:
-            result["pipeline"] = _filter_comments(result["pipeline"])
-        elif isinstance(result, list):
-            result = {"pipeline": _filter_comments(result), "name": filepath.stem}
-
-    result["source_file"] = filepath.name
-    return result
 
 
 @router.get("/pipelines/presets")
@@ -475,352 +390,38 @@ async def _list_operators_impl():
     """
     List all available operators for pipeline building.
 
-    Returns operators grouped by category, loaded from nirs4all CONTROLLER_REGISTRY
-    and operators modules.
+    Uses dynamic discovery from nirs4all modules. Delegates to
+    the _discover_*_operators() functions which use introspection.
     """
-    operators = {
-        "preprocessing": [],
-        "splitting": [],
-        "models": [],
-        "metrics": [],
-        "augmentation": [],
-        "feature_selection": [],
-        "charts": [],
-    }
-
     if NIRS4ALL_AVAILABLE:
-        # Load preprocessing transforms from nirs4all
-        preprocessing_transforms = [
-            {
-                "name": "StandardNormalVariate",
-                "display_name": "SNV",
-                "description": "Standard Normal Variate for scatter correction",
-                "params": {},
-            },
-            {
-                "name": "MultiplicativeScatterCorrection",
-                "display_name": "MSC",
-                "description": "Multiplicative Scatter Correction",
-                "params": {},
-            },
-            {
-                "name": "SavitzkyGolay",
-                "display_name": "Savitzky-Golay",
-                "description": "Smoothing and derivative filter",
-                "params": {
-                    "window_length": {"type": "int", "default": 11, "min": 3, "max": 51},
-                    "polyorder": {"type": "int", "default": 2, "min": 0, "max": 5},
-                    "deriv": {"type": "int", "default": 0, "min": 0, "max": 2},
-                },
-            },
-            {
-                "name": "FirstDerivative",
-                "display_name": "First Derivative",
-                "description": "Compute first derivative",
-                "params": {},
-            },
-            {
-                "name": "SecondDerivative",
-                "display_name": "Second Derivative",
-                "description": "Compute second derivative",
-                "params": {},
-            },
-            {
-                "name": "Detrend",
-                "display_name": "Detrend",
-                "description": "Remove linear trend",
-                "params": {},
-            },
-            {
-                "name": "Baseline",
-                "display_name": "Baseline Correction",
-                "description": "Subtract baseline",
-                "params": {},
-            },
-            {
-                "name": "Gaussian",
-                "display_name": "Gaussian Smoothing",
-                "description": "Gaussian filter smoothing",
-                "params": {"sigma": {"type": "float", "default": 1.0, "min": 0.1, "max": 10.0}},
-            },
-            {
-                "name": "StandardScaler",
-                "display_name": "Standard Scaler",
-                "description": "Standardize features (zero mean, unit variance)",
-                "params": {"with_mean": {"type": "bool", "default": True}, "with_std": {"type": "bool", "default": True}},
-            },
-            {
-                "name": "MinMaxScaler",
-                "display_name": "Min-Max Scaler",
-                "description": "Scale features to range [0, 1]",
-                "params": {},
-            },
-            {
-                "name": "RobustScaler",
-                "display_name": "Robust Scaler",
-                "description": "Scale using median and IQR (robust to outliers)",
-                "params": {},
-            },
-            {
-                "name": "LogTransform",
-                "display_name": "Log Transform",
-                "description": "Apply log transformation",
-                "params": {},
-            },
-            {
-                "name": "ReflectanceToAbsorbance",
-                "display_name": "Reflectance to Absorbance",
-                "description": "Convert R to A using log(1/R)",
-                "params": {},
-            },
-        ]
-        operators["preprocessing"] = preprocessing_transforms
-
-        # Load splitters from nirs4all
-        splitting_operators = [
-            {
-                "name": "TrainTestSplit",
-                "display_name": "Train/Test Split",
-                "description": "Simple random train/test split",
-                "params": {"test_size": {"type": "float", "default": 0.2, "min": 0.05, "max": 0.5}},
-            },
-            {
-                "name": "KFold",
-                "display_name": "K-Fold CV",
-                "description": "K-Fold cross-validation",
-                "params": {"n_splits": {"type": "int", "default": 5, "min": 2, "max": 20}},
-            },
-            {
-                "name": "StratifiedKFold",
-                "display_name": "Stratified K-Fold",
-                "description": "Stratified K-Fold for classification",
-                "params": {"n_splits": {"type": "int", "default": 5, "min": 2, "max": 20}},
-            },
-            {
-                "name": "KBinsStratifiedSplitter",
-                "display_name": "KBins Stratified",
-                "description": "Stratified split using binned continuous targets",
-                "params": {
-                    "test_size": {"type": "float", "default": 0.2},
-                    "n_bins": {"type": "int", "default": 10, "min": 2, "max": 100},
-                },
-            },
-            {
-                "name": "KennardStoneSplitter",
-                "display_name": "Kennard-Stone",
-                "description": "Uniform feature space coverage",
-                "params": {"test_size": {"type": "float", "default": 0.2}},
-            },
-            {
-                "name": "SPXYSplitter",
-                "display_name": "SPXY",
-                "description": "Sample set partitioning based on X and Y",
-                "params": {"test_size": {"type": "float", "default": 0.2}},
-            },
-            {
-                "name": "SPXYGFold",
-                "display_name": "SPXY K-Fold",
-                "description": "SPXY-based K-Fold with group support",
-                "params": {
-                    "n_splits": {"type": "int", "default": 5},
-                    "y_metric": {"type": "str", "default": "euclidean", "options": ["euclidean", "hamming", None]},
-                },
-            },
-        ]
-        operators["splitting"] = splitting_operators
-
-        # Load models - both sklearn and custom nirs4all models
-        model_operators = [
-            # Standard sklearn models
-            {
-                "name": "PLSRegression",
-                "display_name": "PLS Regression",
-                "description": "Partial Least Squares Regression",
-                "params": {"n_components": {"type": "int", "default": 10, "min": 1, "max": 100}},
-                "source": "sklearn",
-            },
-            {
-                "name": "RandomForestRegressor",
-                "display_name": "Random Forest",
-                "description": "Random Forest Regressor",
-                "params": {
-                    "n_estimators": {"type": "int", "default": 100, "min": 10, "max": 1000},
-                    "max_depth": {"type": "int", "default": None},
-                },
-                "source": "sklearn",
-            },
-            {
-                "name": "SVR",
-                "display_name": "Support Vector Regression",
-                "description": "Support Vector Machine for regression",
-                "params": {"kernel": {"type": "str", "default": "rbf", "options": ["rbf", "linear", "poly"]}},
-                "source": "sklearn",
-            },
-            {
-                "name": "Ridge",
-                "display_name": "Ridge Regression",
-                "description": "Ridge regression with L2 regularization",
-                "params": {"alpha": {"type": "float", "default": 1.0, "min": 0.0}},
-                "source": "sklearn",
-            },
-            {
-                "name": "Lasso",
-                "display_name": "Lasso Regression",
-                "description": "Lasso regression with L1 regularization",
-                "params": {"alpha": {"type": "float", "default": 1.0, "min": 0.0}},
-                "source": "sklearn",
-            },
-            {
-                "name": "ElasticNet",
-                "display_name": "Elastic Net",
-                "description": "Elastic Net with L1+L2 regularization",
-                "params": {
-                    "alpha": {"type": "float", "default": 1.0},
-                    "l1_ratio": {"type": "float", "default": 0.5, "min": 0.0, "max": 1.0},
-                },
-                "source": "sklearn",
-            },
-            {
-                "name": "GradientBoostingRegressor",
-                "display_name": "Gradient Boosting",
-                "description": "Gradient Boosting Regressor",
-                "params": {
-                    "n_estimators": {"type": "int", "default": 100},
-                    "learning_rate": {"type": "float", "default": 0.1},
-                    "max_depth": {"type": "int", "default": 3},
-                },
-                "source": "sklearn",
-            },
-            # nirs4all custom PLS variants
-            {
-                "name": "LWPLS",
-                "display_name": "Locally Weighted PLS",
-                "description": "Locally Weighted Partial Least Squares",
-                "params": {"n_components": {"type": "int", "default": 10}},
-                "source": "nirs4all",
-            },
-            {
-                "name": "IKPLS",
-                "display_name": "Improved Kernel PLS",
-                "description": "Fast PLS using IKPLS algorithm",
-                "params": {"n_components": {"type": "int", "default": 10}},
-                "source": "nirs4all",
-            },
-            {
-                "name": "OPLS",
-                "display_name": "Orthogonal PLS",
-                "description": "Orthogonal Partial Least Squares",
-                "params": {"n_components": {"type": "int", "default": 10}},
-                "source": "nirs4all",
-            },
-            {
-                "name": "KernelPLS",
-                "display_name": "Kernel PLS",
-                "description": "Non-linear PLS using kernel trick",
-                "params": {"n_components": {"type": "int", "default": 10}, "kernel": {"type": "str", "default": "rbf"}},
-                "source": "nirs4all",
-            },
-        ]
-        operators["models"] = model_operators
-
-        # Metrics
-        metric_operators = [
-            {"name": "r2_score", "display_name": "R² Score", "description": "Coefficient of determination", "params": {}},
-            {"name": "rmse", "display_name": "RMSE", "description": "Root Mean Square Error", "params": {}},
-            {"name": "mae", "display_name": "MAE", "description": "Mean Absolute Error", "params": {}},
-            {"name": "rpd", "display_name": "RPD", "description": "Ratio of Performance to Deviation", "params": {}},
-            {"name": "rpiq", "display_name": "RPIQ", "description": "Ratio of Performance to IQR", "params": {}},
-            {"name": "bias", "display_name": "Bias", "description": "Mean prediction bias", "params": {}},
-        ]
-        operators["metrics"] = metric_operators
-
-        # Data augmentation
-        augmentation_operators = [
-            {
-                "name": "GaussianAdditiveNoise",
-                "display_name": "Gaussian Noise",
-                "description": "Add Gaussian noise to spectra",
-                "params": {"std": {"type": "float", "default": 0.01}},
-            },
-            {
-                "name": "MultiplicativeNoise",
-                "display_name": "Multiplicative Noise",
-                "description": "Apply multiplicative noise",
-                "params": {"std": {"type": "float", "default": 0.01}},
-            },
-            {
-                "name": "WavelengthShift",
-                "display_name": "Wavelength Shift",
-                "description": "Shift spectra along wavelength axis",
-                "params": {"max_shift": {"type": "int", "default": 2}},
-            },
-            {
-                "name": "LinearBaselineDrift",
-                "display_name": "Baseline Drift",
-                "description": "Add random linear baseline drift",
-                "params": {},
-            },
-            {
-                "name": "MixupAugmenter",
-                "display_name": "Mixup",
-                "description": "Mixup augmentation between samples",
-                "params": {"alpha": {"type": "float", "default": 0.2}},
-            },
-        ]
-        operators["augmentation"] = augmentation_operators
-
-        # Feature selection
-        feature_selection_operators = [
-            {
-                "name": "CARS",
-                "display_name": "CARS",
-                "description": "Competitive Adaptive Reweighted Sampling",
-                "params": {"n_components": {"type": "int", "default": 10}},
-            },
-            {
-                "name": "MCUVE",
-                "display_name": "MC-UVE",
-                "description": "Monte Carlo Uninformative Variable Elimination",
-                "params": {},
-            },
-            {
-                "name": "VIP",
-                "display_name": "VIP Selection",
-                "description": "Variable Importance in Projection",
-                "params": {"threshold": {"type": "float", "default": 1.0}},
-            },
-        ]
-        operators["feature_selection"] = feature_selection_operators
-
-        # Charts/Visualization
-        chart_operators = [
-            {"name": "SpectraChart", "display_name": "Spectra Plot", "description": "Plot spectral data", "params": {}},
-            {"name": "PredictionChart", "display_name": "Prediction Plot", "description": "Predicted vs actual plot", "params": {}},
-            {"name": "ResidualChart", "display_name": "Residual Plot", "description": "Plot prediction residuals", "params": {}},
-            {"name": "FoldChart", "display_name": "Fold Results", "description": "Cross-validation fold results", "params": {}},
-        ]
-        operators["charts"] = chart_operators
-
+        # Use dynamic discovery functions (defined later in file)
+        operators = {
+            "preprocessing": _discover_transform_operators(),
+            "splitting": _discover_splitter_operators(),
+            "models": _discover_model_operators(),
+            "augmentation": _discover_augmentation_operators(),
+            "metrics": _discover_metric_operators(),
+            "feature_selection": _discover_feature_selection_operators(),
+            "filters": _discover_filter_operators(),
+        }
     else:
-        # Fallback static operators when nirs4all not available
-        operators["preprocessing"] = [
-            {"name": "StandardScaler", "description": "Standardize features", "params": {}},
-            {"name": "SNV", "description": "Standard Normal Variate", "params": {}},
-            {"name": "MSC", "description": "Multiplicative Scatter Correction", "params": {}},
-            {"name": "SavitzkyGolay", "description": "Savitzky-Golay filter", "params": {"window_length": 11, "polyorder": 2, "deriv": 0}},
-        ]
-        operators["splitting"] = [
-            {"name": "TrainTestSplit", "description": "Simple train/test split", "params": {"test_size": 0.2}},
-            {"name": "KFold", "description": "K-Fold cross-validation", "params": {"n_splits": 5}},
-        ]
-        operators["models"] = [
-            {"name": "PLSRegression", "description": "Partial Least Squares Regression", "params": {"n_components": 10}},
-            {"name": "RandomForest", "description": "Random Forest Regressor", "params": {"n_estimators": 100}},
-        ]
-        operators["metrics"] = [
-            {"name": "R2Score", "description": "R² coefficient of determination", "params": {}},
-            {"name": "RMSE", "description": "Root Mean Square Error", "params": {}},
-        ]
+        # Minimal fallback when nirs4all not available
+        operators = {
+            "preprocessing": [
+                {"name": "StandardScaler", "display_name": "Standard Scaler", "description": "Standardize features", "params": {}, "source": "sklearn"},
+                {"name": "MinMaxScaler", "display_name": "Min-Max Scaler", "description": "Scale features to [0, 1]", "params": {}, "source": "sklearn"},
+            ],
+            "splitting": [
+                {"name": "KFold", "display_name": "K-Fold CV", "description": "K-Fold cross-validation", "params": {"n_splits": {"type": "int", "default": 5}}, "source": "sklearn"},
+            ],
+            "models": [
+                {"name": "PLSRegression", "display_name": "PLS Regression", "description": "Partial Least Squares", "params": {"n_components": {"type": "int", "default": 10}}, "source": "sklearn"},
+            ],
+            "augmentation": [],
+            "metrics": [],
+            "feature_selection": [],
+            "filters": [],
+        }
 
     # Count totals
     total = sum(len(ops) for ops in operators.values())
@@ -831,91 +432,53 @@ async def _list_operators_impl():
 # Implementation function - called by forwarding route defined earlier
 async def _validate_pipeline_impl(request: PipelineValidateRequest):
     """
-    Validate a pipeline configuration.
+    Validate a pipeline configuration using nirs4all's validate_spec().
 
     Checks that all operators exist and parameters are valid.
     Returns validation results with any errors or warnings.
     """
-    results = {
-        "valid": True,
-        "steps": [],
-        "errors": [],
-        "warnings": [],
-    }
+    if not NIRS4ALL_AVAILABLE or validate_spec is None:
+        # Fallback: basic validation
+        return {
+            "valid": True,
+            "steps": [{"index": i, "name": s.get("name", "unknown"), "valid": True, "errors": [], "warnings": []} for i, s in enumerate(request.steps)],
+            "errors": [],
+            "warnings": ["nirs4all not available for full validation"],
+        }
 
-    # Get available operators
-    operators_response = await _list_operators_impl()
-    all_operators = operators_response["operators"]
+    # Convert frontend steps to nirs4all format for validation
+    nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
 
-    # Flatten operators into a lookup dict
-    operator_lookup = {}
-    for category, ops in all_operators.items():
-        for op in ops:
-            name = op.get("name", "")
-            operator_lookup[name.lower()] = op
+    # Use nirs4all's validate_spec
+    validation_result: ValidationResult = validate_spec(nirs4all_steps)
 
+    # Convert ValidationResult to API response format
+    errors = [str(e) for e in validation_result.errors]
+    warnings = [str(w) for w in validation_result.warnings]
+
+    # Build per-step results
+    step_results = []
     for i, step in enumerate(request.steps):
-        step_result = {
+        step_errors = [e for e in errors if f"[{i}]" in e or f"Step {i}" in e]
+        step_warnings = [w for w in warnings if f"[{i}]" in w or f"Step {i}" in w]
+
+        step_results.append({
             "index": i,
             "name": step.get("name", "unknown"),
             "type": step.get("type", "unknown"),
-            "valid": True,
-            "errors": [],
-            "warnings": [],
-        }
+            "valid": len(step_errors) == 0,
+            "errors": step_errors,
+            "warnings": step_warnings,
+        })
 
-        step_name = step.get("name", "")
-        step_type = step.get("type", "")
-        step_params = step.get("params", {})
-
-        # Check if operator exists
-        if step_name.lower() not in operator_lookup:
-            step_result["warnings"].append(
-                f"Operator '{step_name}' not found in registry. May still work if available in environment."
-            )
-        else:
-            # Validate parameters against schema
-            op_info = operator_lookup[step_name.lower()]
-            schema_params = op_info.get("params", {})
-
-            for param_name, param_value in step_params.items():
-                if param_name not in schema_params and schema_params:
-                    step_result["warnings"].append(f"Unknown parameter: {param_name}")
-                elif param_name in schema_params:
-                    param_schema = schema_params[param_name]
-                    if isinstance(param_schema, dict):
-                        # Type checking
-                        expected_type = param_schema.get("type")
-                        if expected_type == "int" and not isinstance(param_value, int):
-                            step_result["errors"].append(
-                                f"Parameter '{param_name}' should be int"
-                            )
-                            step_result["valid"] = False
-                        elif expected_type == "float" and not isinstance(param_value, (int, float)):
-                            step_result["errors"].append(
-                                f"Parameter '{param_name}' should be float"
-                            )
-                            step_result["valid"] = False
-
-                        # Range checking
-                        if "min" in param_schema and param_value < param_schema["min"]:
-                            step_result["errors"].append(
-                                f"Parameter '{param_name}' below minimum {param_schema['min']}"
-                            )
-                            step_result["valid"] = False
-                        if "max" in param_schema and param_value > param_schema["max"]:
-                            step_result["errors"].append(
-                                f"Parameter '{param_name}' above maximum {param_schema['max']}"
-                            )
-                            step_result["valid"] = False
-
-        if not step_result["valid"]:
-            results["valid"] = False
-        results["steps"].append(step_result)
-        results["errors"].extend([f"Step {i}: {e}" for e in step_result["errors"]])
-        results["warnings"].extend([f"Step {i}: {w}" for w in step_result["warnings"]])
-
-    return results
+    return {
+        "valid": validation_result.is_valid,
+        "steps": step_results,
+        "errors": errors,
+        "warnings": warnings,
+        "node_count": validation_result.node_count,
+        "generator_count": validation_result.generator_count,
+    }
 
 # ============= Phase 2: Dynamic Operator Discovery =============
 
@@ -953,7 +516,7 @@ def _extract_params_from_class(cls: Type) -> Dict[str, Any]:
 
             params[name] = param_info
 
-    except Exception as e:
+    except Exception:
         # Fallback: return empty params
         pass
 
@@ -1229,6 +792,136 @@ def _discover_augmentation_operators() -> List[Dict[str, Any]]:
     return operators
 
 
+def _discover_metric_operators() -> List[Dict[str, Any]]:
+    """Dynamically discover metric operators from nirs4all."""
+    operators = []
+
+    if not NIRS4ALL_AVAILABLE:
+        return operators
+
+    try:
+        from nirs4all.core import metrics as metrics_module
+
+        # Get available metrics
+        if hasattr(metrics_module, 'METRIC_FUNCTIONS'):
+            for name, func in metrics_module.METRIC_FUNCTIONS.items():
+                description = func.__doc__.strip().split("\n")[0] if func.__doc__ else f"{name} metric"
+                operators.append({
+                    "name": name,
+                    "display_name": _class_name_to_display(name),
+                    "description": description,
+                    "params": {},
+                    "source": "nirs4all",
+                })
+        else:
+            # Fallback: common metrics
+            metric_info = [
+                ("r2", "R2 Score", "Coefficient of determination"),
+                ("rmse", "RMSE", "Root Mean Square Error"),
+                ("mae", "MAE", "Mean Absolute Error"),
+                ("mse", "MSE", "Mean Square Error"),
+                ("rpd", "RPD", "Ratio of Performance to Deviation"),
+                ("rpiq", "RPIQ", "Ratio of Performance to IQR"),
+                ("bias", "Bias", "Mean prediction bias"),
+            ]
+            for name, display, desc in metric_info:
+                operators.append({
+                    "name": name,
+                    "display_name": display,
+                    "description": desc,
+                    "params": {},
+                    "source": "nirs4all",
+                })
+    except Exception as e:
+        print(f"Error discovering metrics: {e}")
+
+    return operators
+
+
+def _discover_feature_selection_operators() -> List[Dict[str, Any]]:
+    """Dynamically discover feature selection operators from nirs4all."""
+    operators = []
+
+    if not NIRS4ALL_AVAILABLE:
+        return operators
+
+    try:
+        from nirs4all.operators import feature_selection as fs_module
+
+        fs_classes = [
+            "CARS",
+            "MCUVE",
+            "VIP",
+            "SPA",
+            "iPLS",
+            "GA",
+            "UVE",
+        ]
+
+        for name in fs_classes:
+            cls = getattr(fs_module, name, None)
+            if cls is None:
+                continue
+
+            params = _extract_params_from_class(cls)
+            description = ""
+            if cls.__doc__:
+                description = cls.__doc__.strip().split("\n")[0]
+
+            operators.append({
+                "name": name,
+                "display_name": _class_name_to_display(name),
+                "description": description or f"{name} feature selection",
+                "params": params,
+                "source": "nirs4all",
+            })
+    except Exception as e:
+        print(f"Error discovering feature selection: {e}")
+
+    return operators
+
+
+def _discover_filter_operators() -> List[Dict[str, Any]]:
+    """Dynamically discover filter operators from nirs4all."""
+    operators = []
+
+    if not NIRS4ALL_AVAILABLE:
+        return operators
+
+    try:
+        from nirs4all.operators import filters as filter_module
+
+        filter_classes = [
+            "XOutlierFilter",
+            "YOutlierFilter",
+            "MetadataFilter",
+            "SpectralQualityFilter",
+            "HighLeverageFilter",
+        ]
+
+        for name in filter_classes:
+            cls = getattr(filter_module, name, None)
+            if cls is None:
+                continue
+
+            params = _extract_params_from_class(cls)
+            description = ""
+            if cls.__doc__:
+                description = cls.__doc__.strip().split("\n")[0]
+
+            operators.append({
+                "name": name,
+                "display_name": _class_name_to_display(name),
+                "description": description or f"{name} filter",
+                "params": params,
+                "source": "nirs4all",
+            })
+    except Exception as e:
+        print(f"Error discovering filters: {e}")
+
+    return operators
+
+
 def _class_name_to_display(name: str) -> str:
     """Convert class name to display-friendly name."""
     # Handle common abbreviations
@@ -1278,159 +971,111 @@ def _categorize_transform(name: str) -> str:
     return "other"
 
 
+def _discover_sklearn_operators() -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Dynamically discover sklearn operators via introspection.
+
+    Returns operators grouped by category: models, preprocessing, splitting.
+    """
+    result = {"models": [], "preprocessing": [], "splitting": []}
+
+    try:
+        # Models - common sklearn regressors
+        from sklearn.cross_decomposition import PLSRegression
+        from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+        from sklearn.svm import SVR
+        from sklearn.linear_model import Ridge, Lasso, ElasticNet
+
+        model_classes = [
+            (PLSRegression, "PLS Regression"),
+            (RandomForestRegressor, "Random Forest Regressor"),
+            (GradientBoostingRegressor, "Gradient Boosting"),
+            (SVR, "Support Vector Regression"),
+            (Ridge, "Ridge Regression"),
+            (Lasso, "Lasso Regression"),
+            (ElasticNet, "Elastic Net"),
+        ]
+
+        for cls, display_name in model_classes:
+            params = _extract_params_from_class(cls)
+            description = cls.__doc__.strip().split("\n")[0] if cls.__doc__ else display_name
+            result["models"].append({
+                "name": cls.__name__,
+                "display_name": display_name,
+                "description": description,
+                "params": params,
+                "source": "sklearn",
+            })
+
+        # Preprocessing - sklearn scalers
+        from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+
+        scaler_classes = [
+            (StandardScaler, "Standard Scaler"),
+            (MinMaxScaler, "Min-Max Scaler"),
+            (RobustScaler, "Robust Scaler"),
+        ]
+
+        for cls, display_name in scaler_classes:
+            params = _extract_params_from_class(cls)
+            description = cls.__doc__.strip().split("\n")[0] if cls.__doc__ else display_name
+            result["preprocessing"].append({
+                "name": cls.__name__,
+                "display_name": display_name,
+                "description": description,
+                "params": params,
+                "source": "sklearn",
+                "category": "scaling",
+            })
+
+        # Splitting - sklearn CV splitters
+        from sklearn.model_selection import KFold, StratifiedKFold, ShuffleSplit
+
+        splitter_classes = [
+            (KFold, "K-Fold CV"),
+            (StratifiedKFold, "Stratified K-Fold"),
+            (ShuffleSplit, "Shuffle Split"),
+        ]
+
+        for cls, display_name in splitter_classes:
+            params = _extract_params_from_class(cls)
+            description = cls.__doc__.strip().split("\n")[0] if cls.__doc__ else display_name
+            result["splitting"].append({
+                "name": cls.__name__,
+                "display_name": display_name,
+                "description": description,
+                "params": params,
+                "source": "sklearn",
+            })
+
+    except ImportError as e:
+        print(f"Error discovering sklearn operators: {e}")
+
+    return result
+
+
 @router.get("/pipelines/operators/discover")
 async def discover_operators():
     """
-    Dynamically discover all operators from nirs4all modules.
+    Dynamically discover all operators from nirs4all and sklearn modules.
 
-    This provides more detailed operator information by introspecting
-    the actual classes.
+    Uses introspection to extract parameters and documentation.
     """
     discovered = {
         "preprocessing": _discover_transform_operators(),
         "splitting": _discover_splitter_operators(),
         "models": _discover_model_operators(),
         "augmentation": _discover_augmentation_operators(),
+        "feature_selection": _discover_feature_selection_operators(),
+        "filters": _discover_filter_operators(),
+        "metrics": _discover_metric_operators(),
     }
 
-    # Add sklearn standard models
-    sklearn_models = [
-        {
-            "name": "PLSRegression",
-            "display_name": "PLS Regression",
-            "description": "Partial Least Squares Regression from sklearn",
-            "params": {"n_components": {"type": "int", "default": 10, "required": False}},
-            "source": "sklearn",
-        },
-        {
-            "name": "RandomForestRegressor",
-            "display_name": "Random Forest Regressor",
-            "description": "Random Forest ensemble for regression",
-            "params": {
-                "n_estimators": {"type": "int", "default": 100, "required": False},
-                "max_depth": {"type": "int", "default": None, "required": False},
-            },
-            "source": "sklearn",
-        },
-        {
-            "name": "GradientBoostingRegressor",
-            "display_name": "Gradient Boosting",
-            "description": "Gradient Boosting ensemble for regression",
-            "params": {
-                "n_estimators": {"type": "int", "default": 100, "required": False},
-                "learning_rate": {"type": "float", "default": 0.1, "required": False},
-                "max_depth": {"type": "int", "default": 3, "required": False},
-            },
-            "source": "sklearn",
-        },
-        {
-            "name": "SVR",
-            "display_name": "Support Vector Regression",
-            "description": "Support Vector Machine for regression",
-            "params": {
-                "kernel": {"type": "str", "default": "rbf", "options": ["rbf", "linear", "poly"], "required": False},
-                "C": {"type": "float", "default": 1.0, "required": False},
-            },
-            "source": "sklearn",
-        },
-        {
-            "name": "Ridge",
-            "display_name": "Ridge Regression",
-            "description": "Ridge regression with L2 regularization",
-            "params": {"alpha": {"type": "float", "default": 1.0, "required": False}},
-            "source": "sklearn",
-        },
-        {
-            "name": "Lasso",
-            "display_name": "Lasso Regression",
-            "description": "Lasso regression with L1 regularization",
-            "params": {"alpha": {"type": "float", "default": 1.0, "required": False}},
-            "source": "sklearn",
-        },
-        {
-            "name": "ElasticNet",
-            "display_name": "Elastic Net",
-            "description": "Elastic Net with combined L1/L2 regularization",
-            "params": {
-                "alpha": {"type": "float", "default": 1.0, "required": False},
-                "l1_ratio": {"type": "float", "default": 0.5, "required": False},
-            },
-            "source": "sklearn",
-        },
-    ]
-    discovered["models"].extend(sklearn_models)
-
-    # Add sklearn scalers to preprocessing
-    sklearn_scalers = [
-        {
-            "name": "StandardScaler",
-            "display_name": "Standard Scaler",
-            "description": "Standardize features by removing mean and scaling to unit variance",
-            "params": {
-                "with_mean": {"type": "bool", "default": True, "required": False},
-                "with_std": {"type": "bool", "default": True, "required": False},
-            },
-            "source": "sklearn",
-            "category": "scaling",
-        },
-        {
-            "name": "MinMaxScaler",
-            "display_name": "Min-Max Scaler",
-            "description": "Scale features to a given range (default 0-1)",
-            "params": {
-                "feature_range": {"type": "array", "default": [0, 1], "required": False},
-            },
-            "source": "sklearn",
-            "category": "scaling",
-        },
-        {
-            "name": "RobustScaler",
-            "display_name": "Robust Scaler",
-            "description": "Scale using statistics robust to outliers (median, IQR)",
-            "params": {
-                "with_centering": {"type": "bool", "default": True, "required": False},
-                "with_scaling": {"type": "bool", "default": True, "required": False},
-            },
-            "source": "sklearn",
-            "category": "scaling",
-        },
-    ]
-    discovered["preprocessing"].extend(sklearn_scalers)
-
-    # Add standard CV splitters
-    sklearn_splitters = [
-        {
-            "name": "KFold",
-            "display_name": "K-Fold CV",
-            "description": "K-Fold cross-validation",
-            "params": {
-                "n_splits": {"type": "int", "default": 5, "min": 2, "max": 20, "required": False},
-                "shuffle": {"type": "bool", "default": True, "required": False},
-            },
-            "source": "sklearn",
-        },
-        {
-            "name": "StratifiedKFold",
-            "display_name": "Stratified K-Fold",
-            "description": "Stratified K-Fold for classification",
-            "params": {
-                "n_splits": {"type": "int", "default": 5, "min": 2, "max": 20, "required": False},
-                "shuffle": {"type": "bool", "default": True, "required": False},
-            },
-            "source": "sklearn",
-        },
-        {
-            "name": "ShuffleSplit",
-            "display_name": "Shuffle Split",
-            "description": "Random permutation cross-validator",
-            "params": {
-                "n_splits": {"type": "int", "default": 10, "required": False},
-                "test_size": {"type": "float", "default": 0.1, "required": False},
-            },
-            "source": "sklearn",
-        },
-    ]
-    discovered["splitting"].extend(sklearn_splitters)
+    # Add sklearn operators via dynamic discovery
+    sklearn_ops = _discover_sklearn_operators()
+    discovered["models"].extend(sklearn_ops["models"])
+    discovered["preprocessing"].extend(sklearn_ops["preprocessing"])
+    discovered["splitting"].extend(sklearn_ops["splitting"])
 
     # Count totals
     total = sum(len(ops) for ops in discovered.values())
@@ -1545,7 +1190,7 @@ async def prepare_pipeline_execution(
     pipeline = _load_pipeline(pipeline_id)
 
     # Validate pipeline
-    validation_result = await validate_pipeline(
+    validation_result = await _validate_pipeline_impl(
         PipelineValidateRequest(steps=pipeline.get("steps", []))
     )
 
@@ -1738,14 +1383,8 @@ async def _count_variants_impl(request: PipelineCountRequest):
 
     Uses nirs4all's count_combinations function to efficiently calculate
     the total number of variants a pipeline specification would generate.
-
-    This is useful for:
-    - Showing users how many pipelines will be tested
-    - Warning about combinatorial explosion
-    - Validating pipeline complexity before execution
     """
-    if not NIRS4ALL_AVAILABLE:
-        # Fallback: simple count (1 variant if no generators)
+    if not NIRS4ALL_AVAILABLE or count_combinations is None:
         return {
             "count": 1,
             "warning": "nirs4all not available, using simple count",
@@ -1753,12 +1392,10 @@ async def _count_variants_impl(request: PipelineCountRequest):
         }
 
     try:
-        from nirs4all.pipeline.config.generator import count_combinations
-
         # Convert frontend steps to nirs4all format
         nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
 
-        # Count combinations
+        # Count combinations using nirs4all
         total_count = count_combinations(nirs4all_steps)
 
         # Calculate per-step breakdown
@@ -1766,17 +1403,11 @@ async def _count_variants_impl(request: PipelineCountRequest):
         for i, step in enumerate(request.steps):
             step_name = step.get("name", f"step_{i}")
             step_id = step.get("id", str(i))
-
-            # Count just this step
             single_step = _convert_frontend_steps_to_nirs4all([step])
             step_count = count_combinations(single_step) if single_step else 1
+            breakdown[step_id] = {"name": step_name, "count": step_count}
 
-            breakdown[step_id] = {
-                "name": step_name,
-                "count": step_count
-            }
-
-        # Add warning for large counts
+        # Warning for large search spaces
         warning = None
         if total_count > 10000:
             warning = f"Large search space: {total_count:,} variants. Consider reducing with 'count' limiter."
@@ -1787,15 +1418,10 @@ async def _count_variants_impl(request: PipelineCountRequest):
             "count": total_count,
             "breakdown": breakdown,
             "warning": warning,
-            "nirs4all_format": nirs4all_steps  # Debug: show converted format
         }
 
     except Exception as e:
-        return {
-            "count": 1,
-            "error": str(e),
-            "breakdown": {}
-        }
+        return {"count": 1, "error": str(e), "breakdown": {}}
 
 
 # ============= Phase 6: Pipeline Execution =============
@@ -1884,7 +1510,6 @@ def _run_pipeline_task(job, progress_callback):
     Returns:
         Execution result dictionary
     """
-    import time
     from .nirs4all_adapter import build_full_pipeline, ensure_models_dir
 
     config = job.config

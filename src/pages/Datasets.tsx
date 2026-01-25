@@ -59,9 +59,20 @@ import {
   getWorkspace,
   selectWorkspace,
   reloadWorkspace,
+  detectUnified,
 } from "@/api/client";
 import { selectFolder } from "@/utils/fileDialogs";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
+
+/** Get filename stem (without extension) */
+function getStem(filename: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.csv.gz') || lower.endsWith('.csv.zip')) {
+    return filename.slice(0, -7);
+  }
+  const idx = filename.lastIndexOf('.');
+  return idx > 0 ? filename.slice(0, idx) : filename;
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -116,18 +127,111 @@ export default function Datasets() {
 
   // Handle files/folders dropped from OS
   const handleDrop = useCallback(async (content: DroppedContent) => {
-    // Set initial state for the wizard
+    // Start with basic initial state
     const initialState: WizardInitialState = {
       sourceType: content.type,
       basePath: content.path,
       skipToStep: "files", // Skip source selection, go directly to file mapping
     };
 
+    // For folder drops with a valid path, use unified detection
+    if (content.type === "folder" && content.path) {
+      try {
+        const result = await detectUnified({ path: content.path, recursive: true });
+        // Enrich initial state with detection results
+        initialState.files = result.files;
+        initialState.detectedParsing = result.parsing_options;
+        initialState.hasFoldFile = result.has_fold_file;
+        initialState.foldFilePath = result.fold_file_path;
+        initialState.metadataColumns = result.metadata_columns;
+      } catch (e) {
+        console.warn("Unified detection failed, wizard will handle manually:", e);
+      }
+    } else if (content.type === "folder" && content.folderName && content.items.length > 0) {
+      // Web mode: folder dropped with file contents but no filesystem path
+      // Use folder name and convert File objects to DetectedFile format
+      initialState.basePath = content.folderName; // Use folder name as base path for dataset naming
+      const detectedFiles = content.items.map((file) => {
+        const filename = file.name;
+        const lowerName = filename.toLowerCase();
+        const stem = getStem(lowerName);
+
+        let type: "X" | "Y" | "metadata" | "folds" | "unknown" = "unknown";
+        let split: "train" | "test" | "unknown" = "unknown";
+
+        // Match nirs4all FILE_PATTERNS - X patterns
+        const xTrainPatterns = ["xcal", "x_cal", "cal_x", "calx", "train_x", "trainx", "x_train", "xtrain"];
+        const xTestPatterns = ["xval", "x_val", "val_x", "valx", "xtest", "x_test", "test_x", "testx"];
+        // Y patterns
+        const yTrainPatterns = ["ycal", "y_cal", "cal_y", "caly", "train_y", "trainy", "y_train", "ytrain"];
+        const yTestPatterns = ["ytest", "y_test", "test_y", "testy", "yval", "y_val", "val_y", "valy"];
+        // Metadata patterns
+        const metaTrainPatterns = ["mcal", "m_cal", "cal_m", "calm", "train_m", "trainm", "m_train", "mtrain",
+          "metacal", "meta_cal", "cal_meta", "calmeta", "train_meta", "trainmeta", "meta_train", "metatrain",
+          "metadatacal", "metadata_cal", "cal_metadata", "calmetadata", "train_metadata", "trainmetadata", "metadata_train", "metadatatrain"];
+        const metaTestPatterns = ["mtest", "m_test", "test_m", "testm", "mval", "m_val", "val_m", "valm",
+          "metatest", "meta_test", "test_meta", "testmeta", "metaval", "meta_val", "val_meta", "valmeta",
+          "metadatatest", "metadata_test", "test_metadata", "testmetadata", "metadataval", "metadata_val", "val_metadata", "valmetadata"];
+        // Fold patterns
+        const foldPatterns = ["folds", "fold", "cv_folds", "cvfolds", "cross_validation", "crossvalidation", "cv", "splits"];
+
+        // Check patterns (using substring match like nirs4all)
+        if (xTrainPatterns.some(p => lowerName.includes(p))) {
+          type = "X"; split = "train";
+        } else if (xTestPatterns.some(p => lowerName.includes(p))) {
+          type = "X"; split = "test";
+        } else if (yTrainPatterns.some(p => lowerName.includes(p))) {
+          type = "Y"; split = "train";
+        } else if (yTestPatterns.some(p => lowerName.includes(p))) {
+          type = "Y"; split = "test";
+        } else if (metaTrainPatterns.some(p => lowerName.includes(p))) {
+          type = "metadata"; split = "train";
+        } else if (metaTestPatterns.some(p => lowerName.includes(p))) {
+          type = "metadata"; split = "test";
+        } else if (foldPatterns.some(p => lowerName.includes(p))) {
+          type = "folds"; split = "train";
+        } else if (stem === "x") {
+          type = "X"; split = "train";
+        } else if (stem === "y") {
+          type = "Y"; split = "train";
+        } else if (["m", "meta", "metadata", "group"].includes(stem)) {
+          type = "metadata"; split = "train";
+        }
+
+        let format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet" = "csv";
+        if (lowerName.endsWith(".xlsx")) format = "xlsx";
+        else if (lowerName.endsWith(".xls")) format = "xls";
+        else if (lowerName.endsWith(".parquet")) format = "parquet";
+        else if (lowerName.endsWith(".npy")) format = "npy";
+        else if (lowerName.endsWith(".npz")) format = "npz";
+        else if (lowerName.endsWith(".mat")) format = "mat";
+
+        return {
+          path: content.relativePaths?.find(p => p.endsWith(filename)) || filename,
+          filename,
+          type: type === "folds" ? "unknown" : type, // folds handled separately
+          split: split === "unknown" ? "train" : split,
+          source: type === "X" ? 1 : null,
+          format,
+          size_bytes: file.size,
+          confidence: type !== "unknown" ? 0.9 : 0.3,
+          detected: true,
+        };
+      });
+
+      initialState.files = detectedFiles;
+
+      // Store File objects for web mode (needed for reading file content)
+      const fileBlobs = new Map<string, File>();
+      content.items.forEach((file) => {
+        const path = content.relativePaths?.find(p => p.endsWith(file.name)) || file.name;
+        fileBlobs.set(path, file);
+      });
+      initialState.fileBlobs = fileBlobs;
+    }
+
     setWizardInitialState(initialState);
     setWizardOpen(true);
-
-    // If it's a folder, detect files automatically (handled by wizard)
-    // If it's files, we could pre-populate but the wizard will handle it
   }, []);
 
   // Drag-and-drop hook
@@ -267,7 +371,10 @@ export default function Datasets() {
     path: string,
     config?: Partial<DatasetConfig>
   ) => {
-    await linkDataset(path, config);
+    const result = await linkDataset(path, config);
+    if (!result.success) {
+      throw new Error("Failed to link dataset");
+    }
     await loadData();
   };
 

@@ -189,7 +189,7 @@ def _get_build_info() -> Dict[str, Any]:
 
 
 def _get_gpu_info() -> Dict[str, Any]:
-    """Get detailed GPU information."""
+    """Get detailed GPU information using nirs4all backend utilities."""
     is_macos = platform.system() == "Darwin"
 
     gpu_info: Dict[str, Any] = {
@@ -201,57 +201,64 @@ def _get_gpu_info() -> Dict[str, Any]:
         "backends": {},
     }
 
-    # Check TensorFlow GPU (CUDA or Metal on macOS)
     try:
-        import tensorflow as tf
-        gpus = tf.config.list_physical_devices("GPU")
-        if gpus:
-            gpu_info["device_count"] = len(gpus)
-            if is_macos:
-                # On macOS, TensorFlow uses Metal via tensorflow-metal
-                gpu_info["metal_available"] = True
-                gpu_info["backends"]["tensorflow_metal"] = {
-                    "available": True,
-                    "devices": [g.name for g in gpus],
-                }
-            else:
-                # On Linux/Windows, TensorFlow uses CUDA
+        from nirs4all.utils.backend import get_gpu_info as n4a_get_gpu_info, is_gpu_available, is_available
+
+        # Get detailed backend info from nirs4all
+        backend_gpu_info = n4a_get_gpu_info()
+
+        # Process torch info
+        if "torch" in backend_gpu_info:
+            torch_info = backend_gpu_info["torch"]
+            if torch_info.get("available"):
                 gpu_info["cuda_available"] = True
-            gpu_info["backends"]["tensorflow"] = {
-                "available": True,
-                "devices": [g.name for g in gpus],
-            }
-    except ImportError:
-        pass
-    except Exception as e:
-        gpu_info["backends"]["tensorflow"] = {"available": False, "error": str(e)}
+                gpu_info["device_count"] = torch_info.get("device_count", 0)
+                gpu_info["device_name"] = torch_info.get("device_name")
+                gpu_info["backends"]["pytorch_cuda"] = {
+                    "available": True,
+                    "device_name": torch_info.get("device_name"),
+                    "device_count": torch_info.get("device_count", 0),
+                }
 
-    # Check PyTorch GPU (CUDA or MPS on macOS)
-    try:
-        import torch
-        if torch.cuda.is_available():
-            gpu_info["cuda_available"] = True
-            gpu_info["device_count"] = max(gpu_info["device_count"], torch.cuda.device_count())
-            gpu_info["device_name"] = torch.cuda.get_device_name(0)
-            gpu_info["backends"]["pytorch_cuda"] = {
-                "available": True,
-                "device_name": gpu_info["device_name"],
-                "device_count": torch.cuda.device_count(),
-            }
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            gpu_info["mps_available"] = True
-            gpu_info["metal_available"] = True  # MPS uses Metal
-            gpu_info["backends"]["pytorch_mps"] = {"available": True}
-    except ImportError:
-        pass
-    except Exception as e:
-        gpu_info["backends"]["pytorch"] = {"available": False, "error": str(e)}
+            # Check MPS (macOS) separately - nirs4all get_gpu_info checks CUDA only
+            if is_macos and is_available("torch"):
+                try:
+                    import torch
+                    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                        gpu_info["mps_available"] = True
+                        gpu_info["metal_available"] = True
+                        gpu_info["backends"]["pytorch_mps"] = {"available": True}
+                except Exception:
+                    pass
 
-    # Check nirs4all backend utilities if available
-    try:
-        from nirs4all.utils.backend import get_gpu_info as n4a_gpu_info
-        gpu_info["nirs4all_gpu_info"] = n4a_gpu_info()
+        # Process tensorflow info
+        if "tensorflow" in backend_gpu_info:
+            tf_info = backend_gpu_info["tensorflow"]
+            if tf_info.get("available"):
+                gpu_info["device_count"] = max(gpu_info["device_count"], tf_info.get("device_count", 0))
+                if is_macos:
+                    gpu_info["metal_available"] = True
+                    gpu_info["backends"]["tensorflow_metal"] = {
+                        "available": True,
+                        "devices": tf_info.get("devices", []),
+                    }
+                else:
+                    gpu_info["cuda_available"] = True
+                gpu_info["backends"]["tensorflow"] = {
+                    "available": True,
+                    "devices": tf_info.get("devices", []),
+                }
+
+        # Process jax info
+        if "jax" in backend_gpu_info:
+            jax_info = backend_gpu_info["jax"]
+            gpu_info["backends"]["jax"] = jax_info
+
+        # Store the raw nirs4all info for reference
+        gpu_info["nirs4all_gpu_info"] = backend_gpu_info
+
     except ImportError:
+        # nirs4all not available, return minimal info
         pass
     except Exception:
         pass

@@ -23,7 +23,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
-from .app_config import app_config, AppConfigManager
+from .app_config import app_config
 
 # Try to import nirs4all components (optional)
 try:
@@ -33,12 +33,14 @@ try:
     from nirs4all.data import DatasetConfigs
     from nirs4all.data.config_parser import parse_config
     from nirs4all.data.loaders.loader import handle_data
+    from nirs4all import workspace as nirs4all_workspace
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     print(f"Note: nirs4all not available, using stub functionality: {e}")
     DatasetConfigs = None
     parse_config = None
     handle_data = None
+    nirs4all_workspace = None
     NIRS4ALL_AVAILABLE = False
 
 
@@ -1161,8 +1163,6 @@ class DatasetRegistry:
         Returns:
             Dict mapping dataset keys to their status
         """
-        import hashlib
-
         results = {}
 
         for key, ds in self._datasets.items():
@@ -1767,12 +1767,14 @@ class WorkspaceManager:
             if ws.get("path") == str(workspace_path):
                 return LinkedWorkspace.from_dict(ws)
 
+        is_first = len(workspaces) == 0  # First workspace is active by default
+
         # Create linked workspace entry
         linked_ws = LinkedWorkspace(
             id=f"ws_{int(datetime.now().timestamp())}_{len(workspaces)}",
             path=str(workspace_path),
             name=name or workspace_path.name,
-            is_active=len(workspaces) == 0,  # First workspace is active by default
+            is_active=is_first,
             linked_at=now,
             last_scanned=now if is_new else None,
             discovered={
@@ -1787,39 +1789,14 @@ class WorkspaceManager:
         settings["linked_workspaces"] = workspaces
         self.app_config.save_app_settings(settings)
 
+        # Set nirs4all workspace if this is the active one
+        if is_first:
+            if nirs4all_workspace is not None:
+                nirs4all_workspace.set_active_workspace(str(workspace_path))
+            else:
+                os.environ["NIRS4ALL_WORKSPACE"] = str(workspace_path)
+
         return linked_ws
-
-    # ----------------------- Legacy Methods (Deprecated) -----------------------
-    # The following methods are kept for backward compatibility but delegate
-    # to the new architecture where possible.
-
-    def _load_recent_workspaces(self) -> None:
-        """Legacy: Load recent workspaces - now uses linked workspaces instead."""
-        pass  # No longer used - linked workspaces replace recent workspaces
-
-    def _save_recent_workspaces(self) -> None:
-        """Legacy: Save recent workspaces - now uses linked workspaces instead."""
-        pass  # No longer used
-
-    def _load_current_workspace(self) -> None:
-        """Legacy: Load current workspace - now uses active linked workspace."""
-        pass  # No longer used - active linked workspace is the current one
-
-    def _save_current_workspace(self) -> None:
-        """Legacy: Save current workspace."""
-        pass  # No longer used
-
-    def _load_workspace_config(self) -> None:
-        """Legacy: Load workspace config."""
-        pass  # No longer used
-
-    def _create_default_workspace_config(self) -> None:
-        """Legacy: Create default workspace config."""
-        pass  # No longer used
-
-    def _save_workspace_config(self) -> None:
-        """Legacy: Save workspace config."""
-        pass  # No longer used
 
     def set_workspace(self, path: str) -> "WorkspaceConfig":
         """Legacy: Set current workspace - now links and activates the workspace.
@@ -2406,7 +2383,12 @@ class WorkspaceManager:
         return True
 
     def activate_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
-        """Set a linked workspace as active."""
+        """Set a linked workspace as active.
+
+        This updates the webapp's active workspace and also calls
+        nirs4all.workspace.set_active_workspace() to ensure the nirs4all
+        library uses the same workspace path.
+        """
         settings = self.app_config.get_app_settings()
         workspaces = settings.get("linked_workspaces", [])
 
@@ -2422,8 +2404,12 @@ class WorkspaceManager:
             settings["linked_workspaces"] = workspaces
             self.app_config.save_app_settings(settings)
 
-            # Set environment variable for nirs4all
-            os.environ["NIRS4ALL_WORKSPACE"] = found.path
+            # Set workspace in nirs4all library (handles environment variable internally)
+            if nirs4all_workspace is not None:
+                nirs4all_workspace.set_active_workspace(found.path)
+            else:
+                # Fallback if nirs4all not available
+                os.environ["NIRS4ALL_WORKSPACE"] = found.path
 
         return found
 

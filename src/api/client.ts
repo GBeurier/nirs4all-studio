@@ -243,6 +243,7 @@ import type {
   DetectFilesResponse,
   DetectFormatRequest,
   DetectFormatResponse,
+  UnifiedDetectionResponse,
   PreviewDataRequest,
   PreviewDataResponse,
   VerifyDatasetResponse,
@@ -312,12 +313,116 @@ export async function detectFormat(
 }
 
 /**
+ * Unified file detection using nirs4all's FolderParser.
+ * Returns files, parsing options, fold detection, and metadata columns.
+ */
+export async function detectUnified(
+  request: DetectFilesRequest
+): Promise<UnifiedDetectionResponse> {
+  return api.post("/datasets/detect-unified", request);
+}
+
+/**
+ * Auto-detect file parameters using nirs4all's AutoDetector
+ * Returns full detection results including confidence scores
+ */
+export async function autoDetectFile(
+  path: string,
+  attemptLoad: boolean = true
+): Promise<{
+  success: boolean;
+  delimiter: string;
+  decimal_separator: string;
+  has_header: boolean;
+  header_unit: string;
+  signal_type?: string;
+  encoding: string;
+  confidence: Record<string, number>;
+  num_rows?: number;
+  num_columns?: number;
+  warnings: string[];
+}> {
+  return api.post("/datasets/auto-detect", { path, attempt_load: attemptLoad });
+}
+
+/**
+ * Validate files by loading them and returning their actual shapes.
+ * This is a lightweight endpoint that loads files to get exact shapes
+ * without computing full preview data (spectra charts, etc.).
+ */
+export interface FileShapeInfo {
+  path: string;
+  num_rows?: number;
+  num_columns?: number;
+  error?: string;
+}
+
+export interface ValidateFilesResponse {
+  success: boolean;
+  shapes: Record<string, FileShapeInfo>;
+  error?: string;
+}
+
+export async function validateFiles(
+  path: string,
+  files: DetectedFile[],
+  parsing?: Record<string, unknown>
+): Promise<ValidateFilesResponse> {
+  return api.post("/datasets/validate-files", { path, files, parsing });
+}
+
+/**
  * Preview dataset with current configuration
  */
 export async function previewDataset(
   request: PreviewDataRequest
 ): Promise<PreviewDataResponse> {
   return api.post("/datasets/preview", request);
+}
+
+/**
+ * Preview dataset from uploaded files (for web mode without filesystem access)
+ */
+export async function previewDatasetWithUploads(
+  files: File[],
+  fileConfigs: Array<{
+    path: string;
+    type: "X" | "Y" | "metadata";
+    split: "train" | "test";
+    source: number | null;
+    overrides?: Record<string, unknown>;
+  }>,
+  parsing: Record<string, unknown>,
+  maxSamples: number = 100
+): Promise<PreviewDataResponse> {
+  const formData = new FormData();
+
+  // Add each file to the form data
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  // Metadata is sent as a JSON query parameter
+  const metadata = JSON.stringify({
+    files: fileConfigs,
+    parsing,
+    max_samples: maxSamples,
+  });
+
+  const response = await fetch(
+    `/api/datasets/preview-upload?metadata=${encodeURIComponent(metadata)}`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to preview dataset");
+  }
+
+  return response.json();
 }
 
 /**

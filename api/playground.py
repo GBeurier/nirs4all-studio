@@ -58,7 +58,6 @@ from .shared.pipeline_service import (
 from .shared.filter_operators import (
     get_filter_methods,
     instantiate_filter,
-    BaseFilter,
 )
 from .shared.metrics_computer import (
     MetricsComputer,

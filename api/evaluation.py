@@ -2,19 +2,11 @@
 Evaluation API routes for nirs4all webapp.
 
 This module provides FastAPI routes for model evaluation,
-including metrics computation, confusion matrices, residual analysis,
-cross-validation, and report generation.
+including confusion matrices, residual analysis, and report generation.
 
-Phase 4 Implementation:
-- Evaluation on trained models
-- Metrics computation (R², RMSE, MAE, RPD, etc.)
-- Confusion matrix for classification
-- Residual analysis for regression
-- Cross-validation endpoints
-- Report generation
+Routes delegate metrics computation to nirs4all.core.metrics.
 """
 
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -25,22 +17,13 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
+# Import nirs4all metrics and task detection
+from nirs4all.core.metrics import eval_multi, get_available_metrics
+from nirs4all.core.task_detection import detect_task_type
+from nirs4all.core.task_type import TaskType
 
 try:
-    from sklearn.metrics import (
-        r2_score,
-        mean_squared_error,
-        mean_absolute_error,
-        accuracy_score,
-        precision_score,
-        recall_score,
-        f1_score,
-        confusion_matrix as sklearn_confusion_matrix,
-    )
+    from sklearn.metrics import confusion_matrix as sklearn_confusion_matrix
     from sklearn.model_selection import cross_val_score, cross_val_predict, KFold
 
     SKLEARN_AVAILABLE = True
@@ -84,23 +67,6 @@ class EvaluateResult(BaseModel):
     predictions: List[float]
     actual: List[float]
     residuals: Optional[List[float]] = None
-
-
-class MetricsRequest(BaseModel):
-    """Request model for computing metrics."""
-
-    y_true: List[float] = Field(..., description="True values")
-    y_pred: List[float] = Field(..., description="Predicted values")
-    task: str = Field("regression", description="Task type: regression or classification")
-    labels: Optional[List[Any]] = Field(None, description="Class labels for classification")
-
-
-class MetricsResult(BaseModel):
-    """Result of metrics computation."""
-
-    task: str
-    num_samples: int
-    metrics: Dict[str, float]
 
 
 class ConfusionMatrixRequest(BaseModel):
@@ -258,65 +224,29 @@ async def evaluate_model(request: EvaluateRequest):
     y_true = y.ravel() if y.ndim > 1 else y
     y_pred = y_pred.ravel() if y_pred.ndim > 1 else y_pred
 
-    # Detect task type
-    task_type = _detect_task_type(y_true)
+    # Detect task type using nirs4all
+    task_type_enum = detect_task_type(y_true)
+    task_type_str = task_type_enum.value  # "regression", "binary_classification", or "multiclass_classification"
 
-    # Compute metrics
-    if task_type == "regression":
-        metrics = _compute_regression_metrics(y_true, y_pred)
-        residuals = (y_true - y_pred).tolist()
-    else:
-        metrics = _compute_classification_metrics(y_true, y_pred)
-        residuals = None
+    # Compute metrics using nirs4all eval_multi
+    metrics = eval_multi(y_true, y_pred, task_type_str)
+
+    # Compute residuals for regression
+    residuals = (y_true - y_pred).tolist() if task_type_enum.is_regression else None
+
+    # Normalize task type for response (classification -> classification)
+    response_task_type = "regression" if task_type_enum.is_regression else "classification"
 
     return EvaluateResult(
         model_id=request.model_id,
         dataset_id=request.dataset_id,
         partition=request.partition,
-        task_type=task_type,
+        task_type=response_task_type,
         num_samples=len(y_true),
         metrics=metrics,
         predictions=y_pred.tolist(),
         actual=y_true.tolist(),
         residuals=residuals,
-    )
-
-
-@router.post("/evaluation/metrics", response_model=MetricsResult)
-async def compute_metrics(request: MetricsRequest):
-    """
-    Compute evaluation metrics from true and predicted values.
-
-    Supports both regression and classification metrics.
-    """
-    if not SKLEARN_AVAILABLE:
-        raise HTTPException(
-            status_code=501, detail="sklearn required for metrics computation"
-        )
-
-    y_true = np.array(request.y_true)
-    y_pred = np.array(request.y_pred)
-
-    if len(y_true) != len(y_pred):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Length mismatch: {len(y_true)} true values vs {len(y_pred)} predictions",
-        )
-
-    if request.task == "regression":
-        metrics = _compute_regression_metrics(y_true, y_pred)
-    elif request.task == "classification":
-        metrics = _compute_classification_metrics(y_true, y_pred, request.labels)
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown task type: {request.task}. Supported: regression, classification",
-        )
-
-    return MetricsResult(
-        task=request.task,
-        num_samples=len(y_true),
-        metrics=metrics,
     )
 
 
@@ -606,85 +536,15 @@ async def list_available_metrics():
     List all available evaluation metrics.
 
     Returns supported metrics for regression and classification tasks.
+    Delegates to nirs4all.core.metrics.get_available_metrics().
     """
-    metrics = {
-        "regression": [
-            {
-                "name": "r2",
-                "display_name": "R² (Coefficient of Determination)",
-                "description": "Proportion of variance explained (higher is better)",
-                "range": "(-∞, 1]",
-                "best": "1.0",
-            },
-            {
-                "name": "rmse",
-                "display_name": "RMSE (Root Mean Square Error)",
-                "description": "Square root of average squared errors (lower is better)",
-                "range": "[0, ∞)",
-                "best": "0.0",
-            },
-            {
-                "name": "mae",
-                "display_name": "MAE (Mean Absolute Error)",
-                "description": "Average absolute error (lower is better)",
-                "range": "[0, ∞)",
-                "best": "0.0",
-            },
-            {
-                "name": "rpd",
-                "display_name": "RPD (Ratio of Performance to Deviation)",
-                "description": "Std dev of reference / RMSE (higher is better)",
-                "range": "[0, ∞)",
-                "best": ">3.0",
-            },
-            {
-                "name": "bias",
-                "display_name": "Bias",
-                "description": "Mean prediction error (closer to 0 is better)",
-                "range": "(-∞, ∞)",
-                "best": "0.0",
-            },
-            {
-                "name": "mape",
-                "display_name": "MAPE (Mean Absolute Percentage Error)",
-                "description": "Average percentage error (lower is better)",
-                "range": "[0, ∞)",
-                "best": "0.0%",
-            },
-        ],
-        "classification": [
-            {
-                "name": "accuracy",
-                "display_name": "Accuracy",
-                "description": "Proportion of correct predictions",
-                "range": "[0, 1]",
-                "best": "1.0",
-            },
-            {
-                "name": "precision",
-                "display_name": "Precision",
-                "description": "True positives / predicted positives",
-                "range": "[0, 1]",
-                "best": "1.0",
-            },
-            {
-                "name": "recall",
-                "display_name": "Recall",
-                "description": "True positives / actual positives",
-                "range": "[0, 1]",
-                "best": "1.0",
-            },
-            {
-                "name": "f1",
-                "display_name": "F1 Score",
-                "description": "Harmonic mean of precision and recall",
-                "range": "[0, 1]",
-                "best": "1.0",
-            },
-        ],
+    return {
+        "metrics": {
+            "regression": get_available_metrics("regression"),
+            "binary_classification": get_available_metrics("binary_classification"),
+            "multiclass_classification": get_available_metrics("multiclass_classification"),
+        }
     }
-
-    return {"metrics": metrics}
 
 
 @router.get("/evaluation/scoring/available")
@@ -708,115 +568,6 @@ async def list_available_scoring():
 
 
 # ============= Helper Functions =============
-
-
-def _detect_task_type(y: np.ndarray) -> str:
-    """Detect if this is a regression or classification task.
-
-    Args:
-        y: Target values
-
-    Returns:
-        'regression' or 'classification'
-    """
-    # Check if values are integers or have few unique values
-    unique_values = np.unique(y)
-
-    if len(unique_values) <= 20:  # Arbitrary threshold
-        # Check if values look like class labels
-        if np.all(unique_values == unique_values.astype(int)):
-            return "classification"
-
-    return "regression"
-
-
-def _compute_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """Compute regression evaluation metrics.
-
-    Args:
-        y_true: True values
-        y_pred: Predicted values
-
-    Returns:
-        Dictionary of metric name -> value
-    """
-    y_true = y_true.ravel() if y_true.ndim > 1 else y_true
-    y_pred = y_pred.ravel() if y_pred.ndim > 1 else y_pred
-
-    mse = mean_squared_error(y_true, y_pred)
-    rmse = np.sqrt(mse)
-    std_dev = np.std(y_true)
-
-    metrics = {
-        "r2": float(r2_score(y_true, y_pred)),
-        "rmse": float(rmse),
-        "mae": float(mean_absolute_error(y_true, y_pred)),
-        "mse": float(mse),
-        "bias": float(np.mean(y_pred - y_true)),
-    }
-
-    # RPD (Ratio of Performance to Deviation)
-    if rmse > 0:
-        metrics["rpd"] = float(std_dev / rmse)
-    else:
-        metrics["rpd"] = float("inf")
-
-    # MAPE (Mean Absolute Percentage Error)
-    mask = y_true != 0
-    if np.any(mask):
-        mape = np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
-        metrics["mape"] = float(mape)
-
-    return metrics
-
-
-def _compute_classification_metrics(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    labels: Optional[List[Any]] = None,
-) -> Dict[str, float]:
-    """Compute classification evaluation metrics.
-
-    Args:
-        y_true: True labels
-        y_pred: Predicted labels
-        labels: Optional list of class labels
-
-    Returns:
-        Dictionary of metric name -> value
-    """
-    y_true = y_true.ravel() if hasattr(y_true, "ravel") else np.array(y_true)
-    y_pred = y_pred.ravel() if hasattr(y_pred, "ravel") else np.array(y_pred)
-
-    metrics = {
-        "accuracy": float(accuracy_score(y_true, y_pred)),
-    }
-
-    # Handle binary vs multiclass
-    unique_labels = set(y_true.tolist()) | set(y_pred.tolist())
-    n_classes = len(unique_labels)
-
-    if n_classes == 2:
-        # Binary classification
-        metrics["precision"] = float(precision_score(y_true, y_pred, zero_division=0))
-        metrics["recall"] = float(recall_score(y_true, y_pred, zero_division=0))
-        metrics["f1"] = float(f1_score(y_true, y_pred, zero_division=0))
-    else:
-        # Multiclass - use weighted average
-        metrics["precision_weighted"] = float(
-            precision_score(y_true, y_pred, average="weighted", zero_division=0)
-        )
-        metrics["recall_weighted"] = float(
-            recall_score(y_true, y_pred, average="weighted", zero_division=0)
-        )
-        metrics["f1_weighted"] = float(
-            f1_score(y_true, y_pred, average="weighted", zero_division=0)
-        )
-        metrics["f1_macro"] = float(
-            f1_score(y_true, y_pred, average="macro", zero_division=0)
-        )
-
-    return metrics
 
 
 def _compute_skewness(data: np.ndarray) -> float:

@@ -6,7 +6,7 @@
  * - Per-file overrides
  * - Signal type and NA policy
  */
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Settings2,
   ChevronDown,
@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Wand2,
   SlidersHorizontal,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -40,8 +41,36 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useWizard, DEFAULT_PARSING } from "./WizardContext";
-import { detectFormat } from "@/api/client";
-import type { ParsingOptions, HeaderUnit, SignalType, NaPolicy } from "@/types/datasets";
+import { detectFormat, autoDetectFile } from "@/api/client";
+import type { ParsingOptions, HeaderUnit, SignalType, NaPolicy, DetectionConfidence } from "@/types/datasets";
+
+// Confidence indicator component
+function ConfidenceIndicator({ value, field }: { value?: number; field: string }) {
+  if (value === undefined || value === null) return null;
+
+  const getColor = () => {
+    if (value >= 0.8) return "text-green-600 dark:text-green-400";
+    if (value >= 0.6) return "text-amber-500 dark:text-amber-400";
+    return "text-red-500 dark:text-red-400";
+  };
+
+  const getIcon = () => {
+    if (value >= 0.8) return "✓";
+    if (value >= 0.6) return "~";
+    return "!";
+  };
+
+  const pct = Math.round(value * 100);
+
+  return (
+    <span
+      className={`text-xs ml-1 ${getColor()}`}
+      title={`${field} detected with ${pct}% confidence`}
+    >
+      {getIcon()} {pct}%
+    </span>
+  );
+}
 
 // Options for selects
 const DELIMITER_OPTIONS = [
@@ -75,6 +104,7 @@ const SIGNAL_TYPE_OPTIONS: { value: SignalType; label: string }[] = [
 ];
 
 const NA_POLICY_OPTIONS: { value: NaPolicy; label: string }[] = [
+  { value: "keep", label: "Keep NA values" },
   { value: "drop", label: "Drop rows with NA" },
   { value: "fill_mean", label: "Fill with mean" },
   { value: "fill_median", label: "Fill with median" },
@@ -94,9 +124,10 @@ interface ParsingFormProps {
   options: Partial<ParsingOptions>;
   onChange: (updates: Partial<ParsingOptions>) => void;
   compact?: boolean;
+  confidence?: DetectionConfidence;
 }
 
-function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
+function ParsingForm({ options, onChange, compact = false, confidence }: ParsingFormProps) {
   const gridClass = compact
     ? "grid grid-cols-2 gap-3"
     : "grid grid-cols-3 gap-4";
@@ -107,6 +138,7 @@ function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
       <div>
         <Label className="text-xs text-muted-foreground mb-1 block">
           Delimiter
+          <ConfidenceIndicator value={confidence?.delimiter} field="Delimiter" />
         </Label>
         <Select
           value={options.delimiter || DEFAULT_PARSING.delimiter}
@@ -129,6 +161,7 @@ function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
       <div>
         <Label className="text-xs text-muted-foreground mb-1 block">
           Decimal
+          <ConfidenceIndicator value={confidence?.decimal_separator} field="Decimal" />
         </Label>
         <Select
           value={options.decimal_separator || DEFAULT_PARSING.decimal_separator}
@@ -151,6 +184,7 @@ function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
       <div>
         <Label className="text-xs text-muted-foreground mb-1 block">
           Header Row
+          <ConfidenceIndicator value={confidence?.has_header} field="Header" />
         </Label>
         <div className="flex items-center gap-2 h-9">
           <Switch
@@ -167,6 +201,7 @@ function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
       <div>
         <Label className="text-xs text-muted-foreground mb-1 block">
           Header Unit
+          <ConfidenceIndicator value={confidence?.header_unit} field="Header unit" />
         </Label>
         <Select
           value={options.header_unit || DEFAULT_PARSING.header_unit}
@@ -189,6 +224,7 @@ function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
       <div>
         <Label className="text-xs text-muted-foreground mb-1 block">
           Signal Type
+          <ConfidenceIndicator value={confidence?.signal_type} field="Signal type" />
         </Label>
         <Select
           value={options.signal_type || DEFAULT_PARSING.signal_type}
@@ -228,24 +264,6 @@ function ParsingForm({ options, onChange, compact = false }: ParsingFormProps) {
           </SelectContent>
         </Select>
       </div>
-
-      {/* Skip rows */}
-      {!compact && (
-        <div>
-          <Label className="text-xs text-muted-foreground mb-1 block">
-            Skip Rows
-          </Label>
-          <Input
-            type="number"
-            min={0}
-            value={options.skip_rows || 0}
-            onChange={(e) =>
-              onChange({ skip_rows: parseInt(e.target.value) || 0 })
-            }
-            className="h-9"
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -258,6 +276,9 @@ interface FileOverrideRowProps {
   overrides: Partial<ParsingOptions>;
   onToggle: () => void;
   onChange: (updates: Partial<ParsingOptions>) => void;
+  onAutoDetect?: () => Promise<void>;
+  shape?: { rows: number; cols: number };
+  isDetecting?: boolean;
 }
 
 function FileOverrideRow({
@@ -267,8 +288,20 @@ function FileOverrideRow({
   overrides,
   onToggle,
   onChange,
+  onAutoDetect,
+  shape,
+  isDetecting,
 }: FileOverrideRowProps) {
   const [expanded, setExpanded] = useState(false);
+
+  // Auto-expand when override is enabled
+  const handleToggle = () => {
+    if (!hasOverride) {
+      // Enabling override - expand the row
+      setExpanded(true);
+    }
+    onToggle();
+  };
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
@@ -288,6 +321,12 @@ function FileOverrideRow({
             {filename}
           </span>
 
+          {shape && (
+            <Badge variant="outline" className="text-xs font-mono">
+              {shape.rows} x {shape.cols}
+            </Badge>
+          )}
+
           {hasOverride && (
             <Badge variant="secondary" className="text-xs">
               Custom
@@ -296,14 +335,32 @@ function FileOverrideRow({
 
           <Switch
             checked={hasOverride}
-            onCheckedChange={onToggle}
+            onCheckedChange={handleToggle}
             className="ml-2"
           />
         </div>
 
         <CollapsibleContent>
           {hasOverride && (
-            <div className="px-3 pb-3 pt-1 ml-9 bg-muted/20 rounded-b-md">
+            <div className="px-3 pb-3 pt-1 ml-9 bg-muted/20 rounded-b-md space-y-2">
+              {onAutoDetect && (
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onAutoDetect}
+                    disabled={isDetecting}
+                    className="h-7 text-xs"
+                  >
+                    {isDetecting ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-3 w-3 mr-1" />
+                    )}
+                    Auto-detect
+                  </Button>
+                </div>
+              )}
               <ParsingForm options={overrides} onChange={onChange} compact />
             </div>
           )}
@@ -321,38 +378,127 @@ function FileOverrideRow({
 export function ParsingStep() {
   const { state, dispatch } = useWizard();
   const [autoDetecting, setAutoDetecting] = useState(false);
+  const [detectingFiles, setDetectingFiles] = useState<Record<string, boolean>>({});
+  const hasAutoDetectedOnMount = useRef(false);
 
-  const handleAutoDetect = async () => {
+  const handleAutoDetect = useCallback(async () => {
     if (state.files.length === 0) return;
 
     setAutoDetecting(true);
     try {
-      // Try to detect format from first X file
+      // Try to detect format from first X file using nirs4all's full AutoDetector
       const firstXFile = state.files.find((f) => f.type === "X");
       if (firstXFile) {
-        const result = await detectFormat({
-          path: firstXFile.path,
-          sample_rows: 10,
-        });
+        const result = await autoDetectFile(firstXFile.path, true);
 
-        if (result) {
+        if (result.success) {
+          // Update parsing options with all detected values
           dispatch({
             type: "SET_PARSING",
             payload: {
-              delimiter: result.detected_delimiter || DEFAULT_PARSING.delimiter,
-              decimal_separator:
-                result.detected_decimal || DEFAULT_PARSING.decimal_separator,
+              delimiter: result.delimiter || DEFAULT_PARSING.delimiter,
+              decimal_separator: result.decimal_separator || DEFAULT_PARSING.decimal_separator,
               has_header: result.has_header ?? DEFAULT_PARSING.has_header,
+              header_unit: (result.header_unit as HeaderUnit) || DEFAULT_PARSING.header_unit,
+              signal_type: (result.signal_type as SignalType) || DEFAULT_PARSING.signal_type,
+              encoding: result.encoding || "utf-8",
+            },
+          });
+
+          // Update confidence scores in state
+          dispatch({
+            type: "SET_DETECTION_RESULTS",
+            payload: {
+              confidence: result.confidence,
             },
           });
         }
       }
     } catch (error) {
       console.error("Auto-detect failed:", error);
+      // Fallback to old detectFormat API
+      try {
+        const firstXFile = state.files.find((f) => f.type === "X");
+        if (firstXFile) {
+          const result = await detectFormat({
+            path: firstXFile.path,
+            sample_rows: 10,
+          });
+
+          if (result) {
+            dispatch({
+              type: "SET_PARSING",
+              payload: {
+                delimiter: result.detected_delimiter || DEFAULT_PARSING.delimiter,
+                decimal_separator: result.detected_decimal || DEFAULT_PARSING.decimal_separator,
+                has_header: result.has_header ?? DEFAULT_PARSING.has_header,
+              },
+            });
+          }
+        }
+      } catch (fallbackError) {
+        console.error("Fallback auto-detect also failed:", fallbackError);
+      }
     } finally {
       setAutoDetecting(false);
     }
-  };
+  }, [state.files, dispatch]);
+
+  // Auto-detect on mount (first time only)
+  useEffect(() => {
+    if (!hasAutoDetectedOnMount.current && state.files.length > 0) {
+      hasAutoDetectedOnMount.current = true;
+      handleAutoDetect();
+    }
+  }, [state.files.length, handleAutoDetect]);
+
+  // Per-file auto-detect for parsing options using nirs4all's AutoDetector
+  const handlePerFileAutoDetect = useCallback(async (path: string) => {
+    setDetectingFiles((prev) => ({ ...prev, [path]: true }));
+    try {
+      const result = await autoDetectFile(path, true);
+
+      if (result.success) {
+        dispatch({
+          type: "SET_FILE_OVERRIDE",
+          payload: {
+            path,
+            options: {
+              delimiter: result.delimiter || DEFAULT_PARSING.delimiter,
+              decimal_separator: result.decimal_separator || DEFAULT_PARSING.decimal_separator,
+              has_header: result.has_header ?? DEFAULT_PARSING.has_header,
+              header_unit: (result.header_unit as HeaderUnit) || DEFAULT_PARSING.header_unit,
+              signal_type: (result.signal_type as SignalType) || DEFAULT_PARSING.signal_type,
+              encoding: result.encoding || "utf-8",
+            },
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Per-file auto-detect failed:", error);
+      // Fallback to old detectFormat API
+      try {
+        const fallbackResult = await detectFormat({ path, sample_rows: 10 });
+        if (fallbackResult) {
+          dispatch({
+            type: "SET_FILE_OVERRIDE",
+            payload: {
+              path,
+              options: {
+                delimiter: fallbackResult.detected_delimiter || DEFAULT_PARSING.delimiter,
+                decimal_separator: fallbackResult.detected_decimal || DEFAULT_PARSING.decimal_separator,
+                has_header: fallbackResult.has_header ?? DEFAULT_PARSING.has_header,
+              },
+            },
+          });
+        }
+      } catch (fallbackError) {
+        console.error("Fallback per-file auto-detect also failed:", fallbackError);
+      }
+    } finally {
+      setDetectingFiles((prev) => ({ ...prev, [path]: false }));
+    }
+  }, [dispatch]);
 
   const handleResetDefaults = () => {
     dispatch({ type: "SET_PARSING", payload: { ...DEFAULT_PARSING } });
@@ -405,6 +551,7 @@ export function ParsingStep() {
           onChange={(updates) =>
             dispatch({ type: "SET_PARSING", payload: updates })
           }
+          confidence={state.confidence}
         />
 
         {/* Advanced Loading Options Accordion */}
@@ -514,6 +661,9 @@ export function ParsingStep() {
                     payload: { path: file.path, options: updates },
                   })
                 }
+                onAutoDetect={() => handlePerFileAutoDetect(file.path)}
+                shape={file.num_rows != null && file.num_columns != null ? { rows: file.num_rows, cols: file.num_columns } : undefined}
+                isDetecting={detectingFiles[file.path]}
               />
             ))
           ) : (

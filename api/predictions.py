@@ -7,15 +7,10 @@ This module provides FastAPI routes for:
 - Prediction with uncertainty/confidence intervals
 - Prediction explanation (feature importance)
 
-Phase 3 Implementation:
-- predict_single: Predict on a single spectrum
-- predict_batch: Predict on multiple spectra
-- predict_with_confidence: Predictions with uncertainty estimates
-- explain_prediction: Feature importance for predictions
+Uses nirs4all library for all prediction and explanation operations.
 """
 
 import json
-import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -26,16 +21,8 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
-try:
-    import joblib
-    JOBLIB_AVAILABLE = True
-except ImportError:
-    JOBLIB_AVAILABLE = False
+import nirs4all
+from nirs4all.core.metrics import eval_multi
 
 
 # ============= Request/Response Models =============
@@ -403,47 +390,46 @@ async def predict_single(request: PredictSingleRequest):
     """
     Make a prediction on a single spectrum.
 
-    Loads the specified model and predicts on the provided spectrum.
-    Optionally applies preprocessing before prediction.
+    Uses nirs4all.predict() to load the model and run prediction.
+    Note: preprocessing_chain in request is ignored - the model bundle
+    contains all preprocessing steps that will be applied automatically.
     """
-    if not JOBLIB_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="joblib not available for model loading",
-        )
-
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    # Load model
-    model = _load_model(request.model_id, workspace.path)
+    # Resolve model path (supports .n4a bundles)
+    model_path = _resolve_model_path(request.model_id, workspace.path)
 
     # Prepare input
     X = np.array(request.spectrum).reshape(1, -1)
 
-    # Apply preprocessing
-    preprocessing_applied = []
-    if request.preprocessing_chain:
-        from .spectra import _apply_preprocessing_chain
+    try:
+        # Use nirs4all.predict() - handles model loading and preprocessing automatically
+        pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
+        prediction = pred_result.values
 
-        X = _apply_preprocessing_chain(X, request.preprocessing_chain)
-        preprocessing_applied = [s.get("name", "") for s in request.preprocessing_chain]
+        # Format result
+        if prediction.ndim > 1:
+            result = prediction[0].tolist()
+        else:
+            result = float(prediction[0])
 
-    # Predict
-    prediction = model.predict(X)
-
-    # Format result
-    if prediction.ndim > 1:
-        result = prediction[0].tolist()
-    else:
-        result = float(prediction[0])
-
-    return PredictionResult(
-        prediction=result,
-        model_id=request.model_id,
-        preprocessing_applied=preprocessing_applied,
-    )
+        return PredictionResult(
+            prediction=result,
+            model_id=request.model_id,
+            preprocessing_applied=pred_result.preprocessing_steps,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{request.model_id}' not found",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}",
+        )
 
 
 @router.post("/predictions/batch", response_model=BatchPredictionResult)
@@ -451,63 +437,60 @@ async def predict_batch(request: PredictBatchRequest):
     """
     Make predictions on a batch of spectra.
 
-    Loads the specified model and predicts on all provided spectra.
+    Uses nirs4all.predict() which handles batches natively.
+    Note: preprocessing_chain in request is ignored - the model bundle
+    contains all preprocessing steps that will be applied automatically.
     """
-    if not JOBLIB_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="joblib not available for model loading",
-        )
-
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    # Load model
-    model = _load_model(request.model_id, workspace.path)
+    # Resolve model path (supports .n4a bundles)
+    model_path = _resolve_model_path(request.model_id, workspace.path)
 
     # Prepare input
     X = np.array(request.spectra)
 
-    # Apply preprocessing
-    preprocessing_applied = []
-    if request.preprocessing_chain:
-        from .spectra import _apply_preprocessing_chain
+    try:
+        # Use nirs4all.predict() - handles model loading and preprocessing automatically
+        pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
+        predictions = pred_result.values
 
-        X = _apply_preprocessing_chain(X, request.preprocessing_chain)
-        preprocessing_applied = [s.get("name", "") for s in request.preprocessing_chain]
-
-    # Predict
-    predictions = model.predict(X)
-
-    # Format results
-    if predictions.ndim > 1:
-        results = predictions.tolist()
-    else:
+        # Format results
         results = predictions.tolist()
 
-    # Optionally save results
-    if request.save_results:
-        now = datetime.now().isoformat()
-        prediction_id = f"pred_{int(datetime.now().timestamp())}"
+        # Optionally save results
+        if request.save_results:
+            now = datetime.now().isoformat()
+            prediction_id = f"pred_{int(datetime.now().timestamp())}"
 
-        record = {
-            "id": prediction_id,
-            "model_id": request.model_id,
-            "samples_count": len(request.spectra),
-            "predictions": results,
-            "preprocessing_applied": preprocessing_applied,
-            "created_at": now,
-        }
+            record = {
+                "id": prediction_id,
+                "model_id": request.model_id,
+                "samples_count": len(request.spectra),
+                "predictions": results,
+                "preprocessing_applied": pred_result.preprocessing_steps,
+                "created_at": now,
+            }
 
-        _save_prediction(record)
+            _save_prediction(record)
 
-    return BatchPredictionResult(
-        predictions=results,
-        model_id=request.model_id,
-        num_samples=len(request.spectra),
-        preprocessing_applied=preprocessing_applied,
-    )
+        return BatchPredictionResult(
+            predictions=results,
+            model_id=request.model_id,
+            num_samples=len(request.spectra),
+            preprocessing_applied=pred_result.preprocessing_steps,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{request.model_id}' not found",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}",
+        )
 
 
 @router.post("/predictions/dataset")
@@ -515,18 +498,17 @@ async def predict_dataset(request: PredictDatasetRequest):
     """
     Make predictions on an entire dataset partition.
 
-    Loads the dataset and model, then predicts on all samples.
+    Uses nirs4all.predict() to load the model and run prediction on the dataset.
     Returns predictions along with actual values if available.
+    Note: preprocessing_chain in request is ignored - the model bundle
+    contains all preprocessing steps that will be applied automatically.
     """
-    if not JOBLIB_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="joblib not available for model loading",
-        )
-
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
+
+    # Resolve model path (supports .n4a bundles)
+    model_path = _resolve_model_path(request.model_id, workspace.path)
 
     # Load dataset
     from .spectra import _load_dataset
@@ -538,7 +520,7 @@ async def predict_dataset(request: PredictDatasetRequest):
             detail=f"Dataset '{request.dataset_id}' not found",
         )
 
-    # Get data
+    # Get data from dataset
     selector = {"partition": request.partition}
     X = dataset.x(selector, layout="2d")
     if isinstance(X, list):
@@ -550,66 +532,66 @@ async def predict_dataset(request: PredictDatasetRequest):
     except Exception:
         pass
 
-    # Load model
-    model = _load_model(request.model_id, workspace.path)
+    try:
+        # Use nirs4all.predict() - handles model loading and preprocessing automatically
+        pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
+        predictions = pred_result.values
 
-    # Apply preprocessing
-    preprocessing_applied = []
-    if request.preprocessing_chain:
-        from .spectra import _apply_preprocessing_chain
+        # Compute metrics if actual values available using nirs4all.core.metrics
+        metrics = None
+        if y_true is not None:
+            metrics = eval_multi(y_true, predictions, "regression")
 
-        X = _apply_preprocessing_chain(X, request.preprocessing_chain)
-        preprocessing_applied = [s.get("name", "") for s in request.preprocessing_chain]
+        # Format results
+        results = predictions.tolist()
 
-    # Predict
-    predictions = model.predict(X)
-
-    # Compute metrics if actual values available
-    metrics = None
-    if y_true is not None:
-        from .training import _compute_metrics
-
-        metrics = _compute_metrics(y_true, predictions)
-
-    # Format results
-    results = predictions.tolist() if predictions.ndim == 1 else predictions.tolist()
-
-    result_data = {
-        "model_id": request.model_id,
-        "dataset_id": request.dataset_id,
-        "partition": request.partition,
-        "num_samples": len(predictions),
-        "predictions": results,
-        "preprocessing_applied": preprocessing_applied,
-        "metrics": metrics,
-    }
-
-    # Include actual values if available
-    if y_true is not None:
-        result_data["actual_values"] = y_true.tolist() if hasattr(y_true, "tolist") else list(y_true)
-
-    # Optionally save results
-    if request.save_results:
-        now = datetime.now().isoformat()
-        prediction_id = f"pred_{int(datetime.now().timestamp())}"
-
-        record = {
-            "id": prediction_id,
+        result_data = {
             "model_id": request.model_id,
             "dataset_id": request.dataset_id,
             "partition": request.partition,
-            "samples_count": len(predictions),
+            "num_samples": len(predictions),
             "predictions": results,
-            "actual_values": result_data.get("actual_values"),
+            "preprocessing_applied": pred_result.preprocessing_steps,
             "metrics": metrics,
-            "preprocessing_applied": preprocessing_applied,
-            "created_at": now,
         }
 
-        _save_prediction(record)
-        result_data["prediction_id"] = prediction_id
+        # Include actual values if available
+        if y_true is not None:
+            result_data["actual_values"] = y_true.tolist() if hasattr(y_true, "tolist") else list(y_true)
 
-    return result_data
+        # Optionally save results
+        if request.save_results:
+            now = datetime.now().isoformat()
+            prediction_id = f"pred_{int(datetime.now().timestamp())}"
+
+            record = {
+                "id": prediction_id,
+                "model_id": request.model_id,
+                "dataset_id": request.dataset_id,
+                "partition": request.partition,
+                "samples_count": len(predictions),
+                "predictions": results,
+                "actual_values": result_data.get("actual_values"),
+                "metrics": metrics,
+                "preprocessing_applied": pred_result.preprocessing_steps,
+                "created_at": now,
+            }
+
+            _save_prediction(record)
+            result_data["prediction_id"] = prediction_id
+
+        return result_data
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{request.model_id}' not found",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}",
+        )
 
 
 @router.post("/predictions/confidence", response_model=ConfidencePredictionResult)

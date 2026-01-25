@@ -11,13 +11,11 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
-from .workspace_manager import workspace_manager
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -27,6 +25,7 @@ if str(nirs4all_path) not in sys.path:
 try:
     from nirs4all.visualization.analysis.transfer import PreprocPCAEvaluator
     from nirs4all.analysis.presets import PRESETS, list_presets
+    from nirs4all.analysis.transfer_utils import get_base_preprocessings
 
     TRANSFER_AVAILABLE = True
 except ImportError as e:
@@ -285,94 +284,65 @@ async def get_transfer_presets():
 @router.get("/analysis/transfer/preprocessing-options", response_model=List[PreprocessingOptionInfo])
 async def get_preprocessing_options():
     """Get available preprocessing operators for manual selection."""
-    # Define available preprocessing options
-    options = [
-        # Scalers
-        PreprocessingOptionInfo(
-            name="SNV",
-            display_name="Standard Normal Variate",
-            category="Scalers",
-            description="Row-wise mean centering and unit variance scaling",
-        ),
-        PreprocessingOptionInfo(
-            name="MinMaxScaler",
-            display_name="Min-Max Scaler",
-            category="Scalers",
-            description="Scale features to [0, 1] range",
-        ),
-        PreprocessingOptionInfo(
-            name="StandardScaler",
-            display_name="Standard Scaler",
-            category="Scalers",
-            description="Column-wise standardization (mean=0, std=1)",
-        ),
-        # Scatter correction
-        PreprocessingOptionInfo(
-            name="MSC",
-            display_name="Multiplicative Scatter Correction",
-            category="Scatter Correction",
-            description="Correct multiplicative and additive scatter effects",
-        ),
-        PreprocessingOptionInfo(
-            name="EMSC",
-            display_name="Extended MSC",
-            category="Scatter Correction",
-            description="Extended MSC with polynomial baseline terms",
-        ),
-        # Derivatives
-        PreprocessingOptionInfo(
-            name="SG",
-            display_name="Savitzky-Golay",
-            category="Smoothing",
-            description="Polynomial smoothing filter",
-            default_params={"window_length": 11, "polyorder": 2, "deriv": 0},
-        ),
-        PreprocessingOptionInfo(
-            name="FirstDerivative",
-            display_name="1st Derivative",
-            category="Derivatives",
-            description="First derivative (removes baseline offset)",
-        ),
-        PreprocessingOptionInfo(
-            name="SecondDerivative",
-            display_name="2nd Derivative",
-            category="Derivatives",
-            description="Second derivative (removes linear baseline)",
-        ),
-        # Baseline correction
-        PreprocessingOptionInfo(
-            name="Detrend",
-            display_name="Detrend",
-            category="Baseline",
-            description="Remove linear or polynomial trend",
-        ),
-        PreprocessingOptionInfo(
-            name="AirPLS",
-            display_name="AirPLS Baseline",
-            category="Baseline",
-            description="Adaptive iteratively reweighted penalized least squares",
-        ),
-        PreprocessingOptionInfo(
-            name="ArPLS",
-            display_name="ArPLS Baseline",
-            category="Baseline",
-            description="Asymmetrically reweighted penalized least squares",
-        ),
-        # Normalization
-        PreprocessingOptionInfo(
-            name="AreaNorm",
-            display_name="Area Normalization",
-            category="Normalization",
-            description="Normalize by total spectral area",
-        ),
-        PreprocessingOptionInfo(
-            name="L2Norm",
-            display_name="L2 Normalization",
-            category="Normalization",
-            description="Unit vector normalization",
-        ),
-    ]
+    if not TRANSFER_AVAILABLE:
+        raise HTTPException(
+            status_code=501, detail="Transfer analysis not available."
+        )
 
+    # Get base preprocessings from nirs4all
+    base_preprocessings = get_base_preprocessings()
+
+    # Metadata for display - maps short names to display info
+    # Category assignments based on nirs4all operator types
+    metadata = {
+        "snv": ("Standard Normal Variate", "Scalers", "Row-wise mean centering and unit variance scaling"),
+        "rsnv": ("Robust Standard Normal Variate", "Scalers", "Robust SNV using median absolute deviation"),
+        "msc": ("Multiplicative Scatter Correction", "Scatter Correction", "Correct multiplicative and additive scatter effects"),
+        "emsc": ("Extended MSC", "Scatter Correction", "Extended MSC with polynomial baseline terms"),
+        "savgol": ("Savitzky-Golay (11pt)", "Smoothing", "Polynomial smoothing filter (window=11, order=3)"),
+        "savgol_15": ("Savitzky-Golay (15pt)", "Smoothing", "Polynomial smoothing filter (window=15, order=3)"),
+        "d1": ("First Derivative", "Derivatives", "First derivative (removes baseline offset)"),
+        "d2": ("Second Derivative", "Derivatives", "Second derivative (removes linear baseline)"),
+        "savgol_d1": ("SG + 1st Derivative", "Derivatives", "Savitzky-Golay smoothed first derivative"),
+        "savgol_d2": ("SG + 2nd Derivative", "Derivatives", "Savitzky-Golay smoothed second derivative"),
+        "savgol15_d1": ("SG(15) + 1st Derivative", "Derivatives", "Savitzky-Golay (15pt) smoothed first derivative"),
+        "haar": ("Haar Wavelet", "Wavelets", "Haar wavelet transform"),
+        "detrend": ("Detrend", "Baseline", "Remove linear or polynomial trend"),
+        "gaussian": ("Gaussian Smoothing", "Smoothing", "Gaussian filter smoothing (order=1, sigma=2)"),
+        "gaussian2": ("Gaussian Smoothing (2nd)", "Smoothing", "Gaussian filter smoothing (order=2, sigma=2)"),
+        "area_norm": ("Area Normalization", "Normalization", "Normalize by total spectral area"),
+        "wav_sym5": ("Symlet-5 Wavelet", "Wavelets", "Symlet-5 wavelet transform"),
+        "wav_coif3": ("Coiflet-3 Wavelet", "Wavelets", "Coiflet-3 wavelet transform"),
+        "identity": ("Identity (No transform)", "Other", "Pass-through transformation"),
+    }
+
+    options = []
+    for name, transform_obj in base_preprocessings.items():
+        display_name, category, description = metadata.get(
+            name,
+            (name.replace("_", " ").title(), "Other", f"Transform: {type(transform_obj).__name__}")
+        )
+
+        # Extract default params if available
+        default_params = {}
+        if hasattr(transform_obj, "get_params"):
+            try:
+                default_params = transform_obj.get_params(deep=False)
+            except Exception:
+                pass
+
+        options.append(
+            PreprocessingOptionInfo(
+                name=name,
+                display_name=display_name,
+                category=category,
+                description=description,
+                default_params=default_params,
+            )
+        )
+
+    # Sort by category then by name for consistent ordering
+    options.sort(key=lambda x: (x.category, x.name))
     return options
 
 
@@ -411,26 +381,8 @@ def _load_dataset_data(dataset_id: str) -> tuple:
     return dataset, X, wavelengths
 
 
-def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, callable]:
+def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, Callable[[np.ndarray], np.ndarray]]:
     """Generate preprocessing functions based on configuration."""
-    from sklearn.preprocessing import MinMaxScaler, StandardScaler
-
-    # Import nirs4all operators
-    try:
-        from nirs4all.operators.transforms.scalers import StandardNormalVariate
-        from nirs4all.operators.transforms.nirs import (
-            MultiplicativeScatterCorrection,
-            SavitzkyGolay,
-            FirstDerivative,
-            SecondDerivative,
-            AreaNormalization,
-        )
-        from nirs4all.operators.transforms.signal import Detrend
-
-        NIRS4ALL_OPS = True
-    except ImportError:
-        NIRS4ALL_OPS = False
-
     pipelines = {}
 
     if config.mode == "preset":
@@ -453,7 +405,7 @@ def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, 
     # Build pipeline functions
     for pp_name in preprocessings:
         try:
-            pp_func = _build_preprocessing_function(pp_name, NIRS4ALL_OPS)
+            pp_func = _build_preprocessing_function(pp_name)
             if pp_func:
                 pipelines[pp_name] = pp_func
         except Exception as e:
@@ -462,61 +414,37 @@ def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, 
     return pipelines
 
 
-def _build_preprocessing_function(name: str, use_nirs4all: bool = True) -> callable:
-    """Build a preprocessing function from a name."""
+def _build_preprocessing_function(name: str) -> Callable[[np.ndarray], np.ndarray]:
+    """Build a preprocessing function from a name using nirs4all operators."""
     from sklearn.preprocessing import MinMaxScaler, StandardScaler, Normalizer
+    from nirs4all.operators.transforms.scalers import StandardNormalVariate
+    from nirs4all.operators.transforms.nirs import (
+        MultiplicativeScatterCorrection,
+        SavitzkyGolay,
+        FirstDerivative,
+        SecondDerivative,
+        AreaNormalization,
+    )
+    from nirs4all.operators.transforms.signal import Detrend
 
-    if use_nirs4all:
-        try:
-            from nirs4all.operators.transforms.scalers import StandardNormalVariate
-            from nirs4all.operators.transforms.nirs import (
-                MultiplicativeScatterCorrection,
-                SavitzkyGolay,
-                FirstDerivative,
-                SecondDerivative,
-                AreaNormalization,
-            )
-            from nirs4all.operators.transforms.signal import Detrend
-        except ImportError:
-            use_nirs4all = False
-
-    # Define preprocessing mapping
+    # Define preprocessing mapping using nirs4all operators
     if name == "SNV":
-        if use_nirs4all:
-            return lambda X: StandardNormalVariate().fit_transform(X)
-        else:
-            # Fallback: row-wise standardization
-            return lambda X: (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-10)
+        return lambda X: StandardNormalVariate().fit_transform(X)
 
     elif name == "MSC":
-        if use_nirs4all:
-            return lambda X: MultiplicativeScatterCorrection().fit_transform(X)
-        else:
-            return lambda X: X  # Fallback: no-op
+        return lambda X: MultiplicativeScatterCorrection().fit_transform(X)
 
     elif name in ("SG", "SG_smooth"):
-        if use_nirs4all:
-            return lambda X: SavitzkyGolay(window_length=11, polyorder=2, deriv=0).fit_transform(X)
-        else:
-            return lambda X: X
+        return lambda X: SavitzkyGolay(window_length=11, polyorder=2, deriv=0).fit_transform(X)
 
     elif name in ("FirstDeriv", "FirstDerivative"):
-        if use_nirs4all:
-            return lambda X: FirstDerivative().fit_transform(X)
-        else:
-            return lambda X: np.diff(X, axis=1)
+        return lambda X: FirstDerivative().fit_transform(X)
 
     elif name in ("SecondDeriv", "SecondDerivative"):
-        if use_nirs4all:
-            return lambda X: SecondDerivative().fit_transform(X)
-        else:
-            return lambda X: np.diff(X, n=2, axis=1)
+        return lambda X: SecondDerivative().fit_transform(X)
 
     elif name == "Detrend":
-        if use_nirs4all:
-            return lambda X: Detrend().fit_transform(X)
-        else:
-            return lambda X: X
+        return lambda X: Detrend().fit_transform(X)
 
     elif name == "MinMaxScaler":
         return lambda X: MinMaxScaler().fit_transform(X)
@@ -525,37 +453,25 @@ def _build_preprocessing_function(name: str, use_nirs4all: bool = True) -> calla
         return lambda X: StandardScaler().fit_transform(X)
 
     elif name in ("AreaNorm", "AreaNormalization"):
-        if use_nirs4all:
-            return lambda X: AreaNormalization().fit_transform(X)
-        else:
-            return lambda X: X / (np.abs(X).sum(axis=1, keepdims=True) + 1e-10)
+        return lambda X: AreaNormalization().fit_transform(X)
 
     elif name == "L2Norm":
         return lambda X: Normalizer(norm="l2").fit_transform(X)
 
     elif name == "SNV+SG":
-        if use_nirs4all:
-            snv = StandardNormalVariate()
-            sg = SavitzkyGolay(window_length=11, polyorder=2, deriv=0)
-            return lambda X: sg.fit_transform(snv.fit_transform(X))
-        else:
-            return lambda X: X
+        snv = StandardNormalVariate()
+        sg = SavitzkyGolay(window_length=11, polyorder=2, deriv=0)
+        return lambda X: sg.fit_transform(snv.fit_transform(X))
 
     elif name == "MSC+SG":
-        if use_nirs4all:
-            msc = MultiplicativeScatterCorrection()
-            sg = SavitzkyGolay(window_length=11, polyorder=2, deriv=0)
-            return lambda X: sg.fit_transform(msc.fit_transform(X))
-        else:
-            return lambda X: X
+        msc = MultiplicativeScatterCorrection()
+        sg = SavitzkyGolay(window_length=11, polyorder=2, deriv=0)
+        return lambda X: sg.fit_transform(msc.fit_transform(X))
 
     elif name == "Detrend+SNV":
-        if use_nirs4all:
-            det = Detrend()
-            snv = StandardNormalVariate()
-            return lambda X: snv.fit_transform(det.fit_transform(X))
-        else:
-            return lambda X: X
+        det = Detrend()
+        snv = StandardNormalVariate()
+        return lambda X: snv.fit_transform(det.fit_transform(X))
 
     else:
         # Unknown preprocessing - return identity

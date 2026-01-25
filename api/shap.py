@@ -4,6 +4,9 @@ SHAP Analysis API routes for nirs4all webapp.
 This module provides FastAPI routes for SHAP-based model explanations,
 computing feature importance and generating visualizations for model
 interpretability.
+
+Uses nirs4all.explain() for SHAP computation and ExplainResult for accessing
+SHAP values and feature importance.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ if str(nirs4all_path) not in sys.path:
 
 try:
     import nirs4all
-    from nirs4all.visualization.analysis.shap import ShapAnalyzer, SHAP_AVAILABLE
+    from nirs4all.visualization.analysis.shap import SHAP_AVAILABLE
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     print(f"Note: nirs4all not available for SHAP: {e}")

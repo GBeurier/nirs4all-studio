@@ -37,3 +37,11 @@ warn-*.txt
 
 # Electron
 dist-electron/
+workspace/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
