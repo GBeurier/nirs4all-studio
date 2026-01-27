@@ -16,4 +16,4 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
-// PyWebView and Electron types are defined in src/types/pywebview.d.ts and src/types/electron.d.ts
+// Electron types are defined in src/types/electron.d.ts

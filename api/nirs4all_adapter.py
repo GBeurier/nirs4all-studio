@@ -118,6 +118,129 @@ def resolve_dataset_path(dataset_id: str) -> str:
     return str(path)
 
 
+def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
+    """Build a nirs4all-compliant dataset configuration from webapp dataset record.
+
+    Converts the webapp's dataset format (with files array and global_params)
+    to nirs4all's expected format (train_x, train_y, test_x, test_y, global_params).
+
+    Args:
+        dataset_id: The dataset ID from the webapp.
+
+    Returns:
+        A dict configuration compatible with nirs4all.run(dataset=config).
+    """
+    dataset = get_dataset_record(dataset_id)
+    config = dataset.get("config", {})
+    files = config.get("files", [])
+
+    if not files:
+        # Fallback to folder path if no files configured
+        dataset_path = dataset.get("path")
+        if not dataset_path:
+            raise HTTPException(status_code=400, detail=f"Dataset '{dataset_id}' has no files or path")
+        return {"folder": dataset_path}
+
+    # Build nirs4all config from files array
+    nirs4all_config: Dict[str, Any] = {
+        "train_x": None,
+        "train_y": None,
+        "test_x": None,
+        "test_y": None,
+        "train_group": None,
+        "test_group": None,
+    }
+
+    # Map files to nirs4all keys
+    for file_info in files:
+        file_path = file_info.get("path")
+        file_type = file_info.get("type", "").upper()  # X, Y, M
+        split = file_info.get("split", "").lower()  # train, test
+
+        if not file_path or not file_type or not split:
+            continue
+
+        # Verify file exists
+        if not Path(file_path).exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Dataset file does not exist: {file_path}"
+            )
+
+        # Map to nirs4all keys
+        if file_type == "X":
+            key = f"{split}_x"
+        elif file_type == "Y":
+            key = f"{split}_y"
+        elif file_type in ("M", "META", "METADATA", "GROUP"):
+            key = f"{split}_group"
+        else:
+            continue
+
+        # Handle multi-source (multiple X files for same split)
+        if nirs4all_config.get(key) is not None:
+            # Convert to list for multi-source
+            existing = nirs4all_config[key]
+            if isinstance(existing, list):
+                existing.append(file_path)
+            else:
+                nirs4all_config[key] = [existing, file_path]
+        else:
+            nirs4all_config[key] = file_path
+
+    # Build global_params from config (CSV loading params only)
+    global_params = {}
+    # X-specific params (signal_type, header_unit are only for X data)
+    x_params = {}
+
+    # CSV loading params - shared across X and Y
+    csv_param_keys = ["delimiter", "decimal_separator", "has_header", "encoding"]
+    # X-specific params - only apply to spectral data
+    x_specific_keys = ["header_unit", "signal_type"]
+
+    stored_global_params = config.get("global_params", {})
+
+    # Extract CSV loading params into global_params
+    for key in csv_param_keys:
+        value = config.get(key) or stored_global_params.get(key)
+        if value is not None:
+            global_params[key] = value
+
+    # Extract X-specific params
+    for key in x_specific_keys:
+        value = config.get(key) or stored_global_params.get(key)
+        if value is not None:
+            x_params[key] = value
+
+    # Handle na_policy mapping (webapp uses 'drop', nirs4all uses 'remove')
+    na_policy = config.get("na_policy") or stored_global_params.get("na_policy")
+    if na_policy:
+        if na_policy == "drop":
+            global_params["na_policy"] = "remove"
+        else:
+            global_params["na_policy"] = na_policy
+
+    if global_params:
+        nirs4all_config["global_params"] = global_params
+
+    # Add X-specific params to train_x_params and test_x_params
+    if x_params:
+        if nirs4all_config.get("train_x"):
+            nirs4all_config["train_x_params"] = x_params.copy()
+        if nirs4all_config.get("test_x"):
+            nirs4all_config["test_x_params"] = x_params.copy()
+
+    # Add task_type if specified
+    task_type = config.get("task_type") or dataset.get("task_type")
+    if task_type and task_type != "auto":
+        nirs4all_config["task_type"] = task_type
+
+    # Clean up None values
+    nirs4all_config = {k: v for k, v in nirs4all_config.items() if v is not None}
+
+    return nirs4all_config
+
+
 def _normalize_params(name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(params or {})
 
@@ -286,6 +409,8 @@ class FullPipelineBuildResult:
     estimated_variants: int
     total_model_count: int = 1
     model_count_breakdown: str = ""
+    fold_count: int = 1
+    branch_count: int = 1
 
 
 def _build_generator_sweep(sweep: Dict[str, Any], param_name: str) -> Dict[str, Any]:
@@ -539,8 +664,14 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
     y_processing = None
     has_generators = False
     finetuning_config = None
+    fold_count = 1
+    branch_count = 1
 
     config = config or {}
+
+    # Get fold count from config if provided
+    if config.get("cv_folds"):
+        fold_count = config["cv_folds"]
 
     # Process pipeline-level y_processing
     if config.get("y_processing"):
@@ -556,6 +687,14 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
             metrics.append(step.get("name", ""))
             continue
 
+        # Detect fold count from splitting steps
+        if step_type == "splitting":
+            params = step.get("params", {})
+            if "n_splits" in params:
+                fold_count = params["n_splits"]
+            elif "cv_folds" in params:
+                fold_count = params["cv_folds"]
+
         # Check for generators or finetuning (supporting both legacy and editor formats)
         if step.get("paramSweeps"):
             has_generators = True
@@ -570,6 +709,10 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
             has_generators = True
         if step_type == "generator" and step.get("branches"):
             has_generators = True
+            # Count branches
+            branches = step.get("branches", [])
+            if branches:
+                branch_count = max(branch_count, len(branches))
 
         built_step = build_full_step(step)
         if built_step is not None:
@@ -584,9 +727,20 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
         except Exception:
             pass
 
-    # Build breakdown string based on variant count
+    # Calculate total model count
+    total_model_count = fold_count * branch_count * estimated_variants
+
+    # Build breakdown string
+    parts = []
+    if fold_count > 1:
+        parts.append(f"{fold_count} folds")
+    if branch_count > 1:
+        parts.append(f"{branch_count} branches")
     if estimated_variants > 1:
-        model_count_breakdown = f"{estimated_variants} variants"
+        parts.append(f"{estimated_variants} variants")
+
+    if parts:
+        model_count_breakdown = " × ".join(parts) + f" = {total_model_count} models"
     else:
         model_count_breakdown = "1 model"
 
@@ -597,8 +751,10 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
         finetuning_config=finetuning_config,
         has_generators=has_generators,
         estimated_variants=estimated_variants,
-        total_model_count=estimated_variants,
+        total_model_count=total_model_count,
         model_count_breakdown=model_count_breakdown,
+        fold_count=fold_count,
+        branch_count=branch_count,
     )
 
 

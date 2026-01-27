@@ -286,7 +286,7 @@ export default function Datasets() {
 
   // Helper to get assigned group for a dataset
   const getAssignedGroup = (datasetId: string) =>
-    groups.find((g) => g.dataset_ids.includes(datasetId));
+    groups.find((g) => g.dataset_ids?.includes(datasetId));
 
   // Filter datasets
   const filteredDatasets = normalizedDatasets
@@ -303,7 +303,7 @@ export default function Datasets() {
       let matchesGroup = true;
       if (filterGroup !== "all") {
         const group = groups.find((g) => g.id === filterGroup);
-        matchesGroup = group?.dataset_ids.includes(ds.id) || false;
+        matchesGroup = group?.dataset_ids?.includes(ds.id) || false;
       }
 
       return matchesSearch && matchesGroup;
@@ -411,7 +411,7 @@ export default function Datasets() {
     groupId: string | null
   ) => {
     // Remove from current group
-    const currentGroup = groups.find((g) => g.dataset_ids.includes(dataset.id));
+    const currentGroup = groups.find((g) => g.dataset_ids?.includes(dataset.id));
     if (currentGroup) {
       await removeDatasetFromGroup(currentGroup.id, dataset.id);
     }

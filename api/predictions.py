@@ -24,6 +24,14 @@ from .workspace_manager import workspace_manager
 import nirs4all
 from nirs4all.core.metrics import eval_multi
 
+# Optional joblib for legacy model loading
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    joblib = None
+    JOBLIB_AVAILABLE = False
+
 
 # ============= Request/Response Models =============
 
@@ -160,8 +168,52 @@ def _get_predictions_dir() -> Path:
     if not predictions_path:
         raise HTTPException(status_code=409, detail="No workspace selected")
     path = Path(predictions_path)
-    path.mkdir(exist_ok=True)
+    path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _resolve_model_path(model_id: str, workspace_path: str) -> str:
+    """Resolve the path to a model file.
+
+    Args:
+        model_id: Model identifier (can be full path, filename, or ID)
+        workspace_path: Path to the workspace
+
+    Returns:
+        Absolute path to the model file
+
+    Raises:
+        HTTPException: If model not found
+    """
+    # If it's already an absolute path, use it directly
+    model_path = Path(model_id)
+    if model_path.is_absolute() and model_path.exists():
+        return str(model_path)
+
+    # Check in workspace models directory
+    workspace_models_dir = Path(workspace_path) / "models"
+
+    # Try with .n4a extension
+    if not model_id.endswith(".n4a"):
+        potential_path = workspace_models_dir / f"{model_id}.n4a"
+        if potential_path.exists():
+            return str(potential_path)
+
+    # Try exact filename
+    potential_path = workspace_models_dir / model_id
+    if potential_path.exists():
+        return str(potential_path)
+
+    # Try finding any model file with matching name pattern
+    if workspace_models_dir.exists():
+        for model_file in workspace_models_dir.glob("*.n4a"):
+            if model_id in model_file.name:
+                return str(model_file)
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"Model '{model_id}' not found in workspace models directory",
+    )
 
 
 def _load_prediction(prediction_id: str) -> Dict[str, Any]:
@@ -227,7 +279,7 @@ async def list_predictions(
 
         # Apply pagination
         total = len(predictions)
-        predictions = predictions[offset : offset + limit]
+        predictions = predictions[offset:offset + limit]
 
         return {
             "predictions": predictions,

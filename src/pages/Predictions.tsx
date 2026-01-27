@@ -370,11 +370,10 @@ export default function Predictions() {
     filterPartition !== "all" ||
     filterTaskType !== "all";
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredPredictions.length / pageSize);
+  // Pagination calculations - server handles pagination, we just need display info
+  const totalPages = Math.ceil(totalCount / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const paginatedPredictions = filteredPredictions.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -746,7 +745,7 @@ export default function Predictions() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedPredictions.map((pred) => (
+              {filteredPredictions.map((pred) => (
                 <TableRow
                   key={pred.id}
                   className={cn(
@@ -842,12 +841,12 @@ export default function Predictions() {
       </div>
 
       {/* Pagination Controls */}
-      {filteredPredictions.length > 0 && (
+      {totalCount > 0 && (
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>
-              Showing {startIndex + 1}-{Math.min(endIndex, filteredPredictions.length)} of{" "}
-              {filteredPredictions.length}
+              Showing {startIndex + 1}-{endIndex} of{" "}
+              {totalCount}
             </span>
             <Select
               value={String(pageSize)}
@@ -941,6 +940,7 @@ export default function Predictions() {
         prediction={quickViewPrediction}
         open={quickViewOpen}
         onOpenChange={setQuickViewOpen}
+        workspaceId={activeWorkspace?.id}
       />
     </motion.div>
   );

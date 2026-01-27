@@ -394,8 +394,8 @@ const fr = {
 
     // App info footer
     appInfo: {
-      version: "nirs4all webapp v{{version}}",
-      copyright: "© {{year}} nirs4all",
+      version: "nirs4all Studio v{{version}}",
+      copyright: "© {{year}} nirs4all Studio",
     },
   },
 

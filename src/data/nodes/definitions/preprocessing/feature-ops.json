@@ -1,5 +1,65 @@
 [
   {
+    "id": "preprocessing.pca",
+    "name": "PCA",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition.PCA",
+    "description": "Principal Component Analysis",
+    "longDescription": "Reduces dimensionality by projecting data onto principal components that capture maximum variance.",
+    "category": "Dimensionality Reduction",
+    "tags": ["pca", "decomposition", "dimensionality-reduction", "principal-components"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 500,
+        "description": "Number of principal components to keep",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 50]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._pca.PCA"
+    ]
+  },
+  {
+    "id": "preprocessing.truncated_svd",
+    "name": "TruncatedSVD",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition.TruncatedSVD",
+    "description": "Truncated SVD (LSA)",
+    "longDescription": "Dimensionality reduction using truncated SVD. Unlike PCA, does not center data before computing SVD.",
+    "category": "Dimensionality Reduction",
+    "tags": ["svd", "lsa", "decomposition", "dimensionality-reduction"],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 500,
+        "description": "Number of components to keep",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 50]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsStepGenerator": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._truncated_svd.TruncatedSVD"
+    ]
+  },
+  {
     "id": "preprocessing.crop_transformer",
     "name": "CropTransformer",
     "type": "preprocessing",

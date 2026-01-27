@@ -140,7 +140,9 @@ type WizardAction =
   // Validation actions
   | { type: "SET_VALIDATING"; payload: boolean }
   | { type: "SET_VALIDATED_SHAPES"; payload: Record<string, { num_rows?: number; num_columns?: number; error?: string }> }
-  | { type: "SET_VALIDATION_ERROR"; payload: string | null };
+  | { type: "SET_VALIDATION_ERROR"; payload: string | null }
+  // Web mode file blobs
+  | { type: "SET_FILE_BLOBS"; payload: Map<string, File> };
 
 // Reducer
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -304,6 +306,10 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
     case "SET_VALIDATION_ERROR":
       return { ...state, validationError: action.payload, isValidating: false };
 
+    // Web mode file blobs
+    case "SET_FILE_BLOBS":
+      return { ...state, fileBlobs: action.payload };
+
     default:
       return state;
   }
@@ -419,9 +425,13 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
   }, [workspaceDefaults]);
 
   const canProceed = useCallback(() => {
+    // Check if we're in web mode (files selected but no filesystem path)
+    const isWebMode = state.fileBlobs.size > 0;
+
     switch (state.step) {
       case "source":
-        return state.sourceType !== null && state.basePath.length > 0;
+        // In web mode, files must be selected; in desktop mode, basePath is required
+        return state.sourceType !== null && (state.basePath.length > 0 || isWebMode);
       case "files":
         return state.files.length > 0 && state.files.some((f) => f.type === "X");
       case "parsing":

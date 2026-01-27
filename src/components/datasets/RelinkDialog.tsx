@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { Link2, FolderOpen, AlertTriangle, Check, X } from "lucide-react";
+import { selectFolder } from "@/utils/fileDialogs";
 import {
   Dialog,
   DialogContent,
@@ -60,17 +61,14 @@ export function RelinkDialog({
   };
 
   const handleBrowse = async () => {
-    // Try to use pywebview file picker if available
-    if (window.pywebview?.api?.select_folder) {
-      try {
-        const result = await window.pywebview.api.select_folder();
-        if (result) {
-          setNewPath(result);
-          setError(null);
-        }
-      } catch {
-        // Fall back to manual input
+    try {
+      const result = await selectFolder();
+      if (result) {
+        setNewPath(result);
+        setError(null);
       }
+    } catch {
+      // Fall back to manual input
     }
   };
 

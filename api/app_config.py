@@ -41,6 +41,15 @@ class DatasetLink:
     config: Dict[str, Any] = field(default_factory=dict)
     stats: Dict[str, Any] = field(default_factory=dict)
     group_id: Optional[str] = None
+    # Computed fields from nirs4all
+    num_samples: Optional[int] = None
+    num_features: Optional[int] = None
+    n_sources: int = 1
+    task_type: Optional[str] = None
+    signal_types: List[str] = field(default_factory=list)
+    targets: List[Dict[str, Any]] = field(default_factory=list)
+    default_target: Optional[str] = None
+    description: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -59,6 +68,14 @@ class DatasetLink:
             config=data.get("config", {}),
             stats=data.get("stats", {}),
             group_id=data.get("group_id"),
+            num_samples=data.get("num_samples"),
+            num_features=data.get("num_features"),
+            n_sources=data.get("n_sources", 1),
+            task_type=data.get("task_type"),
+            signal_types=data.get("signal_types", []),
+            targets=data.get("targets", []),
+            default_target=data.get("default_target"),
+            description=data.get("description"),
         )
 
 
@@ -67,6 +84,7 @@ class DatasetGroup:
     """A group for organizing datasets."""
     id: str
     name: str
+    dataset_ids: List[str] = field(default_factory=list)
     color: str = "#3b82f6"
     created_at: str = ""
 
@@ -78,6 +96,7 @@ class DatasetGroup:
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
+            dataset_ids=data.get("dataset_ids", []),
             color=data.get("color", "#3b82f6"),
             created_at=data.get("created_at", ""),
         )
@@ -466,8 +485,14 @@ class AppConfigManager:
 
         for ds in datasets:
             if ds.get("id") == dataset_id:
-                # Update allowed fields
-                for key in ["name", "config", "group_id"]:
+                # Update allowed fields - including computed fields and stats
+                allowed_fields = [
+                    "name", "config", "group_id", "stats", "description",
+                    "num_samples", "num_features", "n_sources", "task_type",
+                    "signal_types", "targets", "default_target",
+                    "hash", "version", "version_status", "last_verified", "last_refreshed",
+                ]
+                for key in allowed_fields:
                     if key in updates:
                         ds[key] = updates[key]
 

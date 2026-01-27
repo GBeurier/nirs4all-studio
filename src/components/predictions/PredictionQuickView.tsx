@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,8 @@ import {
   Database,
   Brain,
   Layers,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import {
   LineChart,
@@ -34,37 +36,14 @@ import {
   Cell,
 } from "recharts";
 import type { PredictionRecord } from "@/types/linked-workspaces";
+import { getN4AWorkspacePredictionScatter, type PredictionScatterResponse } from "@/api/client";
 
 interface PredictionQuickViewProps {
   prediction: PredictionRecord | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  workspaceId?: string;
 }
-
-// Generate mock prediction scatter data based on prediction metrics
-const generatePredictionData = (prediction: PredictionRecord) => {
-  const score = prediction.val_score ?? prediction.test_score ?? 0.8;
-  const errorScale = 1 - score;
-  const baseValue = 10 + Math.random() * 5;
-
-  return Array.from({ length: 50 }, () => {
-    const actual = baseValue + Math.random() * 10;
-    const noise = (Math.random() - 0.5) * errorScale * 4;
-    return { actual, predicted: actual + noise };
-  });
-};
-
-// Generate residual data
-const generateResidualData = (prediction: PredictionRecord) => {
-  const score = prediction.val_score ?? prediction.test_score ?? 0.8;
-  const errorScale = 1 - score;
-
-  return Array.from({ length: 50 }, () => {
-    const predicted = 10 + Math.random() * 10;
-    const residual = (Math.random() - 0.5) * errorScale * 4;
-    return { predicted, residual };
-  });
-};
 
 // Generate component optimization curve (for models like PLS)
 const generateComponentData = (prediction: PredictionRecord) => {
@@ -84,16 +63,53 @@ const generateComponentData = (prediction: PredictionRecord) => {
   });
 };
 
-export function PredictionQuickView({ prediction, open, onOpenChange }: PredictionQuickViewProps) {
-  const predictionData = useMemo(
-    () => prediction ? generatePredictionData(prediction) : [],
-    [prediction]
-  );
+export function PredictionQuickView({ prediction, open, onOpenChange, workspaceId }: PredictionQuickViewProps) {
+  const [scatterData, setScatterData] = useState<PredictionScatterResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const residualData = useMemo(
-    () => prediction ? generateResidualData(prediction) : [],
-    [prediction]
-  );
+  // Fetch scatter data when dialog opens
+  useEffect(() => {
+    if (open && prediction && workspaceId) {
+      setIsLoading(true);
+      setError(null);
+
+      getN4AWorkspacePredictionScatter(workspaceId, prediction.id)
+        .then((data) => {
+          setScatterData(data);
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch scatter data:", err);
+          setError("Could not load scatter data");
+          setScatterData(null);
+          setIsLoading(false);
+        });
+    } else if (!open) {
+      // Reset state when dialog closes
+      setScatterData(null);
+      setError(null);
+    }
+  }, [open, prediction?.id, workspaceId]);
+
+  // Transform scatter data for charts
+  const predictionChartData = useMemo(() => {
+    if (!scatterData || !scatterData.y_true.length) return [];
+
+    return scatterData.y_true.map((actual, i) => ({
+      actual,
+      predicted: scatterData.y_pred[i],
+    }));
+  }, [scatterData]);
+
+  const residualChartData = useMemo(() => {
+    if (!scatterData || !scatterData.y_true.length) return [];
+
+    return scatterData.y_true.map((actual, i) => ({
+      predicted: scatterData.y_pred[i],
+      residual: actual - scatterData.y_pred[i],
+    }));
+  }, [scatterData]);
 
   const componentData = useMemo(
     () => prediction ? generateComponentData(prediction) : [],
@@ -113,10 +129,35 @@ export function PredictionQuickView({ prediction, open, onOpenChange }: Predicti
     ].filter(m => m.value > 0);
   }, [prediction]);
 
+  // Compute real statistics from scatter data
+  const { primaryScore, rmse, meanResidual, stdResidual } = useMemo(() => {
+    if (!prediction) {
+      return { primaryScore: 0, rmse: 0, meanResidual: 0, stdResidual: 0 };
+    }
+
+    const primaryScore = prediction.val_score ?? prediction.test_score ?? 0;
+
+    if (scatterData && scatterData.y_true.length > 0) {
+      const residuals = scatterData.y_true.map((y, i) => y - scatterData.y_pred[i]);
+      const meanResidual = residuals.reduce((a, b) => a + b, 0) / residuals.length;
+      const squaredErrors = residuals.map(r => r * r);
+      const mse = squaredErrors.reduce((a, b) => a + b, 0) / squaredErrors.length;
+      const rmse = Math.sqrt(mse);
+      const variance = residuals.map(r => (r - meanResidual) ** 2).reduce((a, b) => a + b, 0) / residuals.length;
+      const stdResidual = Math.sqrt(variance);
+
+      return { primaryScore, rmse, meanResidual, stdResidual };
+    }
+
+    // Fallback to approximation
+    const rmse = primaryScore > 0 ? (1 - primaryScore) * 2 : 0.5;
+    return { primaryScore, rmse, meanResidual: 0, stdResidual: rmse };
+  }, [prediction, scatterData]);
+
   if (!prediction) return null;
 
-  const primaryScore = prediction.val_score ?? prediction.test_score ?? 0;
-  const rmse = primaryScore > 0 ? (1 - primaryScore) * 2 : 0.5; // Approximate RMSE from score
+  const hasScatterData = scatterData && scatterData.y_true.length > 0;
+  const actualSampleCount = hasScatterData ? scatterData.n_samples : (prediction.n_samples ?? 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -172,56 +213,67 @@ export function PredictionQuickView({ prediction, open, onOpenChange }: Predicti
           <TabsContent value="scatter" className="mt-4">
             <Card>
               <CardContent className="pt-6">
-                <div className="h-[320px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis
-                        dataKey="actual"
-                        type="number"
-                        name="Actual"
-                        domain={['auto', 'auto']}
-                        label={{ value: 'Actual', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                      />
-                      <YAxis
-                        dataKey="predicted"
-                        type="number"
-                        name="Predicted"
-                        domain={['auto', 'auto']}
-                        label={{ value: 'Predicted', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--card))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                          fontSize: '12px'
-                        }}
-                        formatter={(value: number) => value.toFixed(3)}
-                      />
-                      <ReferenceLine
-                        segment={[
-                          { x: Math.min(...predictionData.map(d => d.actual)), y: Math.min(...predictionData.map(d => d.actual)) },
-                          { x: Math.max(...predictionData.map(d => d.actual)), y: Math.max(...predictionData.map(d => d.actual)) }
-                        ]}
-                        stroke="hsl(var(--muted-foreground))"
-                        strokeDasharray="5 5"
-                        strokeOpacity={0.5}
-                      />
-                      <Scatter
-                        data={predictionData}
-                        fill="hsl(var(--primary))"
-                        opacity={0.7}
-                      />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </div>
+                {isLoading ? (
+                  <div className="h-[320px] flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : error || !hasScatterData ? (
+                  <div className="h-[320px] flex flex-col items-center justify-center text-muted-foreground">
+                    <AlertCircle className="h-8 w-8 mb-2" />
+                    <p>{error || "No scatter data available"}</p>
+                  </div>
+                ) : (
+                  <div className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis
+                          dataKey="actual"
+                          type="number"
+                          name="Actual"
+                          domain={['auto', 'auto']}
+                          label={{ value: 'Actual', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                        />
+                        <YAxis
+                          dataKey="predicted"
+                          type="number"
+                          name="Predicted"
+                          domain={['auto', 'auto']}
+                          label={{ value: 'Predicted', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--card))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '8px',
+                            fontSize: '12px'
+                          }}
+                          formatter={(value: number) => value.toFixed(3)}
+                        />
+                        <ReferenceLine
+                          segment={[
+                            { x: Math.min(...predictionChartData.map(d => d.actual)), y: Math.min(...predictionChartData.map(d => d.actual)) },
+                            { x: Math.max(...predictionChartData.map(d => d.actual)), y: Math.max(...predictionChartData.map(d => d.actual)) }
+                          ]}
+                          stroke="hsl(var(--muted-foreground))"
+                          strokeDasharray="5 5"
+                          strokeOpacity={0.5}
+                        />
+                        <Scatter
+                          data={predictionChartData}
+                          fill="hsl(var(--primary))"
+                          opacity={0.7}
+                        />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
                 <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
-                  <span>Score = {primaryScore.toFixed(3)}</span>
-                  <span>RMSE ≈ {rmse.toFixed(3)}</span>
-                  <span>n = {prediction.n_samples ?? 50} samples</span>
+                  <span>R² = {primaryScore.toFixed(4)}</span>
+                  <span>RMSE = {rmse.toFixed(4)}</span>
+                  <span>n = {actualSampleCount} samples</span>
                 </div>
               </CardContent>
             </Card>
@@ -230,45 +282,56 @@ export function PredictionQuickView({ prediction, open, onOpenChange }: Predicti
           <TabsContent value="residuals" className="mt-4">
             <Card>
               <CardContent className="pt-6">
-                <div className="h-[320px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis
-                        dataKey="predicted"
-                        type="number"
-                        domain={['auto', 'auto']}
-                        label={{ value: 'Predicted', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                      />
-                      <YAxis
-                        dataKey="residual"
-                        type="number"
-                        domain={['auto', 'auto']}
-                        label={{ value: 'Residual', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'hsl(var(--card))',
-                          border: '1px solid hsl(var(--border))',
-                          borderRadius: '8px',
-                          fontSize: '12px'
-                        }}
-                        formatter={(value: number) => value.toFixed(3)}
-                      />
-                      <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" />
-                      <Scatter
-                        data={residualData}
-                        fill="hsl(var(--chart-2))"
-                        opacity={0.7}
-                      />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </div>
+                {isLoading ? (
+                  <div className="h-[320px] flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : error || !hasScatterData ? (
+                  <div className="h-[320px] flex flex-col items-center justify-center text-muted-foreground">
+                    <AlertCircle className="h-8 w-8 mb-2" />
+                    <p>{error || "No residual data available"}</p>
+                  </div>
+                ) : (
+                  <div className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis
+                          dataKey="predicted"
+                          type="number"
+                          domain={['auto', 'auto']}
+                          label={{ value: 'Predicted', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                        />
+                        <YAxis
+                          dataKey="residual"
+                          type="number"
+                          domain={['auto', 'auto']}
+                          label={{ value: 'Residual', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--card))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '8px',
+                            fontSize: '12px'
+                          }}
+                          formatter={(value: number) => value.toFixed(3)}
+                        />
+                        <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" />
+                        <Scatter
+                          data={residualChartData}
+                          fill="hsl(var(--chart-2))"
+                          opacity={0.7}
+                        />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
                 <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
-                  <span>Mean Residual ≈ 0</span>
-                  <span>Std ≈ {rmse.toFixed(3)}</span>
+                  <span>Mean Residual = {meanResidual.toFixed(4)}</span>
+                  <span>Std = {stdResidual.toFixed(4)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -383,9 +446,9 @@ export function PredictionQuickView({ prediction, open, onOpenChange }: Predicti
                     <div className="text-xs text-muted-foreground">Train Score</div>
                   </div>
                 </div>
-                {prediction.n_samples && (
+                {actualSampleCount > 0 && (
                   <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
-                    <span>Samples: {prediction.n_samples}</span>
+                    <span>Samples: {actualSampleCount}</span>
                     {prediction.n_features && <span>Features: {prediction.n_features}</span>}
                     {prediction.fold_id && <span>Fold: {prediction.fold_id}</span>}
                   </div>

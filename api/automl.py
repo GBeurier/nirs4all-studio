@@ -729,6 +729,7 @@ def _run_automl_task(
             save_artifacts=True,
             random_state=random_state,
             max_generation_count=n_trials,
+            workspace_path=workspace_path,
         )
     except Exception as e:
         raise ValueError(f"Pipeline execution failed: {e}")

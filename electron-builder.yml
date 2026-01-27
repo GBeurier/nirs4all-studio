@@ -1,5 +1,5 @@
 appId: com.nirs4all.webapp
-productName: nirs4all
+productName: nirs4all Studio
 copyright: Copyright 2024
 
 directories:
@@ -41,7 +41,7 @@ nsis:
   installerHeaderIcon: public/nirs4all.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: nirs4all
+  shortcutName: nirs4all Studio
 
 mac:
   target:

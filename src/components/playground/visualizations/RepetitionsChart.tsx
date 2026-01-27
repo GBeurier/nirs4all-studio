@@ -379,7 +379,7 @@ export function RepetitionsChart({
     }
 
     // Sort bio samples based on sortBy option
-    let bioSampleList = Array.from(bioSamplesSet);
+    const bioSampleList = Array.from(bioSamplesSet);
     switch (sortBy) {
       case 'name':
         bioSampleList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));

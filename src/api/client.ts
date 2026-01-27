@@ -2,7 +2,93 @@
  * API client for nirs4all backend communication
  */
 
-const API_BASE_URL = "/api";
+// Default API base URL for web mode (uses Vite proxy)
+const DEFAULT_API_BASE_URL = "/api";
+
+// Cache for the resolved backend URL in Electron mode
+let resolvedBackendUrl: string | null = null;
+let backendUrlPromise: Promise<string> | null = null;
+
+/**
+ * Detect if we're running in Electron.
+ * Uses multiple detection methods since electronApi may not be available immediately.
+ */
+function isElectronEnvironment(): boolean {
+  if (typeof window === "undefined") return false;
+
+  // Check if electronApi is exposed (preferred method)
+  if ((window as unknown as { electronApi?: { isElectron?: boolean } }).electronApi?.isElectron) {
+    return true;
+  }
+
+  // Check if we're using file:// protocol (fallback for when electronApi isn't ready)
+  if (window.location.protocol === "file:") {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Wait for electronApi to become available (preload script may take time)
+ */
+async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    if ((window as unknown as { electronApi?: { getBackendUrl?: () => Promise<string> } }).electronApi?.getBackendUrl) {
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+/**
+ * Get the API base URL, resolving Electron backend URL if needed.
+ * In Electron mode, this fetches the dynamic port from the main process.
+ * In web mode, it returns "/api" (which Vite proxies to the backend).
+ */
+async function getApiBaseUrl(): Promise<string> {
+  // Return cached URL if available
+  if (resolvedBackendUrl !== null) {
+    return resolvedBackendUrl;
+  }
+
+  // If already resolving, wait for that promise
+  if (backendUrlPromise !== null) {
+    return backendUrlPromise;
+  }
+
+  // Check if we're in Electron mode
+  if (isElectronEnvironment()) {
+    backendUrlPromise = (async () => {
+      try {
+        // Wait for electronApi to be available
+        const apiAvailable = await waitForElectronApi();
+        if (!apiAvailable) {
+          console.error("electronApi not available after waiting");
+          throw new Error("electronApi not available");
+        }
+
+        const electronApi = (window as unknown as { electronApi: { getBackendUrl: () => Promise<string> } }).electronApi;
+        const backendUrl = await electronApi.getBackendUrl();
+        resolvedBackendUrl = `${backendUrl}/api`;
+        console.log(`[API Client] Using Electron backend URL: ${resolvedBackendUrl}`);
+        return resolvedBackendUrl;
+      } catch (error) {
+        console.error("Failed to get backend URL from Electron:", error);
+        // Fallback to default - may not work but provides better error messages
+        resolvedBackendUrl = DEFAULT_API_BASE_URL;
+        return resolvedBackendUrl;
+      }
+    })();
+    return backendUrlPromise;
+  }
+
+  // Web mode - use relative URL (Vite proxy)
+  resolvedBackendUrl = DEFAULT_API_BASE_URL;
+  return resolvedBackendUrl;
+}
 
 interface ApiError {
   detail: string;
@@ -14,17 +100,12 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
 }
 
 class ApiClient {
-  private baseUrl: string;
-
-  constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl;
-  }
-
   private async request<T>(
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const baseUrl = await getApiBaseUrl();
+    const url = `${baseUrl}${endpoint}`;
     const { body, ...restOptions } = options;
 
     const config: RequestInit = {
@@ -243,6 +324,8 @@ import type {
   DetectFilesResponse,
   DetectFormatRequest,
   DetectFormatResponse,
+  DetectedFile,
+  ParsingOptions,
   UnifiedDetectionResponse,
   PreviewDataRequest,
   PreviewDataResponse,
@@ -366,7 +449,7 @@ export interface ValidateFilesResponse {
 export async function validateFiles(
   path: string,
   files: DetectedFile[],
-  parsing?: Record<string, unknown>
+  parsing?: Partial<ParsingOptions>
 ): Promise<ValidateFilesResponse> {
   return api.post("/datasets/validate-files", { path, files, parsing });
 }
@@ -390,9 +473,9 @@ export async function previewDatasetWithUploads(
     type: "X" | "Y" | "metadata";
     split: "train" | "test";
     source: number | null;
-    overrides?: Record<string, unknown>;
+    overrides?: Partial<ParsingOptions>;
   }>,
-  parsing: Record<string, unknown>,
+  parsing: Partial<ParsingOptions>,
   maxSamples: number = 100
 ): Promise<PreviewDataResponse> {
   const formData = new FormData();
@@ -409,8 +492,10 @@ export async function previewDatasetWithUploads(
     max_samples: maxSamples,
   });
 
+  // Get the API base URL (handles Electron mode)
+  const baseUrl = await getApiBaseUrl();
   const response = await fetch(
-    `/api/datasets/preview-upload?metadata=${encodeURIComponent(metadata)}`,
+    `${baseUrl}/datasets/preview-upload?metadata=${encodeURIComponent(metadata)}`,
     {
       method: "POST",
       body: formData,
@@ -1349,6 +1434,30 @@ export async function getN4AWorkspacePredictionsSummary(
   workspaceId: string
 ): Promise<PredictionSummaryResponse> {
   return api.get(`/workspaces/${workspaceId}/predictions/summary`);
+}
+
+/**
+ * Scatter data response for prediction quick view.
+ */
+export interface PredictionScatterResponse {
+  prediction_id: string;
+  y_true: number[];
+  y_pred: number[];
+  n_samples: number;
+  partition: string;
+  model_name: string;
+  dataset_name: string;
+}
+
+/**
+ * Get scatter plot data (y_true vs y_pred) for a specific prediction.
+ * Used for the prediction quick view charts.
+ */
+export async function getN4AWorkspacePredictionScatter(
+  workspaceId: string,
+  predictionId: string
+): Promise<PredictionScatterResponse> {
+  return api.get(`/workspaces/${workspaceId}/predictions/${predictionId}/scatter`);
 }
 
 /**

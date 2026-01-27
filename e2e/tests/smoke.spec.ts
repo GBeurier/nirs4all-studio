@@ -8,7 +8,7 @@ test.describe('Smoke Tests', () => {
     await page.goto('/');
 
     // Check logo is visible
-    await expect(page.locator('img[alt="nirs4all"]')).toBeVisible();
+    await expect(page.locator('img[alt="nirs4all Studio"]')).toBeVisible();
 
     // Check sidebar navigation is present (scope to sidebar)
     const sidebar = page.locator('div.bg-sidebar').first();
@@ -55,7 +55,7 @@ test.describe('Smoke Tests', () => {
 
     // Should show NotFound page or redirect to home
     const notFoundVisible = await page.getByText(/not found|404|page.*not.*exist/i).isVisible().catch(() => false);
-    const redirectedToHome = await page.locator('img[alt="nirs4all"]').isVisible();
+    const redirectedToHome = await page.locator('img[alt="nirs4all Studio"]').isVisible();
 
     expect(notFoundVisible || redirectedToHome).toBe(true);
   });

@@ -279,8 +279,40 @@ function detectNumericType(values: number[]): TargetTypeResult {
     // Calculate uniqueness ratio
     const uniquenessRatio = uniqueCount / values.length;
 
-    // Very low uniqueness suggests classification
+    // Very low uniqueness suggests classification, BUT only if values look like class labels
+    // Continuous regression data with repeated values should NOT be classified as multiclass
     if (uniquenessRatio < CONTINUOUS_UNIQUENESS_THRESHOLD) {
+      // Check if values have meaningful decimal parts (sign of continuous data)
+      // A value is considered to have a meaningful decimal if the fractional part
+      // is not just floating point noise (> 0.001) and not a clean .0 or .5
+      const hasSignificantDecimals = values.some(v => {
+        const fractional = Math.abs(v % 1);
+        return fractional > 0.001 && fractional < 0.999 && Math.abs(fractional - 0.5) > 0.001;
+      });
+
+      // If values have significant decimals, they're likely continuous regression data
+      // even if there are few unique values (could be rounded or have repeated measurements)
+      if (hasSignificantDecimals) {
+        return {
+          type: 'regression',
+          confidence: 'medium',
+          suggestedOverride: `Low uniqueness ratio (${(uniquenessRatio * 100).toFixed(0)}%) but values have decimals. Override to classification if these are class probabilities.`,
+          metadata: baseMetadata,
+        };
+      }
+
+      // Check if the value range suggests continuous data (e.g., values spanning > 10)
+      // Class labels typically don't span large numeric ranges
+      const range = max - min;
+      if (range > 10 && !isAllIntegers) {
+        return {
+          type: 'regression',
+          confidence: 'medium',
+          suggestedOverride: `Wide value range (${min.toFixed(1)}-${max.toFixed(1)}) suggests continuous data despite low uniqueness.`,
+          metadata: baseMetadata,
+        };
+      }
+
       const confidence = uniqueCount <= 5 ? 'high' : uniqueCount <= 10 ? 'medium' : 'low';
 
       return {

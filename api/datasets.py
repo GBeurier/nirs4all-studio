@@ -35,6 +35,8 @@ try:
     from nirs4all.data.detection import detect_file_parameters
     from nirs4all.data.parsers.folder_parser import FolderParser
     from nirs4all.data.loaders import load_file
+    from nirs4all.core.task_detection import detect_task_type
+    from nirs4all.core.task_type import TaskType
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -43,6 +45,13 @@ except ImportError as e:
 
 
 router = APIRouter()
+
+
+# Debug endpoint to verify module loading
+@router.get("/datasets/debug")
+async def datasets_debug():
+    """Debug endpoint to verify datasets router is loaded."""
+    return {"status": "ok", "nirs4all_available": NIRS4ALL_AVAILABLE}
 
 
 # ============= Request/Response Models =============
@@ -491,6 +500,7 @@ async def detect_format(request: DetectFormatRequest):
             "column_names": None,
             "sample_data": None,
             "sheet_names": None,
+            "column_info": None,  # Column type detection info
         }
 
         # Load sample data for CSV files
@@ -504,13 +514,43 @@ async def detect_format(request: DetectFormatRequest):
                     data_type="auto",
                 )
                 response["column_names"] = headers if headers else None
-                # Convert sample rows to string format
+                # Convert DataFrame to numpy array for consistent handling
                 if data is not None and len(data) > 0:
-                    sample_count = min(request.sample_rows, len(data))
+                    data_array = data.values if hasattr(data, 'values') else np.asarray(data)
+                    sample_count = min(request.sample_rows, len(data_array))
+
+                    # Sample data as strings
                     sample_data = []
-                    for row in data[:sample_count]:
-                        sample_data.append([str(val) for val in row])
+                    for i in range(sample_count):
+                        sample_data.append([str(val) for val in data_array[i]])
                     response["sample_data"] = sample_data
+
+                    # Column info with task type detection using nirs4all
+                    column_info = []
+                    num_cols = data_array.shape[1] if data_array.ndim > 1 else 1
+                    for col_idx in range(num_cols):
+                        col_name = headers[col_idx] if headers and col_idx < len(headers) else f"col_{col_idx}"
+                        col_data = data_array[:, col_idx] if data_array.ndim > 1 else data_array
+                        col_data = np.asarray(col_data, dtype=float)
+
+                        # Use nirs4all's detect_task_type
+                        try:
+                            task_type = detect_task_type(col_data)
+                            task_type_str = task_type.value
+                        except (ValueError, TypeError):
+                            task_type_str = "regression"
+
+                        unique_count = len(np.unique(col_data[~np.isnan(col_data)]))
+                        column_info.append({
+                            "name": col_name,
+                            "data_type": "numeric",
+                            "task_type": task_type_str,
+                            "unique_values": int(unique_count),
+                            "min": float(np.nanmin(col_data)),
+                            "max": float(np.nanmax(col_data)),
+                            "mean": float(np.nanmean(col_data)),
+                        })
+                    response["column_info"] = column_info
             except Exception:
                 pass  # Sample data is optional
 
@@ -527,6 +567,93 @@ async def detect_format(request: DetectFormatRequest):
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Format detection failed: {e}")
+
+
+# ============= Validation Endpoints =============
+
+
+class ValidateFilesRequest(BaseModel):
+    """Request to validate file shapes."""
+
+    path: str = Field(..., description="Base path for files")
+    files: List[DetectedFile] = Field(..., description="Files to validate")
+    parsing: Optional[Dict[str, Any]] = Field(None, description="Parsing options")
+
+
+class FileShapeInfo(BaseModel):
+    """Shape info for a validated file."""
+
+    path: str
+    num_rows: Optional[int] = None
+    num_columns: Optional[int] = None
+    error: Optional[str] = None
+
+
+class ValidateFilesResponse(BaseModel):
+    """Response from file validation."""
+
+    success: bool
+    shapes: Dict[str, FileShapeInfo]
+    error: Optional[str] = None
+
+
+@router.post("/datasets/validate-files", response_model=ValidateFilesResponse)
+async def validate_files(request: ValidateFilesRequest):
+    """Validate files by loading them and returning their shapes."""
+    if not NIRS4ALL_AVAILABLE:
+        return ValidateFilesResponse(
+            success=False,
+            shapes={},
+            error="nirs4all library not available",
+        )
+
+    base_path = Path(request.path) if request.path else None
+    parsing = request.parsing or {}
+    shapes: Dict[str, FileShapeInfo] = {}
+
+    # Filter to X and Y files only
+    files_to_validate = [f for f in request.files if f.type in ("X", "Y")]
+
+    for file_config in files_to_validate:
+        file_path = Path(file_config.path)
+        if not file_path.is_absolute() and base_path:
+            file_path = base_path / file_config.path
+
+        file_key = str(file_config.path)
+
+        if not file_path.exists():
+            shapes[file_key] = FileShapeInfo(
+                path=file_key,
+                error=f"File not found: {file_path.name}",
+            )
+            continue
+
+        try:
+            data, _, _, _, _ = load_file(
+                str(file_path),
+                delimiter=parsing.get("delimiter", ";"),
+                decimal_separator=parsing.get("decimal_separator", "."),
+                has_header=parsing.get("has_header", True),
+            )
+
+            if data is not None:
+                shapes[file_key] = FileShapeInfo(
+                    path=file_key,
+                    num_rows=len(data),
+                    num_columns=len(data.columns) if hasattr(data, 'columns') else (data.shape[1] if len(data.shape) > 1 else 1),
+                )
+            else:
+                shapes[file_key] = FileShapeInfo(
+                    path=file_key,
+                    error="Failed to load file data",
+                )
+        except Exception as e:
+            shapes[file_key] = FileShapeInfo(
+                path=file_key,
+                error=str(e),
+            )
+
+    return ValidateFilesResponse(success=True, shapes=shapes)
 
 
 # ============= Preview Endpoints =============
@@ -854,20 +981,30 @@ async def get_dataset(dataset_id: str):
     return {"dataset": extended_info}
 
 
+class UpdateDatasetRequest(BaseModel):
+    """Request body for updating a dataset."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    default_target: Optional[str] = None
+
+
 @router.put("/datasets/{dataset_id}")
-async def update_dataset(dataset_id: str, name: Optional[str] = None, description: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
+async def update_dataset(dataset_id: str, request: UpdateDatasetRequest):
     """Update a dataset's configuration."""
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     updates = {}
-    if name is not None:
-        updates["name"] = name
-    if description is not None:
-        updates["description"] = description
-    if config is not None:
-        updates["config"] = config
+    if request.name is not None:
+        updates["name"] = request.name
+    if request.description is not None:
+        updates["description"] = request.description
+    if request.config is not None:
+        updates["config"] = request.config
+    if request.default_target is not None:
+        updates["default_target"] = request.default_target
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")

@@ -10,7 +10,7 @@
 import { useRef } from "react";
 import { Folder, File, Info } from "lucide-react";
 import { useWizard } from "./WizardContext";
-import { selectFolder, selectFile, isPyWebView, isElectron } from "@/utils/fileDialogs";
+import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import { detectUnified } from "@/api/client";
 import type { WizardSourceType, DetectedFile } from "@/types/datasets";
 
@@ -56,7 +56,7 @@ export function SourceStep() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check if we're in a desktop environment with full file system access
-  const isDesktopMode = isPyWebView() || isElectron();
+  const isDesktopMode = isDesktop();
 
   // Handle files selected via HTML file input (web mode fallback)
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,6 +103,14 @@ export function SourceStep() {
     });
 
     dispatch({ type: "SET_FILES", payload: detectedFiles });
+
+    // Store File objects for web mode (allows client-side parsing)
+    const fileBlobs = new Map<string, File>();
+    Array.from(files).forEach((file) => {
+      fileBlobs.set(file.name, file);
+    });
+    dispatch({ type: "SET_FILE_BLOBS", payload: fileBlobs });
+
     dispatch({ type: "SET_LOADING", payload: false });
     nextStep();
 

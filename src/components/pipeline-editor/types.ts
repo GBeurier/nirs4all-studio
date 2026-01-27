@@ -268,6 +268,8 @@ export interface PipelineStep {
   tags?: string[];
   // Raw nirs4all step for unsupported complex structures
   rawNirs4all?: unknown;
+  // Index signature for API compatibility
+  [key: string]: unknown;
 }
 
 export interface StepOption {

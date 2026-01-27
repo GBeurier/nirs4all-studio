@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Use require for electron to avoid Rollup ESM/CJS interop issues
-const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron") as typeof import("electron");
 
 /**
  * Electron API exposed to the renderer process via contextBridge.
@@ -12,6 +12,9 @@ const electronApi = {
    */
   selectFolder: (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:selectFolder"),
+
+  confirmDroppedFolder: (folderName: string): Promise<string | null> =>
+    ipcRenderer.invoke("dialog:confirmDroppedFolder", folderName),
 
   selectFile: (
     fileTypes?: string[],
@@ -69,10 +72,33 @@ const electronApi = {
   },
 
   /**
+   * Window management
+   */
+  resizeWindow: (width: number, height: number): Promise<boolean> =>
+    ipcRenderer.invoke("window:resize", width, height),
+
+  minimizeWindow: (): Promise<boolean> => ipcRenderer.invoke("window:minimize"),
+
+  maximizeWindow: (): Promise<boolean> => ipcRenderer.invoke("window:maximize"),
+
+  restoreWindow: (): Promise<boolean> => ipcRenderer.invoke("window:restore"),
+
+  getWindowSize: (): Promise<{ width: number; height: number } | null> =>
+    ipcRenderer.invoke("window:getSize"),
+
+  /**
    * Platform info
    */
   platform: process.platform,
   isElectron: true,
+
+  /**
+   * Get the filesystem path for a dropped File object
+   * Uses Electron's webUtils API to resolve the real path
+   */
+  getPathForFile: (file: File): string => {
+    return webUtils.getPathForFile(file);
+  },
 };
 
 // Expose the API to the renderer process

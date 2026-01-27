@@ -1888,8 +1888,24 @@ class WorkspaceManager:
     # ----------------------- Groups Management (Now Global) -----------------------
 
     def get_groups(self) -> List[Dict[str, Any]]:
-        """Get all dataset groups."""
-        return [g.to_dict() for g in self.app_config.get_dataset_groups()]
+        """Get all dataset groups with populated dataset_ids."""
+        groups = [g.to_dict() for g in self.app_config.get_dataset_groups()]
+        datasets = self.app_config.get_datasets()
+
+        # Build a map of group_id -> dataset_ids
+        group_datasets: Dict[str, List[str]] = {}
+        for ds in datasets:
+            gid = ds.group_id
+            if gid:
+                if gid not in group_datasets:
+                    group_datasets[gid] = []
+                group_datasets[gid].append(ds.id)
+
+        # Populate dataset_ids for each group
+        for g in groups:
+            g["dataset_ids"] = group_datasets.get(g["id"], [])
+
+        return groups
 
     def create_group(self, name: str) -> Dict[str, Any]:
         """Create a new dataset group."""
@@ -1942,12 +1958,15 @@ class WorkspaceManager:
         return str(Path(ws_path) / "pipelines")
 
     def get_predictions_path(self) -> Optional[str]:
-        """Get the predictions directory path for the active workspace."""
+        """Get the predictions directory path for the active workspace.
+
+        Returns the path to the 'predictions' subdirectory within the workspace
+        where JSON prediction records are stored.
+        """
         ws_path = self.get_active_workspace_path()
         if not ws_path:
             return None
-        # Predictions are stored at workspace root as .meta.parquet files
-        return ws_path
+        return str(Path(ws_path) / "predictions")
 
     # ----------------------- Recent Workspaces (Legacy -> Linked) -----------------------
 

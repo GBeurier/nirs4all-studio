@@ -9,6 +9,8 @@ const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // Use relative paths for Electron (file:// protocol)
+  base: isElectron ? "./" : "/",
   server: {
     host: "localhost",
     port: 5173,

@@ -28,7 +28,7 @@ import {
   ChevronLeft,
   Loader2,
 } from "lucide-react";
-import { selectFolder, selectFile, isPyWebView } from "@/utils/fileDialogs";
+import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import type { DatasetFile, DatasetConfig } from "@/types/datasets";
 
 interface AddDatasetModalProps {
@@ -259,7 +259,7 @@ export function AddDatasetModal({
               </button>
             </div>
 
-            {!isPyWebView() && (
+            {!isDesktop() && (
               <div className="mt-4 p-3 bg-muted/50 rounded-lg flex items-start gap-2">
                 <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
                 <p className="text-sm text-muted-foreground">

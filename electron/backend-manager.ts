@@ -1,7 +1,11 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { createServer, AddressInfo } from "node:net";
 import path from "node:path";
-import { app, BrowserWindow } from "electron";
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+// Use require for electron to avoid Rollup ESM/CJS interop issues
+const electron = require("electron") as typeof import("electron");
+const { BrowserWindow } = electron;
 
 const HEALTH_CHECK_TIMEOUT = 30000; // 30 seconds
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
@@ -50,16 +54,38 @@ export class BackendManager {
    * Get the path to the Python backend executable
    * In dev: uses uvicorn directly
    * In production: uses PyInstaller-bundled executable
+   * Fallback: if bundled backend not found, use venv (for local prod testing)
    */
-  private getBackendPath(): { command: string; args: string[] } {
+  private getBackendPath(): { command: string; args: string[]; cwd?: string } {
     const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
+    const forceVenv = process.env.NIRS4ALL_USE_VENV === "true";
 
-    if (isDev) {
-      // Development mode: run uvicorn with Python
+    // Check if bundled backend exists (production build)
+    const resourcesPath = process.resourcesPath;
+    const backendDir = path.join(resourcesPath, "backend");
+    const execName =
+      process.platform === "win32"
+        ? "nirs4all-backend.exe"
+        : "nirs4all-backend";
+    const bundledBackendPath = path.join(backendDir, execName);
+
+    const fs = require("fs");
+    const hasBundledBackend = fs.existsSync(bundledBackendPath);
+
+    // Use venv if: dev mode, forced, or bundled backend not available
+    const useVenv = isDev || forceVenv || !hasBundledBackend;
+
+    if (useVenv) {
+      if (!isDev && !forceVenv && !hasBundledBackend) {
+        console.log("Bundled backend not found, falling back to venv");
+      }
+      // Development/fallback mode: run uvicorn with Python
+      // The venv is at ../.venv relative to the webapp directory
+      const venvPath = path.join(process.cwd(), "..", ".venv");
       const pythonPath =
         process.platform === "win32"
-          ? path.join(process.cwd(), ".venv", "Scripts", "python.exe")
-          : path.join(process.cwd(), ".venv", "bin", "python");
+          ? path.join(venvPath, "Scripts", "python.exe")
+          : path.join(venvPath, "bin", "python");
 
       return {
         command: pythonPath,
@@ -72,19 +98,12 @@ export class BackendManager {
           "--port",
           this.port.toString(),
         ],
+        cwd: process.cwd(), // Need cwd for uvicorn to find main.py
       };
     } else {
       // Production mode: use packaged backend
-      const resourcesPath = process.resourcesPath;
-      const backendDir = path.join(resourcesPath, "backend");
-
-      const execName =
-        process.platform === "win32"
-          ? "nirs4all-backend.exe"
-          : "nirs4all-backend";
-
       return {
-        command: path.join(backendDir, execName),
+        command: bundledBackendPath,
         args: ["--port", this.port.toString()],
       };
     }
@@ -152,10 +171,10 @@ export class BackendManager {
   private async startInternal(): Promise<void> {
     console.log(`Starting backend on port ${this.port}...`);
 
-    const { command, args } = this.getBackendPath();
-    const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
+    const { command, args, cwd } = this.getBackendPath();
 
     console.log(`Executing: ${command} ${args.join(" ")}`);
+    if (cwd) console.log(`Working directory: ${cwd}`);
 
     // Set environment variables
     const env = {
@@ -167,7 +186,7 @@ export class BackendManager {
 
     // Spawn the backend process
     this.process = spawn(command, args, {
-      cwd: isDev ? process.cwd() : undefined,
+      cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,

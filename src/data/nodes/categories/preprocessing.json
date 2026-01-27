@@ -24,6 +24,7 @@
     { "id": "feature_selection", "label": "Feature Selection", "displayOrder": 7 },
     { "id": "feature_ops", "label": "Feature Ops", "displayOrder": 8 },
     { "id": "normalization", "label": "Normalization", "displayOrder": 9 },
-    { "id": "scaling", "label": "Scaling", "displayOrder": 10 }
+    { "id": "scaling", "label": "Scaling", "displayOrder": 10 },
+    { "id": "dimensionality_reduction", "label": "Dimensionality Reduction", "displayOrder": 11 }
   ]
 }

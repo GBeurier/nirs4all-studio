@@ -1,7 +1,11 @@
 import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, HashRouter } from "react-router-dom";
+
+// Use HashRouter for Electron (file:// protocol doesn't support BrowserRouter)
+const isElectron = typeof window !== "undefined" && (window as unknown as { electronApi?: unknown }).electronApi !== undefined;
+const Router = isElectron ? HashRouter : BrowserRouter;
 import { ThemeProvider } from "@/context/ThemeContext";
 import { DeveloperModeProvider } from "@/context/DeveloperModeContext";
 import { UISettingsProvider } from "@/context/UISettingsContext";
@@ -26,7 +30,7 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <Router>
         <ThemeProvider defaultTheme="system" storageKey="nirs4all-theme">
           <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
             <LanguageProvider>
@@ -41,7 +45,7 @@ createRoot(document.getElementById("root")!).render(
             </LanguageProvider>
           </Suspense>
         </ThemeProvider>
-      </BrowserRouter>
+      </Router>
     </QueryClientProvider>
   </StrictMode>
 );

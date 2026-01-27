@@ -428,6 +428,7 @@ def _run_training_task(
             save_charts=False,
             plots_visible=False,
             random_state=config.get("random_state"),
+            workspace_path=config["workspace_path"],
         )
     except Exception as e:
         raise ValueError(f"Training failed: {str(e)}")

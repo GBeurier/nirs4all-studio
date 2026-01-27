@@ -1,12 +1,8 @@
 /**
  * Step 4: Target & Metadata Configuration
  *
- * Configure:
- * - Target columns (Y) with multi-select
- * - Task type per target (regression/classification)
- * - Unit per target
- * - Aggregation settings
- * - Default target selection
+ * Displays auto-detected columns with their inferred types.
+ * Allows overriding task type per column.
  */
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -16,15 +12,15 @@ import {
   Info,
   Loader2,
   RefreshCw,
-  Pencil,
+  RotateCcw,
   Repeat,
+  Star,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -32,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Collapsible,
   CollapsibleContent,
@@ -45,32 +40,28 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useWizard } from "./WizardContext";
 import { detectFormat } from "@/api/client";
 import type { TaskType, TargetConfig, FoldSource } from "@/types/datasets";
 
+const TASK_TYPE_LABELS: Record<TaskType, string> = {
+  auto: "Auto",
+  regression: "Regression",
+  binary_classification: "Binary",
+  multiclass_classification: "Multiclass",
+};
+
 const AGGREGATION_METHOD_OPTIONS = [
-  { value: "mean", label: "Mean", description: "Average predictions" },
-  { value: "median", label: "Median", description: "Median prediction" },
-  { value: "vote", label: "Vote", description: "Majority voting (classification)" },
+  { value: "mean", label: "Mean" },
+  { value: "median", label: "Median" },
+  { value: "vote", label: "Vote" },
 ];
 
-const COMMON_UNITS = [
-  "%",
-  "mg/L",
-  "g/L",
-  "ppm",
-  "ppb",
-  "mg/kg",
-  "g/100g",
-  "°Brix",
-  "pH",
-  "mS/cm",
-];
+const COMMON_UNITS = ["%", "mg/L", "g/L", "ppm", "ppb", "mg/kg", "g/100g", "°Brix", "pH", "mS/cm"];
 
 const FOLD_SOURCE_OPTIONS: { value: FoldSource; label: string }[] = [
   { value: "none", label: "No cross-validation folds" },
@@ -83,36 +74,57 @@ interface DetectedColumn {
   name: string;
   type: "numeric" | "categorical" | "text";
   unique_values?: number;
-  sample_values?: (string | number)[];
-  is_target_candidate: boolean;
-  is_metadata_candidate: boolean;
   min?: number;
   max?: number;
   mean?: number;
   classes?: string[];
+  inferred_task_type: TaskType;
 }
 
 export function TargetsStep() {
   const { state, dispatch } = useWizard();
-  const [showAggregation, setShowAggregation] = useState(
-    state.aggregation.enabled
-  );
+  const [showAggregation, setShowAggregation] = useState(state.aggregation.enabled);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Detected columns from Y files
   const [detectedColumns, setDetectedColumns] = useState<DetectedColumn[]>([]);
 
   // Parse columns from response data
-  const parseColumnsFromData = (columnNames: string[], sampleData: string[][]) => {
-    return columnNames.map((colName, idx) => {
-      const sampleValues = sampleData
-        .slice(1)
-        .map((row) => row[idx])
-        .filter((v) => v !== null && v !== undefined && v !== "");
+  // Note: sampleData contains actual data rows (headers are in columnNames)
+  const parseColumnsFromData = useCallback((
+    columnNames: string[],
+    sampleData: string[][],
+    decimalSeparator: string = "."
+  ): DetectedColumn[] => {
+    if (!columnNames || columnNames.length === 0) return [];
 
-      const numericValues = sampleValues?.filter((v) => !isNaN(parseFloat(v)));
-      const isNumeric = numericValues && numericValues.length > sampleValues!.length * 0.8;
+    // Try to parse a value as number (handles both . and , as decimal)
+    const tryParseNumber = (v: string): number | null => {
+      if (!v || v.trim() === "") return null;
+      const trimmed = v.trim();
+      // Try as-is first
+      let num = parseFloat(trimmed);
+      if (!isNaN(num)) return num;
+      // Try with comma as decimal
+      num = parseFloat(trimmed.replace(",", "."));
+      if (!isNaN(num)) return num;
+      // Try with dot as decimal (in case of thousand separator issues)
+      num = parseFloat(trimmed.replace(/\s/g, "").replace(",", "."));
+      if (!isNaN(num)) return num;
+      return null;
+    };
+
+    return columnNames.map((colName, idx) => {
+      // sampleData is pure data (no header row), so don't skip first row
+      const sampleValues = (sampleData || [])
+        .map((row) => row?.[idx])
+        .filter((v): v is string => v !== null && v !== undefined && v !== "");
+
+      // Count how many values are numeric
+      const numericResults = sampleValues.map((v) => tryParseNumber(v));
+      const numericValues = numericResults.filter((n): n is number => n !== null);
+
+      // Consider numeric if >= 50% are valid numbers (more lenient)
+      const isNumeric = sampleValues.length > 0 && numericValues.length >= sampleValues.length * 0.5;
       const uniqueCount = new Set(sampleValues).size;
 
       let colType: "numeric" | "categorical" | "text" = "text";
@@ -123,33 +135,60 @@ export function TargetsStep() {
 
       if (isNumeric) {
         colType = "numeric";
-        const nums = numericValues!.map((v) => parseFloat(v));
-        min = Math.min(...nums);
-        max = Math.max(...nums);
-        mean = nums.reduce((a, b) => a + b, 0) / nums.length;
-      } else if (uniqueCount <= 10) {
+        if (numericValues.length > 0) {
+          min = Math.min(...numericValues);
+          max = Math.max(...numericValues);
+          mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+        }
+      } else if (uniqueCount <= 10 && uniqueCount > 0) {
         colType = "categorical";
         classes = [...new Set(sampleValues)] as string[];
+      }
+
+      // Determine task type with better heuristics for numeric data
+      let inferredTaskType: TaskType;
+      if (colType === "numeric") {
+        // Check if values look like continuous data or class labels
+        const isAllIntegers = numericValues.every((v) => Number.isInteger(v));
+        const hasSignificantDecimals = numericValues.some((v) => {
+          const fractional = Math.abs(v % 1);
+          return fractional > 0.001 && fractional < 0.999;
+        });
+        const range = (max ?? 0) - (min ?? 0);
+
+        // Continuous regression indicators:
+        // - Values have decimal parts (e.g., 7.671643)
+        // - Wide value range (> 10)
+        // - Not all integers with small count
+        if (hasSignificantDecimals || range > 10) {
+          inferredTaskType = "regression";
+        } else if (isAllIntegers && uniqueCount <= 10 && (max ?? 0) <= 10) {
+          // Likely ordinal/classification: small integer values (e.g., 0-5 rating)
+          inferredTaskType = uniqueCount === 2 ? "binary_classification" : "multiclass_classification";
+        } else {
+          inferredTaskType = "regression";
+        }
+      } else if (colType === "categorical") {
+        inferredTaskType = uniqueCount === 2 ? "binary_classification" : "multiclass_classification";
+      } else {
+        inferredTaskType = "regression";
       }
 
       return {
         name: String(colName),
         type: colType,
         unique_values: uniqueCount,
-        sample_values: sampleValues?.slice(0, 5) as (string | number)[],
-        is_target_candidate: colType !== "text",
-        is_metadata_candidate: colType === "text" || colType === "categorical",
         min,
         max,
         mean,
         classes,
+        inferred_task_type: inferredTaskType,
       };
     });
-  };
+  }, []);
 
   // Load target columns from Y file
   const loadTargetColumns = useCallback(async () => {
-    // Find Y files
     const yFiles = state.files.filter((f) => f.type === "Y");
     if (yFiles.length === 0) {
       setDetectedColumns([]);
@@ -162,26 +201,31 @@ export function TargetsStep() {
     try {
       const yFile = yFiles[0];
 
-      // Web mode: use File objects directly if basePath is empty
+      // Web mode: use File objects directly
       if (!state.basePath && state.fileBlobs.size > 0) {
         const fileBlob = state.fileBlobs.get(yFile.path);
         if (fileBlob) {
           const text = await fileBlob.text();
-          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          const lines = text.split(/\r?\n/).filter((l) => l.trim());
           if (lines.length > 0) {
-            // Detect delimiter
-            const firstLine = lines[0];
             const delimiters = [";", ",", "\t", "|"];
-            const delimiterCounts = delimiters.map(d => ({ d, count: firstLine.split(d).length }));
-            const bestDelim = delimiterCounts.reduce((a, b) => a.count > b.count ? a : b).d;
+            const delimiterCounts = delimiters.map((d) => ({ d, count: lines[0].split(d).length }));
+            const bestDelim = delimiterCounts.reduce((a, b) => (a.count > b.count ? a : b)).d;
+            const rows = lines.slice(0, 101).map((line) => line.split(bestDelim));
 
-            // Parse CSV
-            const rows = lines.slice(0, 101).map(line => line.split(bestDelim));
-            if (rows.length > 0) {
-              const columnNames = rows[0];
-              const sampleData = rows.slice(0, 6);
-              const columns = parseColumnsFromData(columnNames, sampleData);
-              setDetectedColumns(columns);
+            if (rows.length > 1) {
+              // rows[0] = header, rows[1:] = data
+              const headerRow = rows[0];
+              const dataRows = rows.slice(1); // Use all available data rows for better detection
+
+              let decimalSep = ".";
+              if (bestDelim !== ",") {
+                const allValues = dataRows.flat().join(" ");
+                const commaDecimals = (allValues.match(/\d+,\d+/g) || []).length;
+                const dotDecimals = (allValues.match(/\d+\.\d+/g) || []).length;
+                if (commaDecimals > dotDecimals) decimalSep = ",";
+              }
+              setDetectedColumns(parseColumnsFromData(headerRow, dataRows, decimalSep));
               return;
             }
           }
@@ -190,23 +234,36 @@ export function TargetsStep() {
         return;
       }
 
-      // Desktop mode: use backend API
-      const result = await detectFormat({
-        path: yFile.path,
-        sample_rows: 100,
-      });
+      // Desktop mode: use backend API with nirs4all detection
+      const result = await detectFormat({ path: yFile.path, sample_rows: 100 });
 
-      if (result.column_names && result.sample_data) {
-        const columns = parseColumnsFromData(result.column_names, result.sample_data);
-        setDetectedColumns(columns);
+      // Prefer column_info from backend (uses nirs4all's detect_task_type)
+      if (result.column_info && result.column_info.length > 0) {
+        const cols: DetectedColumn[] = result.column_info.map((col) => ({
+          name: col.name,
+          type: col.data_type === "numeric" ? "numeric" as const : "text" as const,
+          unique_values: col.unique_values,
+          min: col.min,
+          max: col.max,
+          mean: col.mean,
+          inferred_task_type: (col.task_type || "regression") as TaskType,
+        }));
+        setDetectedColumns(cols);
+      } else if (result.column_names && result.column_names.length > 0 && result.sample_data) {
+        // Fallback: parse sample_data ourselves
+        const decimalSep = result.detected_decimal || state.parsing?.decimal_separator || ".";
+        const cols = parseColumnsFromData(result.column_names, result.sample_data, decimalSep);
+        setDetectedColumns(cols);
+      } else {
+        // No columns detected
+        setDetectedColumns([]);
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to detect columns";
-      setError(message);
+      setError(e instanceof Error ? e.message : "Failed to detect columns");
     } finally {
       setLoading(false);
     }
-  }, [state.files, state.basePath, state.fileBlobs]);
+  }, [state.files, state.basePath, state.fileBlobs, state.parsing, parseColumnsFromData]);
 
   // Load columns when Y files change
   useEffect(() => {
@@ -218,95 +275,66 @@ export function TargetsStep() {
     }
   }, [state.files, loadTargetColumns]);
 
-  // Initialize targets from detected columns if empty
+  // Auto-sync targets from detected columns
   useEffect(() => {
-    if (state.targets.length === 0 && detectedColumns.length > 0) {
-      const targetCandidates = detectedColumns.filter(
-        (c) => c.is_target_candidate
-      );
-      if (targetCandidates.length === 1) {
-        // Auto-select single target
-        const col = targetCandidates[0];
-        const taskType: TaskType = col.type === "numeric" ? "regression" : "multiclass_classification";
-        dispatch({
-          type: "SET_TARGETS",
-          payload: [
-            {
-              column: col.name,
-              type: taskType,
-              classes: col.classes,
-              is_default: true,
-            },
-          ],
-        });
-        dispatch({ type: "SET_DEFAULT_TARGET", payload: col.name });
+    if (detectedColumns.length === 0) return;
+
+    const targetCandidates = detectedColumns.filter((c) => c.type !== "text");
+    if (targetCandidates.length === 0) return;
+
+    // Create targets for all target candidates, preserving existing overrides
+    const newTargets: TargetConfig[] = targetCandidates.map((col) => {
+      const existing = state.targets.find((t) => t.column === col.name);
+      return existing || {
+        column: col.name,
+        type: col.inferred_task_type,
+        classes: col.classes,
+        is_default: false,
+      };
+    });
+
+    // Set first as default if no default exists
+    const hasDefault = newTargets.some((t) => t.is_default);
+    if (!hasDefault && newTargets.length > 0) {
+      newTargets[0].is_default = true;
+    }
+
+    // Only update if different
+    const currentCols = state.targets.map((t) => t.column).sort().join(",");
+    const newCols = newTargets.map((t) => t.column).sort().join(",");
+    if (currentCols !== newCols) {
+      dispatch({ type: "SET_TARGETS", payload: newTargets });
+      const defaultTarget = newTargets.find((t) => t.is_default);
+      if (defaultTarget) {
+        dispatch({ type: "SET_DEFAULT_TARGET", payload: defaultTarget.column });
       }
     }
-  }, [detectedColumns, state.targets.length, dispatch]);
+  }, [detectedColumns, state.targets, dispatch]);
 
   // Auto-update aggregation method when task type changes
   useEffect(() => {
     if (!state.aggregation.enabled) return;
-
     const isClassification = state.taskType.includes("classification");
     const currentMethod = state.aggregation.method;
 
-    // If classification but method is not "vote", switch to "vote"
     if (isClassification && currentMethod !== "vote") {
-      dispatch({
-        type: "SET_AGGREGATION",
-        payload: { method: "vote" },
-      });
-    }
-    // If regression/auto but method is "vote", switch to "mean"
-    else if (!isClassification && currentMethod === "vote") {
-      dispatch({
-        type: "SET_AGGREGATION",
-        payload: { method: "mean" },
-      });
+      dispatch({ type: "SET_AGGREGATION", payload: { method: "vote" } });
+    } else if (!isClassification && currentMethod === "vote") {
+      dispatch({ type: "SET_AGGREGATION", payload: { method: "mean" } });
     }
   }, [state.taskType, state.aggregation.enabled, state.aggregation.method, dispatch]);
-
-  const handleTargetToggle = (column: DetectedColumn) => {
-    const existing = state.targets.find((t) => t.column === column.name);
-    if (existing) {
-      // Remove target
-      const newTargets = state.targets.filter((t) => t.column !== column.name);
-      dispatch({ type: "SET_TARGETS", payload: newTargets });
-      if (state.defaultTarget === column.name && newTargets.length > 0) {
-        dispatch({ type: "SET_DEFAULT_TARGET", payload: newTargets[0].column });
-      }
-    } else {
-      // Add target
-      const taskType: TaskType = column.type === "numeric" ? "regression" : "multiclass_classification";
-      const newTarget: TargetConfig = {
-        column: column.name,
-        type: taskType,
-        classes: column.classes,
-        is_default: state.targets.length === 0,
-      };
-      dispatch({ type: "SET_TARGETS", payload: [...state.targets, newTarget] });
-      if (state.targets.length === 0) {
-        dispatch({ type: "SET_DEFAULT_TARGET", payload: column.name });
-      }
-    }
-  };
 
   const handleTargetTypeChange = (column: string, type: TaskType) => {
     dispatch({
       type: "SET_TARGETS",
-      payload: state.targets.map((t) =>
-        t.column === column ? { ...t, type } : t
-      ),
+      payload: state.targets.map((t) => (t.column === column ? { ...t, type } : t)),
     });
   };
 
   const handleTargetUnitChange = (column: string, unit: string) => {
     dispatch({
       type: "SET_TARGETS",
-      payload: state.targets.map((t) =>
-        t.column === column ? { ...t, unit } : t
-      ),
+      payload: state.targets.map((t) => (t.column === column ? { ...t, unit } : t)),
     });
   };
 
@@ -314,52 +342,66 @@ export function TargetsStep() {
     dispatch({ type: "SET_DEFAULT_TARGET", payload: column });
     dispatch({
       type: "SET_TARGETS",
-      payload: state.targets.map((t) => ({
-        ...t,
-        is_default: t.column === column,
-      })),
+      payload: state.targets.map((t) => ({ ...t, is_default: t.column === column })),
     });
   };
 
+  const handleResetTargetType = (columnName: string) => {
+    const detectedCol = detectedColumns.find((c) => c.name === columnName);
+    if (detectedCol) {
+      dispatch({
+        type: "SET_TARGETS",
+        payload: state.targets.map((t) =>
+          t.column === columnName
+            ? { ...t, type: detectedCol.inferred_task_type, classes: detectedCol.classes }
+            : t
+        ),
+      });
+    }
+  };
+
+  const isTypeModified = (columnName: string, currentType: TaskType): boolean => {
+    const detectedCol = detectedColumns.find((c) => c.name === columnName);
+    return detectedCol ? detectedCol.inferred_task_type !== currentType : false;
+  };
+
+  // All columns that can be targets (numeric or categorical)
+  const targetCandidates = detectedColumns.filter((c) => c.type !== "text");
+
   return (
     <div className="flex-1 flex flex-col gap-4 py-2">
-      {/* Target Columns */}
+      {/* Target Columns Section */}
       <div className="flex-1 min-h-0 flex flex-col border rounded-lg">
-        <div className="flex items-center justify-between p-4 border-b">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-base font-medium">Target Columns</Label>
+            <span className="font-medium">Target Columns</span>
           </div>
-          <div className="flex items-center gap-2">
-            {state.targets.length > 1 && (
-              <Badge variant="outline">
-                {state.targets.length} targets selected
-              </Badge>
-            )}
-            {state.files.some((f) => f.type === "Y") && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={loadTargetColumns}
-                disabled={loading}
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-              </Button>
-            )}
-          </div>
+          {state.files.some((f) => f.type === "Y") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadTargetColumns}
+              disabled={loading}
+              className="h-7 text-xs gap-1.5"
+            >
+              {loading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              Refresh
+            </Button>
+          )}
         </div>
 
-        <ScrollArea className="flex-1">
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
           {loading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">
-                Detecting columns...
-              </span>
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              <span className="text-sm">Detecting columns...</span>
             </div>
           )}
 
@@ -369,13 +411,8 @@ export function TargetsStep() {
                 <AlertCircle className="h-4 w-4" />
                 <span className="text-sm font-medium">Detection failed</span>
               </div>
-              <p className="text-xs text-muted-foreground">{error}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={loadTargetColumns}
-              >
+              <p className="text-xs text-muted-foreground mb-2">{error}</p>
+              <Button variant="outline" size="sm" onClick={loadTargetColumns} className="h-7 text-xs">
                 <RefreshCw className="h-3 w-3 mr-1" />
                 Retry
               </Button>
@@ -384,404 +421,285 @@ export function TargetsStep() {
 
           {!loading && !error && detectedColumns.length > 0 && (
             <div className="divide-y">
-              {detectedColumns
-                .filter((c) => c.is_target_candidate)
-                .map((column) => {
-                  const isSelected = state.targets.some(
-                    (t) => t.column === column.name
-                  );
-                  const targetConfig = state.targets.find(
-                    (t) => t.column === column.name
-                  );
+              {/* Table Header */}
+              <div className="grid grid-cols-[1fr,100px,110px,70px] gap-2 px-4 py-2 text-xs text-muted-foreground bg-muted/20 font-medium">
+                <span>Column</span>
+                <span>Detected</span>
+                <span>Task Type</span>
+                <span className="text-center">Unit</span>
+              </div>
 
-                  return (
-                    <div
-                      key={column.name}
-                      className="p-3 hover:bg-muted/30 flex items-start gap-3"
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => handleTargetToggle(column)}
-                        className="mt-1"
-                      />
+              {/* Table Rows - show ALL detected columns */}
+              {detectedColumns.map((column) => {
+                const isTargetCandidate = column.type !== "text";
+                const targetConfig = state.targets.find((t) => t.column === column.name);
+                const currentType = targetConfig?.type || column.inferred_task_type;
+                const isModified = isTypeModified(column.name, currentType);
+                const isDefault = state.defaultTarget === column.name;
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm">
-                            {column.name}
-                          </span>
-                          <Badge
-                            variant={
-                              column.type === "numeric" ? "default" : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {column.type}
-                          </Badge>
-                          {state.defaultTarget === column.name && (
-                            <Badge variant="outline" className="text-xs bg-primary/10">
-                              Default
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1 space-x-2">
-                          {column.type === "numeric" && column.min !== undefined && (
-                            <span>
-                              Range: {column.min.toFixed(2)} - {column.max?.toFixed(2)}
-                            </span>
-                          )}
-                          {column.type === "categorical" && column.classes && (
-                            <span>
-                              Classes: {column.classes.slice(0, 3).join(", ")}
-                              {column.classes.length > 3 && ` (+${column.classes.length - 3})`}
-                            </span>
-                          )}
-                          {column.unique_values && (
-                            <span>({column.unique_values} unique)</span>
-                          )}
-                        </div>
-
-                        {/* Target configuration row when selected */}
-                        {isSelected && targetConfig && (
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            {/* Task type selector */}
-                            <Select
-                              value={targetConfig.type}
-                              onValueChange={(v) =>
-                                handleTargetTypeChange(column.name, v as TaskType)
-                              }
+                return (
+                  <div
+                    key={column.name}
+                    className={`grid grid-cols-[1fr,100px,110px,70px] gap-2 px-4 py-2.5 items-center hover:bg-muted/30 ${!isTargetCandidate ? "opacity-50" : ""}`}
+                  >
+                    {/* Column Name */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      {targetCandidates.length > 1 && isTargetCandidate && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => handleSetDefaultTarget(column.name)}
+                              className={`flex-shrink-0 ${isDefault ? "text-amber-500" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
                             >
-                              <SelectTrigger className="w-[140px] h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="regression">Regression</SelectItem>
-                                <SelectItem value="binary_classification">
-                                  Binary
-                                </SelectItem>
-                                <SelectItem value="multiclass_classification">
-                                  Multiclass
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-
-                            {/* Unit input with suggestions */}
-                            {targetConfig.type === "regression" && (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs gap-1"
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                    {targetConfig.unit || "Add unit"}
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-48 p-2" align="start">
-                                  <div className="space-y-2">
-                                    <Input
-                                      value={targetConfig.unit || ""}
-                                      onChange={(e) =>
-                                        handleTargetUnitChange(column.name, e.target.value)
-                                      }
-                                      placeholder="e.g., %, mg/L"
-                                      className="h-8 text-xs"
-                                    />
-                                    <div className="flex flex-wrap gap-1">
-                                      {COMMON_UNITS.map((unit) => (
-                                        <Button
-                                          key={unit}
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-6 px-2 text-xs"
-                                          onClick={() =>
-                                            handleTargetUnitChange(column.name, unit)
-                                          }
-                                        >
-                                          {unit}
-                                        </Button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            )}
-
-                            {/* Set as default button */}
-                            {state.targets.length > 1 && (
-                              <Button
-                                variant={state.defaultTarget === column.name ? "secondary" : "ghost"}
-                                size="sm"
-                                className="h-8 text-xs"
-                                onClick={() => handleSetDefaultTarget(column.name)}
-                                disabled={state.defaultTarget === column.name}
-                              >
-                                {state.defaultTarget === column.name ? "✓ Default" : "Set Default"}
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                              <Star className={`h-3.5 w-3.5 ${isDefault ? "fill-current" : ""}`} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            {isDefault ? "Default target" : "Set as default"}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      <span className="font-medium text-sm truncate">{column.name}</span>
                     </div>
-                  );
-                })}
+
+                    {/* Detected Type */}
+                    <div className="flex items-center gap-1.5">
+                      <Badge
+                        variant={column.type === "numeric" ? "default" : column.type === "categorical" ? "secondary" : "outline"}
+                        className="text-[10px] px-1.5 py-0"
+                      >
+                        {column.type === "numeric" ? "num" : column.type === "categorical" ? "cat" : "text"}
+                      </Badge>
+                      {isTargetCandidate && (
+                        <span className="text-xs text-muted-foreground">
+                          {column.inferred_task_type === "regression" ? "Reg" : "Class"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Task Type Selector - only for target candidates */}
+                    <div className="flex items-center gap-1">
+                      {isTargetCandidate ? (
+                        <>
+                          <Select value={currentType} onValueChange={(v) => handleTargetTypeChange(column.name, v as TaskType)}>
+                            <SelectTrigger className="h-7 text-xs px-2 w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="regression">Regression</SelectItem>
+                              <SelectItem value="binary_classification">Binary</SelectItem>
+                              <SelectItem value="multiclass_classification">Multiclass</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {isModified && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 flex-shrink-0"
+                                  onClick={() => handleResetTargetType(column.name)}
+                                >
+                                  <RotateCcw className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Reset to auto-detected</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Not a target</span>
+                      )}
+                    </div>
+
+                    {/* Unit (for regression) */}
+                    <div className="flex justify-center">
+                      {isTargetCandidate && currentType === "regression" ? (
+                        <Select
+                          value={targetConfig?.unit || "__none__"}
+                          onValueChange={(v) => handleTargetUnitChange(column.name, v === "__none__" ? "" : v)}
+                        >
+                          <SelectTrigger className="h-7 text-xs px-2 w-full">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None</SelectItem>
+                            {COMMON_UNITS.map((u) => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {!loading && !error && detectedColumns.length === 0 && (
-            <div className="p-8 text-center">
-              <div className="flex items-center justify-center gap-2 text-muted-foreground mb-2">
-                <Info className="h-4 w-4" />
-                <span>No target columns detected</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Info className="h-5 w-5 mb-2" />
+              <span className="text-sm">
                 {state.files.some((f) => f.type === "Y")
-                  ? "Unable to detect columns from the Y file. Targets will be configured when the dataset is loaded."
-                  : "Map at least one file as type 'Y' (Targets) in the previous step to configure target columns."}
-              </p>
+                  ? "No columns detected in Y file"
+                  : "Map a file as 'Y' (Targets) to detect columns"}
+              </span>
             </div>
           )}
-        </ScrollArea>
+        </div>
+
+        {/* Footer info */}
+        {detectedColumns.length > 0 && (
+          <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
+            {detectedColumns.length} column{detectedColumns.length > 1 ? "s" : ""} detected
+            {targetCandidates.length > 0 && <> · {targetCandidates.length} target{targetCandidates.length > 1 ? "s" : ""}</>}
+            {targetCandidates.length > 1 && (
+              <> · <Star className="h-3 w-3 inline text-amber-500 fill-amber-500" /> = default</>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Aggregation Settings */}
       <Collapsible open={showAggregation} onOpenChange={setShowAggregation}>
         <div className="border rounded-lg">
-          <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/30">
-            <div className="flex items-center gap-2">
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-base font-medium cursor-pointer">
-                Aggregation Settings
-              </Label>
-              <Badge variant="outline" className="text-xs">
-                Optional
-              </Badge>
-            </div>
+          <div className="flex items-center justify-between w-full px-4 py-3 hover:bg-muted/30">
+            <CollapsibleTrigger asChild>
+              <div className="flex items-center gap-2 cursor-pointer flex-1">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Aggregation</span>
+                <Badge variant="outline" className="text-[10px]">Optional</Badge>
+              </div>
+            </CollapsibleTrigger>
             <Switch
               checked={state.aggregation.enabled}
               onCheckedChange={(v) => {
                 dispatch({ type: "SET_AGGREGATION", payload: { enabled: v } });
                 if (v) setShowAggregation(true);
               }}
-              onClick={(e) => e.stopPropagation()}
             />
-          </CollapsibleTrigger>
+          </div>
 
           <CollapsibleContent>
             {state.aggregation.enabled && (
-              <div className="p-4 pt-0 space-y-4">
-                <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
-                  <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <p className="text-xs text-muted-foreground">
-                    Aggregation combines predictions from multiple spectra of the
-                    same sample. Useful when you have repeated measurements per
-                    biological sample.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+              <div className="px-4 pb-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Combine predictions from multiple spectra of the same sample.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Aggregate By Column
-                    </Label>
-                    {(() => {
-                      // Use metadata columns if available, otherwise fall back to target columns
-                      const availableColumns = state.metadataColumns.length > 0
-                        ? state.metadataColumns
-                        : state.targets.map(t => t.column);
-
-                      if (availableColumns.length > 0) {
-                        return (
-                          <>
-                            <Select
-                              value={state.aggregation.column || ""}
-                              onValueChange={(v) =>
-                                dispatch({
-                                  type: "SET_AGGREGATION",
-                                  payload: { column: v },
-                                })
-                              }
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select column..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableColumns.map((col) => (
-                                  <SelectItem key={col} value={col}>
-                                    {col}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            {state.metadataColumns.length === 0 && state.targets.length > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Using target columns (no metadata file detected)
-                              </p>
-                            )}
-                          </>
-                        );
-                      }
-
-                      return (
-                        <Input
-                          value={state.aggregation.column || ""}
-                          onChange={(e) =>
-                            dispatch({
-                              type: "SET_AGGREGATION",
-                              payload: { column: e.target.value },
-                            })
-                          }
-                          placeholder="e.g., sample_id"
-                          className="h-9"
-                        />
-                      );
-                    })()}
+                    <Label className="text-xs text-muted-foreground mb-1 block">Column</Label>
+                    {state.metadataColumns.length > 0 || state.targets.length > 0 ? (
+                      <Select
+                        value={state.aggregation.column || ""}
+                        onValueChange={(v) => dispatch({ type: "SET_AGGREGATION", payload: { column: v } })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(state.metadataColumns.length > 0 ? state.metadataColumns : state.targets.map((t) => t.column)).map((col) => (
+                            <SelectItem key={col} value={col}>{col}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={state.aggregation.column || ""}
+                        onChange={(e) => dispatch({ type: "SET_AGGREGATION", payload: { column: e.target.value } })}
+                        placeholder="sample_id"
+                        className="h-8"
+                      />
+                    )}
                   </div>
-
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Aggregation Method
-                    </Label>
-                    {(() => {
-                      // Filter methods based on task type
-                      const isClassification = state.taskType.includes("classification");
-                      const filteredMethods = AGGREGATION_METHOD_OPTIONS.filter((opt) => {
-                        if (isClassification) {
-                          return opt.value === "vote";
-                        }
-                        // Regression or auto: show mean and median
-                        return opt.value === "mean" || opt.value === "median";
-                      });
-
-                      return (
-                        <Select
-                          value={state.aggregation.method}
-                          onValueChange={(v) =>
-                            dispatch({
-                              type: "SET_AGGREGATION",
-                              payload: { method: v as "mean" | "median" | "vote" },
-                            })
-                          }
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {filteredMethods.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      );
-                    })()}
+                    <Label className="text-xs text-muted-foreground mb-1 block">Method</Label>
+                    <Select
+                      value={state.aggregation.method}
+                      onValueChange={(v) => dispatch({ type: "SET_AGGREGATION", payload: { method: v as "mean" | "median" | "vote" } })}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGGREGATION_METHOD_OPTIONS.filter((opt) => {
+                          const isClassification = state.taskType.includes("classification");
+                          return isClassification ? opt.value === "vote" : opt.value !== "vote";
+                        }).map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-
               </div>
             )}
           </CollapsibleContent>
         </div>
       </Collapsible>
 
-      {/* Cross-Validation Folds - Only show if fold file was detected */}
-      <Accordion type="multiple" className="space-y-2">
-        {state.hasFoldFile && (
+      {/* Cross-Validation Folds */}
+      {state.hasFoldFile && (
+        <Accordion type="multiple">
           <AccordionItem value="folds" className="border rounded-lg">
             <AccordionTrigger className="px-4 py-3 hover:no-underline">
               <div className="flex items-center gap-2 text-sm">
                 <Repeat className="h-4 w-4 text-muted-foreground" />
                 <span>Cross-Validation Folds</span>
-                <Badge variant="secondary" className="ml-2 text-xs font-normal">
-                  Detected
-                </Badge>
+                <Badge variant="secondary" className="text-[10px]">Detected</Badge>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
-              <div className="space-y-4">
-                <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
-                  <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <p className="text-xs text-muted-foreground">
-                    A fold file was detected in your dataset folder
-                    {state.foldFilePath && `: ${state.foldFilePath.split(/[/\\]/).pop()}`}.
-                    Configure how to use it for cross-validation.
-                  </p>
-                </div>
-
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Fold file detected{state.foldFilePath && `: ${state.foldFilePath.split(/[/\\]/).pop()}`}
+                </p>
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1 block">
-                    Fold Source
-                  </Label>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Source</Label>
                   <Select
                     value={state.folds?.source || "file"}
-                    onValueChange={(v) =>
-                      dispatch({
-                        type: "SET_FOLDS",
-                        payload: v === "none" ? null : { source: v as FoldSource },
-                      })
-                    }
+                    onValueChange={(v) => dispatch({ type: "SET_FOLDS", payload: v === "none" ? null : { source: v as FoldSource } })}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger className="h-8">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {FOLD_SOURCE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-
                 {state.folds?.source === "column" && (
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Fold Column
-                    </Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Column</Label>
                     <Input
                       value={state.folds?.column || ""}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_FOLDS",
-                          payload: { ...state.folds!, column: e.target.value },
-                        })
-                      }
-                      placeholder="e.g., cv_fold"
-                      className="h-9"
+                      onChange={(e) => dispatch({ type: "SET_FOLDS", payload: { ...state.folds!, column: e.target.value } })}
+                      placeholder="cv_fold"
+                      className="h-8"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Column containing fold assignments (values become validation folds)
-                    </p>
                   </div>
                 )}
-
                 {state.folds?.source === "file" && (
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">
-                      Folds File Path
-                    </Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">File</Label>
                     <Input
                       value={state.folds?.file || state.foldFilePath || ""}
-                      onChange={(e) =>
-                        dispatch({
-                          type: "SET_FOLDS",
-                          payload: { ...state.folds!, file: e.target.value },
-                        })
-                      }
+                      onChange={(e) => dispatch({ type: "SET_FOLDS", payload: { ...state.folds!, file: e.target.value } })}
                       placeholder="path/to/folds.csv"
-                      className="h-9"
+                      className="h-8"
                     />
                   </div>
                 )}
               </div>
             </AccordionContent>
           </AccordionItem>
-        )}
-
-      </Accordion>
+        </Accordion>
+      )}
     </div>
   );
 }

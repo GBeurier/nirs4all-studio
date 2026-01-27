@@ -87,20 +87,17 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Add CORS middleware for development (skip in desktop mode - same origin)
-if not DESKTOP_MODE:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:8000",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Add CORS middleware - always enabled to support:
+# - Web dev mode (Vite on localhost:5173 -> backend on localhost:8000)
+# - Desktop dev mode (Vite on localhost:5173 -> backend on random port)
+# In production desktop mode, same-origin requests work regardless of CORS config
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for local development
+    allow_credentials=False,  # Must be False when using allow_origins=["*"]
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Include API routes
 app.include_router(workspace_router, prefix="/api", tags=["workspace"])
@@ -132,10 +129,28 @@ async def startup_event():
     """Initialize services on application startup."""
     # Import here to avoid circular imports
     from api.updates import update_manager
+    from api.workspace_manager import workspace_manager
 
     # Log startup
     print("nirs4all webapp starting...")
     print(f"Webapp version: {update_manager.get_webapp_version()}")
+
+    # Restore active workspace from persisted settings
+    # This ensures nirs4all library uses the correct workspace path after restart
+    try:
+        active_ws = workspace_manager.get_active_workspace()
+        if active_ws:
+            try:
+                import nirs4all.workspace as nirs4all_workspace
+                nirs4all_workspace.set_active_workspace(active_ws.path)
+                print(f"Restored active workspace: {active_ws.path}")
+            except ImportError:
+                os.environ["NIRS4ALL_WORKSPACE"] = active_ws.path
+                print(f"Set NIRS4ALL_WORKSPACE env var: {active_ws.path}")
+        else:
+            print("No active workspace found in settings")
+    except Exception as e:
+        print(f"Failed to restore active workspace: {e}")
 
     # Check for updates in background if auto-check is enabled
     if update_manager.settings.auto_check:

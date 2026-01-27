@@ -54,7 +54,9 @@ import {
   Wifi,
   WifiOff,
   ExternalLink,
+  Pencil,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -362,6 +364,7 @@ export function PipelineExecutionDialog({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedDataset, setSelectedDataset] = useState<string>("");
+  const [runName, setRunName] = useState<string>(`${pipelineName} Run`);
   const [activeTab, setActiveTab] = useState<"execute" | "export">("execute");
   const [isQuickRunning, setIsQuickRunning] = useState(false);
 
@@ -384,10 +387,11 @@ export function PipelineExecutionDialog({
   useEffect(() => {
     if (open) {
       reset();
+      setRunName(`${pipelineName} Run`);
       setActiveTab("execute");
       setIsQuickRunning(false);
     }
-  }, [open, reset]);
+  }, [open, reset, pipelineName]);
 
   // Handle execution (inline mode)
   const handleExecute = async () => {
@@ -415,7 +419,7 @@ export function PipelineExecutionDialog({
       const run = await quickRun({
         pipeline_id: pipelineId,
         dataset_id: selectedDataset,
-        name: `${pipelineName} Run`,
+        name: runName.trim() || `${pipelineName} Run`,
         export_model: true,
         cv_folds: 5,
       });
@@ -445,7 +449,7 @@ export function PipelineExecutionDialog({
       const run = await quickRun({
         pipeline_id: pipelineId,
         dataset_id: selectedDataset,
-        name: `${pipelineName} Run`,
+        name: runName.trim() || `${pipelineName} Run`,
         export_model: true,
         cv_folds: 5,
       });
@@ -508,6 +512,20 @@ export function PipelineExecutionDialog({
           </TabsList>
 
           <TabsContent value="execute" className="space-y-4 mt-4">
+            {/* Run name */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Pencil className="h-4 w-4" />
+                Run Name
+              </label>
+              <Input
+                value={runName}
+                onChange={(e) => setRunName(e.target.value)}
+                placeholder="Enter run name..."
+                disabled={status === "running" || status === "starting"}
+              />
+            </div>
+
             {/* Dataset selection */}
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">

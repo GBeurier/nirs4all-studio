@@ -410,14 +410,7 @@ export interface UnifiedDetectionResponse {
   folder_name: string;
   total_size_bytes: number;
   has_standard_structure: boolean;
-  parsing_options: {
-    delimiter?: string;
-    decimal_separator?: string;
-    has_header?: boolean;
-    header_unit?: string;
-    signal_type?: string;
-    encoding?: string;
-  };
+  parsing_options: Partial<ParsingOptions>;
   confidence?: DetectionConfidence;
   has_fold_file: boolean;
   fold_file_path?: string;
@@ -459,6 +452,19 @@ export interface DetectFormatRequest {
 }
 
 /**
+ * Column type detection info from nirs4all
+ */
+export interface ColumnInfo {
+  name: string;
+  data_type: "numeric" | "text";
+  task_type: string; // "regression" | "binary_classification" | "multiclass_classification"
+  unique_values?: number;
+  min?: number;
+  max?: number;
+  mean?: number;
+}
+
+/**
  * Format detection response
  */
 export interface DetectFormatResponse {
@@ -471,6 +477,7 @@ export interface DetectFormatResponse {
   sample_data?: string[][];
   column_names?: string[];
   sheet_names?: string[];
+  column_info?: ColumnInfo[]; // Column type detection from nirs4all
 }
 
 /**

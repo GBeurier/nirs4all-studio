@@ -212,11 +212,6 @@ export interface ExperimentConfig {
   description?: string;
   dataset_ids: string[];
   pipeline_ids: string[];
-  cv_folds: number;
-  cv_strategy: "kfold" | "stratified" | "loo" | "holdout";
-  test_size?: number;
-  shuffle?: boolean;
-  random_state?: number;
   /** Inline pipeline from editor (for unsaved pipelines) */
   inline_pipeline?: {
     name: string;

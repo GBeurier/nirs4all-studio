@@ -375,51 +375,123 @@ function FileOverrideRow({
   );
 }
 
+// Simple client-side delimiter detection for web mode
+function detectDelimiterFromContent(content: string): { delimiter: string; decimal: string } {
+  const lines = content.split("\n").slice(0, 10).filter(line => line.trim());
+  if (lines.length === 0) return { delimiter: ";", decimal: "." };
+
+  // Count occurrences of common delimiters
+  const delimiters = [";", ",", "\t", "|"];
+  const counts: Record<string, number[]> = {};
+
+  for (const delim of delimiters) {
+    counts[delim] = lines.map(line => (line.match(new RegExp(`\\${delim}`, "g")) || []).length);
+  }
+
+  // Find delimiter with most consistent count across lines
+  let bestDelim = ";";
+  let bestScore = 0;
+  for (const [delim, lineCounts] of Object.entries(counts)) {
+    const avg = lineCounts.reduce((a, b) => a + b, 0) / lineCounts.length;
+    const variance = lineCounts.reduce((sum, c) => sum + Math.pow(c - avg, 2), 0) / lineCounts.length;
+    const score = avg > 0 ? avg / (1 + variance) : 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestDelim = delim;
+    }
+  }
+
+  // Detect decimal separator from numeric values
+  const numericPattern = /\d+[.,]\d+/g;
+  let dotCount = 0;
+  let commaCount = 0;
+  for (const line of lines) {
+    const matches = line.match(numericPattern) || [];
+    for (const m of matches) {
+      if (m.includes(".")) dotCount++;
+      if (m.includes(",") && bestDelim !== ",") commaCount++;
+    }
+  }
+
+  return {
+    delimiter: bestDelim,
+    decimal: commaCount > dotCount ? "," : ".",
+  };
+}
+
 export function ParsingStep() {
   const { state, dispatch } = useWizard();
   const [autoDetecting, setAutoDetecting] = useState(false);
   const [detectingFiles, setDetectingFiles] = useState<Record<string, boolean>>({});
   const hasAutoDetectedOnMount = useRef(false);
 
+  // Check if we're in web mode (no filesystem access, files are in fileBlobs)
+  const isWebMode = !state.basePath && state.fileBlobs.size > 0;
+
   const handleAutoDetect = useCallback(async () => {
     if (state.files.length === 0) return;
 
     setAutoDetecting(true);
     try {
-      // Try to detect format from first X file using nirs4all's full AutoDetector
       const firstXFile = state.files.find((f) => f.type === "X");
-      if (firstXFile) {
-        const result = await autoDetectFile(firstXFile.path, true);
+      if (!firstXFile) {
+        setAutoDetecting(false);
+        return;
+      }
 
-        if (result.success) {
-          // Update parsing options with all detected values
-          dispatch({
-            type: "SET_PARSING",
-            payload: {
-              delimiter: result.delimiter || DEFAULT_PARSING.delimiter,
-              decimal_separator: result.decimal_separator || DEFAULT_PARSING.decimal_separator,
-              has_header: result.has_header ?? DEFAULT_PARSING.has_header,
-              header_unit: (result.header_unit as HeaderUnit) || DEFAULT_PARSING.header_unit,
-              signal_type: (result.signal_type as SignalType) || DEFAULT_PARSING.signal_type,
-              encoding: result.encoding || "utf-8",
-            },
-          });
-
-          // Update confidence scores in state
-          dispatch({
-            type: "SET_DETECTION_RESULTS",
-            payload: {
-              confidence: result.confidence,
-            },
-          });
+      // In web mode, do simple client-side detection from file content
+      if (isWebMode) {
+        const fileBlob = state.fileBlobs.get(firstXFile.path);
+        if (fileBlob) {
+          try {
+            const content = await fileBlob.text();
+            const detected = detectDelimiterFromContent(content);
+            dispatch({
+              type: "SET_PARSING",
+              payload: {
+                delimiter: detected.delimiter,
+                decimal_separator: detected.decimal,
+              },
+            });
+          } catch (e) {
+            console.warn("Client-side detection failed:", e);
+          }
         }
+        setAutoDetecting(false);
+        return;
+      }
+
+      // Desktop mode: use backend API for full detection
+      const result = await autoDetectFile(firstXFile.path, true);
+
+      if (result.success) {
+        // Update parsing options with all detected values
+        dispatch({
+          type: "SET_PARSING",
+          payload: {
+            delimiter: result.delimiter || DEFAULT_PARSING.delimiter,
+            decimal_separator: result.decimal_separator || DEFAULT_PARSING.decimal_separator,
+            has_header: result.has_header ?? DEFAULT_PARSING.has_header,
+            header_unit: (result.header_unit as HeaderUnit) || DEFAULT_PARSING.header_unit,
+            signal_type: (result.signal_type as SignalType) || DEFAULT_PARSING.signal_type,
+            encoding: result.encoding || "utf-8",
+          },
+        });
+
+        // Update confidence scores in state
+        dispatch({
+          type: "SET_DETECTION_RESULTS",
+          payload: {
+            confidence: result.confidence,
+          },
+        });
       }
     } catch (error) {
       console.error("Auto-detect failed:", error);
       // Fallback to old detectFormat API
       try {
         const firstXFile = state.files.find((f) => f.type === "X");
-        if (firstXFile) {
+        if (firstXFile && !isWebMode) {
           const result = await detectFormat({
             path: firstXFile.path,
             sample_rows: 10,
@@ -442,7 +514,7 @@ export function ParsingStep() {
     } finally {
       setAutoDetecting(false);
     }
-  }, [state.files, dispatch]);
+  }, [state.files, state.fileBlobs, isWebMode, dispatch]);
 
   // Auto-detect on mount (first time only)
   useEffect(() => {
@@ -456,6 +528,31 @@ export function ParsingStep() {
   const handlePerFileAutoDetect = useCallback(async (path: string) => {
     setDetectingFiles((prev) => ({ ...prev, [path]: true }));
     try {
+      // In web mode, do client-side detection
+      if (isWebMode) {
+        const fileBlob = state.fileBlobs.get(path);
+        if (fileBlob) {
+          try {
+            const content = await fileBlob.text();
+            const detected = detectDelimiterFromContent(content);
+            dispatch({
+              type: "SET_FILE_OVERRIDE",
+              payload: {
+                path,
+                options: {
+                  delimiter: detected.delimiter,
+                  decimal_separator: detected.decimal,
+                },
+              },
+            });
+          } catch (e) {
+            console.warn("Client-side per-file detection failed:", e);
+          }
+        }
+        return;
+      }
+
+      // Desktop mode: use backend API
       const result = await autoDetectFile(path, true);
 
       if (result.success) {
@@ -476,29 +573,31 @@ export function ParsingStep() {
       }
     } catch (error) {
       console.error("Per-file auto-detect failed:", error);
-      // Fallback to old detectFormat API
-      try {
-        const fallbackResult = await detectFormat({ path, sample_rows: 10 });
-        if (fallbackResult) {
-          dispatch({
-            type: "SET_FILE_OVERRIDE",
-            payload: {
-              path,
-              options: {
-                delimiter: fallbackResult.detected_delimiter || DEFAULT_PARSING.delimiter,
-                decimal_separator: fallbackResult.detected_decimal || DEFAULT_PARSING.decimal_separator,
-                has_header: fallbackResult.has_header ?? DEFAULT_PARSING.has_header,
+      // Fallback to old detectFormat API (desktop mode only)
+      if (!isWebMode) {
+        try {
+          const fallbackResult = await detectFormat({ path, sample_rows: 10 });
+          if (fallbackResult) {
+            dispatch({
+              type: "SET_FILE_OVERRIDE",
+              payload: {
+                path,
+                options: {
+                  delimiter: fallbackResult.detected_delimiter || DEFAULT_PARSING.delimiter,
+                  decimal_separator: fallbackResult.detected_decimal || DEFAULT_PARSING.decimal_separator,
+                  has_header: fallbackResult.has_header ?? DEFAULT_PARSING.has_header,
+                },
               },
-            },
-          });
+            });
+          }
+        } catch (fallbackError) {
+          console.error("Fallback per-file auto-detect also failed:", fallbackError);
         }
-      } catch (fallbackError) {
-        console.error("Fallback per-file auto-detect also failed:", fallbackError);
       }
     } finally {
       setDetectingFiles((prev) => ({ ...prev, [path]: false }));
     }
-  }, [dispatch]);
+  }, [dispatch, isWebMode, state.fileBlobs]);
 
   const handleResetDefaults = () => {
     dispatch({ type: "SET_PARSING", payload: { ...DEFAULT_PARSING } });

@@ -272,6 +272,21 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
       const fileList: File[] = [];
       let isFolder = false;
 
+      // Helper to get file path - uses Electron's webUtils if available
+      const getFilePath = (file: File): string | undefined => {
+        // Electron: use webUtils.getPathForFile for reliable path resolution
+        if (window.electronApi?.getPathForFile) {
+          try {
+            const path = window.electronApi.getPathForFile(file);
+            if (path) return path;
+          } catch {
+            // Fallback to file.path
+          }
+        }
+        // Fallback: check file.path property (older Electron or specific cases)
+        return (file as File & { path?: string }).path;
+      };
+
       // Use webkitGetAsEntry for better folder support
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
@@ -279,22 +294,19 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
           const entry = item.webkitGetAsEntry();
           if (entry?.isDirectory) {
             isFolder = true;
-            // For folders, we need the path - use the File API path if available
             const file = files?.[i];
             if (file) {
-              // In Electron, file.path contains the actual path
-              const filePath = (file as File & { path?: string }).path;
+              const filePath = getFilePath(file);
               if (filePath) {
                 paths.push(filePath);
               }
-              // Always add to fileList so we know something was dropped
               fileList.push(file);
             }
           } else if (entry?.isFile) {
             const file = files?.[i];
             if (file) {
               fileList.push(file);
-              const filePath = (file as File & { path?: string }).path;
+              const filePath = getFilePath(file);
               if (filePath) {
                 paths.push(filePath);
               }
@@ -303,19 +315,20 @@ export function useDragDrop({ onDrop, disabled }: UseDragDropOptions) {
         } else if (files?.[i]) {
           // Fallback for browsers without webkitGetAsEntry
           fileList.push(files[i]);
-          const filePath = (files[i] as File & { path?: string }).path;
+          const filePath = getFilePath(files[i]);
           if (filePath) {
             paths.push(filePath);
           }
         }
       }
 
-      // Folder exploration using FileSystem API (web mode and PyWebView without file paths)
+      // Folder dropped but no path available (web mode fallback)
       if (isFolder && paths.length === 0 && items.length > 0) {
         const firstItem = items[0];
         if (firstItem.webkitGetAsEntry) {
           const entry = firstItem.webkitGetAsEntry();
           if (entry?.isDirectory) {
+            // Web mode: read folder contents via FileSystem API
             try {
               const { files: folderFiles, relativePaths } =
                 await readDirectoryRecursive(entry as FileSystemDirectoryEntry);

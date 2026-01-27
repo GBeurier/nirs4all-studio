@@ -7,10 +7,12 @@ const execPath = process.execPath || "";
 const platform = process.platform;
 const cwd = process.cwd();
 
-const looksLikeWindowsNode = platform === "win32" || /\\\bnode\.exe$/i.test(execPath) || /\\Program Files\\nodejs\\/i.test(execPath);
+const isWindowsNode = platform === "win32";
 const looksLikeWslPath = cwd.startsWith("\\\\wsl.localhost\\") || cwd.startsWith("\\\\wsl$\\") || cwd.includes("\\wsl.localhost\\") || cwd.includes("\\wsl$\\");
 
-if (looksLikeWindowsNode || looksLikeWslPath) {
+// Only block the problematic case: Windows Node accessing WSL filesystem paths
+// This causes UNC path issues with cmd.exe. Native Windows or native Linux/WSL are fine.
+if (isWindowsNode && looksLikeWslPath) {
   console.error("\nERROR: Detected Windows node/npm running against a WSL workspace.");
   console.error("This will spawn cmd.exe and break installs/dev (UNC paths are not supported).\n");
   console.error(`platform: ${platform}`);

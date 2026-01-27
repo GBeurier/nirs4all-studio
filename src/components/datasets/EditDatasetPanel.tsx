@@ -1,12 +1,13 @@
 /**
- * EditDatasetPanel - Simplified dataset editor panel
+ * EditDatasetPanel - Dataset editor panel with parsing configuration
  *
- * Replaces EditDatasetModal with a focused editing experience:
+ * Includes:
  * - Name & Description editing
+ * - Parsing configuration (delimiter, decimal, header, signal type) with auto-detect
  * - Content properties (task type, signal type, default target)
  * - Version management (refresh, verify)
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -28,6 +30,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Loader2,
   FolderOpen,
   RefreshCw,
@@ -35,9 +42,13 @@ import {
   Copy,
   Check,
   AlertCircle,
+  Wand2,
+  ChevronDown,
+  Settings2,
 } from "lucide-react";
-import type { Dataset } from "@/types/datasets";
+import type { Dataset, DatasetConfig, ParsingOptions, HeaderUnit, SignalType, NaPolicy } from "@/types/datasets";
 import type { UpdateDatasetRequest } from "@/api/client";
+import { autoDetectFile } from "@/api/client";
 
 interface EditDatasetPanelProps {
   open: boolean;
@@ -47,6 +58,56 @@ interface EditDatasetPanelProps {
   onRefresh?: (datasetId: string) => Promise<void>;
   onVerify?: (datasetId: string) => Promise<void>;
 }
+
+// Default parsing options
+const DEFAULT_PARSING: ParsingOptions = {
+  delimiter: ";",
+  decimal_separator: ".",
+  has_header: true,
+  header_unit: "cm-1",
+  signal_type: "auto",
+  na_policy: "keep",
+};
+
+// Options for selects
+const DELIMITER_OPTIONS = [
+  { value: ";", label: "Semicolon (;)" },
+  { value: ",", label: "Comma (,)" },
+  { value: "\t", label: "Tab" },
+  { value: "|", label: "Pipe (|)" },
+  { value: " ", label: "Space" },
+];
+
+const DECIMAL_OPTIONS = [
+  { value: ".", label: "Dot (.)" },
+  { value: ",", label: "Comma (,)" },
+];
+
+const HEADER_UNIT_OPTIONS: { value: HeaderUnit; label: string }[] = [
+  { value: "nm", label: "Wavelength (nm)" },
+  { value: "cm-1", label: "Wavenumber (cm⁻¹)" },
+  { value: "text", label: "Text labels" },
+  { value: "index", label: "Numeric index" },
+  { value: "none", label: "No header" },
+];
+
+const SIGNAL_TYPE_OPTIONS: { value: SignalType; label: string }[] = [
+  { value: "auto", label: "Auto-detect" },
+  { value: "absorbance", label: "Absorbance" },
+  { value: "reflectance", label: "Reflectance (0-1)" },
+  { value: "reflectance%", label: "Reflectance (%)" },
+  { value: "transmittance", label: "Transmittance (0-1)" },
+  { value: "transmittance%", label: "Transmittance (%)" },
+];
+
+const NA_POLICY_OPTIONS: { value: NaPolicy; label: string }[] = [
+  { value: "keep", label: "Keep NA values" },
+  { value: "drop", label: "Drop rows with NA" },
+  { value: "fill_mean", label: "Fill with mean" },
+  { value: "fill_median", label: "Fill with median" },
+  { value: "fill_zero", label: "Fill with zero" },
+  { value: "error", label: "Error on NA" },
+];
 
 /**
  * Get relative time string from ISO date
@@ -78,6 +139,8 @@ export function EditDatasetPanel({
   const [refreshing, setRefreshing] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [hashCopied, setHashCopied] = useState(false);
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [parsingExpanded, setParsingExpanded] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
@@ -85,6 +148,14 @@ export function EditDatasetPanel({
   const [taskType, setTaskType] = useState<string>("auto");
   const [signalType, setSignalType] = useState<string>("auto");
   const [defaultTarget, setDefaultTarget] = useState<string>("");
+
+  // Parsing state
+  const [delimiter, setDelimiter] = useState<string>(DEFAULT_PARSING.delimiter);
+  const [decimalSeparator, setDecimalSeparator] = useState<string>(DEFAULT_PARSING.decimal_separator);
+  const [hasHeader, setHasHeader] = useState<boolean>(DEFAULT_PARSING.has_header);
+  const [headerUnit, setHeaderUnit] = useState<HeaderUnit>(DEFAULT_PARSING.header_unit);
+  const [parsingSignalType, setParsingSignalType] = useState<SignalType>(DEFAULT_PARSING.signal_type);
+  const [naPolicy, setNaPolicy] = useState<NaPolicy>(DEFAULT_PARSING.na_policy);
 
   // Load existing values when dataset changes
   useEffect(() => {
@@ -94,6 +165,15 @@ export function EditDatasetPanel({
       setTaskType(dataset.task_type || "auto");
       setSignalType(dataset.signal_types?.[0] || "auto");
       setDefaultTarget(dataset.default_target || "");
+
+      // Load parsing config
+      const config = dataset.config || {};
+      setDelimiter(config.delimiter || DEFAULT_PARSING.delimiter);
+      setDecimalSeparator(config.decimal_separator || DEFAULT_PARSING.decimal_separator);
+      setHasHeader(config.has_header ?? DEFAULT_PARSING.has_header);
+      setHeaderUnit((config.header_unit || config.header_type || DEFAULT_PARSING.header_unit) as HeaderUnit);
+      setParsingSignalType((config.signal_type || DEFAULT_PARSING.signal_type) as SignalType);
+      setNaPolicy((config.na_policy || DEFAULT_PARSING.na_policy) as NaPolicy);
     } else {
       // Reset to defaults
       setName("");
@@ -101,8 +181,41 @@ export function EditDatasetPanel({
       setTaskType("auto");
       setSignalType("auto");
       setDefaultTarget("");
+      setDelimiter(DEFAULT_PARSING.delimiter);
+      setDecimalSeparator(DEFAULT_PARSING.decimal_separator);
+      setHasHeader(DEFAULT_PARSING.has_header);
+      setHeaderUnit(DEFAULT_PARSING.header_unit);
+      setParsingSignalType(DEFAULT_PARSING.signal_type);
+      setNaPolicy(DEFAULT_PARSING.na_policy);
     }
   }, [dataset]);
+
+  const handleAutoDetect = useCallback(async () => {
+    if (!dataset?.path) return;
+
+    setAutoDetecting(true);
+    try {
+      // Try to find an X file in the config or use the dataset path
+      const xPath = dataset.config?.train_x || dataset.path;
+      const result = await autoDetectFile(xPath, true);
+
+      if (result.success) {
+        setDelimiter(result.delimiter || DEFAULT_PARSING.delimiter);
+        setDecimalSeparator(result.decimal_separator || DEFAULT_PARSING.decimal_separator);
+        setHasHeader(result.has_header ?? DEFAULT_PARSING.has_header);
+        if (result.header_unit) {
+          setHeaderUnit(result.header_unit as HeaderUnit);
+        }
+        if (result.signal_type) {
+          setParsingSignalType(result.signal_type as SignalType);
+        }
+      }
+    } catch (error) {
+      console.error("Auto-detect failed:", error);
+    } finally {
+      setAutoDetecting(false);
+    }
+  }, [dataset?.path, dataset?.config?.train_x]);
 
   const handleSave = async () => {
     if (!dataset) return;
@@ -120,6 +233,31 @@ export function EditDatasetPanel({
       }
       if (defaultTarget !== (dataset.default_target || "")) {
         updates.default_target = defaultTarget || undefined;
+      }
+
+      // Build config with parsing options
+      const newConfig: Partial<DatasetConfig> = {
+        ...(dataset.config || {}),
+        delimiter,
+        decimal_separator: decimalSeparator,
+        has_header: hasHeader,
+        header_unit: headerUnit,
+        signal_type: parsingSignalType,
+        na_policy: naPolicy,
+      };
+
+      // Check if parsing config changed
+      const oldConfig = dataset.config || {};
+      const parsingChanged =
+        delimiter !== (oldConfig.delimiter || DEFAULT_PARSING.delimiter) ||
+        decimalSeparator !== (oldConfig.decimal_separator || DEFAULT_PARSING.decimal_separator) ||
+        hasHeader !== (oldConfig.has_header ?? DEFAULT_PARSING.has_header) ||
+        headerUnit !== (oldConfig.header_unit || oldConfig.header_type || DEFAULT_PARSING.header_unit) ||
+        parsingSignalType !== (oldConfig.signal_type || DEFAULT_PARSING.signal_type) ||
+        naPolicy !== (oldConfig.na_policy || DEFAULT_PARSING.na_policy);
+
+      if (parsingChanged) {
+        updates.config = newConfig;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -183,7 +321,7 @@ export function EditDatasetPanel({
         <DialogHeader>
           <DialogTitle>Edit Dataset</DialogTitle>
           <DialogDescription>
-            Configure dataset properties and manage versioning
+            Configure dataset properties, parsing options, and manage versioning
           </DialogDescription>
         </DialogHeader>
 
@@ -214,6 +352,140 @@ export function EditDatasetPanel({
               </div>
             </div>
           </div>
+
+          {/* Section: Parsing Configuration */}
+          <Collapsible open={parsingExpanded} onOpenChange={setParsingExpanded}>
+            <div className="space-y-4 border-t pt-4">
+              <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between cursor-pointer hover:bg-muted/30 -mx-2 px-2 py-1 rounded">
+                  <div className="flex items-center gap-2">
+                    <Settings2 className="h-4 w-4 text-muted-foreground" />
+                    <Label className="text-base font-medium cursor-pointer">Parsing Configuration</Label>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${parsingExpanded ? "rotate-180" : ""}`} />
+                </div>
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className="space-y-4">
+                {/* Auto-detect button */}
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAutoDetect}
+                    disabled={autoDetecting}
+                  >
+                    {autoDetecting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-4 w-4 mr-2" />
+                    )}
+                    Auto-detect
+                  </Button>
+                </div>
+
+                {/* Parsing form */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Delimiter */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Delimiter</Label>
+                    <Select value={delimiter} onValueChange={setDelimiter}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DELIMITER_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Decimal separator */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Decimal</Label>
+                    <Select value={decimalSeparator} onValueChange={setDecimalSeparator}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DECIMAL_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Has header */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Header Row</Label>
+                    <div className="flex items-center gap-2 h-9 mt-1">
+                      <Switch
+                        checked={hasHeader}
+                        onCheckedChange={setHasHeader}
+                      />
+                      <span className="text-sm">{hasHeader ? "Yes" : "No"}</span>
+                    </div>
+                  </div>
+
+                  {/* Header unit */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Header Unit</Label>
+                    <Select value={headerUnit} onValueChange={(v) => setHeaderUnit(v as HeaderUnit)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HEADER_UNIT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Signal type */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Signal Type</Label>
+                    <Select value={parsingSignalType} onValueChange={(v) => setParsingSignalType(v as SignalType)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SIGNAL_TYPE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* NA policy */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground">NA Handling</Label>
+                    <Select value={naPolicy} onValueChange={(v) => setNaPolicy(v as NaPolicy)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {NA_POLICY_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
 
           {/* Section: Properties */}
           <div className="space-y-4 border-t pt-4">
@@ -400,25 +672,6 @@ export function EditDatasetPanel({
                     <span className="font-mono text-xs truncate max-w-[250px]" title={dataset.config.test_y}>
                       {dataset.config.test_y}
                     </span>
-                  </div>
-                )}
-                {dataset.config.delimiter && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Delimiter</span>
-                    <code className="text-xs bg-muted px-2 py-0.5 rounded">
-                      {dataset.config.delimiter === ";" ? "semicolon" :
-                       dataset.config.delimiter === "," ? "comma" :
-                       dataset.config.delimiter === "\t" ? "tab" :
-                       dataset.config.delimiter}
-                    </code>
-                  </div>
-                )}
-                {dataset.config.decimal_separator && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Decimal</span>
-                    <code className="text-xs bg-muted px-2 py-0.5 rounded">
-                      {dataset.config.decimal_separator}
-                    </code>
                   </div>
                 )}
                 {!dataset.config.train_x && !dataset.config.test_x && (

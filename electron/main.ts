@@ -6,15 +6,10 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = electron;
 import path from "node:path";
 import { BackendManager } from "./backend-manager";
 
-// Disable hardware acceleration in WSL2 (no GPU support)
-// Must be called before app is ready, and we check that app exists first
-// Note: In WSL2 with WSLg, hardware acceleration might actually work
-if (
-  process.platform === "linux" &&
-  process.env.WSL_DISTRO_NAME &&
-  typeof app?.disableHardwareAcceleration === "function"
-) {
-  app.disableHardwareAcceleration();
+// WSL2/WSLg fixes - must be set before app is ready
+if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
+  // Force X11 backend which has better cursor support in WSLg
+  app.commandLine.appendSwitch("ozone-platform-hint", "x11");
 }
 
 const backendManager = new BackendManager();
@@ -35,7 +30,7 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false, // Required for file.path on dropped files
     },
     icon: path.join(__dirname, "../public/icon.png"),
     show: false, // Show after ready-to-show
@@ -69,6 +64,20 @@ ipcMain.handle("dialog:selectFolder", async () => {
   });
   return result.canceled ? null : result.filePaths[0];
 });
+
+ipcMain.handle(
+  "dialog:confirmDroppedFolder",
+  async (_, folderName: string) => {
+    if (!mainWindow) return null;
+    // Show folder selection dialog to confirm the dropped folder
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      title: `Select the folder "${folderName}" you just dropped`,
+      message: `Please select the folder "${folderName}" to confirm its location`,
+    });
+    return result.canceled ? null : result.filePaths[0];
+  }
+);
 
 ipcMain.handle(
   "dialog:selectFile",
@@ -128,6 +137,37 @@ ipcMain.handle("system:revealInExplorer", async (_, filePath: string) => {
 
 ipcMain.handle("system:openExternal", async (_, url: string) => {
   await shell.openExternal(url);
+});
+
+// IPC Handlers for window management
+ipcMain.handle("window:resize", (_, width: number, height: number) => {
+  mainWindow?.setSize(width, height);
+  return true;
+});
+
+ipcMain.handle("window:minimize", () => {
+  mainWindow?.minimize();
+  return true;
+});
+
+ipcMain.handle("window:maximize", () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+  return true;
+});
+
+ipcMain.handle("window:restore", () => {
+  mainWindow?.restore();
+  return true;
+});
+
+ipcMain.handle("window:getSize", () => {
+  if (!mainWindow) return null;
+  const [width, height] = mainWindow.getSize();
+  return { width, height };
 });
 
 // IPC Handlers for backend management

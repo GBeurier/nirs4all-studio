@@ -37,13 +37,93 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 
 ### Prerequisites
 
-- Node.js 22+ (recommended: use `nvm` + the version in `.nvmrc`)
+- Node.js 20+ (recommended: use `nvm` + the version in `.nvmrc`)
 - Python 3.11+
 - nirs4all library (optional for UI development)
 
-### WSL (recommended on Windows)
+### Cross-Platform Support
 
-If you're using WSL, make sure you're using Linux `node`/`npm` (not the Windows ones mounted under `/mnt/c`).
+This project supports development on:
+- **Windows Native** - PowerShell, cmd.exe, or Windows Terminal
+- **Linux** - Any distribution with Node.js and Python
+- **macOS** - Intel and Apple Silicon
+- **WSL2** - Windows Subsystem for Linux
+
+---
+
+### Windows Native Setup
+
+1. **Install Node dependencies:**
+   ```cmd
+   npm install
+   ```
+
+2. **Install Python dependencies:**
+   ```cmd
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -r requirements-cpu.txt
+   ```
+
+3. **Start development servers:**
+
+   Option A - Use the convenience scripts:
+   ```cmd
+   scripts\dev-full.cmd      REM Start frontend + backend together
+   scripts\dev-start.cmd     REM Start frontend only
+   scripts\dev-backend.cmd   REM Start backend only
+   scripts\dev-electron.cmd  REM Start Electron desktop app
+   ```
+
+   Option B - Use npm scripts:
+   ```cmd
+   npm run dev          REM Frontend (Vite) at http://localhost:5173
+   npm run dev:electron REM Electron desktop mode
+   ```
+
+   Terminal 2 (if running separately):
+   ```cmd
+   .venv\Scripts\activate
+   python -m uvicorn main:app --reload --port 8000
+   ```
+
+---
+
+### Linux / macOS Setup
+
+1. **Install Node dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements-cpu.txt  # or requirements-gpu.txt for GPU
+   ```
+
+3. **Start development servers:**
+
+   Option A - Use the convenience scripts:
+   ```bash
+   ./scripts/dev-full.sh      # Start frontend + backend together
+   ./scripts/dev-start.sh     # Start frontend only
+   ./scripts/dev-backend.sh   # Start backend only
+   ./scripts/dev-electron.sh  # Start Electron desktop app
+   ```
+
+   Option B - Use npm scripts:
+   ```bash
+   npm run dev          # Frontend (Vite) at http://localhost:5173
+   npm run dev:electron # Electron desktop mode
+   ```
+
+---
+
+### WSL2 Setup (Windows Subsystem for Linux)
+
+If you prefer using WSL2, make sure you're using Linux `node`/`npm` (not the Windows ones mounted under `/mnt/c`).
 
 1. **One-time: permanently disable Windows PATH injection into WSL** (prevents UNC/cmd.exe install failures):
    ```bash
@@ -69,32 +149,9 @@ which node
 which npm
 ```
 
-### Development Setup
+Then follow the Linux setup instructions above.
 
-1. **Install Node dependencies:**
-   ```bash
-   npm install
-   ```
-
-2. **Install Python dependencies:**
-   ```bash
-   pip install -r requirements-cpu.txt  # or requirements-gpu.txt for GPU support
-   ```
-
-3. **Start development servers:**
-
-   Terminal 1 - Frontend (Vite):
-   ```bash
-   npm run dev
-   ```
-
-   Terminal 2 - Backend (FastAPI):
-   ```bash
-   python -m uvicorn main:app --reload --port 8000
-   ```
-
-4. **Open in browser:**
-   Navigate to http://localhost:5173
+---
 
 ### Desktop Mode (Electron)
 
@@ -102,7 +159,7 @@ To run as a desktop application:
 
 ```bash
 # Development mode (with hot reload)
-npm run electron:dev
+npm run dev:electron
 
 # Build and preview (production mode)
 npm run electron:preview
@@ -137,9 +194,13 @@ nirs4all_webapp/
 │   ├── pipelines.py        # Pipeline CRUD
 │   ├── predictions.py      # Prediction storage
 │   └── system.py           # Health, system info, and GPU detection
-├── scripts/                # Build scripts
-│   ├── build-backend.sh    # Python backend packaging (PyInstaller)
-│   └── build-release.sh    # Full release build (backend + electron)
+├── scripts/                # Build and utility scripts
+│   ├── build-backend.cjs   # Python backend packaging (cross-platform)
+│   ├── build-release.cjs   # Full release build (cross-platform)
+│   ├── dev-start.cmd/.sh   # Start frontend dev server
+│   ├── dev-backend.cmd/.sh # Start Python backend
+│   ├── dev-electron.cmd/.sh# Start Electron desktop mode
+│   └── dev-full.cmd/.sh    # Start frontend + backend together
 ├── build/                  # Build configuration
 │   └── entitlements.mac.plist  # macOS code signing entitlements
 ├── docs/                   # Documentation
@@ -280,36 +341,56 @@ Stories are located in `__stories__/` directories next to components.
 
 ## Scripts
 
-### Development
+### Convenience Scripts (Cross-Platform)
+
+These scripts work on both Windows (.cmd) and Linux/macOS (.sh):
+
+| Windows | Linux/macOS | Description |
+|---------|-------------|-------------|
+| `scripts\dev-start.cmd` | `./scripts/dev-start.sh` | Start frontend dev server |
+| `scripts\dev-backend.cmd` | `./scripts/dev-backend.sh` | Start Python backend |
+| `scripts\dev-electron.cmd` | `./scripts/dev-electron.sh` | Start Electron desktop mode |
+| `scripts\dev-full.cmd` | `./scripts/dev-full.sh` | Start frontend + backend together |
+
+### npm Scripts - Development
+
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start Vite dev server |
-| `npm run electron:dev` | Start Electron with hot reload |
+| `npm run dev:electron` | Start Electron with hot reload |
+| `npm run dev:registry` | Start with node registry enabled |
 | `npm run lint` | Run ESLint |
 | `npm run test` | Run Vitest tests |
-| `npm run test:coverage` | Run tests with coverage |
-| `npm run test:ui` | Open Vitest UI |
+| `npm run test:watch` | Run tests in watch mode |
 | `npm run storybook` | Start Storybook dev server |
 
-### Production Builds
+### npm Scripts - Production Builds
+
 | Command | Description |
 |---------|-------------|
 | `npm run build` | Build frontend for production |
 | `npm run build:electron` | Build Electron app |
 | `npm run electron:preview` | Preview Electron production build |
+| `npm run build:backend` | Build Python backend (CPU, default) |
 | `npm run build:backend:cpu` | Build Python backend (CPU) |
 | `npm run build:backend:gpu` | Build Python backend (GPU/CUDA) |
 | `npm run build:backend:gpu-metal` | Build Python backend (GPU/Metal for macOS) |
+| `npm run build:backend:clean` | Clean and rebuild backend |
+| `npm run build:release` | Full release build (CPU, current platform) |
 | `npm run build:release:cpu` | Full release build (CPU edition) |
 | `npm run build:release:gpu` | Full release build (GPU edition) |
+| `npm run build:release:clean` | Clean and rebuild release |
+| `npm run build:release:all` | Build for all platforms |
 
-### Packaging
+### npm Scripts - Packaging
+
 | Command | Description |
 |---------|-------------|
-| `npm run dist:linux` | Package for Linux (AppImage, DEB) |
-| `npm run dist:win` | Package for Windows (NSIS, portable) |
-| `npm run dist:mac` | Package for macOS (DMG) |
-| `npm run dist` | Package for current platform |
+| `npm run electron:build` | Package for current platform |
+| `npm run build:release --platform win` | Package for Windows |
+| `npm run build:release --platform mac` | Package for macOS |
+| `npm run build:release --platform linux` | Package for Linux |
+| `npm run build:release --platform all` | Package for all platforms |
 
 ## Design System
 

@@ -20,6 +20,7 @@ import zipfile
 from typing import Dict, List, Any, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceScanner
@@ -223,6 +224,7 @@ async def link_dataset(request: LinkDatasetRequest):
                     ds = datasets[0]
                     dataset_info["num_samples"] = ds.num_samples
                     dataset_info["num_features"] = ds.num_features
+                    dataset_info["n_sources"] = ds.n_sources
 
                     # Determine task type
                     task_type_str = None
@@ -231,6 +233,10 @@ async def link_dataset(request: LinkDatasetRequest):
                         if "." in task_type_str:
                             task_type_str = task_type_str.split(".")[-1].lower()
                     dataset_info["task_type"] = task_type_str
+
+                    # Get signal types
+                    if ds.signal_types:
+                        dataset_info["signal_types"] = [st.value for st in ds.signal_types]
 
                     # Try to detect/set targets if not already configured
                     config = dataset_info.get("config", {})
@@ -250,16 +256,23 @@ async def link_dataset(request: LinkDatasetRequest):
                     elif "targets" in config:
                         dataset_info["targets"] = config["targets"]
 
-                    # Update stored info in global dataset registry
-                    update_data = {}
-                    if "num_samples" in dataset_info:
-                        update_data["stats"] = dataset_info.get("stats", {})
-                        update_data["stats"]["num_samples"] = dataset_info["num_samples"]
-                        update_data["stats"]["num_features"] = dataset_info.get("num_features", 0)
+                    # Set default target if available
+                    if dataset_info.get("targets") and not dataset_info.get("default_target"):
+                        dataset_info["default_target"] = dataset_info["targets"][0].get("column")
+
+                    # Update stored info in global dataset registry with root-level fields
+                    update_data = {
+                        "num_samples": dataset_info.get("num_samples"),
+                        "num_features": dataset_info.get("num_features"),
+                        "n_sources": dataset_info.get("n_sources", 1),
+                        "task_type": dataset_info.get("task_type"),
+                        "signal_types": dataset_info.get("signal_types", []),
+                        "targets": dataset_info.get("targets", []),
+                        "default_target": dataset_info.get("default_target"),
+                    }
                     if "config" in dataset_info:
                         update_data["config"] = dataset_info["config"]
-                    if update_data:
-                        workspace_manager.update_dataset(dataset_info["id"], update_data)
+                    workspace_manager.update_dataset(dataset_info["id"], update_data)
         except ImportError:
             pass
         except Exception as e:
@@ -1905,14 +1918,39 @@ async def get_workspace_predictions_data(
                 # Use vectorized operations instead of iterrows() for 10-100x speedup
                 subset = df[available_columns].copy()
 
-                # Replace NaN with None in one vectorized operation
-                subset = subset.where(pd.notna(subset), None)
-
                 # Convert to records (much faster than iterrows)
                 records = subset.to_dict('records')
 
-                # Add source info and parse JSON fields
+                # Add source info, parse JSON fields, and clean NaN values
                 source_file_str = str(parquet_file)
+
+                def clean_nan(obj):
+                    """Recursively clean NaN/Inf values from an object for JSON serialization."""
+                    import math
+                    import numpy as np
+                    if isinstance(obj, dict):
+                        return {k: clean_nan(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [clean_nan(v) for v in obj]
+                    # Handle numpy float types explicitly
+                    elif isinstance(obj, (float, np.floating)):
+                        try:
+                            if math.isnan(obj) or math.isinf(obj):
+                                return None
+                        except (TypeError, ValueError):
+                            pass
+                        return float(obj)  # Convert numpy float to Python float
+                    # Handle numpy integers
+                    elif isinstance(obj, np.integer):
+                        return int(obj)
+                    # Catch-all for pandas NA
+                    try:
+                        if pd.isna(obj):
+                            return None
+                    except (TypeError, ValueError):
+                        pass
+                    return obj
+
                 for record in records:
                     record["source_dataset"] = dataset_name
                     record["source_file"] = source_file_str
@@ -1926,6 +1964,10 @@ async def get_workspace_predictions_data(
                             except (json.JSONDecodeError, TypeError):
                                 pass
 
+                    # Clean NaN/Inf values recursively (must happen after JSON parsing)
+                    for key in list(record.keys()):
+                        record[key] = clean_nan(record[key])
+
                 all_records.extend(records)
             except Exception as e:
                 # Log but continue with other files
@@ -1935,18 +1977,142 @@ async def get_workspace_predictions_data(
         total = len(all_records)
         paginated = all_records[offset:offset + limit]
 
-        return {
+        # Use custom JSON encoding to handle any remaining NaN/Inf values
+        import math
+        import numpy as np
+
+        class NaNSafeEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, (np.floating, float)):
+                    if math.isnan(obj) or math.isinf(obj):
+                        return None
+                    return float(obj)
+                if isinstance(obj, np.integer):
+                    return int(obj)
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return super().default(obj)
+
+            def encode(self, obj):
+                # Override to handle NaN in nested structures
+                def sanitize(o):
+                    if isinstance(o, dict):
+                        return {k: sanitize(v) for k, v in o.items()}
+                    elif isinstance(o, list):
+                        return [sanitize(v) for v in o]
+                    elif isinstance(o, (float, np.floating)):
+                        if math.isnan(o) or math.isinf(o):
+                            return None
+                        return float(o)
+                    elif isinstance(o, np.integer):
+                        return int(o)
+                    return o
+                return super().encode(sanitize(obj))
+
+        response_data = {
             "records": paginated,
             "total": total,
             "limit": limit,
             "offset": offset,
             "has_more": offset + limit < total,
         }
+
+        # Return with custom JSON encoding to handle NaN/Inf
+        json_str = json.dumps(response_data, cls=NaNSafeEncoder)
+        return Response(content=json_str, media_type="application/json")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to read predictions data: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/predictions/{prediction_id}/scatter")
+async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
+    """Get scatter plot data (y_true vs y_pred) for a specific prediction.
+
+    Loads the actual arrays from the .arrays.parquet file to display
+    real prediction vs actual values in the quick view charts.
+
+    Returns:
+        - y_true: Actual values array
+        - y_pred: Predicted values array
+        - n_samples: Number of data points
+        - partition: Data partition (train/val/test)
+    """
+    try:
+        from nirs4all.data.predictions import Predictions
+
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        workspace_path = Path(ws.path)
+
+        # Find all .meta.parquet files
+        parquet_files = list(workspace_path.glob("*.meta.parquet"))
+
+        if not parquet_files:
+            raise HTTPException(status_code=404, detail="No predictions found in workspace")
+
+        # Search for the prediction in all parquet files
+        for meta_file in parquet_files:
+            arrays_file = meta_file.with_name(
+                meta_file.name.replace(".meta.parquet", ".arrays.parquet")
+            )
+
+            if not arrays_file.exists():
+                continue
+
+            try:
+                # Load predictions with array hydration
+                pred_storage = Predictions()
+                pred_storage.load_from_file(str(meta_file), merge=False)
+
+                # Try to get the prediction by ID
+                prediction = pred_storage.get_prediction_by_id(prediction_id, load_arrays=True)
+
+                if prediction:
+                    y_true = prediction.get('y_true')
+                    y_pred = prediction.get('y_pred')
+
+                    # Handle empty or missing arrays
+                    if y_true is None or y_pred is None:
+                        continue
+
+                    # Convert numpy arrays to lists for JSON serialization
+                    import numpy as np
+                    y_true_list = y_true.tolist() if isinstance(y_true, np.ndarray) else list(y_true) if y_true is not None else []
+                    y_pred_list = y_pred.tolist() if isinstance(y_pred, np.ndarray) else list(y_pred) if y_pred is not None else []
+
+                    # Skip if arrays are empty
+                    if not y_true_list or not y_pred_list:
+                        continue
+
+                    return {
+                        "prediction_id": prediction_id,
+                        "y_true": y_true_list,
+                        "y_pred": y_pred_list,
+                        "n_samples": len(y_true_list),
+                        "partition": prediction.get('partition', 'unknown'),
+                        "model_name": prediction.get('model_name', 'unknown'),
+                        "dataset_name": prediction.get('dataset_name', 'unknown'),
+                    }
+            except Exception as e:
+                # Continue searching in other files
+                print(f"Error reading {meta_file}: {e}")
+                continue
+
+        raise HTTPException(
+            status_code=404,
+            detail=f"Prediction '{prediction_id}' not found or has no scatter data"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get scatter data: {str(e)}"
         )
 
 

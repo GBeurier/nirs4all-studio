@@ -145,7 +145,7 @@ export function AppSidebar() {
       <div className="flex h-40 items-center justify-center border-b border-border/50 px-2">
         <img
           src="/nirs4all_logo.png"
-          alt="nirs4all"
+          alt="nirs4all Studio"
           className="h-32 w-full object-contain"
         />
       </div>

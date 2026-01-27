@@ -1,6 +1,6 @@
 /**
  * File dialog utilities for native desktop integration
- * Supports both Electron and PyWebView environments
+ * Supports Electron environment
  */
 
 /**
@@ -11,17 +11,10 @@ export function isElectron(): boolean {
 }
 
 /**
- * Check if running in PyWebView environment
- */
-export function isPyWebView(): boolean {
-  return typeof window !== "undefined" && !!window.pywebview;
-}
-
-/**
- * Check if running in any desktop environment
+ * Check if running in desktop environment (Electron)
  */
 export function isDesktop(): boolean {
-  return isElectron() || isPyWebView();
+  return isElectron();
 }
 
 /**
@@ -32,11 +25,21 @@ export async function selectFolder(): Promise<string | null> {
   if (isElectron() && window.electronApi) {
     return await window.electronApi.selectFolder();
   }
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.select_folder();
-  }
   // Browser fallback
   return prompt("Enter folder path:");
+}
+
+/**
+ * Confirm a dropped folder by opening a folder dialog
+ * Used when drag-drop doesn't provide the folder path (Electron limitation)
+ * @param folderName - The name of the dropped folder
+ */
+export async function confirmDroppedFolder(folderName: string): Promise<string | null> {
+  if (isElectron() && window.electronApi?.confirmDroppedFolder) {
+    return await window.electronApi.confirmDroppedFolder(folderName);
+  }
+  // Browser fallback
+  return prompt(`Enter path for folder "${folderName}":`);
 }
 
 /**
@@ -48,9 +51,6 @@ export async function selectFile(
 ): Promise<string | string[] | null> {
   if (isElectron() && window.electronApi) {
     return await window.electronApi.selectFile(fileTypes, allowMultiple);
-  }
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.select_file(fileTypes, allowMultiple);
   }
   // Browser fallback
   const path = prompt("Enter file path:");
@@ -67,9 +67,6 @@ export async function saveFile(
   if (isElectron() && window.electronApi) {
     return await window.electronApi.saveFile(defaultFilename, fileTypes);
   }
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.save_file(defaultFilename, fileTypes);
-  }
   // Browser fallback
   return prompt("Enter save path:", defaultFilename);
 }
@@ -80,9 +77,6 @@ export async function saveFile(
 export async function revealInExplorer(filePath: string): Promise<void> {
   if (isElectron() && window.electronApi) {
     return await window.electronApi.revealInExplorer(filePath);
-  }
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.reveal_in_explorer(filePath);
   }
   // No browser fallback
   console.warn("revealInExplorer is not available in browser mode");
@@ -95,20 +89,17 @@ export async function openExternal(url: string): Promise<void> {
   if (isElectron() && window.electronApi) {
     return await window.electronApi.openExternal(url);
   }
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.open_external(url);
-  }
   // Browser fallback
   window.open(url, "_blank");
 }
 
 /**
  * Resize the desktop window
- * Only available in desktop mode (PyWebView/Electron)
+ * Only available in desktop mode (Electron)
  */
 export async function resizeWindow(width: number, height: number): Promise<boolean> {
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.resize_window(width, height);
+  if (isElectron() && window.electronApi) {
+    return await window.electronApi.resizeWindow(width, height);
   }
   // Not available in browser
   return false;
@@ -119,8 +110,8 @@ export async function resizeWindow(width: number, height: number): Promise<boole
  * Only available in desktop mode
  */
 export async function minimizeWindow(): Promise<boolean> {
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.minimize_window();
+  if (isElectron() && window.electronApi) {
+    return await window.electronApi.minimizeWindow();
   }
   return false;
 }
@@ -130,8 +121,8 @@ export async function minimizeWindow(): Promise<boolean> {
  * Only available in desktop mode
  */
 export async function maximizeWindow(): Promise<boolean> {
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.maximize_window();
+  if (isElectron() && window.electronApi) {
+    return await window.electronApi.maximizeWindow();
   }
   return false;
 }
@@ -141,8 +132,8 @@ export async function maximizeWindow(): Promise<boolean> {
  * Only available in desktop mode
  */
 export async function restoreWindow(): Promise<boolean> {
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.restore_window();
+  if (isElectron() && window.electronApi) {
+    return await window.electronApi.restoreWindow();
   }
   return false;
 }
@@ -152,8 +143,8 @@ export async function restoreWindow(): Promise<boolean> {
  * Only available in desktop mode
  */
 export async function getWindowSize(): Promise<{ width: number; height: number } | null> {
-  if (isPyWebView() && window.pywebview) {
-    return await window.pywebview.api.get_window_size();
+  if (isElectron() && window.electronApi) {
+    return await window.electronApi.getWindowSize();
   }
   // Browser fallback - return viewport size
   return {

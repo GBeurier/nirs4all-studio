@@ -989,13 +989,13 @@ async def _execute_pipeline_training(
         except ImportError as e:
             raise ValueError(f"nirs4all is required for training: {e}")
 
-        # Resolve dataset path
-        from .nirs4all_adapter import resolve_dataset_path, build_full_pipeline, ensure_models_dir, expand_pipeline_variants
+        # Build dataset config with proper loading parameters (delimiter, etc.)
+        from .nirs4all_adapter import build_dataset_config, build_full_pipeline, ensure_models_dir, expand_pipeline_variants
         try:
-            dataset_path = resolve_dataset_path(dataset_id)
-            log(f"[INFO] Dataset path: {dataset_path}")
+            dataset_config = build_dataset_config(dataset_id)
+            log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
         except Exception as e:
-            raise ValueError(f"Dataset '{dataset_id}' not found: {e}")
+            raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
 
         # Build pipeline - handle expanded variants vs full pipelines
         nirs4all_steps = None
@@ -1044,28 +1044,36 @@ async def _execute_pipeline_training(
             raise ValueError("No pipeline steps provided")
 
         # Execute using nirs4all.run()
-        log(f"[INFO] Executing nirs4all.run() on {dataset_path}...")
+        log(f"[INFO] Executing nirs4all.run() with dataset config...")
         log(f"[INFO] Training {model_name}...")
 
         result = nirs4all.run(
             pipeline=nirs4all_steps,
-            dataset=dataset_path,
+            dataset=dataset_config,
             verbose=1,
             save_artifacts=True,
             save_charts=False,
             plots_visible=False,
+            workspace_path=workspace_path,
         )
 
         log("[INFO] Training completed, extracting metrics...")
 
         # Extract metrics using RunResult properties
+        # Note: best_rmse/best_r2 return float('nan') when unavailable, not None
         metrics = {}
-        if hasattr(result, 'best_rmse') and result.best_rmse is not None:
-            metrics['rmse'] = float(result.best_rmse)
-        if hasattr(result, 'best_r2') and result.best_r2 is not None:
-            metrics['r2'] = float(result.best_r2)
-        if hasattr(result, 'best_score') and result.best_score is not None:
-            metrics['score'] = float(result.best_score)
+        if hasattr(result, 'best_rmse'):
+            rmse_val = result.best_rmse
+            if rmse_val is not None and not math.isnan(rmse_val):
+                metrics['rmse'] = float(rmse_val)
+        if hasattr(result, 'best_r2'):
+            r2_val = result.best_r2
+            if r2_val is not None and not math.isnan(r2_val):
+                metrics['r2'] = float(r2_val)
+        if hasattr(result, 'best_score'):
+            score_val = result.best_score
+            if score_val is not None and not math.isnan(score_val):
+                metrics['score'] = float(score_val)
 
         # Compute RPD if we have rmse
         if 'rmse' in metrics and metrics['rmse'] > 0:

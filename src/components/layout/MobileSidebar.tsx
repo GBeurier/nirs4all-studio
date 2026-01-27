@@ -146,7 +146,7 @@ export function MobileSidebar() {
                   </div>
                   <div className="flex flex-col">
                     <span className="text-base font-semibold text-foreground">
-                      nirs4all
+                      nirs4all Studio
                     </span>
                     <span className="text-xs text-muted-foreground">
                       NIRS Analysis

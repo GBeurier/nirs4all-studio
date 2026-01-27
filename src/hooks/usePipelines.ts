@@ -265,7 +265,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
 
   // Filtered and sorted pipelines
   const filteredPipelines = useMemo(() => {
-    let result = pipelines.filter((p) => {
+    const result = pipelines.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||

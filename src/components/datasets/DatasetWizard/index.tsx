@@ -135,8 +135,27 @@ function DataStats() {
   const xFiles = state.files.filter(f => f.type === "X");
   const yFiles = state.files.filter(f => f.type === "Y");
 
-  // Trigger validation when files are detected
+  // Check if we're in web mode (no filesystem access)
+  const isWebMode = !state.basePath && state.fileBlobs.size > 0;
+
+  // Trigger validation when files are detected (desktop mode only)
   const runValidation = useCallback(async () => {
+    // Skip validation in web mode - files aren't accessible by path
+    if (isWebMode) {
+      // In web mode, use file info from the File objects or skip validation
+      const shapes: Record<string, { num_rows?: number; num_columns?: number }> = {};
+      for (const f of state.files.filter(f => f.type === "X" || f.type === "Y")) {
+        // Use any pre-detected info if available
+        if (f.num_rows && f.num_columns) {
+          shapes[f.path] = { num_rows: f.num_rows, num_columns: f.num_columns };
+        }
+      }
+      if (Object.keys(shapes).length > 0) {
+        dispatch({ type: "SET_VALIDATED_SHAPES", payload: shapes });
+      }
+      return;
+    }
+
     if (!state.basePath || state.files.length === 0 || state.isValidating) return;
 
     // Only validate X and Y files
@@ -159,7 +178,7 @@ function DataStats() {
         payload: error instanceof Error ? error.message : "Failed to validate files",
       });
     }
-  }, [state.basePath, state.files, state.parsing, state.isValidating, dispatch]);
+  }, [state.basePath, state.files, state.parsing, state.isValidating, isWebMode, dispatch]);
 
   // Auto-validate when files change (but only once per file set)
   useEffect(() => {
@@ -244,8 +263,8 @@ function DataStats() {
     );
   }
 
-  // Global validation error
-  if (state.validationError) {
+  // Global validation error (only show in desktop mode)
+  if (state.validationError && !isWebMode) {
     return (
       <div className="flex items-center gap-2 text-xs text-destructive mb-4 px-2 py-2 bg-destructive/10 rounded-md">
         <span>Error loading files: {state.validationError}</span>
@@ -253,14 +272,18 @@ function DataStats() {
     );
   }
 
-  // Helper to format shape or error
-  const formatShape = (shape: { rows: number; cols: number; hasError: boolean }, rowsOverride?: number) => {
-    if (shape.hasError) {
+  // Helper to format shape, pending state, or file count
+  const formatShape = (shape: { rows: number; cols: number; hasError: boolean }, files: typeof xTrainFiles, rowsOverride?: number) => {
+    if (shape.hasError && !isWebMode) {
       return <span className="text-destructive">Error</span>;
     }
     const rows = rowsOverride ?? shape.rows;
     if (rows > 0 && shape.cols > 0) {
       return <span className="text-foreground">({rows}, {shape.cols})</span>;
+    }
+    // In web mode or when validation is pending, show file count
+    if (files.length > 0) {
+      return <span className="text-muted-foreground">{files.length} file{files.length !== 1 ? "s" : ""}</span>;
     }
     return <span className="text-muted-foreground">?</span>;
   };
@@ -275,14 +298,14 @@ function DataStats() {
             <span>
               <span className="text-primary">X</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(xTrainShape)}
+              {formatShape(xTrainShape, xTrainFiles)}
             </span>
           )}
           {yTrainFiles.length > 0 && (
             <span>
               <span className="text-primary">Y</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(yTrainShape, xTrainShape.rows)}
+              {formatShape(yTrainShape, yTrainFiles, xTrainShape.rows)}
             </span>
           )}
         </div>
@@ -296,14 +319,14 @@ function DataStats() {
             <span>
               <span className="text-primary">X</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(xTestShape)}
+              {formatShape(xTestShape, xTestFiles)}
             </span>
           )}
           {yTestFiles.length > 0 && (
             <span>
               <span className="text-primary">Y</span>
               <span className="text-muted-foreground">=</span>
-              {formatShape(yTestShape, xTestShape.rows)}
+              {formatShape(yTestShape, yTestFiles, xTestShape.rows)}
             </span>
           )}
         </div>

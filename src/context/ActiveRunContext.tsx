@@ -237,11 +237,23 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
         connectToRun(run.id, run.name, run.status);
       }
 
-      // Remove completed/failed runs after 30 seconds
+      // Update status and remove completed/failed runs
       for (const [runId, state] of updated) {
         if (!activeRunIds.has(runId)) {
+          // Run is no longer in active list - it has completed or failed
+          if (state.status === "running" || state.status === "queued") {
+            // Update status to completed (or failed via WebSocket)
+            updated.set(runId, {
+              ...state,
+              status: "completed",
+              progress: 100,
+              updatedAt: Date.now(),
+            });
+          }
+
+          // Remove from map after 5 seconds (allow brief display of completion)
           const elapsed = Date.now() - state.updatedAt;
-          if (elapsed > 30000) {
+          if (elapsed > 5000 && state.status !== "running" && state.status !== "queued") {
             updated.delete(runId);
             disconnectFromRun(runId);
           }

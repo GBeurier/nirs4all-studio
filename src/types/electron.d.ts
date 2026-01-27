@@ -28,6 +28,14 @@ interface ElectronApi {
   selectFolder(): Promise<string | null>;
 
   /**
+   * Confirm a dropped folder by opening a folder dialog
+   * Used when drag-drop doesn't provide the folder path
+   * @param folderName - The name of the dropped folder
+   * @returns The selected folder path or null if cancelled
+   */
+  confirmDroppedFolder(folderName: string): Promise<string | null>;
+
+  /**
    * Open a native file picker dialog
    * @param fileTypes - Optional array of file extensions to filter (e.g., ['.csv', '.xlsx'])
    * @param allowMultiple - Whether to allow selecting multiple files
@@ -58,6 +66,31 @@ interface ElectronApi {
    * Open a URL in the system default browser
    */
   openExternal(url: string): Promise<void>;
+
+  /**
+   * Resize the window to specified dimensions
+   */
+  resizeWindow(width: number, height: number): Promise<boolean>;
+
+  /**
+   * Minimize the window
+   */
+  minimizeWindow(): Promise<boolean>;
+
+  /**
+   * Toggle maximize/restore the window
+   */
+  maximizeWindow(): Promise<boolean>;
+
+  /**
+   * Restore the window from minimized state
+   */
+  restoreWindow(): Promise<boolean>;
+
+  /**
+   * Get current window size
+   */
+  getWindowSize(): Promise<{ width: number; height: number } | null>;
 
   /**
    * Get the port the backend is running on
@@ -95,6 +128,13 @@ interface ElectronApi {
    * Flag indicating this is running in Electron
    */
   isElectron: true;
+
+  /**
+   * Get the filesystem path for a dropped File object
+   * Uses Electron's webUtils API to resolve the real path
+   * Works for both files and folders
+   */
+  getPathForFile(file: File): string;
 }
 
 declare global {
