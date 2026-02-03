@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -47,6 +48,7 @@ import {
   updateDataLoadingDefaults,
 } from "@/api/client";
 import type { DataLoadingDefaults } from "@/types/settings";
+import type { NaFillConfig } from "@/types/datasets";
 import { DEFAULT_DATA_LOADING_DEFAULTS } from "@/types/settings";
 
 interface FormFieldProps {
@@ -304,28 +306,87 @@ export function DataLoadingDefaultsForm({
         <Separator />
 
         {/* Missing Data Handling */}
-        <FormField
-          label={t("settings.dataDefaults.missing.title")}
-          description={t("settings.dataDefaults.missing.description")}
-        >
-          <Select
-            value={defaults.na_policy}
-            onValueChange={(value) =>
-              updateDefault("na_policy", value as DataLoadingDefaults["na_policy"])
-            }
+        <div className="space-y-4">
+          <FormField
+            label={t("settings.dataDefaults.missing.title")}
+            description={t("settings.dataDefaults.missing.description")}
           >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="drop">{t("settings.dataDefaults.missing.policies.drop")}</SelectItem>
-              <SelectItem value="fill_mean">{t("settings.dataDefaults.missing.policies.fill_mean")}</SelectItem>
-              <SelectItem value="fill_median">{t("settings.dataDefaults.missing.policies.fill_median")}</SelectItem>
-              <SelectItem value="fill_zero">{t("settings.dataDefaults.missing.policies.fill_zero")}</SelectItem>
-              <SelectItem value="error">{t("settings.dataDefaults.missing.policies.error")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormField>
+            <Select
+              value={defaults.na_policy}
+              onValueChange={(value) => {
+                updateDefault("na_policy", value as DataLoadingDefaults["na_policy"]);
+                // Clear fill config when switching away from replace
+                if (value !== "replace") {
+                  setDefaults((prev) => {
+                    const { na_fill_config: _, ...rest } = prev;
+                    return rest as DataLoadingDefaults;
+                  });
+                }
+              }}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">{t("settings.dataDefaults.missing.policies.auto")}</SelectItem>
+                <SelectItem value="abort">{t("settings.dataDefaults.missing.policies.abort")}</SelectItem>
+                <SelectItem value="remove_sample">{t("settings.dataDefaults.missing.policies.remove_sample")}</SelectItem>
+                <SelectItem value="remove_feature">{t("settings.dataDefaults.missing.policies.remove_feature")}</SelectItem>
+                <SelectItem value="replace">{t("settings.dataDefaults.missing.policies.replace")}</SelectItem>
+                <SelectItem value="ignore">{t("settings.dataDefaults.missing.policies.ignore")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          {defaults.na_policy === "replace" && (
+            <div className="ml-4 border-l-2 border-muted pl-4 space-y-4">
+              <FormField
+                label={t("settings.dataDefaults.missing.fillMethod")}
+                description={t("settings.dataDefaults.missing.fillMethodDescription")}
+              >
+                <Select
+                  value={defaults.na_fill_config?.method || "mean"}
+                  onValueChange={(value) =>
+                    updateDefault("na_fill_config", {
+                      ...defaults.na_fill_config,
+                      method: value as NaFillConfig["method"],
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="value">{t("settings.dataDefaults.missing.fillMethods.value")}</SelectItem>
+                    <SelectItem value="mean">{t("settings.dataDefaults.missing.fillMethods.mean")}</SelectItem>
+                    <SelectItem value="median">{t("settings.dataDefaults.missing.fillMethods.median")}</SelectItem>
+                    <SelectItem value="forward_fill">{t("settings.dataDefaults.missing.fillMethods.forward_fill")}</SelectItem>
+                    <SelectItem value="backward_fill">{t("settings.dataDefaults.missing.fillMethods.backward_fill")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              {defaults.na_fill_config?.method === "value" && (
+                <FormField
+                  label={t("settings.dataDefaults.missing.fillValue")}
+                  description={t("settings.dataDefaults.missing.fillValueDescription")}
+                >
+                  <Input
+                    type="number"
+                    className="w-24"
+                    value={defaults.na_fill_config?.fill_value ?? 0}
+                    onChange={(e) =>
+                      updateDefault("na_fill_config", {
+                        ...defaults.na_fill_config!,
+                        fill_value: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </FormField>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Feedback Messages */}
         {saved && (

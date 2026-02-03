@@ -2,6 +2,7 @@
  * Settings and Workspace Statistics type definitions for nirs4all webapp
  * Phase 5 Implementation
  */
+import type { NaPolicy, NaFillConfig } from "./datasets";
 
 /**
  * Space usage for a single category
@@ -59,7 +60,8 @@ export interface DataLoadingDefaults {
   has_header: boolean;
   header_unit: "nm" | "cm-1" | "text" | "none" | "index";
   signal_type: "absorbance" | "reflectance" | "reflectance%" | "transmittance" | "transmittance%" | "auto";
-  na_policy: "drop" | "fill_mean" | "fill_median" | "fill_zero" | "error";
+  na_policy: NaPolicy;
+  na_fill_config?: NaFillConfig;
   auto_detect: boolean;
 }
 
@@ -201,7 +203,7 @@ export const DEFAULT_DATA_LOADING_DEFAULTS: DataLoadingDefaults = {
   has_header: true,
   header_unit: "nm",
   signal_type: "auto",
-  na_policy: "drop",
+  na_policy: "auto",
   auto_detect: true,
 };
 

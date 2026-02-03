@@ -54,28 +54,27 @@ class PackageInfo:
 
 class VenvManager:
     """
-    Manages a dedicated Python virtual environment for nirs4all.
+    Manages the Python environment for nirs4all dependencies.
 
-    The venv is stored in the user's app data directory by default:
-    - Windows: %LOCALAPPDATA%/nirs4all-webapp/managed_venv/
-    - macOS: ~/Library/Application Support/nirs4all-webapp/managed_venv/
-    - Linux: ~/.local/share/nirs4all-webapp/managed_venv/
+    By default, uses the CURRENT Python environment (the one running the webapp).
+    This means:
+    - In dev mode: uses your activated venv (e.g., .venv in project root)
+    - In production/bundled mode: uses the shipped Python environment
 
-    A custom path can be configured via set_custom_venv_path().
+    A custom path can be configured via set_custom_venv_path() for special cases.
     """
 
-    VENV_DIRNAME = "managed_venv"
     METADATA_FILE = "venv_metadata.json"
     SETTINGS_FILE = "venv_settings.json"
 
     def __init__(self):
-        """Initialize the venv manager with lazy loading."""
+        """Initialize the venv manager."""
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
-        self._default_venv_path = self._app_data_dir / self.VENV_DIRNAME
+        # Default: use the current Python environment
+        self._default_venv_path = Path(sys.prefix)
         self._custom_venv_path: Optional[Path] = None
         self._settings_loaded = False
-        # Defer disk I/O until first access for faster startup
 
     def _ensure_settings_loaded(self) -> None:
         """Ensure settings are loaded (lazy initialization)."""
@@ -184,14 +183,25 @@ class VenvManager:
 
     @property
     def python_executable(self) -> Path:
-        """Get the path to the Python executable in the venv."""
+        """Get the path to the Python executable."""
+        # If using current environment (no custom path), use sys.executable directly
+        if not self._custom_venv_path:
+            return Path(sys.executable)
+        # Custom venv path
         if sys.platform == "win32":
             return self._venv_path / "Scripts" / "python.exe"
         return self._venv_path / "bin" / "python"
 
     @property
     def pip_executable(self) -> Path:
-        """Get the path to pip in the venv."""
+        """Get the path to pip."""
+        # If using current environment, find pip relative to sys.executable
+        if not self._custom_venv_path:
+            python_dir = Path(sys.executable).parent
+            if sys.platform == "win32":
+                return python_dir / "pip.exe"
+            return python_dir / "pip"
+        # Custom venv path
         if sys.platform == "win32":
             return self._venv_path / "Scripts" / "pip.exe"
         return self._venv_path / "bin" / "pip"

@@ -125,7 +125,7 @@ export function GroupsModal({
 
   // Get datasets not in this group
   const getAvailableDatasets = (group: DatasetGroup): Dataset[] => {
-    return datasets.filter((ds) => !group.dataset_ids.includes(ds.id));
+    return datasets.filter((ds) => !group.dataset_ids?.includes(ds.id));
   };
 
   const startEdit = (group: DatasetGroup) => {
@@ -241,7 +241,7 @@ export function GroupsModal({
                                 {group.name}
                               </h4>
                               <Badge variant="secondary" className="text-xs">
-                                {group.dataset_ids.length} datasets
+                                {group.dataset_ids?.length ?? 0} datasets
                               </Badge>
                             </div>
                             <div className="flex items-center gap-1">
@@ -270,7 +270,7 @@ export function GroupsModal({
 
                       {/* Datasets in group */}
                       <div className="flex flex-wrap gap-1.5 mb-2">
-                        {group.dataset_ids.length === 0 ? (
+                        {!group.dataset_ids?.length ? (
                           <span className="text-sm text-muted-foreground">
                             No datasets assigned
                           </span>

@@ -29,7 +29,7 @@ const SYSTEM_DEFAULT_PARSING: ParsingOptions = {
   has_header: true,
   header_unit: "cm-1",
   signal_type: "auto",
-  na_policy: "keep",
+  na_policy: "auto",
 };
 
 // Convert DataLoadingDefaults to ParsingOptions

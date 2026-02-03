@@ -20,10 +20,10 @@ from fastapi import HTTPException
 
 from .workspace_manager import workspace_manager
 
+# Try direct import
 try:
     import nirs4all
     from nirs4all.data import DatasetConfigs
-
     NIRS4ALL_AVAILABLE = True
 except ImportError as exc:
     nirs4all = None
@@ -86,10 +86,9 @@ class PipelineBuildResult:
 
 
 def require_nirs4all() -> None:
+    """Require nirs4all to be available."""
     if not NIRS4ALL_AVAILABLE:
-        detail = "nirs4all library not available"
-        if "_NIRS4ALL_IMPORT_ERROR" in globals():
-            detail = f"{detail}: {_NIRS4ALL_IMPORT_ERROR}"
+        detail = "nirs4all library not available. Install it in Settings > Dependencies."
         raise HTTPException(status_code=501, detail=detail)
 
 
@@ -212,13 +211,13 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
         if value is not None:
             x_params[key] = value
 
-    # Handle na_policy mapping (webapp uses 'drop', nirs4all uses 'remove')
+    # Pass na_policy directly (webapp and library share the same vocabulary)
     na_policy = config.get("na_policy") or stored_global_params.get("na_policy")
     if na_policy:
-        if na_policy == "drop":
-            global_params["na_policy"] = "remove"
-        else:
-            global_params["na_policy"] = na_policy
+        global_params["na_policy"] = na_policy
+        na_fill_config = config.get("na_fill_config")
+        if na_fill_config:
+            global_params["na_fill_config"] = na_fill_config
 
     if global_params:
         nirs4all_config["global_params"] = global_params

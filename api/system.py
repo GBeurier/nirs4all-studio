@@ -71,9 +71,11 @@ def _get_nirs4all_version() -> str:
     """Try to get nirs4all library version."""
     try:
         import nirs4all
-        return getattr(nirs4all, "__version__", "unknown")
+        return nirs4all.__version__
     except ImportError:
         return "not installed"
+    except AttributeError:
+        return "unknown"
 
 
 def _get_package_versions() -> Dict[str, str]:
@@ -189,7 +191,7 @@ def _get_build_info() -> Dict[str, Any]:
 
 
 def _get_gpu_info() -> Dict[str, Any]:
-    """Get detailed GPU information using nirs4all backend utilities."""
+    """Get detailed GPU information."""
     is_macos = platform.system() == "Darwin"
 
     gpu_info: Dict[str, Any] = {
@@ -201,66 +203,40 @@ def _get_gpu_info() -> Dict[str, Any]:
         "backends": {},
     }
 
+    # Check PyTorch CUDA
     try:
-        from nirs4all.utils.backend import get_gpu_info as n4a_get_gpu_info, is_gpu_available, is_available
-
-        # Get detailed backend info from nirs4all
-        backend_gpu_info = n4a_get_gpu_info()
-
-        # Process torch info
-        if "torch" in backend_gpu_info:
-            torch_info = backend_gpu_info["torch"]
-            if torch_info.get("available"):
-                gpu_info["cuda_available"] = True
-                gpu_info["device_count"] = torch_info.get("device_count", 0)
-                gpu_info["device_name"] = torch_info.get("device_name")
-                gpu_info["backends"]["pytorch_cuda"] = {
-                    "available": True,
-                    "device_name": torch_info.get("device_name"),
-                    "device_count": torch_info.get("device_count", 0),
-                }
-
-            # Check MPS (macOS) separately - nirs4all get_gpu_info checks CUDA only
-            if is_macos and is_available("torch"):
-                try:
-                    import torch
-                    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                        gpu_info["mps_available"] = True
-                        gpu_info["metal_available"] = True
-                        gpu_info["backends"]["pytorch_mps"] = {"available": True}
-                except Exception:
-                    pass
-
-        # Process tensorflow info
-        if "tensorflow" in backend_gpu_info:
-            tf_info = backend_gpu_info["tensorflow"]
-            if tf_info.get("available"):
-                gpu_info["device_count"] = max(gpu_info["device_count"], tf_info.get("device_count", 0))
-                if is_macos:
-                    gpu_info["metal_available"] = True
-                    gpu_info["backends"]["tensorflow_metal"] = {
-                        "available": True,
-                        "devices": tf_info.get("devices", []),
-                    }
-                else:
-                    gpu_info["cuda_available"] = True
-                gpu_info["backends"]["tensorflow"] = {
-                    "available": True,
-                    "devices": tf_info.get("devices", []),
-                }
-
-        # Process jax info
-        if "jax" in backend_gpu_info:
-            jax_info = backend_gpu_info["jax"]
-            gpu_info["backends"]["jax"] = jax_info
-
-        # Store the raw nirs4all info for reference
-        gpu_info["nirs4all_gpu_info"] = backend_gpu_info
-
+        import torch
+        if torch.cuda.is_available():
+            gpu_info["cuda_available"] = True
+            gpu_info["device_count"] = torch.cuda.device_count()
+            if gpu_info["device_count"] > 0:
+                gpu_info["device_name"] = torch.cuda.get_device_name(0)
+            gpu_info["backends"]["pytorch_cuda"] = {
+                "available": True,
+                "device_name": gpu_info["device_name"],
+                "device_count": gpu_info["device_count"],
+            }
+        # Check MPS (Apple Silicon)
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            gpu_info["mps_available"] = True
+            gpu_info["metal_available"] = is_macos
+            gpu_info["backends"]["pytorch_mps"] = {"available": True}
     except ImportError:
-        # nirs4all not available, return minimal info
         pass
-    except Exception:
+
+    # Check TensorFlow GPU
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            gpu_info["backends"]["tensorflow_gpu"] = {
+                "available": True,
+                "device_count": len(gpus),
+            }
+            if not gpu_info["cuda_available"]:
+                gpu_info["cuda_available"] = True
+                gpu_info["device_count"] = len(gpus)
+    except ImportError:
         pass
 
     return gpu_info
@@ -295,54 +271,55 @@ async def system_build():
 async def system_capabilities():
     """Get available capabilities based on installed packages."""
     capabilities = {
-        "basic": True,  # Basic functionality always available
-        "nirs4all": False,  # Core nirs4all library
-        "tensorflow": False,  # Deep learning with TensorFlow
-        "pytorch": False,  # Deep learning with PyTorch
-        "gpu_cuda": False,  # CUDA GPU support
-        "gpu_mps": False,  # Apple MPS support
-        "visualization": False,  # matplotlib/plotly
-        "export_excel": False,  # openpyxl for Excel export
+        "nirs4all": False,
+        "tensorflow": False,
+        "torch": False,
+        "jax": False,
+        "shap": False,
+        "umap": False,
+        "autogluon": False,
     }
 
-    # Check nirs4all
+    # Check each package
     try:
         import nirs4all
         capabilities["nirs4all"] = True
     except ImportError:
         pass
 
-    # Check TensorFlow
     try:
-        import tensorflow as tf
+        import tensorflow
         capabilities["tensorflow"] = True
-        if tf.config.list_physical_devices("GPU"):
-            capabilities["gpu_cuda"] = True
     except ImportError:
         pass
 
-    # Check PyTorch
     try:
         import torch
-        capabilities["pytorch"] = True
-        if torch.cuda.is_available():
-            capabilities["gpu_cuda"] = True
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            capabilities["gpu_mps"] = True
+        capabilities["torch"] = True
     except ImportError:
         pass
 
-    # Check visualization
     try:
-        import matplotlib
-        capabilities["visualization"] = True
+        import jax
+        capabilities["jax"] = True
     except ImportError:
         pass
 
-    # Check Excel export
     try:
-        import openpyxl
-        capabilities["export_excel"] = True
+        import shap
+        capabilities["shap"] = True
+    except ImportError:
+        pass
+
+    try:
+        import umap
+        capabilities["umap"] = True
+    except ImportError:
+        pass
+
+    try:
+        import autogluon
+        capabilities["autogluon"] = True
     except ImportError:
         pass
 

@@ -21,10 +21,14 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-import nirs4all
-from nirs4all.core.metrics import eval_multi
+# Optional imports
+try:
+    import nirs4all
+    NIRS4ALL_AVAILABLE = True
+except ImportError:
+    nirs4all = None
+    NIRS4ALL_AVAILABLE = False
 
-# Optional joblib for legacy model loading
 try:
     import joblib
     JOBLIB_AVAILABLE = True
@@ -446,6 +450,12 @@ async def predict_single(request: PredictSingleRequest):
     Note: preprocessing_chain in request is ignored - the model bundle
     contains all preprocessing steps that will be applied automatically.
     """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available. Install it in Settings > Dependencies.",
+        )
+
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
@@ -457,20 +467,28 @@ async def predict_single(request: PredictSingleRequest):
     X = np.array(request.spectrum).reshape(1, -1)
 
     try:
-        # Use nirs4all.predict() - handles model loading and preprocessing automatically
+        # Use nirs4all.predict() directly
         pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
-        prediction = pred_result.values
+        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
 
         # Format result
-        if prediction.ndim > 1:
-            result = prediction[0].tolist()
+        if predictions is not None and len(predictions) > 0:
+            if isinstance(predictions[0], (list, np.ndarray)):
+                result = list(predictions[0])
+            else:
+                result = float(predictions[0])
         else:
-            result = float(prediction[0])
+            result = None
+
+        # Get preprocessing steps from the bundle if available
+        preprocessing_applied = []
+        if hasattr(pred_result, 'preprocessing_steps'):
+            preprocessing_applied = pred_result.preprocessing_steps
 
         return PredictionResult(
             prediction=result,
             model_id=request.model_id,
-            preprocessing_applied=pred_result.preprocessing_steps,
+            preprocessing_applied=preprocessing_applied,
         )
     except FileNotFoundError:
         raise HTTPException(
@@ -493,6 +511,12 @@ async def predict_batch(request: PredictBatchRequest):
     Note: preprocessing_chain in request is ignored - the model bundle
     contains all preprocessing steps that will be applied automatically.
     """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available. Install it in Settings > Dependencies.",
+        )
+
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
@@ -504,12 +528,15 @@ async def predict_batch(request: PredictBatchRequest):
     X = np.array(request.spectra)
 
     try:
-        # Use nirs4all.predict() - handles model loading and preprocessing automatically
+        # Use nirs4all.predict() directly
         pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
-        predictions = pred_result.values
+        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
+        results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
 
-        # Format results
-        results = predictions.tolist()
+        # Get preprocessing steps from the bundle if available
+        preprocessing_applied = []
+        if hasattr(pred_result, 'preprocessing_steps'):
+            preprocessing_applied = pred_result.preprocessing_steps
 
         # Optionally save results
         if request.save_results:
@@ -521,7 +548,7 @@ async def predict_batch(request: PredictBatchRequest):
                 "model_id": request.model_id,
                 "samples_count": len(request.spectra),
                 "predictions": results,
-                "preprocessing_applied": pred_result.preprocessing_steps,
+                "preprocessing_applied": preprocessing_applied,
                 "created_at": now,
             }
 
@@ -531,7 +558,7 @@ async def predict_batch(request: PredictBatchRequest):
             predictions=results,
             model_id=request.model_id,
             num_samples=len(request.spectra),
-            preprocessing_applied=pred_result.preprocessing_steps,
+            preprocessing_applied=preprocessing_applied,
         )
     except FileNotFoundError:
         raise HTTPException(
@@ -550,11 +577,17 @@ async def predict_dataset(request: PredictDatasetRequest):
     """
     Make predictions on an entire dataset partition.
 
-    Uses nirs4all.predict() to load the model and run prediction on the dataset.
+    Uses nirs4all.predict() to load the model and run prediction.
     Returns predictions along with actual values if available.
     Note: preprocessing_chain in request is ignored - the model bundle
     contains all preprocessing steps that will be applied automatically.
     """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available. Install it in Settings > Dependencies.",
+        )
+
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
@@ -585,25 +618,34 @@ async def predict_dataset(request: PredictDatasetRequest):
         pass
 
     try:
-        # Use nirs4all.predict() - handles model loading and preprocessing automatically
+        # Use nirs4all.predict() directly
         pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
-        predictions = pred_result.values
+        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
+        results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
 
-        # Compute metrics if actual values available using nirs4all.core.metrics
+        # Get preprocessing steps from the bundle if available
+        preprocessing_applied = []
+        if hasattr(pred_result, 'preprocessing_steps'):
+            preprocessing_applied = pred_result.preprocessing_steps
+
+        # Compute metrics if actual values available
         metrics = None
-        if y_true is not None:
-            metrics = eval_multi(y_true, predictions, "regression")
-
-        # Format results
-        results = predictions.tolist()
+        if y_true is not None and len(results) > 0:
+            from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+            y_pred = np.array(results)
+            metrics = {
+                "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+                "r2": float(r2_score(y_true, y_pred)),
+                "mae": float(mean_absolute_error(y_true, y_pred)),
+            }
 
         result_data = {
             "model_id": request.model_id,
             "dataset_id": request.dataset_id,
             "partition": request.partition,
-            "num_samples": len(predictions),
+            "num_samples": len(results),
             "predictions": results,
-            "preprocessing_applied": pred_result.preprocessing_steps,
+            "preprocessing_applied": preprocessing_applied,
             "metrics": metrics,
         }
 
@@ -621,11 +663,11 @@ async def predict_dataset(request: PredictDatasetRequest):
                 "model_id": request.model_id,
                 "dataset_id": request.dataset_id,
                 "partition": request.partition,
-                "samples_count": len(predictions),
+                "samples_count": len(results),
                 "predictions": results,
                 "actual_values": result_data.get("actual_values"),
                 "metrics": metrics,
-                "preprocessing_applied": pred_result.preprocessing_steps,
+                "preprocessing_applied": preprocessing_applied,
                 "created_at": now,
             }
 

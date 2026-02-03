@@ -27,24 +27,17 @@ from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel, Field
 from sklearn.decomposition import PCA
 
-# Optional UMAP import - graceful degradation if not available
+# Check availability via direct imports
 try:
-    from umap import UMAP
+    import umap
     UMAP_AVAILABLE = True
 except ImportError:
     UMAP_AVAILABLE = False
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
 try:
-    from nirs4all.data.dataset import SpectroDataset
-
+    import nirs4all
     NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    print(f"Note: nirs4all not available for playground API: {e}")
+except ImportError:
     NIRS4ALL_AVAILABLE = False
 
 from .shared.pipeline_service import (
@@ -787,7 +780,7 @@ class PlaygroundExecutor:
         """
         if not UMAP_AVAILABLE:
             return {
-                "error": "UMAP not available. Install with: pip install umap-learn",
+                "error": "UMAP not available. Install umap-learn in Settings > Dependencies.",
                 "available": False
             }
 
@@ -804,14 +797,13 @@ class PlaygroundExecutor:
         n_components = min(max(2, n_components), 3)
 
         try:
-            umap_model = UMAP(
+            reducer = umap.UMAP(
                 n_components=n_components,
                 n_neighbors=n_neighbors,
                 min_dist=min_dist,
                 random_state=42,
-                n_jobs=1  # Deterministic, avoid parallel issues
             )
-            X_umap = umap_model.fit_transform(X)
+            X_umap = reducer.fit_transform(X)
         except Exception as e:
             return {
                 "error": str(e),
@@ -1258,7 +1250,7 @@ async def execute_pipeline(request: ExecuteRequest):
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501,
-            detail="nirs4all library not available for playground execution"
+            detail="nirs4all library not available. Install it in Settings > Dependencies."
         )
 
     # Validate input - empty data
@@ -1511,18 +1503,21 @@ async def get_capabilities():
     """Get available playground capabilities.
 
     Returns information about optional features like UMAP availability,
-    which depend on optional dependencies being installed.
+    which depend on optional dependencies being installed in the managed venv.
     """
+    umap_available = UMAP_AVAILABLE
+    nirs4all_available = NIRS4ALL_AVAILABLE
+
     return {
-        "umap_available": UMAP_AVAILABLE,
-        "nirs4all_available": NIRS4ALL_AVAILABLE,
+        "umap_available": umap_available,
+        "nirs4all_available": nirs4all_available,
         "features": {
             "pca": True,
-            "umap": UMAP_AVAILABLE,
+            "umap": umap_available,
             "filters": True,
-            "preprocessing": NIRS4ALL_AVAILABLE,
-            "splitting": NIRS4ALL_AVAILABLE,
-            "augmentation": NIRS4ALL_AVAILABLE,
+            "preprocessing": nirs4all_available,
+            "splitting": nirs4all_available,
+            "augmentation": nirs4all_available,
             "metrics": True,  # Phase 5: Spectral metrics
         }
     }

@@ -1032,7 +1032,7 @@ class DataLoadingDefaults(BaseModel):
     has_header: bool = Field(True, description="Default header setting")
     header_unit: str = Field("nm", description="Default header unit (nm, cm-1, text, none, index)")
     signal_type: str = Field("auto", description="Default signal type")
-    na_policy: str = Field("drop", description="Default NA handling policy")
+    na_policy: str = Field("auto", description="Default NA handling policy")
     auto_detect: bool = Field(True, description="Enable auto-detection")
 
 
@@ -1623,6 +1623,11 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
         all_runs = []
         seen_run_ids = set()
 
+        def normalize_run_id(run_id: str) -> str:
+            """Strip numeric prefix (e.g., '0003_config_xxx' -> 'config_xxx') for deduplication."""
+            import re
+            return re.sub(r'^\d+_', '', run_id)
+
         # Phase 1: Discover runs from manifests (v2 format with templates)
         if source in ("unified", "manifests"):
             scanner = WorkspaceScanner(workspace_path)
@@ -1631,7 +1636,8 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
             for run in manifest_runs:
                 run_id = run.get("id", "")
                 if run_id:
-                    seen_run_ids.add(run_id)
+                    # Normalize ID for deduplication (strip numeric prefix)
+                    seen_run_ids.add(normalize_run_id(run_id))
                 all_runs.append(run)
 
         # Phase 2: Extract additional runs from parquet files (for legacy/ungrouped data)
@@ -1678,9 +1684,11 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
                     # Build run entries from aggregated results
                     for config_name in agg_df.index:
                         config_id = str(config_name)
-                        if config_id in seen_run_ids:
+                        # Normalize for deduplication check (strip numeric prefix if present)
+                        normalized_id = normalize_run_id(config_id)
+                        if normalized_id in seen_run_ids:
                             continue
-                        seen_run_ids.add(config_id)
+                        seen_run_ids.add(normalized_id)
 
                         row = agg_df.loc[config_name]
                         val_score = row.get("val_score") if "val_score" in row.index else None

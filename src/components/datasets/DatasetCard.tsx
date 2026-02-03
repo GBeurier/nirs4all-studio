@@ -74,7 +74,7 @@ export function DatasetCard({
 
   // Find assigned group
   const assignedGroup = groups.find((g) =>
-    g.dataset_ids.includes(dataset.id)
+    g.dataset_ids?.includes(dataset.id)
   );
 
   // Determine if versioning actions should be shown

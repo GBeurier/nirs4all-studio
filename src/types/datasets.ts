@@ -34,7 +34,16 @@ export type HeaderUnit = "nm" | "cm-1" | "text" | "none" | "index";
 /**
  * NA handling policy
  */
-export type NaPolicy = "keep" | "drop" | "fill_mean" | "fill_median" | "fill_zero" | "error";
+export type NaPolicy = "auto" | "abort" | "remove_sample" | "remove_feature" | "replace" | "ignore";
+
+/**
+ * Configuration for NA value replacement (used when na_policy is "replace")
+ */
+export interface NaFillConfig {
+  method: "value" | "mean" | "median" | "forward_fill" | "backward_fill";
+  fill_value?: number;
+  per_column?: boolean;
+}
 
 /**
  * Task type for the dataset
@@ -51,6 +60,8 @@ export interface ParsingOptions {
   header_unit: HeaderUnit;
   signal_type: SignalType;
   na_policy: NaPolicy;
+  /** Configuration for NA replacement (when na_policy is "replace") */
+  na_fill_config?: NaFillConfig;
   /** For Excel files */
   sheet_name?: string;
   /** Skip rows at start */

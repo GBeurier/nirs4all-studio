@@ -28,17 +28,11 @@ from pydantic import BaseModel, Field
 from .workspace_manager import workspace_manager
 from .jobs import job_manager, Job, JobStatus, JobType
 from .nirs4all_adapter import (
-    NIRS4ALL_AVAILABLE,
     require_nirs4all,
-    build_full_pipeline,
     build_dataset_spec,
     extract_metrics_from_prediction,
     ensure_models_dir,
 )
-
-
-if not NIRS4ALL_AVAILABLE:
-    print("Note: nirs4all not available for training API")
 
 
 router = APIRouter()
@@ -392,6 +386,7 @@ def _run_training_task(
         Training result dictionary
     """
     import nirs4all
+    from .nirs4all_adapter import build_full_pipeline, build_dataset_config
 
     config = job.config
     start_time = time.time()
@@ -406,29 +401,36 @@ def _run_training_task(
     pipeline_config = _load_pipeline(config["pipeline_id"])
     steps = pipeline_config.get("steps", [])
 
-    # Build nirs4all pipeline steps
-    build_result = build_full_pipeline(steps, pipeline_config.get("config", {}))
-
-    if not progress_callback(10, "Loading dataset..."):
+    if not progress_callback(10, "Building pipeline..."):
         return {"error": "Cancelled"}
 
-    # Get dataset path
-    dataset_path = build_dataset_spec(config["dataset_id"])
+    # Build nirs4all-compatible pipeline
+    try:
+        build_result = build_full_pipeline(steps)
+        pipeline_steps = build_result.steps
+    except Exception as e:
+        raise ValueError(f"Failed to build pipeline: {str(e)}")
 
-    if not progress_callback(15, "Starting training with nirs4all.run()..."):
+    if not progress_callback(15, "Loading dataset..."):
         return {"error": "Cancelled"}
 
-    # Run training using nirs4all.run()
+    # Get dataset configuration
+    try:
+        dataset_config = build_dataset_config(config["dataset_id"])
+    except Exception as e:
+        # Fall back to path-based loading
+        dataset_config = build_dataset_spec(config["dataset_id"])
+
+    if not progress_callback(20, "Starting training..."):
+        return {"error": "Cancelled"}
+
+    # Run training with nirs4all
     try:
         result = nirs4all.run(
-            pipeline=build_result.steps,
-            dataset=dataset_path,
+            pipeline=pipeline_steps,
+            dataset=dataset_config,
             verbose=config.get("verbose", 1),
-            save_artifacts=True,
-            save_charts=False,
-            plots_visible=False,
             random_state=config.get("random_state"),
-            workspace_path=config["workspace_path"],
         )
     except Exception as e:
         raise ValueError(f"Training failed: {str(e)}")
@@ -437,48 +439,49 @@ def _run_training_task(
         return {"error": "Cancelled"}
 
     # Extract metrics from the result
-    best_prediction = result.best
-    best_metrics = extract_metrics_from_prediction(best_prediction) if best_prediction else {}
+    best_metrics = {}
+    if hasattr(result, 'best_rmse') and result.best_rmse is not None:
+        best_metrics["rmse"] = float(result.best_rmse)
+    if hasattr(result, 'best_r2') and result.best_r2 is not None:
+        best_metrics["r2"] = float(result.best_r2)
+    if hasattr(result, 'best_score') and result.best_score is not None:
+        best_metrics["score"] = float(result.best_score)
+    if hasattr(result, 'best_accuracy') and result.best_accuracy is not None:
+        best_metrics["accuracy"] = float(result.best_accuracy)
 
-    # Get all predictions for history
-    history = []
-    all_predictions = result.top(n=result.num_predictions)
-    for idx, pred in enumerate(all_predictions):
-        pred_metrics = extract_metrics_from_prediction(pred)
-        history.append({
-            "variant": idx + 1,
-            "model": pred.get("model_name", "Unknown"),
-            "metrics": pred_metrics,
-        })
+    # Get result details
+    n_variants = len(result) if hasattr(result, '__len__') else 1
+    model_name = "Unknown"
+    if hasattr(result, 'top') and callable(result.top):
+        try:
+            top_result = result.top(1)
+            if top_result and len(top_result) > 0:
+                model_name = getattr(top_result[0], 'model_name', 'Unknown')
+        except Exception:
+            pass
 
     # Update job metrics
     job_manager.update_job_metrics(
         job.id,
         {
-            "current_epoch": len(history),
+            "current_epoch": n_variants,
             "train": best_metrics,
             "best": {
-                "model_name": best_prediction.get("model_name", "Unknown") if best_prediction else "Unknown",
+                "model_name": model_name,
                 "metrics": best_metrics,
             },
         },
         append_history=False,
     )
 
-    # Save model if configured
+    # Export model if requested
     model_path = None
-    if config.get("save_best_model", True) and best_prediction:
-        if not progress_callback(90, "Saving model..."):
-            return {"error": "Cancelled"}
-
+    if config.get("save_best_model", True):
         try:
             models_dir = ensure_models_dir(config["workspace_path"])
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_filename = f"{config['pipeline_id']}_{job.id}_{timestamp}.n4a"
-            export_path = models_dir / model_filename
-
-            result.export(str(export_path))
-            model_path = str(export_path)
+            model_filename = f"{config['pipeline_id']}_{config['dataset_id']}"
+            model_path = str(models_dir / f"{model_filename}.n4a")
+            result.export(model_path)
         except Exception as e:
             print(f"Warning: Failed to export model: {e}")
 
@@ -488,7 +491,7 @@ def _run_training_task(
     _send_training_completion_notification(
         job.id,
         best_metrics,
-        len(history),
+        n_variants,
     )
 
     duration = time.time() - start_time
@@ -497,12 +500,12 @@ def _run_training_task(
     return {
         "final_metrics": best_metrics,
         "best_metrics": {
-            "model_name": best_prediction.get("model_name", "Unknown") if best_prediction else "Unknown",
+            "model_name": model_name,
             "metrics": best_metrics,
         },
         "model_path": model_path,
-        "total_variants": len(history),
-        "num_predictions": result.num_predictions,
+        "total_variants": n_variants,
+        "num_predictions": n_variants,
         "duration_seconds": duration,
     }
 

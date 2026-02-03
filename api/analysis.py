@@ -38,7 +38,6 @@ except ImportError:
 
 try:
     import umap
-
     UMAP_AVAILABLE = True
 except ImportError:
     UMAP_AVAILABLE = False
@@ -405,7 +404,7 @@ async def compute_tsne(request: TSNERequest):
 
 
 @router.post("/analysis/umap", response_model=UMAPResult)
-async def compute_umap(request: UMAPRequest):
+async def compute_umap_endpoint(request: UMAPRequest):
     """
     Compute UMAP embedding on dataset spectra.
 
@@ -414,7 +413,7 @@ async def compute_umap(request: UMAPRequest):
     if not UMAP_AVAILABLE:
         raise HTTPException(
             status_code=501,
-            detail="UMAP not available. Install with: pip install umap-learn",
+            detail="UMAP not available. Install umap-learn in Settings > Dependencies.",
         )
 
     # Load dataset
@@ -428,15 +427,17 @@ async def compute_umap(request: UMAPRequest):
     n_neighbors = min(request.n_neighbors, n_samples - 1)
 
     # Compute UMAP
-    reducer = umap.UMAP(
-        n_components=request.n_components,
-        n_neighbors=n_neighbors,
-        min_dist=request.min_dist,
-        metric=request.metric,
-        random_state=request.random_state,
-    )
-
-    embedding = reducer.fit_transform(X)
+    try:
+        reducer = umap.UMAP(
+            n_components=request.n_components,
+            n_neighbors=n_neighbors,
+            min_dist=request.min_dist,
+            metric=request.metric,
+            random_state=request.random_state,
+        )
+        embedding = reducer.fit_transform(X)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"UMAP computation failed: {e}")
 
     return UMAPResult(
         dataset_id=request.dataset_id,

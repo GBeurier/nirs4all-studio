@@ -66,7 +66,7 @@ const DEFAULT_PARSING: ParsingOptions = {
   has_header: true,
   header_unit: "cm-1",
   signal_type: "auto",
-  na_policy: "keep",
+  na_policy: "auto",
 };
 
 // Options for selects
@@ -101,12 +101,12 @@ const SIGNAL_TYPE_OPTIONS: { value: SignalType; label: string }[] = [
 ];
 
 const NA_POLICY_OPTIONS: { value: NaPolicy; label: string }[] = [
-  { value: "keep", label: "Keep NA values" },
-  { value: "drop", label: "Drop rows with NA" },
-  { value: "fill_mean", label: "Fill with mean" },
-  { value: "fill_median", label: "Fill with median" },
-  { value: "fill_zero", label: "Fill with zero" },
-  { value: "error", label: "Error on NA" },
+  { value: "auto", label: "Auto (abort on NA)" },
+  { value: "abort", label: "Abort on NA" },
+  { value: "remove_sample", label: "Remove samples with NA" },
+  { value: "remove_feature", label: "Remove features with NA" },
+  { value: "replace", label: "Replace NA values" },
+  { value: "ignore", label: "Ignore (handle in pipeline)" },
 ];
 
 /**

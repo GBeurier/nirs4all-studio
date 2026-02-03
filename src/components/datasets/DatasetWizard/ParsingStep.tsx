@@ -42,7 +42,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useWizard, DEFAULT_PARSING } from "./WizardContext";
 import { detectFormat, autoDetectFile } from "@/api/client";
-import type { ParsingOptions, HeaderUnit, SignalType, NaPolicy, DetectionConfidence } from "@/types/datasets";
+import type { ParsingOptions, HeaderUnit, SignalType, NaPolicy, NaFillConfig, DetectionConfidence } from "@/types/datasets";
+import { useTranslation } from "react-i18next";
 
 // Confidence indicator component
 function ConfidenceIndicator({ value, field }: { value?: number; field: string }) {
@@ -103,13 +104,21 @@ const SIGNAL_TYPE_OPTIONS: { value: SignalType; label: string }[] = [
   { value: "transmittance%", label: "Transmittance (%)" },
 ];
 
-const NA_POLICY_OPTIONS: { value: NaPolicy; label: string }[] = [
-  { value: "keep", label: "Keep NA values" },
-  { value: "drop", label: "Drop rows with NA" },
-  { value: "fill_mean", label: "Fill with mean" },
-  { value: "fill_median", label: "Fill with median" },
-  { value: "fill_zero", label: "Fill with zero" },
-  { value: "error", label: "Error on NA" },
+const NA_POLICY_OPTIONS: { value: NaPolicy; labelKey: string }[] = [
+  { value: "auto", labelKey: "settings.dataDefaults.missing.policies.auto" },
+  { value: "abort", labelKey: "settings.dataDefaults.missing.policies.abort" },
+  { value: "remove_sample", labelKey: "settings.dataDefaults.missing.policies.remove_sample" },
+  { value: "remove_feature", labelKey: "settings.dataDefaults.missing.policies.remove_feature" },
+  { value: "replace", labelKey: "settings.dataDefaults.missing.policies.replace" },
+  { value: "ignore", labelKey: "settings.dataDefaults.missing.policies.ignore" },
+];
+
+const FILL_METHOD_OPTIONS: { value: NaFillConfig["method"]; labelKey: string }[] = [
+  { value: "value", labelKey: "settings.dataDefaults.missing.fillMethods.value" },
+  { value: "mean", labelKey: "settings.dataDefaults.missing.fillMethods.mean" },
+  { value: "median", labelKey: "settings.dataDefaults.missing.fillMethods.median" },
+  { value: "forward_fill", labelKey: "settings.dataDefaults.missing.fillMethods.forward_fill" },
+  { value: "backward_fill", labelKey: "settings.dataDefaults.missing.fillMethods.backward_fill" },
 ];
 
 const ENCODING_OPTIONS = [
@@ -128,142 +137,212 @@ interface ParsingFormProps {
 }
 
 function ParsingForm({ options, onChange, compact = false, confidence }: ParsingFormProps) {
+  const { t } = useTranslation();
   const gridClass = compact
     ? "grid grid-cols-2 gap-3"
     : "grid grid-cols-3 gap-4";
 
+  const currentNaPolicy = options.na_policy || DEFAULT_PARSING.na_policy;
+
   return (
-    <div className={gridClass}>
-      {/* Delimiter */}
-      <div>
-        <Label className="text-xs text-muted-foreground mb-1 block">
-          Delimiter
-          <ConfidenceIndicator value={confidence?.delimiter} field="Delimiter" />
-        </Label>
-        <Select
-          value={options.delimiter || DEFAULT_PARSING.delimiter}
-          onValueChange={(v) => onChange({ delimiter: v })}
-        >
-          <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {DELIMITER_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="space-y-4">
+      <div className={gridClass}>
+        {/* Delimiter */}
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 block">
+            Delimiter
+            <ConfidenceIndicator value={confidence?.delimiter} field="Delimiter" />
+          </Label>
+          <Select
+            value={options.delimiter || DEFAULT_PARSING.delimiter}
+            onValueChange={(v) => onChange({ delimiter: v })}
+          >
+            <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DELIMITER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      {/* Decimal separator */}
-      <div>
-        <Label className="text-xs text-muted-foreground mb-1 block">
-          Decimal
-          <ConfidenceIndicator value={confidence?.decimal_separator} field="Decimal" />
-        </Label>
-        <Select
-          value={options.decimal_separator || DEFAULT_PARSING.decimal_separator}
-          onValueChange={(v) => onChange({ decimal_separator: v })}
-        >
-          <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {DECIMAL_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        {/* Decimal separator */}
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 block">
+            Decimal
+            <ConfidenceIndicator value={confidence?.decimal_separator} field="Decimal" />
+          </Label>
+          <Select
+            value={options.decimal_separator || DEFAULT_PARSING.decimal_separator}
+            onValueChange={(v) => onChange({ decimal_separator: v })}
+          >
+            <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DECIMAL_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      {/* Has header */}
-      <div>
-        <Label className="text-xs text-muted-foreground mb-1 block">
-          Header Row
-          <ConfidenceIndicator value={confidence?.has_header} field="Header" />
-        </Label>
-        <div className="flex items-center gap-2 h-9">
-          <Switch
-            checked={options.has_header ?? DEFAULT_PARSING.has_header}
-            onCheckedChange={(v) => onChange({ has_header: v })}
-          />
-          <span className="text-sm">
-            {options.has_header ?? DEFAULT_PARSING.has_header ? "Yes" : "No"}
-          </span>
+        {/* Has header */}
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 block">
+            Header Row
+            <ConfidenceIndicator value={confidence?.has_header} field="Header" />
+          </Label>
+          <div className="flex items-center gap-2 h-9">
+            <Switch
+              checked={options.has_header ?? DEFAULT_PARSING.has_header}
+              onCheckedChange={(v) => onChange({ has_header: v })}
+            />
+            <span className="text-sm">
+              {options.has_header ?? DEFAULT_PARSING.has_header ? "Yes" : "No"}
+            </span>
+          </div>
+        </div>
+
+        {/* Header unit */}
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 block">
+            Header Unit
+            <ConfidenceIndicator value={confidence?.header_unit} field="Header unit" />
+          </Label>
+          <Select
+            value={options.header_unit || DEFAULT_PARSING.header_unit}
+            onValueChange={(v) => onChange({ header_unit: v as HeaderUnit })}
+          >
+            <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HEADER_UNIT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Signal type */}
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 block">
+            Signal Type
+            <ConfidenceIndicator value={confidence?.signal_type} field="Signal type" />
+          </Label>
+          <Select
+            value={options.signal_type || DEFAULT_PARSING.signal_type}
+            onValueChange={(v) => onChange({ signal_type: v as SignalType })}
+          >
+            <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SIGNAL_TYPE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* NA policy */}
+        <div>
+          <Label className="text-xs text-muted-foreground mb-1 block">
+            NA Handling
+          </Label>
+          <Select
+            value={currentNaPolicy}
+            onValueChange={(v) => {
+              const updates: Partial<ParsingOptions> = { na_policy: v as NaPolicy };
+              // Clear fill config when switching away from replace
+              if (v !== "replace") {
+                updates.na_fill_config = undefined;
+              }
+              onChange(updates);
+            }}
+          >
+            <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {NA_POLICY_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Header unit */}
-      <div>
-        <Label className="text-xs text-muted-foreground mb-1 block">
-          Header Unit
-          <ConfidenceIndicator value={confidence?.header_unit} field="Header unit" />
-        </Label>
-        <Select
-          value={options.header_unit || DEFAULT_PARSING.header_unit}
-          onValueChange={(v) => onChange({ header_unit: v as HeaderUnit })}
-        >
-          <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {HEADER_UNIT_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Signal type */}
-      <div>
-        <Label className="text-xs text-muted-foreground mb-1 block">
-          Signal Type
-          <ConfidenceIndicator value={confidence?.signal_type} field="Signal type" />
-        </Label>
-        <Select
-          value={options.signal_type || DEFAULT_PARSING.signal_type}
-          onValueChange={(v) => onChange({ signal_type: v as SignalType })}
-        >
-          <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SIGNAL_TYPE_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* NA policy */}
-      <div>
-        <Label className="text-xs text-muted-foreground mb-1 block">
-          NA Handling
-        </Label>
-        <Select
-          value={options.na_policy || DEFAULT_PARSING.na_policy}
-          onValueChange={(v) => onChange({ na_policy: v as NaPolicy })}
-        >
-          <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {NA_POLICY_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Fill config sub-form (visible when replace is selected) */}
+      {currentNaPolicy === "replace" && (
+        <div className="border rounded-md p-3 bg-muted/30 space-y-3">
+          <Label className="text-xs font-medium block">
+            {t("settings.dataDefaults.missing.fillConfig")}
+          </Label>
+          <div className={compact ? "grid grid-cols-2 gap-3" : "grid grid-cols-3 gap-4"}>
+            <div>
+              <Label className="text-xs text-muted-foreground mb-1 block">
+                {t("settings.dataDefaults.missing.fillMethod")}
+              </Label>
+              <Select
+                value={options.na_fill_config?.method || "mean"}
+                onValueChange={(v) =>
+                  onChange({
+                    na_fill_config: {
+                      ...options.na_fill_config,
+                      method: v as NaFillConfig["method"],
+                    },
+                  })
+                }
+              >
+                <SelectTrigger className={compact ? "h-8 text-xs" : "h-9"}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FILL_METHOD_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {t(opt.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {options.na_fill_config?.method === "value" && (
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">
+                  {t("settings.dataDefaults.missing.fillValue")}
+                </Label>
+                <Input
+                  type="number"
+                  value={options.na_fill_config?.fill_value ?? 0}
+                  onChange={(e) =>
+                    onChange({
+                      na_fill_config: {
+                        ...options.na_fill_config!,
+                        fill_value: parseFloat(e.target.value) || 0,
+                      },
+                    })
+                  }
+                  className={compact ? "h-8 text-xs" : "h-9"}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
