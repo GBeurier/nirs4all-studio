@@ -20,7 +20,7 @@ router = APIRouter(prefix="/synthesis", tags=["synthesis"])
 
 try:
     import nirs4all
-    from nirs4all.data.synthetic import (
+    from nirs4all.synthesis import (
         SyntheticDatasetBuilder,
         available_components,
         get_component,

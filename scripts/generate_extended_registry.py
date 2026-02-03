@@ -497,7 +497,7 @@ NIRS4ALL_OPERATORS = {
         "name": "Resampler",
         "description": "Adaptive resampling controller",
     },
-    # Augmentation
+    # Augmentation - random
     "nirs4all.operators.augmentation.random.Rotate_Translate": {
         "type": "augmentation",
         "category": "spectral-augmentation",
@@ -510,6 +510,7 @@ NIRS4ALL_OPERATORS = {
         "name": "RandomXOperation",
         "description": "Random multiplicative/additive perturbations",
     },
+    # Augmentation - splines
     "nirs4all.operators.augmentation.splines.Spline_Smoothing": {
         "type": "augmentation",
         "category": "spectral-augmentation",
@@ -540,11 +541,208 @@ NIRS4ALL_OPERATORS = {
         "name": "SplineCurveSimplification",
         "description": "Curve simplification via splines",
     },
-    "nirs4all.operators.augmentation.abc_augmenter.IdentityAugmenter": {
+    # Augmentation - spectral noise
+    "nirs4all.operators.augmentation.spectral.GaussianAdditiveNoise": {
         "type": "augmentation",
-        "category": "spectral-augmentation",
-        "name": "IdentityAugmenter",
-        "description": "Pass-through augmenter for pipelines",
+        "category": "spectral-noise",
+        "name": "GaussianAdditiveNoise",
+        "description": "Gaussian additive noise with optional smoothing",
+    },
+    "nirs4all.operators.augmentation.spectral.MultiplicativeNoise": {
+        "type": "augmentation",
+        "category": "spectral-noise",
+        "name": "MultiplicativeNoise",
+        "description": "Multiplicative gain noise per sample or wavelength",
+    },
+    "nirs4all.operators.augmentation.spectral.SpikeNoise": {
+        "type": "augmentation",
+        "category": "spectral-noise",
+        "name": "SpikeNoise",
+        "description": "Random spike artifacts at random positions",
+    },
+    # Augmentation - spectral baseline drift
+    "nirs4all.operators.augmentation.spectral.LinearBaselineDrift": {
+        "type": "augmentation",
+        "category": "spectral-baseline",
+        "name": "LinearBaselineDrift",
+        "description": "Linear baseline drift augmentation",
+    },
+    "nirs4all.operators.augmentation.spectral.PolynomialBaselineDrift": {
+        "type": "augmentation",
+        "category": "spectral-baseline",
+        "name": "PolynomialBaselineDrift",
+        "description": "Polynomial baseline drift augmentation",
+    },
+    # Augmentation - spectral wavelength
+    "nirs4all.operators.augmentation.spectral.WavelengthShift": {
+        "type": "augmentation",
+        "category": "spectral-wavelength",
+        "name": "WavelengthShift",
+        "description": "Random shift along wavelength axis",
+    },
+    "nirs4all.operators.augmentation.spectral.WavelengthStretch": {
+        "type": "augmentation",
+        "category": "spectral-wavelength",
+        "name": "WavelengthStretch",
+        "description": "Random stretch/compression of wavelength axis",
+    },
+    "nirs4all.operators.augmentation.spectral.LocalWavelengthWarp": {
+        "type": "augmentation",
+        "category": "spectral-wavelength",
+        "name": "LocalWavelengthWarp",
+        "description": "Local non-linear wavelength warping via control points",
+    },
+    "nirs4all.operators.augmentation.spectral.SmoothMagnitudeWarp": {
+        "type": "augmentation",
+        "category": "spectral-wavelength",
+        "name": "SmoothMagnitudeWarp",
+        "description": "Smooth magnitude warping via control points",
+    },
+    # Augmentation - spectral smoothing
+    "nirs4all.operators.augmentation.spectral.GaussianSmoothingJitter": {
+        "type": "augmentation",
+        "category": "spectral-smoothing",
+        "name": "GaussianSmoothingJitter",
+        "description": "Random Gaussian smoothing with variable kernel width",
+    },
+    "nirs4all.operators.augmentation.spectral.UnsharpSpectralMask": {
+        "type": "augmentation",
+        "category": "spectral-smoothing",
+        "name": "UnsharpSpectralMask",
+        "description": "Unsharp masking for spectral sharpening",
+    },
+    # Augmentation - spectral masking
+    "nirs4all.operators.augmentation.spectral.BandMasking": {
+        "type": "augmentation",
+        "category": "spectral-masking",
+        "name": "BandMasking",
+        "description": "Randomly mask spectral bands with interpolation or zeroing",
+    },
+    "nirs4all.operators.augmentation.spectral.ChannelDropout": {
+        "type": "augmentation",
+        "category": "spectral-masking",
+        "name": "ChannelDropout",
+        "description": "Random channel dropout with interpolation",
+    },
+    "nirs4all.operators.augmentation.spectral.BandPerturbation": {
+        "type": "augmentation",
+        "category": "spectral-masking",
+        "name": "BandPerturbation",
+        "description": "Random gain and offset perturbation of spectral bands",
+    },
+    "nirs4all.operators.augmentation.spectral.LocalClipping": {
+        "type": "augmentation",
+        "category": "spectral-masking",
+        "name": "LocalClipping",
+        "description": "Clip local spectral regions to flat values",
+    },
+    # Augmentation - spectral mixing
+    "nirs4all.operators.augmentation.spectral.MixupAugmenter": {
+        "type": "augmentation",
+        "category": "spectral-mixing",
+        "name": "MixupAugmenter",
+        "description": "Mixup augmentation by blending sample pairs",
+    },
+    "nirs4all.operators.augmentation.spectral.LocalMixupAugmenter": {
+        "type": "augmentation",
+        "category": "spectral-mixing",
+        "name": "LocalMixupAugmenter",
+        "description": "Local mixup with k-nearest neighbors",
+    },
+    # Augmentation - spectral scatter simulation
+    "nirs4all.operators.augmentation.spectral.ScatterSimulationMSC": {
+        "type": "augmentation",
+        "category": "spectral-scatter",
+        "name": "ScatterSimulationMSC",
+        "description": "Scatter simulation via MSC coefficient perturbation",
+    },
+    # Augmentation - environmental
+    "nirs4all.operators.augmentation.environmental.TemperatureAugmenter": {
+        "type": "augmentation",
+        "category": "environmental-augmentation",
+        "name": "TemperatureAugmenter",
+        "description": "Temperature variation effects on NIR spectra",
+    },
+    "nirs4all.operators.augmentation.environmental.MoistureAugmenter": {
+        "type": "augmentation",
+        "category": "environmental-augmentation",
+        "name": "MoistureAugmenter",
+        "description": "Moisture content variation effects on NIR spectra",
+    },
+    # Augmentation - scattering
+    "nirs4all.operators.augmentation.scattering.ParticleSizeAugmenter": {
+        "type": "augmentation",
+        "category": "scattering-augmentation",
+        "name": "ParticleSizeAugmenter",
+        "description": "Particle size scattering effects on NIR spectra",
+    },
+    "nirs4all.operators.augmentation.scattering.EMSCDistortionAugmenter": {
+        "type": "augmentation",
+        "category": "scattering-augmentation",
+        "name": "EMSCDistortionAugmenter",
+        "description": "EMSC-based scatter distortion augmentation",
+    },
+    # Augmentation - edge artifacts
+    "nirs4all.operators.augmentation.edge_artifacts.DetectorRollOffAugmenter": {
+        "type": "augmentation",
+        "category": "edge-artifacts-augmentation",
+        "name": "DetectorRollOffAugmenter",
+        "description": "Detector roll-off edge effects simulation",
+    },
+    "nirs4all.operators.augmentation.edge_artifacts.StrayLightAugmenter": {
+        "type": "augmentation",
+        "category": "edge-artifacts-augmentation",
+        "name": "StrayLightAugmenter",
+        "description": "Stray light contamination at spectral edges",
+    },
+    "nirs4all.operators.augmentation.edge_artifacts.EdgeCurvatureAugmenter": {
+        "type": "augmentation",
+        "category": "edge-artifacts-augmentation",
+        "name": "EdgeCurvatureAugmenter",
+        "description": "Edge curvature distortion augmentation",
+    },
+    "nirs4all.operators.augmentation.edge_artifacts.TruncatedPeakAugmenter": {
+        "type": "augmentation",
+        "category": "edge-artifacts-augmentation",
+        "name": "TruncatedPeakAugmenter",
+        "description": "Truncated peak artifacts at spectral edges",
+    },
+    "nirs4all.operators.augmentation.edge_artifacts.EdgeArtifactsAugmenter": {
+        "type": "augmentation",
+        "category": "edge-artifacts-augmentation",
+        "name": "EdgeArtifactsAugmenter",
+        "description": "Combined edge artifacts augmentation",
+    },
+    # Augmentation - synthesis
+    "nirs4all.operators.augmentation.synthesis.PathLengthAugmenter": {
+        "type": "augmentation",
+        "category": "synthesis-augmentation",
+        "name": "PathLengthAugmenter",
+        "description": "Multiplicative path length variation augmentation",
+    },
+    "nirs4all.operators.augmentation.synthesis.BatchEffectAugmenter": {
+        "type": "augmentation",
+        "category": "synthesis-augmentation",
+        "name": "BatchEffectAugmenter",
+        "description": "Wavelength-dependent batch effect augmentation",
+    },
+    "nirs4all.operators.augmentation.synthesis.InstrumentalBroadeningAugmenter": {
+        "type": "augmentation",
+        "category": "synthesis-augmentation",
+        "name": "InstrumentalBroadeningAugmenter",
+        "description": "Instrumental broadening via Gaussian convolution",
+    },
+    "nirs4all.operators.augmentation.synthesis.HeteroscedasticNoiseAugmenter": {
+        "type": "augmentation",
+        "category": "synthesis-augmentation",
+        "name": "HeteroscedasticNoiseAugmenter",
+        "description": "Signal-dependent heteroscedastic noise augmentation",
+    },
+    "nirs4all.operators.augmentation.synthesis.DeadBandAugmenter": {
+        "type": "augmentation",
+        "category": "synthesis-augmentation",
+        "name": "DeadBandAugmenter",
+        "description": "Dead band (non-responsive region) augmentation",
     },
     # nirs4all splitters
     "nirs4all.operators.splitters.splitters.KennardStoneSplitter": {

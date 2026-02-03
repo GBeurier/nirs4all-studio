@@ -453,7 +453,7 @@ The backend endpoint uses `nirs4all.generate` with the `SyntheticDatasetBuilder`
 @router.post("/datasets/generate-synthetic")
 async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
     """Generate synthetic NIRS dataset using nirs4all.generate."""
-    from nirs4all.data.synthetic import SyntheticDatasetBuilder
+    from nirs4all.synthesis import SyntheticDatasetBuilder
 
     builder = SyntheticDatasetBuilder(n_samples=request.n_samples, ...)
     builder.with_features(complexity=request.complexity)

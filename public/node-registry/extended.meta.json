@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-01-08T09:16:57.024758+00:00",
+  "generatedAt": "2026-02-03T12:02:08.063017+00:00",
   "nodeCount": 253,
-  "pythonVersion": "3.13.11",
-  "sklearnVersion": "1.6.1",
+  "pythonVersion": "3.13.9",
+  "sklearnVersion": "1.7.2",
   "nirs4allVersion": "0.6.2",
   "generator": {
     "script": "scripts/generate_extended_registry.py",
     "format": "NodeDefinition[]"
   },
   "countsByType": {
-    "model": 130,
+    "model": 99,
     "preprocessing": 92,
     "splitting": 21,
-    "augmentation": 8,
+    "augmentation": 39,
     "y_processing": 2
   },
   "countsBySource": {

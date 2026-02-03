@@ -1,73 +1,106 @@
 [
   {
-    "id": "augmentation.sample_generator",
-    "name": "SampleGenerator",
+    "id": "augmentation.gaussian_additive_noise",
+    "name": "GaussianAdditiveNoise",
     "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.SampleGenerator",
-    "description": "Generate synthetic samples",
-    "longDescription": "Creates synthetic samples using interpolation or generative methods.",
-    "category": "Sample Generation",
-    "tags": ["augmentation", "sample", "synthetic", "generation"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "n_samples",
-        "type": "int",
-        "default": 100,
-        "min": 1,
-        "max": 10000,
-        "description": "Number of samples to generate"
-      },
-      {
-        "name": "method",
-        "type": "select",
-        "default": "smote",
-        "options": [
-          { "value": "smote", "label": "SMOTE" },
-          { "value": "interpolation", "label": "Linear Interpolation" },
-          { "value": "noise", "label": "Add Noise" }
-        ],
-        "description": "Generation method"
-      }
-    ]
-  },
-  {
-    "id": "augmentation.noise",
-    "name": "NoiseAugmentation",
-    "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.NoiseAugmentation",
-    "description": "Add random noise to spectra",
-    "longDescription": "Augments dataset by adding random noise to spectral samples.",
+    "classPath": "nirs4all.operators.augmentation.spectral.GaussianAdditiveNoise",
+    "description": "Gaussian additive noise with optional smoothing",
+    "longDescription": "Adds Gaussian random noise to spectral data with optional kernel smoothing for correlated noise simulation.",
     "category": "Noise",
-    "tags": ["augmentation", "noise", "random", "perturbation"],
+    "tags": ["augmentation", "noise", "gaussian", "spectral"],
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "noise_level",
+        "name": "sigma",
         "type": "float",
         "default": 0.01,
-        "min": 0.001,
-        "max": 0.1,
+        "min": 0.0001,
+        "max": 1.0,
         "step": 0.001,
         "description": "Standard deviation of Gaussian noise"
       },
       {
-        "name": "n_augmented",
+        "name": "smoothing_kernel_width",
         "type": "int",
-        "default": 2,
+        "default": 1,
         "min": 1,
-        "max": 10,
-        "description": "Number of augmented copies per sample"
+        "max": 51,
+        "description": "Kernel width for noise smoothing (1 = no smoothing)"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility"
       }
     ]
   },
   {
-    "id": "augmentation.mixup",
-    "name": "Mixup",
+    "id": "augmentation.multiplicative_noise",
+    "name": "MultiplicativeNoise",
     "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.Mixup",
-    "description": "Mixup augmentation (blend samples)",
-    "longDescription": "Creates new samples by blending pairs of existing samples and their targets.",
+    "classPath": "nirs4all.operators.augmentation.spectral.MultiplicativeNoise",
+    "description": "Multiplicative gain noise per sample or wavelength",
+    "longDescription": "Applies multiplicative noise to simulate gain variations in spectral measurement.",
+    "category": "Noise",
+    "tags": ["augmentation", "noise", "multiplicative", "spectral"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "sigma_gain",
+        "type": "float",
+        "default": 0.05,
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Standard deviation of multiplicative gain"
+      },
+      {
+        "name": "per_wavelength",
+        "type": "bool",
+        "default": false,
+        "description": "Apply independent gain per wavelength"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility"
+      }
+    ]
+  },
+  {
+    "id": "augmentation.wavelength_shift",
+    "name": "WavelengthShift",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.WavelengthShift",
+    "description": "Random shift along wavelength axis",
+    "longDescription": "Simulates wavelength calibration errors by shifting spectra along the x-axis.",
+    "category": "Wavelength",
+    "tags": ["augmentation", "shift", "wavelength", "calibration"],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "shift_range",
+        "type": "string",
+        "default": "(-2.0, 2.0)",
+        "description": "Range of wavelength shift (min, max)"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility"
+      }
+    ]
+  },
+  {
+    "id": "augmentation.mixup_augmenter",
+    "name": "MixupAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.MixupAugmenter",
+    "description": "Mixup augmentation by blending sample pairs",
+    "longDescription": "Creates new samples by blending pairs of existing samples using Beta distribution weights.",
     "category": "Mixing",
     "tags": ["augmentation", "mixup", "blend", "interpolation"],
     "source": "nirs4all",
@@ -75,59 +108,48 @@
       {
         "name": "alpha",
         "type": "float",
-        "default": 0.4,
-        "min": 0.1,
+        "default": 0.2,
+        "min": 0.01,
         "max": 1.0,
-        "step": 0.1,
-        "description": "Beta distribution parameter"
+        "step": 0.05,
+        "description": "Beta distribution parameter controlling blend ratio"
       },
       {
-        "name": "n_augmented",
+        "name": "random_state",
         "type": "int",
-        "default": 2,
-        "min": 1,
-        "max": 10,
-        "description": "Number of augmented samples per original"
+        "default": null,
+        "description": "Random seed for reproducibility"
       }
     ]
   },
   {
-    "id": "augmentation.shift",
-    "name": "SpectralShift",
+    "id": "augmentation.linear_baseline_drift",
+    "name": "LinearBaselineDrift",
     "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.SpectralShift",
-    "description": "Shift spectra along wavelength axis",
-    "longDescription": "Augments by shifting spectra along the wavelength axis.",
-    "category": "Spectral",
-    "tags": ["augmentation", "shift", "wavelength", "spectral"],
+    "classPath": "nirs4all.operators.augmentation.spectral.LinearBaselineDrift",
+    "description": "Linear baseline drift augmentation",
+    "longDescription": "Simulates linear baseline drift by adding a random slope and offset to spectra.",
+    "category": "Baseline",
+    "tags": ["augmentation", "baseline", "drift", "spectral"],
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "max_shift",
-        "type": "int",
-        "default": 3,
-        "min": 1,
-        "max": 20,
-        "description": "Maximum shift in pixels/wavelengths"
-      }
-    ]
-  },
-  {
-    "id": "augmentation.scale",
-    "name": "IntensityScale",
-    "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.IntensityScale",
-    "description": "Random intensity scaling",
-    "longDescription": "Augments by randomly scaling spectral intensity.",
-    "category": "Intensity",
-    "tags": ["augmentation", "scale", "intensity", "multiplicative"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "scale_range",
+        "name": "offset_range",
         "type": "string",
-        "default": "(0.9, 1.1)",
-        "description": "Range of scale factors as tuple"
+        "default": "(-0.1, 0.1)",
+        "description": "Range for random offset"
+      },
+      {
+        "name": "slope_range",
+        "type": "string",
+        "default": "(-0.001, 0.001)",
+        "description": "Range for random slope"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility"
       }
     ]
   }

@@ -86,6 +86,7 @@ export interface Nirs4allSampleAugmentationStep {
     count?: number;
     selection?: string;
     random_state?: number;
+    variation_scope?: string;
   };
 }
 
@@ -848,6 +849,7 @@ function convertSampleAugmentationToEditor(step: Nirs4allSampleAugmentationStep)
       count: aug.count || 1,
       selection: aug.selection || "random",
       random_state: aug.random_state ?? 42,
+      variation_scope: aug.variation_scope || "sample",
     },
     // Children for editable transformers list
     children: childSteps,
@@ -859,6 +861,7 @@ function convertSampleAugmentationToEditor(step: Nirs4allSampleAugmentationStep)
       count: aug.count,
       selection: aug.selection as "random" | "all" | "sequential" | undefined,
       random_state: aug.random_state,
+      variation_scope: aug.variation_scope as "sample" | "batch" | undefined,
     },
   };
 }
@@ -1333,6 +1336,7 @@ function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Ni
         count: (step.params.count as number) || step.sampleAugmentationConfig?.count || 1,
         selection: (step.params.selection as string) || step.sampleAugmentationConfig?.selection || "random",
         random_state: (step.params.random_state as number) ?? step.sampleAugmentationConfig?.random_state ?? 42,
+        variation_scope: (step.params.variation_scope as string) || step.sampleAugmentationConfig?.variation_scope || "sample",
       },
     };
   }
@@ -1358,6 +1362,7 @@ function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Ni
         count: config.count || 1,
         selection: config.selection || "random",
         random_state: config.random_state ?? 42,
+        variation_scope: config.variation_scope || "sample",
       },
     };
   }
@@ -1370,6 +1375,7 @@ function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Ni
         count: (step.params.count as number) || 1,
         selection: (step.params.selection as string) || "random",
         random_state: (step.params.random_state as number) ?? 42,
+        variation_scope: (step.params.variation_scope as string) || "sample",
       },
     };
   }

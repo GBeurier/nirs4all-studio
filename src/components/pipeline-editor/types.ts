@@ -134,6 +134,7 @@ export interface SampleAugmentationConfig {
   count?: number;         // Number of augmented samples per original
   selection?: "random" | "all" | "sequential";
   random_state?: number;
+  variation_scope?: "sample" | "batch";
 }
 
 // Feature augmentation configuration

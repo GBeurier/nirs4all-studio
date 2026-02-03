@@ -643,10 +643,10 @@
     "description": "A multi-label model that arranges binary classifiers into a chain.",
     "parameters": [
       {
-        "name": "base_estimator",
+        "name": "estimator",
         "type": "string",
         "isAdvanced": true,
-        "required": true
+        "default": null
       },
       {
         "name": "order",
@@ -677,6 +677,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": false
+      },
+      {
+        "name": "base_estimator",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -1103,15 +1109,15 @@
       },
       {
         "name": "n_alphas",
-        "type": "int",
+        "type": "string",
         "isAdvanced": true,
-        "default": 100
+        "default": "deprecated"
       },
       {
         "name": "alphas",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "warn"
       },
       {
         "name": "fit_intercept",
@@ -3128,15 +3134,15 @@
       },
       {
         "name": "n_alphas",
-        "type": "int",
+        "type": "string",
         "isAdvanced": true,
-        "default": 100
+        "default": "deprecated"
       },
       {
         "name": "alphas",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "warn"
       },
       {
         "name": "fit_intercept",
@@ -3531,6 +3537,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1e-06
       },
       {
         "name": "n_jobs",
@@ -4123,6 +4135,12 @@
     "description": "Multi-layer Perceptron regressor.",
     "parameters": [
       {
+        "name": "loss",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "squared_error"
+      },
+      {
         "name": "hidden_layer_sizes",
         "type": "array",
         "isAdvanced": true,
@@ -4428,15 +4446,15 @@
       },
       {
         "name": "n_alphas",
-        "type": "int",
+        "type": "string",
         "isAdvanced": true,
-        "default": 100
+        "default": "deprecated"
       },
       {
         "name": "alphas",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "warn"
       },
       {
         "name": "fit_intercept",
@@ -4586,15 +4604,15 @@
       },
       {
         "name": "n_alphas",
-        "type": "int",
+        "type": "string",
         "isAdvanced": true,
-        "default": 100
+        "default": "deprecated"
       },
       {
         "name": "alphas",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "warn"
       },
       {
         "name": "fit_intercept",
@@ -6220,10 +6238,10 @@
     "description": "A multi-label model that arranges regressions into a chain.",
     "parameters": [
       {
-        "name": "base_estimator",
+        "name": "estimator",
         "type": "string",
         "isAdvanced": true,
-        "required": true
+        "default": null
       },
       {
         "name": "order",
@@ -6248,6 +6266,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": false
+      },
+      {
+        "name": "base_estimator",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -6443,15 +6467,9 @@
       },
       {
         "name": "store_cv_results",
-        "type": "string",
+        "type": "bool",
         "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "store_cv_values",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "default": false
       }
     ],
     "source": "sklearn",
@@ -6508,21 +6526,15 @@
       },
       {
         "name": "store_cv_results",
-        "type": "string",
+        "type": "bool",
         "isAdvanced": true,
-        "default": null
+        "default": false
       },
       {
         "name": "alpha_per_target",
         "type": "bool",
         "isAdvanced": true,
         "default": false
-      },
-      {
-        "name": "store_cv_values",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -7185,1015 +7197,6 @@
       "_classes"
     ],
     "isAdvanced": true
-  },
-  {
-    "id": "model.tf_bard",
-    "name": "bard",
-    "type": "model",
-    "description": "Builds a model combining convolutional and LSTM layers.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.bard",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_conv_lstm",
-    "name": "CONV_LSTM",
-    "type": "model",
-    "description": "Builds a model combining convolutional and LSTM layers.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.CONV_LSTM",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_custom__residuals",
-    "name": "Custom_Residuals",
-    "type": "model",
-    "description": "Builds a custom residual model with depthwise convolutions and attention.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.Custom_Residuals",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_custom_vg__residuals",
-    "name": "Custom_VG_Residuals",
-    "type": "model",
-    "description": "Builds a custom residual model with depthwise convolutions and attention.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.Custom_VG_Residuals",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_custom_vg__residuals2",
-    "name": "Custom_VG_Residuals2",
-    "type": "model",
-    "description": "Builds a custom residual CNN model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.Custom_VG_Residuals2",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_customizable_decon",
-    "name": "customizable_decon",
-    "type": "model",
-    "description": "Builds a model using depthwise separable convolutions and layer normalization.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.customizable_decon",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_customizable_decon_classification",
-    "name": "customizable_decon_classification",
-    "type": "model",
-    "description": "Builds a customizable model using depthwise separable convolutions for classification.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.customizable_decon_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_customizable_nicon",
-    "name": "customizable_nicon",
-    "type": "model",
-    "description": "Builds a custom CNN model with depthwise convolutions.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.customizable_nicon",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_customizable_nicon_classification",
-    "name": "customizable_nicon_classification",
-    "type": "model",
-    "description": "Builds a custom CNN model with depthwise convolutions for classification.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.customizable_nicon_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_decon",
-    "name": "decon",
-    "type": "model",
-    "description": "Builds a CNN model with depthwise and separable convolutions.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.decon",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_decon_classification",
-    "name": "decon_classification",
-    "type": "model",
-    "description": "Builds a CNN model with depthwise and separable convolutions for classification.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.decon_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_decon_layer_classification",
-    "name": "decon_layer_classification",
-    "type": "model",
-    "description": "Builds a model using depthwise separable convolutions and layer normalization for classification.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.decon_layer_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_fft__conv",
-    "name": "FFT_Conv",
-    "type": "model",
-    "description": "Builds a CNN model with FFT preprocessing.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.FFT_Conv",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_inception1_d",
-    "name": "inception1D",
-    "type": "model",
-    "description": "Builds an Inception-like 1D CNN model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.inception1D",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_mlp",
-    "name": "MLP",
-    "type": "model",
-    "description": "Builds a simple Multi-Layer Perceptron model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.MLP",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_nicon",
-    "name": "nicon",
-    "type": "model",
-    "description": "Builds a custom CNN model with depthwise convolutions.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.nicon",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_nicon_classification",
-    "name": "nicon_classification",
-    "type": "model",
-    "description": "Builds a custom CNN model with depthwise convolutions for classification.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.nicon_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_nicon_vg",
-    "name": "nicon_VG",
-    "type": "model",
-    "description": "Builds a custom CNN model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.nicon_VG",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_nicon_vg_classification",
-    "name": "nicon_VG_classification",
-    "type": "model",
-    "description": "Builds a custom CNN model for classification.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.nicon_VG_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_res_net_v2_model",
-    "name": "ResNetV2_model",
-    "type": "model",
-    "description": "Builds a ResNetV2 model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.ResNetV2_model",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_se_res_net_model",
-    "name": "SEResNet_model",
-    "type": "model",
-    "description": "Builds a SEResNet model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.SEResNet_model",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_senseen_origin",
-    "name": "senseen_origin",
-    "type": "model",
-    "description": "Builds a CNN model with custom convolutional blocks.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.senseen_origin",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_thin_nicon",
-    "name": "thin_nicon",
-    "type": "model",
-    "description": "Builds a custom CNN model with depthwise convolutions.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.thin_nicon",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_transformer",
-    "name": "transformer",
-    "type": "model",
-    "description": "TensorFlow model transformer",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.transformer",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_transformer_classification",
-    "name": "transformer_classification",
-    "type": "model",
-    "description": "TensorFlow model transformer_classification",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.transformer_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_transformer_vg",
-    "name": "transformer_VG",
-    "type": "model",
-    "description": "TensorFlow model transformer_VG",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.transformer_VG",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_transformer_vg_classification",
-    "name": "transformer_VG_classification",
-    "type": "model",
-    "description": "TensorFlow model transformer_VG_classification",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "num_classes",
-        "type": "int",
-        "isAdvanced": true,
-        "default": 2
-      },
-      {
-        "name": "params",
-        "type": "object",
-        "isAdvanced": true,
-        "default": {}
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.nicon.transformer_VG_classification",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_u_net_nirs",
-    "name": "UNet_NIRS",
-    "type": "model",
-    "description": "Builds a U-Net model for NIRS data.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.UNet_NIRS",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_unet",
-    "name": "UNET",
-    "type": "model",
-    "description": "Builds a U-Net architecture for regression.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.UNET",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_vgg_1_d",
-    "name": "VGG_1D",
-    "type": "model",
-    "description": "Builds a VGG-like 1D CNN model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.VGG_1D",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
-  },
-  {
-    "id": "model.tf_x_ception1_d",
-    "name": "XCeption1D",
-    "type": "model",
-    "description": "Builds an Xception-like 1D CNN model.",
-    "parameters": [
-      {
-        "name": "input_shape",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      },
-      {
-        "name": "params",
-        "type": "string",
-        "isAdvanced": true,
-        "required": true
-      }
-    ],
-    "source": "nirs4all",
-    "functionPath": "nirs4all.operators.models.tensorflow.generic.XCeption1D",
-    "category": "tensorflow-models",
-    "tags": [
-      "generated",
-      "nirs4all",
-      "tensorflow",
-      "deep-learning"
-    ],
-    "isAdvanced": false,
-    "isDeepLearning": true
   },
   {
     "id": "model.theil_sen_regressor",
@@ -8878,9 +7881,9 @@
       },
       {
         "name": "force_int_remainder_cols",
-        "type": "bool",
+        "type": "string",
         "isAdvanced": true,
-        "default": true
+        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -9983,6 +8986,12 @@
         "type": "string",
         "isAdvanced": true,
         "default": "quantile"
+      },
+      {
+        "name": "quantile_method",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "warn"
       },
       {
         "name": "dtype",
@@ -13464,9 +12473,9 @@
       },
       {
         "name": "max_iter",
-        "type": "string",
+        "type": "int",
         "isAdvanced": true,
-        "default": null
+        "default": 1000
       },
       {
         "name": "n_iter_without_progress",
@@ -13527,12 +12536,6 @@
         "type": "string",
         "isAdvanced": true,
         "default": null
-      },
-      {
-        "name": "n_iter",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -13961,7 +12964,7 @@
     "id": "splitting.repeated_stratified_k_fold",
     "name": "RepeatedStratifiedKFold",
     "type": "splitting",
-    "description": "Repeated Stratified K-Fold cross validator.",
+    "description": "Repeated class-wise stratified K-Fold cross validator.",
     "parameters": [
       {
         "name": "n_splits",
@@ -14109,7 +13112,7 @@
     "id": "splitting.stratified_group_k_fold",
     "name": "StratifiedGroupKFold",
     "type": "splitting",
-    "description": "Stratified K-Fold iterator variant with non-overlapping groups.",
+    "description": "Class-wise stratified K-Fold iterator variant with non-overlapping groups.",
     "parameters": [
       {
         "name": "n_splits",
@@ -14145,7 +13148,7 @@
     "id": "splitting.stratified_k_fold",
     "name": "StratifiedKFold",
     "type": "splitting",
-    "description": "Stratified K-Fold cross-validator.",
+    "description": "Class-wise stratified K-Fold cross-validator.",
     "parameters": [
       {
         "name": "n_splits",
@@ -14181,7 +13184,7 @@
     "id": "splitting.stratified_shuffle_split",
     "name": "StratifiedShuffleSplit",
     "type": "splitting",
-    "description": "Stratified ShuffleSplit cross-validator.",
+    "description": "Class-wise stratified ShuffleSplit cross-validator.",
     "parameters": [
       {
         "name": "n_splits",
@@ -14291,16 +13294,90 @@
     "isAdvanced": true
   },
   {
-    "id": "augmentation.identity_augmenter",
-    "name": "IdentityAugmenter",
+    "id": "augmentation.band_masking",
+    "name": "BandMasking",
     "type": "augmentation",
-    "description": "Pass-through augmenter for pipelines",
+    "description": "Randomly mask spectral bands with interpolation or zeroing",
     "parameters": [
       {
-        "name": "apply_on",
+        "name": "n_bands_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          1,
+          3
+        ]
+      },
+      {
+        "name": "bandwidth_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          5,
+          20
+        ]
+      },
+      {
+        "name": "mode",
         "type": "string",
         "isAdvanced": true,
-        "default": "samples"
+        "default": "interp"
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.BandMasking",
+    "category": "spectral-masking",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-masking"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.band_perturbation",
+    "name": "BandPerturbation",
+    "type": "augmentation",
+    "description": "Random gain and offset perturbation of spectral bands",
+    "parameters": [
+      {
+        "name": "n_bands",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 3
+      },
+      {
+        "name": "bandwidth_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          5,
+          20
+        ]
+      },
+      {
+        "name": "gain_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.9,
+          1.1
+        ]
+      },
+      {
+        "name": "offset_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -0.01,
+          0.01
+        ]
       },
       {
         "name": "random_state",
@@ -14309,19 +13386,967 @@
         "default": null
       },
       {
-        "name": "copy",
-        "type": "bool",
+        "name": "variation_scope",
+        "type": "string",
         "isAdvanced": true,
-        "default": true
+        "default": "sample"
       }
     ],
     "source": "nirs4all",
-    "classPath": "nirs4all.operators.augmentation.abc_augmenter.IdentityAugmenter",
-    "category": "spectral-augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.BandPerturbation",
+    "category": "spectral-masking",
     "tags": [
       "generated",
       "nirs4all",
-      "spectral-augmentation"
+      "spectral-masking"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.batch_effect_augmenter",
+    "name": "BatchEffectAugmenter",
+    "type": "augmentation",
+    "description": "Wavelength-dependent batch effect augmentation",
+    "parameters": [
+      {
+        "name": "offset_std",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.02
+      },
+      {
+        "name": "slope_std",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.01
+      },
+      {
+        "name": "gain_std",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.03
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.synthesis.BatchEffectAugmenter",
+    "category": "synthesis-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "synthesis-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.channel_dropout",
+    "name": "ChannelDropout",
+    "type": "augmentation",
+    "description": "Random channel dropout with interpolation",
+    "parameters": [
+      {
+        "name": "dropout_prob",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.01
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "interp"
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.ChannelDropout",
+    "category": "spectral-masking",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-masking"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.dead_band_augmenter",
+    "name": "DeadBandAugmenter",
+    "type": "augmentation",
+    "description": "Dead band (non-responsive region) augmentation",
+    "parameters": [
+      {
+        "name": "n_bands",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 1
+      },
+      {
+        "name": "width_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          10,
+          30
+        ]
+      },
+      {
+        "name": "noise_std",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.05
+      },
+      {
+        "name": "probability",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.0
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.synthesis.DeadBandAugmenter",
+    "category": "synthesis-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "synthesis-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.detector_roll_off_augmenter",
+    "name": "DetectorRollOffAugmenter",
+    "type": "augmentation",
+    "description": "Detector roll-off edge effects simulation",
+    "parameters": [
+      {
+        "name": "detector_model",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "generic_nir"
+      },
+      {
+        "name": "effect_strength",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.0
+      },
+      {
+        "name": "noise_amplification",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.02
+      },
+      {
+        "name": "include_baseline_distortion",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.DetectorRollOffAugmenter",
+    "category": "edge-artifacts-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "edge-artifacts-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.edge_artifacts_augmenter",
+    "name": "EdgeArtifactsAugmenter",
+    "type": "augmentation",
+    "description": "Combined edge artifacts augmentation",
+    "parameters": [
+      {
+        "name": "detector_roll_off",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "stray_light",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "edge_curvature",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "truncated_peaks",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "overall_strength",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.0
+      },
+      {
+        "name": "detector_model",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "generic_nir"
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.EdgeArtifactsAugmenter",
+    "category": "edge-artifacts-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "edge-artifacts-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.edge_curvature_augmenter",
+    "name": "EdgeCurvatureAugmenter",
+    "type": "augmentation",
+    "description": "Edge curvature distortion augmentation",
+    "parameters": [
+      {
+        "name": "curvature_strength",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.02
+      },
+      {
+        "name": "curvature_type",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "random"
+      },
+      {
+        "name": "asymmetry",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.0
+      },
+      {
+        "name": "edge_focus",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.7
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.EdgeCurvatureAugmenter",
+    "category": "edge-artifacts-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "edge-artifacts-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.emsc_distortion_augmenter",
+    "name": "EMSCDistortionAugmenter",
+    "type": "augmentation",
+    "description": "EMSC-based scatter distortion augmentation",
+    "parameters": [
+      {
+        "name": "multiplicative_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.9,
+          1.1
+        ]
+      },
+      {
+        "name": "additive_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -0.05,
+          0.05
+        ]
+      },
+      {
+        "name": "polynomial_order",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 2
+      },
+      {
+        "name": "polynomial_strength",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.02
+      },
+      {
+        "name": "correlation",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.3
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.scattering.EMSCDistortionAugmenter",
+    "category": "scattering-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "scattering-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.gaussian_additive_noise",
+    "name": "GaussianAdditiveNoise",
+    "type": "augmentation",
+    "description": "Gaussian additive noise with optional smoothing",
+    "parameters": [
+      {
+        "name": "sigma",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.01
+      },
+      {
+        "name": "smoothing_kernel_width",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 1
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.GaussianAdditiveNoise",
+    "category": "spectral-noise",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-noise"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.gaussian_smoothing_jitter",
+    "name": "GaussianSmoothingJitter",
+    "type": "augmentation",
+    "description": "Random Gaussian smoothing with variable kernel width",
+    "parameters": [
+      {
+        "name": "sigma_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.5,
+          2.0
+        ]
+      },
+      {
+        "name": "kernel_width",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 11
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.GaussianSmoothingJitter",
+    "category": "spectral-smoothing",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-smoothing"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.heteroscedastic_noise_augmenter",
+    "name": "HeteroscedasticNoiseAugmenter",
+    "type": "augmentation",
+    "description": "Signal-dependent heteroscedastic noise augmentation",
+    "parameters": [
+      {
+        "name": "noise_base",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.001
+      },
+      {
+        "name": "noise_signal_dep",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.005
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.synthesis.HeteroscedasticNoiseAugmenter",
+    "category": "synthesis-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "synthesis-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.instrumental_broadening_augmenter",
+    "name": "InstrumentalBroadeningAugmenter",
+    "type": "augmentation",
+    "description": "Instrumental broadening via Gaussian convolution",
+    "parameters": [
+      {
+        "name": "fwhm",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 3.0
+      },
+      {
+        "name": "fwhm_range",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.synthesis.InstrumentalBroadeningAugmenter",
+    "category": "synthesis-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "synthesis-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.linear_baseline_drift",
+    "name": "LinearBaselineDrift",
+    "type": "augmentation",
+    "description": "Linear baseline drift augmentation",
+    "parameters": [
+      {
+        "name": "offset_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -0.1,
+          0.1
+        ]
+      },
+      {
+        "name": "slope_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -0.001,
+          0.001
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.LinearBaselineDrift",
+    "category": "spectral-baseline",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-baseline"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.local_clipping",
+    "name": "LocalClipping",
+    "type": "augmentation",
+    "description": "Clip local spectral regions to flat values",
+    "parameters": [
+      {
+        "name": "n_regions",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 1
+      },
+      {
+        "name": "width_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          5,
+          20
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.LocalClipping",
+    "category": "spectral-masking",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-masking"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.local_mixup_augmenter",
+    "name": "LocalMixupAugmenter",
+    "type": "augmentation",
+    "description": "Local mixup with k-nearest neighbors",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.2
+      },
+      {
+        "name": "k_neighbors",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 5
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.LocalMixupAugmenter",
+    "category": "spectral-mixing",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-mixing"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.local_wavelength_warp",
+    "name": "LocalWavelengthWarp",
+    "type": "augmentation",
+    "description": "Local non-linear wavelength warping via control points",
+    "parameters": [
+      {
+        "name": "n_control_points",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 5
+      },
+      {
+        "name": "max_shift",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.0
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.LocalWavelengthWarp",
+    "category": "spectral-wavelength",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-wavelength"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.mixup_augmenter",
+    "name": "MixupAugmenter",
+    "type": "augmentation",
+    "description": "Mixup augmentation by blending sample pairs",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.2
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.MixupAugmenter",
+    "category": "spectral-mixing",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-mixing"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.moisture_augmenter",
+    "name": "MoistureAugmenter",
+    "type": "augmentation",
+    "description": "Moisture content variation effects on NIR spectra",
+    "parameters": [
+      {
+        "name": "water_activity_delta",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.1
+      },
+      {
+        "name": "water_activity_range",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "reference_water_activity",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.5
+      },
+      {
+        "name": "free_water_fraction",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.3
+      },
+      {
+        "name": "bound_water_shift",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 25.0
+      },
+      {
+        "name": "moisture_content",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.1
+      },
+      {
+        "name": "enable_shift",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "enable_intensity",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.environmental.MoistureAugmenter",
+    "category": "environmental-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "environmental-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.multiplicative_noise",
+    "name": "MultiplicativeNoise",
+    "type": "augmentation",
+    "description": "Multiplicative gain noise per sample or wavelength",
+    "parameters": [
+      {
+        "name": "sigma_gain",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.05
+      },
+      {
+        "name": "per_wavelength",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": false
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.MultiplicativeNoise",
+    "category": "spectral-noise",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-noise"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.particle_size_augmenter",
+    "name": "ParticleSizeAugmenter",
+    "type": "augmentation",
+    "description": "Particle size scattering effects on NIR spectra",
+    "parameters": [
+      {
+        "name": "mean_size_um",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 50.0
+      },
+      {
+        "name": "size_variation_um",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 15.0
+      },
+      {
+        "name": "size_range_um",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "reference_size_um",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 50.0
+      },
+      {
+        "name": "wavelength_exponent",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.5
+      },
+      {
+        "name": "size_effect_strength",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.1
+      },
+      {
+        "name": "include_path_length",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "path_length_sensitivity",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.5
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.scattering.ParticleSizeAugmenter",
+    "category": "scattering-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "scattering-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.path_length_augmenter",
+    "name": "PathLengthAugmenter",
+    "type": "augmentation",
+    "description": "Multiplicative path length variation augmentation",
+    "parameters": [
+      {
+        "name": "path_length_std",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.05
+      },
+      {
+        "name": "min_path_length",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.5
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "variation_scope",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.synthesis.PathLengthAugmenter",
+    "category": "synthesis-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "synthesis-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.polynomial_baseline_drift",
+    "name": "PolynomialBaselineDrift",
+    "type": "augmentation",
+    "description": "Polynomial baseline drift augmentation",
+    "parameters": [
+      {
+        "name": "degree",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 3
+      },
+      {
+        "name": "coeff_ranges",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.PolynomialBaselineDrift",
+    "category": "spectral-baseline",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-baseline"
     ],
     "isAdvanced": false
   },
@@ -14331,24 +14356,6 @@
     "type": "augmentation",
     "description": "Random multiplicative/additive perturbations",
     "parameters": [
-      {
-        "name": "apply_on",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "global"
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "copy",
-        "type": "bool",
-        "isAdvanced": true,
-        "default": true
-      },
       {
         "name": "operator_func",
         "type": "string",
@@ -14362,6 +14369,12 @@
           0.97,
           1.03
         ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -14381,24 +14394,6 @@
     "description": "Random affine spectral augmentation",
     "parameters": [
       {
-        "name": "apply_on",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "samples"
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "copy",
-        "type": "bool",
-        "isAdvanced": true,
-        "default": true
-      },
-      {
         "name": "p_range",
         "type": "int",
         "isAdvanced": true,
@@ -14409,6 +14404,12 @@
         "type": "int",
         "isAdvanced": true,
         "default": 3
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -14422,16 +14423,113 @@
     "isAdvanced": false
   },
   {
-    "id": "augmentation.spline_curve_simplification",
-    "name": "SplineCurveSimplification",
+    "id": "augmentation.scatter_simulation_msc",
+    "name": "ScatterSimulationMSC",
     "type": "augmentation",
-    "description": "Curve simplification via splines",
+    "description": "Scatter simulation via MSC coefficient perturbation",
     "parameters": [
       {
-        "name": "apply_on",
+        "name": "reference_mode",
         "type": "string",
         "isAdvanced": true,
-        "default": "samples"
+        "default": "self"
+      },
+      {
+        "name": "a_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -0.1,
+          0.1
+        ]
+      },
+      {
+        "name": "b_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.9,
+          1.1
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.ScatterSimulationMSC",
+    "category": "spectral-scatter",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-scatter"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.smooth_magnitude_warp",
+    "name": "SmoothMagnitudeWarp",
+    "type": "augmentation",
+    "description": "Smooth magnitude warping via control points",
+    "parameters": [
+      {
+        "name": "n_control_points",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 5
+      },
+      {
+        "name": "gain_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.9,
+          1.1
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.SmoothMagnitudeWarp",
+    "category": "spectral-wavelength",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-wavelength"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.spike_noise",
+    "name": "SpikeNoise",
+    "type": "augmentation",
+    "description": "Random spike artifacts at random positions",
+    "parameters": [
+      {
+        "name": "n_spikes_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          1,
+          3
+        ]
+      },
+      {
+        "name": "amplitude_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -0.5,
+          0.5
+        ]
       },
       {
         "name": "random_state",
@@ -14440,11 +14538,28 @@
         "default": null
       },
       {
-        "name": "copy",
-        "type": "bool",
+        "name": "variation_scope",
+        "type": "string",
         "isAdvanced": true,
-        "default": true
-      },
+        "default": "sample"
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.SpikeNoise",
+    "category": "spectral-noise",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-noise"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.spline_curve_simplification",
+    "name": "SplineCurveSimplification",
+    "type": "augmentation",
+    "description": "Curve simplification via splines",
+    "parameters": [
       {
         "name": "spline_points",
         "type": "string",
@@ -14456,6 +14571,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": false
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -14475,22 +14596,10 @@
     "description": "Spline-based smoothing augmentation",
     "parameters": [
       {
-        "name": "apply_on",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "samples"
-      },
-      {
         "name": "random_state",
         "type": "string",
         "isAdvanced": true,
         "default": null
-      },
-      {
-        "name": "copy",
-        "type": "bool",
-        "isAdvanced": true,
-        "default": true
       }
     ],
     "source": "nirs4all",
@@ -14509,24 +14618,6 @@
     "type": "augmentation",
     "description": "Wavelength warping via splines",
     "parameters": [
-      {
-        "name": "apply_on",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "samples"
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "copy",
-        "type": "bool",
-        "isAdvanced": true,
-        "default": true
-      },
       {
         "name": "spline_degree",
         "type": "int",
@@ -14547,6 +14638,12 @@
           -10,
           10
         ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -14566,24 +14663,6 @@
     "description": "X-axis simplification via splines",
     "parameters": [
       {
-        "name": "apply_on",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "samples"
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "copy",
-        "type": "bool",
-        "isAdvanced": true,
-        "default": true
-      },
-      {
         "name": "spline_points",
         "type": "string",
         "isAdvanced": true,
@@ -14594,6 +14673,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": false
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -14613,24 +14698,6 @@
     "description": "Intensity perturbations via splines",
     "parameters": [
       {
-        "name": "apply_on",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "samples"
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "copy",
-        "type": "bool",
-        "isAdvanced": true,
-        "default": true
-      },
-      {
         "name": "spline_points",
         "type": "string",
         "isAdvanced": true,
@@ -14641,6 +14708,12 @@
         "type": "float",
         "isAdvanced": true,
         "default": 0.005
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -14650,6 +14723,285 @@
       "generated",
       "nirs4all",
       "spectral-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.stray_light_augmenter",
+    "name": "StrayLightAugmenter",
+    "type": "augmentation",
+    "description": "Stray light contamination at spectral edges",
+    "parameters": [
+      {
+        "name": "stray_light_fraction",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.001
+      },
+      {
+        "name": "edge_enhancement",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 2.0
+      },
+      {
+        "name": "edge_width",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.1
+      },
+      {
+        "name": "include_peak_truncation",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.StrayLightAugmenter",
+    "category": "edge-artifacts-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "edge-artifacts-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.temperature_augmenter",
+    "name": "TemperatureAugmenter",
+    "type": "augmentation",
+    "description": "Temperature variation effects on NIR spectra",
+    "parameters": [
+      {
+        "name": "temperature_delta",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 5.0
+      },
+      {
+        "name": "temperature_range",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
+        "name": "reference_temperature",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 25.0
+      },
+      {
+        "name": "enable_shift",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "enable_intensity",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "enable_broadening",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "region_specific",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.environmental.TemperatureAugmenter",
+    "category": "environmental-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "environmental-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.truncated_peak_augmenter",
+    "name": "TruncatedPeakAugmenter",
+    "type": "augmentation",
+    "description": "Truncated peak artifacts at spectral edges",
+    "parameters": [
+      {
+        "name": "peak_probability",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.3
+      },
+      {
+        "name": "amplitude_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.01,
+          0.1
+        ]
+      },
+      {
+        "name": "width_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          50,
+          200
+        ]
+      },
+      {
+        "name": "left_edge",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "right_edge",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.TruncatedPeakAugmenter",
+    "category": "edge-artifacts-augmentation",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "edge-artifacts-augmentation"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.unsharp_spectral_mask",
+    "name": "UnsharpSpectralMask",
+    "type": "augmentation",
+    "description": "Unsharp masking for spectral sharpening",
+    "parameters": [
+      {
+        "name": "amount_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.1,
+          0.5
+        ]
+      },
+      {
+        "name": "sigma",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.0
+      },
+      {
+        "name": "kernel_width",
+        "type": "int",
+        "isAdvanced": true,
+        "default": 11
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.UnsharpSpectralMask",
+    "category": "spectral-smoothing",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-smoothing"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.wavelength_shift",
+    "name": "WavelengthShift",
+    "type": "augmentation",
+    "description": "Random shift along wavelength axis",
+    "parameters": [
+      {
+        "name": "shift_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          -2.0,
+          2.0
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.WavelengthShift",
+    "category": "spectral-wavelength",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-wavelength"
+    ],
+    "isAdvanced": false
+  },
+  {
+    "id": "augmentation.wavelength_stretch",
+    "name": "WavelengthStretch",
+    "type": "augmentation",
+    "description": "Random stretch/compression of wavelength axis",
+    "parameters": [
+      {
+        "name": "stretch_range",
+        "type": "array",
+        "isAdvanced": true,
+        "default": [
+          0.99,
+          1.01
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      }
+    ],
+    "source": "nirs4all",
+    "classPath": "nirs4all.operators.augmentation.spectral.WavelengthStretch",
+    "category": "spectral-wavelength",
+    "tags": [
+      "generated",
+      "nirs4all",
+      "spectral-wavelength"
     ],
     "isAdvanced": false
   },

@@ -7,13 +7,40 @@
     "description": "Container for sample augmentation steps",
     "longDescription": "Wraps augmentation steps that add new samples (applied to training only).",
     "category": "Containers",
-    "tags": ["container", "augmentation", "sample", "training"],
+    "tags": [
+      "container",
+      "augmentation",
+      "sample",
+      "training"
+    ],
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "augmentation",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per Sample",
+            "description": "Each augmented sample gets unique random parameters"
+          },
+          {
+            "value": "batch",
+            "label": "Batch",
+            "description": "All samples share the same random parameters"
+          }
+        ],
+        "description": "Controls whether augmentation parameters vary per sample or are shared across the batch",
+        "isAdvanced": true
+      }
+    ],
     "acceptsChildren": true,
-    "childTypes": ["augmentation"],
+    "childTypes": [
+      "augmentation"
+    ],
     "trainOnlyContainer": true,
     "layout": {
       "orientation": "vertical",
@@ -28,13 +55,20 @@
     "description": "Container for feature augmentation steps",
     "longDescription": "Wraps steps that add new features (applied during both train and predict).",
     "category": "Containers",
-    "tags": ["container", "augmentation", "feature", "transform"],
+    "tags": [
+      "container",
+      "augmentation",
+      "feature",
+      "transform"
+    ],
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "feature_ops",
     "parameters": [],
     "acceptsChildren": true,
-    "childTypes": ["preprocessing"],
+    "childTypes": [
+      "preprocessing"
+    ],
     "layout": {
       "orientation": "vertical",
       "label": "Feature Augmentation"
@@ -48,13 +82,20 @@
     "description": "Container for sample filter steps",
     "longDescription": "Wraps filter steps that remove samples (applied to training only).",
     "category": "Containers",
-    "tags": ["container", "filter", "sample", "training"],
+    "tags": [
+      "container",
+      "filter",
+      "sample",
+      "training"
+    ],
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "filters",
     "parameters": [],
     "acceptsChildren": true,
-    "childTypes": ["filter"],
+    "childTypes": [
+      "filter"
+    ],
     "trainOnlyContainer": true,
     "layout": {
       "orientation": "vertical",
@@ -69,7 +110,12 @@
     "description": "Concatenate transformations",
     "longDescription": "Container that concatenates the outputs of multiple transformations.",
     "category": "Containers",
-    "tags": ["container", "concat", "transform", "combine"],
+    "tags": [
+      "container",
+      "concat",
+      "transform",
+      "combine"
+    ],
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "transforms",
@@ -82,7 +128,9 @@
       }
     ],
     "acceptsChildren": true,
-    "childTypes": ["preprocessing"],
+    "childTypes": [
+      "preprocessing"
+    ],
     "layout": {
       "orientation": "vertical",
       "label": "Concatenate Transforms"

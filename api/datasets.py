@@ -855,7 +855,7 @@ async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     try:
-        from nirs4all.data.synthetic import SyntheticDatasetBuilder
+        from nirs4all.synthesis import SyntheticDatasetBuilder
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if request.name:
