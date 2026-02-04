@@ -88,11 +88,15 @@ class LinkedWorkspace:
 class WorkspaceScanner:
     """Scans and discovers content from nirs4all workspaces.
 
-    This class handles auto-discovery of:
-    - Runs (from workspace/runs/<dataset>/NNNN_xxx/manifest.yaml)
-    - Predictions (from <dataset>.meta.parquet files)
-    - Exports (from workspace/exports/<dataset>/)
-    - Library templates (from workspace/library/)
+    Primary discovery uses the DuckDB ``WorkspaceStore`` (``store.duckdb``).
+    Falls back to filesystem scanning only when the store file does not
+    exist (legacy workspaces).
+
+    Discovery targets:
+    - Runs (from ``store.duckdb`` or ``workspace/runs/`` manifests)
+    - Predictions (from ``store.duckdb`` or ``.meta.parquet`` files)
+    - Exports (from ``workspace/exports/``)
+    - Library templates (from ``workspace/library/``)
     """
 
     def __init__(self, workspace_path: Path):
@@ -118,6 +122,29 @@ class WorkspaceScanner:
             # Default to the nested structure
             self.workspace_dir = potential_workspace_dir
 
+        # Lazily initialised StoreAdapter (only when store.duckdb exists)
+        self._store_adapter = None
+
+    @property
+    def store_adapter(self):
+        """Return a ``StoreAdapter`` if the DuckDB store file exists, else ``None``."""
+        if self._store_adapter is not None:
+            return self._store_adapter
+        store_db = self.workspace_dir / "store.duckdb"
+        if not store_db.exists():
+            store_db = self.workspace_path / "store.duckdb"
+        if store_db.exists():
+            try:
+                from .store_adapter import StoreAdapter
+                self._store_adapter = StoreAdapter(store_db.parent)
+            except Exception as exc:
+                print(f"Note: Could not open WorkspaceStore: {exc}")
+        return self._store_adapter
+
+    def _has_store(self) -> bool:
+        """Return ``True`` if a DuckDB store is available."""
+        return self.store_adapter is not None
+
     def is_valid_workspace(self) -> Tuple[bool, str]:
         """Check if the path is a valid nirs4all workspace.
 
@@ -129,6 +156,10 @@ class WorkspaceScanner:
 
         if not self.workspace_path.is_dir():
             return False, "Path is not a directory"
+
+        # DuckDB store is the primary indicator
+        if self._has_store():
+            return True, "Valid nirs4all workspace (DuckDB store)"
 
         # Check for workspace subdirectory or direct workspace structure
         has_workspace_dir = self.workspace_dir.exists()
@@ -186,18 +217,20 @@ class WorkspaceScanner:
         return result
 
     def discover_runs(self) -> List[Dict[str, Any]]:
-        """Discover all runs by parsing manifest files.
+        """Discover all runs.
 
-        Supports two formats:
-        1. New format: workspace/runs/<run_id>/run_manifest.yaml
-           - Contains templates, multiple datasets, run-level metadata
-        2. Legacy format: workspace/runs/<dataset>/<pipeline_id>/manifest.yaml
-           - Per-dataset, per-pipeline manifests (treated as individual results)
+        When a DuckDB store exists, runs are read from ``store.list_runs()``.
+        Otherwise falls back to filesystem manifest scanning (legacy path).
 
         Returns:
-            List of run information dictionaries
+            List of run information dictionaries.
         """
-        runs = []
+        # ---- DuckDB store path (primary) ----
+        if self._has_store():
+            return self._discover_runs_from_store()
+
+        # ---- Legacy filesystem path ----
+        runs: List[Dict[str, Any]] = []
         runs_dir = self.workspace_dir / "runs"
 
         if not runs_dir.exists():
@@ -218,6 +251,59 @@ class WorkspaceScanner:
             if legacy_run.get("run_id") not in new_format_run_ids:
                 runs.append(legacy_run)
 
+        return runs
+
+    def _discover_runs_from_store(self) -> List[Dict[str, Any]]:
+        """Discover runs via ``WorkspaceStore.list_runs()``.
+
+        Returns:
+            List of run information dictionaries formatted for the webapp.
+        """
+        adapter = self.store_adapter
+        if adapter is None:
+            return []
+        df = adapter.store.list_runs(limit=500)
+        runs = []
+        for row in df.iter_rows(named=True):
+            created_at = row.get("created_at")
+            if isinstance(created_at, datetime):
+                created_at = created_at.isoformat()
+            completed_at = row.get("completed_at")
+            if isinstance(completed_at, datetime):
+                completed_at = completed_at.isoformat()
+
+            # Deserialise JSON fields that the store returns as strings
+            datasets_raw = row.get("datasets")
+            datasets = []
+            if isinstance(datasets_raw, str):
+                try:
+                    datasets = json.loads(datasets_raw)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            elif isinstance(datasets_raw, list):
+                datasets = datasets_raw
+
+            summary_raw = row.get("summary")
+            summary = {}
+            if isinstance(summary_raw, str):
+                try:
+                    summary = json.loads(summary_raw)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            elif isinstance(summary_raw, dict):
+                summary = summary_raw
+
+            runs.append({
+                "id": row.get("run_id", ""),
+                "name": row.get("name", ""),
+                "status": row.get("status", "unknown"),
+                "created_at": created_at or "",
+                "completed_at": completed_at or "",
+                "format": "store",
+                "datasets": datasets,
+                "summary": summary,
+                "error": row.get("error"),
+            })
         return runs
 
     def _discover_runs_new_format(self, runs_dir: Path) -> List[Dict[str, Any]]:
@@ -423,12 +509,21 @@ class WorkspaceScanner:
         }
 
     def discover_predictions(self) -> List[Dict[str, Any]]:
-        """Discover prediction databases (.meta.parquet files).
+        """Discover prediction databases.
+
+        When a DuckDB store exists, predictions are read from
+        ``store.query_predictions()``.  Otherwise falls back to scanning
+        ``.meta.parquet`` / JSON files on the filesystem (legacy path).
 
         Returns:
-            List of prediction database information
+            List of prediction database information.
         """
-        predictions = []
+        # ---- DuckDB store path (primary) ----
+        if self._has_store():
+            return self._discover_predictions_from_store()
+
+        # ---- Legacy filesystem path ----
+        predictions: List[Dict[str, Any]] = []
 
         # Look for .meta.parquet files in workspace root
         for parquet_file in self.workspace_path.glob("*.meta.parquet"):
@@ -457,6 +552,33 @@ class WorkspaceScanner:
             })
 
         return predictions
+
+    def _discover_predictions_from_store(self) -> List[Dict[str, Any]]:
+        """Discover predictions via ``WorkspaceStore.query_predictions()``.
+
+        Groups predictions by dataset and returns one entry per dataset,
+        matching the legacy format that the frontend expects.
+
+        Returns:
+            List of prediction summaries (one per dataset).
+        """
+        adapter = self.store_adapter
+        if adapter is None:
+            return []
+        df = adapter.store.query_predictions()
+        if len(df) == 0:
+            return []
+
+        # Group by dataset_name to mirror the old per-file structure
+        dataset_counts: Dict[str, int] = {}
+        for row in df.iter_rows(named=True):
+            ds = row.get("dataset_name", "unknown")
+            dataset_counts[ds] = dataset_counts.get(ds, 0) + 1
+
+        return [
+            {"dataset": ds_name, "format": "store", "prediction_count": count}
+            for ds_name, count in sorted(dataset_counts.items())
+        ]
 
     def discover_exports(self) -> List[Dict[str, Any]]:
         """Discover all exports (n4a bundles, pipeline.json, summary.json, predictions.csv).
@@ -789,18 +911,24 @@ class WorkspaceScanner:
         return result
 
     def discover_results(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Discover individual results (pipeline config × dataset combinations).
+        """Discover individual results (pipeline config x dataset combinations).
 
-        Results are the granular level below runs - each result represents
-        one specific pipeline configuration executed on one dataset.
+        When a DuckDB store exists, results are read from
+        ``store.list_pipelines()``.  Otherwise falls back to filesystem
+        manifest scanning (legacy path).
 
         Args:
-            run_id: Optional run ID to filter results for a specific run
+            run_id: Optional run ID to filter results for a specific run.
 
         Returns:
-            List of result information dictionaries
+            List of result information dictionaries.
         """
-        results = []
+        # ---- DuckDB store path (primary) ----
+        if self._has_store():
+            return self._discover_results_from_store(run_id)
+
+        # ---- Legacy filesystem path ----
+        results: List[Dict[str, Any]] = []
         runs_dir = self.workspace_dir / "runs"
 
         if not runs_dir.exists():
@@ -909,6 +1037,40 @@ class WorkspaceScanner:
             "artifact_count": artifact_count,
             "manifest_path": str(manifest_file),
         }
+
+    def _discover_results_from_store(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Discover results via ``WorkspaceStore.list_pipelines()``.
+
+        Args:
+            run_id: Optional run ID to filter results.
+
+        Returns:
+            List of result information dictionaries formatted for the webapp.
+        """
+        adapter = self.store_adapter
+        if adapter is None:
+            return []
+        df = adapter.store.list_pipelines(run_id=run_id)
+        results = []
+        for row in df.iter_rows(named=True):
+            created_at = row.get("created_at")
+            if isinstance(created_at, datetime):
+                created_at = created_at.isoformat()
+            results.append({
+                "id": row.get("pipeline_id", ""),
+                "run_id": row.get("run_id", ""),
+                "dataset": row.get("dataset_name", ""),
+                "pipeline_config": row.get("name", ""),
+                "pipeline_config_id": row.get("pipeline_id", ""),
+                "created_at": created_at or "",
+                "best_score": row.get("best_val"),
+                "best_test_score": row.get("best_test"),
+                "metric": row.get("metric", ""),
+                "status": row.get("status", ""),
+                "duration_ms": row.get("duration_ms"),
+                "format": "store",
+            })
+        return results
 
 
 # ============================================================================

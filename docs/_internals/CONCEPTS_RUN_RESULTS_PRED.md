@@ -630,900 +630,190 @@ PLSRegression_fold0_val
 
 ## 7. Storage Architecture
 
-### Recommended Directory Structure
+### Workspace Structure
+
+All structured data is stored in a single DuckDB database. Binary artifacts are stored in a flat content-addressed directory.
 
 ```
 workspace/
-├── runs/
-│   └── <run_id>/
-│       ├── run_manifest.yaml              # Run metadata
-│       ├── templates/                     # Pipeline templates
-│       │   ├── template_001.yaml          # Original template 1
-│       │   ├── template_002.yaml          # Original template 2
-│       │   └── template_001.json          # JSON for webapp
-│       ├── expanded_pipelines.yaml        # All generated configs
-│       └── results/
-│           └── <dataset>/
-│               └── <pipeline_config>/
-│                   ├── manifest.yaml      # Result manifest
-│                   └── artifacts/         # Model files
+├── store.duckdb                        # All metadata, configs, logs, chains, predictions
+│                                        # Tables: runs, pipelines, chains,
+│                                        # predictions, prediction_arrays, artifacts, logs
 │
-├── binaries/
-│   └── <dataset>/
-│       └── <artifact_hash>.joblib         # Content-addressed storage
+├── artifacts/                           # Flat content-addressed binaries
+│   ├── ab/abc123def456.joblib
+│   └── cd/cde789012345.joblib
 │
-├── predictions/
-│   └── <dataset>.meta.parquet             # Prediction metadata
-│
-└── arrays/
-    └── <array_id>.npy                     # Stored y_true, y_pred arrays
+└── exports/                             # User-triggered exports (on demand)
 ```
 
-### Workspace-Level Dataset Registry
+### Dataset Discovery
 
-In addition to storing dataset metadata in run manifests, the workspace maintains a **dataset registry** that aggregates all known datasets:
-
-```
-workspace/
-├── datasets.yaml                          # Dataset registry
-├── runs/...
-└── ...
-```
-
-#### datasets.yaml
-```yaml
-schema_version: "1.0"
-datasets:
-  - id: "ds_wheat_v1"
-    name: "Wheat Protein 2025"
-    current_path: "/data/wheat.csv"        # May be updated by user
-    original_path: "/data/wheat.csv"       # Path when first added
-    hash: "sha256:abc123def456789..."
-    status: "valid"                        # valid, missing, hash_mismatch
-    task_type: "regression"
-    n_samples: 500
-    n_features: 2100
-    y_columns: ["protein"]
-    y_stats:
-      protein: {min: 8.2, max: 16.5, mean: 12.3, std: 1.8}
-    wavelength_range: [400, 2500]
-    wavelength_unit: "nm"
-    metadata:
-      source: "Lab A"
-      instrument: "NIRFlex N-500"
-    first_used: "2025-01-08T10:00:00Z"
-    last_used: "2025-01-15T14:30:00Z"
-    run_count: 5                           # Number of runs using this dataset
-    versions:
-      - version: "v1_abc123"
-        hash: "sha256:abc123def456789..."
-        created_at: "2025-01-08T10:00:00Z"
-        n_samples: 500
-
-  - id: "ds_corn_v1"
-    name: "Corn Starch Analysis"
-    current_path: null                     # File missing
-    original_path: "/data/corn.csv"
-    hash: "sha256:def456gh789abc..."
-    status: "missing"
-    # ... other properties preserved
-```
-
-#### Auto-Discovery When Linking Workspace
-
-When the webapp links a new workspace:
+Dataset metadata is stored in the `runs` table's `datasets` JSON column. When the webapp links a workspace, it queries the store:
 
 ```python
-# Webapp workspace linking logic
-async def link_workspace(workspace_path: str):
-    """Link workspace and auto-discover datasets."""
+from nirs4all.pipeline.storage import WorkspaceStore
 
-    # 1. Check for existing dataset registry
-    registry_path = workspace_path / "datasets.yaml"
-    if registry_path.exists():
-        datasets = load_yaml(registry_path)
-    else:
-        datasets = {"datasets": []}
+store = WorkspaceStore(workspace_path)
 
-    # 2. Scan all run manifests for dataset metadata
-    for run_manifest in workspace_path.glob("runs/*/run_manifest.yaml"):
-        manifest = load_yaml(run_manifest)
-        for dataset_meta in manifest.get("datasets", []):
-            existing = find_by_hash(datasets, dataset_meta["hash"])
+# List all runs with dataset metadata
+runs = store.list_runs()
 
-            if existing:
-                # Update last_used, run_count
-                existing["last_used"] = manifest["created_at"]
-                existing["run_count"] += 1
-            else:
-                # Add new dataset to registry
-                datasets["datasets"].append({
-                    "id": generate_dataset_id(dataset_meta),
-                    **dataset_meta,
-                    "status": "unknown",
-                    "run_count": 1,
-                })
-
-    # 3. Validate paths and update status
-    for dataset in datasets["datasets"]:
-        path, status = resolve_dataset_path(dataset, workspace_path)
-        dataset["status"] = status
-        if path:
-            dataset["current_path"] = str(path)
-
-    # 4. Save updated registry
-    save_yaml(registry_path, datasets)
-
-    # 5. Return datasets for webapp display
-    return datasets
+# Query predictions across datasets
+top = store.top_predictions(n=10, metric="val_score")
 ```
 
 #### Webapp Dataset States
 
-| Status | Icon | Description | User Action |
-|--------|------|-------------|-------------|
-| `valid` | ✅ | File exists, hash matches | None needed |
-| `missing` | ⚠️ | File not found | Update path |
-| `hash_mismatch` | ❌ | File found but content changed | Create new version or accept |
-| `relocated` | 🔄 | File found at different path | Confirm auto-update |
+| Status | Description | User Action |
+|--------|-------------|-------------|
+| `valid` | File exists, hash matches | None needed |
+| `missing` | File not found at stored path | Update path |
+| `hash_mismatch` | File found but content changed | Create new version or accept |
 
-#### Dataset Path Update UI
+### DuckDB Tables
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Dataset: Wheat Protein 2025                                     │
-│ Status: ⚠️ Missing                                              │
-│                                                                 │
-│ Original path: /data/wheat.csv                                 │
-│                                                                 │
-│ Properties (preserved from run data):                          │
-│   • Samples: 500                                                │
-│   • Features: 2100                                              │
-│   • Target: protein (8.2 - 16.5)                               │
-│   • Wavelength: 400-2500 nm                                    │
-│                                                                 │
-│ [Browse for file...]  [Search workspace]                       │
-│                                                                 │
-│ ┌──────────────────────────────────────────────────────────┐   │
-│ │ /new/location/wheat_protein_2025.csv                     │   │
-│ └──────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│ [Validate & Update]  [Skip for now]                            │
-└─────────────────────────────────────────────────────────────────┘
+All data previously stored in YAML manifest files is now in DuckDB tables:
+
+#### runs table
+```sql
+-- Each run is a row in the runs table
+SELECT run_id, name, status, config, datasets, summary, created_at
+FROM runs
+WHERE status = 'completed';
 ```
 
-### Manifest Files
+The `config` column (JSON) stores run-level configuration (CV strategy, random seed, etc.).
+The `datasets` column (JSON) stores full dataset metadata for each dataset used in the run.
 
-#### run_manifest.yaml
-```yaml
-schema_version: "1.0"
-uid: "abc123"
-name: "Protein Optimization"
-description: "Compare PLS, RF, and NN on protein datasets"
-created_at: "2025-01-08T10:30:00Z"
-status: completed
-completed_at: "2025-01-08T11:45:00Z"
-
-# Multiple templates
-templates:
-  - id: "template_001"
-    name: "PLS Variants"
-    file: "templates/template_001.yaml"
-    expansion_count: 6
-  - id: "template_002"
-    name: "Random Forest"
-    file: "templates/template_002.yaml"
-    expansion_count: 1
-  - id: "template_003"
-    name: "Neural Network"
-    file: "templates/template_003.yaml"
-    expansion_count: 4
-
-total_pipeline_configs: 11  # 6 + 1 + 4
-
-# Full dataset metadata for auto-discovery
-datasets:
-  - name: "Wheat Protein 2025"
-    path: "/data/wheat.csv"
-    hash: "sha256:abc123def456789..."
-    task_type: "regression"
-    n_samples: 500
-    n_features: 2100
-    y_columns: ["protein"]
-    y_stats:
-      protein: {min: 8.2, max: 16.5, mean: 12.3, std: 1.8}
-    wavelength_range: [400, 2500]
-    wavelength_unit: "nm"
-    metadata:
-      source: "Lab A"
-      instrument: "NIRFlex N-500"
-    version: "v1_abc123"
-
-  - name: "Corn Starch Analysis"
-    path: "/data/corn.csv"
-    hash: "sha256:def456gh789abc..."
-    task_type: "regression"
-    n_samples: 350
-    n_features: 2100
-    y_columns: ["starch", "protein"]
-    y_stats:
-      starch: {min: 60.0, max: 75.0, mean: 68.5, std: 3.2}
-      protein: {min: 7.0, max: 12.0, mean: 9.5, std: 1.1}
-    wavelength_range: [400, 2500]
-    wavelength_unit: "nm"
-    metadata:
-      source: "Lab B"
-      instrument: "FOSS XDS"
-    version: "v1_def456"
-
-config:
-  cv_folds: 5
-  cv_strategy: kfold
-  random_state: 42
-
-summary:
-  total_results: 22  # 11 configs × 2 datasets
-  completed_results: 22
-  failed_results: 0
-  best_result:
-    dataset: "wheat"
-    template: "template_001"
-    pipeline_config: "SNV_PLS_nc15"
-    score: 0.972
-    metric: r2
+#### pipelines table
+```sql
+-- Each expanded pipeline config is a row
+SELECT pipeline_id, run_id, name, expanded_config, generator_choices,
+       dataset_name, dataset_hash, best_val, best_test, metric
+FROM pipelines
+WHERE run_id = 'abc123';
 ```
 
-#### template_001.yaml (Pipeline Template)
-```yaml
-schema_version: "1.0"
-id: "template_001"
-name: "PLS Variants"
-description: "Explore preprocessing and n_components for PLS"
-created_at: "2025-01-08T10:30:00Z"
-
-steps:
-  - class: sklearn.preprocessing.MinMaxScaler
-  - _or_:
-      - class: nirs4all.operators.SNV
-      - class: nirs4all.operators.MSC
-  - _range_: [5, 15, 5]
-    param: n_components
-  - class: sklearn.cross_decomposition.PLSRegression
-
-expansion_count: 6  # 2 × 3
+#### chains table
+```sql
+-- Each preprocessing-to-model chain
+SELECT chain_id, pipeline_id, steps, model_step_idx, model_class,
+       preprocessings, fold_artifacts, shared_artifacts
+FROM chains
+WHERE pipeline_id = 'def456';
 ```
 
-#### result_manifest.yaml
-```yaml
-schema_version: "2.0"
-uid: "def456"
-run_id: "abc123"
-template_id: "template_001"
-dataset: "wheat"
-pipeline_config: "SNV_PLS_nc15"
-pipeline_config_id: "0003_SNV_PLS_nc15_gh789"
-created_at: "2025-01-08T10:31:00Z"
-
-generator_choices:
-  - {_or_: "nirs4all.operators.SNV"}
-  - {_range_: 15}
-
-best_score: 0.972
-best_model: "PLSRegression"
-metric: "r2"
-task_type: "regression"
-n_samples: 500
-n_features: 1024
-predictions_count: 15
-
-artifacts:
-  schema_version: "2.0"
-  items:
-    - name: "SNV_1"
-      path: "artifacts/SNV_abc123.joblib"
-    - name: "PLSRegression_fold0"
-      path: "artifacts/PLS_gh789.joblib"
-
-predictions: [...]
+#### predictions table
+```sql
+-- Each prediction (model + fold + partition)
+SELECT prediction_id, pipeline_id, chain_id, dataset_name,
+       model_name, model_class, fold_id, partition,
+       val_score, test_score, train_score
+FROM predictions
+WHERE dataset_name = 'wheat' AND partition = 'val'
+ORDER BY val_score ASC
+LIMIT 10;
 ```
 
 ---
 
-## 8. Performance Optimization: Parquet Embedded Summary
+## 8. Performance: DuckDB Store Queries
 
-### Problem Statement
+### Overview
 
-When loading the Predictions page in the webapp, the current approach requires:
-1. Scanning all `.meta.parquet` files in the workspace
-2. Loading full DataFrames (10k+ rows per dataset)
-3. Computing aggregations client-side
-4. Loading data in batches with a `while(hasMore)` loop
-
-This results in **2-5 second load times** for workspaces with large prediction histories.
-
-### Solution: Parquet File-Level Metadata
-
-Parquet files support **custom metadata** stored in the file footer. This metadata can be read **without scanning any row data**, providing instant access to pre-computed summaries.
-
-```
-┌─────────────────────────────────────────┐
-│         wheat.meta.parquet              │
-├─────────────────────────────────────────┤
-│  Row Group 1 (rows 0-10000)             │  ← NOT read for summary
-│  Row Group 2 (rows 10001-12450)         │  ← NOT read for summary
-├─────────────────────────────────────────┤
-│  FOOTER (~1KB)                          │
-│  ├── Schema                             │  ← Always read
-│  └── Custom Metadata (key-value)        │
-│      {                                  │
-│        "n4a_summary": "{...JSON...}"    │  ← YOUR SUMMARY HERE!
-│      }                                  │
-└─────────────────────────────────────────┘
-```
-
-**Read time for metadata only**: ~2-5ms (vs 100-500ms for full scan)
-
-### Summary Schema
-
-The embedded summary contains pre-computed aggregations:
-
-```json
-{
-  "n4a_version": "1.0",
-  "generated_at": "2025-01-09T10:30:00Z",
-  "dataset_name": "wheat",
-  "total_predictions": 12450,
-
-  "stats": {
-    "val_score": {
-      "min": 0.72,
-      "max": 0.97,
-      "mean": 0.89,
-      "std": 0.08,
-      "quartiles": [0.82, 0.89, 0.94]
-    },
-    "test_score": {
-      "min": 0.68,
-      "max": 0.95,
-      "mean": 0.86,
-      "std": 0.09,
-      "quartiles": [0.79, 0.86, 0.92]
-    }
-  },
-
-  "facets": {
-    "models": [
-      {"name": "PLSRegression", "count": 5000, "avg_val_score": 0.91},
-      {"name": "RandomForest", "count": 4200, "avg_val_score": 0.87},
-      {"name": "XGBoost", "count": 3250, "avg_val_score": 0.89}
-    ],
-    "partitions": [
-      {"name": "train", "count": 4150},
-      {"name": "val", "count": 4150},
-      {"name": "test", "count": 4150}
-    ],
-    "folds": ["0", "1", "2", "3", "4"],
-    "n_configs": 45,
-    "n_runs": 3
-  },
-
-  "runs": [
-    {
-      "id": "2025-01-09_ProteinSweep_abc123",
-      "name": "Protein Sweep",
-      "n_predictions": 6200,
-      "best_val_score": 0.97
-    },
-    {
-      "id": "2025-01-08_BaselineTest_def456",
-      "name": "Baseline Test",
-      "n_predictions": 6250,
-      "best_val_score": 0.92
-    }
-  ],
-
-  "top_predictions": [
-    {
-      "id": "pred_abc123",
-      "model_name": "PLSRegression",
-      "config_name": "SNV_PLS_15",
-      "val_score": 0.97,
-      "test_score": 0.95,
-      "fold_id": "2"
-    },
-    {
-      "id": "pred_def456",
-      "model_name": "RandomForest",
-      "config_name": "MSC_RF_100",
-      "val_score": 0.96,
-      "test_score": 0.94,
-      "fold_id": "0"
-    }
-  ]
-}
-```
-
-### Implementation: nirs4all Library
-
-#### Writing with Embedded Summary
+With DuckDB-backed storage, all prediction queries are instant SQL operations on `store.duckdb`. No filesystem scanning, no Parquet file loading, no client-side aggregation.
 
 ```python
-# nirs4all/data/_predictions/storage.py
+from nirs4all.pipeline.storage import WorkspaceStore
 
-import pyarrow.parquet as pq
-import json
+store = WorkspaceStore(workspace_path)
 
-def save_parquet_with_summary(self, meta_path: Path) -> None:
-    """Save parquet with embedded summary metadata."""
+# Instant: top predictions across all datasets
+top = store.top_predictions(n=10, metric="val_score")
 
-    # Compute summary while data is in memory (zero extra cost)
-    df = self._df
-    summary = {
-        "n4a_version": "1.0",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "dataset_name": df["dataset_name"].unique().to_list()[0] if "dataset_name" in df.columns else None,
-        "total_predictions": len(df),
-        "stats": self._compute_score_stats(df),
-        "facets": self._compute_facets(df),
-        "runs": self._compute_run_summaries(df),
-        "top_predictions": self._compute_top_predictions(df, n=10),
-    }
+# Instant: filtered query
+preds = store.query_predictions(dataset_name="wheat", partition="val", limit=50)
 
-    # Convert Polars DataFrame to PyArrow Table
-    table = df.to_arrow()
-
-    # Embed summary in file metadata
-    existing_meta = table.schema.metadata or {}
-    new_meta = {
-        **existing_meta,
-        b"n4a_summary": json.dumps(summary).encode("utf-8"),
-    }
-    table = table.replace_schema_metadata(new_meta)
-
-    # Write parquet file
-    pq.write_table(table, str(meta_path))
-
-
-def _compute_score_stats(self, df: pl.DataFrame) -> dict:
-    """Compute statistics for score columns."""
-    stats = {}
-    for col in ["val_score", "test_score", "train_score"]:
-        if col in df.columns:
-            values = df[col].drop_nulls()
-            if len(values) > 0:
-                stats[col] = {
-                    "min": float(values.min()),
-                    "max": float(values.max()),
-                    "mean": float(values.mean()),
-                    "std": float(values.std()),
-                    "quartiles": [
-                        float(values.quantile(0.25)),
-                        float(values.quantile(0.50)),
-                        float(values.quantile(0.75)),
-                    ],
-                }
-    return stats
-
-
-def _compute_facets(self, df: pl.DataFrame) -> dict:
-    """Compute faceted counts."""
-    facets = {}
-
-    # Models with counts and avg scores
-    if "model_name" in df.columns:
-        model_stats = (
-            df.group_by("model_name")
-            .agg([
-                pl.count().alias("count"),
-                pl.col("val_score").mean().alias("avg_val_score"),
-            ])
-            .sort("count", descending=True)
-        )
-        facets["models"] = [
-            {
-                "name": row["model_name"],
-                "count": row["count"],
-                "avg_val_score": round(row["avg_val_score"], 4) if row["avg_val_score"] else None,
-            }
-            for row in model_stats.iter_rows(named=True)
-        ]
-
-    # Partitions
-    if "partition" in df.columns:
-        partition_counts = df.group_by("partition").count().sort("partition")
-        facets["partitions"] = [
-            {"name": row["partition"], "count": row["count"]}
-            for row in partition_counts.iter_rows(named=True)
-        ]
-
-    # Folds
-    if "fold_id" in df.columns:
-        facets["folds"] = df["fold_id"].unique().sort().to_list()
-
-    # Counts
-    facets["n_configs"] = df["config_name"].n_unique() if "config_name" in df.columns else 0
-    facets["n_runs"] = df["run_id"].n_unique() if "run_id" in df.columns else 0
-
-    return facets
-
-
-def _compute_top_predictions(self, df: pl.DataFrame, n: int = 10) -> list:
-    """Get top N predictions by validation score."""
-    if "val_score" not in df.columns:
-        return []
-
-    top = df.sort("val_score", descending=True).head(n)
-    return [
-        {
-            "id": row.get("id"),
-            "model_name": row.get("model_name"),
-            "config_name": row.get("config_name"),
-            "val_score": round(row.get("val_score", 0), 4),
-            "test_score": round(row.get("test_score", 0), 4) if row.get("test_score") else None,
-            "fold_id": row.get("fold_id"),
-        }
-        for row in top.iter_rows(named=True)
-    ]
+# Instant: run listing
+runs = store.list_runs(status="completed")
 ```
 
-#### Reading Summary Only (Instant)
+### Webapp Backend Integration
 
-```python
-# nirs4all/data/_predictions/storage.py
-
-import pyarrow.parquet as pq
-import json
-from typing import Optional
-
-@classmethod
-def read_summary_only(cls, parquet_path: Path) -> Optional[dict]:
-    """
-    Read ONLY the summary metadata from parquet file.
-
-    This reads just the file footer (~1KB), not the row data.
-    Time: ~2-5ms for any file size.
-
-    Args:
-        parquet_path: Path to .meta.parquet file
-
-    Returns:
-        Summary dict if present, None otherwise
-    """
-    try:
-        parquet_file = pq.ParquetFile(str(parquet_path))
-        metadata = parquet_file.schema_arrow.metadata
-
-        if metadata and b"n4a_summary" in metadata:
-            return json.loads(metadata[b"n4a_summary"].decode("utf-8"))
-
-        return None
-    except Exception:
-        return None
-
-
-@classmethod
-def read_all_summaries(cls, workspace_path: Path) -> list:
-    """
-    Read summaries from all parquet files in workspace.
-
-    Time: ~10-50ms for entire workspace (vs 2-5s for full scan)
-    """
-    summaries = []
-
-    for parquet_file in workspace_path.glob("*.meta.parquet"):
-        summary = cls.read_summary_only(parquet_file)
-        if summary:
-            summary["source_file"] = str(parquet_file)
-            summaries.append(summary)
-
-    return summaries
-```
-
-### Implementation: Webapp Backend
-
-#### New Endpoint: Instant Summary
+The webapp backend queries `store.duckdb` directly through `WorkspaceStore` methods:
 
 ```python
 # api/workspace.py
 
-import pyarrow.parquet as pq
-import json
+from nirs4all.pipeline.storage import WorkspaceStore
 
 @router.get("/workspaces/{workspace_id}/predictions/summary")
 async def get_predictions_summary(workspace_id: str):
-    """
-    Get aggregated prediction summary from parquet metadata.
+    """Instant prediction summary from DuckDB."""
+    ws = workspace_manager._find_linked_workspace(workspace_id)
+    store = WorkspaceStore(Path(ws.path) / "workspace")
 
-    This endpoint reads ONLY file footers, not row data.
-    Response time: ~10-50ms for any workspace size.
-    """
-    try:
-        ws = workspace_manager._find_linked_workspace(workspace_id)
-        if not ws:
-            raise HTTPException(status_code=404, detail="Workspace not found")
+    top = store.top_predictions(n=10, metric="val_score")
+    runs = store.list_runs(status="completed")
 
-        workspace_path = Path(ws.path)
-        summaries = []
+    return {
+        "top_predictions": top.to_dicts(),
+        "runs": runs.to_dicts(),
+    }
 
-        # Read only metadata from each parquet file
-        for parquet_file in workspace_path.glob("*.meta.parquet"):
-            try:
-                pf = pq.ParquetFile(str(parquet_file))
-                metadata = pf.schema_arrow.metadata
-
-                if metadata and b"n4a_summary" in metadata:
-                    summary = json.loads(metadata[b"n4a_summary"].decode("utf-8"))
-                    summary["dataset"] = parquet_file.stem.replace(".meta", "")
-                    summaries.append(summary)
-                else:
-                    # Fallback: file has no summary, include minimal info
-                    summaries.append({
-                        "dataset": parquet_file.stem.replace(".meta", ""),
-                        "total_predictions": pf.metadata.num_rows,
-                        "has_summary": False,
-                    })
-            except Exception as e:
-                print(f"Error reading {parquet_file}: {e}")
-                continue
-
-        # Aggregate across all datasets
-        total_predictions = sum(s.get("total_predictions", 0) for s in summaries)
-
-        # Merge model stats across datasets
-        all_models = {}
-        for s in summaries:
-            for model in s.get("facets", {}).get("models", []):
-                name = model["name"]
-                if name not in all_models:
-                    all_models[name] = {"name": name, "count": 0, "total_score": 0, "score_count": 0}
-                all_models[name]["count"] += model["count"]
-                if model.get("avg_val_score"):
-                    all_models[name]["total_score"] += model["avg_val_score"] * model["count"]
-                    all_models[name]["score_count"] += model["count"]
-
-        # Compute weighted averages
-        models = []
-        for m in all_models.values():
-            models.append({
-                "name": m["name"],
-                "count": m["count"],
-                "avg_val_score": round(m["total_score"] / m["score_count"], 4) if m["score_count"] > 0 else None,
-            })
-        models.sort(key=lambda x: x["count"], reverse=True)
-
-        # Collect all runs
-        all_runs = []
-        for s in summaries:
-            all_runs.extend(s.get("runs", []))
-
-        return {
-            "total_predictions": total_predictions,
-            "total_datasets": len(summaries),
-            "datasets": summaries,
-            "models": models,
-            "runs": all_runs,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to read predictions summary: {str(e)}"
-        )
-
-
-# Existing endpoint: full data (called only when drilling down)
 @router.get("/workspaces/{workspace_id}/predictions/data")
 async def get_workspace_predictions_data(
-    workspace_id: str,
-    limit: int = 50,  # Reduced default - summary provides overview
-    offset: int = 0,
-    dataset: Optional[str] = None,
-    model: Optional[str] = None,
-    partition: Optional[str] = None,
+    workspace_id: str, limit: int = 50, offset: int = 0,
+    dataset: str | None = None, model: str | None = None,
+    partition: str | None = None,
 ):
-    """
-    Get prediction row data with server-side filtering and pagination.
-
-    Called only when user drills into details or applies filters.
-    """
-    # ... existing implementation with added filters ...
+    """Paginated prediction query from DuckDB."""
+    store = WorkspaceStore(Path(ws.path) / "workspace")
+    preds = store.query_predictions(
+        dataset_name=dataset, model_class=model,
+        partition=partition, limit=limit, offset=offset,
+    )
+    return {"records": preds.to_dicts(), "total": len(preds)}
 ```
 
-### Implementation: Webapp Frontend
+### Webapp Frontend
 
-#### Two-Phase Loading Pattern
+The frontend uses TanStack Query to call backend endpoints. All aggregation happens server-side in DuckDB:
 
 ```typescript
 // src/pages/Predictions.tsx
+const { data: summary } = useQuery({
+  queryKey: ["predictions", "summary", workspaceId],
+  queryFn: () => api.get(`/workspaces/${workspaceId}/predictions/summary`),
+});
 
-interface PredictionSummary {
-  total_predictions: number;
-  total_datasets: number;
-  datasets: DatasetSummary[];
-  models: ModelSummary[];
-  runs: RunSummary[];
-}
-
-interface DatasetSummary {
-  dataset: string;
-  total_predictions: number;
-  stats: {
-    val_score: ScoreStats;
-    test_score: ScoreStats;
-  };
-  facets: {
-    models: ModelFacet[];
-    partitions: PartitionFacet[];
-  };
-  top_predictions: TopPrediction[];
-}
-
-export default function Predictions() {
-  // Phase 1: Summary (instant)
-  const [summary, setSummary] = useState<PredictionSummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-
-  // Phase 2: Detail data (lazy, on-demand)
-  const [detailData, setDetailData] = useState<PredictionRecord[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-
-  // Load summary on mount (instant)
-  useEffect(() => {
-    loadSummary();
-  }, []);
-
-  const loadSummary = async () => {
-    setSummaryLoading(true);
-    try {
-      const workspaces = await getLinkedWorkspaces();
-      const active = workspaces.workspaces.find(w => w.is_active);
-      if (active) {
-        // This is instant (~10-50ms)
-        const summaryData = await getN4AWorkspacePredictionsSummary(active.id);
-        setSummary(summaryData);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
-
-  // Load details only when user requests them
-  const loadDetails = async (filters?: FilterOptions) => {
-    setDetailLoading(true);
-    try {
-      // Server-side filtered and paginated
-      const data = await getN4AWorkspacePredictionsData(activeWorkspace.id, {
-        limit: 50,
-        offset: 0,
-        ...filters,
-      });
-      setDetailData(data.records);
-      setShowDetails(true);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  // Render dashboard from summary (instant)
-  if (summaryLoading) {
-    return <Skeleton />;
-  }
-
-  return (
-    <div>
-      {/* Stats cards - rendered from summary (instant) */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <StatCard title="Total Predictions" value={summary.total_predictions} />
-        <StatCard title="Datasets" value={summary.total_datasets} />
-        <StatCard title="Models" value={summary.models.length} />
-        <StatCard title="Runs" value={summary.runs.length} />
-      </div>
-
-      {/* Model breakdown from summary */}
-      <Card>
-        <CardHeader>Models Performance</CardHeader>
-        <CardContent>
-          {summary.models.map(model => (
-            <div key={model.name}>
-              {model.name}: {model.count} predictions, avg R² = {model.avg_val_score}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Top predictions from summary */}
-      <Card>
-        <CardHeader>Top Predictions</CardHeader>
-        <CardContent>
-          {summary.datasets.flatMap(d => d.top_predictions).slice(0, 10).map(pred => (
-            <TopPredictionRow key={pred.id} prediction={pred} />
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Detail table - loaded on demand */}
-      <Card>
-        <CardHeader>
-          <Button onClick={() => loadDetails()}>
-            {showDetails ? "Refresh" : "View All Predictions"}
-          </Button>
-        </CardHeader>
-        {showDetails && (
-          <CardContent>
-            {detailLoading ? (
-              <Skeleton />
-            ) : (
-              <PredictionTable
-                data={detailData}
-                onPageChange={(page) => loadDetails({ offset: page * 50 })}
-              />
-            )}
-          </CardContent>
-        )}
-      </Card>
-    </div>
-  );
-}
+const { data: details } = useQuery({
+  queryKey: ["predictions", "data", workspaceId, filters],
+  queryFn: () => api.get(`/workspaces/${workspaceId}/predictions/data`, { params: filters }),
+  enabled: showDetails,  // Lazy: only fetched when user drills in
+});
 ```
 
-### Performance Comparison
+### Performance
 
-| Metric | Before (Full Scan) | After (Embedded Summary) |
-|--------|-------------------|--------------------------|
-| **Initial page load** | 2-5 seconds | **~50ms** |
-| **Dashboard stats** | Computed client-side | **Instant** (pre-computed) |
-| **Memory usage** | 10k+ records in browser | Summary only (~5KB) |
-| **Detail drill-down** | Already loaded | 50-100ms (on demand) |
-| **Network transfer** | ~500KB-2MB | **~5KB** (summary) |
+| Metric | Legacy (Parquet scan) | DuckDB Store |
+|--------|----------------------|--------------|
+| **Initial page load** | 2-5 seconds | **< 50ms** |
+| **Dashboard stats** | Client-side aggregation | **Server-side SQL** |
+| **Memory (browser)** | 10k+ records loaded | Summary only |
+| **Filtered queries** | Full scan + client filter | **Indexed SQL** |
+| **Network transfer** | ~500KB-2MB | **~5KB** (paginated) |
 
 ### Key Benefits
 
 | Benefit | Description |
 |---------|-------------|
-| **No extra files** | Summary embedded in parquet, not a separate cache |
-| **Always in sync** | Summary computed at save time, never stale |
-| **Zero maintenance** | No cache invalidation, no rebuild triggers |
-| **Portable** | Copy the parquet, summary comes with it |
-| **Backward compatible** | Old files work (just slower), new files are fast |
-| **Graceful fallback** | If no summary, use full scan |
-
-### Migration Strategy
-
-1. **New predictions**: Automatically include summary metadata
-2. **Existing files**: Summary added on next save/update
-3. **Webapp**: Check for summary, fallback to full scan if missing
-4. **Optional CLI**: `nirs4all workspace rebuild-summaries` to backfill
-
-```python
-# CLI command to rebuild summaries for existing parquet files
-# nirs4all/cli/workspace.py
-
-@click.command()
-@click.argument("workspace_path", type=click.Path(exists=True))
-def rebuild_summaries(workspace_path: str):
-    """Rebuild embedded summaries for all parquet files in workspace."""
-    workspace = Path(workspace_path)
-
-    for parquet_file in workspace.glob("*.meta.parquet"):
-        click.echo(f"Processing {parquet_file.name}...")
-
-        # Load data
-        df = pl.read_parquet(parquet_file)
-
-        # Save with summary
-        storage = PredictionStorage()
-        storage._df = df
-        storage.save_parquet_with_summary(parquet_file)
-
-        click.echo(f"  ✓ Added summary ({len(df)} predictions)")
-
-    click.echo("Done!")
-```
+| **Single source of truth** | All data in `store.duckdb`, no separate caches |
+| **Always in sync** | Data written during training, no rebuild needed |
+| **SQL queries** | Flexible filtering, sorting, aggregation |
+| **Zero-copy Arrow** | DuckDB returns Polars DataFrames via Arrow transfer |
+| **Indexed** | Key columns indexed for fast lookups |
 
 ---
 
@@ -1699,10 +989,10 @@ Generate meaningful names from content:
 
 | Concept | Scope | Contains | Stored In |
 |---------|-------|----------|-----------|
-| Pipeline Template | Recipe | Steps with optional generators | `templates/<id>.yaml` |
-| Run | Experiment | Templates[] × Datasets[] → Results | `run_manifest.yaml` |
-| Result | Evaluation | 1 Dataset + 1 Config → Predictions | `manifest.yaml` |
-| Prediction | Output | Model + Partition + Scores | `.meta.parquet` |
+| Pipeline Template | Recipe | Steps with optional generators | `library/templates/<id>.json` |
+| Run | Experiment | Templates[] × Datasets[] → Results | `store.duckdb` (runs table) |
+| Pipeline | Execution | 1 Dataset + 1 Config → Predictions | `store.duckdb` (pipelines table) |
+| Prediction | Output | Model + Partition + Scores | `store.duckdb` (predictions table) |
 
 ### Key Formula
 
@@ -1735,18 +1025,18 @@ This section analyzes the discrepancies between the conceptual model described a
 |---------|--------------|---------|
 | Pipeline Template | ⚠️ Partial | Templates expanded immediately by `PipelineConfigs`. Original **not saved**. |
 | Multiple Templates | ❌ Not Implemented | `nirs4all.run()` accepts one pipeline, not a list of templates |
-| Run | ❌ Not Implemented | No "Run" entity. Executes pipelines directly without container. |
-| Result | ⚠️ Implicit | Written as per-dataset manifests in `workspace/runs/<dataset>/<config_id>/` |
-| Prediction | ✅ Implemented | Stored in `.meta.parquet` files with rich metadata |
+| Run | ✅ Implemented | `WorkspaceStore.begin_run()` / `complete_run()` in `store.duckdb` |
+| Pipeline | ✅ Implemented | `WorkspaceStore.begin_pipeline()` / `complete_pipeline()` in `store.duckdb` |
+| Prediction | ✅ Implemented | Stored in `store.duckdb` predictions table with rich metadata |
 
 ### nirs4all_webapp (Current Implementation)
 
 | Concept | Implemented? | Details |
 |---------|--------------|---------|
 | Run (UI types) | ⚠️ Partial | Types in `types/runs.ts` support multiple datasets, but not multiple templates |
-| Run Discovery | ❌ Wrong Source | Reads from `.meta.parquet` not manifest files, loses run context |
+| Run Discovery | ✅ Implemented | Queries `store.duckdb` runs table via `WorkspaceStore.list_runs()` |
 | Results View | ❌ Not Implemented | No dedicated results page, mixed into runs |
-| Predictions View | ✅ Implemented | Reads from parquet, displays well |
+| Predictions View | ✅ Implemented | Queries `store.duckdb` predictions table, displays well |
 
 ---
 
@@ -1950,90 +1240,13 @@ result = nirs4all.run(
 
 ## Gap #4: Manifest Structure Doesn't Match Concepts
 
-### Current Structure
-
-```
-workspace/runs/<dataset>/<config_id>/
-└── manifest.yaml
-```
-
-The manifest is per **dataset × expanded_pipeline**, which maps to a "Result" in our terminology. There's no run-level or template-level grouping.
-
-### Problems
-
-1. **No run-level manifest**: Cannot find all results from the same run
-2. **No template tracking**: Don't know which template a config came from
-3. **Config ID is ambiguous**: `0001_PLS_abc123` is a result, not a run
-4. **Generator choices stored but not the template**: `generator_choices` are stored but original template isn't
-
-### Proposed Structure
-
-```
-workspace/
-├── runs/
-│   └── <run_id>/                          # NEW: Run-level directory
-│       ├── run_manifest.yaml              # Run metadata
-│       ├── templates/                     # NEW: Templates directory
-│       │   ├── template_001.yaml          # Original template 1
-│       │   └── template_002.yaml          # Original template 2
-│       └── results/
-│           └── <dataset>/
-│               └── <pipeline_config>/
-│                   └── manifest.yaml      # Result manifest
-```
+> **RESOLVED by DuckDB migration.** All structured data is now in `store.duckdb` with proper relational tables: `runs`, `pipelines`, `chains`, `predictions`. Run-level and pipeline-level grouping are first-class entities. See Section 7 for the current workspace structure.
 
 ---
 
 ## Gap #5: Webapp Reads Wrong Data Source
 
-### Problem
-
-The webapp's `get_workspace_runs()` endpoint reads from `.meta.parquet` files:
-
-```python
-# api/workspace.py
-parquet_files = list(workspace_path.glob("*.meta.parquet"))
-for parquet_file in parquet_files:
-    df = pd.read_parquet(parquet_file, columns=[...])
-    for config_name in df["config_name"].dropna().unique():
-        # Creates one "run" per config_name per parquet file
-```
-
-This produces **per-dataset pseudo-runs** rather than actual experiment sessions.
-
-### Impact
-
-- User sees: 228 "runs" (one per dataset × config combination)
-- User should see: ~10 runs (grouped by experiment session)
-- Each "run" shows only 1 dataset instead of all datasets in the experiment
-- Templates are invisible
-
-### Proposed Fix
-
-1. **Short-term**: Read manifest.yaml files and group by timestamp/hash
-2. **Long-term**: Read run_manifest.yaml files created by nirs4all
-
-```python
-# Short-term fix for api/workspace.py
-async def get_workspace_runs(workspace_id: str):
-    # Look for run manifests first
-    run_manifests = list(workspace_path.glob("runs/*/run_manifest.yaml"))
-
-    if run_manifests:
-        # New format: read run manifests
-        for manifest_path in run_manifests:
-            manifest = yaml.safe_load(manifest_path.read_text())
-            runs.append({
-                "id": manifest["uid"],
-                "name": manifest["name"],
-                "templates": manifest["templates"],
-                "datasets": [d["name"] for d in manifest["datasets"]],
-                ...
-            })
-    else:
-        # Legacy format: group results by timestamp
-        ...
-```
+> **RESOLVED by DuckDB migration.** The webapp now queries `store.duckdb` via `WorkspaceStore.list_runs()` and `WorkspaceStore.query_predictions()`. Runs are first-class entities in the `runs` table with proper grouping. No more Parquet scanning or manifest file discovery.
 
 ---
 
@@ -2143,139 +1356,7 @@ Predictions page (model outputs)
 
 ## Gap #8: Limited Dataset Metadata in Runs
 
-### Problem
-
-Current run manifests only store minimal dataset information:
-- Path
-- Name (often just filename)
-- Hash (sometimes)
-
-The nirs4all library doesn't capture rich dataset metadata at run time, making it impossible to:
-- Auto-discover datasets when linking workspaces
-- Preserve dataset properties when files are moved
-- Validate dataset integrity across machines
-
-### Impact
-
-- **Webapp linking**: Users must manually re-add all datasets when linking a workspace
-- **Portability**: Moving workspaces between machines breaks dataset references
-- **Reproducibility**: Cannot verify the same data was used across runs
-- **Usability**: Users lose context about datasets if files are reorganized
-
-### Proposed Fix
-
-#### 1. Library: Capture Dataset Metadata at Run Time
-
-```python
-# nirs4all/data/dataset.py
-class SpectroDataset:
-    def get_metadata(self) -> dict:
-        """Extract full metadata for storage in run manifest."""
-        return {
-            "name": self.name or self._infer_name(),
-            "path": str(self.source_path),
-            "hash": self._compute_hash(),
-            "task_type": self.task_type,
-            "n_samples": len(self),
-            "n_features": self.X.shape[1] if self.X is not None else 0,
-            "y_columns": list(self.y.columns) if hasattr(self.y, 'columns') else ["y"],
-            "y_stats": self._compute_y_stats(),
-            "wavelength_range": self._get_wavelength_range(),
-            "wavelength_unit": self.wavelength_unit,
-            "metadata": self.user_metadata,
-            "version": self._compute_version_hash(),
-        }
-
-    def _compute_y_stats(self) -> dict:
-        """Compute statistics for each target column."""
-        if self.y is None:
-            return {}
-        stats = {}
-        y_df = pd.DataFrame(self.y)
-        for col in y_df.columns:
-            stats[str(col)] = {
-                "min": float(y_df[col].min()),
-                "max": float(y_df[col].max()),
-                "mean": float(y_df[col].mean()),
-                "std": float(y_df[col].std()),
-            }
-        return stats
-```
-
-#### 2. Library: Store Rich Metadata in Manifests
-
-```python
-# nirs4all/pipeline/manifest_manager.py
-class ManifestManager:
-    def create_run_manifest(self, datasets: List[SpectroDataset], ...):
-        """Create run manifest with full dataset metadata."""
-        return {
-            "schema_version": "2.0",
-            "uid": self.run_id,
-            # ...
-            "datasets": [ds.get_metadata() for ds in datasets],
-        }
-```
-
-#### 3. Webapp: Auto-Discover from Run Manifests
-
-```python
-# api/workspace.py
-async def discover_datasets_from_runs(workspace_path: Path) -> List[dict]:
-    """Extract unique datasets from all run manifests."""
-    datasets_by_hash = {}
-
-    for manifest_path in workspace_path.glob("runs/*/run_manifest.yaml"):
-        manifest = yaml.safe_load(manifest_path.read_text())
-
-        for ds in manifest.get("datasets", []):
-            hash_key = ds.get("hash")
-            if hash_key and hash_key not in datasets_by_hash:
-                datasets_by_hash[hash_key] = {
-                    **ds,
-                    "discovered_from": str(manifest_path),
-                    "status": validate_path(ds.get("path")),
-                }
-
-    return list(datasets_by_hash.values())
-```
-
-#### 4. Webapp: Create Dataset Registry
-
-```python
-# api/workspace.py
-async def sync_dataset_registry(workspace_id: str):
-    """Sync dataset registry with run manifests."""
-    workspace = get_workspace(workspace_id)
-
-    # Load existing registry
-    registry = load_dataset_registry(workspace.path)
-
-    # Discover from runs
-    discovered = await discover_datasets_from_runs(workspace.path)
-
-    # Merge (preserve user path updates)
-    for ds in discovered:
-        existing = registry.get_by_hash(ds["hash"])
-        if existing:
-            existing.update_usage(ds)
-        else:
-            registry.add(ds)
-
-    # Save and return
-    registry.save()
-    return registry.to_api_response()
-```
-
-### Benefits
-
-| Benefit | Description |
-|---------|-------------|
-| **Zero-config linking** | Datasets auto-appear when workspace is linked |
-| **Preserved metadata** | Stats, targets, wavelengths survive file moves |
-| **Path flexibility** | Users can update paths while keeping identity |
-| **Cross-machine portability** | Share workspace, datasets discovered automatically |
-| **Integrity validation** | Hash verification ensures same data across runs |
+> **PARTIALLY RESOLVED by DuckDB migration.** The `runs` table stores a `datasets` JSON column with dataset metadata (name, path, hash). The `predictions` table stores `dataset_name`, `n_samples`, `n_features` per prediction. Rich dataset metadata (wavelength range, y_stats) can be stored in the `runs.datasets` JSON field. The webapp queries this data directly from `store.duckdb` without needing separate discovery or registry files.
 
 ---
 
@@ -2285,178 +1366,62 @@ async def sync_dataset_registry(workspace_id: str):
 
 ### Phase 0: Performance Optimization (Priority)
 
-> **Recommended to implement first** - provides immediate UX improvement with minimal changes.
-
-#### 0.1 Embedded Summary in Parquet (nirs4all)
-
-1. **Add embedded summary to parquet saves**
-   - Modify `PredictionStorage.save_parquet()` to compute and embed summary
-   - Add `_compute_score_stats()`, `_compute_facets()`, `_compute_top_predictions()` methods
-   - ⚠️ **REVIEW:** Use `top_k()` instead of `sort().head()` for O(n log k) vs O(n log n)
-   - ⚠️ **REVIEW:** Expand summary schema to include `task_types`, `date_range`, `metrics_used`
-
-2. **Add summary reader**
-   - Implement `PredictionStorage.read_summary_only(path)` using PyArrow
-   - Reads only parquet footer (~1KB), not row data
-   - Returns summary dict or None if not present
-
-3. **🆕 Incremental summary maintenance** (from review)
-   - Implement `IncrementalSummary` class with Welford's algorithm
-   - Use min-heap for top-k tracking (O(log k) per add)
-   - Summary save becomes O(1) serialization instead of O(n) recomputation
-
-#### 0.2 Concurrent Parquet Scanning (webapp)
-
-4. **New webapp endpoint with concurrent I/O**
-   - `GET /workspaces/{id}/predictions/summary` - instant aggregated stats
-   - ⚠️ **REVIEW:** Use `ThreadPoolExecutor` for concurrent footer reads (7.5x speedup)
-   - ⚠️ **REVIEW:** Add mtime-based caching to avoid re-reading unchanged files
-   - Aggregates across datasets for dashboard display
-
-#### 0.3 Virtual Scrolling Frontend (webapp)
-
-5. **🆕 True lazy loading** (from review - replaces "Two-phase frontend loading")
-   - Use `@tanstack/react-virtual` for virtual scrolling
-   - Use `useInfiniteQuery` for server-side pagination
-   - ⚠️ **REVIEW:** Do NOT accumulate all data client-side (defeats optimization)
-   - Server-side filtering with Polars predicate pushdown
-
-6. **Migration CLI (optional)**
-   - `nirs4all workspace rebuild-summaries <path>` to backfill existing files
-   - Graceful fallback: if no summary, use full scan
-
-**Expected Impact** (updated from review):
-| Metric | Before | After |
-|--------|--------|-------|
-| Initial page load | 2-5s | **~200ms** |
-| Network transfer | 500KB-2MB | ~5KB |
-| Memory usage | 10k+ records | **5MB** (vs 150MB) |
-| Time to interaction | 15s | **200ms** |
+> **RESOLVED by DuckDB migration.** All performance concerns around Parquet scanning, client-side aggregation, and summary recomputation are eliminated by using DuckDB as the single storage backend. `WorkspaceStore.top_predictions()` and `WorkspaceStore.query_predictions()` return instant results via SQL queries with indexed columns. The webapp backend delegates all queries to `WorkspaceStore` methods. The frontend uses TanStack Query with server-side pagination.
 
 ---
 
 ### Phase 1: Library Changes (nirs4all)
 
+> **PARTIALLY RESOLVED by DuckDB migration.** The Run entity is now implemented as a row in the `runs` table of `store.duckdb`, created by `WorkspaceStore.begin_run()`. Pipelines, chains, and predictions are stored in their respective tables with proper foreign key relationships. Manifest files (YAML) have been replaced entirely by DuckDB tables.
+
+**Remaining items:**
+
 #### 1.1 Template Preservation
 
 1. **Save pipeline templates before expansion**
    - Modify `PipelineConfigs` to store `original_template` (deep copy before expansion)
-   - ⚠️ **REVIEW:** Note that `generator_choices` is already preserved - this adds full template
-   - Save to `templates/<id>.yaml` in run directory
+   - Note: `generator_choices` is already preserved in `pipelines.generator_choices` JSON column
 
 #### 1.2 Multiple Template Support
 
-2. **🆕 Support multiple templates with explicit syntax** (from review)
-   - ⚠️ **REVIEW:** Use explicit `templates=` parameter, NOT inference from list structure
-   - Fragile detection like `isinstance(pipeline[0], list)` fails on edge cases
+2. **Support multiple templates with explicit syntax**
+   - Use explicit `templates=` parameter, NOT inference from list structure
    ```python
-   # Recommended API
    nirs4all.run(
        templates=[template1, template2],  # Explicit key
        dataset=[...],
    )
    ```
 
-#### 1.3 Run Entity
+#### 1.3 Dataset Metadata
 
-3. **Add Run entity**
-   - Create `Run` class in `nirs4all/pipeline/run.py`
-   - Generate unique run_id
-   - Track all templates and datasets
-
-4. **🆕 Define metric metadata** (from review)
-   ```python
-   METRIC_METADATA = {
-       "r2": {"higher_is_better": True, "optimal": 1.0},
-       "rmse": {"higher_is_better": False, "optimal": 0.0},
-       "accuracy": {"higher_is_better": True, "optimal": 1.0},
-       "mae": {"higher_is_better": False, "optimal": 0.0},
-   }
-   ```
-
-#### 1.4 Manifest Structure
-
-5. **Create run-level manifest**
-   - ⚠️ **REVIEW:** Consider splitting into normalized files to avoid god object:
-     - `run.yaml` - core metadata only
-     - `templates.yaml` - template references
-     - `config.yaml` - execution configuration
-     - `summary.yaml` - updated post-execution
-   - Include references to all templates
-   - Update with status and results on completion
-
-6. **Link results to runs and templates**
-   - Add `run_id` and `template_id` fields to result manifests
-
-#### 1.5 Dataset Metadata
-
-7. **Capture rich dataset metadata**
+3. **Capture rich dataset metadata in `runs.datasets` JSON**
    - Add `SpectroDataset.get_metadata()` method
-   - Compute y_stats, wavelength_range, content hash
-   - ⚠️ **REVIEW:** Must include `file_size` for path resolution optimization
-   - ⚠️ **REVIEW:** Optionally include `quick_hash` (header+footer hash)
-   ```yaml
-   datasets:
-     - name: "Wheat Protein 2025"
-       path: "/data/wheat.csv"
-       hash: "sha256:abc123..."
-       file_size: 52428800      # CRITICAL for path resolution
-       quick_hash: "a1b2c3d4"   # Optional: fast filtering
-   ```
+   - Store in `runs.datasets` JSON column via `WorkspaceStore.begin_run()`
 
 ---
 
 ### Phase 2: Backend Changes (nirs4all_webapp)
 
-#### 2.1 Workspace Scanning
+> **PARTIALLY RESOLVED by DuckDB migration.** The webapp backend now queries `store.duckdb` via `WorkspaceStore` for all run, pipeline, and prediction data. No more Parquet scanning or manifest file discovery. The dual-path confusion (parquet vs manifest) is eliminated.
 
-1. **Update workspace scanning**
-   - Look for `run_manifest.yaml` files first
-   - ⚠️ **REVIEW:** Unify the TWO discovery paths (parquet vs manifest) to avoid inconsistency
-   - Parse template information
-   - Fall back to result grouping for legacy data
+**Remaining items:**
 
-2. **Add proper API endpoints**
+#### 2.1 API Endpoints
+
+1. **Ensure proper API endpoints use WorkspaceStore**
    ```
-   GET /api/runs              → List runs with template info
-   GET /api/runs/:id          → Run details + templates + results
-   GET /api/templates         → List saved templates
-   GET /api/results           → List results (with filters)
+   GET /api/runs              → store.list_runs()
+   GET /api/runs/:id          → store.get_run(run_id)
+   GET /api/predictions       → store.query_predictions(**filters)
+   GET /api/templates         → PipelineLibrary.list_templates()
    ```
-
-3. **Update types**
-   - Add `templates` field to Run responses
-   - Rename `DiscoveredRun` → `DiscoveredResult`
 
 #### 2.2 Dataset Management
 
-4. **Implement dataset auto-discovery**
-   - Extract datasets from run manifests on workspace link
-   - ⚠️ **REVIEW:** Use reference-based design, not data duplication:
-     ```yaml
-     # run_manifest.yaml - reference only
-     datasets:
-       - ref: "ds_wheat_v1"  # Points to registry
-     ```
-   - Create/update `datasets.yaml` registry (single source of truth)
-   - ⚠️ **REVIEW:** Add file locking to prevent race conditions:
-     ```python
-     import fcntl
-     with open(registry_path, 'r+') as f:
-         fcntl.flock(f, fcntl.LOCK_EX)
-         # ... read, modify, write ...
-     ```
+2. **Dataset auto-discovery from store.duckdb**
+   - Extract unique datasets from `runs.datasets` JSON and `predictions.dataset_name`
    - API endpoint: `POST /api/workspaces/:id/sync-datasets`
-
-5. **🆕 Efficient path resolution** (from review)
-   - Multi-stage filtering:
-     1. Check original path (instant)
-     2. Check common relative locations (instant)
-     3. Filter by file size (instant) - requires `file_size` in manifest
-     4. Filter by quick hash (fast - ~1ms per file)
-     5. Verify with full hash (slow - only 0-2 candidates)
-   - ⚠️ **REVIEW:** Do NOT scan all CSVs with full hash (50+ second bottleneck)
-   - API endpoint: `PATCH /api/datasets/:id/path`
 
 ---
 
@@ -2482,56 +1447,26 @@ async def sync_dataset_registry(workspace_id: str):
 
 ### Phase 4: Migration & Compatibility
 
-1. **Legacy data support**
-   - Scanner reconstructs runs from existing manifests
-   - Group by timestamp + template similarity
-   - Infer templates from generator_choices
-
-2. **🆕 Schema migration strategy** (from review)
-   - Define upgrade path from v1 manifests to v2
-   - Handle parquet files without embedded summaries (graceful fallback)
-   - Validate and fill missing fields with defaults
-
-3. **🆕 Backward compatibility guarantees** (from review)
-   - Old library versions can read new manifests (ignore unknown fields)
-   - New library versions can read old manifests (fill defaults)
-   - Document breaking changes in CHANGELOG
-
-4. **Documentation**
-   - Update user guide with new concepts
-   - Add migration guide for existing workspaces
+> **RESOLVED by DuckDB migration.** Legacy manifests and Parquet files are no longer used. The DuckDB schema is created automatically on first use. Old workspaces need to be re-run to populate the new `store.duckdb`.
 
 ---
 
 ### 🆕 Phase 5: Robustness (from review)
 
-> **New phase added based on design review findings**
+> **PARTIALLY RESOLVED by DuckDB migration.** Run and pipeline status tracking is now built into `store.duckdb`. `WorkspaceStore.begin_run()` creates a run with status "running", `complete_run()` marks it "completed", `fail_run()` marks it "failed". Similarly for pipelines. DuckDB's ACID properties handle concurrent writes.
 
-#### 5.1 Error Recovery
+#### 5.1 Error Recovery (remaining)
 
-1. **Add checkpoint system**
-   - Record completed results in manifest during execution
-   - Support resuming from last successful checkpoint
-   - Mark partial runs with appropriate status
-
-2. **Partial run handling**
-   ```yaml
-   # run_manifest.yaml
-   status: "partial"
-   checkpoints:
-     - result_id: "result_001"
-       completed_at: "2025-01-09T10:00:00Z"
-     - result_id: "result_002"
-       completed_at: "2025-01-09T10:05:00Z"
-   resume_from: "result_002"
-   ```
+1. **Checkpoint / resume support**
+   - Query `store.duckdb` for completed pipelines within a failed run
+   - Resume from the last successful pipeline
 
 #### 5.2 Concurrent Run Handling
 
 3. **Resource locking**
    - Prevent conflicts when multiple runs access same dataset
    - Queue mechanism for shared resources
-   - Conflict resolution for parquet updates (append vs replace)
+   - DuckDB handles concurrent writes with ACID transactions
 
 #### 5.3 State Machine Formalization
 
@@ -2553,47 +1488,31 @@ async def sync_dataset_registry(workspace_id: str):
 
 > **Updated based on Design Review (2026-01-09)** - items marked with ⚠️ are from code review findings.
 
-| Component | File | Change |
-|-----------|------|--------|
-| **Phase 0: Performance** | | |
-| Embedded summary | `_predictions/storage.py` | Add `save_parquet_with_summary()` |
-| Summary reader | `_predictions/storage.py` | Add `read_summary_only()` |
-| Score stats | `_predictions/storage.py` | Add `_compute_score_stats()` ⚠️ Use `top_k()` |
-| ⚠️ Incremental summary | `_predictions/storage.py` | Add `IncrementalSummary` class (Welford + heap) |
-| Summary endpoint | `api/workspace.py` | Add `GET /predictions/summary` ⚠️ concurrent I/O |
-| ⚠️ Virtual scrolling | `Predictions.tsx` | Use `@tanstack/react-virtual` + `useInfiniteQuery` |
-| Rebuild CLI | `cli/workspace.py` | Add `rebuild-summaries` command |
-| **Phase 1: nirs4all** | | |
-| Save template | `pipeline_config.py` | Store `original_template` |
-| ⚠️ Multiple templates | `api/run.py` | Use explicit `templates=` parameter (not inference) |
-| Run class | `run.py` (new) | Create Run entity |
-| ⚠️ Metric metadata | `metrics.py` (new) | Define `METRIC_METADATA` with `higher_is_better` |
-| Run manifest | `manifest_manager.py` | Add `create_run()` ⚠️ consider normalized files |
-| Result manifest | `manifest_manager.py` | Add `run_id`, `template_id` fields |
-| Dataset metadata | `data/dataset.py` | Add `get_metadata()` method |
-| ⚠️ File size | `data/dataset.py` | Include `file_size` in metadata (critical) |
-| Y statistics | `data/dataset.py` | Compute min/max/mean/std per target |
-| Content hash | `data/dataset.py` | Compute SHA256 + optional quick_hash |
-| **Phase 2: nirs4all_webapp** | | |
-| Backend types | `workspace.py` | Add Run + template scanning |
-| ⚠️ Unified scanning | `workspace.py` | Merge parquet + manifest discovery paths |
-| API endpoints | `runs.py` | Return templates in runs |
-| Dataset discovery | `workspace.py` | Extract datasets from run manifests |
-| ⚠️ Dataset registry | `workspace.py` | Reference-based design + file locking |
-| ⚠️ Path resolution | `datasets.py` | Multi-stage: size → quick_hash → full_hash |
-| Frontend types | `runs.ts` | Add `templates[]` to Run |
-| Dataset types | `datasets.ts` | Add status, version fields |
-| Runs page | `Runs.tsx` | Show templates per run |
-| Run creation | `NewRun.tsx` | Select multiple templates |
-| Results page | `Results.tsx` (new) | Add results view |
-| Dataset status | `Datasets.tsx` | Show missing/valid status, path update UI |
-| **Phase 4: Migration** | | |
-| ⚠️ Schema migration | `manifest_manager.py` | v1 → v2 upgrade path |
-| ⚠️ Backward compat | All manifests | Ignore unknown fields, fill defaults |
-| **Phase 5: Robustness** | | |
-| ⚠️ Checkpoints | `manifest_manager.py` | Record progress, support resume |
-| ⚠️ Resource locking | `workspace.py` | Prevent concurrent run conflicts |
-| ⚠️ State machine | `run.py` | Formalize `VALID_TRANSITIONS` |
+| Component | File | Change | Status |
+|-----------|------|--------|--------|
+| **Phase 0: Performance** | | | |
+| DuckDB store queries | `pipeline/storage/workspace_store.py` | `top_predictions()`, `query_predictions()` | DONE |
+| Webapp summary endpoint | `api/workspace.py` | Delegate to `WorkspaceStore` | DONE |
+| Virtual scrolling | `Predictions.tsx` | Use TanStack Query + server pagination | TODO |
+| **Phase 1: nirs4all** | | | |
+| Run entity | `pipeline/storage/workspace_store.py` | `begin_run()` / `complete_run()` | DONE |
+| Pipeline entity | `pipeline/storage/workspace_store.py` | `begin_pipeline()` / `complete_pipeline()` | DONE |
+| Save template | `pipeline_config.py` | Store `original_template` before expansion | TODO |
+| Multiple templates | `api/run.py` | Use explicit `templates=` parameter | TODO |
+| Dataset metadata | `data/dataset.py` | Add `get_metadata()` for `runs.datasets` JSON | TODO |
+| **Phase 2: nirs4all_webapp** | | | |
+| Backend queries | `api/workspace.py` | Use `WorkspaceStore` for all queries | DONE |
+| API endpoints | `runs.py` | `store.list_runs()`, `store.get_run()` | DONE |
+| Frontend types | `runs.ts` | Add `templates[]` to Run | TODO |
+| Results page | `Results.tsx` (new) | Add results view | TODO |
+| **Phase 3: Frontend** | | | |
+| Runs page | `Runs.tsx` | Show templates per run | TODO |
+| Run creation | `NewRun.tsx` | Select multiple templates | TODO |
+| **Phase 4: Migration** | | | |
+| DuckDB schema | Auto-created on first use | No migration needed | DONE |
+| **Phase 5: Robustness** | | | |
+| Run status tracking | `workspace_store.py` | `begin_run`/`complete_run`/`fail_run` | DONE |
+| Resume support | `workspace_store.py` | Query completed pipelines in failed run | TODO |
 
 ---
 
@@ -2605,9 +1524,9 @@ This section documents the results of an independent code review comparing this 
 
 ## Overall Assessment
 
-**Verdict:** The design is **fundamentally sound** and correctly identifies the major architectural gaps. The concept hierarchy (Run → Result → Prediction) is well-defined and the Parquet embedded summary optimization is an excellent approach.
+**Verdict:** The design is **fundamentally sound** and correctly identifies the major architectural gaps. The concept hierarchy (Run → Pipeline → Prediction) is well-defined. Many gaps identified here have been **resolved by the DuckDB storage migration** (Phases 0, 4, 5 largely complete).
 
-**However**, several refinements are needed before implementation.
+**Remaining refinements** are primarily around template preservation and multi-template support.
 
 ---
 
@@ -2636,26 +1555,15 @@ generator_choices:
 
 ---
 
-### Gap #5: "Webapp Reads Wrong Data Source" - Accurate but Incomplete
+### Gap #5: "Webapp Reads Wrong Data Source" - RESOLVED
 
-**Reality:** The document correctly identifies the parquet-based discovery but misses that there are **TWO discovery paths**:
-
-1. `get_workspace_runs()` in `workspace.py:1517-1594` - reads parquet directly
-2. `WorkspaceScanner.discover_runs()` in `workspace_manager.py:187-222` - scans manifest.yaml files
-
-This **dual-path confusion** should be highlighted as a separate issue, as it creates potential inconsistencies.
+> **Resolved by DuckDB migration.** The webapp now has a single discovery path: query `store.duckdb` via `WorkspaceStore`. The dual-path confusion (parquet vs manifest) is eliminated.
 
 ---
 
-### Gap #8: "Limited Dataset Metadata in Runs" - Partially Outdated
+### Gap #8: "Limited Dataset Metadata in Runs" - Partially Resolved
 
-**Reality:** Phase 7 already added `dataset_info` to manifests:
-```python
-# manifest_manager.py (actual)
-"dataset_info": {path: str, hash: str, version_at_run: int}
-```
-
-The proposed rich metadata structure is more comprehensive and valuable, but the gap description should acknowledge existing functionality.
+> **Partially resolved by DuckDB migration.** The `runs` table stores a `datasets` JSON column with dataset metadata. The `predictions` table stores `dataset_name`, `n_samples`, `n_features`. Rich metadata (y_stats, wavelength_range) can be added to the `runs.datasets` JSON field.
 
 ---
 
@@ -2731,40 +1639,13 @@ METRIC_METADATA = {
 
 ## Antipatterns to Address
 
-### 1. God Object: Run Manifest
+### 1. God Object: Run Manifest - RESOLVED
 
-**Location:** Lines 797-874
+> **Resolved by DuckDB migration.** Data is now normalized across relational tables (`runs`, `pipelines`, `chains`, `predictions`, `artifacts`, `logs`). No single manifest file. Each table has a focused responsibility.
 
-The proposed `run_manifest.yaml` contains too many responsibilities (metadata, templates, datasets, config, summary). This will cause:
-- Large files slow to parse
-- Frequent partial updates
-- Merge conflicts in concurrent scenarios
+### 2. Duplicate Data Storage - RESOLVED
 
-**Recommended:** Split into normalized files:
-```
-workspace/runs/<run_id>/
-├── run.yaml           # Core metadata only
-├── templates.yaml     # Template references
-├── datasets.yaml      # Dataset metadata
-├── config.yaml        # Execution configuration
-└── summary.yaml       # Updated post-execution
-```
-
-### 2. Duplicate Data Storage
-
-**Location:** Lines 661-710
-
-Dataset metadata stored in THREE places:
-1. Per-run in `run_manifest.yaml`
-2. Workspace-level in `datasets.yaml`
-3. In the original dataset file
-
-**Recommended:** Use reference-based design:
-```yaml
-# run_manifest.yaml - reference only
-datasets:
-  - ref: "ds_wheat_v1"  # Reference to registry
-```
+> **Resolved by DuckDB migration.** Dataset metadata stored once in `runs.datasets` JSON. Predictions reference datasets by `dataset_name`. No separate registry files needed.
 
 ### 3. Synchronous Batch Loading (Frontend)
 
@@ -2778,35 +1659,12 @@ The proposed frontend still accumulates ALL predictions before showing UI, defea
 
 ## Critical Bottlenecks Identified
 
-### 1. Sequential Parquet Scanning
-
-**Impact:** 600ms for 200 files (sequential) vs 80ms (concurrent) - 7.5x speedup possible
-
-**Solution:** Use `ThreadPoolExecutor` for concurrent footer reads with mtime-based caching.
-
-### 2. Hash Computation on Path Resolution
-
-**Impact:** 50+ seconds for large workspaces scanning all CSV files
-
-**Solution:** Multi-stage filtering:
-1. Check original path (instant)
-2. Size-based filtering (instant) - **requires storing `file_size` in manifest**
-3. Quick hash (header+footer) filtering (fast)
-4. Full hash verification (only 0-2 files)
-
-**Critical:** Manifests MUST store `file_size` for this optimization.
-
-### 3. Full DataFrame Sort for Top-K
-
-**Impact:** O(n log n) for full sort vs O(n log k) for top-k selection
-
-**Solution:** Use Polars `top_k()` method instead of `sort().head()`.
-
-### 4. Summary Recomputation on Every Save
-
-**Impact:** 5 seconds per save for 1M predictions
-
-**Solution:** Maintain `IncrementalSummary` class using Welford's algorithm for running statistics and a min-heap for top-k tracking. Save becomes O(1) serialization instead of O(n) recomputation.
+> **All bottlenecks RESOLVED by DuckDB migration:**
+>
+> 1. **Sequential Parquet Scanning** -- Eliminated. Single `store.duckdb` file with indexed SQL queries.
+> 2. **Hash Computation on Path Resolution** -- Dataset info stored in `runs.datasets` JSON column.
+> 3. **Full DataFrame Sort for Top-K** -- DuckDB uses `ORDER BY ... LIMIT` with efficient query planning.
+> 4. **Summary Recomputation on Every Save** -- No summaries needed. Data is written once during training; queries are instant SQL.
 
 ---
 
@@ -2814,68 +1672,48 @@ The proposed frontend still accumulates ALL predictions before showing UI, defea
 
 ### 1. Error Recovery Strategy
 
-Not addressed:
-- What happens if a run fails mid-execution?
-- How to resume from last successful result?
-- How to mark partial runs?
-
-**Recommendation:** Add checkpoint system to manifests.
+> **Partially resolved.** `WorkspaceStore.fail_run()` and `fail_pipeline()` mark failed entities. Completed pipelines within a failed run are preserved in `store.duckdb`. Resume support (re-running only failed pipelines) is a remaining TODO.
 
 ### 2. Concurrent Run Handling
 
-Not addressed:
-- Multiple runs on same dataset simultaneously?
-- Locking/queuing for shared resources?
-- Conflict resolution for parquet updates?
+> **Partially resolved.** DuckDB provides ACID transactions, so concurrent writes to `store.duckdb` are safe. Resource locking for shared datasets during training remains a TODO.
 
 ### 3. Backward Compatibility
 
-Schema versions mentioned but no migration strategy:
-- How to upgrade v1 manifests to v2?
-- How to handle parquet files without embedded summaries?
-- Graceful handling of missing fields?
+> **Resolved by clean break.** The DuckDB migration is a clean break from the legacy file-based storage. Old workspaces need to be re-run. No migration from v1 manifests/Parquet files.
 
 ---
 
 ## Priority Actions
 
-### High Priority (Fix Before Implementation)
+### Remaining Priority Actions
 
-| Issue | Action |
-|-------|--------|
-| Template detection ambiguity | Use explicit `templates=` parameter |
-| Race condition in registry | Add file locking |
-| Duplicate data storage | Use reference-based design |
-| Sequential parquet scanning | Add concurrent I/O |
-| Store file_size in manifests | Required for path resolution optimization |
+| Priority | Issue | Action | Status |
+|----------|-------|--------|--------|
+| High | Template preservation | Save original template before expansion | TODO |
+| High | Multi-template support | Explicit `templates=` parameter | TODO |
+| Medium | Rich dataset metadata | `SpectroDataset.get_metadata()` for `runs.datasets` JSON | TODO |
+| Medium | Frontend virtual scrolling | TanStack Query + server pagination | TODO |
+| Medium | Results page | Dedicated results view in webapp | TODO |
+| Low | Resume support | Re-run only failed pipelines | TODO |
+| Low | Run lineage tracking | Template versioning | TODO |
 
-### Medium Priority (Address During Implementation)
-
-| Issue | Action |
-|-------|--------|
-| Missing summary fields | Expand schema with task_types, date_range |
-| God object manifest | Split into normalized files |
-| Frontend batch loading | Implement virtual scrolling |
-| Hash computation bottleneck | Size-filter first |
-
-### Low Priority (Future Enhancement)
-
-| Issue | Action |
-|-------|--------|
-| Content-addressable templates | Implement after core |
-| Incremental summaries | Optimization pass |
-| Run lineage tracking | Phase 2 feature |
+> **Note:** Many previously high-priority items (Parquet scanning, manifest god object, duplicate data storage, race conditions) were **resolved by the DuckDB storage migration**.
 
 ---
 
 ## Conclusion
 
-This design document provides a solid foundation for evolving the nirs4all ecosystem. The core concepts are well-defined and the identified gaps are real. With the corrections noted above, particularly around:
+This design document provides a solid foundation for evolving the nirs4all ecosystem. The core concepts are well-defined and the identified gaps are real. The **DuckDB storage migration** resolved the majority of storage, performance, and data consistency issues:
 
-1. **Explicit multi-template syntax** (not inference)
-2. **Reference-based data storage** (not duplication)
-3. **File size storage** for path resolution
-4. **Concurrent I/O** for parquet scanning
-5. **Incremental statistics** for summary maintenance
+1. **Single source of truth** -- All data in `store.duckdb` (no manifests, no Parquet files, no registry files)
+2. **Relational data model** -- Runs, pipelines, chains, predictions in normalized tables
+3. **Instant queries** -- SQL with indexes instead of filesystem scanning
+4. **ACID transactions** -- Safe concurrent writes
+5. **Content-addressed artifacts** -- Deduplication with ref_count garbage collection
 
-...the implementation should proceed smoothly and result in a performant, maintainable system.
+**Remaining work** focuses on:
+1. **Template preservation** before expansion
+2. **Multi-template support** with explicit API syntax
+3. **Rich dataset metadata** in `runs.datasets` JSON
+4. **Frontend improvements** (virtual scrolling, results page)

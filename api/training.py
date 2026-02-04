@@ -431,6 +431,7 @@ def _run_training_task(
             dataset=dataset_config,
             verbose=config.get("verbose", 1),
             random_state=config.get("random_state"),
+            workspace_path=config.get("workspace_path"),
         )
     except Exception as e:
         raise ValueError(f"Training failed: {str(e)}")

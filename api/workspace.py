@@ -1594,13 +1594,13 @@ async def scan_workspace(workspace_id: str):
 async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh: bool = False):
     """Get discovered runs from a linked workspace.
 
-    This endpoint supports three discovery modes:
+    When a DuckDB store is available, runs come directly from the store
+    (fast, authoritative).  Otherwise falls back to manifest + parquet
+    discovery:
+
     - "unified" (default): Combines manifest-based and parquet-based discovery
     - "manifests": Only reads from run_manifest.yaml files (accurate but slower)
     - "parquet": Only extracts from prediction parquet files (faster but less complete)
-
-    The unified mode prioritizes manifest-based runs (v2 format with templates)
-    and supplements with parquet-derived runs for legacy data.
 
     Use refresh=true to bypass the cache and force a fresh scan.
     """
@@ -1618,6 +1618,19 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
             if cached is not None:
                 return cached
 
+        scanner = WorkspaceScanner(workspace_path)
+
+        # ---- DuckDB store path (primary) ----
+        # When a store exists, scanner.discover_runs() already reads
+        # from it and the parquet-derived phase is unnecessary.
+        if scanner._has_store():
+            all_runs = scanner.discover_runs()
+            all_runs.sort(key=lambda r: r.get("created_at", "") or "", reverse=True)
+            result = {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
+            _set_cached_runs(workspace_path_str, source, result)
+            return result
+
+        # ---- Legacy filesystem path ----
         import pandas as pd
 
         all_runs = []
@@ -1630,13 +1643,11 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
         # Phase 1: Discover runs from manifests (v2 format with templates)
         if source in ("unified", "manifests"):
-            scanner = WorkspaceScanner(workspace_path)
             manifest_runs = scanner.discover_runs()
 
             for run in manifest_runs:
                 run_id = run.get("id", "")
                 if run_id:
-                    # Normalize ID for deduplication (strip numeric prefix)
                     seen_run_ids.add(normalize_run_id(run_id))
                 all_runs.append(run)
 
@@ -1657,12 +1668,9 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
                     dataset_name = parquet_file.stem.replace(".meta", "")
 
-                    # Use groupby for efficient aggregation instead of filtering per config
-                    # This avoids O(k) DataFrame copies where k = number of unique configs
                     grouped = df.groupby("config_name", dropna=True)
 
-                    # Compute aggregates in one pass
-                    agg_dict = {"config_name": "size"}  # count as predictions_count
+                    agg_dict = {"config_name": "size"}
                     if "pipeline_uid" in df.columns:
                         agg_dict["pipeline_uid"] = "nunique"
                     if "val_score" in df.columns:
@@ -1673,7 +1681,6 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
                     agg_df = grouped.agg(agg_dict)
                     agg_df.columns = ["predictions_count", "pipeline_count", "val_score", "test_score"][:len(agg_df.columns)]
 
-                    # Get unique models per config (need separate groupby for list aggregation)
                     if "model_name" in df.columns:
                         models_per_config = grouped["model_name"].apply(
                             lambda x: x.dropna().unique().tolist()[:5]
@@ -1681,10 +1688,8 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
                     else:
                         models_per_config = {}
 
-                    # Build run entries from aggregated results
                     for config_name in agg_df.index:
                         config_id = str(config_name)
-                        # Normalize for deduplication check (strip numeric prefix if present)
                         normalized_id = normalize_run_id(config_id)
                         if normalized_id in seen_run_ids:
                             continue
@@ -1749,11 +1754,20 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # First, try to find the run in manifests
+        # ---- DuckDB store path (primary) ----
+        if scanner._has_store():
+            run = scanner.store_adapter.get_run_detail(run_id)
+            if run is not None:
+                results = scanner.discover_results(run_id)
+                run["results"] = results
+                run["results_count"] = len(results)
+                return run
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+        # ---- Legacy filesystem path ----
         all_runs = scanner.discover_runs()
         for run in all_runs:
             if run.get("id") == run_id:
-                # Get results for this run
                 results = scanner.discover_results(run_id)
                 run["results"] = results
                 run["results_count"] = len(results)
@@ -1765,6 +1779,39 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get run detail: {str(e)}"
+        )
+
+
+@router.delete("/workspaces/{workspace_id}/runs/{run_id}")
+async def delete_workspace_run(workspace_id: str, run_id: str):
+    """Delete a run from a workspace.
+
+    When a DuckDB store is available, deletes the run with cascade
+    (pipelines, chains, predictions, arrays, logs).  Returns 404
+    if the workspace or store is not found.
+    """
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        workspace_path = Path(ws.path)
+        scanner = WorkspaceScanner(workspace_path)
+
+        if not scanner._has_store():
+            raise HTTPException(status_code=501, detail="Run deletion requires a DuckDB store")
+
+        result = scanner.store_adapter.delete_run(run_id)
+
+        # Invalidate cached runs for this workspace
+        invalidate_workspace_cache(str(workspace_path))
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete run: {str(e)}"
         )
 
 
@@ -1880,26 +1927,41 @@ async def get_workspace_predictions_data(
     limit: int = 500,
     offset: int = 0,
     dataset: Optional[str] = None,
+    model_class: Optional[str] = None,
+    partition: Optional[str] = None,
 ):
-    """Get actual prediction data from parquet files.
+    """Get prediction records with metadata.
 
-    Reads the .meta.parquet files and returns the prediction records
-    with all metadata (but without loading the heavy y_true/y_pred arrays).
+    When a DuckDB store is available, reads directly from the store
+    (fast, paginated at the DB level).  Otherwise falls back to reading
+    ``.meta.parquet`` files with pandas.
     """
     try:
-        import pandas as pd
-
         ws = workspace_manager._find_linked_workspace(workspace_id)
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
         workspace_path = Path(ws.path)
+        scanner = WorkspaceScanner(workspace_path)
+
+        # ---- DuckDB store path (primary) ----
+        if scanner._has_store():
+            page = scanner.store_adapter.get_predictions_page(
+                dataset_name=dataset,
+                model_class=model_class,
+                partition=partition,
+                limit=limit,
+                offset=offset,
+            )
+            return page
+
+        # ---- Legacy filesystem path (parquet files) ----
+        import pandas as pd
+
         all_records = []
 
-        # Find all .meta.parquet files
         parquet_files = list(workspace_path.glob("*.meta.parquet"))
 
-        # Filter by dataset if specified
         if dataset:
             parquet_files = [f for f in parquet_files if f.stem.replace(".meta", "") == dataset]
 
@@ -1908,8 +1970,6 @@ async def get_workspace_predictions_data(
                 df = pd.read_parquet(parquet_file)
                 dataset_name = parquet_file.stem.replace(".meta", "")
 
-                # Convert to records, excluding large array columns
-                # The parquet stores array references (IDs), not the actual arrays
                 columns_to_include = [
                     "id", "dataset_name", "config_name", "pipeline_uid",
                     "step_idx", "op_counter", "model_name", "model_classname",
@@ -1920,16 +1980,10 @@ async def get_workspace_predictions_data(
                     "model_artifact_id", "trace_id"
                 ]
 
-                # Only include columns that exist in the DataFrame
                 available_columns = [c for c in columns_to_include if c in df.columns]
-
-                # Use vectorized operations instead of iterrows() for 10-100x speedup
                 subset = df[available_columns].copy()
-
-                # Convert to records (much faster than iterrows)
                 records = subset.to_dict('records')
 
-                # Add source info, parse JSON fields, and clean NaN values
                 source_file_str = str(parquet_file)
 
                 def clean_nan(obj):
@@ -1940,18 +1994,15 @@ async def get_workspace_predictions_data(
                         return {k: clean_nan(v) for k, v in obj.items()}
                     elif isinstance(obj, list):
                         return [clean_nan(v) for v in obj]
-                    # Handle numpy float types explicitly
                     elif isinstance(obj, (float, np.floating)):
                         try:
                             if math.isnan(obj) or math.isinf(obj):
                                 return None
                         except (TypeError, ValueError):
                             pass
-                        return float(obj)  # Convert numpy float to Python float
-                    # Handle numpy integers
+                        return float(obj)
                     elif isinstance(obj, np.integer):
                         return int(obj)
-                    # Catch-all for pandas NA
                     try:
                         if pd.isna(obj):
                             return None
@@ -1963,7 +2014,6 @@ async def get_workspace_predictions_data(
                     record["source_dataset"] = dataset_name
                     record["source_file"] = source_file_str
 
-                    # Parse JSON fields
                     for json_field in ["best_params", "scores"]:
                         val = record.get(json_field)
                         if val is not None and isinstance(val, str):
@@ -1972,20 +2022,17 @@ async def get_workspace_predictions_data(
                             except (json.JSONDecodeError, TypeError):
                                 pass
 
-                    # Clean NaN/Inf values recursively (must happen after JSON parsing)
                     for key in list(record.keys()):
                         record[key] = clean_nan(record[key])
 
                 all_records.extend(records)
             except Exception as e:
-                # Log but continue with other files
                 print(f"Error reading {parquet_file}: {e}")
                 continue
 
         total = len(all_records)
         paginated = all_records[offset:offset + limit]
 
-        # Use custom JSON encoding to handle any remaining NaN/Inf values
         import math
         import numpy as np
 
@@ -2002,7 +2049,6 @@ async def get_workspace_predictions_data(
                 return super().default(obj)
 
             def encode(self, obj):
-                # Override to handle NaN in nested structures
                 def sanitize(o):
                     if isinstance(o, dict):
                         return {k: sanitize(v) for k, v in o.items()}
@@ -2025,7 +2071,6 @@ async def get_workspace_predictions_data(
             "has_more": offset + limit < total,
         }
 
-        # Return with custom JSON encoding to handle NaN/Inf
         json_str = json.dumps(response_data, cls=NaNSafeEncoder)
         return Response(content=json_str, media_type="application/json")
     except HTTPException:
@@ -2040,8 +2085,8 @@ async def get_workspace_predictions_data(
 async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
     """Get scatter plot data (y_true vs y_pred) for a specific prediction.
 
-    Loads the actual arrays from the .arrays.parquet file to display
-    real prediction vs actual values in the quick view charts.
+    When a DuckDB store is available, loads arrays directly from the
+    store.  Otherwise falls back to ``.arrays.parquet`` files.
 
     Returns:
         - y_true: Actual values array
@@ -2050,21 +2095,31 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
         - partition: Data partition (train/val/test)
     """
     try:
-        from nirs4all.data.predictions import Predictions
-
         ws = workspace_manager._find_linked_workspace(workspace_id)
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
         workspace_path = Path(ws.path)
+        scanner = WorkspaceScanner(workspace_path)
 
-        # Find all .meta.parquet files
+        # ---- DuckDB store path (primary) ----
+        if scanner._has_store():
+            scatter = scanner.store_adapter.get_prediction_scatter(prediction_id)
+            if scatter is not None:
+                return scatter
+            raise HTTPException(
+                status_code=404,
+                detail=f"Prediction '{prediction_id}' not found or has no scatter data"
+            )
+
+        # ---- Legacy filesystem path ----
+        from nirs4all.data.predictions import Predictions
+
         parquet_files = list(workspace_path.glob("*.meta.parquet"))
 
         if not parquet_files:
             raise HTTPException(status_code=404, detail="No predictions found in workspace")
 
-        # Search for the prediction in all parquet files
         for meta_file in parquet_files:
             arrays_file = meta_file.with_name(
                 meta_file.name.replace(".meta.parquet", ".arrays.parquet")
@@ -2074,27 +2129,22 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
                 continue
 
             try:
-                # Load predictions with array hydration
                 pred_storage = Predictions()
                 pred_storage.load_from_file(str(meta_file), merge=False)
 
-                # Try to get the prediction by ID
                 prediction = pred_storage.get_prediction_by_id(prediction_id, load_arrays=True)
 
                 if prediction:
                     y_true = prediction.get('y_true')
                     y_pred = prediction.get('y_pred')
 
-                    # Handle empty or missing arrays
                     if y_true is None or y_pred is None:
                         continue
 
-                    # Convert numpy arrays to lists for JSON serialization
                     import numpy as np
                     y_true_list = y_true.tolist() if isinstance(y_true, np.ndarray) else list(y_true) if y_true is not None else []
                     y_pred_list = y_pred.tolist() if isinstance(y_pred, np.ndarray) else list(y_pred) if y_pred is not None else []
 
-                    # Skip if arrays are empty
                     if not y_true_list or not y_pred_list:
                         continue
 
@@ -2108,7 +2158,6 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
                         "dataset_name": prediction.get('dataset_name', 'unknown'),
                     }
             except Exception as e:
-                # Continue searching in other files
                 print(f"Error reading {meta_file}: {e}")
                 continue
 
@@ -2126,20 +2175,18 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
 
 @router.get("/workspaces/{workspace_id}/predictions/summary")
 async def get_workspace_predictions_summary(workspace_id: str):
-    """Get aggregated prediction summary from parquet metadata.
+    """Get aggregated prediction summary.
 
-    This endpoint reads ONLY file footers, not row data.
-    Response time: ~10-50ms for any workspace size.
+    When a DuckDB store is available, the summary is computed directly
+    from the store (fast).  Otherwise falls back to reading parquet
+    file footers.
 
-    Returns instant summary with:
+    Returns:
     - Total predictions across all datasets
-    - Score statistics (min/max/mean/std)
     - Model breakdown with average scores
     - Top predictions by validation score
     """
-    import pyarrow.parquet as pq
-    from concurrent.futures import ThreadPoolExecutor
-    from datetime import datetime, timezone
+    from datetime import timezone as _tz
 
     try:
         ws = workspace_manager._find_linked_workspace(workspace_id)
@@ -2147,6 +2194,17 @@ async def get_workspace_predictions_summary(workspace_id: str):
             raise HTTPException(status_code=404, detail="Workspace not found")
 
         workspace_path = Path(ws.path)
+        scanner = WorkspaceScanner(workspace_path)
+
+        # ---- DuckDB store path (primary) ----
+        if scanner._has_store():
+            summary = scanner.store_adapter.get_predictions_summary()
+            return summary
+
+        # ---- Legacy filesystem path (parquet footers) ----
+        import pyarrow.parquet as pq
+        from concurrent.futures import ThreadPoolExecutor
+
         parquet_files = list(workspace_path.glob("*.meta.parquet"))
 
         if not parquet_files:
@@ -2156,7 +2214,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
                 "datasets": [],
                 "models": [],
                 "runs": [],
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": datetime.now(_tz.utc).isoformat(),
             }
 
         def read_summary(parquet_file: Path) -> Optional[Dict[str, Any]]:
@@ -2171,7 +2229,6 @@ async def get_workspace_predictions_summary(workspace_id: str):
                     summary["has_summary"] = True
                     return summary
                 else:
-                    # Fallback: file has no summary, include minimal info
                     return {
                         "dataset": parquet_file.stem.replace(".meta", ""),
                         "total_predictions": pf.metadata.num_rows,
@@ -2181,16 +2238,13 @@ async def get_workspace_predictions_summary(workspace_id: str):
                 print(f"Error reading {parquet_file}: {e}")
                 return None
 
-        # Use ThreadPoolExecutor for concurrent footer reads (7.5x speedup)
         summaries = []
         with ThreadPoolExecutor(max_workers=min(len(parquet_files), 8)) as executor:
             results = list(executor.map(read_summary, parquet_files))
             summaries = [s for s in results if s is not None]
 
-        # Aggregate across all datasets
         total_predictions = sum(s.get("total_predictions", 0) for s in summaries)
 
-        # Merge model stats across datasets
         all_models: Dict[str, Dict] = {}
         for s in summaries:
             for model in s.get("facets", {}).get("models", []):
@@ -2202,7 +2256,6 @@ async def get_workspace_predictions_summary(workspace_id: str):
                     all_models[name]["total_score"] += model["avg_val_score"] * model["count"]
                     all_models[name]["score_count"] += model["count"]
 
-        # Compute weighted averages
         models = []
         for m in all_models.values():
             models.append({
@@ -2212,29 +2265,24 @@ async def get_workspace_predictions_summary(workspace_id: str):
             })
         models.sort(key=lambda x: x["count"], reverse=True)
 
-        # Collect all runs
         all_runs = []
         for s in summaries:
             all_runs.extend(s.get("runs", []))
 
-        # Collect top predictions across datasets
         all_top = []
         for s in summaries:
             for pred in s.get("top_predictions", []):
                 pred["dataset"] = s.get("dataset")
                 all_top.append(pred)
-        # Sort by val_score and take top 10
         all_top.sort(key=lambda x: x.get("val_score") or 0, reverse=True)
         top_predictions = all_top[:10]
 
-        # Aggregate stats
         aggregated_stats = {}
         for stat_key in ["val_score", "test_score", "train_score"]:
             all_values = []
             for s in summaries:
                 stats = s.get("stats", {}).get(stat_key, {})
                 if stats:
-                    # Approximate aggregation from summaries
                     all_values.append({
                         "min": stats.get("min", 0),
                         "max": stats.get("max", 0),
@@ -2242,10 +2290,11 @@ async def get_workspace_predictions_summary(workspace_id: str):
                         "count": s.get("total_predictions", 0),
                     })
             if all_values:
+                total_count = sum(v["count"] for v in all_values)
                 aggregated_stats[stat_key] = {
                     "min": min(v["min"] for v in all_values),
                     "max": max(v["max"] for v in all_values),
-                    "mean": sum(v["mean"] * v["count"] for v in all_values) / sum(v["count"] for v in all_values) if sum(v["count"] for v in all_values) > 0 else 0,
+                    "mean": sum(v["mean"] * v["count"] for v in all_values) / total_count if total_count > 0 else 0,
                 }
 
         return {
@@ -2256,7 +2305,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
             "runs": all_runs,
             "top_predictions": top_predictions,
             "stats": aggregated_stats,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(_tz.utc).isoformat(),
         }
 
     except HTTPException:
