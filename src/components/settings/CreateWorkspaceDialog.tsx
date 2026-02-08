@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   FolderOpen,
@@ -34,7 +35,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { selectFolder } from "@/utils/fileDialogs";
-import { createWorkspace, selectWorkspace } from "@/api/client";
+import { createWorkspace, selectWorkspace, getLinkedWorkspaces, activateN4AWorkspace } from "@/api/client";
 import type { WorkspaceInfo } from "@/types/settings";
 
 export interface CreateWorkspaceDialogProps {
@@ -56,6 +57,7 @@ export function CreateWorkspaceDialog({
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<WorkspaceInfo | null>(null);
+  const queryClient = useQueryClient();
 
   // Form state
   const [name, setName] = useState("");
@@ -120,13 +122,27 @@ export function CreateWorkspaceDialog({
       });
 
       setSuccess(workspace);
+      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
 
       // Auto-switch to the new workspace
       if (autoSwitch) {
-        await selectWorkspace(workspace.path);
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
+        try {
+          // The backend already linked this workspace via _link_workspace_internal.
+          // Find it in the linked workspaces list and activate it.
+          const linked = await getLinkedWorkspaces();
+          const match = linked.workspaces.find(
+            (ws) => ws.path === workspace.path
+          );
+          if (match) {
+            await activateN4AWorkspace(match.id);
+          } else {
+            // Fallback to legacy select (shouldn't happen with the fix)
+            await selectWorkspace(workspace.path);
+          }
+        } catch {
+          // Workspace was created successfully, activation is best-effort
+          console.warn("Workspace created but activation failed");
+        }
       }
 
       onWorkspaceCreated?.(workspace);

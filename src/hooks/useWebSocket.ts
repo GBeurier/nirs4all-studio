@@ -32,17 +32,27 @@ export function useWebSocket() {
   const clientRef = useRef<WebSocketClient | null>(null);
 
   useEffect(() => {
-    const client = createMainWebSocket();
-    clientRef.current = client;
+    let isMounted = true;
+    let client: WebSocketClient | null = null;
 
-    client.onConnect(() => setIsConnected(true));
-    client.onDisconnect(() => setIsConnected(false));
-    client.on('all', (msg) => setLastMessage(msg));
+    (async () => {
+      client = await createMainWebSocket();
+      if (!isMounted) {
+        client.disconnect();
+        return;
+      }
 
-    client.connect();
+      clientRef.current = client;
+      client.onConnect(() => setIsConnected(true));
+      client.onDisconnect(() => setIsConnected(false));
+      client.on('all', (msg) => setLastMessage(msg));
+      client.connect();
+    })();
 
     return () => {
-      client.disconnect();
+      isMounted = false;
+      client?.disconnect();
+      clientRef.current?.disconnect();
     };
   }, []);
 
@@ -96,48 +106,60 @@ export function useJobUpdates(jobId: string | null) {
   useEffect(() => {
     if (!jobId) return;
 
-    const client = createJobWebSocket(jobId);
-    clientRef.current = client;
+    let isMounted = true;
+    let client: WebSocketClient | null = null;
 
-    client.onConnect(() => setIsConnected(true));
-    client.onDisconnect(() => setIsConnected(false));
+    (async () => {
+      client = await createJobWebSocket(jobId);
+      if (!isMounted) {
+        client.disconnect();
+        return;
+      }
 
-    client.on('job_started', () => {
-      setStatus('running');
-      setProgress(0);
-    });
+      clientRef.current = client;
 
-    client.on('job_progress', (msg) => {
-      const data = msg.data as unknown as JobProgressData;
-      setStatus('running');
-      setProgress(data.progress);
-      setProgressMessage(data.message);
-      setMetrics(data.metrics);
-    });
+      client.onConnect(() => setIsConnected(true));
+      client.onDisconnect(() => setIsConnected(false));
 
-    client.on('job_completed', (msg) => {
-      setStatus('completed');
-      setProgress(100);
-      setResult(msg.data.result as Record<string, unknown>);
-    });
+      client.on('job_started', () => {
+        setStatus('running');
+        setProgress(0);
+      });
 
-    client.on('job_failed', (msg) => {
-      setStatus('failed');
-      setError(msg.data.error as string);
-    });
+      client.on('job_progress', (msg) => {
+        const data = msg.data as unknown as JobProgressData;
+        setStatus('running');
+        setProgress(data.progress);
+        setProgressMessage(data.message);
+        setMetrics(data.metrics);
+      });
 
-    client.on('job_cancelled', () => {
-      setStatus('cancelled');
-    });
+      client.on('job_completed', (msg) => {
+        setStatus('completed');
+        setProgress(100);
+        setResult(msg.data.result as Record<string, unknown>);
+      });
 
-    client.on('job_metrics', (msg) => {
-      setMetrics(msg.data.metrics as Record<string, unknown>);
-    });
+      client.on('job_failed', (msg) => {
+        setStatus('failed');
+        setError(msg.data.error as string);
+      });
 
-    client.connect();
+      client.on('job_cancelled', () => {
+        setStatus('cancelled');
+      });
+
+      client.on('job_metrics', (msg) => {
+        setMetrics(msg.data.metrics as Record<string, unknown>);
+      });
+
+      client.connect();
+    })();
 
     return () => {
-      client.disconnect();
+      isMounted = false;
+      client?.disconnect();
+      clientRef.current?.disconnect();
     };
   }, [jobId]);
 
@@ -187,53 +209,65 @@ export function useTrainingUpdates(jobId: string | null) {
   useEffect(() => {
     if (!jobId) return;
 
-    const client = createTrainingWebSocket(jobId);
-    clientRef.current = client;
+    let isMounted = true;
+    let client: WebSocketClient | null = null;
 
-    client.onConnect(() => setIsConnected(true));
-    client.onDisconnect(() => setIsConnected(false));
+    (async () => {
+      client = await createTrainingWebSocket(jobId);
+      if (!isMounted) {
+        client.disconnect();
+        return;
+      }
 
-    client.on('job_started', () => {
-      setStatus('running');
-      setProgress(0);
-      setHistory([]);
-    });
+      clientRef.current = client;
 
-    client.on('training_epoch', (msg) => {
-      const data = msg.data as unknown as TrainingEpochData;
-      setStatus('running');
-      setCurrentEpoch(data.epoch);
-      setTotalEpochs(data.total_epochs);
-      setProgress(data.progress);
-      setTrainMetrics(data.train);
-      setValMetrics(data.val || null);
-      setHistory((prev: TrainingEpochData[]) => [...prev, data]);
-    });
+      client.onConnect(() => setIsConnected(true));
+      client.onDisconnect(() => setIsConnected(false));
 
-    client.on('job_progress', (msg) => {
-      const data = msg.data as unknown as JobProgressData;
-      setProgress(data.progress);
-    });
+      client.on('job_started', () => {
+        setStatus('running');
+        setProgress(0);
+        setHistory([]);
+      });
 
-    client.on('job_completed', (msg) => {
-      setStatus('completed');
-      setProgress(100);
-      setResult(msg.data.result as Record<string, unknown>);
-    });
+      client.on('training_epoch', (msg) => {
+        const data = msg.data as unknown as TrainingEpochData;
+        setStatus('running');
+        setCurrentEpoch(data.epoch);
+        setTotalEpochs(data.total_epochs);
+        setProgress(data.progress);
+        setTrainMetrics(data.train);
+        setValMetrics(data.val || null);
+        setHistory((prev: TrainingEpochData[]) => [...prev, data]);
+      });
 
-    client.on('job_failed', (msg) => {
-      setStatus('failed');
-      setError(msg.data.error as string);
-    });
+      client.on('job_progress', (msg) => {
+        const data = msg.data as unknown as JobProgressData;
+        setProgress(data.progress);
+      });
 
-    client.on('job_cancelled', () => {
-      setStatus('cancelled');
-    });
+      client.on('job_completed', (msg) => {
+        setStatus('completed');
+        setProgress(100);
+        setResult(msg.data.result as Record<string, unknown>);
+      });
 
-    client.connect();
+      client.on('job_failed', (msg) => {
+        setStatus('failed');
+        setError(msg.data.error as string);
+      });
+
+      client.on('job_cancelled', () => {
+        setStatus('cancelled');
+      });
+
+      client.connect();
+    })();
 
     return () => {
-      client.disconnect();
+      isMounted = false;
+      client?.disconnect();
+      clientRef.current?.disconnect();
     };
   }, [jobId]);
 

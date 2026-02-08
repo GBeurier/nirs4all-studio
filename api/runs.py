@@ -983,79 +983,144 @@ async def _execute_pipeline_training(
             thread_logs.append(msg)
             log_queue.put(msg)
 
+        def _summarize_folds(predictions: Any) -> None:
+            """Log fold-level scores plus avg and weighted avg when available."""
+            try:
+                fold_groups = predictions.top(n=1, group_by=["fold_id"])
+            except Exception:
+                return
+
+            if not isinstance(fold_groups, dict):
+                return
+
+            fold_scores = []
+            metric_name = "score"
+            try:
+                best_entry = predictions.top(n=1)
+                if best_entry:
+                    metric_name = best_entry[0].get("metric", metric_name)
+            except Exception:
+                pass
+
+            for key, entries in fold_groups.items():
+                fold_id = key[0] if isinstance(key, tuple) else key
+                if not fold_id or str(fold_id).lower() in ("avg", "wavg", "ensemble"):
+                    continue
+                entry = entries[0] if entries else None
+                if not entry:
+                    continue
+                score = entry.get("test_score")
+                if score is None:
+                    score = entry.get("val_score")
+                if score is None:
+                    continue
+                n_samples = entry.get("n_samples") or 0
+                fold_scores.append((fold_id, float(score), int(n_samples)))
+                log(f"[INFO] Fold {fold_id}: {metric_name}={float(score):.4f} (n={int(n_samples)})")
+
+            if not fold_scores:
+                return
+
+            avg = sum(s for _, s, _ in fold_scores) / len(fold_scores)
+            log(f"[INFO] Fold avg: {metric_name}={avg:.4f}")
+
+            total_weight = sum(n for _, _, n in fold_scores)
+            if total_weight > 0:
+                wavg = sum(s * n for _, s, n in fold_scores) / total_weight
+                log(f"[INFO] Fold wavg (by n_samples): {metric_name}={wavg:.4f}")
+
         # Import nirs4all in thread to avoid blocking event loop during heavy import
         try:
             import nirs4all
         except ImportError as e:
             raise ValueError(f"nirs4all is required for training: {e}")
 
-        # Build dataset config with proper loading parameters (delimiter, etc.)
-        from .nirs4all_adapter import build_dataset_config, build_full_pipeline, ensure_models_dir, expand_pipeline_variants
+        import logging
+
+        class _QueueLogHandler(logging.Handler):
+            def emit(self, record):
+                try:
+                    msg = self.format(record)
+                except Exception:
+                    msg = record.getMessage()
+                if msg:
+                    log_queue.put(msg)
+
+        log_handler = _QueueLogHandler()
+        log_handler.setLevel(logging.INFO)
+        log_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+        root_logger = logging.getLogger()
+        root_logger.addHandler(log_handler)
+
         try:
-            dataset_config = build_dataset_config(dataset_id)
-            log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
-        except Exception as e:
-            raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
-
-        # Build pipeline - handle expanded variants vs full pipelines
-        nirs4all_steps = None
-        estimated_variants = 1
-        has_generators = False
-
-        # Check if this is an already-expanded variant
-        is_expanded_variant = pipeline.is_expanded_variant or False
-        variant_index = pipeline.variant_index
-
-        if steps:
+            # Build dataset config with proper loading parameters (delimiter, etc.)
+            from .nirs4all_adapter import build_dataset_config, build_full_pipeline, ensure_models_dir, expand_pipeline_variants
             try:
-                if is_expanded_variant and variant_index is not None:
-                    # This is a specific variant - get its pre-expanded steps
-                    variants = expand_pipeline_variants(steps)
-                    if 0 <= variant_index < len(variants):
-                        selected_variant = variants[variant_index]
-                        nirs4all_steps = selected_variant.steps
-                        log(f"[INFO] Running variant {variant_index + 1}/{len(variants)}: {selected_variant.description}")
-                    else:
-                        log(f"[WARN] Variant index {variant_index} out of range, using first variant")
-                        if variants:
-                            nirs4all_steps = variants[0].steps
-                        else:
-                            build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
-                            nirs4all_steps = build_result.steps
-                    estimated_variants = 1  # Only running this one variant
-                    has_generators = False
-                else:
-                    # Full pipeline with all generators
-                    build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
-                    nirs4all_steps = build_result.steps
-                    estimated_variants = build_result.estimated_variants
-                    has_generators = build_result.has_generators
-
-                    log(f"[INFO] Pipeline built: {len(nirs4all_steps)} steps")
-
-                    if has_generators:
-                        log(f"[INFO] Generators detected: ~{estimated_variants} variants will be tested")
-                    if build_result.finetuning_config:
-                        log(f"[INFO] Finetuning enabled: {build_result.finetuning_config.get('n_trials', 50)} trials")
-
+                dataset_config = build_dataset_config(dataset_id)
+                log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
             except Exception as e:
-                raise ValueError(f"Pipeline build failed: {e}")
-        else:
-            raise ValueError("No pipeline steps provided")
+                raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
+            # Build pipeline - handle expanded variants vs full pipelines
+            nirs4all_steps = None
+            estimated_variants = 1
+            has_generators = False
 
-        # Execute using nirs4all.run()
-        log(f"[INFO] Executing nirs4all.run() with dataset config...")
-        log(f"[INFO] Training {model_name}...")
+            # Check if this is an already-expanded variant
+            is_expanded_variant = pipeline.is_expanded_variant or False
+            variant_index = pipeline.variant_index
 
-        result = nirs4all.run(
-            pipeline=nirs4all_steps,
-            dataset=dataset_config,
-            verbose=1,
-            save_artifacts=True,
-            save_charts=False,
-            plots_visible=False,
-            workspace_path=workspace_path,
-        )
+            if steps:
+                try:
+                    if is_expanded_variant and variant_index is not None:
+                        # This is a specific variant - get its pre-expanded steps
+                        variants = expand_pipeline_variants(steps)
+                        if 0 <= variant_index < len(variants):
+                            selected_variant = variants[variant_index]
+                            nirs4all_steps = selected_variant.steps
+                            log(f"[INFO] Running variant {variant_index + 1}/{len(variants)}: {selected_variant.description}")
+                        else:
+                            log(f"[WARN] Variant index {variant_index} out of range, using first variant")
+                            if variants:
+                                nirs4all_steps = variants[0].steps
+                            else:
+                                build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
+                                nirs4all_steps = build_result.steps
+                        estimated_variants = 1  # Only running this one variant
+                        has_generators = False
+                    else:
+                        # Full pipeline with all generators
+                        build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
+                        nirs4all_steps = build_result.steps
+                        estimated_variants = build_result.estimated_variants
+                        has_generators = build_result.has_generators
+
+                        log(f"[INFO] Pipeline built: {len(nirs4all_steps)} steps")
+
+                        if has_generators:
+                            log(f"[INFO] Generators detected: ~{estimated_variants} variants will be tested")
+                        if build_result.finetuning_config:
+                            log(f"[INFO] Finetuning enabled: {build_result.finetuning_config.get('n_trials', 50)} trials")
+
+                except Exception as e:
+                    raise ValueError(f"Pipeline build failed: {e}")
+            else:
+                raise ValueError("No pipeline steps provided")
+
+            # Execute using nirs4all.run()
+            log("[INFO] Executing nirs4all.run() with dataset config...")
+            log(f"[INFO] Training {model_name}...")
+
+            result = nirs4all.run(
+                pipeline=nirs4all_steps,
+                dataset=dataset_config,
+                verbose=1,
+                save_artifacts=True,
+                save_charts=False,
+                plots_visible=False,
+                workspace_path=workspace_path,
+            )
+        finally:
+            root_logger.removeHandler(log_handler)
 
         log("[INFO] Training completed, extracting metrics...")
 
@@ -1111,6 +1176,12 @@ async def _execute_pipeline_training(
         r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
         rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
         log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
+
+        # Fold summary (if available)
+        try:
+            _summarize_folds(result.predictions)
+        except Exception:
+            pass
 
         # Get top results for logging
         if has_generators and hasattr(result, 'top'):

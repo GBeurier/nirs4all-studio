@@ -499,6 +499,92 @@ Prediction.test_score   →  Score on held-out test set (final evaluation)
 
 ---
 
+## 4b. Aggregated Prediction (Chain-level View)
+
+> **Added 2026-01** — Aggregated predictions provide chain-level summaries across folds and partitions.
+
+### Definition
+
+An **Aggregated Prediction** groups all individual predictions that share the same chain (preprocessing + model combination), metric, and dataset. It provides summary statistics across folds and partitions, answering the question: *"How well did this model configuration perform overall?"*
+
+### Formula
+
+```
+AggregatedPrediction = Chain × Metric × Dataset
+                     = group of Predictions across all folds and partitions
+```
+
+### Data Source
+
+Aggregated predictions are computed by the `v_aggregated_predictions` VIEW in DuckDB. This VIEW joins `predictions → chains → pipelines → runs` and groups by `(chain_id, metric, dataset_name)`.
+
+The VIEW is part of the DuckDB schema (`store.duckdb`) and is automatically available — no write-time hooks, rebuild steps, or materialization needed. Deleting a run or prediction is immediately reflected in query results.
+
+### Key Properties
+
+| Property | Description |
+|----------|-------------|
+| `chain_id` | The processing chain (preprocessing + model) |
+| `model_class` | Model class name (e.g., `PLSRegression`) |
+| `model_name` | Human-readable model name |
+| `preprocessings` | Preprocessing chain description |
+| `branch_path` | Branch identifier within the pipeline |
+| `metric` | Metric name (e.g., `r2`, `rmse`) |
+| `dataset_name` | Dataset used |
+| `fold_count` | Number of cross-validation folds |
+| `partition_count` | Number of distinct partitions |
+| `partitions` | List of partition names (train, val, test) |
+| `avg_val_score` | Average validation score across folds |
+| `avg_test_score` | Average test score across folds |
+| `avg_train_score` | Average train score across folds |
+| `min_val_score` / `max_val_score` | Score range for validation |
+| `prediction_ids` | List of individual prediction IDs |
+| `fold_ids` | List of fold IDs |
+
+### PartitionPrediction (Drill-Down)
+
+A **PartitionPrediction** is an individual prediction row within a chain, representing one fold and one partition. These are the rows in the `predictions` table filtered by `chain_id`.
+
+| Property | Description |
+|----------|-------------|
+| `prediction_id` | Unique prediction identifier |
+| `chain_id` | Parent chain |
+| `fold_id` | Cross-validation fold number |
+| `partition` | "train", "val", or "test" |
+| `val_score` | Validation score |
+| `test_score` | Test score |
+| `train_score` | Training score |
+| `n_samples` | Number of samples |
+
+### Metric-Aware Ranking
+
+The `query_top_aggregated_predictions()` method automatically determines sort direction based on metric type:
+
+- **Higher is better** (ascending=False): `r2`, `accuracy`, `f1`, `precision`, `recall`, `roc_auc`, etc.
+- **Lower is better** (ascending=True): `rmse`, `rmsep`, `mae`, `mse`, `mape`, `sec`, `sep`, etc.
+
+### API Endpoints
+
+```
+GET  /api/aggregated-predictions           — List aggregated chain-level results
+GET  /api/aggregated-predictions/top       — Top-N ranked by metric
+GET  /api/aggregated-predictions/chain/{id}          — Chain detail with metadata
+GET  /api/aggregated-predictions/chain/{id}/detail   — Drill-down to fold/partition rows
+GET  /api/aggregated-predictions/{pred_id}/arrays    — Raw y_true/y_pred arrays
+```
+
+### Hierarchy
+
+```
+Run → Pipeline → Chain → AggregatedPrediction (VIEW)
+                           └── PartitionPrediction (individual fold × partition)
+                                 └── Prediction Arrays (y_true, y_pred)
+```
+
+> **Note:** The legacy JSON-file-based prediction endpoints (`GET/POST/DELETE /api/predictions`) are deprecated. Use the `/api/aggregated-predictions` endpoints instead.
+
+---
+
 ## 5. Relationships and Hierarchy
 
 ### Complete Hierarchy
@@ -716,6 +802,21 @@ ORDER BY val_score ASC
 LIMIT 10;
 ```
 
+#### v_aggregated_predictions VIEW
+```sql
+-- Chain-level aggregation across folds and partitions
+-- Automatically maintained — no rebuild needed
+SELECT chain_id, model_class, model_name, preprocessings,
+       metric, dataset_name, fold_count, partition_count,
+       avg_val_score, avg_test_score, avg_train_score,
+       min_val_score, max_val_score,
+       prediction_ids, fold_ids
+FROM v_aggregated_predictions
+WHERE dataset_name = 'wheat'
+ORDER BY avg_val_score DESC
+LIMIT 5;
+```
+
 ---
 
 ## 8. Performance: DuckDB Store Queries
@@ -903,11 +1004,30 @@ const { data: details } = useQuery({
 ├── GET    /by-dataset/:datasetId  # Results for a dataset
 ├── GET    /by-template/:templateId # Results from a template
 
-/api/predictions
+/api/predictions                     # ⚠️ DEPRECATED — JSON-file-based
 ├── GET    /                       # List predictions (paginated)
 ├── GET    /:predictionId          # Get prediction details
-├── GET    /:predictionId/data     # Get y_true, y_pred arrays
-└── GET    /compare                # Compare multiple predictions
+├── POST   /                       # Create prediction record
+├── DELETE /:predictionId          # Delete prediction record
+├── GET    /stats                  # Aggregate statistics
+├── POST   /export                 # Export predictions
+├── POST   /single                 # Single sample inference (NOT deprecated)
+├── POST   /batch                  # Batch inference (NOT deprecated)
+├── POST   /dataset                # Dataset inference (NOT deprecated)
+├── POST   /confidence             # Confidence prediction (NOT deprecated)
+└── POST   /explain                # Prediction explanation (NOT deprecated)
+
+/api/aggregated-predictions          # ✅ CURRENT — DuckDB-backed
+├── GET    /                       # List aggregated chain-level results
+│                                   #   query: run_id?, pipeline_id?, dataset_name?,
+│                                   #          model_class?, metric?
+├── GET    /top                    # Top-N ranked by metric
+│                                   #   query: metric, n?, score_column?, **filters
+├── GET    /chain/:chainId         # Chain detail + pipeline metadata
+│                                   #   query: metric?, dataset_name?
+├── GET    /chain/:chainId/detail  # Drill-down to fold/partition rows
+│                                   #   query: partition?, fold_id?
+└── GET    /:predictionId/arrays   # Raw y_true, y_pred arrays
 ```
 
 ### Query Parameters
@@ -923,7 +1043,13 @@ GET /api/results?template_id=template_001
 GET /api/results?dataset=wheat&metric=r2&min_score=0.9
 GET /api/results?model_type=PLS&sort=best_score&order=desc
 
-# Predictions
+# Aggregated Predictions (preferred)
+GET /api/aggregated-predictions?dataset_name=wheat&metric=r2
+GET /api/aggregated-predictions/top?metric=r2&n=10
+GET /api/aggregated-predictions/chain/abc123
+GET /api/aggregated-predictions/chain/abc123/detail?partition=val
+
+# Legacy Predictions (deprecated)
 GET /api/predictions?result_id=def456
 GET /api/predictions?partition=test&fold_id=0
 ```

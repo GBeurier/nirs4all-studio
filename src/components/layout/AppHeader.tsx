@@ -24,6 +24,7 @@ const searchItems = [
   { labelKey: "nav.runs", path: "/runs", keywords: ["experiment", "train", "execute", "monitor", "progress"] },
   { labelKey: "nav.results", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "history"] },
   { labelKey: "nav.predictions", path: "/predictions", keywords: ["predict", "inference"] },
+  { labelKey: "nav.aggregatedResults", path: "/results/aggregated", keywords: ["aggregate", "chain", "fold", "summary", "ranking"] },
   { labelKey: "nav.analysis", path: "/analysis", keywords: ["pca", "importance", "explore"] },
   { labelKey: "nav.settings", path: "/settings", keywords: ["config", "preferences", "options"] },
 ];

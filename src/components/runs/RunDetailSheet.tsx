@@ -153,6 +153,9 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
   const completedPipelines = allPipelines.filter((p) => p.status === "completed");
   const runningPipelines = allPipelines.filter((p) => p.status === "running");
   const failedPipelines = allPipelines.filter((p) => p.status === "failed");
+  const hasValTestScores = allPipelines.some(
+    (p) => p.val_score != null || p.test_score != null
+  );
 
   // Group pipelines by selected dimension
   const groupedPipelines = allPipelines.reduce((acc, p) => {
@@ -291,8 +294,12 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
                           <TableHead className="text-xs">Status</TableHead>
                           <TableHead className="text-xs">Dataset</TableHead>
                           <TableHead className="text-xs">Pipeline</TableHead>
-                          <TableHead className="text-xs text-right">R²</TableHead>
-                          <TableHead className="text-xs text-right">RMSE</TableHead>
+                          <TableHead className="text-xs text-right">
+                            {hasValTestScores ? "Val" : "R²"}
+                          </TableHead>
+                          <TableHead className="text-xs text-right">
+                            {hasValTestScores ? "Test" : "RMSE"}
+                          </TableHead>
                           <TableHead className="text-xs">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -316,10 +323,14 @@ export function RunDetailSheet({ run, open, onOpenChange }: RunDetailSheetProps)
                               </code>
                             </TableCell>
                             <TableCell className="text-right font-mono text-xs">
-                              {p.metrics?.r2?.toFixed(3) ?? "-"}
+                              {hasValTestScores
+                                ? (p.val_score != null ? p.val_score.toFixed(3) : "-")
+                                : (p.metrics?.r2?.toFixed(3) ?? "-")}
                             </TableCell>
                             <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                              {p.metrics?.rmse?.toFixed(3) ?? "-"}
+                              {hasValTestScores
+                                ? (p.test_score != null ? p.test_score.toFixed(3) : "-")
+                                : (p.metrics?.rmse?.toFixed(3) ?? "-")}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">

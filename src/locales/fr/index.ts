@@ -88,6 +88,7 @@ const fr = {
     runs: "Exécutions",
     results: "Résultats",
     predictions: "Prédictions",
+    aggregatedResults: "Résultats agrégés",
     analysis: "Analyse",
     synthesis: "Synthèse",
     settings: "Paramètres",
@@ -785,6 +786,15 @@ const fr = {
     },
   },
 
+  // ============= Aggregated Results =============
+  aggregatedResults: {
+    title: "Résultats agrégés",
+    subtitle: "Performance des modèles au niveau chaîne à travers les plis et partitions",
+    loading: "Chargement des résultats agrégés...",
+    empty: "Aucun résultat agrégé pour le moment",
+    emptyHint: "Exécutez un pipeline pour générer des résultats de prédiction qui seront agrégés ici.",
+  },
+
   // ============= Analysis =============
   analysis: {
     title: "Analyse",
@@ -810,6 +820,10 @@ const fr = {
     residualAnalysis: {
       title: "Analyse des résidus",
       description: "Analysez les résidus de prédiction et identifiez les valeurs aberrantes",
+    },
+    refitScoring: {
+      title: "Scores de Refit",
+      description: "Comparez les scores CV et les scores du modèle final. Visualisez les modèles prêts au déploiement réentraînés sur toutes les données.",
     },
     gettingStarted: {
       title: "Premiers pas avec l'analyse",

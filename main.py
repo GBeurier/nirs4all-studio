@@ -41,6 +41,7 @@ from api.updates import router as updates_router
 from api.synthesis import router as synthesis_router
 from api.transfer import router as transfer_router
 from api.shap import router as shap_router
+from api.aggregated_predictions import router as aggregated_predictions_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -103,6 +104,7 @@ app.add_middleware(
 app.include_router(workspace_router, prefix="/api", tags=["workspace"])
 app.include_router(datasets_router, prefix="/api", tags=["datasets"])
 app.include_router(pipelines_router, prefix="/api", tags=["pipelines"])
+app.include_router(aggregated_predictions_router, prefix="/api", tags=["aggregated-predictions"])
 app.include_router(predictions_router, prefix="/api", tags=["predictions"])
 app.include_router(system_router, prefix="/api", tags=["system"])
 app.include_router(spectra_router, prefix="/api", tags=["spectra"])

@@ -13,7 +13,8 @@
  * Phase 6 Implementation: Localization (i18n)
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
@@ -105,6 +106,7 @@ const itemVariants = {
 
 export default function Settings() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { theme, setTheme } = useTheme();
   const { isDeveloperMode, setDeveloperMode, isLoading: isLoadingDevMode } = useDeveloperMode();
   const { density, setDensity, reduceAnimations, setReduceAnimations, zoomLevel, setZoomLevel, isLoading: isLoadingUI } = useUISettings();
@@ -164,6 +166,28 @@ export default function Settings() {
     window.location.reload();
   };
 
+  const initialTab = useMemo(() => {
+    const tab = searchParams.get("tab");
+    return tab === "workspaces" || tab === "data" || tab === "advanced" || tab === "general"
+      ? tab
+      : "general";
+  }, [searchParams]);
+
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", value);
+      return next;
+    });
+  };
+
   return (
     <motion.div
       className="space-y-6 max-w-4xl"
@@ -181,7 +205,7 @@ export default function Settings() {
 
       {/* Tabs for organization */}
       <motion.div variants={itemVariants}>
-        <Tabs defaultValue="general" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="general">{t("settings.tabs.general")}</TabsTrigger>
             <TabsTrigger value="workspaces">Workspaces</TabsTrigger>

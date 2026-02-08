@@ -17,6 +17,11 @@ export type MessageType =
   | 'training_epoch'
   | 'training_batch'
   | 'training_checkpoint'
+  | 'refit_started'
+  | 'refit_progress'
+  | 'refit_step'
+  | 'refit_completed'
+  | 'refit_failed'
   | 'ping'
   | 'pong'
   | 'error'
@@ -71,6 +76,52 @@ export interface WebSocketClientOptions {
   maxReconnectAttempts?: number;
   /** Heartbeat interval in ms (default: 30000) */
   heartbeatInterval?: number;
+}
+
+function isElectronEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  if ((window as unknown as { electronApi?: { isElectron?: boolean } }).electronApi?.isElectron) {
+    return true;
+  }
+  return window.location.protocol === 'file:';
+}
+
+async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    if ((window as unknown as { electronApi?: { getBackendUrl?: () => Promise<string> } }).electronApi?.getBackendUrl) {
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+function toWebSocketBaseUrl(httpUrl: string): string {
+  const url = new URL(httpUrl);
+  const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${url.host}`;
+}
+
+export async function getWebSocketBaseUrl(): Promise<string> {
+  if (typeof window === 'undefined') return 'ws://localhost';
+
+  if (isElectronEnvironment()) {
+    try {
+      const apiAvailable = await waitForElectronApi();
+      if (apiAvailable) {
+        const electronApi = (window as unknown as { electronApi: { getBackendUrl: () => Promise<string> } }).electronApi;
+        const backendUrl = await electronApi.getBackendUrl();
+        return toWebSocketBaseUrl(backendUrl);
+      }
+    } catch (error) {
+      console.error('Failed to resolve Electron backend WebSocket URL:', error);
+    }
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  return `${protocol}//${host}`;
 }
 
 /**
@@ -366,11 +417,9 @@ export class WebSocketClient {
  * @param jobId - Job ID to subscribe to
  * @returns WebSocket client configured for the job
  */
-export function createJobWebSocket(jobId: string): WebSocketClient {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const url = `${protocol}//${host}/ws/job/${jobId}`;
-
+export async function createJobWebSocket(jobId: string): Promise<WebSocketClient> {
+  const baseUrl = await getWebSocketBaseUrl();
+  const url = `${baseUrl}/ws/job/${jobId}`;
   return new WebSocketClient(url);
 }
 
@@ -380,11 +429,9 @@ export function createJobWebSocket(jobId: string): WebSocketClient {
  * @param jobId - Training job ID
  * @returns WebSocket client configured for training updates
  */
-export function createTrainingWebSocket(jobId: string): WebSocketClient {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const url = `${protocol}//${host}/ws/training/${jobId}`;
-
+export async function createTrainingWebSocket(jobId: string): Promise<WebSocketClient> {
+  const baseUrl = await getWebSocketBaseUrl();
+  const url = `${baseUrl}/ws/training/${jobId}`;
   return new WebSocketClient(url);
 }
 
@@ -393,10 +440,8 @@ export function createTrainingWebSocket(jobId: string): WebSocketClient {
  *
  * @returns WebSocket client connected to the main endpoint
  */
-export function createMainWebSocket(): WebSocketClient {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  const url = `${protocol}//${host}/ws`;
-
+export async function createMainWebSocket(): Promise<WebSocketClient> {
+  const baseUrl = await getWebSocketBaseUrl();
+  const url = `${baseUrl}/ws`;
   return new WebSocketClient(url);
 }

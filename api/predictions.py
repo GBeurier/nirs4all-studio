@@ -2,21 +2,32 @@
 Predictions API routes for nirs4all webapp.
 
 This module provides FastAPI routes for:
-- Managing prediction records (CRUD)
+- Managing prediction records (CRUD) [DEPRECATED - use /api/aggregated-predictions]
 - Running predictions on single samples or batches
 - Prediction with uncertainty/confidence intervals
 - Prediction explanation (feature importance)
 
 Uses nirs4all library for all prediction and explanation operations.
+
+DEPRECATION NOTICE:
+    The CRUD endpoints (list, get, create, delete, stats, export) that store
+    prediction records as JSON files are deprecated. Use the DuckDB-backed
+    /api/aggregated-predictions endpoints instead, which provide chain-level
+    aggregation with drill-down to individual folds and partitions.
+
+    The inference endpoints (single, batch, dataset, confidence, explain)
+    remain current and are NOT deprecated.
 """
 
 import json
+import warnings
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
@@ -165,6 +176,31 @@ class ExplanationResult(BaseModel):
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# Deprecation helpers
+# ---------------------------------------------------------------------------
+
+_DEPRECATION_MSG = (
+    "This endpoint is deprecated. Use /api/aggregated-predictions endpoints "
+    "backed by the DuckDB store instead."
+)
+
+
+def _deprecated_response(data: dict) -> JSONResponse:
+    """Wrap a response with deprecation headers."""
+    warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
+    return JSONResponse(
+        content=data,
+        headers={
+            "Deprecation": "true",
+            "Sunset": "2026-06-01",
+            "Link": '</api/aggregated-predictions>; rel="successor-version"',
+            "X-Deprecation-Notice": _DEPRECATION_MSG,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 
 def _get_predictions_dir() -> Path:
     """Get the predictions directory for the current workspace."""
@@ -251,14 +287,18 @@ def _save_prediction(prediction: Dict[str, Any]) -> None:
         )
 
 
-@router.get("/predictions")
+@router.get("/predictions", deprecated=True)
 async def list_predictions(
     pipeline_id: Optional[str] = None,
     dataset_id: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ):
-    """List predictions with optional filtering."""
+    """List predictions with optional filtering.
+
+    .. deprecated::
+        Use ``GET /api/aggregated-predictions`` instead.
+    """
     try:
         predictions_dir = _get_predictions_dir()
         predictions = []
@@ -285,12 +325,12 @@ async def list_predictions(
         total = len(predictions)
         predictions = predictions[offset:offset + limit]
 
-        return {
+        return _deprecated_response({
             "predictions": predictions,
             "total": total,
             "limit": limit,
             "offset": offset,
-        }
+        })
     except HTTPException:
         raise
     except Exception as e:
@@ -299,16 +339,26 @@ async def list_predictions(
         )
 
 
-@router.get("/predictions/{prediction_id}")
+@router.get("/predictions/{prediction_id}", deprecated=True)
 async def get_prediction(prediction_id: str):
-    """Get a specific prediction by ID."""
+    """Get a specific prediction by ID.
+
+    .. deprecated::
+        Use ``GET /api/aggregated-predictions/chain/{chain_id}`` instead.
+    """
     prediction = _load_prediction(prediction_id)
-    return {"prediction": prediction}
+    return _deprecated_response({"prediction": prediction})
 
 
-@router.post("/predictions")
+@router.post("/predictions", deprecated=True)
 async def create_prediction(prediction_data: PredictionCreate):
-    """Create a new prediction record."""
+    """Create a new prediction record.
+
+    .. deprecated::
+        Predictions are now created automatically during pipeline execution
+        and stored in the DuckDB store. Use ``GET /api/aggregated-predictions``
+        to query them.
+    """
     try:
         now = datetime.now().isoformat()
         prediction_id = f"pred_{int(datetime.now().timestamp())}"
@@ -326,7 +376,7 @@ async def create_prediction(prediction_data: PredictionCreate):
 
         _save_prediction(prediction)
 
-        return {"success": True, "prediction": prediction}
+        return _deprecated_response({"success": True, "prediction": prediction})
     except HTTPException:
         raise
     except Exception as e:
@@ -335,9 +385,14 @@ async def create_prediction(prediction_data: PredictionCreate):
         )
 
 
-@router.delete("/predictions/{prediction_id}")
+@router.delete("/predictions/{prediction_id}", deprecated=True)
 async def delete_prediction(prediction_id: str):
-    """Delete a prediction record."""
+    """Delete a prediction record.
+
+    .. deprecated::
+        Use ``DELETE /api/runs/{run_id}`` to delete runs and their
+        associated predictions from the DuckDB store.
+    """
     try:
         predictions_dir = _get_predictions_dir()
         prediction_file = predictions_dir / f"{prediction_id}.json"
@@ -347,7 +402,7 @@ async def delete_prediction(prediction_id: str):
 
         prediction_file.unlink()
 
-        return {"success": True, "message": "Prediction deleted"}
+        return _deprecated_response({"success": True, "message": "Prediction deleted"})
     except HTTPException:
         raise
     except Exception as e:
@@ -356,9 +411,14 @@ async def delete_prediction(prediction_id: str):
         )
 
 
-@router.get("/predictions/stats")
+@router.get("/predictions/stats", deprecated=True)
 async def get_predictions_stats():
-    """Get aggregate statistics for predictions."""
+    """Get aggregate statistics for predictions.
+
+    .. deprecated::
+        Use ``GET /api/aggregated-predictions/top`` for ranked results
+        or ``GET /api/aggregated-predictions`` for filtered queries.
+    """
     try:
         predictions_dir = _get_predictions_dir()
         stats = {
@@ -400,7 +460,7 @@ async def get_predictions_stats():
             for p in predictions[:10]
         ]
 
-        return {"stats": stats}
+        return _deprecated_response({"stats": stats})
     except HTTPException:
         raise
     except Exception as e:
@@ -409,9 +469,14 @@ async def get_predictions_stats():
         )
 
 
-@router.post("/predictions/export")
+@router.post("/predictions/export", deprecated=True)
 async def export_predictions(prediction_ids: List[str], format: str = "csv"):
-    """Export predictions to a file format."""
+    """Export predictions to a file format.
+
+    .. deprecated::
+        Use ``GET /api/aggregated-predictions`` to query results from
+        the DuckDB store.
+    """
     try:
         predictions = []
         for pred_id in prediction_ids:
@@ -425,11 +490,11 @@ async def export_predictions(prediction_ids: List[str], format: str = "csv"):
             raise HTTPException(status_code=404, detail="No predictions found")
 
         # TODO: Implement actual export to CSV/JSON/Excel
-        return {
+        return _deprecated_response({
             "success": True,
             "message": f"Export to {format} not implemented yet",
             "count": len(predictions),
-        }
+        })
     except HTTPException:
         raise
     except Exception as e:

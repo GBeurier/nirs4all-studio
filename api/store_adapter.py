@@ -285,6 +285,120 @@ class StoreAdapter:
         }
 
     # ------------------------------------------------------------------
+    # Aggregated Predictions
+    # ------------------------------------------------------------------
+
+    def get_aggregated_predictions(
+        self,
+        run_id: str | None = None,
+        pipeline_id: str | None = None,
+        chain_id: str | None = None,
+        dataset_name: str | None = None,
+        model_class: str | None = None,
+        metric: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Query aggregated predictions (one row per chain × metric × dataset).
+
+        Args:
+            run_id: Optional run filter.
+            pipeline_id: Optional pipeline filter.
+            chain_id: Optional chain filter.
+            dataset_name: Optional dataset filter.
+            model_class: Optional model class filter.
+            metric: Optional metric filter.
+
+        Returns:
+            List of sanitized aggregated prediction dicts.
+        """
+        df = self._store.query_aggregated_predictions(
+            run_id=run_id,
+            pipeline_id=pipeline_id,
+            chain_id=chain_id,
+            dataset_name=dataset_name,
+            model_class=model_class,
+            metric=metric,
+        )
+        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    def get_top_aggregated_predictions(
+        self,
+        metric: str,
+        n: int = 10,
+        score_column: str = "avg_val_score",
+        **filters: Any,
+    ) -> list[dict[str, Any]]:
+        """Get top-N aggregated predictions ranked by metric.
+
+        Args:
+            metric: Metric name for ranking (e.g. ``"rmse"``, ``"r2"``).
+            n: Number of top results.
+            score_column: Column to sort by.
+            **filters: Additional filters (run_id, pipeline_id, etc.).
+
+        Returns:
+            List of sanitized top aggregated prediction dicts.
+        """
+        df = self._store.query_top_aggregated_predictions(
+            metric=metric,
+            n=n,
+            score_column=score_column,
+            **filters,
+        )
+        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    def get_chain_predictions(
+        self,
+        chain_id: str,
+        partition: str | None = None,
+        fold_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get individual prediction rows for a chain (drill-down).
+
+        Args:
+            chain_id: Chain identifier.
+            partition: Optional partition filter.
+            fold_id: Optional fold filter.
+
+        Returns:
+            List of sanitized prediction dicts.
+        """
+        df = self._store.get_chain_predictions(
+            chain_id=chain_id,
+            partition=partition,
+            fold_id=fold_id,
+        )
+        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    def get_prediction_arrays(self, prediction_id: str) -> dict[str, Any] | None:
+        """Get arrays for a single prediction.
+
+        Args:
+            prediction_id: Prediction identifier.
+
+        Returns:
+            Dict with y_true, y_pred, etc. as lists, or ``None``.
+        """
+        arrays = self._store.get_prediction_arrays(prediction_id)
+        if arrays is None:
+            return None
+
+        result: dict[str, Any] = {"prediction_id": prediction_id}
+        for key in ("y_true", "y_pred", "y_proba", "weights"):
+            val = arrays.get(key)
+            if val is not None and isinstance(val, np.ndarray):
+                result[key] = val.tolist()
+            else:
+                result[key] = None
+
+        sample_indices = arrays.get("sample_indices")
+        if sample_indices is not None and isinstance(sample_indices, np.ndarray):
+            result["sample_indices"] = sample_indices.tolist()
+        else:
+            result["sample_indices"] = None
+
+        return result
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 

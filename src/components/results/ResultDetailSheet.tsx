@@ -33,6 +33,7 @@ import {
   FileJson,
   Copy,
   Check,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PipelineRun, RunStatus, runStatusConfig } from "@/types/runs";
@@ -106,6 +107,10 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
     split_strategy: pipeline.split_strategy,
     status: pipeline.status,
     metrics: pipeline.metrics,
+    val_score: pipeline.val_score,
+    test_score: pipeline.test_score,
+    has_refit: pipeline.has_refit,
+    is_final_model: pipeline.is_final_model,
     started_at: pipeline.started_at,
     completed_at: pipeline.completed_at,
   }, null, 2);
@@ -205,18 +210,66 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
           <ScrollArea className="flex-1 mt-4">
             {/* Results/Metrics Tab */}
             <TabsContent value="results" className="m-0 space-y-4">
-              {pipeline.metrics ? (
+              {pipeline.metrics || pipeline.score != null || pipeline.val_score != null || pipeline.test_score != null ? (
                 <>
+                  {/* Final Model Indicator */}
+                  {pipeline.has_refit && (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                      <Trophy className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">Final Model (Refit)</p>
+                        <p className="text-xs text-muted-foreground">
+                          This model was retrained on the full training set and is the deployment-ready model.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dual Scoring Section */}
+                  {(pipeline.val_score != null || pipeline.test_score != null) && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {pipeline.val_score != null && (
+                        <MetricCard
+                          label="CV Score"
+                          value={pipeline.val_score}
+                          format={4}
+                          icon={<Target className="h-4 w-4" />}
+                          variant="secondary"
+                        />
+                      )}
+                      {pipeline.test_score != null && (
+                        <MetricCard
+                          label="Final Score"
+                          value={pipeline.test_score}
+                          format={4}
+                          icon={<Trophy className="h-4 w-4" />}
+                          variant="primary"
+                        />
+                      )}
+                    </div>
+                  )}
+
                   {/* Metrics Cards */}
                   <div className="grid grid-cols-2 gap-3">
-                    <MetricCard
-                      label="R² Score"
-                      value={pipeline.metrics.r2}
-                      format={4}
-                      icon={<Target className="h-4 w-4" />}
-                      variant="primary"
-                    />
-                    {pipeline.metrics.rmse > 0 && (
+                    {pipeline.score != null && pipeline.val_score == null && (
+                      <MetricCard
+                        label={(pipeline.score_metric || "Score").toUpperCase()}
+                        value={pipeline.score}
+                        format={4}
+                        icon={<Target className="h-4 w-4" />}
+                        variant="primary"
+                      />
+                    )}
+                    {pipeline.metrics?.r2 != null && (
+                      <MetricCard
+                        label="R² Score"
+                        value={pipeline.metrics.r2}
+                        format={4}
+                        icon={<Target className="h-4 w-4" />}
+                        variant="primary"
+                      />
+                    )}
+                    {pipeline.metrics?.rmse != null && pipeline.metrics.rmse > 0 && (
                       <MetricCard
                         label="RMSE"
                         value={pipeline.metrics.rmse}
@@ -225,7 +278,7 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
                         variant="secondary"
                       />
                     )}
-                    {pipeline.metrics.mae !== undefined && (
+                    {pipeline.metrics?.mae !== undefined && (
                       <MetricCard
                         label="MAE"
                         value={pipeline.metrics.mae}
@@ -233,7 +286,7 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
                         icon={<BarChart3 className="h-4 w-4" />}
                       />
                     )}
-                    {pipeline.metrics.rpd !== undefined && (
+                    {pipeline.metrics?.rpd !== undefined && (
                       <MetricCard
                         label="RPD"
                         value={pipeline.metrics.rpd}
@@ -241,7 +294,7 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
                         icon={<TrendingUp className="h-4 w-4" />}
                       />
                     )}
-                    {pipeline.metrics.nrmse !== undefined && (
+                    {pipeline.metrics?.nrmse !== undefined && (
                       <MetricCard
                         label="nRMSE"
                         value={pipeline.metrics.nrmse}
@@ -272,6 +325,21 @@ export function ResultDetailSheet({ pipeline, datasetName, open, onOpenChange }:
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Export Button - targets refit model when available */}
+                  {pipeline.status === "completed" && (
+                    <div className="p-3 rounded-lg border">
+                      <Button variant="outline" size="sm" className="w-full">
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        {pipeline.has_refit ? "Export Final Model (.n4a)" : "Export Model (.n4a)"}
+                      </Button>
+                      {pipeline.has_refit && (
+                        <p className="text-xs text-muted-foreground mt-2 text-center">
+                          Exports the refit model trained on the full dataset
+                        </p>
+                      )}
                     </div>
                   )}
 

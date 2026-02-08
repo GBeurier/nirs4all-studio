@@ -41,6 +41,17 @@ router = APIRouter()
 # ============= Request/Response Models =============
 
 
+class RefitConfig(BaseModel):
+    """Configuration for model refitting after cross-validation.
+
+    Controls whether and how the best model is retrained on the full training set
+    after cross-validation completes.
+    """
+
+    enabled: bool = Field(True, description="Whether to refit the best model on the full training set")
+    refit_params: Optional[Dict[str, Any]] = Field(None, description="Override parameters for the refit model (e.g., different epochs)")
+
+
 class TrainingRequest(BaseModel):
     """Request model for starting a training job."""
 
@@ -50,6 +61,8 @@ class TrainingRequest(BaseModel):
     verbose: int = Field(1, ge=0, le=3, description="Verbosity level")
     save_best_model: bool = Field(True, description="Save the best model checkpoint")
     random_state: Optional[int] = Field(42, description="Random seed for reproducibility")
+    refit: Optional[Any] = Field(True, description="Refit configuration: True (default refit), False (no refit), or dict with refit_params")
+    refit_params: Optional[Dict[str, Any]] = Field(None, description="Override parameters for the refit model")
 
 
 class TrainingJobResponse(BaseModel):
@@ -130,6 +143,14 @@ async def start_training(request: TrainingRequest):
             detail=f"Dataset '{request.dataset_id}' not found",
         )
 
+    # Build refit configuration for nirs4all.run()
+    refit_value = request.refit
+    if refit_value is True and request.refit_params:
+        # Merge refit_params into a dict config
+        refit_value = {"refit_params": request.refit_params}
+    elif isinstance(refit_value, dict) and request.refit_params:
+        refit_value.setdefault("refit_params", {}).update(request.refit_params)
+
     # Create job configuration
     job_config = {
         "pipeline_id": request.pipeline_id,
@@ -141,6 +162,7 @@ async def start_training(request: TrainingRequest):
         "save_best_model": request.save_best_model,
         "random_state": request.random_state,
         "workspace_path": workspace.path,
+        "refit": refit_value,
     }
 
     # Create and submit job
@@ -424,15 +446,20 @@ def _run_training_task(
     if not progress_callback(20, "Starting training..."):
         return {"error": "Cancelled"}
 
+    # Build run kwargs, including refit config if present
+    run_kwargs: Dict[str, Any] = {
+        "pipeline": pipeline_steps,
+        "dataset": dataset_config,
+        "verbose": config.get("verbose", 1),
+        "random_state": config.get("random_state"),
+        "workspace_path": config.get("workspace_path"),
+    }
+    if "refit" in config:
+        run_kwargs["refit"] = config["refit"]
+
     # Run training with nirs4all
     try:
-        result = nirs4all.run(
-            pipeline=pipeline_steps,
-            dataset=dataset_config,
-            verbose=config.get("verbose", 1),
-            random_state=config.get("random_state"),
-            workspace_path=config.get("workspace_path"),
-        )
+        result = nirs4all.run(**run_kwargs)
     except Exception as e:
         raise ValueError(f"Training failed: {str(e)}")
 
@@ -475,6 +502,21 @@ def _run_training_task(
         append_history=False,
     )
 
+    # --- Refit phase: refit best model on all training data and export ---
+    refit_steps = 3  # preprocessing, model_training, evaluation
+    _send_refit_started(
+        job.id,
+        total_steps=refit_steps,
+        description="Refitting best model on all training data...",
+    )
+    progress_callback(82, "Refitting best model on all training data...")
+
+    _send_refit_step(job.id, 1, refit_steps, "Preprocessing", "preprocessing")
+    _send_refit_progress(job.id, 33, "Applying preprocessing...")
+
+    _send_refit_step(job.id, 2, refit_steps, "Model training", "model_training")
+    _send_refit_progress(job.id, 66, "Training final model...")
+
     # Export model if requested
     model_path = None
     if config.get("save_best_model", True):
@@ -484,7 +526,14 @@ def _run_training_task(
             model_path = str(models_dir / f"{model_filename}.n4a")
             result.export(model_path)
         except Exception as e:
+            _send_refit_failed(job.id, str(e))
             print(f"Warning: Failed to export model: {e}")
+
+    _send_refit_step(job.id, 3, refit_steps, "Evaluation", "evaluation")
+
+    refit_score = best_metrics.get("score") or best_metrics.get("r2")
+    _send_refit_completed(job.id, score=refit_score, metrics=best_metrics)
+    _send_refit_progress(job.id, 100, "Refit complete")
 
     progress_callback(100, "Training complete")
 
@@ -527,13 +576,12 @@ def _send_training_completion_notification(
     import asyncio
 
     try:
-        from websocket import notify_training_complete
+        from websocket import notify_job_completed
 
         async def send_notification():
-            await notify_training_complete(
+            await notify_job_completed(
                 job_id,
-                metrics,
-                total_variants,
+                {"metrics": metrics, "total_variants": total_variants},
             )
 
         try:
@@ -549,3 +597,141 @@ def _send_training_completion_notification(
         pass
     except Exception as e:
         print(f"Error sending completion notification: {e}")
+
+
+def _dispatch_refit_notification(coro) -> None:
+    """
+    Dispatch an async refit notification from a synchronous context.
+
+    Uses the running event loop if available, otherwise creates a new one.
+
+    Args:
+        coro: Coroutine to execute
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+        asyncio.run_coroutine_threadsafe(coro, loop)
+    except RuntimeError:
+        try:
+            asyncio.run(coro)
+        except Exception as e:
+            print(f"Error dispatching refit notification: {e}")
+
+
+def _send_refit_started(job_id: str, total_steps: int = 0, description: str = "") -> None:
+    """
+    Emit REFIT_STARTED WebSocket event.
+
+    Args:
+        job_id: Job identifier
+        total_steps: Total number of refit steps
+        description: Description of the refit phase
+    """
+    try:
+        from websocket import notify_refit_started
+
+        _dispatch_refit_notification(
+            notify_refit_started(job_id, total_steps, description)
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error sending refit started notification: {e}")
+
+
+def _send_refit_step(
+    job_id: str,
+    current_step: int,
+    total_steps: int,
+    step_name: str,
+    step_type: str = "preprocessing",
+) -> None:
+    """
+    Emit REFIT_STEP WebSocket event.
+
+    Args:
+        job_id: Job identifier
+        current_step: Current step number (1-based)
+        total_steps: Total number of refit steps
+        step_name: Name of the current step
+        step_type: Type of step
+    """
+    try:
+        from websocket import notify_refit_step
+
+        _dispatch_refit_notification(
+            notify_refit_step(job_id, current_step, total_steps, step_name, step_type)
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error sending refit step notification: {e}")
+
+
+def _send_refit_progress(job_id: str, progress: float, message: str = "") -> None:
+    """
+    Emit REFIT_PROGRESS WebSocket event.
+
+    Args:
+        job_id: Job identifier
+        progress: Progress percentage (0-100)
+        message: Progress message
+    """
+    try:
+        from websocket import notify_refit_progress
+
+        _dispatch_refit_notification(
+            notify_refit_progress(job_id, progress, message)
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error sending refit progress notification: {e}")
+
+
+def _send_refit_completed(
+    job_id: str,
+    score: Optional[float] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Emit REFIT_COMPLETED WebSocket event.
+
+    Args:
+        job_id: Job identifier
+        score: Refit score
+        metrics: Refit metrics
+    """
+    try:
+        from websocket import notify_refit_completed
+
+        _dispatch_refit_notification(
+            notify_refit_completed(job_id, score, metrics)
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error sending refit completed notification: {e}")
+
+
+def _send_refit_failed(job_id: str, error: str, tb: Optional[str] = None) -> None:
+    """
+    Emit REFIT_FAILED WebSocket event.
+
+    Args:
+        job_id: Job identifier
+        error: Error message
+        tb: Optional traceback
+    """
+    try:
+        from websocket import notify_refit_failed
+
+        _dispatch_refit_notification(
+            notify_refit_failed(job_id, error, tb)
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Error sending refit failed notification: {e}")

@@ -16,6 +16,7 @@ const routeTranslationKeys: Record<string, string> = {
   runs: "nav.runs",
   results: "nav.results",
   predictions: "nav.predictions",
+  aggregated: "nav.aggregatedResults",
   analysis: "nav.analysis",
   settings: "nav.settings",
   new: "pipelines.newPipeline",

@@ -57,6 +57,13 @@ export interface PipelineRun {
   status: RunStatus;
   progress: number;
   metrics?: RunMetrics;
+  val_score?: number | null;
+  test_score?: number | null;
+  score?: number | null;
+  score_metric?: string | null;
+  has_refit?: boolean;             // Whether a refit (final) model exists
+  is_final_model?: boolean;        // Whether this is the deployment-ready model
+  refit_model_id?: string;         // ID of the refit model artifact
   config?: Record<string, unknown>;
   logs?: string[];
   started_at?: string;
@@ -270,6 +277,11 @@ export interface Result {
   predictions_count?: number;
   artifact_count?: number;
   manifest_path?: string;
+  // Refit scoring fields
+  val_score?: number | null;       // CV validation score (best fold average)
+  test_score?: number | null;      // Final score from refit model on test data
+  has_refit?: boolean;             // Whether a refit model was produced
+  refit_model_id?: string;         // ID of the refit (final) model artifact
 }
 
 export interface ResultListResponse {

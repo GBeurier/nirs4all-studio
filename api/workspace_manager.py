@@ -161,14 +161,25 @@ class WorkspaceScanner:
         if self._has_store():
             return True, "Valid nirs4all workspace (DuckDB store)"
 
+        # workspace.json is a strong indicator (created by create_workspace)
+        if (self.workspace_path / "workspace.json").exists():
+            return True, "Valid nirs4all workspace (workspace.json)"
+
         # Check for workspace subdirectory or direct workspace structure
         has_workspace_dir = self.workspace_dir.exists()
         has_runs = (self.workspace_dir / "runs").exists() if has_workspace_dir else False
         has_exports = (self.workspace_dir / "exports").exists() if has_workspace_dir else False
         has_predictions = any(self.workspace_path.glob("*.meta.parquet"))
 
-        if not (has_runs or has_exports or has_predictions):
-            return False, "No runs/, exports/, or prediction files found"
+        # Also accept legacy directory structure
+        has_legacy = (
+            (self.workspace_path / "results").exists()
+            or (self.workspace_path / "pipelines").exists()
+            or (self.workspace_path / "models").exists()
+        )
+
+        if not (has_runs or has_exports or has_predictions or has_legacy):
+            return False, "No runs/, exports/, prediction files, or workspace.json found"
 
         return True, "Valid nirs4all workspace"
 
@@ -1904,16 +1915,16 @@ class WorkspaceManager:
 
             # Link and activate the workspace
             # Use internal method to bypass validation (workspace is empty but valid)
-            return self._link_workspace_internal(str(default_path), "Default Workspace", is_new=True)
+            return self.link_workspace_internal(str(default_path), "Default Workspace", is_new=True)
 
         except Exception as e:
             print(f"Failed to create default workspace: {e}")
             return None
 
-    def _link_workspace_internal(
+    def link_workspace_internal(
         self, path: str, name: str, is_new: bool = False
     ) -> LinkedWorkspace:
-        """Internal method to link a workspace without validation.
+        """Link a workspace without validation.
 
         Used for creating new workspaces where the directory structure
         is already set up but may not have runs/exports yet.
@@ -1973,13 +1984,19 @@ class WorkspaceManager:
             raise ValueError(f"Workspace path is not a directory: {path}")
 
         # Check if already linked
+        resolved = str(workspace_path.resolve())
         for ws in self.get_linked_workspaces():
-            if ws.path == str(workspace_path.resolve()):
+            if ws.path == resolved:
                 self.activate_workspace(ws.id)
                 return self._create_workspace_config_from_linked(ws)
 
-        # Link and activate
-        linked_ws = self.link_workspace(str(workspace_path))
+        # Link and activate - try validated link first, fall back to internal
+        try:
+            linked_ws = self.link_workspace(resolved)
+        except ValueError:
+            # Workspace may be newly created or have non-standard structure
+            # Use internal link which bypasses strict validation
+            linked_ws = self.link_workspace_internal(resolved, workspace_path.name)
         self.activate_workspace(linked_ws.id)
         return self._create_workspace_config_from_linked(linked_ws)
 
@@ -2142,7 +2159,11 @@ class WorkspaceManager:
         try:
             self.link_workspace(workspace_path, name)
         except ValueError:
-            pass  # Already linked or invalid
+            # Validation failed - use internal link as fallback
+            try:
+                self.link_workspace_internal(workspace_path, name or Path(workspace_path).name)
+            except Exception:
+                pass  # Truly cannot link
 
     def remove_from_recent(self, workspace_path: str) -> bool:
         """Legacy: Remove from recent - unlinks the workspace."""

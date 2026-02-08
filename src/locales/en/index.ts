@@ -89,6 +89,7 @@ const en = {
     runs: "Runs",
     results: "Results",
     predictions: "Predictions",
+    aggregatedResults: "Aggregated Results",
     analysis: "Analysis",
     synthesis: "Synthesis",
     settings: "Settings",
@@ -783,6 +784,15 @@ const en = {
     },
   },
 
+  // ============= Aggregated Results =============
+  aggregatedResults: {
+    title: "Aggregated Results",
+    subtitle: "Chain-level model performance across folds and partitions",
+    loading: "Loading aggregated results...",
+    empty: "No aggregated results yet",
+    emptyHint: "Run a pipeline to generate prediction results that will be aggregated here.",
+  },
+
   // ============= Analysis =============
   analysis: {
     title: "Analysis",
@@ -808,6 +818,10 @@ const en = {
     residualAnalysis: {
       title: "Residual Analysis",
       description: "Analyze prediction residuals and identify outliers",
+    },
+    refitScoring: {
+      title: "Refit Scoring",
+      description: "Compare CV scores vs. final model scores. View deployment-ready models retrained on full data.",
     },
     transfer: {
       title: "Transfer Analysis",

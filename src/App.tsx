@@ -16,6 +16,7 @@ import TransferAnalysis from "@/pages/TransferAnalysis";
 import VariableImportance from "@/pages/VariableImportance";
 import SpectraSynthesis from "@/pages/SpectraSynthesis";
 import Settings from "@/pages/Settings";
+import AggregatedResults from "@/pages/AggregatedResults";
 import NotFound from "@/pages/NotFound";
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
         <Route path="runs/new" element={<NewExperiment />} />
         <Route path="runs/:id" element={<RunProgress />} />
         <Route path="results" element={<Results />} />
+        <Route path="results/aggregated" element={<AggregatedResults />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="analysis" element={<Analysis />} />
         <Route path="analysis/transfer" element={<TransferAnalysis />} />

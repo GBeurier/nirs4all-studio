@@ -29,6 +29,7 @@ import {
   Calendar,
   BarChart3,
   Download,
+  Trophy,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -37,16 +38,15 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { PipelineRun, runStatusConfig, RunStatus } from "@/types/runs";
+import { PipelineRun, runStatusConfig, RunStatus, Result, RunMetrics } from "@/types/runs";
 import { ResultDetailSheet } from "@/components/results/ResultDetailSheet";
 import { NoWorkspaceState, ErrorState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import {
   getLinkedWorkspaces,
-  getN4AWorkspaceRuns,
+  getN4AWorkspaceResults,
 } from "@/api/client";
 import type {
   LinkedWorkspace,
-  DiscoveredRun,
 } from "@/types/linked-workspaces";
 
 /**
@@ -82,63 +82,72 @@ const statusIcons = {
   partial: CircleDashed,
 };
 
+function mapResultToMetrics(result: Result): RunMetrics | undefined {
+  if (result.best_score == null) return undefined;
+  const metric = result.metric?.toLowerCase() || "";
+  if (metric.includes("rmse")) {
+    return { r2: 0, rmse: result.best_score };
+  }
+  if (metric.includes("r2")) {
+    return { r2: result.best_score, rmse: 0 };
+  }
+  return { r2: result.best_score, rmse: 0 };
+}
+
 /**
- * Transform discovered runs from workspace API into datasets with their results
- * Groups results by dataset - pipelines are directly under datasets
+ * Transform workspace results into datasets with their pipelines.
+ * Groups results by dataset - pipelines are directly under datasets.
  */
-function transformDiscoveredRuns(discoveredRuns: DiscoveredRun[]): DatasetWithResults[] {
-  // Group runs by dataset
-  const runsByDataset = discoveredRuns.reduce((acc, run) => {
-    const datasetName = run.dataset;
+function transformResults(results: Result[]): DatasetWithResults[] {
+  const resultsByDataset = results.reduce((acc, result) => {
+    const datasetName = result.dataset || "Unknown";
     if (!acc[datasetName]) {
       acc[datasetName] = [];
     }
-    acc[datasetName].push(run);
+    acc[datasetName].push(result);
     return acc;
-  }, {} as Record<string, DiscoveredRun[]>);
+  }, {} as Record<string, Result[]>);
 
-  // Create a DatasetWithResults for each dataset
-  return Object.entries(runsByDataset).map(([datasetName, datasetRuns]) => {
-    // Sort runs by name (config_name)
-    const sortedRuns = [...datasetRuns].sort((a, b) => {
-      return (a.name || "").localeCompare(b.name || "");
+  return Object.entries(resultsByDataset).map(([datasetName, datasetResults]) => {
+    const sortedResults = [...datasetResults].sort((a, b) => {
+      return (a.pipeline_config || "").localeCompare(b.pipeline_config || "");
     });
 
-    // Use first run info for the parent
-    const firstRun = sortedRuns[0];
+    const firstResult = sortedResults[0];
 
-    // Transform each discovered run into a PipelineRun
-    const pipelines: PipelineRun[] = sortedRuns.map((run) => {
-      // Get primary model from the models array
-      const primaryModel = run.models?.[0] || extractModelFromName(run.name);
-
+    const pipelines: PipelineRun[] = sortedResults.map((result) => {
+      const primaryModel = result.best_model || extractModelFromName(result.pipeline_config);
       return {
-        id: run.id,
-        pipeline_id: run.pipeline_id,
-        pipeline_name: run.name || run.pipeline_id,
+        id: result.id,
+        pipeline_id: result.pipeline_config_id,
+        pipeline_name: result.pipeline_config || result.pipeline_config_id,
         model: primaryModel,
-        preprocessing: extractPreprocessingFromName(run.name),
+        preprocessing: extractPreprocessingFromName(result.pipeline_config),
         split_strategy: "CV",
         status: "completed" as RunStatus,
         progress: 100,
-        metrics: run.best_val_score != null || run.best_test_score != null
-          ? {
-              r2: run.best_val_score ?? 0,
-              rmse: 0, // Not available in this view
-            }
-          : undefined,
-        started_at: run.created_at || undefined,
+        metrics: mapResultToMetrics(result),
+        score: result.best_score ?? null,
+        score_metric: result.metric ?? null,
+        val_score: result.val_score ?? result.best_score ?? null,
+        test_score: result.test_score ?? null,
+        has_refit: result.has_refit ?? false,
+        is_final_model: result.has_refit ?? false,
+        refit_model_id: result.refit_model_id,
+        started_at: result.created_at || undefined,
       };
     });
 
-    // Calculate overall stats
-    const totalPredictions = sortedRuns.reduce((sum, r) => sum + (r.predictions_count || 0), 0);
+    const totalPredictions = sortedResults.reduce(
+      (sum, r) => sum + (r.predictions_count || 0),
+      0
+    );
 
     return {
       dataset_name: datasetName,
       pipelines,
       total_predictions: totalPredictions,
-      created_at: firstRun.created_at || new Date().toISOString(),
+      created_at: firstResult?.created_at || new Date().toISOString(),
     };
   });
 }
@@ -230,9 +239,9 @@ export default function Results() {
 
       setActiveWorkspace(active);
 
-      // Load runs from workspace
-      const runsRes = await getN4AWorkspaceRuns(active.id);
-      const transformedDatasets = transformDiscoveredRuns(runsRes.runs || []);
+      // Load results from workspace
+      const resultsRes = await getN4AWorkspaceResults(active.id);
+      const transformedDatasets = transformResults(resultsRes.results || []);
       setDatasets(transformedDatasets);
 
       // Expand first dataset by default
@@ -268,8 +277,11 @@ export default function Results() {
     const completedCount = allPipelines.filter((p) => p.status === "completed").length;
     const failedCount = allPipelines.filter((p) => p.status === "failed").length;
     const totalPipelines = allPipelines.length;
-    const bestR2 = allPipelines.reduce((best, p) => Math.max(best, p.metrics?.r2 ?? 0), 0);
-    return { completedCount, failedCount, totalPipelines, datasetCount: datasets.length, bestR2 };
+    const bestScore = allPipelines.reduce((best, p) => {
+      const candidate = p.score ?? p.metrics?.r2 ?? p.metrics?.rmse ?? 0;
+      return Math.max(best, candidate);
+    }, 0);
+    return { completedCount, failedCount, totalPipelines, datasetCount: datasets.length, bestScore };
   }, [datasets]);
 
   // Filter datasets by search query
@@ -283,8 +295,8 @@ export default function Results() {
     const pipelineCount = dataset.pipelines.length;
     const models = new Set(dataset.pipelines.map((p) => p.model));
     const completedCount = dataset.pipelines.filter(p => p.status === "completed").length;
-    const bestR2 = Math.max(...dataset.pipelines.map(p => p.metrics?.r2 ?? 0));
-    return { pipelineCount, modelCount: models.size, completedCount, bestR2 };
+    const bestScore = Math.max(...dataset.pipelines.map(p => p.score ?? p.metrics?.r2 ?? p.metrics?.rmse ?? 0));
+    return { pipelineCount, modelCount: models.size, completedCount, bestScore };
   };
 
   // Sort pipelines based on current sort settings
@@ -294,7 +306,7 @@ export default function Results() {
 
       switch (pipelineSortField) {
         case "score":
-          comparison = (a.metrics?.r2 ?? 0) - (b.metrics?.r2 ?? 0);
+          comparison = (a.score ?? a.metrics?.r2 ?? a.metrics?.rmse ?? 0) - (b.score ?? b.metrics?.r2 ?? b.metrics?.rmse ?? 0);
           break;
         case "date":
           comparison = (a.started_at || "").localeCompare(b.started_at || "");
@@ -484,8 +496,8 @@ export default function Results() {
               <BarChart3 className="h-5 w-5 text-chart-1" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Best R²</p>
-              <p className="text-2xl font-bold text-foreground">{stats.bestR2.toFixed(3)}</p>
+              <p className="text-sm text-muted-foreground">Best Score</p>
+              <p className="text-2xl font-bold text-foreground">{stats.bestScore.toFixed(3)}</p>
             </div>
           </CardContent>
         </Card>
@@ -515,7 +527,7 @@ export default function Results() {
       ) : (
         <div className="space-y-4">
           {filteredDatasets.map((dataset) => {
-            const { pipelineCount, modelCount, completedCount, bestR2 } = getDatasetStats(dataset);
+            const { pipelineCount, modelCount, completedCount, bestScore } = getDatasetStats(dataset);
             const isExpanded = expandedDatasets.has(dataset.dataset_name);
             const hasFailedPipelines = dataset.pipelines.some(p => p.status === "failed");
 
@@ -567,9 +579,9 @@ export default function Results() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          {bestR2 > 0 && (
+                          {bestScore > 0 && (
                             <Badge variant="outline" className="text-chart-1 border-chart-1/30">
-                              Best R² {bestR2.toFixed(3)}
+                              Best Score {bestScore.toFixed(3)}
                             </Badge>
                           )}
                           {hasFailedPipelines && (
@@ -661,6 +673,12 @@ export default function Results() {
                               <Badge variant="secondary" className="text-xs">
                                 {pipeline.preprocessing === "None" ? t("results.none") : pipeline.preprocessing}
                               </Badge>
+                              {pipeline.has_refit && (
+                                <Badge className="text-xs bg-emerald-500/15 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20" variant="outline">
+                                  <Trophy className="h-3 w-3 mr-1" />
+                                  Final Model
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex items-center gap-4">
                               {pipeline.status === "running" && (
@@ -674,14 +692,29 @@ export default function Results() {
                                   </span>
                                 </div>
                               )}
-                              {pipeline.metrics && (pipeline.metrics.r2 != null || pipeline.metrics.rmse != null) && (
+                              {(pipeline.score != null || pipeline.val_score != null || pipeline.test_score != null || pipeline.metrics?.r2 != null || pipeline.metrics?.rmse != null) && (
                                 <div className="flex gap-3 text-xs">
-                                  {pipeline.metrics.r2 != null && (
+                                  {/* CV Score */}
+                                  {pipeline.val_score != null ? (
+                                    <span className="text-chart-1 font-semibold" title="Cross-validation score">
+                                      CV {pipeline.val_score.toFixed(3)}
+                                    </span>
+                                  ) : pipeline.score != null ? (
+                                    <span className="text-chart-1 font-semibold">
+                                      {(pipeline.score_metric || "Score").toUpperCase()} {pipeline.score.toFixed(3)}
+                                    </span>
+                                  ) : pipeline.metrics?.r2 != null ? (
                                     <span className="text-chart-1 font-semibold">
                                       R² {pipeline.metrics.r2.toFixed(3)}
                                     </span>
+                                  ) : null}
+                                  {/* Final Score (from refit) */}
+                                  {pipeline.test_score != null && (
+                                    <span className="text-emerald-500 font-semibold" title="Final model score (refit on full data)">
+                                      Final {pipeline.test_score.toFixed(3)}
+                                    </span>
                                   )}
-                                  {pipeline.metrics.rmse != null && pipeline.metrics.rmse > 0 && (
+                                  {pipeline.metrics?.rmse != null && pipeline.metrics.rmse > 0 && (
                                     <span className="text-muted-foreground">
                                       RMSE {pipeline.metrics.rmse.toFixed(2)}
                                     </span>

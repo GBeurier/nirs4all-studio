@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { FolderPlus, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ export function N4AWorkspaceSelector({
   const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleBrowse = async () => {
     const selectedPath = await selectFolder();
@@ -60,6 +62,9 @@ export function N4AWorkspaceSelector({
       setError(null);
       await linkN4AWorkspace({ path, name: name || undefined });
       setSuccess(true);
+      // Invalidate cross-page queries
+      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
       setTimeout(() => {
         setIsOpen(false);
         setPath("");
@@ -124,7 +129,7 @@ export function N4AWorkspaceSelector({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Select a folder containing workspace/runs/ or workspace/exports/
+              Select a nirs4all workspace folder
             </p>
           </div>
 

@@ -1,6 +1,6 @@
 import { motion } from "@/lib/motion";
 import { useTranslation } from "react-i18next";
-import { Beaker, BarChart3, TrendingUp, Layers, Settings2, ArrowLeftRight, type LucideIcon } from "lucide-react";
+import { Beaker, BarChart3, TrendingUp, Layers, Settings2, ArrowLeftRight, Trophy, type LucideIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,13 @@ const analysisTools: AnalysisToolProps[] = [
     icon: BarChart3,
     status: "available",
     href: "/analysis/comparison",
+  },
+  {
+    titleKey: "analysis.refitScoring.title",
+    descriptionKey: "analysis.refitScoring.description",
+    icon: Trophy,
+    status: "available",
+    href: "/results",
   },
   {
     titleKey: "analysis.residualAnalysis.title",

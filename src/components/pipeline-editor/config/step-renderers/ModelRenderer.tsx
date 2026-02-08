@@ -21,6 +21,7 @@ import {
   Sparkles,
   GraduationCap,
   Loader2,
+  RefreshCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { stepOptions, type PipelineStep } from "../../types";
+import { Switch } from "@/components/ui/switch";
+import { stepOptions, type PipelineStep, type RefitConfig } from "../../types";
 import { StepActions } from "./StepActions";
 import type { ParameterRendererProps } from "./types";
 import { useSelectWheel } from "../../shared/useSelectWheel";
@@ -86,10 +88,11 @@ function FinetuneTabSkeleton() {
 /**
  * ModelRenderer - Tabbed configuration for model steps
  *
- * Three tabs:
+ * Four tabs:
  * 1. Parameters - Model selection and hyperparameters
  * 2. Finetuning - Optuna hyperparameter optimization
- * 3. Training - Deep learning training config (only for DL models)
+ * 3. Refit - Refit configuration (retrain on full data after CV)
+ * 4. Training - Deep learning training config (only for DL models)
  */
 export function ModelRenderer({
   step,
@@ -104,6 +107,7 @@ export function ModelRenderer({
   const [activeTab, setActiveTab] = useState("parameters");
 
   const hasFinetuning = step.finetuneConfig?.enabled;
+  const hasRefit = step.refitConfig?.enabled ?? true; // refit is on by default
 
   // Handler for FinetuneTab updates
   const handleFinetuneUpdate = useCallback(
@@ -148,6 +152,22 @@ export function ModelRenderer({
               {hasFinetuning && (
                 <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-purple-500">
                   {step.finetuneConfig?.n_trials}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="refit"
+              className={`text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none ${
+                hasRefit
+                  ? "text-emerald-500 data-[state=active]:text-emerald-600"
+                  : ""
+              }`}
+            >
+              <RefreshCcw className="h-3.5 w-3.5 mr-1.5" />
+              Refit
+              {hasRefit && (
+                <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-emerald-500">
+                  On
                 </Badge>
               )}
             </TabsTrigger>
@@ -236,6 +256,13 @@ export function ModelRenderer({
             <Suspense fallback={<FinetuneTabSkeleton />}>
               <FinetuneTab step={step} onUpdate={handleFinetuneUpdate} />
             </Suspense>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* Refit Tab */}
+        <TabsContent value="refit" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <RefitTab step={step} onUpdate={handleFinetuneUpdate} />
           </ScrollArea>
         </TabsContent>
 
@@ -448,6 +475,192 @@ function TrainingTab({ step, onUpdate }: TrainingTabProps) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// RefitTab - Refit configuration for model steps
+// ============================================================================
+
+interface RefitTabProps {
+  step: PipelineStep;
+  onUpdate: (updates: Partial<PipelineStep>) => void;
+}
+
+function RefitTab({ step, onUpdate }: RefitTabProps) {
+  const config: RefitConfig = step.refitConfig ?? {
+    enabled: true,
+  };
+
+  const handleToggle = (enabled: boolean) => {
+    onUpdate({
+      refitConfig: { ...config, enabled },
+    });
+  };
+
+  const handleParamChange = (key: string, value: string) => {
+    const parsed = parseFloat(value);
+    const newParams = { ...(config.refit_params || {}) };
+    if (value === "" || isNaN(parsed)) {
+      delete newParams[key];
+    } else {
+      newParams[key] = parsed;
+    }
+    onUpdate({
+      refitConfig: {
+        ...config,
+        refit_params: Object.keys(newParams).length > 0 ? newParams : undefined,
+      },
+    });
+  };
+
+  const handleRemoveParam = (key: string) => {
+    const newParams = { ...(config.refit_params || {}) };
+    delete newParams[key];
+    onUpdate({
+      refitConfig: {
+        ...config,
+        refit_params: Object.keys(newParams).length > 0 ? newParams : undefined,
+      },
+    });
+  };
+
+  const handleAddParam = () => {
+    const newParams = { ...(config.refit_params || {}), "": 0 };
+    onUpdate({
+      refitConfig: { ...config, refit_params: newParams },
+    });
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Refit Toggle */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            <RefreshCcw className="h-4 w-4" />
+            Refit Configuration
+          </Label>
+          <Switch
+            checked={config.enabled}
+            onCheckedChange={handleToggle}
+          />
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/30">
+          <p className="text-xs text-muted-foreground">
+            When enabled, the best model from cross-validation is retrained on the
+            full training set to produce a deployment-ready "final model". The
+            exported .n4a bundle will contain this refit model.
+          </p>
+        </div>
+      </div>
+
+      {config.enabled && (
+        <>
+          <Separator />
+
+          {/* Refit Parameter Overrides */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Parameter Overrides</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={handleAddParam}
+              >
+                Add Override
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Override specific model parameters for the refit phase. For example,
+              you can use more epochs or a lower learning rate when retraining on
+              all data.
+            </p>
+
+            {config.refit_params && Object.keys(config.refit_params).length > 0 ? (
+              <div className="space-y-2">
+                {Object.entries(config.refit_params).map(([key, value], index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Parameter name"
+                      value={key}
+                      onChange={(e) => {
+                        const newParams = { ...(config.refit_params || {}) };
+                        const oldValue = newParams[key];
+                        delete newParams[key];
+                        newParams[e.target.value] = oldValue;
+                        onUpdate({
+                          refitConfig: { ...config, refit_params: newParams },
+                        });
+                      }}
+                      className="h-8 font-mono text-xs flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Value"
+                      value={String(value ?? "")}
+                      onChange={(e) => handleParamChange(key || `param_${index}`, e.target.value)}
+                      className="h-8 font-mono text-xs w-24"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveParam(key)}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground border border-dashed rounded-lg">
+                <p className="text-xs">
+                  No overrides configured. The refit model will use the same
+                  parameters as the best CV model.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Common Override Presets */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Common Overrides</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "More Epochs", params: { epochs: 200 } },
+                { label: "Lower LR", params: { learning_rate: 0.0001 } },
+                { label: "No Early Stop", params: { patience: 999 } },
+                { label: "Larger Batch", params: { batch_size: 64 } },
+              ].map((preset) => (
+                <Button
+                  key={preset.label}
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-1.5 justify-start text-left text-xs"
+                  onClick={() => {
+                    const newParams = {
+                      ...(config.refit_params || {}),
+                      ...preset.params,
+                    };
+                    onUpdate({
+                      refitConfig: { ...config, refit_params: newParams },
+                    });
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

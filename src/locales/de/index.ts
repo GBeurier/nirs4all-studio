@@ -88,6 +88,7 @@ const de = {
     runs: "Ausführungen",
     results: "Ergebnisse",
     predictions: "Vorhersagen",
+    aggregatedResults: "Aggregierte Ergebnisse",
     analysis: "Analyse",
     synthesis: "Synthese",
     settings: "Einstellungen",
@@ -781,6 +782,15 @@ const de = {
     },
   },
 
+  // ============= Aggregated Results =============
+  aggregatedResults: {
+    title: "Aggregierte Ergebnisse",
+    subtitle: "Modellleistung auf Kettenebene über Folds und Partitionen hinweg",
+    loading: "Aggregierte Ergebnisse werden geladen...",
+    empty: "Noch keine aggregierten Ergebnisse",
+    emptyHint: "Führen Sie eine Pipeline aus, um Vorhersageergebnisse zu generieren, die hier aggregiert werden.",
+  },
+
   // ============= Analysis =============
   analysis: {
     title: "Analyse",
@@ -806,6 +816,10 @@ const de = {
     residualAnalysis: {
       title: "Residuenanalyse",
       description: "Analysieren Sie Vorhersageresiduen und identifizieren Sie Ausreißer",
+    },
+    refitScoring: {
+      title: "Refit-Bewertung",
+      description: "Vergleichen Sie CV-Scores mit endgültigen Modellscores. Zeigen Sie deployment-bereite Modelle, die auf allen Daten neu trainiert wurden.",
     },
     gettingStarted: {
       title: "Erste Schritte mit der Analyse",

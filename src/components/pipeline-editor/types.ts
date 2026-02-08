@@ -62,6 +62,12 @@ export interface FinetuneParamConfig {
   choices?: (string | number)[];  // For categorical
 }
 
+// Refit configuration for model steps
+export interface RefitConfig {
+  enabled: boolean;                              // Whether to refit best model on full training data
+  refit_params?: Record<string, unknown>;        // Override parameters for the refit model (e.g., epochs, patience)
+}
+
 // Optuna finetuning configuration
 export interface FinetuneConfig {
   enabled: boolean;
@@ -228,6 +234,8 @@ export interface PipelineStep {
   stepMetadata?: StepMetadata;
   // Finetuning configuration (for model steps)
   finetuneConfig?: FinetuneConfig;
+  // Refit configuration (for model steps)
+  refitConfig?: RefitConfig;
   // Training configuration (for deep learning models) - legacy, prefer stepMetadata.trainParams
   trainingConfig?: TrainingConfig;
   // Y-Processing configuration (for pipeline-level target scaling)

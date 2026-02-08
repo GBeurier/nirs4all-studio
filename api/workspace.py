@@ -481,7 +481,12 @@ async def create_workspace(request: CreateWorkspaceRequest):
                 detail="Workspace already exists at this path",
             )
 
-        # Create workspace structure
+        # Create workspace structure (both modern and legacy dirs)
+        (workspace_path / "runs").mkdir(exist_ok=True)
+        (workspace_path / "exports").mkdir(exist_ok=True)
+        (workspace_path / "library").mkdir(exist_ok=True)
+        (workspace_path / "library" / "templates").mkdir(exist_ok=True)
+        (workspace_path / "library" / "trained").mkdir(exist_ok=True)
         (workspace_path / "results").mkdir(exist_ok=True)
         (workspace_path / "pipelines").mkdir(exist_ok=True)
         (workspace_path / "models").mkdir(exist_ok=True)
@@ -504,8 +509,8 @@ async def create_workspace(request: CreateWorkspaceRequest):
         with open(config_file, "w", encoding="utf-8") as f:
             json.dump(workspace_config, f, indent=2)
 
-        # Add to recent workspaces
-        workspace_manager.add_to_recent(str(workspace_path.resolve()), request.name)
+        # Link workspace internally (bypasses validation since we just created it)
+        workspace_manager.link_workspace_internal(str(workspace_path.resolve()), request.name, is_new=True)
 
         return WorkspaceInfo(
             path=str(workspace_path.resolve()),

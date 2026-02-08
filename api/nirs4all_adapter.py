@@ -414,25 +414,62 @@ class FullPipelineBuildResult:
 
 def _build_generator_sweep(sweep: Dict[str, Any], param_name: str) -> Dict[str, Any]:
     """Convert frontend sweep config to nirs4all generator syntax."""
-    sweep_type = sweep.get("type", "range")
+    sweep_type = (sweep.get("type") or "range").lower()
 
     if sweep_type == "range":
-        start = sweep.get("start", 1)
-        end = sweep.get("end", 10)
-        step = sweep.get("step", 1)
+        start = sweep.get("from", sweep.get("start", 1))
+        end = sweep.get("to", sweep.get("end", 10))
+        step = sweep.get("step", sweep.get("step_size", 1))
         return {"_range_": [start, end, step], "param": param_name}
 
-    elif sweep_type == "log_range":
-        start = sweep.get("start", 0.001)
-        end = sweep.get("end", 100)
-        count = sweep.get("count", 10)
+    if sweep_type in ("log_range", "log", "logrange"):
+        start = sweep.get("from", sweep.get("start", 0.001))
+        end = sweep.get("to", sweep.get("end", 100))
+        count = sweep.get("count", sweep.get("steps", 10))
         return {"_log_range_": [start, end, count], "param": param_name}
 
-    elif sweep_type == "choices":
-        choices = sweep.get("choices", [])
+    if sweep_type in ("choices", "or", "grid", "categorical"):
+        choices = sweep.get("choices", sweep.get("values", []))
+        if isinstance(choices, dict):
+            return {"_grid_": choices}
         return {"_or_": choices, "param": param_name}
 
     return {}
+
+
+def _sweep_to_param_node(sweep: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Convert a single param sweep config into a generator node for params."""
+    if not sweep:
+        return None
+
+    if sweep.get("enabled") is False:
+        return None
+
+    sweep_type = (sweep.get("type") or "range").lower()
+
+    if sweep_type == "range":
+        start = sweep.get("from", sweep.get("start", 1))
+        end = sweep.get("to", sweep.get("end", 10))
+        step = sweep.get("step", sweep.get("step_size", 1))
+        return {"_range_": [start, end, step]}
+
+    if sweep_type in ("log_range", "log", "logrange"):
+        start = sweep.get("from", sweep.get("start", 0.001))
+        end = sweep.get("to", sweep.get("end", 100))
+        count = sweep.get("count", sweep.get("steps", 10))
+        return {"_log_range_": [start, end, count]}
+
+    if sweep_type in ("choices", "or", "grid", "categorical"):
+        choices = sweep.get("choices", sweep.get("values", []))
+        if isinstance(choices, dict):
+            return {"_grid_": choices}
+        return {"_or_": choices}
+
+    return None
+
+
+def _class_path_from_operator(operator_class: Any) -> str:
+    return f"{operator_class.__module__}.{operator_class.__name__}"
 
 
 def _build_finetuning_params(finetune_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -594,35 +631,36 @@ def build_full_step(step: Dict[str, Any]) -> Any:
     )
 
     # Check for parameter sweeps
-    has_sweeps = bool(sweeps)
+    has_sweeps = False
+    base_params = dict(normalized_params)
+    for param_name, sweep_config in (sweeps or {}).items():
+        sweep_node = _sweep_to_param_node(sweep_config or {})
+        if sweep_node is None:
+            continue
+        base_params[param_name] = sweep_node
+        has_sweeps = True
 
     if has_sweeps:
-        # Build with generators
-        step_dict = {}
-        base_params = dict(normalized_params)
-
-        for param_name, sweep_config in sweeps.items():
-            if sweep_config.get("enabled"):
-                generator = _build_generator_sweep(sweep_config, param_name)
-                step_dict.update(generator)
-                base_params.pop(param_name, None)
-
-        # Create instance with non-sweep params
-        try:
-            instance = operator_class(**base_params)
-        except Exception:
-            instance = operator_class()
+        class_path = _class_path_from_operator(operator_class)
 
         if step_type == "model":
-            step_dict["model"] = instance
+            step_dict = {
+                "model": {
+                    "class": class_path,
+                    "params": base_params,
+                }
+            }
+            if step.get("name_alias"):
+                step_dict["name"] = step["name_alias"]
 
-            # Add finetuning if configured
             if finetune and finetune.get("enabled"):
                 step_dict["finetune_params"] = _build_finetuning_params(finetune)
-        else:
-            step_dict["operator"] = instance
+            return step_dict
 
-        return step_dict
+        return {
+            "class": class_path,
+            "params": base_params,
+        }
 
     # No sweeps - simple operator
     try:
@@ -696,7 +734,11 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
 
         # Check for generators or finetuning (supporting both legacy and editor formats)
         if step.get("paramSweeps"):
-            has_generators = True
+            for sweep_config in step.get("paramSweeps", {}).values():
+                if sweep_config is None or sweep_config.get("enabled") is False:
+                    continue
+                has_generators = True
+                break
         if step.get("finetuneConfig", {}).get("enabled"):
             finetuning_config = step.get("finetuneConfig")
         if step.get("generator"):

@@ -8,7 +8,7 @@
  * - Model export options when complete
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,10 +38,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { getRun, stopRun } from "@/api/client";
+import { getRun, stopRun, getPipelineLogs } from "@/api/client";
 import { ReconnectingIndicator, ErrorState, LoadingState } from "@/components/ui/state-display";
 import type { Run, RunStatus, PipelineRun, RunMetrics } from "@/types/runs";
 import { runStatusConfig } from "@/types/runs";
+import { getWebSocketBaseUrl } from "@/lib/websocket";
 
 // WebSocket message types
 interface WsMessage {
@@ -74,6 +75,14 @@ interface WsMessage {
     current_variant?: number;
     total_variants?: number;
     variant_description?: string;
+    // Refit phase fields
+    total_steps?: number;
+    description?: string;
+    current_step?: number;
+    step_name?: string;
+    step_type?: string;
+    score?: number | null;
+    traceback?: string;
   };
   timestamp: string;
 }
@@ -95,6 +104,22 @@ interface GranularProgress {
   variantDescription: string | null;
 }
 
+// Refit phase state
+type RefitStatus = "idle" | "running" | "completed" | "failed";
+
+interface RefitState {
+  status: RefitStatus;
+  progress: number;
+  message: string;
+  currentStep: number;
+  totalSteps: number;
+  stepName: string;
+  stepType: string;
+  score: number | null;
+  metrics: Record<string, number>;
+  error: string | null;
+}
+
 // WebSocket connection for real-time updates
 function useRunWebSocket(
   runId: string,
@@ -107,16 +132,15 @@ function useRunWebSocket(
   useEffect(() => {
     if (!runId) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 10;
 
-    const connect = () => {
+    const connect = async () => {
       try {
+        const baseUrl = await getWebSocketBaseUrl();
+        const wsUrl = `${baseUrl}/ws`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
@@ -171,7 +195,9 @@ function useRunWebSocket(
             const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
             reconnectAttempts++;
             onReconnecting(reconnectAttempts, maxReconnectAttempts);
-            reconnectTimer = setTimeout(connect, delay);
+            reconnectTimer = setTimeout(() => {
+              void connect();
+            }, delay);
           }
         };
 
@@ -183,7 +209,7 @@ function useRunWebSocket(
       }
     };
 
-    connect();
+    void connect();
 
     return () => {
       clearTimeout(reconnectTimer);
@@ -419,7 +445,19 @@ function parseLogContext(log: string): { foldInfo?: string; branchInfo?: string;
   return result;
 }
 
-function LogsPanel({ logs, isLive }: { logs: string[]; isLive?: boolean }) {
+function LogsPanel({
+  logs,
+  isLive,
+  isLoading,
+  errorMessage,
+  onRefresh,
+}: {
+  logs: string[];
+  isLive?: boolean;
+  isLoading?: boolean;
+  errorMessage?: string | null;
+  onRefresh?: () => void;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new logs arrive
@@ -440,12 +478,27 @@ function LogsPanel({ logs, isLive }: { logs: string[]; isLive?: boolean }) {
               Live
             </Badge>
           )}
+          {isLoading && (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              Loading
+            </Badge>
+          )}
           <span className="ml-auto text-[10px] text-muted-foreground font-normal">
             {logs.length} entries
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {errorMessage && (
+          <div className="mb-2 text-xs text-destructive flex items-center justify-between">
+            <span>{errorMessage}</span>
+            {onRefresh && (
+              <Button variant="ghost" size="sm" onClick={onRefresh}>
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
         <ScrollArea className="h-64" ref={scrollRef}>
           <div className="font-mono text-xs space-y-0.5">
             {logs.length === 0 ? (
@@ -497,12 +550,127 @@ function LogsPanel({ logs, isLive }: { logs: string[]; isLive?: boolean }) {
   );
 }
 
+function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
+  if (refit.status === "idle") return null;
+
+  const isRunning = refit.status === "running";
+  const isCompleted = refit.status === "completed";
+  const isFailed = refit.status === "failed";
+
+  return (
+    <Card className={cn(
+      "transition-all",
+      isRunning && "border-teal-500/50 shadow-sm",
+      isCompleted && "border-chart-1/50",
+      isFailed && "border-destructive/50",
+    )}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "p-2 rounded-lg",
+              isRunning && "bg-teal-500/10",
+              isCompleted && "bg-chart-1/10",
+              isFailed && "bg-destructive/10",
+            )}>
+              {isRunning && <RefreshCw className="h-4 w-4 text-teal-500 animate-spin" />}
+              {isCompleted && <CheckCircle2 className="h-4 w-4 text-chart-1" />}
+              {isFailed && <AlertCircle className="h-4 w-4 text-destructive" />}
+            </div>
+            <div>
+              <h4 className="font-medium">Refit Phase</h4>
+              <p className="text-xs text-muted-foreground">
+                {isRunning && "Refitting best model on all training data..."}
+                {isCompleted && "Best model refitted successfully"}
+                {isFailed && "Refit failed"}
+              </p>
+            </div>
+          </div>
+          <Badge
+            variant="secondary"
+            className={cn(
+              "gap-1.5",
+              isRunning && "bg-teal-500/10 text-teal-600",
+              isCompleted && "bg-chart-1/10 text-chart-1",
+              isFailed && "bg-destructive/10 text-destructive",
+            )}
+          >
+            {isRunning && "Refitting"}
+            {isCompleted && "Complete"}
+            {isFailed && "Failed"}
+          </Badge>
+        </div>
+
+        {/* Step indicators for running refit */}
+        {isRunning && refit.totalSteps > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            <Badge
+              variant="outline"
+              className="text-[10px] bg-teal-500/10 text-teal-600 border-teal-500/30"
+            >
+              Step {refit.currentStep}/{refit.totalSteps}: {refit.stepName}
+            </Badge>
+            {refit.stepType && (
+              <Badge
+                variant="outline"
+                className="text-[10px] bg-muted text-muted-foreground"
+              >
+                {refit.stepType}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Progress bar for running refit */}
+        {isRunning && (
+          <div className="space-y-1 mb-3">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span className="truncate max-w-[70%]">
+                {refit.message || "Refitting..."}
+              </span>
+              <span>{Math.round(refit.progress)}%</span>
+            </div>
+            <Progress value={refit.progress} className="h-2" />
+          </div>
+        )}
+
+        {/* Refit score on completion */}
+        {isCompleted && refit.score != null && (
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-chart-1" />
+              <span className="font-mono">
+                Refit score: {refit.score.toFixed(4)}
+              </span>
+            </div>
+            {refit.metrics.rmse != null && (
+              <div className="text-muted-foreground font-mono">
+                RMSE = {refit.metrics.rmse.toFixed(4)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error message for failed refit */}
+        {isFailed && refit.error && (
+          <div className="text-sm text-destructive mt-2">
+            {refit.error}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function RunProgress() {
   const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isStopping, setIsStopping] = useState(false);
   const [streamingLogs, setStreamingLogs] = useState<string[]>([]);
+  const [persistedLogs, setPersistedLogs] = useState<string[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
   const [wsReconnecting, setWsReconnecting] = useState<{ attempt: number; max: number } | null>(null);
   const [currentProgress, setCurrentProgress] = useState<ProgressState | null>(null);
   const [granularProgress, setGranularProgress] = useState<GranularProgress>({
@@ -512,6 +680,18 @@ export default function RunProgress() {
     currentVariant: null,
     totalVariants: null,
     variantDescription: null,
+  });
+  const [refitState, setRefitState] = useState<RefitState>({
+    status: "idle",
+    progress: 0,
+    message: "",
+    currentStep: 0,
+    totalSteps: 0,
+    stepName: "",
+    stepType: "",
+    score: null,
+    metrics: {},
+    error: null,
   });
 
   // Fetch run data with polling for active runs
@@ -579,6 +759,59 @@ export default function RunProgress() {
           totalVariants: ctx.total_variants ?? prev.totalVariants,
         }));
       }
+
+      // Handle refit phase messages
+      if (message.type === "refit_started") {
+        setRefitState({
+          status: "running",
+          progress: 0,
+          message: message.data.description || "Refitting best model on all training data...",
+          currentStep: 0,
+          totalSteps: message.data.total_steps ?? 0,
+          stepName: "",
+          stepType: "",
+          score: null,
+          metrics: {},
+          error: null,
+        });
+      }
+
+      if (message.type === "refit_progress") {
+        setRefitState((prev) => ({
+          ...prev,
+          progress: message.data.progress ?? prev.progress,
+          message: message.data.message || prev.message,
+        }));
+      }
+
+      if (message.type === "refit_step") {
+        setRefitState((prev) => ({
+          ...prev,
+          currentStep: message.data.current_step ?? prev.currentStep,
+          totalSteps: message.data.total_steps ?? prev.totalSteps,
+          stepName: message.data.step_name || prev.stepName,
+          stepType: message.data.step_type || prev.stepType,
+        }));
+      }
+
+      if (message.type === "refit_completed") {
+        setRefitState((prev) => ({
+          ...prev,
+          status: "completed",
+          progress: 100,
+          message: "Refit complete",
+          score: message.data.score ?? null,
+          metrics: (message.data.metrics as Record<string, number>) ?? prev.metrics,
+        }));
+      }
+
+      if (message.type === "refit_failed") {
+        setRefitState((prev) => ({
+          ...prev,
+          status: "failed",
+          error: message.data.error || "Refit failed",
+        }));
+      }
     },
     [queryClient, runId]
   );
@@ -613,6 +846,8 @@ export default function RunProgress() {
   // Reset streaming logs and progress when run changes
   useEffect(() => {
     setStreamingLogs([]);
+    setPersistedLogs([]);
+    setLogsError(null);
     setCurrentProgress(null);
     setGranularProgress({
       currentFold: null,
@@ -622,7 +857,52 @@ export default function RunProgress() {
       totalVariants: null,
       variantDescription: null,
     });
+    setRefitState({
+      status: "idle",
+      progress: 0,
+      message: "",
+      currentStep: 0,
+      totalSteps: 0,
+      stepName: "",
+      stepType: "",
+      score: null,
+      metrics: {},
+      error: null,
+    });
   }, [runId]);
+
+  const loadPersistedLogs = useCallback(async () => {
+    if (!runId || !run) return;
+    setIsLoadingLogs(true);
+    setLogsError(null);
+
+    try {
+      const pipelineEntries = run.datasets.flatMap((dataset) =>
+        dataset.pipelines.map((pipeline) => ({
+          datasetName: dataset.dataset_name,
+          pipelineId: pipeline.id,
+          pipelineName: pipeline.pipeline_name,
+        }))
+      );
+
+      const logChunks = await Promise.all(
+        pipelineEntries.map(async (entry) => {
+          const response = await getPipelineLogs(runId, entry.pipelineId);
+          const logs = response.logs || [];
+          return logs.map(
+            (log) => `[${entry.datasetName}] [${entry.pipelineName}] ${log}`
+          );
+        })
+      );
+
+      const merged = logChunks.flat();
+      setPersistedLogs([...new Set(merged)]);
+    } catch (err) {
+      setLogsError(err instanceof Error ? err.message : "Failed to load logs");
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  }, [runId, run]);
 
   // Stop run handler
   const handleStop = async () => {
@@ -638,6 +918,81 @@ export default function RunProgress() {
       setIsStopping(false);
     }
   };
+
+  const derivedLogs = useMemo(() => {
+    if (!run) return [] as string[];
+    const logs: string[] = [];
+
+    run.datasets.forEach((dataset, datasetIndex) => {
+      logs.push(`[INFO] Dataset ${datasetIndex + 1}/${run.datasets.length}: ${dataset.dataset_name}`);
+
+      dataset.pipelines.forEach((pipeline, pipelineIndex) => {
+        logs.push(
+          `[INFO] Pipeline ${pipelineIndex + 1}/${dataset.pipelines.length}: ${pipeline.pipeline_name} (model=${pipeline.model})`
+        );
+
+        if (pipeline.fold_metrics) {
+          const folds = Object.values(pipeline.fold_metrics);
+          if (folds.length > 0) {
+            const avg = folds.reduce(
+              (acc, metric) => {
+                return {
+                  r2: acc.r2 + (metric.r2 ?? 0),
+                  rmse: acc.rmse + (metric.rmse ?? 0),
+                  mae: acc.mae + (metric.mae ?? 0),
+                  rpd: acc.rpd + (metric.rpd ?? 0),
+                };
+              },
+              { r2: 0, rmse: 0, mae: 0, rpd: 0 }
+            );
+
+            const foldCount = folds.length;
+            const avgR2 = avg.r2 / foldCount;
+            const avgRmse = avg.rmse / foldCount;
+            const avgMae = avg.mae / foldCount;
+            const avgRpd = avg.rpd / foldCount;
+
+            const parts: string[] = [];
+            if (!Number.isNaN(avgR2) && avgR2 > 0) parts.push(`R2=${avgR2.toFixed(4)}`);
+            if (!Number.isNaN(avgRmse) && avgRmse > 0) parts.push(`RMSE=${avgRmse.toFixed(4)}`);
+            if (!Number.isNaN(avgMae) && avgMae > 0) parts.push(`MAE=${avgMae.toFixed(4)}`);
+            if (!Number.isNaN(avgRpd) && avgRpd > 0) parts.push(`RPD=${avgRpd.toFixed(3)}`);
+
+            if (parts.length > 0) {
+              logs.push(`[INFO] Fold averages (${foldCount} folds): ${parts.join(" | ")}`);
+            }
+          }
+        }
+
+        if (pipeline.metrics) {
+          const parts: string[] = [];
+          if (pipeline.metrics.r2 != null) parts.push(`R2=${pipeline.metrics.r2.toFixed(4)}`);
+          if (pipeline.metrics.rmse != null && pipeline.metrics.rmse > 0) parts.push(`RMSE=${pipeline.metrics.rmse.toFixed(4)}`);
+          if (pipeline.metrics.mae != null && pipeline.metrics.mae > 0) parts.push(`MAE=${pipeline.metrics.mae.toFixed(4)}`);
+          if (pipeline.metrics.rpd != null && pipeline.metrics.rpd > 0) parts.push(`RPD=${pipeline.metrics.rpd.toFixed(3)}`);
+          if (parts.length > 0) {
+            logs.push(`[INFO] Final metrics: ${parts.join(" | ")}`);
+          }
+        }
+      });
+    });
+
+    return logs;
+  }, [run]);
+
+  useEffect(() => {
+    if (!run || !runId) return;
+    void loadPersistedLogs();
+
+    if (run.status === "running" || run.status === "queued") {
+      const intervalId = setInterval(() => {
+        void loadPersistedLogs();
+      }, 5000);
+      return () => clearInterval(intervalId);
+    }
+
+    return undefined;
+  }, [run, runId, loadPersistedLogs]);
 
   if (isLoading) {
     return (
@@ -686,9 +1041,13 @@ export default function RunProgress() {
   const overallProgress = baseProgress + runningContribution;
 
   // Collect all logs - combine persisted logs with streaming logs
-  const persistedLogs = allPipelines.flatMap(p => p.logs || []);
-  // Merge logs, avoiding duplicates, with streaming logs at the end
-  const allLogs = [...new Set([...persistedLogs, ...streamingLogs])];
+  const runtimeLogs = allPipelines.flatMap(p => p.logs || []);
+  const allLogs = [...new Set([
+    ...derivedLogs,
+    ...persistedLogs,
+    ...runtimeLogs,
+    ...streamingLogs,
+  ])];
 
   // Get best metrics from completed pipelines
   const completedPipelines = allPipelines.filter(p => p.status === "completed" && p.metrics);
@@ -852,6 +1211,11 @@ export default function RunProgress() {
               ))}
             </div>
           ))}
+
+          {/* Refit phase indicator - shown after CV phase completes */}
+          {refitState.status !== "idle" && (
+            <RefitPhaseIndicator refit={refitState} />
+          )}
         </div>
 
         {/* Side panel */}
@@ -865,7 +1229,13 @@ export default function RunProgress() {
           )}
 
           {/* Logs */}
-          <LogsPanel logs={allLogs} isLive={run.status === "running"} />
+          <LogsPanel
+            logs={allLogs}
+            isLive={run.status === "running"}
+            isLoading={isLoadingLogs}
+            errorMessage={logsError}
+            onRefresh={loadPersistedLogs}
+          />
 
           {/* Run info */}
           <Card>

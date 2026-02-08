@@ -8,6 +8,7 @@ import {
   GitBranch,
   Play,
   BarChart3,
+  Layers,
   Target,
   Beaker,
   Sparkles,
@@ -45,6 +46,7 @@ const workflowNavItems: NavItem[] = [
   { titleKey: "nav.newExperiment", href: "/pipelines/new", icon: Plus },
   { titleKey: "nav.runs", href: "/runs", icon: Play },
   { titleKey: "nav.results", href: "/results", icon: BarChart3 },
+  { titleKey: "nav.aggregatedResults", href: "/results/aggregated", icon: Layers },
 ];
 
 const analysisNavItems: NavItem[] = [

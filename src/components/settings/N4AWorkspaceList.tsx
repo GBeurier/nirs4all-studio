@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderOpen,
   Clock,
@@ -213,27 +214,21 @@ export function N4AWorkspaceList({
   onWorkspaceChange,
   className = "",
 }: N4AWorkspaceListProps) {
-  const [workspaces, setWorkspaces] = useState<LinkedWorkspace[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const loadWorkspaces = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await getLinkedWorkspaces();
-      setWorkspaces(response.workspaces);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load workspaces");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const {
+    data: workspacesData,
+    isLoading,
+    refetch: loadWorkspaces,
+  } = useQuery({
+    queryKey: ["linked-workspaces"],
+    queryFn: getLinkedWorkspaces,
+    staleTime: 10000,
+  });
 
-  useEffect(() => {
-    loadWorkspaces();
-  }, [loadWorkspaces]);
+  const workspaces = workspacesData?.workspaces ?? [];
 
   useEffect(() => {
     if (successMessage) {
@@ -247,7 +242,9 @@ export function N4AWorkspaceList({
       setError(null);
       await activateN4AWorkspace(id);
       setSuccessMessage("Workspace activated");
-      await loadWorkspaces();
+      // Invalidate cross-page queries so Runs, Results, Predictions pick up the change
+      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
       onWorkspaceChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to activate");
@@ -260,7 +257,7 @@ export function N4AWorkspaceList({
       const result = await scanN4AWorkspace(id);
       const d = result.discovered;
       setSuccessMessage("Scanned: " + d.runs_count + " runs, " + d.exports_count + " exports");
-      await loadWorkspaces();
+      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to scan");
     }
@@ -271,7 +268,9 @@ export function N4AWorkspaceList({
       setError(null);
       await unlinkN4AWorkspace(id);
       setSuccessMessage("Workspace unlinked");
-      await loadWorkspaces();
+      // Invalidate cross-page queries
+      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
       onWorkspaceChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unlink");

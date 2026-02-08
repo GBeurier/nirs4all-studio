@@ -223,7 +223,10 @@ export default function Predictions() {
         total: summary.total_predictions,
         datasets: summary.total_datasets,
         models: summary.models.length,
-        pipelines: summary.datasets.reduce((acc, d) => acc + (d.facets?.n_pipelines || 0), 0),
+        pipelines: (summary.datasets ?? []).reduce(
+          (acc, d) => acc + (d.facets?.n_pipelines || 0),
+          0
+        ),
       };
     }
     return {

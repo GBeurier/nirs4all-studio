@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
@@ -56,12 +57,10 @@ import {
   deleteGroup,
   addDatasetToGroup,
   removeDatasetFromGroup,
-  getWorkspace,
-  selectWorkspace,
+  getLinkedWorkspaces,
   reloadWorkspace,
   detectUnified,
 } from "@/api/client";
-import { selectFolder } from "@/utils/fileDialogs";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
 
 /** Get filename stem (without extension) */
@@ -91,6 +90,7 @@ type FilterGroup = "all" | string;
 
 export default function Datasets() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   // Developer mode
   const isDeveloperMode = useIsDeveloperMode();
@@ -248,10 +248,13 @@ export default function Datasets() {
       // Reload workspace from disk to ensure fresh data
       await reloadWorkspace();
 
-      // Load workspace
-      const wsResponse = await getWorkspace();
-      if (wsResponse.workspace) {
-        setWorkspacePath(wsResponse.workspace.path);
+      // Load workspace path from linked workspaces (active workspace)
+      try {
+        const linkedRes = await getLinkedWorkspaces();
+        const active = linkedRes.workspaces.find((ws) => ws.is_active);
+        setWorkspacePath(active?.path ?? null);
+      } catch {
+        setWorkspacePath(null);
       }
 
       // Load datasets
@@ -346,16 +349,8 @@ export default function Datasets() {
   );
 
   // Handlers
-  const handleSelectWorkspace = async () => {
-    try {
-      const path = await selectFolder();
-      if (path) {
-        await selectWorkspace(path, true);
-        await loadData();
-      }
-    } catch (error) {
-      console.error("Failed to select workspace:", error);
-    }
+  const handleSelectWorkspace = () => {
+    navigate("/settings?tab=workspaces");
   };
 
   const handleRefreshAll = async () => {
@@ -670,10 +665,12 @@ export default function Datasets() {
                 </p>
                 {normalizedDatasets.length === 0 && (
                   <div className="flex gap-3">
-                    <Button variant="outline" onClick={handleSelectWorkspace}>
-                      <FolderOpen className="mr-2 h-4 w-4" />
-                      {t("datasets.selectWorkspace")}
-                    </Button>
+                    {!workspacePath && (
+                      <Button variant="outline" onClick={handleSelectWorkspace}>
+                        <FolderOpen className="mr-2 h-4 w-4" />
+                        {t("datasets.selectWorkspace")}
+                      </Button>
+                    )}
                     <Button onClick={() => setWizardOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
                       {t("datasets.addDataset")}

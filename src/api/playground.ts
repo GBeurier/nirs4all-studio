@@ -71,23 +71,7 @@ export async function executePlayground(
   request: ExecuteRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  const url = '/api/playground/execute';
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `HTTP error ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<ExecuteResponse>('/playground/execute', request, { signal });
 }
 
 /**
@@ -396,21 +380,7 @@ export async function computeDiff(
   request: DiffComputeRequest,
   signal?: AbortSignal
 ): Promise<DiffComputeResponse> {
-  const response = await fetch('/api/playground/diff/compute', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `HTTP error ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<DiffComputeResponse>('/playground/diff/compute', request, { signal });
 }
 
 /**
@@ -424,19 +394,9 @@ export async function computeRepetitionVariance(
   request: RepetitionVarianceRequest,
   signal?: AbortSignal
 ): Promise<RepetitionVarianceResponse> {
-  const response = await fetch('/api/playground/diff/repetition-variance', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `HTTP error ${response.status}`);
-  }
-
-  return response.json();
+  return api.post<RepetitionVarianceResponse>(
+    '/playground/diff/repetition-variance',
+    request,
+    { signal }
+  );
 }

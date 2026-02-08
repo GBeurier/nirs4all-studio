@@ -116,9 +116,31 @@ interface DiscoveredRunV2 extends DiscoveredRun {
 function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
   const runs: Run[] = [];
 
+  const buildRunId = (dr: DiscoveredRunV2): string => {
+    return (
+      dr.id ||
+      dr.name ||
+      dr.manifest_path ||
+      `${dr.dataset || dr.datasets?.[0]?.name || "run"}-${dr.pipeline_id || "pipeline"}-${dr.created_at || "unknown"}`
+    );
+  };
+
+  const buildRunName = (dr: DiscoveredRunV2, runId: string): string => {
+    if (dr.name && dr.name.trim()) return dr.name;
+
+    const datasetName = dr.dataset || dr.datasets?.[0]?.name;
+    const templateName = dr.templates?.[0]?.name || dr.pipeline_id;
+    if (datasetName && templateName) {
+      return `${datasetName} × ${templateName}`;
+    }
+    if (datasetName) return datasetName;
+    return runId;
+  };
+
   for (const dr of discoveredRuns) {
     const isV2 = dr.format === "v2";
-    const runId = dr.id || dr.name;
+    const runId = buildRunId(dr);
+    const runName = buildRunName(dr, runId);
 
     if (isV2) {
       // V2 format: run has templates and multiple datasets
@@ -139,11 +161,13 @@ function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
       }));
 
       // Create dataset entries from the datasets array
-      const datasetRuns: DatasetRun[] = (dr.datasets || []).map(d => ({
-        dataset_id: d.name,
-        dataset_name: d.name,
-        pipelines: [], // Will be populated from results if needed
-      }));
+      const datasetRuns: DatasetRun[] = (dr.datasets || [])
+        .filter(d => d.name)
+        .map(d => ({
+          dataset_id: d.name,
+          dataset_name: d.name,
+          pipelines: [], // Will be populated from results if needed
+        }));
 
       // Determine status
       let status: RunStatus = "completed";
@@ -156,7 +180,7 @@ function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
 
       runs.push({
         id: runId,
-        name: dr.name || runId,
+        name: runName,
         description: dr.description,
         status,
         format: "v2",
@@ -176,7 +200,7 @@ function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
       if (!existingRun) {
         existingRun = {
           id: runId,
-          name: dr.name || runId,
+          name: runName,
           status: "completed" as RunStatus,
           format: dr.format || "v1",
           created_at: dr.created_at || new Date().toISOString(),
@@ -206,6 +230,8 @@ function convertDiscoveredRunsToRuns(discoveredRuns: DiscoveredRunV2[]): Run[] {
         split_strategy: "-",
         status: "completed",
         progress: 100,
+        val_score: dr.best_val_score ?? null,
+        test_score: dr.best_test_score ?? null,
         metrics: dr.best_val_score != null || dr.best_test_score != null ? {
           r2: dr.best_val_score ?? dr.best_test_score ?? 0,
           rmse: 0,
@@ -278,7 +304,7 @@ export default function Runs() {
     const activeRunIds = new Set(activeRuns.map(r => r.id));
     const uniqueHistoricalRuns = historicalRuns.filter(r => !activeRunIds.has(r.id));
 
-    return [...activeRuns, ...uniqueHistoricalRuns];
+    return [...activeRuns, ...uniqueHistoricalRuns].filter(r => !!r.id);
   }, [activeRunsData, discoveredRunsData]);
 
   const isLoading = isLoadingActive || isLoadingDiscovered;
@@ -308,11 +334,11 @@ export default function Runs() {
   };
 
   // Calculate stats from combined runs or use API stats
-  const runningCount = statsData?.running ?? runs.filter(r => r.status === "running").length;
-  const queuedCount = statsData?.queued ?? runs.filter(r => r.status === "queued").length;
-  const completedCount = statsData?.completed ?? runs.filter(r => r.status === "completed").length;
-  const failedCount = statsData?.failed ?? runs.filter(r => r.status === "failed").length;
-  const totalPipelines = statsData?.total_pipelines ?? runs.reduce((acc, r) => acc + r.datasets.reduce((a, d) => a + d.pipelines.length, 0), 0);
+  const runningCount = runs.filter(r => r.status === "running").length;
+  const queuedCount = runs.filter(r => r.status === "queued").length;
+  const completedCount = runs.filter(r => r.status === "completed").length;
+  const failedCount = runs.filter(r => r.status === "failed").length;
+  const totalPipelines = runs.reduce((acc, r) => acc + r.datasets.reduce((a, d) => a + d.pipelines.length, 0), 0);
 
   const hasActiveWorkspace = !!activeWorkspaceId;
 
@@ -766,11 +792,22 @@ export default function Runs() {
                                             <span className="text-xs text-muted-foreground">{pipeline.progress}%</span>
                                           </div>
                                         )}
-                                        {pipeline.metrics && (pipeline.metrics.r2 != null || pipeline.metrics.rmse != null) && (
+                                        {(pipeline.val_score != null || pipeline.test_score != null) ? (
                                           <div className="flex gap-2 text-xs">
-                                            {pipeline.metrics.r2 != null && <span className="text-chart-1 font-mono">R²={pipeline.metrics.r2.toFixed(3)}</span>}
-                                            {pipeline.metrics.rmse != null && <span className="text-muted-foreground font-mono">RMSE={pipeline.metrics.rmse.toFixed(2)}</span>}
+                                            {pipeline.val_score != null && (
+                                              <span className="text-chart-1 font-mono">Val={pipeline.val_score.toFixed(3)}</span>
+                                            )}
+                                            {pipeline.test_score != null && (
+                                              <span className="text-muted-foreground font-mono">Test={pipeline.test_score.toFixed(3)}</span>
+                                            )}
                                           </div>
+                                        ) : (
+                                          pipeline.metrics && (pipeline.metrics.r2 != null || pipeline.metrics.rmse != null) && (
+                                            <div className="flex gap-2 text-xs">
+                                              {pipeline.metrics.r2 != null && <span className="text-chart-1 font-mono">R²={pipeline.metrics.r2.toFixed(3)}</span>}
+                                              {pipeline.metrics.rmse != null && <span className="text-muted-foreground font-mono">RMSE={pipeline.metrics.rmse.toFixed(2)}</span>}
+                                            </div>
+                                          )
                                         )}
                                         {pipeline.status === "completed" && (
                                           <Link

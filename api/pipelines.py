@@ -1433,6 +1433,8 @@ class PipelineRunRequest(BaseModel):
     verbose: int = 1
     export_model: bool = True
     model_name: Optional[str] = None
+    refit: Optional[Any] = True
+    refit_params: Optional[Dict[str, Any]] = None
 
 
 class PipelineExportRequest(BaseModel):
@@ -1472,6 +1474,13 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
     except HTTPException:
         raise
 
+    # Build refit configuration
+    refit_value = request.refit
+    if refit_value is True and request.refit_params:
+        refit_value = {"refit_params": request.refit_params}
+    elif isinstance(refit_value, dict) and request.refit_params:
+        refit_value.setdefault("refit_params", {}).update(request.refit_params)
+
     # Create job configuration
     job_config = {
         "pipeline_id": pipeline_id,
@@ -1483,6 +1492,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
         "export_model": request.export_model,
         "model_name": request.model_name or f"model_{pipeline_id}",
         "workspace_path": workspace.path,
+        "refit": refit_value,
     }
 
     # Create and submit job
@@ -1533,11 +1543,15 @@ def _run_pipeline_task(job, progress_callback):
         # Execute using nirs4all.run()
         import nirs4all
 
-        result = nirs4all.run(
-            pipeline=pipeline_steps,
-            dataset=dataset_path,
-            verbose=config.get("verbose", 1),
-        )
+        run_kwargs = {
+            "pipeline": pipeline_steps,
+            "dataset": dataset_path,
+            "verbose": config.get("verbose", 1),
+        }
+        if "refit" in config:
+            run_kwargs["refit"] = config["refit"]
+
+        result = nirs4all.run(**run_kwargs)
 
         progress_callback(80, "Extracting results...")
 

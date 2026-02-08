@@ -17,6 +17,11 @@ from .manager import (
     notify_job_metrics,
     notify_job_log,
     notify_training_epoch,
+    notify_refit_started,
+    notify_refit_progress,
+    notify_refit_step,
+    notify_refit_completed,
+    notify_refit_failed,
 )
 
 __all__ = [
@@ -31,4 +36,9 @@ __all__ = [
     "notify_job_metrics",
     "notify_job_log",
     "notify_training_epoch",
+    "notify_refit_started",
+    "notify_refit_progress",
+    "notify_refit_step",
+    "notify_refit_completed",
+    "notify_refit_failed",
 ]

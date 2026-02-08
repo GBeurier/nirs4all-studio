@@ -46,6 +46,13 @@ class MessageType(str, Enum):
     VARIANT_COMPLETED = "variant_completed"
     STEP_PROGRESS = "step_progress"
 
+    # Refit-phase messages (sub-phase of training job)
+    REFIT_STARTED = "refit_started"
+    REFIT_PROGRESS = "refit_progress"
+    REFIT_STEP = "refit_step"
+    REFIT_COMPLETED = "refit_completed"
+    REFIT_FAILED = "refit_failed"
+
     # System messages
     PING = "ping"
     PONG = "pong"
@@ -662,3 +669,147 @@ async def notify_step_progress(
         },
     )
     await ws_manager.broadcast_to_channel(channel, message)
+
+
+# ============================================================================
+# Refit Phase Notification Functions
+# ============================================================================
+
+
+async def notify_refit_started(
+    job_id: str,
+    total_steps: int = 0,
+    description: str = "",
+) -> None:
+    """
+    Notify subscribers that the refit phase has started.
+
+    The refit phase runs after cross-validation (Pass 1) completes,
+    refitting the best model on all training data.
+
+    Args:
+        job_id: Job identifier
+        total_steps: Total number of refit steps expected
+        description: Human-readable description of the refit
+    """
+    channel = f"job:{job_id}"
+    msg = WebSocketMessage(
+        type=MessageType.REFIT_STARTED,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "total_steps": total_steps,
+            "description": description,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, msg)
+
+
+async def notify_refit_progress(
+    job_id: str,
+    progress: float,
+    message: str = "",
+) -> None:
+    """
+    Notify subscribers of refit phase progress.
+
+    Args:
+        job_id: Job identifier
+        progress: Progress percentage (0-100)
+        message: Progress message
+    """
+    channel = f"job:{job_id}"
+    msg = WebSocketMessage(
+        type=MessageType.REFIT_PROGRESS,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "progress": progress,
+            "message": message,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, msg)
+
+
+async def notify_refit_step(
+    job_id: str,
+    current_step: int,
+    total_steps: int,
+    step_name: str,
+    step_type: str = "preprocessing",
+) -> None:
+    """
+    Notify subscribers of a refit sub-step.
+
+    Args:
+        job_id: Job identifier
+        current_step: Current step number (1-based)
+        total_steps: Total number of refit steps
+        step_name: Name of the current step (e.g., "Refitting base model 1/3")
+        step_type: Type of step: "preprocessing", "model_training", "evaluation", "meta_model"
+    """
+    channel = f"job:{job_id}"
+    msg = WebSocketMessage(
+        type=MessageType.REFIT_STEP,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "current_step": current_step,
+            "total_steps": total_steps,
+            "step_name": step_name,
+            "step_type": step_type,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, msg)
+
+
+async def notify_refit_completed(
+    job_id: str,
+    score: Optional[float] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Notify subscribers that the refit phase completed successfully.
+
+    Args:
+        job_id: Job identifier
+        score: Refit score on training data
+        metrics: Additional refit metrics
+    """
+    channel = f"job:{job_id}"
+    msg = WebSocketMessage(
+        type=MessageType.REFIT_COMPLETED,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "score": score,
+            "metrics": metrics or {},
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, msg)
+
+
+async def notify_refit_failed(
+    job_id: str,
+    error: str,
+    traceback: Optional[str] = None,
+) -> None:
+    """
+    Notify subscribers that the refit phase failed.
+
+    Args:
+        job_id: Job identifier
+        error: Error message
+        traceback: Optional error traceback
+    """
+    channel = f"job:{job_id}"
+    msg = WebSocketMessage(
+        type=MessageType.REFIT_FAILED,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "error": error,
+            "traceback": traceback,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, msg)
