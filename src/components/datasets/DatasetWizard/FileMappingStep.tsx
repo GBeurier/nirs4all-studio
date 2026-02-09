@@ -5,9 +5,9 @@
  * - Map files to roles (X, Y, metadata)
  * - Assign splits (train, test)
  * - Assign sources for multi-source datasets
- * - Add additional files
+ * - Add additional files (via button or drag-and-drop)
  */
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   File,
   Plus,
@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Sparkles,
   AlertCircle,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useWizard } from "./WizardContext";
 import { selectFile } from "@/utils/fileDialogs";
+import { detectFilesList } from "@/api/client";
 import type { DetectedFile } from "@/types/datasets";
 
 // Format file size
@@ -239,6 +241,8 @@ function FileRow({ file, index, onUpdate, onRemove, maxSource }: FileRowProps) {
 
 export function FileMappingStep() {
   const { state, dispatch } = useWizard();
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounterRef = { current: 0 };
 
   // Calculate max source number
   const maxSource = Math.max(
@@ -260,11 +264,23 @@ export function FileMappingStep() {
       if (result) {
         const filePaths = Array.isArray(result) ? result : [result];
 
+        // Use backend detection for added files
+        if (filePaths.length > 0) {
+          try {
+            const detected = await detectFilesList(filePaths);
+            if (detected.files.length > 0) {
+              dispatch({ type: "ADD_FILES", payload: detected.files });
+              return;
+            }
+          } catch {
+            // Fallback to format-only detection below
+          }
+        }
+
         const newFiles: DetectedFile[] = filePaths.map((filePath) => {
           const filename = filePath.split(/[/\\]/).pop() || "";
           const lowerName = filename.toLowerCase();
 
-          // Only detect format from extension (simple, unambiguous)
           let format: DetectedFile["format"] = "csv";
           if (lowerName.endsWith(".xlsx")) format = "xlsx";
           else if (lowerName.endsWith(".xls")) format = "xls";
@@ -292,6 +308,113 @@ export function FileMappingStep() {
       console.error("Failed to add files:", error);
     }
   };
+
+  // Drag-and-drop handlers for the file list area
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) {
+      setIsDraggingOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDraggingOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDraggingOver(false);
+
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    // Extract paths (desktop mode)
+    const paths: string[] = [];
+    const fileList: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      fileList.push(file);
+      // Electron: use webUtils.getPathForFile
+      if (window.electronApi?.getPathForFile) {
+        try {
+          const path = window.electronApi.getPathForFile(file);
+          if (path) {
+            paths.push(path);
+            continue;
+          }
+        } catch { /* fallback */ }
+      }
+      // Fallback: check file.path property
+      const filePath = (file as File & { path?: string }).path;
+      if (filePath) {
+        paths.push(filePath);
+      }
+    }
+
+    if (paths.length > 0) {
+      // Desktop mode: use backend detection
+      try {
+        const result = await detectFilesList(paths);
+        if (result.files.length > 0) {
+          dispatch({ type: "ADD_FILES", payload: result.files });
+          return;
+        }
+      } catch {
+        // Fallback to format-only detection below
+      }
+    }
+
+    // Web mode or fallback: add as unknown files with format detection
+    const newFiles: DetectedFile[] = fileList.map((file) => {
+      const filename = file.name;
+      const lowerName = filename.toLowerCase();
+
+      let format: DetectedFile["format"] = "csv";
+      if (lowerName.endsWith(".xlsx")) format = "xlsx";
+      else if (lowerName.endsWith(".xls")) format = "xls";
+      else if (lowerName.endsWith(".parquet")) format = "parquet";
+      else if (lowerName.endsWith(".npy")) format = "npy";
+      else if (lowerName.endsWith(".npz")) format = "npz";
+      else if (lowerName.endsWith(".mat")) format = "mat";
+
+      return {
+        path: filename,
+        filename,
+        type: "unknown" as const,
+        split: "train" as const,
+        source: null,
+        format,
+        size_bytes: file.size,
+        confidence: 0,
+        detected: false,
+      };
+    });
+
+    dispatch({ type: "ADD_FILES", payload: newFiles });
+
+    // Store File objects for web mode
+    if (state.fileBlobs.size > 0 || paths.length === 0) {
+      const newBlobs = new Map(state.fileBlobs);
+      fileList.forEach((file) => {
+        newBlobs.set(file.name, file);
+      });
+      dispatch({ type: "SET_FILE_BLOBS", payload: newBlobs });
+    }
+  }, [dispatch, state.fileBlobs]);
 
   const handleUpdateFile = (index: number, updates: Partial<DetectedFile>) => {
     dispatch({ type: "UPDATE_FILE", payload: { index, updates } });
@@ -341,8 +464,14 @@ export function FileMappingStep() {
         </div>
       )}
 
-      {/* File list */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      {/* File list with drag-and-drop */}
+      <div
+        className="flex-1 min-h-0 flex flex-col"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleFileDrop}
+      >
         <div className="flex items-center justify-between mb-2">
           <Label>
             Dataset Files{" "}
@@ -359,34 +488,47 @@ export function FileMappingStep() {
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 border rounded-md">
-          {state.files.length > 0 ? (
-            state.files.map((file, idx) => (
-              <FileRow
-                key={file.path}
-                file={file}
-                index={idx}
-                onUpdate={(updates) => handleUpdateFile(idx, updates)}
-                onRemove={() => handleRemoveFile(idx)}
-                maxSource={maxSource}
-              />
-            ))
-          ) : (
-            <div className="p-8 text-center text-muted-foreground">
-              <File className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No files detected</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={handleAddFiles}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Files
-              </Button>
+        <div className={`flex-1 relative border rounded-md transition-colors ${isDraggingOver ? "border-primary border-dashed bg-primary/5" : ""}`}>
+          <ScrollArea className="h-full">
+            {state.files.length > 0 ? (
+              state.files.map((file, idx) => (
+                <FileRow
+                  key={file.path}
+                  file={file}
+                  index={idx}
+                  onUpdate={(updates) => handleUpdateFile(idx, updates)}
+                  onRemove={() => handleRemoveFile(idx)}
+                  maxSource={maxSource}
+                />
+              ))
+            ) : (
+              <div className="p-8 text-center text-muted-foreground">
+                <File className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No files detected</p>
+                <p className="text-xs mt-1">Drag files here or use the button below</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={handleAddFiles}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Files
+                </Button>
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* Drag overlay */}
+          {isDraggingOver && (
+            <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-md pointer-events-none z-10">
+              <div className="flex flex-col items-center gap-2 text-primary">
+                <Upload className="h-8 w-8" />
+                <span className="text-sm font-medium">Drop files to add</span>
+              </div>
             </div>
           )}
-        </ScrollArea>
+        </div>
       </div>
 
     </div>

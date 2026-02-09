@@ -129,7 +129,6 @@ export function SyntheticDataDialog({
     onSuccess: (data) => {
       // Invalidate datasets query to refresh the list
       queryClient.invalidateQueries({ queryKey: ["datasets"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       onDatasetGenerated?.(data.dataset_id ?? undefined);
 
       // Close dialog after short delay to show success message

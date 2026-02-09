@@ -11,7 +11,7 @@ import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
@@ -367,3 +367,33 @@ async def delete_errors():
         "success": True,
         "cleared": count,
     }
+
+
+class OpenFolderRequest(BaseModel):
+    """Request to open a folder in the system file explorer."""
+    path: str
+
+
+@router.post("/system/open-folder")
+async def open_folder(request: OpenFolderRequest):
+    """Open a folder in the system file explorer."""
+    import subprocess
+
+    folder_path = Path(request.path)
+    if not folder_path.exists():
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    # If path is a file, open its parent directory
+    if folder_path.is_file():
+        folder_path = folder_path.parent
+
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(folder_path)])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(folder_path)])
+        else:
+            subprocess.Popen(["xdg-open", str(folder_path)])
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to open folder: {e}")

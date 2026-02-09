@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "@/lib/motion";
 import {
-  LayoutDashboard,
   Database,
   FlaskConical,
   GitBranch,
+  Pencil,
+  Search,
   Play,
   BarChart3,
+  Layers,
   Target,
   Beaker,
   Settings,
@@ -26,21 +28,26 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const mainNavItems: NavItem[] = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
+const dataNavItems: NavItem[] = [
   { title: "Datasets", href: "/datasets", icon: Database },
-  { title: "Playground", href: "/playground", icon: FlaskConical },
-];
-
-const workflowNavItems: NavItem[] = [
   { title: "Pipelines", href: "/pipelines", icon: GitBranch },
-  { title: "Runs", href: "/runs", icon: Play },
-  { title: "Results", href: "/results", icon: BarChart3 },
+  { title: "Pipeline Editor", href: "/pipelines/new", icon: Pencil },
 ];
 
-const analysisNavItems: NavItem[] = [
+const exploreNavItems: NavItem[] = [
+  { title: "Playground", href: "/playground", icon: FlaskConical },
+  { title: "Inspector", href: "/inspector", icon: Search },
+];
+
+const resultsNavItems: NavItem[] = [
+  { title: "Runs", href: "/runs", icon: Play },
+  { title: "Scores", href: "/results", icon: BarChart3 },
+  { title: "Aggregated", href: "/results/aggregated", icon: Layers },
   { title: "Predictions", href: "/predictions", icon: Target },
-  { title: "Analysis", href: "/analysis", icon: Beaker },
+];
+
+const labNavItems: NavItem[] = [
+  { title: "Lab", href: "/lab", icon: Beaker },
 ];
 
 export function MobileSidebar() {
@@ -65,8 +72,17 @@ export function MobileSidebar() {
   }, [isOpen]);
 
   const isActive = (href: string) => {
-    if (href === "/") {
-      return location.pathname === "/";
+    if (href === "/pipelines/new") {
+      return location.pathname.startsWith("/pipelines/");
+    }
+    if (href === "/pipelines") {
+      return location.pathname === "/pipelines";
+    }
+    if (href === "/results") {
+      return location.pathname === "/results";
+    }
+    if (href === "/results/aggregated") {
+      return location.pathname === "/results/aggregated";
     }
     return location.pathname.startsWith(href);
   };
@@ -166,11 +182,13 @@ export function MobileSidebar() {
               {/* Navigation */}
               <ScrollArea className="flex-1 px-3 py-4">
                 <div className="space-y-6">
-                  {renderNavGroup("Main", mainNavItems)}
+                  {renderNavGroup("Data", dataNavItems)}
                   <Separator className="mx-3" />
-                  {renderNavGroup("Workflow", workflowNavItems)}
+                  {renderNavGroup("Explore", exploreNavItems)}
                   <Separator className="mx-3" />
-                  {renderNavGroup("Analysis", analysisNavItems)}
+                  {renderNavGroup("Results", resultsNavItems)}
+                  <Separator className="mx-3" />
+                  {renderNavGroup("Lab", labNavItems)}
                 </div>
               </ScrollArea>
 

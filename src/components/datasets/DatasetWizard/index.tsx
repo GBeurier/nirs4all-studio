@@ -363,9 +363,10 @@ function DataStats() {
 interface WizardContentProps {
   onAdd: (path: string, config: Partial<DatasetConfig>) => Promise<void>;
   onClose: () => void;
+  onScanFolder?: (path: string) => void;
 }
 
-function WizardContent({ onAdd, onClose }: WizardContentProps) {
+function WizardContent({ onAdd, onClose, onScanFolder }: WizardContentProps) {
   const { state, dispatch, nextStep, prevStep, canProceed } = useWizard();
   const currentIndex = STEP_ORDER.indexOf(state.step);
   const isFirstStep = currentIndex === 0;
@@ -461,7 +462,7 @@ function WizardContent({ onAdd, onClose }: WizardContentProps) {
   const renderStep = () => {
     switch (state.step) {
       case "source":
-        return <SourceStep />;
+        return <SourceStep onScanFolder={onScanFolder ? (path) => { onClose(); onScanFolder(path); } : undefined} />;
       case "files":
         return <FileMappingStep />;
       case "parsing":
@@ -547,9 +548,11 @@ interface DatasetWizardProps {
   onAdd: (path: string, config?: Partial<DatasetConfig>) => Promise<void>;
   /** Initial state from drag-and-drop */
   initialState?: WizardInitialState;
+  /** Callback to open batch scan dialog from wizard source step */
+  onScanFolder?: (path: string) => void;
 }
 
-export function DatasetWizard({ open, onOpenChange, onAdd, initialState }: DatasetWizardProps) {
+export function DatasetWizard({ open, onOpenChange, onAdd, initialState, onScanFolder }: DatasetWizardProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -558,7 +561,7 @@ export function DatasetWizard({ open, onOpenChange, onAdd, initialState }: Datas
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <WizardProvider initialState={initialState}>
-          <WizardContent onAdd={onAdd} onClose={() => onOpenChange(false)} />
+          <WizardContent onAdd={onAdd} onClose={() => onOpenChange(false)} onScanFolder={onScanFolder} />
         </WizardProvider>
       </DialogContent>
     </Dialog>

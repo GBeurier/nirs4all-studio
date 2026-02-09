@@ -189,6 +189,8 @@ export interface Dataset {
   linked_at: string;
   status?: "available" | "missing" | "loading" | "error";
   group_id?: string;
+  /** Group IDs this dataset belongs to (multi-group) */
+  group_ids?: string[];
   /** Optional description for the dataset */
   description?: string;
 
@@ -426,6 +428,33 @@ export interface UnifiedDetectionResponse {
   has_fold_file: boolean;
   fold_file_path?: string;
   metadata_columns: string[];
+  warnings: string[];
+}
+
+/**
+ * A dataset detected during recursive folder scan
+ */
+export interface ScannedDataset {
+  folder_path: string;
+  folder_name: string;
+  groups: string[];
+  files: DetectedFile[];
+  parsing_options: Partial<ParsingOptions>;
+  confidence?: DetectionConfidence;
+  has_fold_file: boolean;
+  fold_file_path?: string;
+  metadata_columns: string[];
+  warnings: string[];
+}
+
+/**
+ * Response from recursive folder scan
+ */
+export interface ScanFolderResponse {
+  success: boolean;
+  root_path: string;
+  datasets: ScannedDataset[];
+  total_scanned_folders: number;
   warnings: string[];
 }
 

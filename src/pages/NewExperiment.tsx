@@ -195,7 +195,7 @@ export default function NewExperiment() {
         console.error('Failed to load current edited pipeline:', e);
       }
       // Clean up URL
-      navigate('/runs/new', { replace: true });
+      navigate('/editor', { replace: true });
     } else if (pipelineId && pipelinesData?.pipelines) {
       // Check if the pipeline exists in the loaded pipelines
       const exists = pipelinesData.pipelines.some(p => p.id === pipelineId);
@@ -207,7 +207,7 @@ export default function NewExperiment() {
         }
       }
       // Clean up URL
-      navigate('/runs/new', { replace: true });
+      navigate('/editor', { replace: true });
     }
   }, [searchParams, pipelinesData, navigate]); // Intentionally not including selectedPipelines
 

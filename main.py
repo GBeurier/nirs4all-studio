@@ -34,7 +34,6 @@ from api.models import router as models_router
 from api.analysis import router as analysis_router
 from api.evaluation import router as evaluation_router
 from api.automl import router as automl_router
-from api.dashboard import router as dashboard_router
 from api.runs import router as runs_router
 from api.playground import router as playground_router
 from api.updates import router as updates_router
@@ -114,7 +113,6 @@ app.include_router(models_router, prefix="/api", tags=["models"])
 app.include_router(analysis_router, prefix="/api", tags=["analysis"])
 app.include_router(evaluation_router, prefix="/api", tags=["evaluation"])
 app.include_router(automl_router, prefix="/api", tags=["automl"])
-app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
 app.include_router(runs_router, prefix="/api", tags=["runs"])
 app.include_router(playground_router, prefix="/api", tags=["playground"])
 app.include_router(updates_router, prefix="/api", tags=["updates"])

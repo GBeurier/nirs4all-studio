@@ -334,6 +334,7 @@ import type {
   RefreshDatasetResponse,
   RelinkDatasetRequest,
   RelinkDatasetResponse,
+  ScanFolderResponse,
 } from "@/types/datasets";
 
 export async function listDatasets(verifyIntegrity: boolean = false): Promise<DatasetListResponse> {
@@ -403,6 +404,26 @@ export async function detectUnified(
   request: DetectFilesRequest
 ): Promise<UnifiedDetectionResponse> {
   return api.post("/datasets/detect-unified", request);
+}
+
+/**
+ * Detect file roles from a list of individual file paths using nirs4all patterns.
+ * Returns same structure as detectUnified - files with roles, parsing options, etc.
+ */
+export async function detectFilesList(
+  paths: string[]
+): Promise<UnifiedDetectionResponse> {
+  return api.post("/datasets/detect-files-list", { paths });
+}
+
+/**
+ * Recursively scan a folder for datasets using nirs4all FolderParser.
+ * Returns detected datasets with their files, groups (parent folders), and parsing options.
+ */
+export async function scanFolder(
+  path: string
+): Promise<ScanFolderResponse> {
+  return api.post("/datasets/scan-folder", { path });
 }
 
 /**
@@ -1229,6 +1250,18 @@ export async function getErrorLogs(limit: number = 50): Promise<ErrorLogResponse
  */
 export async function clearErrorLogs(): Promise<{ success: boolean; cleared: number }> {
   return api.delete("/system/errors");
+}
+
+/**
+ * Open a folder in the system file explorer.
+ * Uses Electron shell API in desktop mode, backend endpoint in web mode.
+ */
+export async function openFolderInExplorer(path: string): Promise<void> {
+  if (window.electronApi?.revealInExplorer) {
+    await window.electronApi.revealInExplorer(path);
+  } else {
+    await api.post("/system/open-folder", { path });
+  }
 }
 
 // ============= Phase 7: nirs4all Workspace Management =============

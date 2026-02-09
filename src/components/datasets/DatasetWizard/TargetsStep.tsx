@@ -7,7 +7,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Layers,
-  Settings,
   AlertCircle,
   Info,
   Loader2,
@@ -569,8 +568,8 @@ export function TargetsStep() {
           <div className="flex items-center justify-between w-full px-4 py-3 hover:bg-muted/30">
             <CollapsibleTrigger asChild>
               <div className="flex items-center gap-2 cursor-pointer flex-1">
-                <Settings className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">Aggregation</span>
+                <Repeat className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">Repetition</span>
                 <Badge variant="outline" className="text-[10px]">Optional</Badge>
               </div>
             </CollapsibleTrigger>
@@ -587,11 +586,11 @@ export function TargetsStep() {
             {state.aggregation.enabled && (
               <div className="px-4 pb-4 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Combine predictions from multiple spectra of the same sample.
+                  Group repeated measurements of the same sample. Identifies which spectra belong to the same physical sample for proper splitting and aggregation.
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Column</Label>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Repetition Column</Label>
                     {state.metadataColumns.length > 0 || state.targets.length > 0 ? (
                       <Select
                         value={state.aggregation.column || ""}

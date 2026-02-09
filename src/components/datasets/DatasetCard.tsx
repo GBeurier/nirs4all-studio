@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DatasetStatusBadge } from "./DatasetStatusBadge";
+import { openFolderInExplorer } from "@/api/client";
 import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";
 
 interface DatasetCardProps {
@@ -51,8 +52,8 @@ interface DatasetCardProps {
 /**
  * Format number with commas
  */
-function formatNumber(num: number | undefined): string {
-  if (num === undefined) return "--";
+function formatNumber(num: number | undefined | null): string {
+  if (num == null) return "--";
   return num.toLocaleString();
 }
 
@@ -72,8 +73,8 @@ export function DatasetCard({
 }: DatasetCardProps) {
   const versionStatus = (dataset.version_status || "unchecked") as DatasetVersionStatus;
 
-  // Find assigned group
-  const assignedGroup = groups.find((g) =>
+  // Find assigned groups (multi-group support)
+  const assignedGroups = groups.filter((g) =>
     g.dataset_ids?.includes(dataset.id)
   );
 
@@ -104,15 +105,16 @@ export function DatasetCard({
             lastVerified={dataset.last_verified}
             hash={dataset.hash}
           />
-          {/* Group badge */}
-          {assignedGroup && (
+          {/* Group badges */}
+          {assignedGroups.map((g) => (
             <Badge
+              key={g.id}
               variant="default"
               className="bg-primary/20 text-primary hover:bg-primary/30 text-xs"
             >
-              {assignedGroup.name}
+              {g.name}
             </Badge>
-          )}
+          ))}
         </div>
         <p className="text-sm text-muted-foreground font-mono truncate">{dataset.path}</p>
       </div>
@@ -128,9 +130,13 @@ export function DatasetCard({
           <p className="font-medium text-foreground">{formatNumber(dataset.num_features)}</p>
         </div>
         <div className="text-center min-w-[80px]">
-          <p className="text-muted-foreground text-xs">Targets</p>
+          <p className="text-muted-foreground text-xs">Task</p>
           <p className="font-medium text-foreground truncate max-w-[80px]">
-            {dataset.targets?.map(t => t.column).join(", ") || "--"}
+            {dataset.task_type === "regression"
+              ? "Reg"
+              : dataset.task_type === "classification"
+                ? (dataset.num_classes && dataset.num_classes > 2 ? "Multi" : "Classif")
+                : "--"}
           </p>
         </div>
       </div>
@@ -204,7 +210,7 @@ export function DatasetCard({
                 className="h-8 w-8"
                 onClick={() => {
                   if (dataset.path) {
-                    window.open(`file://${dataset.path}`, "_blank");
+                    openFolderInExplorer(dataset.path);
                   }
                 }}
               >
@@ -281,23 +287,26 @@ export function DatasetCard({
                 </div>
                 <DropdownMenuItem
                   onClick={() => onAssignGroup(dataset, null)}
-                  className={!assignedGroup ? "bg-accent/50" : ""}
+                  className={assignedGroups.length === 0 ? "bg-accent/50" : ""}
                 >
-                  {!assignedGroup && <Check className="h-4 w-4 mr-2" />}
-                  {assignedGroup && <span className="w-6" />}
+                  {assignedGroups.length === 0 && <Check className="h-4 w-4 mr-2" />}
+                  {assignedGroups.length > 0 && <span className="w-6" />}
                   No Group
                 </DropdownMenuItem>
-                {groups.map((group) => (
-                  <DropdownMenuItem
-                    key={group.id}
-                    onClick={() => onAssignGroup(dataset, group.id)}
-                    className={assignedGroup?.id === group.id ? "bg-accent/50" : ""}
-                  >
-                    {assignedGroup?.id === group.id && <Check className="h-4 w-4 mr-2" />}
-                    {assignedGroup?.id !== group.id && <span className="w-6" />}
-                    {group.name}
-                  </DropdownMenuItem>
-                ))}
+                {groups.map((group) => {
+                  const isAssigned = assignedGroups.some(g => g.id === group.id);
+                  return (
+                    <DropdownMenuItem
+                      key={group.id}
+                      onClick={() => onAssignGroup(dataset, group.id)}
+                      className={isAssigned ? "bg-accent/50" : ""}
+                    >
+                      {isAssigned && <Check className="h-4 w-4 mr-2" />}
+                      {!isAssigned && <span className="w-6" />}
+                      {group.name}
+                    </DropdownMenuItem>
+                  );
+                })}
               </>
             )}
           </DropdownMenuContent>

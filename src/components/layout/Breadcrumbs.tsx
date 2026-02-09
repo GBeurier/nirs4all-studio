@@ -11,13 +11,18 @@ interface BreadcrumbItem {
 // Map route segments to translation keys
 const routeTranslationKeys: Record<string, string> = {
   datasets: "nav.datasets",
-  playground: "nav.playground",
   pipelines: "nav.pipelines",
+  editor: "nav.editor",
+  playground: "nav.playground",
+  inspector: "nav.inspector",
   runs: "nav.runs",
-  results: "nav.results",
-  predictions: "nav.predictions",
+  results: "nav.scores",
   aggregated: "nav.aggregatedResults",
-  analysis: "nav.analysis",
+  predictions: "nav.predictions",
+  lab: "nav.lab",
+  synthesis: "lab.tabs.synthesis",
+  transfer: "lab.tabs.transfer",
+  shapley: "lab.tabs.shapley",
   settings: "nav.settings",
   new: "pipelines.newPipeline",
 };
@@ -30,7 +35,7 @@ export function Breadcrumbs() {
     const paths = pathname.split("/").filter(Boolean);
 
     if (paths.length === 0) {
-      return [{ label: t("nav.dashboard") }];
+      return [{ label: t("nav.datasets") }];
     }
 
     const breadcrumbs: BreadcrumbItem[] = [];
@@ -61,21 +66,16 @@ export function Breadcrumbs() {
     return breadcrumbs;
   };
 
-  // Don't show breadcrumbs on the dashboard
-  if (location.pathname === "/") {
-    return null;
-  }
-
   const breadcrumbs = generateBreadcrumbs(location.pathname);
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm">
       <Link
-        to="/"
+        to="/datasets"
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
       >
         <Home className="h-4 w-4" />
-        <span className="sr-only">{t("nav.dashboard")}</span>
+        <span className="sr-only">{t("nav.datasets")}</span>
       </Link>
 
       {breadcrumbs.map((item, index) => (

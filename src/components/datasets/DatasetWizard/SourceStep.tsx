@@ -8,7 +8,7 @@
  * - Synthetic (generate) - future
  */
 import { useRef } from "react";
-import { Folder, File, Info } from "lucide-react";
+import { Folder, File, FolderSearch, Info } from "lucide-react";
 import { useWizard } from "./WizardContext";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import { detectUnified } from "@/api/client";
@@ -51,7 +51,11 @@ function SourceOption({
   );
 }
 
-export function SourceStep() {
+interface SourceStepProps {
+  onScanFolder?: (path: string) => void;
+}
+
+export function SourceStep({ onScanFolder }: SourceStepProps) {
   const { state, dispatch, nextStep } = useWizard();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -233,6 +237,18 @@ export function SourceStep() {
     }
   };
 
+  const handleScanFolder = async () => {
+    if (!onScanFolder) return;
+    try {
+      const folderPath = await selectFolder();
+      if (folderPath && typeof folderPath === "string") {
+        onScanFolder(folderPath);
+      }
+    } catch (error) {
+      console.error("Failed to select folder for scan:", error);
+    }
+  };
+
   return (
     <div className="py-6">
       <div className="grid grid-cols-2 gap-4">
@@ -252,16 +268,15 @@ export function SourceStep() {
           onClick={handleSelectFiles}
         />
 
-        {/* Generate Synthetic - TODO: enable when nirs4all.generate() is integrated
-        <SourceOption
-          type="synthetic"
-          icon={<Sparkles className="h-12 w-12" />}
-          title="Generate Synthetic"
-          description="Create a synthetic dataset for testing."
-          disabled
-          onClick={() => {}}
-        />
-        */}
+        {isDesktopMode && onScanFolder && (
+          <SourceOption
+            type="folder"
+            icon={<FolderSearch className="h-12 w-12" />}
+            title="Scan Folder"
+            description="Recursively scan a folder for multiple datasets."
+            onClick={handleScanFolder}
+          />
+        )}
       </div>
 
       {/* Hidden file input for web mode */}

@@ -38,6 +38,7 @@ import {
   DatasetWizard,
   SyntheticDataDialog,
   DatasetQuickView,
+  BatchScanDialog,
   DropZoneOverlay,
   useDragDrop,
   type DroppedContent,
@@ -60,18 +61,9 @@ import {
   getLinkedWorkspaces,
   reloadWorkspace,
   detectUnified,
+  detectFilesList,
 } from "@/api/client";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
-
-/** Get filename stem (without extension) */
-function getStem(filename: string): string {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith('.csv.gz') || lower.endsWith('.csv.zip')) {
-    return filename.slice(0, -7);
-  }
-  const idx = filename.lastIndexOf('.');
-  return idx > 0 ? filename.slice(0, idx) : filename;
-}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -106,10 +98,24 @@ export default function Datasets() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterGroup, setFilterGroup] = useState<FilterGroup>("all");
 
-  // Sort state
+  // Sort state — persisted to localStorage
   type SortField = "name" | "linked_at" | "num_samples" | "group";
-  const [sortField, setSortField] = useState<SortField>("linked_at");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [sortField, setSortField] = useState<SortField>(() => {
+    const saved = localStorage.getItem("datasets_sortField");
+    return (saved as SortField) || "linked_at";
+  });
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">(() => {
+    const saved = localStorage.getItem("datasets_sortDirection");
+    return (saved as "asc" | "desc") || "desc";
+  });
+
+  // Persist sort state to localStorage
+  useEffect(() => {
+    localStorage.setItem("datasets_sortField", sortField);
+  }, [sortField]);
+  useEffect(() => {
+    localStorage.setItem("datasets_sortDirection", sortDirection);
+  }, [sortDirection]);
 
   // Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -125,6 +131,10 @@ export default function Datasets() {
   // Drag-and-drop state
   const [wizardInitialState, setWizardInitialState] = useState<WizardInitialState | undefined>(undefined);
 
+  // Batch scan state
+  const [batchScanOpen, setBatchScanOpen] = useState(false);
+  const [batchScanPath, setBatchScanPath] = useState("");
+
   // Handle files/folders dropped from OS
   const handleDrop = useCallback(async (content: DroppedContent) => {
     // Start with basic initial state
@@ -136,8 +146,30 @@ export default function Datasets() {
 
     // For folder drops with a valid path, use unified detection
     if (content.type === "folder" && content.path) {
+      // Multiple folders dropped → compute common parent and batch scan
+      if (content.paths.length > 1) {
+        const sep = content.paths[0].includes("\\") ? "\\" : "/";
+        const parts = content.paths.map((p) => p.split(/[/\\]/));
+        let commonParts: string[] = [];
+        for (let i = 0; i < parts[0].length; i++) {
+          if (parts.every((p) => p[i] === parts[0][i])) {
+            commonParts.push(parts[0][i]);
+          } else break;
+        }
+        const commonParent = commonParts.join(sep);
+        setBatchScanPath(commonParent || content.paths[0]);
+        setBatchScanOpen(true);
+        return;
+      }
+
       try {
         const result = await detectUnified({ path: content.path, recursive: true });
+        if (result.files.length === 0 || !result.has_standard_structure) {
+          // No dataset detected — offer batch scan
+          setBatchScanPath(content.path);
+          setBatchScanOpen(true);
+          return;
+        }
         // Enrich initial state with detection results
         initialState.files = result.files;
         initialState.detectedParsing = result.parsing_options;
@@ -145,58 +177,35 @@ export default function Datasets() {
         initialState.foldFilePath = result.fold_file_path;
         initialState.metadataColumns = result.metadata_columns;
       } catch (e) {
-        console.warn("Unified detection failed, wizard will handle manually:", e);
+        // Detection failed — offer batch scan as fallback
+        console.warn("Unified detection failed:", e);
+        setBatchScanPath(content.path);
+        setBatchScanOpen(true);
+        return;
+      }
+    } else if (content.type === "files" && content.paths.length > 0) {
+      // Desktop mode: individual files dropped — use backend detection
+      try {
+        const result = await detectFilesList(content.paths);
+        initialState.files = result.files;
+        initialState.detectedParsing = result.parsing_options;
+        initialState.hasFoldFile = result.has_fold_file;
+        initialState.foldFilePath = result.fold_file_path;
+        initialState.metadataColumns = result.metadata_columns;
+        // Derive basePath from common parent directory
+        const firstPath = content.paths[0];
+        const sep = firstPath.includes("\\") ? "\\" : "/";
+        const parentDir = firstPath.substring(0, firstPath.lastIndexOf(sep));
+        initialState.basePath = parentDir;
+      } catch (e) {
+        console.warn("File detection failed, wizard will handle manually:", e);
       }
     } else if (content.type === "folder" && content.folderName && content.items.length > 0) {
       // Web mode: folder dropped with file contents but no filesystem path
-      // Use folder name and convert File objects to DetectedFile format
-      initialState.basePath = content.folderName; // Use folder name as base path for dataset naming
+      initialState.basePath = content.folderName;
       const detectedFiles = content.items.map((file) => {
         const filename = file.name;
         const lowerName = filename.toLowerCase();
-        const stem = getStem(lowerName);
-
-        let type: "X" | "Y" | "metadata" | "folds" | "unknown" = "unknown";
-        let split: "train" | "test" | "unknown" = "unknown";
-
-        // Match nirs4all FILE_PATTERNS - X patterns
-        const xTrainPatterns = ["xcal", "x_cal", "cal_x", "calx", "train_x", "trainx", "x_train", "xtrain"];
-        const xTestPatterns = ["xval", "x_val", "val_x", "valx", "xtest", "x_test", "test_x", "testx"];
-        // Y patterns
-        const yTrainPatterns = ["ycal", "y_cal", "cal_y", "caly", "train_y", "trainy", "y_train", "ytrain"];
-        const yTestPatterns = ["ytest", "y_test", "test_y", "testy", "yval", "y_val", "val_y", "valy"];
-        // Metadata patterns
-        const metaTrainPatterns = ["mcal", "m_cal", "cal_m", "calm", "train_m", "trainm", "m_train", "mtrain",
-          "metacal", "meta_cal", "cal_meta", "calmeta", "train_meta", "trainmeta", "meta_train", "metatrain",
-          "metadatacal", "metadata_cal", "cal_metadata", "calmetadata", "train_metadata", "trainmetadata", "metadata_train", "metadatatrain"];
-        const metaTestPatterns = ["mtest", "m_test", "test_m", "testm", "mval", "m_val", "val_m", "valm",
-          "metatest", "meta_test", "test_meta", "testmeta", "metaval", "meta_val", "val_meta", "valmeta",
-          "metadatatest", "metadata_test", "test_metadata", "testmetadata", "metadataval", "metadata_val", "val_metadata", "valmetadata"];
-        // Fold patterns
-        const foldPatterns = ["folds", "fold", "cv_folds", "cvfolds", "cross_validation", "crossvalidation", "cv", "splits"];
-
-        // Check patterns (using substring match like nirs4all)
-        if (xTrainPatterns.some(p => lowerName.includes(p))) {
-          type = "X"; split = "train";
-        } else if (xTestPatterns.some(p => lowerName.includes(p))) {
-          type = "X"; split = "test";
-        } else if (yTrainPatterns.some(p => lowerName.includes(p))) {
-          type = "Y"; split = "train";
-        } else if (yTestPatterns.some(p => lowerName.includes(p))) {
-          type = "Y"; split = "test";
-        } else if (metaTrainPatterns.some(p => lowerName.includes(p))) {
-          type = "metadata"; split = "train";
-        } else if (metaTestPatterns.some(p => lowerName.includes(p))) {
-          type = "metadata"; split = "test";
-        } else if (foldPatterns.some(p => lowerName.includes(p))) {
-          type = "folds"; split = "train";
-        } else if (stem === "x") {
-          type = "X"; split = "train";
-        } else if (stem === "y") {
-          type = "Y"; split = "train";
-        } else if (["m", "meta", "metadata", "group"].includes(stem)) {
-          type = "metadata"; split = "train";
-        }
 
         let format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet" = "csv";
         if (lowerName.endsWith(".xlsx")) format = "xlsx";
@@ -209,16 +218,15 @@ export default function Datasets() {
         return {
           path: content.relativePaths?.find(p => p.endsWith(filename)) || filename,
           filename,
-          type: type === "folds" ? "unknown" : type, // folds handled separately
-          split: split === "unknown" ? "train" : split,
-          source: type === "X" ? 1 : null,
+          type: "unknown" as const,
+          split: "train" as const,
+          source: null,
           format,
           size_bytes: file.size,
-          confidence: type !== "unknown" ? 0.9 : 0.3,
-          detected: true,
+          confidence: 0,
+          detected: false,
         };
       });
-
       initialState.files = detectedFiles;
 
       // Store File objects for web mode (needed for reading file content)
@@ -226,6 +234,39 @@ export default function Datasets() {
       content.items.forEach((file) => {
         const path = content.relativePaths?.find(p => p.endsWith(file.name)) || file.name;
         fileBlobs.set(path, file);
+      });
+      initialState.fileBlobs = fileBlobs;
+    } else if (content.type === "files" && content.items.length > 0) {
+      // Web mode: files dropped without paths — format detection only
+      const detectedFiles = content.items.map((file) => {
+        const filename = file.name;
+        const lowerName = filename.toLowerCase();
+
+        let format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet" = "csv";
+        if (lowerName.endsWith(".xlsx")) format = "xlsx";
+        else if (lowerName.endsWith(".xls")) format = "xls";
+        else if (lowerName.endsWith(".parquet")) format = "parquet";
+        else if (lowerName.endsWith(".npy")) format = "npy";
+        else if (lowerName.endsWith(".npz")) format = "npz";
+        else if (lowerName.endsWith(".mat")) format = "mat";
+
+        return {
+          path: filename,
+          filename,
+          type: "unknown" as const,
+          split: "train" as const,
+          source: null,
+          format,
+          size_bytes: file.size,
+          confidence: 0,
+          detected: false,
+        };
+      });
+      initialState.files = detectedFiles;
+
+      const fileBlobs = new Map<string, File>();
+      content.items.forEach((file) => {
+        fileBlobs.set(file.name, file);
       });
       initialState.fileBlobs = fileBlobs;
     }
@@ -287,20 +328,20 @@ export default function Datasets() {
     };
   }).filter((ds): ds is Dataset => ds !== null);
 
-  // Helper to get assigned group for a dataset
-  const getAssignedGroup = (datasetId: string) =>
-    groups.find((g) => g.dataset_ids?.includes(datasetId));
+  // Helper to get assigned groups for a dataset (multi-group)
+  const getAssignedGroups = (datasetId: string) =>
+    groups.filter((g) => g.dataset_ids?.includes(datasetId));
 
   // Filter datasets
   const filteredDatasets = normalizedDatasets
     .filter((ds) => {
-      // Search filter (with null safety) - includes group name
-      const assignedGroup = getAssignedGroup(ds.id);
+      // Search filter (with null safety) - includes group names
+      const assignedGroups = getAssignedGroups(ds.id);
       const matchesSearch =
         !searchQuery ||
         ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ds.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (assignedGroup?.name.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+        assignedGroups.some(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
       // Group filter
       let matchesGroup = true;
@@ -326,9 +367,11 @@ export default function Datasets() {
           comparison = (a.num_samples || 0) - (b.num_samples || 0);
           break;
         case "group": {
-          // Sort by group name, ungrouped last
-          const groupA = getAssignedGroup(a.id)?.name || "\uffff"; // Unicode max to sort ungrouped last
-          const groupB = getAssignedGroup(b.id)?.name || "\uffff";
+          // Sort by first group name, ungrouped last
+          const groupsA = getAssignedGroups(a.id);
+          const groupsB = getAssignedGroups(b.id);
+          const groupA = groupsA.length > 0 ? groupsA[0].name : "\uffff";
+          const groupB = groupsB.length > 0 ? groupsB[0].name : "\uffff";
           comparison = groupA.localeCompare(groupB);
           break;
         }
@@ -343,10 +386,11 @@ export default function Datasets() {
     (sum, ds) => sum + (ds.num_samples || 0),
     0
   );
-  const totalFeatures = normalizedDatasets.reduce(
-    (sum, ds) => sum + (ds.num_features || 0),
-    0
-  );
+  const featureCounts = normalizedDatasets
+    .map((ds) => ds.num_features)
+    .filter((n): n is number => n != null && n > 0);
+  const minFeatures = featureCounts.length > 0 ? Math.min(...featureCounts) : 0;
+  const maxFeatures = featureCounts.length > 0 ? Math.max(...featureCounts) : 0;
 
   // Handlers
   const handleSelectWorkspace = () => {
@@ -405,15 +449,22 @@ export default function Datasets() {
     dataset: Dataset,
     groupId: string | null
   ) => {
-    // Remove from current group
-    const currentGroup = groups.find((g) => g.dataset_ids?.includes(dataset.id));
-    if (currentGroup) {
-      await removeDatasetFromGroup(currentGroup.id, dataset.id);
-    }
-
-    // Add to new group
-    if (groupId) {
-      await addDatasetToGroup(groupId, dataset.id);
+    if (groupId === null) {
+      // "No Group" — remove from all groups
+      const currentGroups = getAssignedGroups(dataset.id);
+      for (const g of currentGroups) {
+        await removeDatasetFromGroup(g.id, dataset.id);
+      }
+    } else {
+      // Toggle group membership: if already in group, remove; otherwise add
+      const isInGroup = groups.find(
+        (g) => g.id === groupId && g.dataset_ids?.includes(dataset.id)
+      );
+      if (isInGroup) {
+        await removeDatasetFromGroup(groupId, dataset.id);
+      } else {
+        await addDatasetToGroup(groupId, dataset.id);
+      }
     }
 
     await loadData();
@@ -519,14 +570,16 @@ export default function Datasets() {
         <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("datasets.stats.avgFeatures")}
+              {t("datasets.stats.features")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {normalizedDatasets.length > 0
-                ? Math.round(totalFeatures / normalizedDatasets.length).toLocaleString()
-                : 0}
+              {featureCounts.length > 0
+                ? minFeatures === maxFeatures
+                  ? minFeatures.toLocaleString()
+                  : `[${minFeatures.toLocaleString()}, ${maxFeatures.toLocaleString()}]`
+                : "--"}
             </div>
           </CardContent>
         </Card>
@@ -681,7 +734,7 @@ export default function Datasets() {
             </CardContent>
           </Card>
         ) : (
-          <div className="flex gap-6">
+          <div className="flex gap-6 items-start">
             {/* Dataset List */}
             <div className="flex-1 space-y-3 min-w-0">
               {filteredDatasets.map((dataset) => (
@@ -700,16 +753,18 @@ export default function Datasets() {
               ))}
             </div>
 
-            {/* Quick View Panel (inline) */}
+            {/* Quick View Panel (sticky to stay visible when scrolling) */}
             {quickViewDataset && (
-              <DatasetQuickView
-                dataset={quickViewDataset}
-                onClose={() => setQuickViewDataset(null)}
-                onEdit={(ds) => {
-                  setSelectedDataset(ds);
-                  setEditModalOpen(true);
-                }}
-              />
+              <div className="sticky top-4">
+                <DatasetQuickView
+                  dataset={quickViewDataset}
+                  onClose={() => setQuickViewDataset(null)}
+                  onEdit={(ds) => {
+                    setSelectedDataset(ds);
+                    setEditModalOpen(true);
+                  }}
+                />
+              </div>
             )}
           </div>
         )}
@@ -751,6 +806,11 @@ export default function Datasets() {
         }}
         onAdd={handleAddDataset}
         initialState={wizardInitialState}
+        onScanFolder={(path) => {
+          setWizardOpen(false);
+          setBatchScanPath(path);
+          setBatchScanOpen(true);
+        }}
       />
 
       <EditDatasetPanel
@@ -784,6 +844,14 @@ export default function Datasets() {
         open={syntheticDialogOpen}
         onOpenChange={setSyntheticDialogOpen}
         onDatasetGenerated={() => loadData()}
+      />
+
+      {/* Batch Scan Dialog */}
+      <BatchScanDialog
+        open={batchScanOpen}
+        onOpenChange={setBatchScanOpen}
+        folderPath={batchScanPath}
+        onComplete={() => loadData()}
       />
 
       {/* Drag & Drop Overlay */}

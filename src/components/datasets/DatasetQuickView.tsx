@@ -85,6 +85,11 @@ export function DatasetQuickView({
 
   if (!dataset) return null;
 
+  // Use preview summary as fallback when stored dataset stats are missing
+  const numSamples = dataset.num_samples ?? preview?.summary?.num_samples;
+  const numFeatures = dataset.num_features ?? preview?.summary?.num_features;
+  const nSources = dataset.n_sources ?? preview?.summary?.n_sources ?? 1;
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -93,9 +98,9 @@ export function DatasetQuickView({
         animate={{ opacity: 1, width: 480 }}
         exit={{ opacity: 0, width: 0 }}
         transition={{ duration: 0.2 }}
-        className="flex-shrink-0 h-full overflow-hidden"
+        className="flex-shrink-0 overflow-hidden"
       >
-        <div className="h-full rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+        <div className="max-h-[calc(100vh-6rem)] rounded-xl border border-border bg-card overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border p-4 flex-shrink-0">
             <div className="min-w-0 flex-1">
@@ -113,12 +118,12 @@ export function DatasetQuickView({
           <div className="grid grid-cols-4 gap-2 p-4 border-b border-border flex-shrink-0">
             <div className="text-center">
               <Layers className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-              <p className="text-sm font-semibold">{formatNumber(dataset.num_samples)}</p>
+              <p className="text-sm font-semibold">{formatNumber(numSamples)}</p>
               <p className="text-xs text-muted-foreground">Samples</p>
             </div>
             <div className="text-center">
               <Hash className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-              <p className="text-sm font-semibold">{formatNumber(dataset.num_features)}</p>
+              <p className="text-sm font-semibold">{formatNumber(numFeatures)}</p>
               <p className="text-xs text-muted-foreground">Features</p>
             </div>
             <div className="text-center">
@@ -128,7 +133,7 @@ export function DatasetQuickView({
             </div>
             <div className="text-center">
               <Database className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-              <p className="text-sm font-semibold">{dataset.n_sources || 1}</p>
+              <p className="text-sm font-semibold">{nSources}</p>
               <p className="text-xs text-muted-foreground">Sources</p>
             </div>
           </div>
@@ -165,7 +170,34 @@ export function DatasetQuickView({
                   </div>
                 )}
 
-                {preview?.spectra_preview && !loading && !error && (
+                {!loading && !error && preview?.spectra_per_source &&
+                  Object.keys(preview.spectra_per_source).length > 1 && (
+                  <div className="space-y-4">
+                    {Object.entries(preview.spectra_per_source).map(([sourceIdx, sourceData]) => (
+                      <div key={sourceIdx} className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Source {Number(sourceIdx) + 1}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {sourceData.wavelengths.length} points
+                          </span>
+                        </div>
+                        <SpectraChart
+                          wavelengths={sourceData.wavelengths}
+                          meanSpectrum={sourceData.mean_spectrum}
+                          minSpectrum={sourceData.min_spectrum}
+                          maxSpectrum={sourceData.max_spectrum}
+                          width={440}
+                          height={200}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!loading && !error && preview?.spectra_preview &&
+                  !(preview.spectra_per_source && Object.keys(preview.spectra_per_source).length > 1) && (
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-muted-foreground">Mean spectrum with min/max range</span>
@@ -184,7 +216,7 @@ export function DatasetQuickView({
                   </div>
                 )}
 
-                {!preview?.spectra_preview && !loading && !error && (
+                {!preview?.spectra_preview && !preview?.spectra_per_source && !loading && !error && (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <BarChart3 className="h-8 w-8 mb-4 opacity-50" />
                     <p className="text-sm">No spectra data available</p>
@@ -278,11 +310,11 @@ export function DatasetQuickView({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 bg-muted/30 rounded-lg">
                       <p className="text-xs text-muted-foreground">Samples</p>
-                      <p className="text-xl font-bold">{formatNumber(dataset.num_samples)}</p>
+                      <p className="text-xl font-bold">{formatNumber(numSamples)}</p>
                     </div>
                     <div className="p-3 bg-muted/30 rounded-lg">
                       <p className="text-xs text-muted-foreground">Features</p>
-                      <p className="text-xl font-bold">{formatNumber(dataset.num_features)}</p>
+                      <p className="text-xl font-bold">{formatNumber(numFeatures)}</p>
                     </div>
                     <div className="p-3 bg-muted/30 rounded-lg">
                       <p className="text-xs text-muted-foreground">Spectral Range</p>

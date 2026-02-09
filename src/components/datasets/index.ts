@@ -23,6 +23,9 @@ export { TargetSelector, TargetBadge, TargetsList } from "./TargetSelector";
 // Phase 4: Synthetic Data Generation (Developer Mode)
 export { SyntheticDataDialog } from "./SyntheticDataDialog";
 
+// Batch Scan
+export { BatchScanDialog } from "./BatchScanDialog";
+
 // Drag & Drop
 export { DropZoneOverlay, useDragDrop } from "./DropZoneOverlay";
 export type { DroppedContent } from "./DropZoneOverlay";

@@ -80,19 +80,18 @@ const fr = {
 
   // ============= Navigation =============
   nav: {
-    dashboard: "Tableau de bord",
     datasets: "Jeux de données",
     pipelines: "Pipelines",
     pipelineEditor: "Éditeur de pipeline",
+    editor: "Éditeur",
     playground: "Bac à sable",
+    inspector: "Inspecteur",
     runs: "Exécutions",
-    results: "Résultats",
+    scores: "Scores",
     predictions: "Prédictions",
     aggregatedResults: "Résultats agrégés",
-    analysis: "Analyse",
-    synthesis: "Synthèse",
+    lab: "Labo",
     settings: "Paramètres",
-    newExperiment: "Nouvelle expérience",
   },
 
   // ============= Settings Page =============
@@ -440,9 +439,10 @@ const fr = {
   layout: {
     sidebar: {
       groups: {
-        main: "Principal",
-        workflow: "Flux de travail",
-        analysis: "Analyse",
+        data: "Données",
+        explore: "Explorer",
+        results: "Résultats",
+        lab: "Labo",
       },
     },
     header: {
@@ -452,72 +452,19 @@ const fr = {
     },
   },
 
-  // ============= Dashboard =============
-  dashboard: {
-    title: "Tableau de bord",
-    welcome: "Bon retour",
-    quickStart: "Démarrage rapide",
-    quickActions: "Actions rapides",
-    recentActivity: "Activité récente",
-    recentExperiments: "Expériences récentes",
-    viewAll: "Voir tout",
-    getStarted: "Commencer",
-    stats: {
-      datasets: "Jeux de données",
-      pipelines: "Pipelines",
-      runs: "Exécutions",
-      experiments: "Expériences",
-      models: "Modèles",
-      avgR2: "R² moyen",
-      bestModels: "meilleurs modèles",
-    },
-    quickStartItems: {
-      loadDataset: "Charger un jeu de données",
-      loadDatasetDesc: "Lier des fichiers spectraux locaux",
-      buildPipeline: "Créer un pipeline",
-      buildPipelineDesc: "Configurer le prétraitement et les modèles",
-      playground: "Bac à sable",
-      playgroundDesc: "Explorer et visualiser les spectres",
-      viewResults: "Voir les résultats",
-      viewResultsDesc: "Analyser les prédictions et métriques",
-    },
-    empty: {
-      title: "Aucune expérience",
-      description: "Commencez par charger un jeu de données et créer un pipeline pour lancer votre première expérience.",
-    },
-    developer: {
-      title: "Démarrage rapide développeur",
-      devMode: "Mode Dev",
-      description: "Générez des jeux de données synthétiques pour les tests et le développement",
-      quickPresets: "Préréglages rapides",
-      customConfig: "Configuration personnalisée...",
-      advancedOptions: "Options avancées",
-      generate: "Générer",
-      generating: "Génération...",
-      preset: "Préréglage",
-      presets: {
-        regressionSmall: "Régression (250 échantillons)",
-        regressionLarge: "Régression (2500 échantillons)",
-        classification: "Classification (3 classes)",
-        custom: "Configuration personnalisée",
-      },
-      taskType: "Type de tâche",
-      regression: "Régression",
-      binaryClassification: "Classification binaire",
-      multiclassClassification: "Classification multi-classes",
-      samples: "Échantillons",
-      complexity: "Complexité",
-      simple: "Simple (rapide)",
-      realistic: "Réaliste",
-      complex: "Complexe (difficile)",
-      numberOfClasses: "Nombre de classes",
-      noiseLevel: "Niveau de bruit",
-      includeMetadata: "Inclure les métadonnées",
-      addBatchEffects: "Ajouter des effets de lot",
-      autoLinkToWorkspace: "Lier automatiquement à l'espace de travail",
-      datasetName: "Nom du jeu de données (optionnel)",
-      datasetNamePlaceholder: "Généré automatiquement si vide",
-      generationFailed: "Échec de la génération",
+  // ============= Inspector =============
+  inspector: {
+    title: "Inspecteur",
+    comingSoon: "L'analyse par lots des prédictions arrive bientôt. Cet outil vous permettra d'inspecter et d'analyser les résultats de prédiction en détail.",
+    underConstruction: "En construction",
+  },
+
+  // ============= Lab =============
+  lab: {
+    tabs: {
+      synthesis: "Synthèse",
+      transfer: "Transfert",
+      shapley: "Shapley",
     },
   },
 
@@ -541,7 +488,7 @@ const fr = {
     stats: {
       totalDatasets: "Total jeux de données",
       totalSamples: "Total échantillons",
-      avgFeatures: "Caractéristiques moy.",
+      features: "Caractéristiques",
       groups: "Groupes",
     },
     filters: {

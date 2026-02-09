@@ -20,12 +20,11 @@ export default function NotFound() {
       </h2>
       <p className="text-muted-foreground max-w-md mb-8">
         The page you're looking for doesn't exist or has been moved.
-        Check the URL or navigate back to the dashboard.
       </p>
       <Button asChild>
-        <Link to="/">
+        <Link to="/datasets">
           <Home className="mr-2 h-4 w-4" />
-          Back to Dashboard
+          Back to Datasets
         </Link>
       </Button>
     </motion.div>

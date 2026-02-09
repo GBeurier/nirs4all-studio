@@ -198,6 +198,14 @@ def _get_file_format(file_path: Path) -> str:
     if name.endswith('.csv.gz') or name.endswith('.csv.zip'):
         return "csv"
 
+    # Tar archives (must check before .gz fallback)
+    if name.endswith('.tar.gz') or name.endswith('.tgz'):
+        return "tar.gz"
+    if name.endswith('.tar.bz2'):
+        return "tar.bz2"
+    if name.endswith('.tar.xz'):
+        return "tar.xz"
+
     format_map = {
         ".csv": "csv",
         ".xlsx": "xlsx",
@@ -206,8 +214,25 @@ def _get_file_format(file_path: Path) -> str:
         ".npy": "npy",
         ".npz": "npz",
         ".mat": "mat",
+        ".tar": "tar",
+        ".gz": "csv",   # Plain .gz assumed gzip-compressed CSV
+        ".zip": "zip",
     }
     return format_map.get(suffix, "csv")
+
+
+def _is_detectable_format(file_path: Path) -> bool:
+    """Check if file format supports parameter auto-detection (CSV-like content).
+
+    Tar archives and binary formats cannot be auto-detected for CSV parameters.
+    Gzip-compressed files (.gz, .csv.gz) are supported since the AutoDetector
+    transparently decompresses them.
+    """
+    name = file_path.name.lower()
+    if name.endswith(('.tar.gz', '.tgz', '.tar.bz2', '.tar.xz', '.tar')):
+        return False
+    fmt = _get_file_format(file_path)
+    return fmt in ("csv",)
 
 
 def _build_nirs4all_config(
@@ -374,7 +399,7 @@ async def detect_unified(request: DetectFilesRequest):
             x_files = [f for f in files if f.type == "X"]
             if x_files:
                 first_x_path = Path(x_files[0].path)
-                if first_x_path.suffix.lower() == ".csv":
+                if _is_detectable_format(first_x_path):
                     try:
                         detection_result = detect_file_parameters(str(first_x_path))
                         parsing_options = {
@@ -412,6 +437,8 @@ async def detect_unified(request: DetectFilesRequest):
         warnings.append(f"Detection error: {e}")
 
     for f in files:
+        if not _is_detectable_format(Path(f.path)):
+            continue
         try:
             file_detection = detect_file_parameters(
                 f.path,
@@ -432,6 +459,180 @@ async def detect_unified(request: DetectFilesRequest):
     return UnifiedDetectionResponse(
         files=files,
         folder_name=folder_path.name,
+        total_size_bytes=total_size,
+        has_standard_structure=has_x and has_train,
+        parsing_options=parsing_options,
+        confidence=confidence,
+        has_fold_file=has_fold_file,
+        fold_file_path=fold_file_path,
+        metadata_columns=metadata_columns,
+        warnings=warnings,
+    )
+
+
+class DetectFilesListRequest(BaseModel):
+    """Request to detect file roles from a list of individual file paths."""
+
+    paths: List[str] = Field(..., description="List of file paths to detect")
+
+
+@router.post("/datasets/detect-files-list", response_model=UnifiedDetectionResponse)
+async def detect_files_list(request: DetectFilesListRequest):
+    """Detect file roles from a list of individual file paths using nirs4all patterns."""
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(status_code=501, detail="nirs4all library not available")
+
+    from nirs4all.data.parsers.folder_parser import FILE_PATTERNS
+
+    files: List[DetectedFile] = []
+    total_size = 0
+    warnings: List[str] = []
+    parsing_options: Dict[str, Any] = {}
+    confidence: Dict[str, float] = {}
+    has_fold_file = False
+    fold_file_path: Optional[str] = None
+    metadata_columns: List[str] = []
+
+    parser = FolderParser()
+
+    # Map FILE_PATTERNS keys to (type, split)
+    key_to_type_split = {
+        "train_x": ("X", "train"),
+        "test_x": ("X", "test"),
+        "train_y": ("Y", "train"),
+        "test_y": ("Y", "test"),
+        "train_group": ("metadata", "train"),
+        "test_group": ("metadata", "test"),
+        "folds": ("folds", "train"),
+    }
+
+    # Stem patterns (lower priority, exact stem match)
+    stem_patterns = {
+        "train_x": ["x"],
+        "train_y": ["y"],
+        "train_group": ["m", "meta", "metadata", "group"],
+    }
+
+    for file_path_str in request.paths:
+        file_path = Path(file_path_str)
+        if not file_path.exists() or not file_path.is_file():
+            warnings.append(f"File not found: {file_path_str}")
+            continue
+
+        filename = file_path.name
+        lower_name = filename.lower()
+        size = file_path.stat().st_size
+        total_size += size
+
+        # Try to match against FILE_PATTERNS
+        detected_type = "unknown"
+        detected_split = "train"
+        matched = False
+
+        for key, patterns in FILE_PATTERNS.items():
+            for pattern in patterns:
+                if parser._pattern_matches(lower_name, pattern.lower()):
+                    file_type, split = key_to_type_split[key]
+                    if file_type == "folds":
+                        has_fold_file = True
+                        fold_file_path = str(file_path)
+                        matched = True
+                        break
+                    detected_type = file_type
+                    detected_split = split
+                    matched = True
+                    break
+            if matched:
+                break
+
+        # If not matched, try stem patterns
+        if not matched:
+            stem = parser._get_stem(filename).lower()
+            for key, stems in stem_patterns.items():
+                if stem in stems:
+                    file_type, split = key_to_type_split[key]
+                    detected_type = file_type
+                    detected_split = split
+                    matched = True
+                    break
+
+        # Skip folds files from the files list (same as detect_unified)
+        if has_fold_file and fold_file_path == str(file_path):
+            continue
+
+        # Detect row/column counts
+        num_rows = None
+        num_columns = None
+        if _is_detectable_format(file_path):
+            try:
+                det = detect_file_parameters(str(file_path))
+                num_rows = det.n_rows
+                num_columns = det.n_columns
+            except Exception:
+                pass
+
+        files.append(DetectedFile(
+            path=str(file_path),
+            filename=filename,
+            type=detected_type,
+            split=detected_split,
+            source=1 if detected_type == "X" else None,
+            format=_get_file_format(file_path),
+            size_bytes=size,
+            confidence=0.9 if matched else 0.3,
+            num_rows=num_rows,
+            num_columns=num_columns,
+        ))
+
+    # Get parsing options from first X file
+    x_files = [f for f in files if f.type == "X"]
+    if x_files:
+        first_x_path = Path(x_files[0].path)
+        if _is_detectable_format(first_x_path):
+            try:
+                detection_result = detect_file_parameters(str(first_x_path))
+                parsing_options = {
+                    "delimiter": detection_result.delimiter,
+                    "decimal_separator": detection_result.decimal_separator,
+                    "has_header": detection_result.has_header,
+                    "header_unit": detection_result.header_unit,
+                    "encoding": detection_result.encoding,
+                }
+                confidence = detection_result.confidence
+                if detection_result.signal_type:
+                    parsing_options["signal_type"] = detection_result.signal_type
+                warnings.extend(detection_result.warnings)
+            except Exception as e:
+                warnings.append(f"CSV auto-detection failed: {e}")
+
+    # Extract metadata columns if metadata file found
+    metadata_files = [f for f in files if f.type == "metadata"]
+    if metadata_files:
+        try:
+            data, _, _, headers, _ = load_file(
+                str(metadata_files[0].path),
+                delimiter=parsing_options.get("delimiter", ";"),
+                decimal_separator=parsing_options.get("decimal_separator", "."),
+                has_header=parsing_options.get("has_header", True),
+                data_type="metadata",
+            )
+            metadata_columns = headers if headers else []
+        except Exception as e:
+            warnings.append(f"Failed to read metadata columns: {e}")
+
+    # Derive folder name from common parent
+    if request.paths:
+        first_parent = Path(request.paths[0]).parent.name
+        folder_name = first_parent
+    else:
+        folder_name = ""
+
+    has_x = any(f.type == "X" for f in files)
+    has_train = any(f.split == "train" for f in files)
+
+    return UnifiedDetectionResponse(
+        files=files,
+        folder_name=folder_name,
         total_size_bytes=total_size,
         has_standard_structure=has_x and has_train,
         parsing_options=parsing_options,
@@ -696,10 +897,17 @@ async def preview_dataset(request: PreviewDataRequest):
                 )
 
             dataset = datasets[0]
+            is_multi_source = dataset.is_multi_source() and dataset.n_sources > 1
 
-            X = dataset.x({"partition": "train"}, layout="2d")
-            if isinstance(X, list):
-                X = X[0]
+            # Get per-source data when multi-source, otherwise concatenated
+            if is_multi_source:
+                X_sources = dataset.x({"partition": "train"}, layout="2d", concat_source=False)
+                if not isinstance(X_sources, list):
+                    X_sources = [X_sources]
+                X = X_sources[0]
+            else:
+                X = dataset.x({"partition": "train"}, layout="2d")
+                X_sources = None
 
             if len(X) > request.max_samples:
                 indices = np.linspace(0, len(X) - 1, request.max_samples, dtype=int)
@@ -715,6 +923,26 @@ async def preview_dataset(request: PreviewDataRequest):
 
             spectra_preview = _compute_spectra_preview(X, wavelengths)
 
+            # Per-source spectra for multi-source datasets
+            spectra_per_source = None
+            if is_multi_source and X_sources:
+                spectra_per_source = {}
+                for src_idx, X_src in enumerate(X_sources):
+                    if X_src is None or len(X_src) == 0:
+                        continue
+                    try:
+                        src_wl = dataset.headers(src_idx)
+                        if src_wl is None or len(src_wl) == 0:
+                            src_wl = np.arange(X_src.shape[1])
+                        src_wl = np.array(src_wl, dtype=float)
+                    except Exception:
+                        src_wl = np.arange(X_src.shape[1])
+                    X_preview = X_src
+                    if len(X_preview) > request.max_samples:
+                        idx = np.linspace(0, len(X_preview) - 1, request.max_samples, dtype=int)
+                        X_preview = X_preview[idx]
+                    spectra_per_source[src_idx] = _compute_spectra_preview(X_preview, src_wl)
+
             target_distribution = None
             try:
                 y = dataset.y({"partition": "train"})
@@ -723,22 +951,25 @@ async def preview_dataset(request: PreviewDataRequest):
             except Exception:
                 pass
 
-            train_samples = len(dataset.x({"partition": "train"}, layout="2d"))
-            if isinstance(train_samples, list):
-                train_samples = len(train_samples[0])
+            # Sample counts — use source 0 shape for multi-source
+            train_samples = len(X_sources[0]) if X_sources else len(dataset.x({"partition": "train"}, layout="2d"))
 
             test_samples = 0
             try:
-                test_x = dataset.x({"partition": "test"}, layout="2d")
-                if isinstance(test_x, list):
-                    test_x = test_x[0]
-                test_samples = len(test_x) if test_x is not None else 0
+                test_X = dataset.x({"partition": "test"}, layout="2d", concat_source=False) if is_multi_source else dataset.x({"partition": "test"}, layout="2d")
+                if isinstance(test_X, list):
+                    test_samples = len(test_X[0]) if test_X and test_X[0] is not None else 0
+                else:
+                    test_samples = len(test_X) if test_X is not None else 0
             except Exception:
                 pass
 
+            nf = dataset.num_features
+            num_features = nf[0] if isinstance(nf, list) else nf
+
             summary = {
                 "num_samples": dataset.num_samples,
-                "num_features": dataset.num_features,
+                "num_features": num_features,
                 "n_sources": dataset.n_sources,
                 "train_samples": train_samples,
                 "test_samples": test_samples,
@@ -754,6 +985,7 @@ async def preview_dataset(request: PreviewDataRequest):
                 summary=summary,
                 spectra_preview=spectra_preview,
                 target_distribution=target_distribution,
+                spectra_per_source=spectra_per_source,
             )
 
         except Exception as e:
@@ -819,12 +1051,26 @@ async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
         signal_type=stored_config.get("signal_type", "auto"),
     )
 
-    return await preview_dataset(PreviewDataRequest(
+    result = await preview_dataset(PreviewDataRequest(
         path=dataset_path,
         files=files,
         parsing=parsing,
         max_samples=max_samples,
     ))
+
+    # Back-fill stored stats if preview loaded successfully but stored stats are missing
+    if result.success and result.summary and not dataset_info.get("num_samples"):
+        try:
+            from .app_config import app_config
+            app_config.update_dataset(dataset_id, {
+                "num_samples": result.summary.get("num_samples"),
+                "num_features": result.summary.get("num_features"),
+                "n_sources": result.summary.get("n_sources", 1),
+            })
+        except Exception:
+            pass  # Non-critical: stats will show via preview fallback in frontend
+
+    return result
 
 
 # ============= Synthetic Presets =============
@@ -1244,3 +1490,208 @@ async def refresh_dataset_version(dataset_id: str):
         "version": old_version + 1,
         "refreshed_at": now,
     }
+
+
+# ----------------------- Batch Folder Scan -----------------------
+
+
+class ScannedDataset(BaseModel):
+    """A dataset detected during recursive folder scan."""
+
+    folder_path: str
+    folder_name: str
+    groups: List[str] = []
+    files: List[DetectedFile] = []
+    parsing_options: Dict[str, Any] = {}
+    confidence: Dict[str, float] = {}
+    has_fold_file: bool = False
+    fold_file_path: Optional[str] = None
+    metadata_columns: List[str] = []
+    warnings: List[str] = []
+
+
+class ScanFolderRequest(BaseModel):
+    """Request to recursively scan a folder for datasets."""
+
+    path: str = Field(..., description="Root folder path to scan")
+
+
+class ScanFolderResponse(BaseModel):
+    """Response from recursive folder scan."""
+
+    success: bool
+    root_path: str
+    datasets: List[ScannedDataset]
+    total_scanned_folders: int
+    warnings: List[str] = []
+
+
+@router.post("/datasets/scan-folder", response_model=ScanFolderResponse)
+async def scan_folder(request: ScanFolderRequest):
+    """Recursively scan a folder for datasets using nirs4all FolderParser."""
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(status_code=501, detail="nirs4all library not available")
+
+    from nirs4all.data.parsers.folder_parser import FILE_PATTERNS
+
+    root = Path(request.path)
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a valid directory: {request.path}")
+
+    parser = FolderParser()
+    datasets: List[ScannedDataset] = []
+    scanned_count = 0
+    scan_warnings: List[str] = []
+
+    key_to_type_split = {
+        "train_x": ("X", "train"),
+        "test_x": ("X", "test"),
+        "train_y": ("Y", "train"),
+        "test_y": ("Y", "test"),
+        "train_group": ("metadata", "train"),
+        "test_group": ("metadata", "test"),
+        "folds": ("folds", "train"),
+    }
+
+    def _build_detected_files(config: dict, folder: Path) -> tuple:
+        """Build DetectedFile list from FolderParser config."""
+        files: List[DetectedFile] = []
+        has_fold = False
+        fold_path: Optional[str] = None
+        ds_warnings: List[str] = []
+        parsing_opts: Dict[str, Any] = {}
+        conf: Dict[str, float] = {}
+        meta_cols: List[str] = []
+
+        for key, (file_type, split) in key_to_type_split.items():
+            value = config.get(key)
+            if value is None:
+                continue
+
+            paths_list = value if isinstance(value, list) else [value]
+            for fp_str in paths_list:
+                fp = Path(fp_str)
+                if not fp.exists():
+                    continue
+
+                if file_type == "folds":
+                    has_fold = True
+                    fold_path = str(fp)
+                    continue
+
+                num_rows = None
+                num_columns = None
+                try:
+                    det = detect_file_parameters(str(fp))
+                    num_rows = det.n_rows
+                    num_columns = det.n_columns
+                except Exception:
+                    pass
+
+                files.append(DetectedFile(
+                    path=str(fp),
+                    filename=fp.name,
+                    type=file_type,
+                    split=split,
+                    source=1 if file_type == "X" else None,
+                    format=_get_file_format(fp),
+                    size_bytes=fp.stat().st_size if fp.exists() else 0,
+                    confidence=0.9,
+                    num_rows=num_rows,
+                    num_columns=num_columns,
+                ))
+
+        # Get parsing options from first X file
+        x_files = [f for f in files if f.type == "X"]
+        if x_files:
+            first_x = Path(x_files[0].path)
+            if first_x.suffix.lower() in (".csv", ".gz", ".zip"):
+                try:
+                    det_result = detect_file_parameters(str(first_x))
+                    parsing_opts = {
+                        "delimiter": det_result.delimiter,
+                        "decimal_separator": det_result.decimal_separator,
+                        "has_header": det_result.has_header,
+                        "header_unit": det_result.header_unit,
+                        "encoding": det_result.encoding,
+                    }
+                    conf = det_result.confidence
+                    if det_result.signal_type:
+                        parsing_opts["signal_type"] = det_result.signal_type
+                    ds_warnings.extend(det_result.warnings)
+                except Exception as e:
+                    ds_warnings.append(f"CSV auto-detection failed: {e}")
+
+        # Extract metadata columns
+        meta_files = [f for f in files if f.type == "metadata"]
+        if meta_files:
+            try:
+                data, _, _, headers, _ = load_file(
+                    str(meta_files[0].path),
+                    delimiter=parsing_opts.get("delimiter", ";"),
+                    decimal_separator=parsing_opts.get("decimal_separator", "."),
+                    has_header=parsing_opts.get("has_header", True),
+                    data_type="metadata",
+                )
+                meta_cols = headers if headers else []
+            except Exception:
+                pass
+
+        return files, parsing_opts, conf, has_fold, fold_path, meta_cols, ds_warnings
+
+    def scan_recursive(folder: Path, parent_groups: List[str]):
+        nonlocal scanned_count
+
+        if folder.name.startswith("."):
+            return
+
+        scanned_count += 1
+        result = parser.parse(str(folder))
+
+        if result.success and result.config:
+            # This folder IS a dataset — stop recursion
+            files, parsing_opts, conf, has_fold, fold_path, meta_cols, ds_warnings = \
+                _build_detected_files(result.config, folder)
+
+            datasets.append(ScannedDataset(
+                folder_path=str(folder),
+                folder_name=folder.name,
+                groups=parent_groups,
+                files=files,
+                parsing_options=parsing_opts,
+                confidence=conf,
+                has_fold_file=has_fold,
+                fold_file_path=fold_path,
+                metadata_columns=meta_cols,
+                warnings=ds_warnings + (result.warnings or []),
+            ))
+        else:
+            # Not a dataset — recurse into subdirectories
+            try:
+                for subfolder in sorted(folder.iterdir()):
+                    if subfolder.is_dir() and not subfolder.name.startswith("."):
+                        scan_recursive(subfolder, parent_groups + [folder.name])
+            except PermissionError:
+                scan_warnings.append(f"Permission denied: {folder}")
+
+    # Start scanning: iterate root's children (root name excluded from groups)
+    try:
+        for child in sorted(root.iterdir()):
+            if child.is_dir() and not child.name.startswith("."):
+                scan_recursive(child, [])
+    except PermissionError:
+        scan_warnings.append(f"Permission denied: {root}")
+
+    # Ensure all datasets have at least one group (root folder name)
+    # so that direct children of root aren't left ungrouped
+    for ds in datasets:
+        if not ds.groups:
+            ds.groups = [root.name]
+
+    return ScanFolderResponse(
+        success=True,
+        root_path=str(root),
+        datasets=datasets,
+        total_scanned_folders=scanned_count,
+        warnings=scan_warnings,
+    )

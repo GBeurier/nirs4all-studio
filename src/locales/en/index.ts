@@ -81,19 +81,18 @@ const en = {
 
   // ============= Navigation =============
   nav: {
-    dashboard: "Dashboard",
     datasets: "Datasets",
     pipelines: "Pipelines",
     pipelineEditor: "Pipeline Editor",
+    editor: "Editor",
     playground: "Playground",
+    inspector: "Inspector",
     runs: "Runs",
-    results: "Results",
+    scores: "Scores",
     predictions: "Predictions",
     aggregatedResults: "Aggregated Results",
-    analysis: "Analysis",
-    synthesis: "Synthesis",
+    lab: "Lab",
     settings: "Settings",
-    newExperiment: "New Experiment",
   },
 
   // ============= Settings Page =============
@@ -438,9 +437,10 @@ const en = {
   layout: {
     sidebar: {
       groups: {
-        main: "Main",
-        workflow: "Workflow",
-        analysis: "Analysis",
+        data: "Data",
+        explore: "Explore",
+        results: "Results",
+        lab: "Lab",
       },
     },
     header: {
@@ -450,72 +450,19 @@ const en = {
     },
   },
 
-  // ============= Dashboard =============
-  dashboard: {
-    title: "Dashboard",
-    welcome: "Welcome back",
-    quickStart: "Quick Start",
-    quickActions: "Quick Actions",
-    recentActivity: "Recent Activity",
-    recentExperiments: "Recent Experiments",
-    viewAll: "View all",
-    getStarted: "Get Started",
-    stats: {
-      datasets: "Datasets",
-      pipelines: "Pipelines",
-      runs: "Runs",
-      experiments: "Experiments",
-      models: "Models",
-      avgR2: "Avg. R²",
-      bestModels: "best models",
-    },
-    quickStartItems: {
-      loadDataset: "Load Dataset",
-      loadDatasetDesc: "Link local spectral files",
-      buildPipeline: "Build Pipeline",
-      buildPipelineDesc: "Configure preprocessing & models",
-      playground: "Playground",
-      playgroundDesc: "Explore & visualize spectra",
-      viewResults: "View Results",
-      viewResultsDesc: "Analyze predictions & metrics",
-    },
-    empty: {
-      title: "No experiments yet",
-      description: "Start by loading a dataset and building a pipeline to run your first experiment.",
-    },
-    developer: {
-      title: "Developer Quick Start",
-      devMode: "Dev Mode",
-      description: "Generate synthetic datasets for testing and development",
-      quickPresets: "Quick Presets",
-      customConfig: "Custom Configuration...",
-      advancedOptions: "Advanced Options",
-      generate: "Generate",
-      generating: "Generating...",
-      preset: "Preset",
-      presets: {
-        regressionSmall: "Regression (250 samples)",
-        regressionLarge: "Regression (2500 samples)",
-        classification: "Classification (3 classes)",
-        custom: "Custom configuration",
-      },
-      taskType: "Task Type",
-      regression: "Regression",
-      binaryClassification: "Binary Classification",
-      multiclassClassification: "Multiclass Classification",
-      samples: "Samples",
-      complexity: "Complexity",
-      simple: "Simple (fast)",
-      realistic: "Realistic",
-      complex: "Complex (challenging)",
-      numberOfClasses: "Number of Classes",
-      noiseLevel: "Noise Level",
-      includeMetadata: "Include Metadata",
-      addBatchEffects: "Add Batch Effects",
-      autoLinkToWorkspace: "Auto-link to Workspace",
-      datasetName: "Dataset Name (optional)",
-      datasetNamePlaceholder: "Auto-generated if empty",
-      generationFailed: "Generation failed",
+  // ============= Inspector =============
+  inspector: {
+    title: "Inspector",
+    comingSoon: "Batch predictions analysis is coming soon. This tool will let you inspect and analyze prediction results in detail.",
+    underConstruction: "Under construction",
+  },
+
+  // ============= Lab =============
+  lab: {
+    tabs: {
+      synthesis: "Synthesis",
+      transfer: "Transfer",
+      shapley: "Shapley",
     },
   },
 
@@ -539,7 +486,7 @@ const en = {
     stats: {
       totalDatasets: "Total Datasets",
       totalSamples: "Total Samples",
-      avgFeatures: "Avg Features",
+      features: "Features",
       groups: "Groups",
     },
     filters: {

@@ -976,9 +976,9 @@ export default function PipelineEditor() {
 
                     // Navigate with pipeline ID if saved, or with flag for current edited
                     if (!isNew && !isDirty) {
-                      navigate(`/runs/new?pipeline=${pipelineId}`);
+                      navigate(`/editor?pipeline=${pipelineId}`);
                     } else {
-                      navigate('/runs/new?source=editor');
+                      navigate('/editor?source=editor');
                     }
                   }}
                 >

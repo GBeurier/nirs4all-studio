@@ -80,19 +80,18 @@ const de = {
 
   // ============= Navigation =============
   nav: {
-    dashboard: "Dashboard",
     datasets: "Datensätze",
     pipelines: "Pipelines",
     pipelineEditor: "Pipeline-Editor",
+    editor: "Editor",
     playground: "Spielwiese",
+    inspector: "Inspektor",
     runs: "Ausführungen",
-    results: "Ergebnisse",
+    scores: "Ergebnisse",
     predictions: "Vorhersagen",
     aggregatedResults: "Aggregierte Ergebnisse",
-    analysis: "Analyse",
-    synthesis: "Synthese",
+    lab: "Labor",
     settings: "Einstellungen",
-    newExperiment: "Neues Experiment",
   },
 
   // ============= Settings Page =============
@@ -436,9 +435,10 @@ const de = {
   layout: {
     sidebar: {
       groups: {
-        main: "Haupt",
-        workflow: "Arbeitsablauf",
-        analysis: "Analyse",
+        data: "Daten",
+        explore: "Erkunden",
+        results: "Ergebnisse",
+        lab: "Labor",
       },
     },
     header: {
@@ -448,72 +448,19 @@ const de = {
     },
   },
 
-  // ============= Dashboard =============
-  dashboard: {
-    title: "Dashboard",
-    welcome: "Willkommen zurück",
-    quickStart: "Schnellstart",
-    quickActions: "Schnellaktionen",
-    recentActivity: "Letzte Aktivität",
-    recentExperiments: "Letzte Experimente",
-    viewAll: "Alle anzeigen",
-    getStarted: "Loslegen",
-    stats: {
-      datasets: "Datensätze",
-      pipelines: "Pipelines",
-      runs: "Ausführungen",
-      experiments: "Experimente",
-      models: "Modelle",
-      avgR2: "Durchschn. R²",
-      bestModels: "beste Modelle",
-    },
-    quickStartItems: {
-      loadDataset: "Datensatz laden",
-      loadDatasetDesc: "Lokale Spektraldateien verknüpfen",
-      buildPipeline: "Pipeline erstellen",
-      buildPipelineDesc: "Vorverarbeitung und Modelle konfigurieren",
-      playground: "Spielwiese",
-      playgroundDesc: "Spektren erkunden und visualisieren",
-      viewResults: "Ergebnisse anzeigen",
-      viewResultsDesc: "Vorhersagen und Metriken analysieren",
-    },
-    empty: {
-      title: "Noch keine Experimente",
-      description: "Beginnen Sie, indem Sie einen Datensatz laden und eine Pipeline erstellen, um Ihr erstes Experiment zu starten.",
-    },
-    developer: {
-      title: "Entwickler-Schnellstart",
-      devMode: "Dev-Modus",
-      description: "Generieren Sie synthetische Datensätze für Tests und Entwicklung",
-      quickPresets: "Schnellvorlagen",
-      customConfig: "Benutzerdefinierte Konfiguration...",
-      advancedOptions: "Erweiterte Optionen",
-      generate: "Generieren",
-      generating: "Wird generiert...",
-      preset: "Vorlage",
-      presets: {
-        regressionSmall: "Regression (250 Proben)",
-        regressionLarge: "Regression (2500 Proben)",
-        classification: "Klassifikation (3 Klassen)",
-        custom: "Benutzerdefinierte Konfiguration",
-      },
-      taskType: "Aufgabentyp",
-      regression: "Regression",
-      binaryClassification: "Binäre Klassifikation",
-      multiclassClassification: "Mehrklassen-Klassifikation",
-      samples: "Proben",
-      complexity: "Komplexität",
-      simple: "Einfach (schnell)",
-      realistic: "Realistisch",
-      complex: "Komplex (herausfordernd)",
-      numberOfClasses: "Anzahl der Klassen",
-      noiseLevel: "Rauschpegel",
-      includeMetadata: "Metadaten einschließen",
-      addBatchEffects: "Chargeneffekte hinzufügen",
-      autoLinkToWorkspace: "Automatisch mit Arbeitsbereich verknüpfen",
-      datasetName: "Datensatzname (optional)",
-      datasetNamePlaceholder: "Automatisch generiert wenn leer",
-      generationFailed: "Generierung fehlgeschlagen",
+  // ============= Inspector =============
+  inspector: {
+    title: "Inspektor",
+    comingSoon: "Die Stapelanalyse von Vorhersagen kommt bald. Dieses Tool ermöglicht es Ihnen, Vorhersageergebnisse im Detail zu inspizieren und zu analysieren.",
+    underConstruction: "Im Aufbau",
+  },
+
+  // ============= Lab =============
+  lab: {
+    tabs: {
+      synthesis: "Synthese",
+      transfer: "Transfer",
+      shapley: "Shapley",
     },
   },
 
@@ -537,7 +484,7 @@ const de = {
     stats: {
       totalDatasets: "Gesamt Datensätze",
       totalSamples: "Gesamt Proben",
-      avgFeatures: "Durchschn. Merkmale",
+      features: "Merkmale",
       groups: "Gruppen",
     },
     filters: {

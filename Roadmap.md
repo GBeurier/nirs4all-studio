@@ -1,3 +1,8 @@
+## NEXT
+
+- remove dashboard: Menu > Datasets - Pipelines - Editor | Playground - Inspector | Runs - Scores - Predictions | Lab (Synthesis, transfer, Stats, etc.) | Settings
+
+## GENERAL
 **Global**
 - Add multi target handling (select target(s) in run and pipeline; in playground, how to sort ? prediction viz (2d / 3d / pca ?), etc. )
 - clear console.log

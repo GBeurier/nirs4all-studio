@@ -16,16 +16,16 @@ import { MobileSidebar } from "./MobileSidebar";
 
 // Quick search navigation items with translation keys
 const searchItems = [
-  { labelKey: "nav.dashboard", path: "/", keywords: ["home", "overview"] },
   { labelKey: "nav.datasets", path: "/datasets", keywords: ["data", "import", "load"] },
-  { labelKey: "nav.playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
   { labelKey: "nav.pipelines", path: "/pipelines", keywords: ["workflow", "ml", "model"] },
-  { labelKey: "nav.pipelineEditor", path: "/pipelines/new", keywords: ["create", "build", "new"] },
-  { labelKey: "nav.runs", path: "/runs", keywords: ["experiment", "train", "execute", "monitor", "progress"] },
-  { labelKey: "nav.results", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "history"] },
-  { labelKey: "nav.predictions", path: "/predictions", keywords: ["predict", "inference"] },
+  { labelKey: "nav.pipelineEditor", path: "/pipelines/new", keywords: ["editor", "create", "build", "new", "design"] },
+  { labelKey: "nav.playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
+  { labelKey: "nav.inspector", path: "/inspector", keywords: ["predict", "batch", "analysis"] },
+  { labelKey: "nav.runs", path: "/runs", keywords: ["execute", "monitor", "progress"] },
+  { labelKey: "nav.scores", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "results"] },
   { labelKey: "nav.aggregatedResults", path: "/results/aggregated", keywords: ["aggregate", "chain", "fold", "summary", "ranking"] },
-  { labelKey: "nav.analysis", path: "/analysis", keywords: ["pca", "importance", "explore"] },
+  { labelKey: "nav.predictions", path: "/predictions", keywords: ["predict", "inference"] },
+  { labelKey: "nav.lab", path: "/lab", keywords: ["synthesis", "transfer", "shapley", "shap", "importance"] },
   { labelKey: "nav.settings", path: "/settings", keywords: ["config", "preferences", "options"] },
 ];
 

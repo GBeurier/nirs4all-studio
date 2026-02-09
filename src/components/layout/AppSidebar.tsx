@@ -2,20 +2,19 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  LayoutDashboard,
   Database,
   FlaskConical,
   GitBranch,
+  Pencil,
+  Search,
   Play,
   BarChart3,
   Layers,
   Target,
   Beaker,
-  Sparkles,
   Settings,
   ChevronLeft,
   ChevronRight,
-  Plus,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,24 +34,26 @@ interface NavItem {
   badge?: number;
 }
 
-const mainNavItems: NavItem[] = [
-  { titleKey: "nav.dashboard", href: "/", icon: LayoutDashboard },
+const dataNavItems: NavItem[] = [
   { titleKey: "nav.datasets", href: "/datasets", icon: Database },
-  { titleKey: "nav.playground", href: "/playground", icon: FlaskConical },
-];
-
-const workflowNavItems: NavItem[] = [
   { titleKey: "nav.pipelines", href: "/pipelines", icon: GitBranch },
-  { titleKey: "nav.newExperiment", href: "/pipelines/new", icon: Plus },
-  { titleKey: "nav.runs", href: "/runs", icon: Play },
-  { titleKey: "nav.results", href: "/results", icon: BarChart3 },
-  { titleKey: "nav.aggregatedResults", href: "/results/aggregated", icon: Layers },
+  { titleKey: "nav.pipelineEditor", href: "/pipelines/new", icon: Pencil },
 ];
 
-const analysisNavItems: NavItem[] = [
+const exploreNavItems: NavItem[] = [
+  { titleKey: "nav.playground", href: "/playground", icon: FlaskConical },
+  { titleKey: "nav.inspector", href: "/inspector", icon: Search },
+];
+
+const resultsNavItems: NavItem[] = [
+  { titleKey: "nav.runs", href: "/runs", icon: Play },
+  { titleKey: "nav.scores", href: "/results", icon: BarChart3 },
+  { titleKey: "nav.aggregatedResults", href: "/results/aggregated", icon: Layers },
   { titleKey: "nav.predictions", href: "/predictions", icon: Target },
-  { titleKey: "nav.analysis", href: "/analysis", icon: Beaker },
-  { titleKey: "nav.synthesis", href: "/synthesis", icon: Sparkles },
+];
+
+const labNavItems: NavItem[] = [
+  { titleKey: "nav.lab", href: "/lab", icon: Beaker },
 ];
 
 export function AppSidebar() {
@@ -61,17 +62,17 @@ export function AppSidebar() {
   const location = useLocation();
 
   const isActive = (href: string) => {
-    if (href === "/") {
-      return location.pathname === "/";
-    }
-    // Exact match for specific sub-routes
     if (href === "/pipelines/new") {
-      return location.pathname === "/pipelines/new";
+      return location.pathname.startsWith("/pipelines/");
     }
-    // For parent routes, don't match if we're on a child route that has its own menu item
     if (href === "/pipelines") {
-      return location.pathname === "/pipelines" ||
-        (location.pathname.startsWith("/pipelines") && location.pathname !== "/pipelines/new");
+      return location.pathname === "/pipelines";
+    }
+    if (href === "/results") {
+      return location.pathname === "/results";
+    }
+    if (href === "/results/aggregated") {
+      return location.pathname === "/results/aggregated";
     }
     return location.pathname.startsWith(href);
   };
@@ -155,11 +156,13 @@ export function AppSidebar() {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
         <div className="space-y-6">
-          {renderNavGroup("layout.sidebar.groups.main", mainNavItems)}
+          {renderNavGroup("layout.sidebar.groups.data", dataNavItems)}
           <Separator className="mx-3" />
-          {renderNavGroup("layout.sidebar.groups.workflow", workflowNavItems)}
+          {renderNavGroup("layout.sidebar.groups.explore", exploreNavItems)}
           <Separator className="mx-3" />
-          {renderNavGroup("layout.sidebar.groups.analysis", analysisNavItems)}
+          {renderNavGroup("layout.sidebar.groups.results", resultsNavItems)}
+          <Separator className="mx-3" />
+          {renderNavGroup("layout.sidebar.groups.lab", labNavItems)}
         </div>
       </ScrollArea>
 

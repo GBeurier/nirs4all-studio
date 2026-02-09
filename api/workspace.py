@@ -226,22 +226,21 @@ async def link_dataset(request: LinkDatasetRequest):
                     dataset_info["num_features"] = ds.num_features
                     dataset_info["n_sources"] = ds.n_sources
 
-                    # Determine task type
-                    task_type_str = None
-                    if ds.task_type:
-                        task_type_str = str(ds.task_type)
-                        if "." in task_type_str:
-                            task_type_str = task_type_str.split(".")[-1].lower()
-                    dataset_info["task_type"] = task_type_str
+                    # Non-critical metadata — failures here must not prevent saving core stats
+                    try:
+                        task_type_str = None
+                        if ds.task_type:
+                            task_type_str = str(ds.task_type)
+                            if "." in task_type_str:
+                                task_type_str = task_type_str.split(".")[-1].lower()
+                        dataset_info["task_type"] = task_type_str
 
-                    # Get signal types
-                    if ds.signal_types:
-                        dataset_info["signal_types"] = [st.value for st in ds.signal_types]
+                        if ds.signal_types:
+                            dataset_info["signal_types"] = [st.value for st in ds.signal_types]
 
-                    # Try to detect/set targets if not already configured
-                    config = dataset_info.get("config", {})
-                    if "targets" not in config and ds._targets is not None:
-                        try:
+                        # Detect/set targets if not already configured
+                        config = dataset_info.get("config", {})
+                        if "targets" not in config and ds._targets is not None:
                             target_columns = ds.target_columns if hasattr(ds, 'target_columns') else None
                             if target_columns:
                                 detected_targets = [{"column": col, "type": task_type_str or "regression"} for col in target_columns]
@@ -251,16 +250,15 @@ async def link_dataset(request: LinkDatasetRequest):
                             if "config" not in dataset_info:
                                 dataset_info["config"] = {}
                             dataset_info["config"]["targets"] = detected_targets
-                        except Exception:
-                            pass
-                    elif "targets" in config:
-                        dataset_info["targets"] = config["targets"]
+                        elif "targets" in config:
+                            dataset_info["targets"] = config["targets"]
 
-                    # Set default target if available
-                    if dataset_info.get("targets") and not dataset_info.get("default_target"):
-                        dataset_info["default_target"] = dataset_info["targets"][0].get("column")
+                        if dataset_info.get("targets") and not dataset_info.get("default_target"):
+                            dataset_info["default_target"] = dataset_info["targets"][0].get("column")
+                    except Exception as meta_err:
+                        dataset_info["load_warning"] = f"Metadata detection partial failure: {meta_err}"
 
-                    # Update stored info in global dataset registry with root-level fields
+                    # Always persist core stats (num_samples, num_features) even if metadata detection failed
                     update_data = {
                         "num_samples": dataset_info.get("num_samples"),
                         "num_features": dataset_info.get("num_features"),

@@ -205,7 +205,7 @@ export function NoResultsState({
       description={description}
       action={{
         label: "Start Experiment",
-        href: "/runs/new",
+        href: "/editor",
       }}
       className={className}
     />

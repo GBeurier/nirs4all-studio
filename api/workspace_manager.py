@@ -2071,11 +2071,10 @@ class WorkspaceManager:
         groups = [g.to_dict() for g in self.app_config.get_dataset_groups()]
         datasets = self.app_config.get_datasets()
 
-        # Build a map of group_id -> dataset_ids
+        # Build a map of group_id -> dataset_ids from multi-group group_ids lists
         group_datasets: Dict[str, List[str]] = {}
         for ds in datasets:
-            gid = ds.group_id
-            if gid:
+            for gid in ds.group_ids:
                 if gid not in group_datasets:
                     group_datasets[gid] = []
                 group_datasets[gid].append(ds.id)
@@ -2112,8 +2111,8 @@ class WorkspaceManager:
         return self.app_config.add_dataset_to_group(dataset_id, group_id)
 
     def remove_dataset_from_group(self, group_id: str, dataset_id: str) -> bool:
-        """Remove a dataset from its group."""
-        return self.app_config.remove_dataset_from_group(dataset_id)
+        """Remove a dataset from a specific group."""
+        return self.app_config.remove_dataset_from_group(dataset_id, group_id)
 
     # ----------------------- Workspace Paths -----------------------
 

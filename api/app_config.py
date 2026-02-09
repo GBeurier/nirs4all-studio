@@ -40,7 +40,7 @@ class DatasetLink:
     last_verified: str = ""
     config: Dict[str, Any] = field(default_factory=dict)
     stats: Dict[str, Any] = field(default_factory=dict)
-    group_id: Optional[str] = None
+    group_ids: List[str] = field(default_factory=list)
     # Computed fields from nirs4all
     num_samples: Optional[int] = None
     num_features: Optional[int] = None
@@ -67,7 +67,7 @@ class DatasetLink:
             last_verified=data.get("last_verified", ""),
             config=data.get("config", {}),
             stats=data.get("stats", {}),
-            group_id=data.get("group_id"),
+            group_ids=data.get("group_ids") or ([data["group_id"]] if data.get("group_id") else []),
             num_samples=data.get("num_samples"),
             num_features=data.get("num_features"),
             n_sources=data.get("n_sources", 1),
@@ -487,7 +487,7 @@ class AppConfigManager:
             if ds.get("id") == dataset_id:
                 # Update allowed fields - including computed fields and stats
                 allowed_fields = [
-                    "name", "config", "group_id", "stats", "description",
+                    "name", "config", "group_ids", "stats", "description",
                     "num_samples", "num_features", "n_sources", "task_type",
                     "signal_types", "targets", "default_target",
                     "hash", "version", "version_status", "last_verified", "last_refreshed",
@@ -651,17 +651,21 @@ class AppConfigManager:
         if len(groups) == original_len:
             return False
 
-        # Remove group_id from any datasets
+        # Remove group_id from any datasets' group_ids lists
         for ds in datasets:
+            gids = ds.get("group_ids", [])
+            # Also handle legacy group_id field
             if ds.get("group_id") == group_id:
-                ds["group_id"] = None
+                ds.pop("group_id", None)
+            if group_id in gids:
+                ds["group_ids"] = [g for g in gids if g != group_id]
 
         data["groups"] = groups
         data["datasets"] = datasets
         return self._save_dataset_links(data)
 
     def add_dataset_to_group(self, dataset_id: str, group_id: str) -> bool:
-        """Add a dataset to a group.
+        """Add a dataset to a group (additive multi-group).
 
         Args:
             dataset_id: ID of the dataset
@@ -670,18 +674,51 @@ class AppConfigManager:
         Returns:
             True if successful
         """
-        return self.update_dataset(dataset_id, {"group_id": group_id}) is not None
+        data = self._load_dataset_links()
+        datasets = data.get("datasets", [])
 
-    def remove_dataset_from_group(self, dataset_id: str) -> bool:
-        """Remove a dataset from its group.
+        for ds in datasets:
+            if ds.get("id") == dataset_id:
+                gids = ds.get("group_ids", [])
+                # Migrate legacy group_id
+                if not gids and ds.get("group_id"):
+                    gids = [ds["group_id"]]
+                if group_id not in gids:
+                    gids.append(group_id)
+                ds["group_ids"] = gids
+                ds.pop("group_id", None)
+                data["datasets"] = datasets
+                self._save_dataset_links(data)
+                return True
+
+        return False
+
+    def remove_dataset_from_group(self, dataset_id: str, group_id: Optional[str] = None) -> bool:
+        """Remove a dataset from a specific group.
 
         Args:
             dataset_id: ID of the dataset
+            group_id: ID of the group to remove from. If None, removes all groups.
 
         Returns:
             True if successful
         """
-        return self.update_dataset(dataset_id, {"group_id": None}) is not None
+        data = self._load_dataset_links()
+        datasets = data.get("datasets", [])
+
+        for ds in datasets:
+            if ds.get("id") == dataset_id:
+                if group_id is None:
+                    ds["group_ids"] = []
+                else:
+                    gids = ds.get("group_ids", [])
+                    ds["group_ids"] = [g for g in gids if g != group_id]
+                ds.pop("group_id", None)
+                data["datasets"] = datasets
+                self._save_dataset_links(data)
+                return True
+
+        return False
 
 
 # Global instance

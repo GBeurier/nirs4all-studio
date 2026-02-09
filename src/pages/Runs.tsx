@@ -391,7 +391,7 @@ export default function Runs() {
           <p className="text-muted-foreground">{t("runs.subtitle")}</p>
         </div>
         <Button asChild>
-          <Link to="/runs/new">
+          <Link to="/editor">
             <Plus className="h-4 w-4 mr-2" />
             {t("runs.newRun")}
           </Link>
@@ -475,7 +475,7 @@ export default function Runs() {
             description={t("runs.emptyHint")}
             action={{
               label: t("runs.newRun"),
-              href: "/runs/new",
+              href: "/editor",
             }}
           />
         ) : (
