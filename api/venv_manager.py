@@ -495,6 +495,34 @@ class VenvManager:
 
         return packages
 
+    def run_pip_command(self, args: List[str], timeout: int = 120) -> Optional[str]:
+        """
+        Run an arbitrary pip command and return stdout.
+
+        Args:
+            args: Arguments to pass to pip (e.g. ["freeze"])
+            timeout: Command timeout in seconds
+
+        Returns:
+            stdout as string, or None on failure
+        """
+        if not self._is_valid_venv():
+            return None
+        try:
+            result = subprocess.run(
+                [str(self.pip_executable)] + args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            if result.returncode == 0:
+                return result.stdout
+            print(f"pip command failed: {result.stderr}")
+            return None
+        except Exception as e:
+            print(f"Error running pip command: {e}")
+            return None
+
     def get_package_version(self, package: str) -> Optional[str]:
         """Get the installed version of a specific package."""
         packages = self.get_installed_packages()

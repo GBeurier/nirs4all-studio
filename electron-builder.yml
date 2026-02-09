@@ -97,7 +97,7 @@ deb:
     - libuuid1
 
 # Publish configuration (for auto-updates)
-# publish:
-#   provider: github
-#   owner: your-org
-#   repo: nirs4all-webapp
+publish:
+  provider: github
+  owner: GBeurier
+  repo: nirs4all-webapp

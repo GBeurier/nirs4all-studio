@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   RefreshCw,
@@ -23,6 +24,9 @@ import {
   HardDrive,
   XCircle,
   RotateCcw,
+  Save,
+  History,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -63,8 +67,18 @@ import {
   useStagedUpdate,
   formatBytes,
 } from "@/hooks/useUpdates";
+import {
+  listSnapshots,
+  createSnapshot,
+  restoreSnapshot,
+  deleteSnapshot,
+  getWebappChangelog,
+  type ConfigSnapshot,
+  type ChangelogEntry,
+} from "@/api/client";
 
 export function UpdatesSection() {
+  const queryClient = useQueryClient();
   const { data: status, isLoading: statusLoading, error: statusError } = useUpdateStatus();
   const { data: settings, isLoading: settingsLoading } = useUpdateSettings();
   const { data: venvStatus, isLoading: venvLoading } = useVenvStatus();
@@ -78,8 +92,40 @@ export function UpdatesSection() {
   const updateDownload = useUpdateDownload();
   const { data: stagedUpdate } = useStagedUpdate();
 
+  // Snapshots
+  const snapshotsQuery = useQuery({
+    queryKey: ["snapshots"],
+    queryFn: listSnapshots,
+    staleTime: 60 * 1000,
+  });
+  const createSnapshotMutation = useMutation({
+    mutationFn: (label?: string) => createSnapshot(label),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["snapshots"] }),
+  });
+  const restoreSnapshotMutation = useMutation({
+    mutationFn: (name: string) => restoreSnapshot(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["snapshots"] });
+      queryClient.invalidateQueries({ queryKey: ["updates", "venv"] });
+      queryClient.invalidateQueries({ queryKey: ["updates", "status"] });
+    },
+  });
+  const deleteSnapshotMutation = useMutation({
+    mutationFn: (name: string) => deleteSnapshot(name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["snapshots"] }),
+  });
+
+  // Changelog
+  const changelogQuery = useQuery({
+    queryKey: ["changelog", status?.webapp?.current_version],
+    queryFn: () => getWebappChangelog(status?.webapp?.current_version),
+    enabled: false, // only fetch on demand
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [venvOpen, setVenvOpen] = useState(false);
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const [nirs4allDialogOpen, setNirs4allDialogOpen] = useState(false);
   const [webappDialogOpen, setWebappDialogOpen] = useState(false);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
@@ -343,6 +389,88 @@ export function UpdatesSection() {
           </CollapsibleContent>
         </Collapsible>
 
+        {/* Working Config Snapshots */}
+        <Collapsible open={snapshotsOpen} onOpenChange={setSnapshotsOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+              <span className="text-sm font-medium flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Working Config
+              </span>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-muted-foreground">
+                  {snapshotsQuery.data?.snapshots?.length ?? 0} saved
+                </Badge>
+                <ChevronDown className={`h-4 w-4 transition-transform ${snapshotsOpen ? "rotate-180" : ""}`} />
+              </div>
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Save the current package state to restore later if an upgrade causes issues.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => createSnapshotMutation.mutate()}
+                disabled={createSnapshotMutation.isPending || !venvStatus?.venv?.is_valid}
+              >
+                {createSnapshotMutation.isPending ? (
+                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-3 w-3" />
+                )}
+                Save Current
+              </Button>
+            </div>
+
+            {snapshotsQuery.data?.snapshots && snapshotsQuery.data.snapshots.length > 0 ? (
+              <div className="space-y-2">
+                {snapshotsQuery.data.snapshots.map((snap) => (
+                  <div key={snap.name} className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm">
+                    <div>
+                      <span className="font-medium">{snap.label}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {new Date(snap.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => restoreSnapshotMutation.mutate(snap.name)}
+                        disabled={restoreSnapshotMutation.isPending}
+                      >
+                        {restoreSnapshotMutation.isPending ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-3 w-3" />
+                        )}
+                        <span className="ml-1">Restore</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-destructive hover:text-destructive"
+                        onClick={() => deleteSnapshotMutation.mutate(snap.name)}
+                        disabled={deleteSnapshotMutation.isPending}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic p-2">
+                No snapshots saved yet. Save one before upgrading.
+              </p>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
         {/* Settings Section */}
         <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
           <CollapsibleTrigger asChild>
@@ -394,6 +522,9 @@ export function UpdatesSection() {
           // Don't allow closing during download or if ready to apply
           if (!open && (updateDownload.isDownloading || updateDownload.readyToApply)) {
             return;
+          }
+          if (open && hasWebappUpdate) {
+            changelogQuery.refetch();
           }
           setWebappDialogOpen(open);
         }}
@@ -478,13 +609,43 @@ export function UpdatesSection() {
               </Alert>
             )}
 
-            {/* Release Notes (only show when not downloading) */}
-            {!updateDownload.isDownloading && !updateDownload.readyToApply && status?.webapp?.release_notes && (
+            {/* Changelog (only show when not downloading) */}
+            {!updateDownload.isDownloading && !updateDownload.readyToApply && (
               <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
-                <h4 className="font-medium mb-2">Release Notes</h4>
-                <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap">
-                  {status.webapp.release_notes}
-                </div>
+                <h4 className="font-medium mb-2">What's New</h4>
+                {changelogQuery.isLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading changelog...
+                  </div>
+                ) : changelogQuery.data?.entries && changelogQuery.data.entries.length > 0 ? (
+                  <div className="space-y-3">
+                    {changelogQuery.data.entries.map((entry) => (
+                      <div key={entry.version}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-primary">v{entry.version}</span>
+                          {entry.prerelease && (
+                            <Badge variant="outline" className="text-xs py-0">pre</Badge>
+                          )}
+                          {entry.date && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(entry.date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap text-muted-foreground">
+                          {entry.body || "No release notes."}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : status?.webapp?.release_notes ? (
+                  <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap">
+                    {status.webapp.release_notes}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground italic">No release notes available.</p>
+                )}
               </div>
             )}
 

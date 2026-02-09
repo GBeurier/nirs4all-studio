@@ -461,6 +461,7 @@ class UpdateManager:
                 info.download_url = cached.get("download_url")
                 info.asset_name = cached.get("asset_name")
                 info.download_size_bytes = cached.get("download_size_bytes")
+                info.checksum_sha256 = cached.get("checksum_sha256")
                 info.update_available = self._compare_versions(
                     current_version, info.latest_version
                 )
@@ -502,6 +503,11 @@ class UpdateManager:
                 info.asset_name = platform_asset.get("name")
                 info.download_size_bytes = platform_asset.get("size")
 
+                # Look for .sha256 sidecar file for checksum verification
+                info.checksum_sha256 = await self._fetch_sidecar_checksum(
+                    assets, info.asset_name
+                )
+
             # Check if update available
             info.update_available = self._compare_versions(
                 current_version, info.latest_version
@@ -517,6 +523,7 @@ class UpdateManager:
                 "download_url": info.download_url,
                 "asset_name": info.asset_name,
                 "download_size_bytes": info.download_size_bytes,
+                "checksum_sha256": info.checksum_sha256,
             }
             self._save_cache()
 
@@ -524,6 +531,45 @@ class UpdateManager:
             print(f"Error checking GitHub releases: {e}")
 
         return info
+
+    async def _fetch_sidecar_checksum(
+        self, assets: List[Dict[str, Any]], asset_name: Optional[str]
+    ) -> Optional[str]:
+        """
+        Look for a .sha256 sidecar file in the release assets and extract the checksum.
+
+        The CI generates files like `nirs4all-Studio-1.0.0-win-x64.exe.sha256` containing:
+        `<hex_checksum>  <filename>`
+        """
+        if not asset_name:
+            return None
+
+        sidecar_name = f"{asset_name}.sha256"
+        sidecar_asset = None
+        for asset in assets:
+            if asset.get("name", "").lower() == sidecar_name.lower():
+                sidecar_asset = asset
+                break
+
+        if not sidecar_asset:
+            return None
+
+        sidecar_url = sidecar_asset.get("browser_download_url")
+        if not sidecar_url:
+            return None
+
+        try:
+            status_code, content = await self._fetch_url(sidecar_url)
+            if status_code == 200 and content.strip():
+                # Format: "<hex_checksum>  <filename>" or just "<hex_checksum>"
+                checksum = content.strip().split()[0]
+                # Validate it looks like a hex SHA256 (64 chars)
+                if len(checksum) == 64 and all(c in "0123456789abcdefABCDEF" for c in checksum):
+                    return checksum
+        except Exception as e:
+            print(f"Warning: Could not fetch checksum sidecar: {e}")
+
+        return None
 
     def _find_platform_asset(self, assets: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Find the release asset matching the current platform."""
@@ -724,6 +770,71 @@ async def check_for_updates() -> UpdateStatus:
     Bypasses cache and queries GitHub/PyPI directly.
     """
     return await update_manager.get_update_status(force=True)
+
+
+@router.get("/webapp/changelog")
+async def get_webapp_changelog(current_version: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get changelog entries between the current and latest webapp version.
+
+    Fetches all GitHub releases newer than current_version and returns
+    their release notes combined.
+    """
+    mgr = get_update_manager()
+    if not current_version:
+        current_version = mgr.get_webapp_version()
+
+    repo = mgr.settings.github_repo
+    api_url = f"https://api.github.com/repos/{repo}/releases"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": f"{APP_NAME}/{current_version}",
+    }
+
+    try:
+        status_code, content = await mgr._fetch_url(f"{api_url}?per_page=20", headers)
+        if status_code != 200:
+            return {"entries": [], "error": f"GitHub API returned {status_code}"}
+
+        releases = json.loads(content)
+        entries = []
+
+        try:
+            from packaging import version as pkg_version
+            current_parsed = pkg_version.parse(current_version)
+            use_packaging = True
+        except ImportError:
+            current_parsed = current_version
+            use_packaging = False
+
+        for release in releases:
+            tag = release.get("tag_name", "").lstrip("v")
+            if not tag:
+                continue
+
+            if use_packaging:
+                try:
+                    if pkg_version.parse(tag) <= current_parsed:
+                        continue
+                except Exception:
+                    continue
+            elif tag <= current_version:
+                continue
+
+            entries.append({
+                "version": tag,
+                "date": release.get("published_at"),
+                "body": release.get("body", ""),
+                "prerelease": release.get("prerelease", False),
+            })
+
+        # Sort newest first
+        entries.sort(key=lambda e: e["version"], reverse=True)
+
+        return {"entries": entries, "current_version": current_version}
+
+    except Exception as e:
+        return {"entries": [], "error": str(e)}
 
 
 @router.get("/settings")
@@ -1498,3 +1609,136 @@ async def set_venv_path(request: SetVenvPathRequest) -> Dict[str, Any]:
         "is_custom": venv_manager.is_custom_path,
         "is_valid": venv_info.is_valid,
     }
+
+
+# ============= Working Config Snapshot =============
+
+SNAPSHOTS_DIR_NAME = "config_snapshots"
+
+
+def _get_snapshots_dir() -> Path:
+    """Get the directory for storing config snapshots."""
+    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    snapshots_dir = app_data / SNAPSHOTS_DIR_NAME
+    snapshots_dir.mkdir(parents=True, exist_ok=True)
+    return snapshots_dir
+
+
+@router.get("/venv/snapshots")
+async def list_snapshots() -> Dict[str, Any]:
+    """List all saved config snapshots."""
+    snapshots_dir = _get_snapshots_dir()
+    snapshots = []
+
+    for f in sorted(snapshots_dir.glob("*.txt"), key=lambda p: p.stat().st_mtime, reverse=True):
+        stat = f.stat()
+        # Read first line for metadata (comment with label)
+        label = f.stem
+        try:
+            first_line = f.read_text(encoding="utf-8").split("\n", 1)[0]
+            if first_line.startswith("# "):
+                label = first_line[2:].strip()
+        except Exception:
+            pass
+
+        snapshots.append({
+            "name": f.stem,
+            "label": label,
+            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "size_bytes": stat.st_size,
+        })
+
+    return {"snapshots": snapshots}
+
+
+class SnapshotCreateRequest(BaseModel):
+    """Request to create a config snapshot."""
+    label: Optional[str] = None
+
+
+@router.post("/venv/snapshots")
+async def create_snapshot(request: SnapshotCreateRequest) -> Dict[str, Any]:
+    """
+    Save the current pip freeze output as a config snapshot.
+
+    This captures all installed packages and versions in the managed venv.
+    """
+    if not venv_manager.get_venv_info().is_valid:
+        raise HTTPException(status_code=400, detail="Virtual environment is not valid")
+
+    # Run pip freeze
+    freeze_output = venv_manager.run_pip_command(["freeze"])
+    if freeze_output is None:
+        raise HTTPException(status_code=500, detail="Failed to run pip freeze")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    label = request.label or f"Snapshot {timestamp}"
+    filename = f"snapshot_{timestamp}.txt"
+
+    snapshots_dir = _get_snapshots_dir()
+    snapshot_path = snapshots_dir / filename
+
+    content = f"# {label}\n{freeze_output}"
+    snapshot_path.write_text(content, encoding="utf-8")
+
+    return {
+        "success": True,
+        "name": snapshot_path.stem,
+        "label": label,
+        "created_at": datetime.now().isoformat(),
+    }
+
+
+@router.post("/venv/snapshots/{name}/restore")
+async def restore_snapshot(name: str) -> Dict[str, Any]:
+    """
+    Restore a config snapshot by running pip install -r on the snapshot file.
+
+    This will install all packages at the exact versions captured in the snapshot.
+    """
+    if not venv_manager.get_venv_info().is_valid:
+        raise HTTPException(status_code=400, detail="Virtual environment is not valid")
+
+    snapshots_dir = _get_snapshots_dir()
+    snapshot_path = snapshots_dir / f"{name}.txt"
+
+    if not snapshot_path.exists():
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    # Filter out comment lines for pip install
+    lines = snapshot_path.read_text(encoding="utf-8").strip().split("\n")
+    requirements = [line for line in lines if line.strip() and not line.startswith("#")]
+    if not requirements:
+        raise HTTPException(status_code=400, detail="Snapshot is empty")
+
+    # Write a temp requirements file without comments
+    temp_req = snapshots_dir / f"_restore_{name}.txt"
+    temp_req.write_text("\n".join(requirements), encoding="utf-8")
+
+    try:
+        output = venv_manager.run_pip_command(["install", "-r", str(temp_req)])
+        if output is None:
+            raise HTTPException(status_code=500, detail="pip install failed")
+    finally:
+        temp_req.unlink(missing_ok=True)
+
+    # Invalidate caches
+    _dependencies_cache.invalidate()
+
+    return {
+        "success": True,
+        "message": f"Restored snapshot '{name}' successfully",
+    }
+
+
+@router.delete("/venv/snapshots/{name}")
+async def delete_snapshot(name: str) -> Dict[str, Any]:
+    """Delete a config snapshot."""
+    snapshots_dir = _get_snapshots_dir()
+    snapshot_path = snapshots_dir / f"{name}.txt"
+
+    if not snapshot_path.exists():
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    snapshot_path.unlink()
+    return {"success": True, "message": f"Snapshot '{name}' deleted"}

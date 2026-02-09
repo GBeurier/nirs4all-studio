@@ -69,7 +69,11 @@ class UpdateDownloader:
 
     async def download(self) -> Tuple[bool, str, Optional[Path]]:
         """
-        Download the update archive.
+        Download the update archive with resume support.
+
+        If a partial file exists from a previous attempt, the download resumes
+        from where it left off using an HTTP Range header. On cancellation or
+        network failure the partial file is kept so the next attempt can resume.
 
         Returns:
             Tuple of (success, message, downloaded_file_path)
@@ -78,37 +82,58 @@ class UpdateDownloader:
         filename = self.download_url.split("/")[-1]
         download_path = cache_dir / filename
 
-        # Remove old download if exists
+        # Check for partial download to resume
+        resume_offset = 0
         if download_path.exists():
-            download_path.unlink()
+            resume_offset = download_path.stat().st_size
+            # If size matches expected, treat as already complete
+            if self.expected_size and resume_offset >= self.expected_size:
+                self._report_progress(50, "Download already complete")
+                return True, "Download complete", download_path
 
         try:
-            self._report_progress(0, "Connecting to server...")
+            if resume_offset > 0:
+                self._report_progress(0, f"Resuming download from {resume_offset / 1024 / 1024:.1f} MB...")
+            else:
+                self._report_progress(0, "Connecting to server...")
+
+            headers = {}
+            if resume_offset > 0:
+                headers["Range"] = f"bytes={resume_offset}-"
 
             async with httpx.AsyncClient(
                 follow_redirects=True,
                 timeout=httpx.Timeout(30.0, read=300.0),
             ) as client:
-                async with client.stream("GET", self.download_url) as response:
-                    if response.status_code != 200:
+                async with client.stream("GET", self.download_url, headers=headers) as response:
+                    # 206 = Partial Content (resume worked), 200 = full response
+                    if response.status_code == 200:
+                        # Server doesn't support Range — restart from scratch
+                        resume_offset = 0
+                    elif response.status_code == 416:
+                        # Range not satisfiable — file might already be complete
+                        self._report_progress(50, "Download complete")
+                        return True, "Download complete", download_path
+                    elif response.status_code != 206:
                         return (
                             False,
                             f"Download failed with status {response.status_code}",
                             None,
                         )
 
-                    total_size = int(
-                        response.headers.get("content-length", self.expected_size)
-                    )
-                    downloaded = 0
+                    content_length = int(response.headers.get("content-length", 0))
+                    total_size = resume_offset + content_length if response.status_code == 206 else content_length
+                    if total_size == 0:
+                        total_size = self.expected_size or 1
+                    downloaded = resume_offset
 
-                    async with aiofiles.open(download_path, "wb") as f:
+                    file_mode = "ab" if resume_offset > 0 and response.status_code == 206 else "wb"
+                    async with aiofiles.open(download_path, file_mode) as f:
                         async for chunk in response.aiter_bytes(
                             chunk_size=self.CHUNK_SIZE
                         ):
                             if self._cancelled:
-                                await f.close()
-                                download_path.unlink(missing_ok=True)
+                                # Keep partial file for future resume
                                 return False, "Download cancelled", None
 
                             await f.write(chunk)
@@ -121,22 +146,19 @@ class UpdateDownloader:
                             message = f"Downloading: {mb_downloaded:.1f} MB / {mb_total:.1f} MB"
 
                             if not self._report_progress(progress, message):
-                                await f.close()
-                                download_path.unlink(missing_ok=True)
+                                # Keep partial file for future resume
                                 return False, "Download cancelled", None
 
             self._report_progress(50, "Download complete")
             return True, "Download complete", download_path
 
-        except httpx.TimeoutException:
-            download_path.unlink(missing_ok=True)
-            return False, "Download timed out", None
-        except httpx.ConnectError as e:
-            download_path.unlink(missing_ok=True)
-            return False, f"Connection error: {str(e)}", None
+        except (httpx.TimeoutException, httpx.ConnectError) as e:
+            # Keep partial file for resume on next attempt
+            error_type = "timed out" if isinstance(e, httpx.TimeoutException) else f"connection error: {e}"
+            return False, f"Download {error_type}. Partial download saved for resume.", None
         except Exception as e:
-            download_path.unlink(missing_ok=True)
-            return False, f"Download error: {str(e)}", None
+            # Keep partial file for resume on next attempt
+            return False, f"Download error: {str(e)}. Partial download saved for resume.", None
 
     def verify_checksum(self, file_path: Path) -> Tuple[bool, str]:
         """

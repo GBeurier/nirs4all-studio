@@ -1766,6 +1766,27 @@ export async function downloadWebappUpdate(): Promise<{
   return api.post("/updates/webapp/download");
 }
 
+// ============= Changelog API =============
+
+export interface ChangelogEntry {
+  version: string;
+  date: string | null;
+  body: string;
+  prerelease: boolean;
+}
+
+/**
+ * Get changelog entries between current and latest webapp version
+ */
+export async function getWebappChangelog(currentVersion?: string): Promise<{
+  entries: ChangelogEntry[];
+  current_version?: string;
+  error?: string;
+}> {
+  const params = currentVersion ? `?current_version=${currentVersion}` : "";
+  return api.get(`/updates/webapp/changelog${params}`);
+}
+
 // ============= Auto-Update API =============
 
 export interface DownloadJobResponse {
@@ -2006,6 +2027,54 @@ export async function setVenvPath(path: string | null): Promise<{
   is_valid: boolean;
 }> {
   return api.post("/updates/venv/path", { path });
+}
+
+// ============= Working Config Snapshots API =============
+
+export interface ConfigSnapshot {
+  name: string;
+  label: string;
+  created_at: string;
+  size_bytes: number;
+}
+
+/**
+ * List all saved config snapshots
+ */
+export async function listSnapshots(): Promise<{ snapshots: ConfigSnapshot[] }> {
+  return api.get("/updates/venv/snapshots");
+}
+
+/**
+ * Create a config snapshot (pip freeze)
+ */
+export async function createSnapshot(label?: string): Promise<{
+  success: boolean;
+  name: string;
+  label: string;
+  created_at: string;
+}> {
+  return api.post("/updates/venv/snapshots", { label: label || null });
+}
+
+/**
+ * Restore a config snapshot
+ */
+export async function restoreSnapshot(name: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return api.post(`/updates/venv/snapshots/${name}/restore`);
+}
+
+/**
+ * Delete a config snapshot
+ */
+export async function deleteSnapshot(name: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return api.delete(`/updates/venv/snapshots/${name}`);
 }
 
 // =============================================================================

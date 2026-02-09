@@ -3,8 +3,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { FloatingRunWidget } from "./FloatingRunWidget";
+import { useStartupUpdateCheck } from "@/hooks/useStartupUpdateCheck";
 
 export function AppLayout() {
+  useStartupUpdateCheck();
+
   return (
     <TooltipProvider>
       <div className="flex h-screen w-full overflow-hidden bg-background">

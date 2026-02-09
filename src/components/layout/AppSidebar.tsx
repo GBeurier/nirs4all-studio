@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
+import { useHasUpdates } from "@/hooks/useUpdates";
 
 interface NavItem {
   titleKey: string;
@@ -60,6 +61,7 @@ export function AppSidebar() {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { updateCount } = useHasUpdates();
 
   const isActive = (href: string) => {
     if (href === "/pipelines/new") {
@@ -95,7 +97,12 @@ export function AppSidebar() {
         {active && (
           <div className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-primary" />
         )}
-        <Icon className={cn("h-5 w-5 shrink-0", active && "text-primary")} />
+        <span className="relative shrink-0">
+          <Icon className={cn("h-5 w-5", active && "text-primary")} />
+          {collapsed && item.badge !== undefined && item.badge > 0 && (
+            <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-sidebar" />
+          )}
+        </span>
         {!collapsed && (
           <span className="truncate">{title}</span>
         )}
@@ -168,7 +175,7 @@ export function AppSidebar() {
 
       {/* Settings at bottom */}
       <div className="border-t border-border/50 p-3">
-        {renderNavItem({ titleKey: "nav.settings", href: "/settings", icon: Settings })}
+        {renderNavItem({ titleKey: "nav.settings", href: "/settings", icon: Settings, badge: updateCount })}
       </div>
 
       {/* Collapse button */}

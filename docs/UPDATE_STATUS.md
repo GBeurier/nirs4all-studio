@@ -37,41 +37,39 @@ The entire backend code path is implemented and not stubbed:
 
 ### What's NOT Implemented
 
-- **`electron-updater`** — Documentation mentions it, but it's not in `package.json` and not imported anywhere. The update mechanism is entirely Python-driven (download + script replacement), not Electron's native auto-update.
+- **`electron-updater`** — Not in `package.json` and not imported anywhere. The update mechanism is Python-driven (download + script replacement), not Electron's native auto-update. This remains a potential future improvement for differential downloads and code signing verification.
 - **Electron IPC for updates** — No IPC handlers in `main.ts` for update operations. Everything goes through HTTP to the FastAPI backend.
-- **Update badge in sidebar** — The `useHasUpdates()` hook exists and returns `hasAnyUpdate` + `updateCount`, but no component consumes it. Users must navigate to Settings > Advanced to see updates.
-- **Dashboard notification** — No update indicator on the dashboard.
-- **Working config / rollback** — No mechanism to pin to a known-good Python environment or roll back after a bad upgrade.
+- **Multi-version dependency pinning** — Users can install/update optional deps but cannot pick specific versions (e.g., TensorFlow 2.15 vs 2.16) with compatibility notes.
 
 ---
 
-## 2. What's Missing for a Complete Mechanism
+## 2. What's Missing / Remaining
 
 ### Must Fix Before First Release
 
 | Item | Why | Effort |
 |------|-----|--------|
-| **Create a GitHub Release** | Without a release, the webapp update check always returns "no update". Need at least one tagged release with platform-specific archives attached. | CI workflow exists (`electron-release.yml`), just needs a `v*` tag push |
-| **Uncomment `publish` in `electron-builder.yml`** | Set `provider: github`, `owner: GBeurier`, `repo: nirs4all-webapp` so that builds upload release assets automatically | 3 lines |
+| **Create a GitHub Release** | Without a release, the webapp update check always returns "no update". Need at least one tagged release with platform-specific archives attached. Push a `v*` tag to trigger CI. | See `docs/PUBLISHING_GUIDE.md` |
 | **Validate the update script on Windows** | The `.bat` updater template looks correct but has never run against a real packaged install. Edge cases: paths with spaces, UAC elevation, antivirus interference | Manual testing |
 | **Validate the update script on Linux** | Same for the `.sh` script — test with both AppImage and deb installs | Manual testing |
 
-### Should Fix Soon After
+### Recently Implemented
 
-| Item | Why |
-|------|-----|
-| **Wire `useHasUpdates()` to the sidebar** | Users should see a badge on the Settings nav item (or a global indicator) when updates are available, without having to check manually |
-| **Working config snapshot** | Let users save current `pip freeze` output as a "known good" state. Provide a "Restore" button that runs `pip install -r` from the snapshot. Simple file-based, no complex DB needed |
-| **Startup update check** | The `auto_check` setting exists but the background check on startup should surface a toast/notification, not just log to console |
-| **Checksum in GitHub Releases** | The download verifier supports SHA256 but the release assets need a `.sha256` sidecar file or the checksum in the release body. Without it, verification is skipped |
-| **Error recovery for partial downloads** | Download resumption on network failure. Currently a failed download requires starting over |
+| Item | Status |
+|------|--------|
+| **`publish` in `electron-builder.yml`** | Done — configured with `provider: github`, `owner: GBeurier`, `repo: nirs4all-webapp` |
+| **Sidebar update badge** | Done — `useHasUpdates()` wired to Settings nav item with badge count (expanded) and dot indicator (collapsed) |
+| **Startup update check** | Done — `useStartupUpdateCheck` hook shows a toast notification on app mount when updates are available (respects `auto_check` setting) |
+| **Working config snapshot** | Done — Backend endpoints for save/list/restore/delete `pip freeze` snapshots; UI in Settings > Updates > Working Config collapsible section |
+| **SHA256 checksum from sidecar files** | Done — Backend fetches `.sha256` sidecar assets from GitHub releases and passes checksum to the downloader for verification |
+| **Download resumption** | Done — `UpdateDownloader.download()` uses HTTP Range headers to resume partial downloads; partial files are kept on failure/cancellation |
+| **Changelog display** | Done — Backend `/updates/webapp/changelog` endpoint fetches all releases between current and latest; UI shows per-version changelog entries in the webapp update dialog |
 
 ### Nice to Have (Later)
 
 | Item | Why |
 |------|-----|
-| **`electron-updater` integration** | Native Electron auto-update (differential downloads, code signing verification). More robust than the script-based approach, but requires the publish config and signed builds |
-| **Changelog display** | Show release notes diff between current and target version |
+| **`electron-updater` integration** | Native Electron auto-update (differential downloads, code signing verification). More robust than the script-based approach, but requires signed builds |
 | **Multi-version dependency pinning** | Let users pick specific versions of optional deps (e.g., TensorFlow 2.15 vs 2.16) with compatibility notes |
 
 ---
