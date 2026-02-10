@@ -1,7 +1,8 @@
 /**
  * Shared utilities for TreeNode components
  *
- * Centralized step icons and helper functions
+ * Centralized step icons and helper functions.
+ * Uses subType for rendering distinctions within flow/utility types.
  */
 
 import {
@@ -20,8 +21,8 @@ import {
   LineChart,
   MessageSquare,
 } from "lucide-react";
-import type { StepType, PipelineStep, ParameterSweep } from "../../types";
-import { formatSweepDisplay, calculateStepVariants } from "../../types";
+import type { StepType, StepSubType, FlowStepSubType, PipelineStep, ParameterSweep } from "../../types";
+import { formatSweepDisplay, calculateStepVariants, getStepColor, CONTAINER_CHILDREN_SUBTYPES } from "../../types";
 
 /**
  * Icons mapped to step types
@@ -31,11 +32,19 @@ export const stepIcons: Record<StepType, typeof Waves> = {
   y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
-  generator: Sparkles,
-  branch: GitBranch,
-  merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
+  flow: GitBranch,
+  utility: Sparkles,
+};
+
+/**
+ * Icons mapped to sub-types (for finer distinction)
+ */
+export const stepSubTypeIcons: Record<StepSubType, typeof Waves> = {
+  branch: GitBranch,
+  merge: GitMerge,
+  generator: Sparkles,
   sample_augmentation: Layers,
   feature_augmentation: FlaskConical,
   sample_filter: Filter,
@@ -46,34 +55,36 @@ export const stepIcons: Record<StepType, typeof Waves> = {
 };
 
 /**
- * Container step types that have children (not branches)
+ * Get the appropriate icon for a step, considering subType.
  */
-export const CONTAINER_TYPES: StepType[] = [
-  "sample_augmentation",
-  "feature_augmentation",
-  "sample_filter",
-  "concat_transform",
-];
+export function getStepIcon(step: PipelineStep): typeof Waves {
+  if (step.subType && step.subType in stepSubTypeIcons) {
+    return stepSubTypeIcons[step.subType];
+  }
+  return stepIcons[step.type];
+}
 
 /**
- * Check if a step type has children (not branches)
+ * Check if a step type has children (not branches).
+ * Uses subType for flow steps.
  */
 export function hasChildren(step: PipelineStep): boolean {
-  return CONTAINER_TYPES.includes(step.type) && (step.children?.length ?? 0) > 0;
+  return isContainerStep(step) && (step.children?.length ?? 0) > 0;
 }
 
 /**
- * Check if a step is a container type
+ * Check if a step is a container type (uses children, not branches).
+ * Uses subType for flow steps.
  */
 export function isContainerStep(step: PipelineStep): boolean {
-  return CONTAINER_TYPES.includes(step.type);
+  return step.subType !== undefined && CONTAINER_CHILDREN_SUBTYPES.includes(step.subType as FlowStepSubType);
 }
 
 /**
- * Get container label based on step type
+ * Get container label based on step subType
  */
-export function getContainerChildLabel(stepType: StepType): string {
-  switch (stepType) {
+export function getContainerChildLabel(step: PipelineStep): string {
+  switch (step.subType) {
     case "sample_augmentation":
       return "transformer";
     case "feature_augmentation":
@@ -88,17 +99,17 @@ export function getContainerChildLabel(stepType: StepType): string {
 }
 
 /**
- * Check if step type is a branch or generator
+ * Check if step is a branch or generator (uses branches array).
  */
 export function isBranchableStep(step: PipelineStep): boolean {
-  return step.type === "branch" || step.type === "generator";
+  return step.subType === "branch" || step.subType === "generator";
 }
 
 /**
  * Get the label for branches based on step configuration
  */
 export function getBranchLabel(step: PipelineStep): string {
-  if (step.type === "generator") {
+  if (step.subType === "generator") {
     return step.generatorKind === "cartesian" ? "Stage" : "Option";
   }
   return "Branch";
@@ -202,7 +213,7 @@ export interface GeneratorInfo {
  * Compute generator information for a step
  */
 export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
-  if (step.type !== "generator") {
+  if (step.subType !== "generator") {
     return {
       isGenerator: false,
       generatorKind: null,
@@ -287,7 +298,7 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
     optionCount,
     variantCount,
     hasPickArrange,
-    selectionSummary: summaryParts.join(" → ") || (generatorKind === "cartesian" ? "all combinations" : "try each"),
+    selectionSummary: summaryParts.join(" -> ") || (generatorKind === "cartesian" ? "all combinations" : "try each"),
     optionNames,
   };
 }
@@ -348,7 +359,7 @@ export function getDisplayParams(step: PipelineStep, sweepKeys: string[]): strin
 }
 
 /**
- * Get fold label based on step type and children/branches
+ * Get fold label based on step subType and children/branches
  */
 export function getFoldLabel(step: PipelineStep, childLabel: string): string {
   const isBranchable = isBranchableStep(step);
@@ -357,7 +368,7 @@ export function getFoldLabel(step: PipelineStep, childLabel: string): string {
 
   if (isBranchable) {
     const count = step.branches?.length ?? 0;
-    const label = step.type === "generator"
+    const label = step.subType === "generator"
       ? (step.generatorKind === "cartesian" ? "stages" : "options")
       : "branches";
     return `${count} ${label}`;

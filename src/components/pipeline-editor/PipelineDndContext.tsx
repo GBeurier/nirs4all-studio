@@ -35,7 +35,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { PipelineStep, StepType, StepOption, DragData, DropIndicator } from "./types";
-import { stepColors } from "./types";
+import { stepColors, getStepColor } from "./types";
 
 // Icons for step types
 const stepIcons: Record<StepType, typeof Waves> = {
@@ -271,7 +271,7 @@ function DragOverlayContent({ data }: { data: DragData }) {
 
   if (data.type === "pipeline-step" && data.step) {
     const Icon = stepIcons[data.step.type];
-    const colors = stepColors[data.step.type];
+    const colors = getStepColor(data.step);
 
     return (
       <motion.div

@@ -22,6 +22,10 @@ test.describe('Navigation', () => {
     await sidebar.navigateTo('playground');
     await expect(page).toHaveURL('/playground');
 
+    // Inspector
+    await sidebar.navigateTo('inspector');
+    await expect(page).toHaveURL('/inspector');
+
     // Pipelines
     await sidebar.navigateTo('pipelines');
     await expect(page).toHaveURL('/pipelines');
@@ -39,9 +43,9 @@ test.describe('Navigation', () => {
     await sidebar.navigateTo('predictions');
     await expect(page).toHaveURL('/predictions');
 
-    // Analysis
-    await sidebar.navigateTo('analysis');
-    await expect(page).toHaveURL('/analysis');
+    // Lab
+    await sidebar.navigateTo('lab');
+    await expect(page).toHaveURL('/lab/synthesis'); // Lab redirects to synthesis
 
     // Settings
     await sidebar.navigateTo('settings');
@@ -129,8 +133,8 @@ test.describe('Navigation', () => {
     await sidebar.expectLogoVisible();
   });
 
-  test('should navigate to new experiment/pipeline from sidebar', async ({ sidebar, page }) => {
-    await sidebar.navigateTo('newExperiment');
-    await expect(page).toHaveURL('/pipelines/new');
+  test('should navigate to run editor from sidebar', async ({ sidebar, page }) => {
+    await sidebar.navigateTo('runEditor');
+    await expect(page).toHaveURL('/editor');
   });
 });

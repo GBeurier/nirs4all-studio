@@ -7,7 +7,12 @@
     "description": "NICoN (NIRS Convolutional Network)",
     "longDescription": "Deep convolutional neural network designed specifically for NIR spectroscopy.",
     "category": "Deep Learning",
-    "tags": ["deep-learning", "cnn", "nirs", "neural-network"],
+    "tags": [
+      "deep-learning",
+      "cnn",
+      "nirs",
+      "neural-network"
+    ],
     "source": "nirs4all",
     "isDeepLearning": true,
     "parameters": [
@@ -21,7 +26,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [50, 500]
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "learning_rate",
@@ -33,7 +41,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.0001, 0.01]
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
       },
       {
         "name": "batch_size",
@@ -49,7 +60,8 @@
     "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.deep.nicon"
-    ]
+    ],
+    "tier": "advanced"
   },
   {
     "id": "model.cnn1d",
@@ -59,7 +71,12 @@
     "description": "1D Convolutional Neural Network",
     "longDescription": "Generic 1D CNN architecture for spectral data.",
     "category": "Deep Learning",
-    "tags": ["deep-learning", "cnn", "neural-network", "1d"],
+    "tags": [
+      "deep-learning",
+      "cnn",
+      "neural-network",
+      "1d"
+    ],
     "source": "nirs4all",
     "isDeepLearning": true,
     "parameters": [
@@ -73,7 +90,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [50, 500]
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "learning_rate",
@@ -85,7 +105,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.0001, 0.01]
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
       },
       {
         "name": "n_filters",
@@ -110,7 +133,8 @@
     "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.deep.CNN1D"
-    ]
+    ],
+    "tier": "advanced"
   },
   {
     "id": "model.mlp",
@@ -120,7 +144,12 @@
     "description": "Multi-Layer Perceptron Regressor",
     "longDescription": "Fully connected neural network for regression.",
     "category": "Deep Learning",
-    "tags": ["deep-learning", "mlp", "neural-network", "perceptron"],
+    "tags": [
+      "deep-learning",
+      "mlp",
+      "neural-network",
+      "perceptron"
+    ],
     "source": "sklearn",
     "isDeepLearning": true,
     "parameters": [
@@ -150,14 +179,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.0001, 0.01]
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
       "sklearn.neural_network._multilayer_perceptron.MLPRegressor"
-    ]
+    ],
+    "tier": "advanced"
   },
   {
     "id": "model.lstm",
@@ -167,7 +200,12 @@
     "description": "Long Short-Term Memory Network",
     "longDescription": "LSTM recurrent neural network for sequence modeling.",
     "category": "Deep Learning",
-    "tags": ["deep-learning", "lstm", "rnn", "recurrent"],
+    "tags": [
+      "deep-learning",
+      "lstm",
+      "rnn",
+      "recurrent"
+    ],
     "source": "nirs4all",
     "isDeepLearning": true,
     "parameters": [
@@ -208,14 +246,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.0001, 0.01]
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.deep.LSTM"
-    ]
+    ],
+    "tier": "advanced"
   },
   {
     "id": "model.transformer",
@@ -225,7 +267,12 @@
     "description": "Transformer Model",
     "longDescription": "Attention-based transformer architecture for spectral data.",
     "category": "Deep Learning",
-    "tags": ["deep-learning", "transformer", "attention", "neural-network"],
+    "tags": [
+      "deep-learning",
+      "transformer",
+      "attention",
+      "neural-network"
+    ],
     "source": "nirs4all",
     "isDeepLearning": true,
     "parameters": [
@@ -275,14 +322,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.0001, 0.01]
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.deep.Transformer"
-    ]
+    ],
+    "tier": "advanced"
   },
   {
     "id": "model.tabpfn",
@@ -292,11 +343,17 @@
     "description": "TabPFN (Prior-Data Fitted Network)",
     "longDescription": "Pre-trained transformer for tabular data - no hyperparameter tuning needed.",
     "category": "Deep Learning",
-    "tags": ["deep-learning", "tabpfn", "transformer", "pretrained"],
+    "tags": [
+      "deep-learning",
+      "tabpfn",
+      "transformer",
+      "pretrained"
+    ],
     "source": "nirs4all",
     "isDeepLearning": true,
     "parameters": [],
     "supportsParameterSweeps": false,
-    "supportsFinetuning": false
+    "supportsFinetuning": false,
+    "tier": "advanced"
   }
 ]

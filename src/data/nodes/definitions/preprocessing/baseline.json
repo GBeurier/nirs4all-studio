@@ -7,7 +7,12 @@
     "description": "Remove polynomial trends",
     "longDescription": "Removes polynomial trends from spectra using least squares fitting.",
     "category": "Baseline",
-    "tags": ["baseline", "trend", "polynomial", "correction"],
+    "tags": [
+      "baseline",
+      "trend",
+      "polynomial",
+      "correction"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -20,14 +25,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [0, 5]
+        "finetuneRange": [
+          0,
+          5
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.signal.Detrend"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.baseline_correction",
@@ -37,7 +46,11 @@
     "description": "Polynomial baseline correction",
     "longDescription": "Fits and subtracts a polynomial baseline from spectra.",
     "category": "Baseline",
-    "tags": ["baseline", "polynomial", "correction"],
+    "tags": [
+      "baseline",
+      "polynomial",
+      "correction"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -51,7 +64,8 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.asls_baseline",
@@ -61,7 +75,12 @@
     "description": "Asymmetric Least Squares baseline",
     "longDescription": "Asymmetric Least Squares Smoothing baseline estimation.",
     "category": "Baseline",
-    "tags": ["baseline", "als", "asymmetric", "smoothing"],
+    "tags": [
+      "baseline",
+      "als",
+      "asymmetric",
+      "smoothing"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -74,7 +93,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [1000, 100000000]
+        "finetuneRange": [
+          1000,
+          100000000
+        ]
       },
       {
         "name": "p",
@@ -87,14 +109,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "float",
-        "finetuneRange": [0.001, 0.1]
+        "finetuneRange": [
+          0.001,
+          0.1
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.baseline.ASLSBaseline"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "preprocessing.airpls",
@@ -104,7 +130,12 @@
     "description": "Adaptive Iteratively Reweighted PLS baseline",
     "longDescription": "Adaptive Iteratively Reweighted Penalized Least Squares for baseline correction.",
     "category": "Baseline",
-    "tags": ["baseline", "airpls", "adaptive", "iterative"],
+    "tags": [
+      "baseline",
+      "airpls",
+      "adaptive",
+      "iterative"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -117,14 +148,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [1000, 10000000]
+        "finetuneRange": [
+          1000,
+          10000000
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.baseline.AirPLS"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "preprocessing.arpls",
@@ -134,7 +169,12 @@
     "description": "Asymmetrically Reweighted PLS baseline",
     "longDescription": "Asymmetrically Reweighted Penalized Least Squares for baseline correction.",
     "category": "Baseline",
-    "tags": ["baseline", "arpls", "asymmetric", "penalized"],
+    "tags": [
+      "baseline",
+      "arpls",
+      "asymmetric",
+      "penalized"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -147,14 +187,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [1000, 10000000]
+        "finetuneRange": [
+          1000,
+          10000000
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.baseline.ArPLS"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "preprocessing.snip",
@@ -164,7 +208,12 @@
     "description": "Statistics-sensitive Non-linear Iterative Peak-clipping",
     "longDescription": "SNIP algorithm for baseline estimation using iterative peak clipping.",
     "category": "Baseline",
-    "tags": ["baseline", "snip", "peak", "clipping"],
+    "tags": [
+      "baseline",
+      "snip",
+      "peak",
+      "clipping"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -177,11 +226,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [10, 100]
+        "finetuneRange": [
+          10,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.rolling_ball",
@@ -191,7 +244,12 @@
     "description": "Rolling ball baseline",
     "longDescription": "Rolling ball algorithm for baseline estimation.",
     "category": "Baseline",
-    "tags": ["baseline", "rolling", "ball", "morphological"],
+    "tags": [
+      "baseline",
+      "rolling",
+      "ball",
+      "morphological"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -204,11 +262,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [10, 100]
+        "finetuneRange": [
+          10,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.modpoly",
@@ -218,7 +280,11 @@
     "description": "Modified Polynomial baseline",
     "longDescription": "Modified Polynomial fitting for baseline estimation.",
     "category": "Baseline",
-    "tags": ["baseline", "polynomial", "modified"],
+    "tags": [
+      "baseline",
+      "polynomial",
+      "modified"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -231,11 +297,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 6]
+        "finetuneRange": [
+          1,
+          6
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.imodpoly",
@@ -245,7 +315,12 @@
     "description": "Improved Modified Polynomial baseline",
     "longDescription": "Improved Modified Polynomial fitting for baseline estimation.",
     "category": "Baseline",
-    "tags": ["baseline", "polynomial", "improved", "modified"],
+    "tags": [
+      "baseline",
+      "polynomial",
+      "improved",
+      "modified"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -258,10 +333,14 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 6]
+        "finetuneRange": [
+          1,
+          6
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

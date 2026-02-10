@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepOptions, stepColors, createStepFromOption, cloneStep } from "./types";
+import { stepOptions, stepColors, getStepColor, createStepFromOption, cloneStep } from "./types";
 
 // Selection modes for OR generator - simplified to none/pick/arrange
 type SelectionMode = "none" | "pick" | "arrange";
@@ -181,7 +181,7 @@ export function OrOptionItem({
   onToggleExpand,
   onUpdate,
 }: OrOptionItemProps) {
-  const colors = stepColors[option.type];
+  const colors = getStepColor(option);
 
   return (
     <div
@@ -671,7 +671,7 @@ export function WrapInOrGeneratorPopover({
                 <Badge
                   key={step.id}
                   variant="outline"
-                  className={cn("text-xs", stepColors[step.type].text)}
+                  className={cn("text-xs", getStepColor(step).text)}
                 >
                   {step.name}
                 </Badge>

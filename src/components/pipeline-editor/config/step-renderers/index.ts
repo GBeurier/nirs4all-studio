@@ -11,7 +11,7 @@
  * import { useStepRenderer, StepActions } from './step-renderers';
  *
  * function StepConfigPanel({ step, ...props }) {
- *   const { Renderer, usesParameterProps } = useStepRenderer(step.type);
+ *   const { Renderer, usesParameterProps } = useStepRenderer(step.type, step.subType);
  *   return <Renderer step={step} {...props} />;
  * }
  */

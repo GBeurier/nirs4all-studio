@@ -7,20 +7,28 @@
     "description": "Ridge regression (L2)",
     "longDescription": "Linear regression with L2 regularization to prevent overfitting.",
     "category": "Linear",
-    "tags": ["linear", "ridge", "l2", "regularization"],
+    "tags": [
+      "linear",
+      "ridge",
+      "l2",
+      "regularization"
+    ],
     "source": "sklearn",
     "parameters": [
       {
         "name": "alpha",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.0001,
         "max": 1000,
         "description": "Regularization strength",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.001, 100]
+        "finetuneRange": [
+          0.001,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -28,7 +36,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.linear_model._ridge.Ridge"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "model.lasso",
@@ -38,20 +47,29 @@
     "description": "Lasso regression (L1)",
     "longDescription": "Linear regression with L1 regularization for feature selection.",
     "category": "Linear",
-    "tags": ["linear", "lasso", "l1", "regularization", "sparse"],
+    "tags": [
+      "linear",
+      "lasso",
+      "l1",
+      "regularization",
+      "sparse"
+    ],
     "source": "sklearn",
     "parameters": [
       {
         "name": "alpha",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.0001,
         "max": 1000,
         "description": "Regularization strength",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.001, 100]
+        "finetuneRange": [
+          0.001,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -59,7 +77,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.linear_model._coordinate_descent.Lasso"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "model.elastic_net",
@@ -69,20 +88,29 @@
     "description": "Elastic Net (L1+L2)",
     "longDescription": "Linear regression combining L1 and L2 regularization.",
     "category": "Linear",
-    "tags": ["linear", "elastic", "l1", "l2", "regularization"],
+    "tags": [
+      "linear",
+      "elastic",
+      "l1",
+      "l2",
+      "regularization"
+    ],
     "source": "sklearn",
     "parameters": [
       {
         "name": "alpha",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.0001,
         "max": 1000,
         "description": "Regularization strength",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.001, 100]
+        "finetuneRange": [
+          0.001,
+          100
+        ]
       },
       {
         "name": "l1_ratio",
@@ -95,7 +123,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "float",
-        "finetuneRange": [0.1, 0.9]
+        "finetuneRange": [
+          0.1,
+          0.9
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -103,6 +134,7 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.linear_model._coordinate_descent.ElasticNet"
-    ]
+    ],
+    "tier": "standard"
   }
 ]

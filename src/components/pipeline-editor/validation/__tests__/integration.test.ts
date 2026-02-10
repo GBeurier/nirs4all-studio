@@ -54,15 +54,15 @@ function createSplitterStep(name: string, params: Record<string, string | number
 }
 
 function createBranchStep(branches: PipelineStep[][]): PipelineStep {
-  return createStep("branch", "Branch", { branches });
+  return createStep("flow", "Branch", { subType: "branch", branches });
 }
 
 function createMergeStep(): PipelineStep {
-  return createStep("merge", "Merge", { params: { method: "predictions" } });
+  return createStep("flow", "Merge", { subType: "merge", params: { method: "predictions" } });
 }
 
-function createContainerStep(type: StepType, name: string, children: PipelineStep[]): PipelineStep {
-  return createStep(type, name, { children });
+function createContainerStep(name: string, children: PipelineStep[]): PipelineStep {
+  return createStep("flow", name, { subType: "sample_augmentation", children });
 }
 
 // ============================================================================
@@ -121,7 +121,7 @@ describe("Complete Pipeline Validation Workflow", () => {
 
     it("validates pipeline with sample augmentation container", () => {
       const steps: PipelineStep[] = [
-        createContainerStep("sample_augmentation", "SMOTE", [
+        createContainerStep("SMOTE", [
           createPreprocessingStep("StandardScaler"),
           createSplitterStep("KFold", { n_splits: 5 }),
           createModelStep("RandomForest", { n_estimators: 100 }),
@@ -399,12 +399,12 @@ describe("Nested Structure Validation", () => {
   });
 
   it("validates nested containers", () => {
-    const innerContainer = createContainerStep("sample_augmentation", "Inner", [
+    const innerContainer = createContainerStep("Inner", [
       createPreprocessingStep("SNV"),
       createModelStep("PLSRegression", { n_components: 5 }),
     ]);
 
-    const outerContainer = createContainerStep("sample_augmentation", "Outer", [
+    const outerContainer = createContainerStep("Outer", [
       createPreprocessingStep("StandardScaler"),
       innerContainer,
     ]);
@@ -440,7 +440,7 @@ describe("Nested Structure Validation", () => {
   });
 
   it("validates mixed branches and containers", () => {
-    const container = createContainerStep("sample_augmentation", "Augment", [
+    const container = createContainerStep("Augment", [
       createPreprocessingStep("SMOTE"),
     ]);
 
@@ -788,7 +788,7 @@ describe("Real-World NIRS Pipeline Scenarios", () => {
   it("validates data augmentation pipeline", () => {
     const steps: PipelineStep[] = [
       createPreprocessingStep("StandardScaler"),
-      createContainerStep("sample_augmentation", "Augmentation", [
+      createContainerStep("Augmentation", [
         createStep("augmentation", "NoiseInjection", { params: { scale: 0.01 } }),
         createStep("augmentation", "Mixup", { params: { alpha: 0.2 } }),
       ]),

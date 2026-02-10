@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepOptions, stepColors } from "./types";
+import { stepOptions, getStepColor } from "./types";
 
 interface StepContextMenuProps {
   /** The step this menu is for */
@@ -125,7 +125,7 @@ export function StepContextMenu({
     return { preprocessing, models };
   }, []);
 
-  const colors = stepColors[step.type];
+  const colors = getStepColor(step);
 
   return (
     <ContextMenu>

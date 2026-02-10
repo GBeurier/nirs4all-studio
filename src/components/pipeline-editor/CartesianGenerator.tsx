@@ -45,7 +45,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepOptions, stepColors, generateStepId, createStepFromOption } from "./types";
+import { stepOptions, stepColors, getStepColor, generateStepId, createStepFromOption } from "./types";
 
 /**
  * CartesianStage - A single stage in the cartesian generator
@@ -200,11 +200,11 @@ export function CartesianStage({
                 key={option.id}
                 className={cn(
                   "group flex items-center gap-1.5 px-2 py-1 rounded-md border text-sm",
-                  stepColors[option.type].border,
-                  stepColors[option.type].bg
+                  getStepColor(option).border,
+                  getStepColor(option).bg
                 )}
               >
-                <span className={stepColors[option.type].text}>
+                <span className={getStepColor(option).text}>
                   {option.name}
                 </span>
                 {options.length > 1 && onRemoveOption && (

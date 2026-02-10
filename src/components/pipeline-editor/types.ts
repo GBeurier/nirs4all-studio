@@ -11,23 +11,62 @@
  * - Target (y) processing
  */
 
+/**
+ * Consolidated step types (8 total, aligned with NodeType).
+ */
 export type StepType =
   | "preprocessing"
   | "y_processing"        // Target variable scaling/processing
   | "splitting"
   | "model"
-  | "generator"
+  | "augmentation"        // Sample augmentation operators (training-time)
+  | "filter"              // Sample filtering operators (outliers, conditions)
+  | "flow"                // Pipeline flow control (branch, merge, containers, generators)
+  | "utility";            // Non-executing / visualization (charts, comments)
+
+/**
+ * Sub-types for flow steps that preserve rendering distinctions.
+ * These map to the legacy type values so the pipeline editor can still
+ * distinguish branches from merges from containers, etc.
+ */
+export type FlowStepSubType =
   | "branch"
   | "merge"
-  | "filter"              // Sample filtering (outliers, conditions)
-  | "augmentation"        // Sample augmentation (training-time)
-  | "sample_augmentation" // Container for sample_augmentation with transformers
-  | "feature_augmentation" // Container for feature_augmentation
-  | "sample_filter"       // Container for sample_filter with filters
-  | "concat_transform"    // Horizontal feature concatenation from multiple transforms
-  | "sequential"          // Sequential step group (equivalent to [...] in nirs4all)
-  | "chart"               // Visualization steps (chart_2d, chart_y)
-  | "comment";            // Non-functional comment step
+  | "generator"
+  | "sample_augmentation"
+  | "feature_augmentation"
+  | "sample_filter"
+  | "concat_transform"
+  | "sequential";
+
+/**
+ * Sub-types for utility steps.
+ */
+export type UtilityStepSubType =
+  | "chart"
+  | "comment";
+
+/**
+ * Combined sub-type union (for PipelineStep.subType).
+ */
+export type StepSubType = FlowStepSubType | UtilityStepSubType;
+
+/**
+ * Legacy step type values (for backwards compatibility with old pipelines).
+ * This includes all 16 old type values that may appear in stored pipelines.
+ */
+export type LegacyStepType =
+  | StepType
+  | "branch"
+  | "merge"
+  | "generator"
+  | "sample_augmentation"
+  | "feature_augmentation"
+  | "sample_filter"
+  | "concat_transform"
+  | "sequential"
+  | "chart"
+  | "comment";
 
 // Generator types for step-level generators
 export type GeneratorKind = "or" | "cartesian";
@@ -123,15 +162,29 @@ export interface TrainingConfig {
   verbose?: number;       // Verbosity level
 }
 
-// Container step types that have nested children
+// Container step types that have nested children.
+// With consolidated types, all containers are "flow" type. Use subType to distinguish.
 export const CONTAINER_STEP_TYPES: StepType[] = [
-  "branch",
-  "generator",
+  "flow",
+];
+
+/**
+ * Flow sub-types that use children (not branches).
+ */
+export const CONTAINER_CHILDREN_SUBTYPES: FlowStepSubType[] = [
   "sample_augmentation",
   "feature_augmentation",
   "sample_filter",
   "concat_transform",
   "sequential",
+];
+
+/**
+ * Flow sub-types that use branches.
+ */
+export const CONTAINER_BRANCH_SUBTYPES: FlowStepSubType[] = [
+  "branch",
+  "generator",
 ];
 
 // Sample augmentation configuration
@@ -202,6 +255,8 @@ export interface ChartConfig {
 export interface PipelineStep {
   id: string;
   type: StepType;
+  /** Sub-type for flow/utility steps (preserves legacy type for rendering) */
+  subType?: StepSubType;
   name: string;
   params: Record<string, string | number | boolean>;
   // Full class path (for export to nirs4all)
@@ -291,6 +346,7 @@ export interface StepOption {
   isDeepLearning?: boolean; // Flag for DL models (show training config)
   isAdvanced?: boolean;     // Flag for advanced/expert options
   tags?: string[];          // Searchable tags
+  tier?: "core" | "standard" | "advanced"; // Visibility tier for filtering
 }
 
 export interface StepCategory {
@@ -520,7 +576,7 @@ export function calculatePipelineVariants(steps: PipelineStep[]): number {
     totalVariants *= calculateStepVariants(step);
 
     // Recurse into branches for parallel execution (non-generator branches)
-    if (step.type === "branch" && step.branches && !step.generatorKind) {
+    if (step.subType === "branch" && step.branches && !step.generatorKind) {
       // For parallel branches, variants are multiplied from each branch
       for (const branch of step.branches) {
         totalVariants *= calculatePipelineVariants(branch);
@@ -734,67 +790,12 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "MetaModel", description: "Stacking ensemble using OOF predictions", defaultParams: { base_estimator: "Ridge" }, category: "Meta" },
   ],
 
-  generator: [
-    {
-      name: "Choose",
-      description: "Choose step alternatives with pick/arrange (_or_)",
-      defaultParams: {},
-      defaultBranches: [[], [], []],
-      generatorKind: "or",
-      category: "Selection"
-    },
-    {
-      name: "Cartesian",
-      description: "All combinations of stages (_cartesian_)",
-      defaultParams: {},
-      defaultBranches: [[], []],
-      generatorKind: "cartesian",
-      category: "Combination"
-    },
-    {
-      name: "Grid",
-      description: "Grid search over parameter values (_grid_)",
-      defaultParams: {},
-      defaultBranches: [[], []],
-      generatorKind: "cartesian",
-      category: "Search"
-    },
-  ],
-
-  branch: [
-    {
-      name: "ParallelBranch",
-      description: "Execute multiple pipelines in parallel",
-      defaultParams: {},
-      defaultBranches: [[], []],
-      category: "Parallel"
-    },
-    {
-      name: "SourceBranch",
-      description: "Per-source preprocessing (multi-source data)",
-      defaultParams: {},
-      defaultBranches: [[], []],
-      category: "Multi-Source"
-    },
-  ],
-
-  merge: [
-    { name: "Concatenate", description: "Concatenate features from branches", defaultParams: { axis: 1 }, category: "Feature" },
-    { name: "Mean", description: "Average predictions from branches", defaultParams: {}, category: "Prediction" },
-    { name: "Stacking", description: "Stack predictions for meta-model", defaultParams: {}, category: "Prediction" },
-    { name: "Voting", description: "Voting ensemble (classification)", defaultParams: { voting: "soft" }, category: "Prediction" },
-  ],
-
   filter: [
     { name: "SampleFilter", description: "Filter samples by condition", defaultParams: { condition: "" }, category: "Sample" },
     { name: "YOutlierFilter", description: "Remove Y outliers", defaultParams: { method: "iqr", threshold: 1.5 }, category: "Outlier" },
     { name: "XOutlierFilter", description: "Remove X outliers (Mahalanobis)", defaultParams: { threshold: 3.0 }, category: "Outlier" },
     { name: "HotellingT2Filter", description: "Hotelling T² outlier detection", defaultParams: { alpha: 0.05 }, category: "Outlier" },
     { name: "SpectralQualityFilter", description: "Filter by spectral quality metrics", defaultParams: { max_nan_ratio: 0.1, max_zero_ratio: 0.3 }, category: "Quality" },
-  ],
-
-  sample_filter: [
-    { name: "SampleFilter", description: "Composite filter with multiple criteria", defaultParams: { mode: "any", report: true }, category: "Composite" },
   ],
 
   augmentation: [
@@ -813,28 +814,68 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "GaussianAdditiveNoise", description: "Gaussian additive noise", defaultParams: { sigma: 0.005 }, category: "Noise" },
   ],
 
-  sample_augmentation: [
-    { name: "SampleAugmentation", description: "Training-time sample augmentation with multiple transformers", defaultParams: { count: 2, selection: "random" }, category: "Composite" },
+  flow: [
+    // Branching
+    {
+      name: "ParallelBranch",
+      description: "Execute multiple pipelines in parallel",
+      defaultParams: {},
+      defaultBranches: [[], []],
+      category: "Branching"
+    },
+    {
+      name: "SourceBranch",
+      description: "Per-source preprocessing (multi-source data)",
+      defaultParams: {},
+      defaultBranches: [[], []],
+      category: "Branching"
+    },
+    // Merging
+    { name: "Concatenate", description: "Concatenate features from branches", defaultParams: { axis: 1 }, category: "Merging" },
+    { name: "Mean", description: "Average predictions from branches", defaultParams: {}, category: "Merging" },
+    { name: "Stacking", description: "Stack predictions for meta-model", defaultParams: {}, category: "Merging" },
+    { name: "Voting", description: "Voting ensemble (classification)", defaultParams: { voting: "soft" }, category: "Merging" },
+    // Augmentation Containers
+    { name: "SampleAugmentation", description: "Training-time sample augmentation with multiple transformers", defaultParams: { count: 2, selection: "random" }, category: "Augmentation Containers" },
+    { name: "FeatureAugmentation", description: "Feature-level augmentation with multiple transforms", defaultParams: { action: "extend" }, category: "Augmentation Containers" },
+    // Filter Containers
+    { name: "SampleFilter", description: "Composite filter with multiple criteria", defaultParams: { mode: "any", report: true }, category: "Filter Containers" },
+    // Feature Concatenation
+    { name: "ConcatTransform", description: "Concatenate features from multiple transformation branches", defaultParams: {}, category: "Feature Concatenation" },
+    // Sequential
+    { name: "Sequential", description: "Group steps to execute in sequence (equivalent to [...] in nirs4all)", defaultParams: {}, category: "Sequential" },
   ],
 
-  feature_augmentation: [
-    { name: "FeatureAugmentation", description: "Feature-level augmentation with multiple transforms", defaultParams: { action: "extend" }, category: "Composite" },
-  ],
-
-  concat_transform: [
-    { name: "ConcatTransform", description: "Concatenate features from multiple transformation branches", defaultParams: {}, category: "Feature Fusion" },
-  ],
-
-  sequential: [
-    { name: "Sequential", description: "Group steps to execute in sequence (equivalent to [...] in nirs4all)", defaultParams: {}, category: "Container" },
-  ],
-
-  chart: [
+  utility: [
+    // Generators
+    {
+      name: "Choose",
+      description: "Choose step alternatives with pick/arrange (_or_)",
+      defaultParams: {},
+      defaultBranches: [[], [], []],
+      generatorKind: "or",
+      category: "Generators"
+    },
+    {
+      name: "Cartesian",
+      description: "All combinations of stages (_cartesian_)",
+      defaultParams: {},
+      defaultBranches: [[], []],
+      generatorKind: "cartesian",
+      category: "Generators"
+    },
+    {
+      name: "Grid",
+      description: "Grid search over parameter values (_grid_)",
+      defaultParams: {},
+      defaultBranches: [[], []],
+      generatorKind: "cartesian",
+      category: "Generators"
+    },
+    // Charts
     { name: "chart_2d", description: "2D spectrum visualization", defaultParams: {}, category: "Visualization" },
     { name: "chart_y", description: "Y distribution visualization", defaultParams: {}, category: "Visualization" },
-  ],
-
-  comment: [
+    // Comments
     { name: "Comment", description: "Non-functional comment for documentation", defaultParams: { text: "" }, category: "Documentation" },
   ],
 };
@@ -844,11 +885,19 @@ export const stepTypeLabels: Record<StepType, string> = {
   y_processing: "Target Processing",
   splitting: "Splitting",
   model: "Models",
-  generator: "Generators",
-  branch: "Branching",
-  merge: "Merge",
   filter: "Filters",
   augmentation: "Augmentation",
+  flow: "Flow Control",
+  utility: "Utility",
+};
+
+/**
+ * Labels for sub-types (used by rendering logic that needs finer distinction).
+ */
+export const stepSubTypeLabels: Record<StepSubType, string> = {
+  branch: "Branching",
+  merge: "Merge",
+  generator: "Generators",
   sample_augmentation: "Sample Augmentation",
   feature_augmentation: "Feature Augmentation",
   sample_filter: "Sample Filter",
@@ -858,8 +907,8 @@ export const stepTypeLabels: Record<StepType, string> = {
   comment: "Comments",
 };
 
-// Color configurations for step types
-export const stepColors: Record<StepType, {
+// Color type
+interface StepColorScheme {
   border: string;
   bg: string;
   hover: string;
@@ -867,7 +916,10 @@ export const stepColors: Record<StepType, {
   text: string;
   active: string;
   gradient: string;
-}> = {
+}
+
+// Color configurations for step types (8 consolidated types)
+export const stepColors: Record<StepType, StepColorScheme> = {
   preprocessing: {
     border: "border-blue-500/30",
     bg: "bg-blue-500/5",
@@ -904,15 +956,49 @@ export const stepColors: Record<StepType, {
     active: "ring-emerald-500 border-emerald-500",
     gradient: "from-emerald-500/20 to-emerald-500/5",
   },
-  generator: {
-    border: "border-orange-500/30",
-    bg: "bg-orange-500/5",
-    hover: "hover:bg-orange-500/10 hover:border-orange-500/50",
-    selected: "bg-orange-500/10 border-orange-500/100",
-    text: "text-orange-500",
-    active: "ring-orange-500 border-orange-500",
-    gradient: "from-orange-500/20 to-orange-500/5",
+  filter: {
+    border: "border-rose-500/30",
+    bg: "bg-rose-500/5",
+    hover: "hover:bg-rose-500/10 hover:border-rose-500/50",
+    selected: "bg-rose-500/10 border-rose-500/100",
+    text: "text-rose-500",
+    active: "ring-rose-500 border-rose-500",
+    gradient: "from-rose-500/20 to-rose-500/5",
   },
+  augmentation: {
+    border: "border-indigo-500/30",
+    bg: "bg-indigo-500/5",
+    hover: "hover:bg-indigo-500/10 hover:border-indigo-500/50",
+    selected: "bg-indigo-500/10 border-indigo-500/100",
+    text: "text-indigo-500",
+    active: "ring-indigo-500 border-indigo-500",
+    gradient: "from-indigo-500/20 to-indigo-500/5",
+  },
+  flow: {
+    border: "border-cyan-500/30",
+    bg: "bg-cyan-500/5",
+    hover: "hover:bg-cyan-500/10 hover:border-cyan-500/50",
+    selected: "bg-cyan-500/10 border-cyan-500/100",
+    text: "text-cyan-500",
+    active: "ring-cyan-500 border-cyan-500",
+    gradient: "from-cyan-500/20 to-cyan-500/5",
+  },
+  utility: {
+    border: "border-gray-500/30",
+    bg: "bg-gray-500/5",
+    hover: "hover:bg-gray-500/10 hover:border-gray-500/50",
+    selected: "bg-gray-500/10 border-gray-500/100",
+    text: "text-gray-500",
+    active: "ring-gray-500 border-gray-500",
+    gradient: "from-gray-500/20 to-gray-500/5",
+  },
+};
+
+/**
+ * Sub-type-specific colors for flow/utility steps.
+ * Used by rendering logic to give distinct visual identity to branches, merges, etc.
+ */
+export const stepSubTypeColors: Record<StepSubType, StepColorScheme> = {
   branch: {
     border: "border-cyan-500/30",
     bg: "bg-cyan-500/5",
@@ -931,23 +1017,14 @@ export const stepColors: Record<StepType, {
     active: "ring-pink-500 border-pink-500",
     gradient: "from-pink-500/20 to-pink-500/5",
   },
-  filter: {
-    border: "border-rose-500/30",
-    bg: "bg-rose-500/5",
-    hover: "hover:bg-rose-500/10 hover:border-rose-500/50",
-    selected: "bg-rose-500/10 border-rose-500/100",
-    text: "text-rose-500",
-    active: "ring-rose-500 border-rose-500",
-    gradient: "from-rose-500/20 to-rose-500/5",
-  },
-  augmentation: {
-    border: "border-indigo-500/30",
-    bg: "bg-indigo-500/5",
-    hover: "hover:bg-indigo-500/10 hover:border-indigo-500/50",
-    selected: "bg-indigo-500/10 border-indigo-500/100",
-    text: "text-indigo-500",
-    active: "ring-indigo-500 border-indigo-500",
-    gradient: "from-indigo-500/20 to-indigo-500/5",
+  generator: {
+    border: "border-orange-500/30",
+    bg: "bg-orange-500/5",
+    hover: "hover:bg-orange-500/10 hover:border-orange-500/50",
+    selected: "bg-orange-500/10 border-orange-500/100",
+    text: "text-orange-500",
+    active: "ring-orange-500 border-orange-500",
+    gradient: "from-orange-500/20 to-orange-500/5",
   },
   sample_augmentation: {
     border: "border-violet-500/30",
@@ -1014,28 +1091,70 @@ export const stepColors: Record<StepType, {
   },
 };
 
+/**
+ * Get the effective color for a step, considering its subType.
+ * If a step has a subType with a specific color, use that.
+ * Otherwise, fall back to the type-level color.
+ */
+export function getStepColor(step: PipelineStep): StepColorScheme {
+  if (step.subType && step.subType in stepSubTypeColors) {
+    return stepSubTypeColors[step.subType];
+  }
+  return stepColors[step.type];
+}
+
 // Utility to generate unique IDs
 export function generateStepId(): string {
   return `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Container step types that use children (not branches)
-const CHILDREN_CONTAINER_TYPES: StepType[] = [
-  "sample_augmentation",
-  "feature_augmentation",
-  "sample_filter",
-  "concat_transform",
-  "sequential",
-];
+/**
+ * Infer the subType for a step based on its name and type.
+ * This maps option names to their appropriate sub-type.
+ */
+function inferSubType(type: StepType, optionName: string): StepSubType | undefined {
+  if (type === "flow") {
+    // Map step names to flow sub-types
+    const flowNameMap: Record<string, FlowStepSubType> = {
+      "ParallelBranch": "branch",
+      "SourceBranch": "branch",
+      "Concatenate": "merge",
+      "Mean": "merge",
+      "Stacking": "merge",
+      "Voting": "merge",
+      "SampleAugmentation": "sample_augmentation",
+      "FeatureAugmentation": "feature_augmentation",
+      "SampleFilter": "sample_filter",
+      "ConcatTransform": "concat_transform",
+      "Sequential": "sequential",
+    };
+    return flowNameMap[optionName];
+  }
+  if (type === "utility") {
+    const utilityNameMap: Record<string, UtilityStepSubType> = {
+      "Choose": "generator",
+      "Cartesian": "generator",
+      "Grid": "generator",
+      "chart_2d": "chart",
+      "chart_y": "chart",
+      "Comment": "comment",
+    };
+    return utilityNameMap[optionName];
+  }
+  return undefined;
+}
 
 // Utility to create a step from an option
 export function createStepFromOption(type: StepType, option: StepOption): PipelineStep {
+  const subType = inferSubType(type, option.name);
+
   // Determine if this is a container type that uses children
-  const usesChildren = CHILDREN_CONTAINER_TYPES.includes(type);
+  const usesChildren = subType !== undefined && CONTAINER_CHILDREN_SUBTYPES.includes(subType as FlowStepSubType);
 
   return {
     id: generateStepId(),
     type,
+    subType,
     name: option.name,
     params: { ...option.defaultParams },
     branches: option.defaultBranches

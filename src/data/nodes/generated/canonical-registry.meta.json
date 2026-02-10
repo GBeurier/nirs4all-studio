@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-02-10T14:52:05.768813+00:00",
+  "nodeCount": 312,
+  "pythonVersion": "3.13.9",
+  "sklearnVersion": "1.8.0",
+  "nirs4allVersion": "0.7.1",
+  "generator": {
+    "script": "scripts/generate_registry.py",
+    "format": "NodeDefinition[]"
+  },
+  "countsByType": {
+    "model": 116,
+    "preprocessing": 121,
+    "splitting": 23,
+    "augmentation": 39,
+    "filter": 5,
+    "y_processing": 8
+  },
+  "countsBySource": {
+    "nirs4all": 117,
+    "sklearn": 195
+  }
+}

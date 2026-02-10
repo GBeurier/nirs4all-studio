@@ -2,33 +2,50 @@
   {
     "id": "branch.parallel",
     "name": "ParallelBranch",
-    "type": "branch",
+    "type": "flow",
+    "subType": "branch",
     "classPath": "branch",
     "description": "Parallel branch: run multiple pipelines",
     "longDescription": "Runs multiple pipeline branches in parallel and optionally merges their results.",
     "category": "Branching",
-    "tags": ["branch", "parallel", "ensemble", "multiple"],
+    "tags": [
+      "branch",
+      "parallel",
+      "ensemble",
+      "multiple"
+    ],
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "branches",
     "defaultBranches": 2,
     "parameters": [],
     "acceptsChildren": true,
-    "childTypes": ["preprocessing", "model", "splitting"],
+    "childTypes": [
+      "preprocessing",
+      "model",
+      "splitting"
+    ],
     "layout": {
       "orientation": "horizontal",
       "showBranchLabels": true
-    }
+    },
+    "tier": "core"
   },
   {
     "id": "branch.source",
     "name": "SourceBranch",
-    "type": "branch",
+    "type": "flow",
+    "subType": "branch",
     "classPath": "source_branch",
     "description": "Source branch: per-source preprocessing",
     "longDescription": "Applies different preprocessing to different data sources (e.g., NIR vs markers).",
     "category": "Multi-Source",
-    "tags": ["branch", "source", "multi-source", "preprocessing"],
+    "tags": [
+      "branch",
+      "source",
+      "multi-source",
+      "preprocessing"
+    ],
     "source": "nirs4all",
     "isContainer": true,
     "containerType": "source_branches",
@@ -37,15 +54,21 @@
       {
         "name": "sources",
         "type": "array",
-        "default": ["NIR", "markers"],
+        "default": [
+          "NIR",
+          "markers"
+        ],
         "description": "List of source names to branch on"
       }
     ],
     "acceptsChildren": true,
-    "childTypes": ["preprocessing"],
+    "childTypes": [
+      "preprocessing"
+    ],
     "layout": {
       "orientation": "horizontal",
       "showSourceLabels": true
-    }
+    },
+    "tier": "standard"
   }
 ]

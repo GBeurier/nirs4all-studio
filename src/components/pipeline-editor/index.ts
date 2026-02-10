@@ -127,5 +127,8 @@ export {
   type DimensionWarningBadgeProps,
 } from "./DatasetBinding";
 
+// Phase 5: Native Pipeline Format
+export { PipelineYAMLView, type PipelineYAMLViewProps } from "./PipelineYAMLView";
+
 // Types and utilities
 export * from "./types";

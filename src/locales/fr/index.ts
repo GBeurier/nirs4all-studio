@@ -83,10 +83,12 @@ const fr = {
     datasets: "Jeux de données",
     pipelines: "Pipelines",
     pipelineEditor: "Éditeur de pipeline",
+    runEditor: "Éditeur d'exécution",
     editor: "Éditeur",
     playground: "Bac à sable",
     inspector: "Inspecteur",
     runs: "Exécutions",
+    results: "Résultats",
     scores: "Scores",
     predictions: "Prédictions",
     aggregatedResults: "Résultats agrégés",
@@ -439,10 +441,9 @@ const fr = {
   layout: {
     sidebar: {
       groups: {
-        data: "Données",
+        prepare: "Préparer",
         explore: "Explorer",
         results: "Résultats",
-        lab: "Labo",
       },
     },
     header: {
@@ -472,6 +473,7 @@ const fr = {
   datasets: {
     title: "Jeux de données",
     subtitle: "Gérez vos jeux de données spectraux et configurations",
+    workspace: "Espace de travail",
     empty: "Aucun jeu de données",
     emptyNoMatch: "Aucune correspondance",
     emptyHint: "Commencez par ajouter un jeu de données à votre espace de travail",

@@ -96,7 +96,8 @@ describe("validate", () => {
         params: { n_splits: 5 },
       }),
       createMockStep({
-        type: "merge",
+        type: "flow",
+        subType: "merge",
         id: "merge-1",
       }),
     ];
@@ -175,7 +176,8 @@ describe("getErrorCount", () => {
     const steps: PipelineStep[] = [
       createMockStep({
         id: "merge-1",
-        type: "merge",  // Merge without branch is an error
+        type: "flow",  // Merge without branch is an error
+        subType: "merge",
         name: "Merge",
       }),
     ];
@@ -262,11 +264,13 @@ describe("edge cases", () => {
   it("should handle deeply nested branches", () => {
     const level3Step = createMockStep({ type: "preprocessing" });
     const level2Step = createMockStep({
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       branches: [[level3Step]],
     });
     const level1Step = createMockStep({
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       branches: [[level2Step]],
     });
     const steps: PipelineStep[] = [level1Step];

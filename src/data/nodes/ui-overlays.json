@@ -1,0 +1,707 @@
+{
+  "$schema": "./schema/node.schema.json",
+  "_comment": "UI-specific overlays for node definitions. Contains sweep presets, finetune ranges, display order, and long descriptions extracted from node definitions. Consumed by the pipeline editor for enhanced UX.",
+
+  "preprocessing.snv": {
+    "displayOrder": 1,
+    "longDescription": "Normalizes each spectrum to have zero mean and unit variance. Commonly used for scatter correction in NIRS data."
+  },
+  "preprocessing.robust_snv": {
+    "displayOrder": 2,
+    "longDescription": "Robust Normal Variate - uses robust statistics (median/MAD) instead of mean/std for outlier resistance."
+  },
+  "preprocessing.local_snv": {
+    "displayOrder": 3,
+    "longDescription": "Applies SNV in a sliding window for local scatter correction."
+  },
+  "preprocessing.msc": {
+    "displayOrder": 4,
+    "longDescription": "Corrects for scatter effects by regressing each spectrum against a reference spectrum (typically the mean)."
+  },
+  "preprocessing.emsc": {
+    "displayOrder": 5,
+    "longDescription": "Extended MSC with polynomial baseline correction and optional interference components."
+  },
+  "preprocessing.savitzky_golay": {
+    "displayOrder": 10,
+    "longDescription": "Savitzky-Golay filter for smoothing or computing derivatives while preserving spectral features. Window length must be odd.",
+    "sweepPresets": {
+      "window_length": [
+        { "label": "Small (5-15)", "type": "range", "values": { "from": 5, "to": 15, "step": 2 } },
+        { "label": "Medium (11-31)", "type": "range", "values": { "from": 11, "to": 31, "step": 4 } }
+      ]
+    },
+    "finetuneRanges": {
+      "window_length": { "type": "int", "range": [5, 51] },
+      "polyorder": { "type": "int", "range": [1, 5] }
+    }
+  },
+  "preprocessing.first_derivative": {
+    "displayOrder": 11,
+    "longDescription": "Computes the first derivative of spectra, useful for removing constant baseline offsets."
+  },
+  "preprocessing.second_derivative": {
+    "displayOrder": 12,
+    "longDescription": "Computes the second derivative of spectra, useful for resolving overlapping peaks."
+  },
+  "preprocessing.gaussian": {
+    "displayOrder": 20,
+    "longDescription": "Applies Gaussian convolution for smoothing spectra.",
+    "finetuneRanges": {
+      "sigma": { "type": "float", "range": [0.5, 10] }
+    }
+  },
+  "preprocessing.moving_average": {
+    "displayOrder": 21,
+    "longDescription": "Simple moving average filter for smoothing spectra.",
+    "finetuneRanges": {
+      "window_size": { "type": "int", "range": [3, 31] }
+    }
+  },
+  "preprocessing.detrend": {
+    "displayOrder": 30,
+    "longDescription": "Removes polynomial trends from spectra using least squares fitting.",
+    "finetuneRanges": {
+      "order": { "type": "int", "range": [0, 5] }
+    }
+  },
+  "preprocessing.baseline_correction": {
+    "displayOrder": 31,
+    "longDescription": "Fits and subtracts a polynomial baseline from spectra."
+  },
+  "preprocessing.asls_baseline": {
+    "displayOrder": 32,
+    "longDescription": "Asymmetric Least Squares Smoothing baseline estimation.",
+    "finetuneRanges": {
+      "lam": { "type": "log_float", "range": [1000, 100000000] },
+      "p": { "type": "float", "range": [0.001, 0.1] }
+    }
+  },
+  "preprocessing.airpls": {
+    "displayOrder": 33,
+    "longDescription": "Adaptive Iteratively Reweighted Penalized Least Squares for baseline correction.",
+    "finetuneRanges": {
+      "lam": { "type": "log_float", "range": [1000, 10000000] }
+    }
+  },
+  "preprocessing.arpls": {
+    "displayOrder": 34,
+    "longDescription": "Asymmetrically Reweighted Penalized Least Squares for baseline correction.",
+    "finetuneRanges": {
+      "lam": { "type": "log_float", "range": [1000, 10000000] }
+    }
+  },
+  "preprocessing.snip": {
+    "displayOrder": 35,
+    "longDescription": "SNIP algorithm for baseline estimation using iterative peak clipping.",
+    "finetuneRanges": {
+      "max_half_window": { "type": "int", "range": [10, 100] }
+    }
+  },
+  "preprocessing.rolling_ball": {
+    "displayOrder": 36,
+    "longDescription": "Rolling ball algorithm for baseline estimation.",
+    "finetuneRanges": {
+      "half_window": { "type": "int", "range": [10, 100] }
+    }
+  },
+  "preprocessing.modpoly": {
+    "displayOrder": 37,
+    "longDescription": "Modified Polynomial fitting for baseline estimation.",
+    "finetuneRanges": {
+      "poly_order": { "type": "int", "range": [1, 6] }
+    }
+  },
+  "preprocessing.imodpoly": {
+    "displayOrder": 38,
+    "longDescription": "Improved Modified Polynomial fitting for baseline estimation.",
+    "finetuneRanges": {
+      "poly_order": { "type": "int", "range": [1, 6] }
+    }
+  },
+  "preprocessing.standard_scaler": {
+    "displayOrder": 40,
+    "longDescription": "Standardizes features by removing the mean and scaling to unit variance."
+  },
+  "preprocessing.minmax_scaler": {
+    "displayOrder": 41,
+    "longDescription": "Transforms features by scaling each feature to a given range."
+  },
+  "preprocessing.robust_scaler": {
+    "displayOrder": 42,
+    "longDescription": "Scales features using statistics that are robust to outliers (median and IQR)."
+  },
+  "preprocessing.maxabs_scaler": {
+    "displayOrder": 43,
+    "longDescription": "Scales each feature by its maximum absolute value to [-1, 1]."
+  },
+  "preprocessing.reflectance_to_absorbance": {
+    "displayOrder": 50,
+    "longDescription": "Converts reflectance data to absorbance using the Beer-Lambert law: A = -log10(R)."
+  },
+  "preprocessing.log_transform": {
+    "displayOrder": 51,
+    "longDescription": "Applies logarithmic transformation to spectral data."
+  },
+  "preprocessing.to_absorbance": {
+    "displayOrder": 52,
+    "longDescription": "Converts spectral data to absorbance format."
+  },
+  "preprocessing.from_absorbance": {
+    "displayOrder": 53,
+    "longDescription": "Converts spectral data from absorbance format."
+  },
+  "preprocessing.kubelka_munk": {
+    "displayOrder": 54,
+    "longDescription": "Applies Kubelka-Munk transformation for diffuse reflectance spectra."
+  },
+  "preprocessing.cars": {
+    "displayOrder": 60,
+    "longDescription": "Variable selection method that uses PLS to iteratively select important wavelengths.",
+    "finetuneRanges": {
+      "n_pls_components": { "type": "int", "range": [5, 30] }
+    }
+  },
+  "preprocessing.mcuve": {
+    "displayOrder": 61,
+    "longDescription": "Removes uninformative variables using Monte Carlo sampling."
+  },
+  "preprocessing.vip": {
+    "displayOrder": 62,
+    "longDescription": "Selects variables based on their importance in PLS projection.",
+    "finetuneRanges": {
+      "threshold": { "type": "float", "range": [0.5, 2.0] }
+    }
+  },
+  "preprocessing.pca": {
+    "displayOrder": 70,
+    "longDescription": "Reduces dimensionality by projecting data onto principal components that capture maximum variance.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 50] }
+    }
+  },
+  "preprocessing.truncated_svd": {
+    "displayOrder": 71,
+    "longDescription": "Dimensionality reduction using truncated SVD. Unlike PCA, does not center data before computing SVD.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 50] }
+    }
+  },
+  "preprocessing.crop_transformer": {
+    "displayOrder": 72,
+    "longDescription": "Crops spectra to a specific wavelength range by index."
+  },
+  "preprocessing.resampler": {
+    "displayOrder": 73,
+    "longDescription": "Resamples spectra to a specified number of points using interpolation."
+  },
+  "preprocessing.normalize": {
+    "displayOrder": 74,
+    "longDescription": "Normalizes samples individually to unit norm."
+  },
+  "preprocessing.haar": {
+    "displayOrder": 80,
+    "longDescription": "Applies Haar wavelet decomposition for feature extraction."
+  },
+  "preprocessing.wavelet": {
+    "displayOrder": 81,
+    "longDescription": "General wavelet transform for denoising and feature extraction.",
+    "finetuneRanges": {
+      "level": { "type": "int", "range": [1, 7] }
+    }
+  },
+  "preprocessing.wavelet_pca": {
+    "displayOrder": 82,
+    "longDescription": "Combines wavelet decomposition with PCA for dimensionality reduction.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [5, 50] }
+    }
+  },
+
+  "model.pls_regression": {
+    "displayOrder": 1,
+    "longDescription": "PLS regression with NIPALS algorithm. The gold standard for spectroscopic calibration.",
+    "sweepPresets": {
+      "n_components": [
+        { "label": "Quick (1-10)", "type": "range", "values": { "from": 1, "to": 10, "step": 1 } },
+        { "label": "Extended (1-20)", "type": "range", "values": { "from": 1, "to": 20, "step": 1 } }
+      ]
+    },
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 30] }
+    }
+  },
+  "model.plsda": {
+    "displayOrder": 2,
+    "longDescription": "PLS-DA for classification problems using dummy variable encoding.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 30] }
+    }
+  },
+  "model.ridge": {
+    "displayOrder": 10,
+    "longDescription": "Linear regression with L2 regularization to prevent overfitting.",
+    "finetuneRanges": {
+      "alpha": { "type": "log_float", "range": [0.001, 100] }
+    }
+  },
+  "model.lasso": {
+    "displayOrder": 11,
+    "longDescription": "Linear regression with L1 regularization for feature selection.",
+    "finetuneRanges": {
+      "alpha": { "type": "log_float", "range": [0.001, 100] }
+    }
+  },
+  "model.elastic_net": {
+    "displayOrder": 12,
+    "longDescription": "Linear regression combining L1 and L2 regularization.",
+    "finetuneRanges": {
+      "alpha": { "type": "log_float", "range": [0.001, 100] },
+      "l1_ratio": { "type": "float", "range": [0.1, 0.9] }
+    }
+  },
+  "model.svr": {
+    "displayOrder": 20,
+    "longDescription": "Epsilon-Support Vector Regression using kernel methods.",
+    "finetuneRanges": {
+      "C": { "type": "log_float", "range": [0.01, 100] },
+      "epsilon": { "type": "float", "range": [0.01, 0.5] }
+    }
+  },
+  "model.svc": {
+    "displayOrder": 21,
+    "longDescription": "C-Support Vector Classification using kernel methods.",
+    "finetuneRanges": {
+      "C": { "type": "log_float", "range": [0.01, 100] }
+    }
+  },
+  "model.random_forest_regressor": {
+    "displayOrder": 30,
+    "longDescription": "Ensemble of decision trees for regression with bagging.",
+    "finetuneRanges": {
+      "n_estimators": { "type": "int", "range": [50, 500] },
+      "max_depth": { "type": "int", "range": [3, 30] }
+    }
+  },
+  "model.random_forest_classifier": {
+    "displayOrder": 31,
+    "longDescription": "Ensemble of decision trees for classification with bagging.",
+    "finetuneRanges": {
+      "n_estimators": { "type": "int", "range": [50, 500] },
+      "max_depth": { "type": "int", "range": [3, 30] }
+    }
+  },
+  "model.xgboost": {
+    "displayOrder": 32,
+    "longDescription": "Extreme Gradient Boosting - optimized distributed gradient boosting library.",
+    "finetuneRanges": {
+      "n_estimators": { "type": "int", "range": [50, 500] },
+      "learning_rate": { "type": "log_float", "range": [0.01, 0.5] },
+      "max_depth": { "type": "int", "range": [3, 15] }
+    }
+  },
+  "model.lightgbm": {
+    "displayOrder": 33,
+    "longDescription": "Light Gradient Boosting Machine - fast, distributed, high-performance gradient boosting.",
+    "finetuneRanges": {
+      "n_estimators": { "type": "int", "range": [50, 500] },
+      "learning_rate": { "type": "log_float", "range": [0.01, 0.5] },
+      "num_leaves": { "type": "int", "range": [10, 100] }
+    }
+  },
+  "model.opls": {
+    "displayOrder": 40,
+    "longDescription": "Orthogonal Partial Least Squares separates systematic variation into predictive and orthogonal components.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 20] }
+    }
+  },
+  "model.oplsda": {
+    "displayOrder": 41,
+    "longDescription": "OPLS combined with discriminant analysis for classification.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 20] }
+    }
+  },
+  "model.ikpls": {
+    "displayOrder": 42,
+    "longDescription": "Optimized PLS algorithm with improved computational efficiency.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 30] }
+    }
+  },
+  "model.sparse_pls": {
+    "displayOrder": 43,
+    "longDescription": "PLS with sparsity constraint for automatic variable selection.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 20] },
+      "alpha": { "type": "log_float", "range": [0.001, 1.0] }
+    }
+  },
+  "model.lwpls": {
+    "displayOrder": 44,
+    "longDescription": "Local PLS models weighted by sample similarity for non-linear relationships.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 20] },
+      "n_neighbors": { "type": "int", "range": [10, 100] }
+    }
+  },
+  "model.interval_pls": {
+    "displayOrder": 45,
+    "longDescription": "Divides spectrum into intervals and selects the most informative ones."
+  },
+  "model.robust_pls": {
+    "displayOrder": 46,
+    "longDescription": "PLS with robust estimation methods for handling outliers.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 20] }
+    }
+  },
+  "model.simpls": {
+    "displayOrder": 47,
+    "longDescription": "Statistically Inspired Modification of PLS - faster and numerically stable.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 30] }
+    }
+  },
+  "model.dipls": {
+    "displayOrder": 48,
+    "longDescription": "Domain-invariant PLS for transfer learning scenarios."
+  },
+  "model.recursive_pls": {
+    "displayOrder": 49,
+    "longDescription": "Online/adaptive PLS that updates with new samples."
+  },
+  "model.kernel_pls": {
+    "displayOrder": 50,
+    "longDescription": "PLS in kernel space for non-linear relationships.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 20] },
+      "gamma": { "type": "log_float", "range": [0.001, 10] }
+    }
+  },
+  "model.kopls": {
+    "displayOrder": 51,
+    "longDescription": "Combines kernel methods with orthogonal PLS for non-linear modeling."
+  },
+  "model.nlpls": {
+    "displayOrder": 52,
+    "longDescription": "PLS with non-linear inner relations."
+  },
+  "model.fckpls": {
+    "displayOrder": 53,
+    "longDescription": "Advanced kernel PLS with fractional convolution for spectral data."
+  },
+  "model.nicon": {
+    "displayOrder": 60,
+    "longDescription": "Deep convolutional neural network designed specifically for NIR spectroscopy.",
+    "finetuneRanges": {
+      "epochs": { "type": "int", "range": [50, 500] },
+      "learning_rate": { "type": "log_float", "range": [0.0001, 0.01] }
+    }
+  },
+  "model.cnn1d": {
+    "displayOrder": 61,
+    "longDescription": "Generic 1D CNN architecture for spectral data.",
+    "finetuneRanges": {
+      "epochs": { "type": "int", "range": [50, 500] },
+      "learning_rate": { "type": "log_float", "range": [0.0001, 0.01] }
+    }
+  },
+  "model.mlp": {
+    "displayOrder": 62,
+    "longDescription": "Fully connected neural network for regression.",
+    "finetuneRanges": {
+      "learning_rate_init": { "type": "log_float", "range": [0.0001, 0.01] }
+    }
+  },
+  "model.lstm": {
+    "displayOrder": 63,
+    "longDescription": "LSTM recurrent neural network for sequence modeling.",
+    "finetuneRanges": {
+      "learning_rate": { "type": "log_float", "range": [0.0001, 0.01] }
+    }
+  },
+  "model.transformer": {
+    "displayOrder": 64,
+    "longDescription": "Attention-based transformer architecture for spectral data.",
+    "finetuneRanges": {
+      "learning_rate": { "type": "log_float", "range": [0.0001, 0.01] }
+    }
+  },
+  "model.tabpfn": {
+    "displayOrder": 65,
+    "longDescription": "Pre-trained transformer for tabular data - no hyperparameter tuning needed."
+  },
+  "model.meta_model": {
+    "displayOrder": 70,
+    "longDescription": "Meta-learner that combines predictions from multiple base models (stacking ensemble)."
+  },
+  "model.pcr": {
+    "displayOrder": 71,
+    "longDescription": "PCA followed by regression - classic dimensionality reduction approach.",
+    "finetuneRanges": {
+      "n_components": { "type": "int", "range": [1, 30] }
+    }
+  },
+
+  "splitting.kfold": {
+    "displayOrder": 1,
+    "longDescription": "Splits data into K consecutive folds for cross-validation."
+  },
+  "splitting.repeated_kfold": {
+    "displayOrder": 2,
+    "longDescription": "Repeats K-fold cross-validation multiple times with different randomization."
+  },
+  "splitting.shuffle_split": {
+    "displayOrder": 3,
+    "longDescription": "Generates random train/test indices for multiple iterations."
+  },
+  "splitting.stratified_kfold": {
+    "displayOrder": 4,
+    "longDescription": "K-fold cross-validation with stratification for classification problems."
+  },
+  "splitting.leave_one_out": {
+    "displayOrder": 5,
+    "longDescription": "Each sample is used once as test set while remaining samples form training set."
+  },
+  "splitting.group_kfold": {
+    "displayOrder": 6,
+    "longDescription": "K-fold cross-validation ensuring samples from the same group are not in both train and test sets."
+  },
+  "splitting.group_shuffle_split": {
+    "displayOrder": 7,
+    "longDescription": "Random train/test splits with group awareness."
+  },
+  "splitting.kennard_stone": {
+    "displayOrder": 10,
+    "longDescription": "Selects representative samples that cover the design space uniformly using distance-based selection."
+  },
+  "splitting.spxy": {
+    "displayOrder": 11,
+    "longDescription": "Selects samples considering both feature space (X) and target space (Y) for better representation."
+  },
+  "splitting.spxy_gfold": {
+    "displayOrder": 12,
+    "longDescription": "K-fold cross-validation using SPXY partitioning for each fold."
+  },
+  "splitting.kmeans_splitter": {
+    "displayOrder": 13,
+    "longDescription": "Splits data based on K-means clustering to ensure diverse representation in train and test sets."
+  },
+  "splitting.split_splitter": {
+    "displayOrder": 14,
+    "longDescription": "Optimized sample partitioning algorithm for spectroscopic data."
+  },
+  "splitting.kbins_stratified": {
+    "displayOrder": 15,
+    "longDescription": "Stratified splitting for regression problems by binning the target variable."
+  },
+  "splitting.binned_stratified_group_kfold": {
+    "displayOrder": 16,
+    "longDescription": "K-fold cross-validation with stratification based on binned target values and group awareness."
+  },
+  "splitting.systematic_circular": {
+    "displayOrder": 17,
+    "longDescription": "Systematic sampling with circular wrapping for even distribution."
+  },
+
+  "filter.y_outlier": {
+    "displayOrder": 1,
+    "longDescription": "Identifies samples whose y-values are statistical outliers using IQR, Z-score, percentile, or MAD methods. Commonly used to remove samples with extreme or erroneous target values before training."
+  },
+  "filter.x_outlier": {
+    "displayOrder": 2,
+    "longDescription": "Identifies samples whose spectra are statistical outliers using Mahalanobis distance, robust Mahalanobis, PCA residual (Q-statistic), PCA leverage (Hotelling T-squared), Isolation Forest, or Local Outlier Factor methods."
+  },
+  "filter.spectral_quality": {
+    "displayOrder": 3,
+    "longDescription": "Identifies and excludes samples with spectral quality issues such as high NaN ratio, excessive zeros, low variance (flat spectra), infinite values, or values outside expected range (saturation detection)."
+  },
+  "filter.high_leverage": {
+    "displayOrder": 4,
+    "longDescription": "Identifies samples with high leverage (influence) on model fitting using the hat matrix diagonal. High-leverage points are far from the center of the predictor space and can have disproportionate effects on regression models."
+  },
+  "filter.metadata": {
+    "displayOrder": 5,
+    "longDescription": "Excludes samples based on metadata criteria. Supports excluding specific values, keeping only specific values, or applying a custom condition function to a metadata column."
+  },
+
+  "augmentation.gaussian_additive_noise": {
+    "displayOrder": 1,
+    "longDescription": "Adds Gaussian random noise to spectral data with optional kernel smoothing for correlated noise simulation. X_aug = X + noise."
+  },
+  "augmentation.multiplicative_noise": {
+    "displayOrder": 2,
+    "longDescription": "Applies multiplicative noise to simulate gain variations. X_aug = (1 + epsilon) * X."
+  },
+  "augmentation.spike_noise": {
+    "displayOrder": 3,
+    "longDescription": "Adds sharp spike artifacts at random wavelengths. Simulates cosmic ray hits, electrical interference, or single-point measurement errors."
+  },
+  "augmentation.heteroscedastic_noise": {
+    "displayOrder": 4,
+    "longDescription": "Adds signal-dependent noise where variance scales with signal magnitude. Models shot noise and detector-limited measurements. Noise sigma = noise_base + noise_signal_dep * |X|."
+  },
+  "augmentation.linear_baseline_drift": {
+    "displayOrder": 10,
+    "longDescription": "Simulates linear baseline drift by adding a random offset and slope to spectra. X_aug = X + a + b * wavelength."
+  },
+  "augmentation.polynomial_baseline_drift": {
+    "displayOrder": 11,
+    "longDescription": "Adds a random polynomial baseline drift to spectra. Higher degree polynomials can simulate more complex baseline distortions."
+  },
+  "augmentation.wavelength_shift": {
+    "displayOrder": 20,
+    "longDescription": "Simulates wavelength calibration errors by shifting spectra along the x-axis. Uses interpolation to resample at original wavelength positions."
+  },
+  "augmentation.wavelength_stretch": {
+    "displayOrder": 21,
+    "longDescription": "Stretches or compresses the wavelength axis around the center wavelength. Simulates slight instrument-to-instrument wavelength calibration differences."
+  },
+  "augmentation.local_wavelength_warp": {
+    "displayOrder": 22,
+    "longDescription": "Applies a non-linear warp to the wavelength axis using spline-interpolated random shifts at control points. Simulates local wavelength distortions."
+  },
+  "augmentation.smooth_magnitude_warp": {
+    "displayOrder": 23,
+    "longDescription": "Multiplies the spectrum by a smooth random gain curve generated from spline-interpolated control points. Simulates smooth wavelength-dependent instrument response variations."
+  },
+  "augmentation.band_perturbation": {
+    "displayOrder": 30,
+    "longDescription": "Perturbs random spectral bands by applying multiplicative gain and additive offset within selected regions. Simulates localized instrument artifacts."
+  },
+  "augmentation.gaussian_smoothing_jitter": {
+    "displayOrder": 31,
+    "longDescription": "Applies Gaussian smoothing with a randomly varying sigma to simulate spectral resolution differences between instruments."
+  },
+  "augmentation.unsharp_spectral_mask": {
+    "displayOrder": 32,
+    "longDescription": "Applies unsharp masking (sharpening) to spectra. X_aug = X + k * (X - smooth(X)). Enhances fine spectral features with random intensity."
+  },
+  "augmentation.band_masking": {
+    "displayOrder": 33,
+    "longDescription": "Masks out random spectral bands by either zeroing or interpolating across the region. Simulates missing or corrupted spectral regions."
+  },
+  "augmentation.channel_dropout": {
+    "displayOrder": 34,
+    "longDescription": "Drops individual wavelengths with a given probability, replacing them with zero or interpolated values. Simulates random dead pixels or single-channel corruption."
+  },
+  "augmentation.local_clipping": {
+    "displayOrder": 35,
+    "longDescription": "Clips spectral values in random local regions to the 90th percentile of the segment. Simulates detector saturation or peak flattening artifacts."
+  },
+  "augmentation.mixup_augmenter": {
+    "displayOrder": 40,
+    "longDescription": "Creates new samples by blending pairs of existing samples using Beta distribution weights. X_aug = lambda * X_i + (1 - lambda) * X_j."
+  },
+  "augmentation.local_mixup_augmenter": {
+    "displayOrder": 41,
+    "longDescription": "Creates new samples by blending each sample with one of its k-nearest neighbors using Beta distribution weights. Produces more realistic augmentations than global mixup."
+  },
+  "augmentation.scatter_simulation_msc": {
+    "displayOrder": 50,
+    "longDescription": "Simulates scatter variation using a simple MSC-style model: x_aug = a + b * x. Can use self-reference or global mean as the reference spectrum."
+  },
+  "augmentation.particle_size_augmenter": {
+    "displayOrder": 51,
+    "longDescription": "Simulates particle size effects on NIR spectra through wavelength-dependent baseline scattering (lambda^(-n) relationship), path length changes, and scatter noise. Smaller particles cause increased scattering at shorter wavelengths."
+  },
+  "augmentation.emsc_distortion_augmenter": {
+    "displayOrder": 52,
+    "longDescription": "Simulates the spectral distortions that EMSC corrects: x_distorted = a + b*x + c1*lambda + c2*lambda^2 + ... Useful for training scatter-robust models or simulating instrument transfer."
+  },
+  "augmentation.temperature_augmenter": {
+    "displayOrder": 60,
+    "longDescription": "Simulates temperature effects on NIR spectra including peak position shifts (O-H, N-H bands), intensity changes from hydrogen bonding disruption, and band broadening from thermal motion. Uses literature-based region-specific parameters."
+  },
+  "augmentation.moisture_augmenter": {
+    "displayOrder": 61,
+    "longDescription": "Simulates moisture and water activity effects on NIR spectra. Water activity shifts water bands between free and bound states, affecting peak positions and intensities in the O-H regions."
+  },
+  "augmentation.detector_roll_off": {
+    "displayOrder": 70,
+    "longDescription": "Simulates detector sensitivity roll-off at the edges of the spectral range, causing increased noise and baseline distortion at edge wavelengths. Models include InGaAs, PbS, and Silicon CCD detectors."
+  },
+  "augmentation.stray_light": {
+    "displayOrder": 71,
+    "longDescription": "Simulates stray light (unwanted radiation reaching detector). Causes peak truncation at high absorbance, enhanced at spectral edges. Typical fractions: 0.0001-0.01."
+  },
+  "augmentation.edge_curvature": {
+    "displayOrder": 72,
+    "longDescription": "Simulates edge curvature from optical aberrations, wavelength-dependent baseline drift, or polynomial baseline correction artifacts. Adds smooth curvature increasing towards spectral edges (smile/frown/asymmetric patterns)."
+  },
+  "augmentation.truncated_peak": {
+    "displayOrder": 73,
+    "longDescription": "Simulates truncated absorption peaks from bands centered outside the measured wavelength range. Creates characteristic rising or falling baselines at spectrum boundaries."
+  },
+  "augmentation.edge_artifacts": {
+    "displayOrder": 74,
+    "longDescription": "Convenience class combining multiple edge artifact effects: detector roll-off, stray light, edge curvature, and truncated peaks. Each effect can be individually enabled/disabled."
+  },
+  "augmentation.path_length": {
+    "displayOrder": 80,
+    "longDescription": "Multiplicatively scales spectra to simulate variations in optical path length due to sample positioning, particle size effects, or cuvette variations."
+  },
+  "augmentation.batch_effect": {
+    "displayOrder": 81,
+    "longDescription": "Simulates variations between measurement sessions or instruments by applying wavelength-dependent additive offset (constant + slope) and multiplicative gain."
+  },
+  "augmentation.instrumental_broadening": {
+    "displayOrder": 82,
+    "longDescription": "Applies Gaussian convolution to simulate the finite spectral resolution of the instrument. FWHM controls the broadening width. Useful for simulating resolution differences between instruments."
+  },
+  "augmentation.dead_band": {
+    "displayOrder": 83,
+    "longDescription": "Zeroes out random wavelength regions and adds noise, simulating detector dead bands or saturation artifacts."
+  },
+  "augmentation.spline_smoothing": {
+    "displayOrder": 90,
+    "longDescription": "Applies a smoothing spline to each spectrum, reducing noise while preserving the overall spectral shape."
+  },
+  "augmentation.spline_x_perturbations": {
+    "displayOrder": 91,
+    "longDescription": "Applies perturbations to the spline knots along the x-axis (wavelength dimension) using B-spline interpolation. Simulates wavelength distortions."
+  },
+  "augmentation.spline_y_perturbations": {
+    "displayOrder": 92,
+    "longDescription": "Adds a smooth perturbation to the y-axis (intensity dimension) using B-spline interpolation. Simulates smooth baseline or intensity distortions."
+  },
+  "augmentation.spline_x_simplification": {
+    "displayOrder": 93,
+    "longDescription": "Simplifies spectra by fitting a B-spline through a subset of randomly or uniformly selected points along the x-axis. Reduces noise and spectral complexity."
+  },
+  "augmentation.spline_curve_simplification": {
+    "displayOrder": 94,
+    "longDescription": "Simplifies spectra by fitting a B-spline through a subset of control points selected along the curve path. Similar to x-simplification but considers the curve geometry."
+  },
+  "augmentation.random_x_operation": {
+    "displayOrder": 100,
+    "longDescription": "Applies a random element-wise operation (default: multiplication) with random values drawn from a specified range. Simulates general per-wavelength random distortions."
+  },
+  "augmentation.rotate_translate": {
+    "displayOrder": 101,
+    "longDescription": "Augments data by adding a piecewise-linear distortion (rotation + translation). Creates a random inflection point and applies different slopes on each side, scaled by the per-sample standard deviation."
+  },
+
+  "y_processing.standard_scaler": {
+    "displayOrder": 1,
+    "longDescription": "Standardizes targets by removing the mean and scaling to unit variance."
+  },
+  "y_processing.min_max_scaler": {
+    "displayOrder": 2,
+    "longDescription": "Transforms targets by scaling each to a given range (default 0-1)."
+  },
+  "y_processing.robust_scaler": {
+    "displayOrder": 3,
+    "longDescription": "Scales targets using statistics that are robust to outliers (median and IQR)."
+  },
+  "y_processing.power_transformer": {
+    "displayOrder": 4,
+    "longDescription": "Apply a power transform to make target data more Gaussian-like."
+  },
+  "y_processing.quantile_transformer": {
+    "displayOrder": 5,
+    "longDescription": "Transform targets to follow a uniform or normal distribution using quantiles."
+  }
+}

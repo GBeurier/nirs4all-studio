@@ -292,6 +292,30 @@ export class NodeRegistry {
   }
 
   /**
+   * Get nodes filtered by maximum tier level.
+   *
+   * - "core" returns only core-tier nodes
+   * - "standard" returns core + standard (excludes advanced)
+   * - "all" returns everything
+   */
+  getNodesByTier(maxTier: "core" | "standard" | "all"): NodeDefinition[] {
+    if (maxTier === "all") return this.getAll();
+    if (maxTier === "core") return this.getAll().filter(n => n.tier === "core");
+    // "standard" — exclude advanced
+    return this.getAll().filter(n => n.tier !== "advanced");
+  }
+
+  /**
+   * Get nodes of a specific type, filtered by maximum tier level.
+   */
+  getByTypeAndTier(type: NodeType, maxTier: "core" | "standard" | "all"): NodeDefinition[] {
+    const nodes = this.getByType(type);
+    if (maxTier === "all") return nodes;
+    if (maxTier === "core") return nodes.filter(n => n.tier === "core");
+    return nodes.filter(n => n.tier !== "advanced");
+  }
+
+  /**
    * Get deep learning models only
    */
   getDeepLearningModels(): NodeDefinition[] {

@@ -585,8 +585,8 @@ export function usePipelineEditor(
     (stepId: string, path?: string[]) => {
       const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
         targetSteps.map((s) => {
-          // Support both branch and generator step types (both have branches)
-          if (s.id === stepId && (s.type === "branch" || s.type === "generator") && s.branches) {
+          // Support both branch and generator sub-types (both have branches)
+          if (s.id === stepId && (s.subType === "branch" || s.subType === "generator") && s.branches) {
             return {
               ...s,
               branches: [...s.branches, []],
@@ -608,8 +608,8 @@ export function usePipelineEditor(
     (stepId: string, branchIndex: number, path?: string[]) => {
       const newSteps = updateStepsAtPath(steps, path || [], (targetSteps) =>
         targetSteps.map((s) => {
-          // Support both branch and generator step types (both have branches)
-          if (s.id === stepId && (s.type === "branch" || s.type === "generator") && s.branches && s.branches.length > 1) {
+          // Support both branch and generator sub-types (both have branches)
+          if (s.id === stepId && (s.subType === "branch" || s.subType === "generator") && s.branches && s.branches.length > 1) {
             return {
               ...s,
               branches: s.branches.filter((_, idx) => idx !== branchIndex),
@@ -633,7 +633,7 @@ export function usePipelineEditor(
         targetSteps.map((s) => {
           if (s.id === stepId) {
             // Determine child type based on container type
-            const childType = s.type === "sample_filter" ? "filter" : "preprocessing";
+            const childType = s.subType === "sample_filter" ? "filter" : "preprocessing";
             const newChild: PipelineStep = {
               id: `child-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               type: childType,

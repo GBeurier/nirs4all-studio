@@ -5,9 +5,14 @@
     "type": "augmentation",
     "classPath": "nirs4all.operators.augmentation.spectral.GaussianAdditiveNoise",
     "description": "Gaussian additive noise with optional smoothing",
-    "longDescription": "Adds Gaussian random noise to spectral data with optional kernel smoothing for correlated noise simulation.",
+    "longDescription": "Adds Gaussian random noise to spectral data with optional kernel smoothing for correlated noise simulation. X_aug = X + noise.",
     "category": "Noise",
-    "tags": ["augmentation", "noise", "gaussian", "spectral"],
+    "tags": [
+      "augmentation",
+      "noise",
+      "gaussian",
+      "spectral"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -15,9 +20,9 @@
         "type": "float",
         "default": 0.01,
         "min": 0.0001,
-        "max": 1.0,
+        "max": 1,
         "step": 0.001,
-        "description": "Standard deviation of Gaussian noise"
+        "description": "Standard deviation of Gaussian noise relative to signal std"
       },
       {
         "name": "smoothing_kernel_width",
@@ -28,12 +33,30 @@
         "description": "Kernel width for noise smoothing (1 = no smoothing)"
       },
       {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
         "name": "random_state",
         "type": "int",
         "default": null,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "augmentation.multiplicative_noise",
@@ -41,9 +64,14 @@
     "type": "augmentation",
     "classPath": "nirs4all.operators.augmentation.spectral.MultiplicativeNoise",
     "description": "Multiplicative gain noise per sample or wavelength",
-    "longDescription": "Applies multiplicative noise to simulate gain variations in spectral measurement.",
+    "longDescription": "Applies multiplicative noise to simulate gain variations. X_aug = (1 + epsilon) * X.",
     "category": "Noise",
-    "tags": ["augmentation", "noise", "multiplicative", "spectral"],
+    "tags": [
+      "augmentation",
+      "noise",
+      "multiplicative",
+      "spectral"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -59,68 +87,33 @@
         "name": "per_wavelength",
         "type": "bool",
         "default": false,
-        "description": "Apply independent gain per wavelength"
+        "description": "Apply independent gain per wavelength instead of per sample"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
         "type": "int",
         "default": null,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
-    ]
-  },
-  {
-    "id": "augmentation.wavelength_shift",
-    "name": "WavelengthShift",
-    "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.spectral.WavelengthShift",
-    "description": "Random shift along wavelength axis",
-    "longDescription": "Simulates wavelength calibration errors by shifting spectra along the x-axis.",
-    "category": "Wavelength",
-    "tags": ["augmentation", "shift", "wavelength", "calibration"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "shift_range",
-        "type": "string",
-        "default": "(-2.0, 2.0)",
-        "description": "Range of wavelength shift (min, max)"
-      },
-      {
-        "name": "random_state",
-        "type": "int",
-        "default": null,
-        "description": "Random seed for reproducibility"
-      }
-    ]
-  },
-  {
-    "id": "augmentation.mixup_augmenter",
-    "name": "MixupAugmenter",
-    "type": "augmentation",
-    "classPath": "nirs4all.operators.augmentation.spectral.MixupAugmenter",
-    "description": "Mixup augmentation by blending sample pairs",
-    "longDescription": "Creates new samples by blending pairs of existing samples using Beta distribution weights.",
-    "category": "Mixing",
-    "tags": ["augmentation", "mixup", "blend", "interpolation"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "alpha",
-        "type": "float",
-        "default": 0.2,
-        "min": 0.01,
-        "max": 1.0,
-        "step": 0.05,
-        "description": "Beta distribution parameter controlling blend ratio"
-      },
-      {
-        "name": "random_state",
-        "type": "int",
-        "default": null,
-        "description": "Random seed for reproducibility"
-      }
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "augmentation.linear_baseline_drift",
@@ -128,29 +121,2836 @@
     "type": "augmentation",
     "classPath": "nirs4all.operators.augmentation.spectral.LinearBaselineDrift",
     "description": "Linear baseline drift augmentation",
-    "longDescription": "Simulates linear baseline drift by adding a random slope and offset to spectra.",
+    "longDescription": "Simulates linear baseline drift by adding a random offset and slope to spectra. X_aug = X + a + b * wavelength.",
     "category": "Baseline",
-    "tags": ["augmentation", "baseline", "drift", "spectral"],
+    "tags": [
+      "augmentation",
+      "baseline",
+      "drift",
+      "linear",
+      "spectral"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "offset_range",
-        "type": "string",
-        "default": "(-0.1, 0.1)",
-        "description": "Range for random offset"
+        "name": "offset_range_min",
+        "type": "float",
+        "default": -0.1,
+        "min": -10,
+        "max": 0,
+        "step": 0.01,
+        "description": "Minimum random offset value"
       },
       {
-        "name": "slope_range",
-        "type": "string",
-        "default": "(-0.001, 0.001)",
-        "description": "Range for random slope"
+        "name": "offset_range_max",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 10,
+        "step": 0.01,
+        "description": "Maximum random offset value"
+      },
+      {
+        "name": "slope_range_min",
+        "type": "float",
+        "default": -0.001,
+        "min": -1,
+        "max": 0,
+        "step": 0.0001,
+        "description": "Minimum random slope value"
+      },
+      {
+        "name": "slope_range_max",
+        "type": "float",
+        "default": 0.001,
+        "min": 0,
+        "max": 1,
+        "step": 0.0001,
+        "description": "Maximum random slope value"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
       },
       {
         "name": "random_state",
         "type": "int",
         "default": null,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
-    ]
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.polynomial_baseline_drift",
+    "name": "PolynomialBaselineDrift",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.PolynomialBaselineDrift",
+    "description": "Polynomial baseline drift augmentation",
+    "longDescription": "Adds a random polynomial baseline drift to spectra. Higher degree polynomials can simulate more complex baseline distortions.",
+    "category": "Baseline",
+    "tags": [
+      "augmentation",
+      "baseline",
+      "drift",
+      "polynomial",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 10,
+        "description": "Degree of the polynomial baseline"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.wavelength_shift",
+    "name": "WavelengthShift",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.WavelengthShift",
+    "description": "Random shift along wavelength axis",
+    "longDescription": "Simulates wavelength calibration errors by shifting spectra along the x-axis. Uses interpolation to resample at original wavelength positions.",
+    "category": "Wavelength",
+    "tags": [
+      "augmentation",
+      "shift",
+      "wavelength",
+      "calibration"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "shift_range_min",
+        "type": "float",
+        "default": -2,
+        "min": -50,
+        "max": 0,
+        "step": 0.1,
+        "description": "Minimum wavelength shift (nm or index units)"
+      },
+      {
+        "name": "shift_range_max",
+        "type": "float",
+        "default": 2,
+        "min": 0,
+        "max": 50,
+        "step": 0.1,
+        "description": "Maximum wavelength shift (nm or index units)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "core"
+  },
+  {
+    "id": "augmentation.wavelength_stretch",
+    "name": "WavelengthStretch",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.WavelengthStretch",
+    "description": "Stretch or compress the wavelength axis",
+    "longDescription": "Stretches or compresses the wavelength axis around the center wavelength. Simulates slight instrument-to-instrument wavelength calibration differences.",
+    "category": "Wavelength",
+    "tags": [
+      "augmentation",
+      "stretch",
+      "wavelength",
+      "calibration"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "stretch_range_min",
+        "type": "float",
+        "default": 0.99,
+        "min": 0.9,
+        "max": 1,
+        "step": 0.001,
+        "description": "Minimum stretch factor (< 1.0 = compression)"
+      },
+      {
+        "name": "stretch_range_max",
+        "type": "float",
+        "default": 1.01,
+        "min": 1,
+        "max": 1.1,
+        "step": 0.001,
+        "description": "Maximum stretch factor (> 1.0 = expansion)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.local_wavelength_warp",
+    "name": "LocalWavelengthWarp",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.LocalWavelengthWarp",
+    "description": "Non-linear warp of the wavelength axis",
+    "longDescription": "Applies a non-linear warp to the wavelength axis using spline-interpolated random shifts at control points. Simulates local wavelength distortions.",
+    "category": "Wavelength",
+    "tags": [
+      "augmentation",
+      "warp",
+      "wavelength",
+      "nonlinear",
+      "spline"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_control_points",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of control points for the warp spline"
+      },
+      {
+        "name": "max_shift",
+        "type": "float",
+        "default": 1,
+        "min": 0.1,
+        "max": 20,
+        "step": 0.1,
+        "description": "Maximum shift amplitude at control points (nm or index units)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.smooth_magnitude_warp",
+    "name": "SmoothMagnitudeWarp",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.SmoothMagnitudeWarp",
+    "description": "Multiply spectrum by a smooth random curve",
+    "longDescription": "Multiplies the spectrum by a smooth random gain curve generated from spline-interpolated control points. Simulates smooth wavelength-dependent instrument response variations.",
+    "category": "Wavelength",
+    "tags": [
+      "augmentation",
+      "warp",
+      "magnitude",
+      "gain",
+      "spline"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_control_points",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of control points for the gain spline"
+      },
+      {
+        "name": "gain_range_min",
+        "type": "float",
+        "default": 0.9,
+        "min": 0.5,
+        "max": 1,
+        "step": 0.01,
+        "description": "Minimum gain factor at control points"
+      },
+      {
+        "name": "gain_range_max",
+        "type": "float",
+        "default": 1.1,
+        "min": 1,
+        "max": 1.5,
+        "step": 0.01,
+        "description": "Maximum gain factor at control points"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.band_perturbation",
+    "name": "BandPerturbation",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.BandPerturbation",
+    "description": "Perturb specific spectral bands with random gain and offset",
+    "longDescription": "Perturbs random spectral bands by applying multiplicative gain and additive offset within selected regions. Simulates localized instrument artifacts.",
+    "category": "Spectral",
+    "tags": [
+      "augmentation",
+      "band",
+      "perturbation",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_bands",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 20,
+        "description": "Number of bands to perturb"
+      },
+      {
+        "name": "bandwidth_range_min",
+        "type": "int",
+        "default": 5,
+        "min": 1,
+        "max": 50,
+        "description": "Minimum bandwidth of perturbed region (in wavelength points)"
+      },
+      {
+        "name": "bandwidth_range_max",
+        "type": "int",
+        "default": 20,
+        "min": 5,
+        "max": 100,
+        "description": "Maximum bandwidth of perturbed region (in wavelength points)"
+      },
+      {
+        "name": "gain_range_min",
+        "type": "float",
+        "default": 0.9,
+        "min": 0.5,
+        "max": 1,
+        "step": 0.01,
+        "description": "Minimum gain factor applied to bands"
+      },
+      {
+        "name": "gain_range_max",
+        "type": "float",
+        "default": 1.1,
+        "min": 1,
+        "max": 1.5,
+        "step": 0.01,
+        "description": "Maximum gain factor applied to bands"
+      },
+      {
+        "name": "offset_range_min",
+        "type": "float",
+        "default": -0.01,
+        "min": -1,
+        "max": 0,
+        "step": 0.001,
+        "description": "Minimum additive offset applied to bands"
+      },
+      {
+        "name": "offset_range_max",
+        "type": "float",
+        "default": 0.01,
+        "min": 0,
+        "max": 1,
+        "step": 0.001,
+        "description": "Maximum additive offset applied to bands"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.gaussian_smoothing_jitter",
+    "name": "GaussianSmoothingJitter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.GaussianSmoothingJitter",
+    "description": "Gaussian smoothing with random sigma",
+    "longDescription": "Applies Gaussian smoothing with a randomly varying sigma to simulate spectral resolution differences between instruments.",
+    "category": "Spectral",
+    "tags": [
+      "augmentation",
+      "smoothing",
+      "gaussian",
+      "resolution",
+      "jitter"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "sigma_range_min",
+        "type": "float",
+        "default": 0.5,
+        "min": 0.1,
+        "max": 5,
+        "step": 0.1,
+        "description": "Minimum Gaussian sigma for smoothing"
+      },
+      {
+        "name": "sigma_range_max",
+        "type": "float",
+        "default": 2,
+        "min": 0.5,
+        "max": 10,
+        "step": 0.1,
+        "description": "Maximum Gaussian sigma for smoothing"
+      },
+      {
+        "name": "kernel_width",
+        "type": "int",
+        "default": 11,
+        "min": 3,
+        "max": 51,
+        "step": 2,
+        "description": "Width of the Gaussian kernel (must be odd)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.unsharp_spectral_mask",
+    "name": "UnsharpSpectralMask",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.UnsharpSpectralMask",
+    "description": "Spectral sharpening via unsharp masking",
+    "longDescription": "Applies unsharp masking (sharpening) to spectra. X_aug = X + k * (X - smooth(X)). Enhances fine spectral features with random intensity.",
+    "category": "Spectral",
+    "tags": [
+      "augmentation",
+      "sharpening",
+      "unsharp",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "amount_range_min",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Minimum sharpening amount"
+      },
+      {
+        "name": "amount_range_max",
+        "type": "float",
+        "default": 0.5,
+        "min": 0.1,
+        "max": 2,
+        "step": 0.01,
+        "description": "Maximum sharpening amount"
+      },
+      {
+        "name": "sigma",
+        "type": "float",
+        "default": 1,
+        "min": 0.1,
+        "max": 10,
+        "step": 0.1,
+        "description": "Gaussian sigma for the smoothing kernel"
+      },
+      {
+        "name": "kernel_width",
+        "type": "int",
+        "default": 11,
+        "min": 3,
+        "max": 51,
+        "step": 2,
+        "description": "Width of the Gaussian kernel (must be odd)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.band_masking",
+    "name": "BandMasking",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.BandMasking",
+    "description": "Mask out random spectral bands",
+    "longDescription": "Masks out random spectral bands by either zeroing or interpolating across the region. Simulates missing or corrupted spectral regions.",
+    "category": "Spectral",
+    "tags": [
+      "augmentation",
+      "masking",
+      "band",
+      "dropout",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_bands_range_min",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 10,
+        "description": "Minimum number of bands to mask"
+      },
+      {
+        "name": "n_bands_range_max",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 20,
+        "description": "Maximum number of bands to mask"
+      },
+      {
+        "name": "bandwidth_range_min",
+        "type": "int",
+        "default": 5,
+        "min": 1,
+        "max": 50,
+        "description": "Minimum bandwidth of masked region (in wavelength points)"
+      },
+      {
+        "name": "bandwidth_range_max",
+        "type": "int",
+        "default": 20,
+        "min": 5,
+        "max": 100,
+        "description": "Maximum bandwidth of masked region (in wavelength points)"
+      },
+      {
+        "name": "mode",
+        "type": "select",
+        "default": "interp",
+        "options": [
+          {
+            "value": "interp",
+            "label": "Interpolation"
+          },
+          {
+            "value": "zero",
+            "label": "Zero fill"
+          }
+        ],
+        "description": "How to fill masked regions: interpolate between edges or set to zero"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.channel_dropout",
+    "name": "ChannelDropout",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.ChannelDropout",
+    "description": "Randomly drop individual wavelength channels",
+    "longDescription": "Drops individual wavelengths with a given probability, replacing them with zero or interpolated values. Simulates random dead pixels or single-channel corruption.",
+    "category": "Spectral",
+    "tags": [
+      "augmentation",
+      "dropout",
+      "channel",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "dropout_prob",
+        "type": "float",
+        "default": 0.01,
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Probability of dropping each individual wavelength channel"
+      },
+      {
+        "name": "mode",
+        "type": "select",
+        "default": "interp",
+        "options": [
+          {
+            "value": "interp",
+            "label": "Interpolation"
+          },
+          {
+            "value": "zero",
+            "label": "Zero fill"
+          }
+        ],
+        "description": "How to fill dropped channels: interpolate from neighbors or set to zero"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.spike_noise",
+    "name": "SpikeNoise",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.SpikeNoise",
+    "description": "Add random spike artifacts to spectra",
+    "longDescription": "Adds sharp spike artifacts at random wavelengths. Simulates cosmic ray hits, electrical interference, or single-point measurement errors.",
+    "category": "Noise",
+    "tags": [
+      "augmentation",
+      "spike",
+      "noise",
+      "artifact",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_spikes_range_min",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 10,
+        "description": "Minimum number of spikes per sample"
+      },
+      {
+        "name": "n_spikes_range_max",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 20,
+        "description": "Maximum number of spikes per sample"
+      },
+      {
+        "name": "amplitude_range_min",
+        "type": "float",
+        "default": -0.5,
+        "min": -10,
+        "max": 0,
+        "step": 0.01,
+        "description": "Minimum spike amplitude"
+      },
+      {
+        "name": "amplitude_range_max",
+        "type": "float",
+        "default": 0.5,
+        "min": 0,
+        "max": 10,
+        "step": 0.01,
+        "description": "Maximum spike amplitude"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.local_clipping",
+    "name": "LocalClipping",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.LocalClipping",
+    "description": "Clip values in local regions to simulate saturation",
+    "longDescription": "Clips spectral values in random local regions to the 90th percentile of the segment. Simulates detector saturation or peak flattening artifacts.",
+    "category": "Spectral",
+    "tags": [
+      "augmentation",
+      "clipping",
+      "saturation",
+      "artifact",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_regions",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 10,
+        "description": "Number of regions to clip per sample"
+      },
+      {
+        "name": "width_range_min",
+        "type": "int",
+        "default": 5,
+        "min": 1,
+        "max": 50,
+        "description": "Minimum width of clipped region (in wavelength points)"
+      },
+      {
+        "name": "width_range_max",
+        "type": "int",
+        "default": 20,
+        "min": 5,
+        "max": 100,
+        "description": "Maximum width of clipped region (in wavelength points)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.mixup_augmenter",
+    "name": "MixupAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.MixupAugmenter",
+    "description": "Mixup augmentation by blending sample pairs",
+    "longDescription": "Creates new samples by blending pairs of existing samples using Beta distribution weights. X_aug = lambda * X_i + (1 - lambda) * X_j.",
+    "category": "Mixing",
+    "tags": [
+      "augmentation",
+      "mixup",
+      "blend",
+      "interpolation"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.2,
+        "min": 0.01,
+        "max": 1,
+        "step": 0.05,
+        "description": "Beta distribution parameter controlling blend ratio"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "core"
+  },
+  {
+    "id": "augmentation.local_mixup_augmenter",
+    "name": "LocalMixupAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.LocalMixupAugmenter",
+    "description": "Mixup with nearest neighbors",
+    "longDescription": "Creates new samples by blending each sample with one of its k-nearest neighbors using Beta distribution weights. Produces more realistic augmentations than global mixup.",
+    "category": "Mixing",
+    "tags": [
+      "augmentation",
+      "mixup",
+      "local",
+      "neighbors",
+      "interpolation"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.2,
+        "min": 0.01,
+        "max": 1,
+        "step": 0.05,
+        "description": "Beta distribution parameter controlling blend ratio"
+      },
+      {
+        "name": "k_neighbors",
+        "type": "int",
+        "default": 5,
+        "min": 1,
+        "max": 50,
+        "description": "Number of nearest neighbors to consider for mixing"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.scatter_simulation_msc",
+    "name": "ScatterSimulationMSC",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.spectral.ScatterSimulationMSC",
+    "description": "Simulate scatter variation (MSC-style)",
+    "longDescription": "Simulates scatter variation using a simple MSC-style model: x_aug = a + b * x. Can use self-reference or global mean as the reference spectrum.",
+    "category": "Scattering",
+    "tags": [
+      "augmentation",
+      "scatter",
+      "msc",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "reference_mode",
+        "type": "select",
+        "default": "self",
+        "options": [
+          {
+            "value": "self",
+            "label": "Self-reference"
+          },
+          {
+            "value": "global_mean",
+            "label": "Global mean"
+          }
+        ],
+        "description": "Reference mode for scatter simulation"
+      },
+      {
+        "name": "a_range_min",
+        "type": "float",
+        "default": -0.1,
+        "min": -1,
+        "max": 0,
+        "step": 0.01,
+        "description": "Minimum additive scatter coefficient"
+      },
+      {
+        "name": "a_range_max",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Maximum additive scatter coefficient"
+      },
+      {
+        "name": "b_range_min",
+        "type": "float",
+        "default": 0.9,
+        "min": 0.5,
+        "max": 1,
+        "step": 0.01,
+        "description": "Minimum multiplicative scatter coefficient"
+      },
+      {
+        "name": "b_range_max",
+        "type": "float",
+        "default": 1.1,
+        "min": 1,
+        "max": 1.5,
+        "step": 0.01,
+        "description": "Maximum multiplicative scatter coefficient"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.temperature_augmenter",
+    "name": "TemperatureAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.environmental.TemperatureAugmenter",
+    "description": "Simulate temperature-induced spectral changes",
+    "longDescription": "Simulates temperature effects on NIR spectra including peak position shifts (O-H, N-H bands), intensity changes from hydrogen bonding disruption, and band broadening from thermal motion. Uses literature-based region-specific parameters.",
+    "category": "Environmental",
+    "tags": [
+      "augmentation",
+      "temperature",
+      "environmental",
+      "nir",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "temperature_delta",
+        "type": "float",
+        "default": 5,
+        "min": -50,
+        "max": 50,
+        "step": 1,
+        "description": "Fixed temperature change from reference (degrees C). Positive = heating."
+      },
+      {
+        "name": "temperature_range_min",
+        "type": "float",
+        "default": null,
+        "min": -50,
+        "max": 0,
+        "step": 1,
+        "description": "Minimum random temperature delta. If set, overrides temperature_delta.",
+        "isAdvanced": true
+      },
+      {
+        "name": "temperature_range_max",
+        "type": "float",
+        "default": null,
+        "min": 0,
+        "max": 50,
+        "step": 1,
+        "description": "Maximum random temperature delta. If set, overrides temperature_delta.",
+        "isAdvanced": true
+      },
+      {
+        "name": "reference_temperature",
+        "type": "float",
+        "default": 25,
+        "min": -20,
+        "max": 100,
+        "step": 1,
+        "description": "Reference temperature for input spectra (degrees C)",
+        "isAdvanced": true
+      },
+      {
+        "name": "enable_shift",
+        "type": "bool",
+        "default": true,
+        "description": "Apply peak position shifts"
+      },
+      {
+        "name": "enable_intensity",
+        "type": "bool",
+        "default": true,
+        "description": "Apply intensity changes"
+      },
+      {
+        "name": "enable_broadening",
+        "type": "bool",
+        "default": true,
+        "description": "Apply band broadening"
+      },
+      {
+        "name": "region_specific",
+        "type": "bool",
+        "default": true,
+        "description": "Apply region-specific effects (recommended). If false, applies uniform average effects.",
+        "isAdvanced": true
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.moisture_augmenter",
+    "name": "MoistureAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.environmental.MoistureAugmenter",
+    "description": "Simulate moisture-induced spectral changes",
+    "longDescription": "Simulates moisture and water activity effects on NIR spectra. Water activity shifts water bands between free and bound states, affecting peak positions and intensities in the O-H regions.",
+    "category": "Environmental",
+    "tags": [
+      "augmentation",
+      "moisture",
+      "water",
+      "environmental",
+      "nir",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "water_activity_delta",
+        "type": "float",
+        "default": 0.1,
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "description": "Change in water activity from reference (0-1 scale)"
+      },
+      {
+        "name": "water_activity_range_min",
+        "type": "float",
+        "default": null,
+        "min": -1,
+        "max": 0,
+        "step": 0.01,
+        "description": "Minimum random water activity delta. If set, overrides water_activity_delta.",
+        "isAdvanced": true
+      },
+      {
+        "name": "water_activity_range_max",
+        "type": "float",
+        "default": null,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Maximum random water activity delta. If set, overrides water_activity_delta.",
+        "isAdvanced": true
+      },
+      {
+        "name": "reference_water_activity",
+        "type": "float",
+        "default": 0.5,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "description": "Reference water activity for input spectra",
+        "isAdvanced": true
+      },
+      {
+        "name": "free_water_fraction",
+        "type": "float",
+        "default": 0.3,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "description": "Base fraction of water that is free vs bound",
+        "isAdvanced": true
+      },
+      {
+        "name": "bound_water_shift",
+        "type": "float",
+        "default": 25,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "description": "Wavelength shift (nm) for bound water relative to free water",
+        "isAdvanced": true
+      },
+      {
+        "name": "moisture_content",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Base moisture content as fraction (affects intensity)",
+        "isAdvanced": true
+      },
+      {
+        "name": "enable_shift",
+        "type": "bool",
+        "default": true,
+        "description": "Apply water band position shifts"
+      },
+      {
+        "name": "enable_intensity",
+        "type": "bool",
+        "default": true,
+        "description": "Apply water band intensity changes"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.particle_size_augmenter",
+    "name": "ParticleSizeAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.scattering.ParticleSizeAugmenter",
+    "description": "Simulate particle size effects on scattering",
+    "longDescription": "Simulates particle size effects on NIR spectra through wavelength-dependent baseline scattering (lambda^(-n) relationship), path length changes, and scatter noise. Smaller particles cause increased scattering at shorter wavelengths.",
+    "category": "Scattering",
+    "tags": [
+      "augmentation",
+      "particle_size",
+      "scattering",
+      "nir",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "mean_size_um",
+        "type": "float",
+        "default": 50,
+        "min": 1,
+        "max": 500,
+        "step": 5,
+        "description": "Mean particle size in micrometers"
+      },
+      {
+        "name": "size_variation_um",
+        "type": "float",
+        "default": 15,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "description": "Standard deviation of particle size"
+      },
+      {
+        "name": "size_range_um_min",
+        "type": "float",
+        "default": null,
+        "min": 1,
+        "max": 200,
+        "step": 5,
+        "description": "Minimum random particle size. If set, overrides mean/variation.",
+        "isAdvanced": true
+      },
+      {
+        "name": "size_range_um_max",
+        "type": "float",
+        "default": null,
+        "min": 10,
+        "max": 500,
+        "step": 5,
+        "description": "Maximum random particle size. If set, overrides mean/variation.",
+        "isAdvanced": true
+      },
+      {
+        "name": "reference_size_um",
+        "type": "float",
+        "default": 50,
+        "min": 1,
+        "max": 500,
+        "step": 5,
+        "description": "Reference particle size for baseline calculations",
+        "isAdvanced": true
+      },
+      {
+        "name": "wavelength_exponent",
+        "type": "float",
+        "default": 1.5,
+        "min": 0,
+        "max": 4,
+        "step": 0.1,
+        "description": "Exponent for wavelength dependence (4.0=Rayleigh, 1-2=typical NIR)"
+      },
+      {
+        "name": "size_effect_strength",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Overall strength of the scattering effect"
+      },
+      {
+        "name": "include_path_length",
+        "type": "bool",
+        "default": true,
+        "description": "Include path length effects (multiplicative)"
+      },
+      {
+        "name": "path_length_sensitivity",
+        "type": "float",
+        "default": 0.5,
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "description": "How strongly particle size affects effective path length",
+        "isAdvanced": true
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.emsc_distortion_augmenter",
+    "name": "EMSCDistortionAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.scattering.EMSCDistortionAugmenter",
+    "description": "Apply EMSC-style scatter distortions",
+    "longDescription": "Simulates the spectral distortions that EMSC corrects: x_distorted = a + b*x + c1*lambda + c2*lambda^2 + ... Useful for training scatter-robust models or simulating instrument transfer.",
+    "category": "Scattering",
+    "tags": [
+      "augmentation",
+      "emsc",
+      "scatter",
+      "distortion",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "multiplicative_range_min",
+        "type": "float",
+        "default": 0.9,
+        "min": 0.5,
+        "max": 1,
+        "step": 0.01,
+        "description": "Minimum multiplicative gain factor (b term)"
+      },
+      {
+        "name": "multiplicative_range_max",
+        "type": "float",
+        "default": 1.1,
+        "min": 1,
+        "max": 1.5,
+        "step": 0.01,
+        "description": "Maximum multiplicative gain factor (b term)"
+      },
+      {
+        "name": "additive_range_min",
+        "type": "float",
+        "default": -0.05,
+        "min": -1,
+        "max": 0,
+        "step": 0.005,
+        "description": "Minimum additive offset (a term)"
+      },
+      {
+        "name": "additive_range_max",
+        "type": "float",
+        "default": 0.05,
+        "min": 0,
+        "max": 1,
+        "step": 0.005,
+        "description": "Maximum additive offset (a term)"
+      },
+      {
+        "name": "polynomial_order",
+        "type": "int",
+        "default": 2,
+        "min": 0,
+        "max": 5,
+        "description": "Order of wavelength polynomial (0 = no polynomial term)"
+      },
+      {
+        "name": "polynomial_strength",
+        "type": "float",
+        "default": 0.02,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Base strength of polynomial scattering terms"
+      },
+      {
+        "name": "correlation",
+        "type": "float",
+        "default": 0.3,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "description": "Correlation between multiplicative and additive terms",
+        "isAdvanced": true
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.detector_roll_off",
+    "name": "DetectorRollOffAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.DetectorRollOffAugmenter",
+    "description": "Simulate detector sensitivity roll-off at spectral edges",
+    "longDescription": "Simulates detector sensitivity roll-off at the edges of the spectral range, causing increased noise and baseline distortion at edge wavelengths. Models include InGaAs, PbS, and Silicon CCD detectors.",
+    "category": "Edge Artifacts",
+    "tags": [
+      "augmentation",
+      "detector",
+      "roll-off",
+      "edge",
+      "noise",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "detector_model",
+        "type": "select",
+        "default": "generic_nir",
+        "options": [
+          {
+            "value": "generic_nir",
+            "label": "Generic NIR"
+          },
+          {
+            "value": "ingaas_standard",
+            "label": "Standard InGaAs (1000-1600 nm)"
+          },
+          {
+            "value": "ingaas_extended",
+            "label": "Extended InGaAs (1100-2200 nm)"
+          },
+          {
+            "value": "pbs",
+            "label": "PbS (1000-2800 nm)"
+          },
+          {
+            "value": "silicon_ccd",
+            "label": "Silicon CCD (400-900 nm)"
+          }
+        ],
+        "description": "Detector type to simulate"
+      },
+      {
+        "name": "effect_strength",
+        "type": "float",
+        "default": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "description": "Scaling factor for the roll-off effect"
+      },
+      {
+        "name": "noise_amplification",
+        "type": "float",
+        "default": 0.02,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Additional noise added at low-sensitivity wavelengths"
+      },
+      {
+        "name": "include_baseline_distortion",
+        "type": "bool",
+        "default": true,
+        "description": "Include slight baseline distortion at edges"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.stray_light",
+    "name": "StrayLightAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.StrayLightAugmenter",
+    "description": "Simulate stray light effects on spectra",
+    "longDescription": "Simulates stray light (unwanted radiation reaching detector). Causes peak truncation at high absorbance, enhanced at spectral edges. Typical fractions: 0.0001-0.01.",
+    "category": "Edge Artifacts",
+    "tags": [
+      "augmentation",
+      "stray_light",
+      "edge",
+      "truncation",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "stray_light_fraction",
+        "type": "float",
+        "default": 0.001,
+        "min": 0.0001,
+        "max": 0.1,
+        "step": 0.0005,
+        "description": "Base stray light as fraction of total signal (0.001 = 0.1%)"
+      },
+      {
+        "name": "edge_enhancement",
+        "type": "float",
+        "default": 2,
+        "min": 1,
+        "max": 10,
+        "step": 0.5,
+        "description": "Factor by which stray light increases at spectral edges"
+      },
+      {
+        "name": "edge_width",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.01,
+        "description": "Fraction of spectral range considered 'edge' (0-0.5)"
+      },
+      {
+        "name": "include_peak_truncation",
+        "type": "bool",
+        "default": true,
+        "description": "Simulate peak height reduction at high absorbance"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.edge_curvature",
+    "name": "EdgeCurvatureAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.EdgeCurvatureAugmenter",
+    "description": "Simulate edge curvature and baseline bending",
+    "longDescription": "Simulates edge curvature from optical aberrations, wavelength-dependent baseline drift, or polynomial baseline correction artifacts. Adds smooth curvature increasing towards spectral edges (smile/frown/asymmetric patterns).",
+    "category": "Edge Artifacts",
+    "tags": [
+      "augmentation",
+      "curvature",
+      "edge",
+      "baseline",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "curvature_strength",
+        "type": "float",
+        "default": 0.02,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Maximum curvature amplitude (in absorbance units)"
+      },
+      {
+        "name": "curvature_type",
+        "type": "select",
+        "default": "random",
+        "options": [
+          {
+            "value": "random",
+            "label": "Random (smile/frown/asymmetric)"
+          },
+          {
+            "value": "smile",
+            "label": "Smile (upward at edges)"
+          },
+          {
+            "value": "frown",
+            "label": "Frown (downward at edges)"
+          },
+          {
+            "value": "asymmetric",
+            "label": "Asymmetric"
+          }
+        ],
+        "description": "Type of curvature pattern"
+      },
+      {
+        "name": "asymmetry",
+        "type": "float",
+        "default": 0,
+        "min": -1,
+        "max": 1,
+        "step": 0.1,
+        "description": "Left/right curvature ratio for asymmetric type (-1 to 1)",
+        "dependsOn": "curvature_type",
+        "dependsOnValue": "asymmetric"
+      },
+      {
+        "name": "edge_focus",
+        "type": "float",
+        "default": 0.7,
+        "min": 0,
+        "max": 1,
+        "step": 0.1,
+        "description": "How concentrated the curvature is at edges (higher = sharper)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.truncated_peak",
+    "name": "TruncatedPeakAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.TruncatedPeakAugmenter",
+    "description": "Add truncated absorption peaks at spectral boundaries",
+    "longDescription": "Simulates truncated absorption peaks from bands centered outside the measured wavelength range. Creates characteristic rising or falling baselines at spectrum boundaries.",
+    "category": "Edge Artifacts",
+    "tags": [
+      "augmentation",
+      "truncated_peak",
+      "edge",
+      "boundary",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "peak_probability",
+        "type": "float",
+        "default": 0.3,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "description": "Probability of adding truncated peaks per edge (0-1)"
+      },
+      {
+        "name": "amplitude_range_min",
+        "type": "float",
+        "default": 0.01,
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Minimum peak amplitude (absorbance units)"
+      },
+      {
+        "name": "amplitude_range_max",
+        "type": "float",
+        "default": 0.1,
+        "min": 0.01,
+        "max": 1,
+        "step": 0.01,
+        "description": "Maximum peak amplitude (absorbance units)"
+      },
+      {
+        "name": "width_range_min",
+        "type": "float",
+        "default": 50,
+        "min": 10,
+        "max": 200,
+        "step": 10,
+        "description": "Minimum peak width (nm)"
+      },
+      {
+        "name": "width_range_max",
+        "type": "float",
+        "default": 200,
+        "min": 50,
+        "max": 500,
+        "step": 10,
+        "description": "Maximum peak width (nm)"
+      },
+      {
+        "name": "left_edge",
+        "type": "bool",
+        "default": true,
+        "description": "Add truncated peaks at left (low wavelength) edge"
+      },
+      {
+        "name": "right_edge",
+        "type": "bool",
+        "default": true,
+        "description": "Add truncated peaks at right (high wavelength) edge"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.edge_artifacts",
+    "name": "EdgeArtifactsAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.edge_artifacts.EdgeArtifactsAugmenter",
+    "description": "Combined edge artifacts augmenter",
+    "longDescription": "Convenience class combining multiple edge artifact effects: detector roll-off, stray light, edge curvature, and truncated peaks. Each effect can be individually enabled/disabled.",
+    "category": "Edge Artifacts",
+    "tags": [
+      "augmentation",
+      "edge",
+      "combined",
+      "artifacts",
+      "wavelength-aware"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "detector_roll_off",
+        "type": "bool",
+        "default": true,
+        "description": "Enable detector sensitivity roll-off effect"
+      },
+      {
+        "name": "stray_light",
+        "type": "bool",
+        "default": true,
+        "description": "Enable stray light effect"
+      },
+      {
+        "name": "edge_curvature",
+        "type": "bool",
+        "default": true,
+        "description": "Enable edge curvature/bending effect"
+      },
+      {
+        "name": "truncated_peaks",
+        "type": "bool",
+        "default": true,
+        "description": "Enable truncated peak effect at boundaries"
+      },
+      {
+        "name": "overall_strength",
+        "type": "float",
+        "default": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "description": "Scaling factor for all effects"
+      },
+      {
+        "name": "detector_model",
+        "type": "select",
+        "default": "generic_nir",
+        "options": [
+          {
+            "value": "generic_nir",
+            "label": "Generic NIR"
+          },
+          {
+            "value": "ingaas_standard",
+            "label": "Standard InGaAs"
+          },
+          {
+            "value": "ingaas_extended",
+            "label": "Extended InGaAs"
+          },
+          {
+            "value": "pbs",
+            "label": "PbS"
+          },
+          {
+            "value": "silicon_ccd",
+            "label": "Silicon CCD"
+          }
+        ],
+        "description": "Detector model for roll-off simulation"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.path_length",
+    "name": "PathLengthAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.synthesis.PathLengthAugmenter",
+    "description": "Simulate optical path length variation",
+    "longDescription": "Multiplicatively scales spectra to simulate variations in optical path length due to sample positioning, particle size effects, or cuvette variations.",
+    "category": "Synthesis",
+    "tags": [
+      "augmentation",
+      "path_length",
+      "multiplicative",
+      "synthesis"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "path_length_std",
+        "type": "float",
+        "default": 0.05,
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Standard deviation of the path length factor distribution"
+      },
+      {
+        "name": "min_path_length",
+        "type": "float",
+        "default": 0.5,
+        "min": 0.1,
+        "max": 1,
+        "step": 0.05,
+        "description": "Minimum allowed path length factor (prevents sign inversion)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.batch_effect",
+    "name": "BatchEffectAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.synthesis.BatchEffectAugmenter",
+    "description": "Simulate batch/session measurement effects",
+    "longDescription": "Simulates variations between measurement sessions or instruments by applying wavelength-dependent additive offset (constant + slope) and multiplicative gain.",
+    "category": "Synthesis",
+    "tags": [
+      "augmentation",
+      "batch",
+      "session",
+      "instrument",
+      "synthesis"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "offset_std",
+        "type": "float",
+        "default": 0.02,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Standard deviation of the constant offset term"
+      },
+      {
+        "name": "slope_std",
+        "type": "float",
+        "default": 0.01,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Standard deviation of the wavelength-dependent slope"
+      },
+      {
+        "name": "gain_std",
+        "type": "float",
+        "default": 0.03,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.005,
+        "description": "Standard deviation of the multiplicative gain (centered at 1.0)"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.instrumental_broadening",
+    "name": "InstrumentalBroadeningAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.synthesis.InstrumentalBroadeningAugmenter",
+    "description": "Simulate instrumental spectral broadening",
+    "longDescription": "Applies Gaussian convolution to simulate the finite spectral resolution of the instrument. FWHM controls the broadening width. Useful for simulating resolution differences between instruments.",
+    "category": "Synthesis",
+    "tags": [
+      "augmentation",
+      "broadening",
+      "resolution",
+      "instrument",
+      "synthesis"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "fwhm",
+        "type": "float",
+        "default": 3,
+        "min": 0.1,
+        "max": 20,
+        "step": 0.5,
+        "description": "Full Width at Half Maximum in wavelength units (nm)"
+      },
+      {
+        "name": "fwhm_range_min",
+        "type": "float",
+        "default": null,
+        "min": 0.1,
+        "max": 10,
+        "step": 0.5,
+        "description": "Minimum random FWHM. If set, overrides fixed fwhm.",
+        "isAdvanced": true
+      },
+      {
+        "name": "fwhm_range_max",
+        "type": "float",
+        "default": null,
+        "min": 1,
+        "max": 20,
+        "step": 0.5,
+        "description": "Maximum random FWHM. If set, overrides fixed fwhm.",
+        "isAdvanced": true
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.heteroscedastic_noise",
+    "name": "HeteroscedasticNoiseAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.synthesis.HeteroscedasticNoiseAugmenter",
+    "description": "Signal-dependent (heteroscedastic) detector noise",
+    "longDescription": "Adds signal-dependent noise where variance scales with signal magnitude. Models shot noise and detector-limited measurements. Noise sigma = noise_base + noise_signal_dep * |X|.",
+    "category": "Noise",
+    "tags": [
+      "augmentation",
+      "noise",
+      "heteroscedastic",
+      "detector",
+      "signal-dependent"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "noise_base",
+        "type": "float",
+        "default": 0.001,
+        "min": 0,
+        "max": 0.1,
+        "step": 0.0005,
+        "description": "Base noise standard deviation (signal-independent component)"
+      },
+      {
+        "name": "noise_signal_dep",
+        "type": "float",
+        "default": 0.005,
+        "min": 0,
+        "max": 0.1,
+        "step": 0.001,
+        "description": "Signal-dependent noise coefficient"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.dead_band",
+    "name": "DeadBandAugmenter",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.synthesis.DeadBandAugmenter",
+    "description": "Simulate dead spectral bands (detector saturation/failure)",
+    "longDescription": "Zeroes out random wavelength regions and adds noise, simulating detector dead bands or saturation artifacts.",
+    "category": "Synthesis",
+    "tags": [
+      "augmentation",
+      "dead_band",
+      "saturation",
+      "detector",
+      "synthesis"
+    ],
+    "source": "nirs4all",
+    "isAdvanced": true,
+    "parameters": [
+      {
+        "name": "n_bands",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 10,
+        "description": "Number of dead bands per sample"
+      },
+      {
+        "name": "width_range_min",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Minimum dead band width (in wavelength points)"
+      },
+      {
+        "name": "width_range_max",
+        "type": "int",
+        "default": 30,
+        "min": 5,
+        "max": 100,
+        "description": "Maximum dead band width (in wavelength points)"
+      },
+      {
+        "name": "noise_std",
+        "type": "float",
+        "default": 0.05,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Standard deviation of noise in dead band regions"
+      },
+      {
+        "name": "probability",
+        "type": "float",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "description": "Probability of applying dead band to each sample"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "augmentation.spline_smoothing",
+    "name": "Spline_Smoothing",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.splines.Spline_Smoothing",
+    "description": "Apply smoothing spline to spectra",
+    "longDescription": "Applies a smoothing spline to each spectrum, reducing noise while preserving the overall spectral shape.",
+    "category": "Spline",
+    "tags": [
+      "augmentation",
+      "spline",
+      "smoothing"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.spline_x_perturbations",
+    "name": "Spline_X_Perturbations",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.splines.Spline_X_Perturbations",
+    "description": "B-spline perturbation along x-axis",
+    "longDescription": "Applies perturbations to the spline knots along the x-axis (wavelength dimension) using B-spline interpolation. Simulates wavelength distortions.",
+    "category": "Spline",
+    "tags": [
+      "augmentation",
+      "spline",
+      "perturbation",
+      "x-axis",
+      "wavelength"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "spline_degree",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 5,
+        "description": "Degree of the spline (3 = cubic)"
+      },
+      {
+        "name": "perturbation_density",
+        "type": "float",
+        "default": 0.05,
+        "min": 0.01,
+        "max": 1,
+        "step": 0.01,
+        "description": "Density of perturbation points relative to data size"
+      },
+      {
+        "name": "perturbation_range_min",
+        "type": "float",
+        "default": -10,
+        "min": -100,
+        "max": 0,
+        "step": 1,
+        "description": "Minimum perturbation value"
+      },
+      {
+        "name": "perturbation_range_max",
+        "type": "float",
+        "default": 10,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "description": "Maximum perturbation value"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.spline_y_perturbations",
+    "name": "Spline_Y_Perturbations",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.splines.Spline_Y_Perturbations",
+    "description": "B-spline perturbation along y-axis",
+    "longDescription": "Adds a smooth perturbation to the y-axis (intensity dimension) using B-spline interpolation. Simulates smooth baseline or intensity distortions.",
+    "category": "Spline",
+    "tags": [
+      "augmentation",
+      "spline",
+      "perturbation",
+      "y-axis",
+      "intensity"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "spline_points",
+        "type": "int",
+        "default": null,
+        "min": 4,
+        "max": 500,
+        "description": "Number of spline control points. Null = sample length / 2."
+      },
+      {
+        "name": "perturbation_intensity",
+        "type": "float",
+        "default": 0.005,
+        "min": 0.0001,
+        "max": 0.5,
+        "step": 0.001,
+        "description": "Perturbation intensity relative to max value"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.spline_x_simplification",
+    "name": "Spline_X_Simplification",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.splines.Spline_X_Simplification",
+    "description": "Simplify spectrum via B-spline along x-axis",
+    "longDescription": "Simplifies spectra by fitting a B-spline through a subset of randomly or uniformly selected points along the x-axis. Reduces noise and spectral complexity.",
+    "category": "Spline",
+    "tags": [
+      "augmentation",
+      "spline",
+      "simplification",
+      "x-axis"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "spline_points",
+        "type": "int",
+        "default": null,
+        "min": 4,
+        "max": 500,
+        "description": "Number of spline control points. Null = sample length / 4."
+      },
+      {
+        "name": "uniform",
+        "type": "bool",
+        "default": false,
+        "description": "If true, use uniformly spaced points. If false, use random points."
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.spline_curve_simplification",
+    "name": "Spline_Curve_Simplification",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.splines.Spline_Curve_Simplification",
+    "description": "Simplify spectrum via B-spline along the curve",
+    "longDescription": "Simplifies spectra by fitting a B-spline through a subset of control points selected along the curve path. Similar to x-simplification but considers the curve geometry.",
+    "category": "Spline",
+    "tags": [
+      "augmentation",
+      "spline",
+      "simplification",
+      "curve"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "spline_points",
+        "type": "int",
+        "default": null,
+        "min": 4,
+        "max": 500,
+        "description": "Number of spline control points. Null = sample length / 4."
+      },
+      {
+        "name": "uniform",
+        "type": "bool",
+        "default": false,
+        "description": "If true, use uniformly spaced points. If false, use random points."
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.random_x_operation",
+    "name": "Random_X_Operation",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.random.Random_X_Operation",
+    "description": "Apply random element-wise operation",
+    "longDescription": "Applies a random element-wise operation (default: multiplication) with random values drawn from a specified range. Simulates general per-wavelength random distortions.",
+    "category": "Random",
+    "tags": [
+      "augmentation",
+      "random",
+      "operation",
+      "multiplicative"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "operator_range_min",
+        "type": "float",
+        "default": 0.97,
+        "min": 0.5,
+        "max": 1,
+        "step": 0.01,
+        "description": "Minimum value for the random operator"
+      },
+      {
+        "name": "operator_range_max",
+        "type": "float",
+        "default": 1.03,
+        "min": 1,
+        "max": 1.5,
+        "step": 0.01,
+        "description": "Maximum value for the random operator"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "augmentation.rotate_translate",
+    "name": "Rotate_Translate",
+    "type": "augmentation",
+    "classPath": "nirs4all.operators.augmentation.random.Rotate_Translate",
+    "description": "Rotate and translate spectra",
+    "longDescription": "Augments data by adding a piecewise-linear distortion (rotation + translation). Creates a random inflection point and applies different slopes on each side, scaled by the per-sample standard deviation.",
+    "category": "Random",
+    "tags": [
+      "augmentation",
+      "rotate",
+      "translate",
+      "baseline"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "p_range",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 20,
+        "description": "Range for generating random slope values"
+      },
+      {
+        "name": "y_factor",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 20,
+        "description": "Scaling factor for the initial offset value"
+      },
+      {
+        "name": "variation_scope",
+        "type": "select",
+        "default": "sample",
+        "options": [
+          {
+            "value": "sample",
+            "label": "Per sample"
+          },
+          {
+            "value": "batch",
+            "label": "Per batch"
+          }
+        ],
+        "description": "Scope of random variation: per-sample or shared across batch"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
   }
 ]

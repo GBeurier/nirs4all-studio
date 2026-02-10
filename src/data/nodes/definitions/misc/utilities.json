@@ -2,12 +2,18 @@
   {
     "id": "misc.chart",
     "name": "Chart",
-    "type": "chart",
+    "type": "utility",
+    "subType": "chart",
     "classPath": "_chart_",
     "description": "Visualization chart step",
     "longDescription": "Adds a visualization step to the pipeline for debugging or analysis.",
     "category": "Visualization",
-    "tags": ["chart", "visualization", "plot", "debug"],
+    "tags": [
+      "chart",
+      "visualization",
+      "plot",
+      "debug"
+    ],
     "source": "nirs4all",
     "isVisualization": true,
     "parameters": [
@@ -16,11 +22,26 @@
         "type": "select",
         "default": "spectra",
         "options": [
-          { "value": "spectra", "label": "Spectra Plot" },
-          { "value": "scatter", "label": "Scatter Plot" },
-          { "value": "pca", "label": "PCA Scores" },
-          { "value": "loadings", "label": "Loadings Plot" },
-          { "value": "histogram", "label": "Histogram" }
+          {
+            "value": "spectra",
+            "label": "Spectra Plot"
+          },
+          {
+            "value": "scatter",
+            "label": "Scatter Plot"
+          },
+          {
+            "value": "pca",
+            "label": "PCA Scores"
+          },
+          {
+            "value": "loadings",
+            "label": "Loadings Plot"
+          },
+          {
+            "value": "histogram",
+            "label": "Histogram"
+          }
         ],
         "description": "Type of chart to display"
       },
@@ -31,17 +52,23 @@
         "description": "Chart title"
       }
     ],
-    "executionMode": "visualization_only"
+    "executionMode": "visualization_only",
+    "tier": "standard"
   },
   {
     "id": "misc.comment",
     "name": "Comment",
-    "type": "comment",
+    "type": "utility",
+    "subType": "comment",
     "classPath": "_comment_",
     "description": "Comment node (non-executing)",
     "longDescription": "A non-executing comment node for documentation within the pipeline.",
     "category": "Documentation",
-    "tags": ["comment", "note", "documentation"],
+    "tags": [
+      "comment",
+      "note",
+      "documentation"
+    ],
     "source": "editor",
     "isComment": true,
     "parameters": [
@@ -52,6 +79,7 @@
         "description": "Comment text"
       }
     ],
-    "executionMode": "skip"
+    "executionMode": "skip",
+    "tier": "standard"
   }
 ]

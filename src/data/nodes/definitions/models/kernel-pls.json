@@ -7,7 +7,12 @@
     "description": "Kernel PLS (non-linear)",
     "longDescription": "PLS in kernel space for non-linear relationships.",
     "category": "Kernel PLS",
-    "tags": ["pls", "kernel", "nonlinear", "rbf"],
+    "tags": [
+      "pls",
+      "kernel",
+      "nonlinear",
+      "rbf"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -20,34 +25,50 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 20]
+        "finetuneRange": [
+          1,
+          20
+        ]
       },
       {
         "name": "kernel",
         "type": "select",
         "default": "rbf",
         "options": [
-          { "value": "rbf", "label": "RBF (Gaussian)" },
-          { "value": "linear", "label": "Linear" },
-          { "value": "poly", "label": "Polynomial" }
+          {
+            "value": "rbf",
+            "label": "RBF (Gaussian)"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          }
         ],
         "description": "Kernel type"
       },
       {
         "name": "gamma",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.001,
         "max": 100,
         "description": "Kernel coefficient",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.001, 10]
+        "finetuneRange": [
+          0.001,
+          10
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   },
   {
     "id": "model.kopls",
@@ -57,7 +78,12 @@
     "description": "Kernel Orthogonal PLS",
     "longDescription": "Combines kernel methods with orthogonal PLS for non-linear modeling.",
     "category": "Kernel PLS",
-    "tags": ["pls", "kernel", "orthogonal", "nonlinear"],
+    "tags": [
+      "pls",
+      "kernel",
+      "orthogonal",
+      "nonlinear"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -74,15 +100,25 @@
         "type": "select",
         "default": "rbf",
         "options": [
-          { "value": "rbf", "label": "RBF (Gaussian)" },
-          { "value": "linear", "label": "Linear" },
-          { "value": "poly", "label": "Polynomial" }
+          {
+            "value": "rbf",
+            "label": "RBF (Gaussian)"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          }
         ],
         "description": "Kernel type"
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   },
   {
     "id": "model.nlpls",
@@ -92,7 +128,10 @@
     "description": "Non-linear PLS",
     "longDescription": "PLS with non-linear inner relations.",
     "category": "Kernel PLS",
-    "tags": ["pls", "nonlinear"],
+    "tags": [
+      "pls",
+      "nonlinear"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -106,7 +145,8 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   },
   {
     "id": "model.fckpls",
@@ -116,7 +156,12 @@
     "description": "Fractional Convolution Kernel PLS",
     "longDescription": "Advanced kernel PLS with fractional convolution for spectral data.",
     "category": "Kernel PLS",
-    "tags": ["pls", "kernel", "fractional", "convolution"],
+    "tags": [
+      "pls",
+      "kernel",
+      "fractional",
+      "convolution"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -130,6 +175,7 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   }
 ]

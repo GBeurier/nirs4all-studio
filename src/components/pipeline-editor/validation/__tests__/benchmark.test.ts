@@ -98,7 +98,8 @@ function generateNestedPipeline(
   function createBranch(currentDepth: number, index: number): PipelineStep {
     const step: PipelineStep = {
       id: `branch-${currentDepth}-${index}`,
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       name: "branch",
       params: {},
       branches: [],

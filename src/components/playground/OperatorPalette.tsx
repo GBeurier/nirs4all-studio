@@ -68,7 +68,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useNodeRegistryOptional, usePipelineEditorPreferencesOptional, type NodeDefinition } from '@/components/pipeline-editor/contexts';
+import { useNodeRegistryOptional, usePipelineEditorPreferencesOptional, type NodeDefinition, type TierLevel } from '@/components/pipeline-editor/contexts';
 import type { OperatorDefinition } from '@/types/playground';
 
 // Icon mapping for operators
@@ -196,27 +196,27 @@ function getCategoryLabel(category: string, type: PlaygroundTabType): string {
   return CATEGORY_LABELS[type]?.[category] || category;
 }
 
-// Extended mode local storage key (shared with pipeline editor)
-const EXTENDED_MODE_STORAGE_KEY = "pipelineEditor.extendedMode";
+/** Tier selector labels */
+const TIER_LABELS: Record<TierLevel, string> = {
+  core: "Essential",
+  standard: "Standard",
+  all: "All",
+};
 
-function readLocalStorageBoolean(key: string, fallback: boolean): boolean {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return raw === "true";
-  } catch {
-    return fallback;
-  }
-}
+/** Tier selector tooltips */
+const TIER_TOOLTIPS: Record<TierLevel, string> = {
+  core: "Essential NIRS operators only",
+  standard: "Standard operators (nirs4all + common sklearn)",
+  all: "All operators including advanced and deep learning",
+};
 
-function writeLocalStorageBoolean(key: string, value: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, value ? "true" : "false");
-  } catch {
-    // ignore
-  }
+/** Check if a node passes the tier filter */
+function passesTierFilter(node: NodeDefinition, tierLevel: TierLevel): boolean {
+  if (tierLevel === "all") return true;
+  const tier = node.tier ?? (node.isAdvanced ? "advanced" : "standard");
+  if (tierLevel === "core") return tier === "core";
+  // "standard" — exclude advanced
+  return tier !== "advanced";
 }
 
 interface OperatorPaletteProps {
@@ -237,20 +237,17 @@ export function OperatorPalette({
   const registryContext = useNodeRegistryOptional();
   const prefs = usePipelineEditorPreferencesOptional();
 
-  // Extended mode state (synced with pipeline editor)
-  const [extendedModeFallback, setExtendedModeFallback] = useState<boolean>(() =>
-    readLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, false)
-  );
+  // Tier level state (synced with pipeline editor)
+  const [tierLevelFallback, setTierLevelFallback] = useState<TierLevel>("standard");
 
-  const extendedMode = prefs?.extendedMode ?? extendedModeFallback;
-  const setExtendedMode = useCallback(
-    (value: boolean) => {
+  const tierLevel: TierLevel = prefs?.tierLevel ?? tierLevelFallback;
+  const setTierLevel = useCallback(
+    (value: TierLevel) => {
       if (prefs) {
-        prefs.setExtendedMode(value);
+        prefs.setTierLevel(value);
         return;
       }
-      setExtendedModeFallback(value);
-      writeLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, value);
+      setTierLevelFallback(value);
     },
     [prefs]
   );
@@ -278,15 +275,15 @@ export function OperatorPalette({
       for (const nodeType of nodeTypes) {
         const nodes = registryContext.getNodesByType(nodeType as NodeDefinition['type']);
         for (const node of nodes) {
-          // Filter by extended mode
-          if (!extendedMode && node.isAdvanced) continue;
+          // Filter by tier level
+          if (!passesTierFilter(node, tierLevel)) continue;
           result[tabType].push(nodeToOperatorDef(node, tabType));
         }
       }
     }
 
     return result;
-  }, [registryContext, extendedMode]);
+  }, [registryContext, tierLevel]);
 
   // Group operators by category
   const operatorsByCategory = useMemo(() => {
@@ -422,30 +419,32 @@ export function OperatorPalette({
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
             {totalCount}
           </Badge>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => setExtendedMode(!extendedMode)}
-                className={`text-[9px] font-medium px-1.5 py-0.5 rounded transition-colors ${
-                  extendedMode
-                    ? "bg-primary/20 text-primary hover:bg-primary/30"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {extendedMode ? "EXT" : "STD"}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-              {extendedMode
-                ? "Extended mode: all sklearn, nirs4all, and TensorFlow operators"
-                : "Standard mode: curated operators only"}
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex items-center rounded overflow-hidden border border-border">
+            {(["core", "standard", "all"] as TierLevel[]).map((tier) => (
+              <Tooltip key={tier}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setTierLevel(tier)}
+                    className={`text-[9px] font-medium px-1.5 py-0.5 transition-colors ${
+                      tierLevel === tier
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
+                    }`}
+                  >
+                    {TIER_LABELS[tier]}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs max-w-[200px]">
+                  {TIER_TOOLTIPS[tier]}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
         </div>
       </div>
 
-      {extendedMode && registryContext?.isLoading && (
+      {tierLevel === "all" && registryContext?.isLoading && (
         <div className="text-[10px] text-muted-foreground/70">Loading extended...</div>
       )}
 

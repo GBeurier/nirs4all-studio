@@ -2,12 +2,18 @@
   {
     "id": "merge.predictions",
     "name": "MergePredictions",
-    "type": "merge",
+    "type": "flow",
+    "subType": "merge",
     "classPath": "merge",
     "description": "Merge branch predictions (stacking)",
     "longDescription": "Merges predictions from parallel branches for stacking ensemble.",
     "category": "Merge",
-    "tags": ["merge", "predictions", "stacking", "ensemble"],
+    "tags": [
+      "merge",
+      "predictions",
+      "stacking",
+      "ensemble"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -15,9 +21,18 @@
         "type": "select",
         "default": "predictions",
         "options": [
-          { "value": "predictions", "label": "Merge predictions (for stacking)" },
-          { "value": "features", "label": "Merge as features" },
-          { "value": "average", "label": "Average predictions" }
+          {
+            "value": "predictions",
+            "label": "Merge predictions (for stacking)"
+          },
+          {
+            "value": "features",
+            "label": "Merge as features"
+          },
+          {
+            "value": "average",
+            "label": "Average predictions"
+          }
         ],
         "description": "How to merge branch outputs"
       }
@@ -25,17 +40,24 @@
     "requiresBranch": true,
     "legacyClassPaths": [
       "nirs4all.operators.merge"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "merge.sources",
     "name": "MergeSources",
-    "type": "merge",
+    "type": "flow",
+    "subType": "merge",
     "classPath": "source_merge",
     "description": "Merge multi-source data",
     "longDescription": "Merges data from different sources after source-specific preprocessing.",
     "category": "Merge",
-    "tags": ["merge", "sources", "multi-source", "concatenate"],
+    "tags": [
+      "merge",
+      "sources",
+      "multi-source",
+      "concatenate"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -43,12 +65,19 @@
         "type": "select",
         "default": "features",
         "options": [
-          { "value": "features", "label": "Concatenate features (columns)" },
-          { "value": "samples", "label": "Concatenate samples (rows)" }
+          {
+            "value": "features",
+            "label": "Concatenate features (columns)"
+          },
+          {
+            "value": "samples",
+            "label": "Concatenate samples (rows)"
+          }
         ],
         "description": "Axis along which to merge"
       }
     ],
-    "requiresSourceBranch": true
+    "requiresSourceBranch": true,
+    "tier": "standard"
   }
 ]

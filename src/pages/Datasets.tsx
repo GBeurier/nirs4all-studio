@@ -12,6 +12,10 @@ import {
   Tags,
   FlaskConical,
   ArrowUpDown,
+  BarChart3,
+  Grid3x3,
+  Layers,
+  HardDrive,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -543,54 +547,105 @@ export default function Datasets() {
         </div>
       </motion.div>
 
-      {/* Stats */}
-      <motion.div variants={itemVariants} className="grid gap-4 md:grid-cols-4">
-        <Card className="glass-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("datasets.stats.totalDatasets")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{normalizedDatasets.length}</div>
+      {/* Workspace Info */}
+      <motion.div variants={itemVariants}>
+        <Card className="glass-card border-primary/20">
+          <CardContent className="py-1.5 px-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                  <HardDrive className="h-4.5 w-4.5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <p className="text-xs font-medium text-muted-foreground leading-none">
+                    {t("datasets.workspace")}
+                  </p>
+                  <p className="text-sm font-medium truncate leading-none mt-1">
+                    {workspacePath || (
+                      <span className="text-muted-foreground italic">
+                        {t("datasets.noWorkspaceSelected")}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="h-8" onClick={handleSelectWorkspace}>
+                <FolderOpen className="mr-2 h-3.5 w-3.5" />
+                {workspacePath ? t("datasets.change") : t("datasets.selectWorkspace")}
+              </Button>
+            </div>
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* Stats - Compact and Fancy */}
+      <motion.div variants={itemVariants} className="grid gap-3 grid-cols-2 md:grid-cols-4">
         <Card className="glass-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("datasets.stats.totalSamples")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {totalSamples.toLocaleString()}
+          <CardContent className="py-1.5 px-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <Database className="h-4.5 w-4.5 text-primary" />
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-xs text-muted-foreground leading-none">
+                  {t("datasets.stats.totalDatasets")}
+                </p>
+                <p className="text-xl font-bold leading-none">{normalizedDatasets.length}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("datasets.stats.features")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {featureCounts.length > 0
-                ? minFeatures === maxFeatures
-                  ? minFeatures.toLocaleString()
-                  : `[${minFeatures.toLocaleString()}, ${maxFeatures.toLocaleString()}]`
-                : "--"}
+          <CardContent className="py-1.5 px-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <BarChart3 className="h-4.5 w-4.5 text-primary" />
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-xs text-muted-foreground leading-none">
+                  {t("datasets.stats.totalSamples")}
+                </p>
+                <p className="text-xl font-bold leading-none">
+                  {totalSamples.toLocaleString()}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("datasets.stats.groups")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{groups.length}</div>
+          <CardContent className="py-1.5 px-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <Grid3x3 className="h-4.5 w-4.5 text-primary" />
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-xs text-muted-foreground leading-none">
+                  {t("datasets.stats.features")}
+                </p>
+                <p className="text-xl font-bold leading-none">
+                  {featureCounts.length > 0
+                    ? minFeatures === maxFeatures
+                      ? minFeatures.toLocaleString()
+                      : `${minFeatures}-${maxFeatures}`
+                    : "--"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="py-1.5 px-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <Layers className="h-4.5 w-4.5 text-primary" />
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-xs text-muted-foreground leading-none">
+                  {t("datasets.stats.groups")}
+                </p>
+                <p className="text-xl font-bold leading-none">{groups.length}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
@@ -768,23 +823,6 @@ export default function Datasets() {
             )}
           </div>
         )}
-      </motion.div>
-
-      {/* Workspace Info */}
-      <motion.div variants={itemVariants}>
-        <Card className="border-dashed">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Badge variant="outline">Workspace</Badge>
-              <span className="text-sm text-muted-foreground truncate max-w-md">
-                {workspacePath || t("datasets.noWorkspaceSelected")}
-              </span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={handleSelectWorkspace}>
-              {workspacePath ? t("datasets.change") : t("datasets.selectWorkspace")}
-            </Button>
-          </CardContent>
-        </Card>
       </motion.div>
 
       {/* Modals */}

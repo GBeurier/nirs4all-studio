@@ -4,6 +4,8 @@
  * Tests for the renderer utilities (getAvailableStepTypes, stepTypeUsesParameterProps).
  * Note: useStepRenderer is a React hook and requires component context to test.
  * Hook behavior is verified through the utility functions and integration tests.
+ *
+ * Updated for Phase 4 taxonomy consolidation (16 types -> 8 types + subTypes).
  */
 
 import { describe, it, expect } from "vitest";
@@ -18,23 +20,16 @@ import type { StepType } from "../../../types";
 // ============================================================================
 
 describe("renderer configuration", () => {
-  // All step types that should be supported
+  // The 8 consolidated step types
   const allStepTypes: StepType[] = [
     "preprocessing",
     "splitting",
     "filter",
     "augmentation",
     "model",
-    "merge",
     "y_processing",
-    "chart",
-    "comment",
-    "sample_augmentation",
-    "feature_augmentation",
-    "sample_filter",
-    "concat_transform",
-    "generator",
-    "branch",
+    "flow",
+    "utility",
   ];
 
   describe("step type coverage", () => {
@@ -45,9 +40,9 @@ describe("renderer configuration", () => {
       });
     });
 
-    it("should return at least 14 step types", () => {
+    it("should return exactly 8 step types", () => {
       const types = getAvailableStepTypes();
-      expect(types.length).toBeGreaterThanOrEqual(14);
+      expect(types.length).toBe(8);
     });
   });
 
@@ -58,19 +53,10 @@ describe("renderer configuration", () => {
       "filter",
       "augmentation",
       "model",
-      "merge",
-      "generator",
-      "branch",
     ];
 
     const typesWithoutParameterProps: StepType[] = [
       "y_processing",
-      "chart",
-      "comment",
-      "sample_augmentation",
-      "feature_augmentation",
-      "sample_filter",
-      "concat_transform",
     ];
 
     typesWithParameterProps.forEach((type) => {
@@ -83,6 +69,26 @@ describe("renderer configuration", () => {
       it(`should configure ${type} to not use parameter props`, () => {
         expect(stepTypeUsesParameterProps(type)).toBe(false);
       });
+    });
+  });
+
+  describe("subType parameter props configuration", () => {
+    it("should configure flow sub-types correctly via subType", () => {
+      // branch, merge use parameter props
+      expect(stepTypeUsesParameterProps("flow", "branch")).toBe(true);
+      expect(stepTypeUsesParameterProps("flow", "merge")).toBe(true);
+
+      // Generator and container sub-types do not use parameter props
+      expect(stepTypeUsesParameterProps("flow", "generator")).toBe(false);
+      expect(stepTypeUsesParameterProps("flow", "sample_augmentation")).toBe(false);
+      expect(stepTypeUsesParameterProps("flow", "feature_augmentation")).toBe(false);
+      expect(stepTypeUsesParameterProps("flow", "sample_filter")).toBe(false);
+      expect(stepTypeUsesParameterProps("flow", "concat_transform")).toBe(false);
+    });
+
+    it("should configure utility sub-types correctly via subType", () => {
+      expect(stepTypeUsesParameterProps("utility", "chart")).toBe(false);
+      expect(stepTypeUsesParameterProps("utility", "comment")).toBe(false);
     });
   });
 });
@@ -98,13 +104,14 @@ describe("getAvailableStepTypes", () => {
     expect(types.length).toBeGreaterThan(0);
   });
 
-  it("should include all expected step types", () => {
+  it("should include all core step types", () => {
     const types = getAvailableStepTypes();
     const expectedTypes: StepType[] = [
       "preprocessing",
       "splitting",
       "model",
-      "merge",
+      "flow",
+      "utility",
     ];
 
     expectedTypes.forEach((expected) => {
@@ -112,24 +119,15 @@ describe("getAvailableStepTypes", () => {
     });
   });
 
-  it("should include container types", () => {
+  it("should include flow and utility as consolidated types", () => {
     const types = getAvailableStepTypes();
-    const containerTypes: StepType[] = [
-      "sample_augmentation",
-      "feature_augmentation",
-      "sample_filter",
-      "concat_transform",
-    ];
-
-    containerTypes.forEach((type) => {
-      expect(types).toContain(type);
-    });
+    expect(types).toContain("flow");
+    expect(types).toContain("utility");
   });
 
-  it("should return all registered types", () => {
+  it("should return exactly 8 consolidated types", () => {
     const types = getAvailableStepTypes();
-    // Should have at least 14 types based on the registry
-    expect(types.length).toBeGreaterThanOrEqual(14);
+    expect(types.length).toBe(8);
   });
 });
 
@@ -150,19 +148,19 @@ describe("stepTypeUsesParameterProps", () => {
     expect(stepTypeUsesParameterProps("model")).toBe(true);
   });
 
-  it("should return false for chart", () => {
-    expect(stepTypeUsesParameterProps("chart")).toBe(false);
+  it("should return false for chart via subType", () => {
+    expect(stepTypeUsesParameterProps("utility", "chart")).toBe(false);
   });
 
-  it("should return false for comment", () => {
-    expect(stepTypeUsesParameterProps("comment")).toBe(false);
+  it("should return false for comment via subType", () => {
+    expect(stepTypeUsesParameterProps("utility", "comment")).toBe(false);
   });
 
-  it("should return false for container types", () => {
-    expect(stepTypeUsesParameterProps("sample_augmentation")).toBe(false);
-    expect(stepTypeUsesParameterProps("feature_augmentation")).toBe(false);
-    expect(stepTypeUsesParameterProps("sample_filter")).toBe(false);
-    expect(stepTypeUsesParameterProps("concat_transform")).toBe(false);
+  it("should return false for container sub-types", () => {
+    expect(stepTypeUsesParameterProps("flow", "sample_augmentation")).toBe(false);
+    expect(stepTypeUsesParameterProps("flow", "feature_augmentation")).toBe(false);
+    expect(stepTypeUsesParameterProps("flow", "sample_filter")).toBe(false);
+    expect(stepTypeUsesParameterProps("flow", "concat_transform")).toBe(false);
   });
 
   it("should return boolean for all step types", () => {

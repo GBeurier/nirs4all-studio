@@ -20,6 +20,10 @@
       "$ref": "#/definitions/NodeType",
       "description": "Primary category/type of the node"
     },
+    "subType": {
+      "type": "string",
+      "description": "Sub-type for flow/utility nodes that preserves rendering distinction (e.g. branch, merge, generator, chart, comment)"
+    },
     "classPath": {
       "type": "string",
       "description": "Full Python import path, e.g., 'sklearn.preprocessing.MinMaxScaler'"
@@ -228,16 +232,28 @@
         "y_processing",
         "splitting",
         "model",
-        "generator",
+        "augmentation",
+        "filter",
+        "flow",
+        "utility"
+      ]
+    },
+    "FlowSubType": {
+      "type": "string",
+      "enum": [
         "branch",
         "merge",
-        "filter",
-        "augmentation",
+        "generator",
         "sample_augmentation",
         "feature_augmentation",
         "sample_filter",
         "concat_transform",
-        "sequential",
+        "sequential"
+      ]
+    },
+    "UtilitySubType": {
+      "type": "string",
+      "enum": [
         "chart",
         "comment"
       ]

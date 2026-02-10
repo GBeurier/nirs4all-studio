@@ -7,7 +7,12 @@
     "description": "Partial Least Squares Regression",
     "longDescription": "PLS regression with NIPALS algorithm. The gold standard for spectroscopic calibration.",
     "category": "PLS",
-    "tags": ["pls", "regression", "latent", "components"],
+    "tags": [
+      "pls",
+      "regression",
+      "latent",
+      "components"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -19,12 +24,31 @@
         "description": "Number of PLS components",
         "sweepable": true,
         "sweepPresets": [
-          { "label": "Quick (1-10)", "type": "range", "values": { "from": 1, "to": 10, "step": 1 } },
-          { "label": "Extended (1-20)", "type": "range", "values": { "from": 1, "to": 20, "step": 1 } }
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 1
+            }
+          }
         ],
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       },
       {
         "name": "max_iter",
@@ -41,7 +65,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.cross_decomposition._pls.PLSRegression"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "model.plsda",
@@ -51,7 +76,11 @@
     "description": "PLS Discriminant Analysis (classification)",
     "longDescription": "PLS-DA for classification problems using dummy variable encoding.",
     "category": "PLS",
-    "tags": ["pls", "classification", "discriminant"],
+    "tags": [
+      "pls",
+      "classification",
+      "discriminant"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -64,11 +93,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

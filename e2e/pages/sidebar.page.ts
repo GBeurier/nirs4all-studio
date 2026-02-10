@@ -14,17 +14,17 @@ export class SidebarPage extends BasePage {
   readonly dashboardLink: Locator;
   readonly datasetsLink: Locator;
   readonly playgroundLink: Locator;
+  readonly inspectorLink: Locator;
 
   // Workflow navigation links
   readonly pipelinesLink: Locator;
-  readonly newExperimentLink: Locator;
+  readonly runEditorLink: Locator;
   readonly runsLink: Locator;
   readonly resultsLink: Locator;
 
   // Analysis navigation links
   readonly predictionsLink: Locator;
-  readonly analysisLink: Locator;
-  readonly synthesisLink: Locator;
+  readonly labLink: Locator;
 
   // Settings link
   readonly settingsLink: Locator;
@@ -43,15 +43,15 @@ export class SidebarPage extends BasePage {
     this.dashboardLink = this.sidebar.locator('a[href="/"]');
     this.datasetsLink = this.sidebar.locator('a[href="/datasets"]');
     this.playgroundLink = this.sidebar.locator('a[href="/playground"]');
+    this.inspectorLink = this.sidebar.locator('a[href="/inspector"]');
 
     this.pipelinesLink = this.sidebar.locator('a[href="/pipelines"]');
-    this.newExperimentLink = this.sidebar.locator('a[href="/pipelines/new"]');
+    this.runEditorLink = this.sidebar.locator('a[href="/editor"]');
     this.runsLink = this.sidebar.locator('a[href="/runs"]');
     this.resultsLink = this.sidebar.locator('a[href="/results"]');
 
     this.predictionsLink = this.sidebar.locator('a[href="/predictions"]');
-    this.analysisLink = this.sidebar.locator('a[href="/analysis"]');
-    this.synthesisLink = this.sidebar.locator('a[href="/synthesis"]');
+    this.labLink = this.sidebar.locator('a[href="/lab"]');
 
     this.settingsLink = this.sidebar.locator('a[href="/settings"]');
   }
@@ -59,18 +59,18 @@ export class SidebarPage extends BasePage {
   /**
    * Navigate to a specific section via sidebar
    */
-  async navigateTo(section: 'dashboard' | 'datasets' | 'playground' | 'pipelines' | 'newExperiment' | 'runs' | 'results' | 'predictions' | 'analysis' | 'synthesis' | 'settings'): Promise<void> {
+  async navigateTo(section: 'dashboard' | 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runEditor' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
     const linkMap: Record<string, Locator> = {
       dashboard: this.dashboardLink,
       datasets: this.datasetsLink,
       playground: this.playgroundLink,
+      inspector: this.inspectorLink,
       pipelines: this.pipelinesLink,
-      newExperiment: this.newExperimentLink,
+      runEditor: this.runEditorLink,
       runs: this.runsLink,
       results: this.resultsLink,
       predictions: this.predictionsLink,
-      analysis: this.analysisLink,
-      synthesis: this.synthesisLink,
+      lab: this.labLink,
       settings: this.settingsLink,
     };
 
@@ -97,17 +97,17 @@ export class SidebarPage extends BasePage {
   /**
    * Assert that a specific link is marked as active
    */
-  async expectActiveLink(section: 'dashboard' | 'datasets' | 'playground' | 'pipelines' | 'runs' | 'results' | 'predictions' | 'analysis' | 'synthesis' | 'settings'): Promise<void> {
+  async expectActiveLink(section: 'dashboard' | 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
     const linkMap: Record<string, Locator> = {
       dashboard: this.dashboardLink,
       datasets: this.datasetsLink,
       playground: this.playgroundLink,
+      inspector: this.inspectorLink,
       pipelines: this.pipelinesLink,
       runs: this.runsLink,
       results: this.resultsLink,
       predictions: this.predictionsLink,
-      analysis: this.analysisLink,
-      synthesis: this.synthesisLink,
+      lab: this.labLink,
       settings: this.settingsLink,
     };
 

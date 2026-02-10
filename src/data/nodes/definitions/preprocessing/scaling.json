@@ -7,14 +7,20 @@
     "description": "Standardize to zero mean, unit variance",
     "longDescription": "Standardizes features by removing the mean and scaling to unit variance.",
     "category": "Scaling",
-    "tags": ["scaling", "standardization", "mean", "variance"],
+    "tags": [
+      "scaling",
+      "standardization",
+      "mean",
+      "variance"
+    ],
     "source": "sklearn",
     "parameters": [],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.preprocessing._data.StandardScaler"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.minmax_scaler",
@@ -24,7 +30,12 @@
     "description": "Min-Max normalization to [0,1]",
     "longDescription": "Transforms features by scaling each feature to a given range.",
     "category": "Scaling",
-    "tags": ["scaling", "minmax", "normalization", "range"],
+    "tags": [
+      "scaling",
+      "minmax",
+      "normalization",
+      "range"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -48,7 +59,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.preprocessing._data.MinMaxScaler"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.robust_scaler",
@@ -58,14 +70,21 @@
     "description": "Robust scaling with median/IQR",
     "longDescription": "Scales features using statistics that are robust to outliers (median and IQR).",
     "category": "Scaling",
-    "tags": ["scaling", "robust", "median", "iqr", "outlier"],
+    "tags": [
+      "scaling",
+      "robust",
+      "median",
+      "iqr",
+      "outlier"
+    ],
     "source": "sklearn",
     "parameters": [],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.preprocessing._data.RobustScaler"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "preprocessing.maxabs_scaler",
@@ -75,13 +94,18 @@
     "description": "Scale by maximum absolute value",
     "longDescription": "Scales each feature by its maximum absolute value to [-1, 1].",
     "category": "Scaling",
-    "tags": ["scaling", "maxabs", "absolute"],
+    "tags": [
+      "scaling",
+      "maxabs",
+      "absolute"
+    ],
     "source": "sklearn",
     "parameters": [],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.preprocessing._data.MaxAbsScaler"
-    ]
+    ],
+    "tier": "standard"
   }
 ]

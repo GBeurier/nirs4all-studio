@@ -200,9 +200,9 @@ function validateMergeBranchPairing(steps: PipelineStep[]): ValidationIssue[] {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
 
-    if (step.type === "branch" || step.type === "generator") {
+    if (step.subType === "branch" || step.subType === "generator") {
       branchDepth++;
-    } else if (step.type === "merge") {
+    } else if (step.subType === "merge") {
       if (branchDepth === 0) {
         issues.push(
           createPipelineIssue(
@@ -254,16 +254,17 @@ function validateStepOrdering(steps: PipelineStep[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   // Define expected step type order (rough guidance)
+  // Note: flow/utility types are intentionally omitted as their placement
+  // depends on subType (branch, merge, etc.) and is validated separately.
   const expectedOrder: StepType[] = [
     "preprocessing",
     "y_processing",
-    "sample_filter",
-    "feature_augmentation",
+    "filter",
+    "augmentation",
     "splitting",
-    "sample_augmentation",
     "model",
-    "merge",
-    "chart",
+    "flow",
+    "utility",
   ];
 
   // Check for preprocessing after model (suspicious)
@@ -450,7 +451,7 @@ export function getPipelineSummary(steps: PipelineStep[]): {
 
         if (step.type === "model") hasModel = true;
         if (step.type === "splitting") hasSplitter = true;
-        if (step.type === "branch" || step.type === "generator") hasBranch = true;
+        if (step.subType === "branch" || step.subType === "generator") hasBranch = true;
       }
 
       if (step.branches) {

@@ -7,7 +7,8 @@
  * @see docs/_internals/implementation_roadmap.md Task 4.3
  */
 
-import type { PipelineStep, StepType, CONTAINER_STEP_TYPES } from "../types";
+import type { PipelineStep, StepType, StepSubType } from "../types";
+import { CONTAINER_CHILDREN_SUBTYPES, CONTAINER_BRANCH_SUBTYPES } from "../types";
 import type {
   ValidationIssue,
   ValidationLocation,
@@ -16,16 +17,6 @@ import type {
   ValidationContext,
 } from "./types";
 import { generateIssueId } from "./types";
-
-// Container types that should have children or branches
-const CONTAINER_TYPES_WITH_CHILDREN: StepType[] = [
-  "sample_augmentation",
-  "feature_augmentation",
-  "sample_filter",
-  "concat_transform",
-];
-
-const CONTAINER_TYPES_WITH_BRANCHES: StepType[] = ["branch", "generator"];
 
 // ============================================================================
 // Step Validation
@@ -99,22 +90,22 @@ export function validateStep(
     );
   }
 
-  // Validate container steps have content
-  if (CONTAINER_TYPES_WITH_CHILDREN.includes(step.type)) {
+  // Validate container steps have content (using subType)
+  if (step.subType && CONTAINER_CHILDREN_SUBTYPES.includes(step.subType as any)) {
     issues.push(...validateContainerWithChildren(step, location));
   }
 
-  if (CONTAINER_TYPES_WITH_BRANCHES.includes(step.type)) {
+  if (step.subType && CONTAINER_BRANCH_SUBTYPES.includes(step.subType as any)) {
     issues.push(...validateContainerWithBranches(step, location, context));
   }
 
-  // Validate generator steps
-  if (step.type === "generator") {
+  // Validate generator steps (subType-based)
+  if (step.subType === "generator") {
     issues.push(...validateGeneratorStep(step, location));
   }
 
-  // Validate merge steps
-  if (step.type === "merge") {
+  // Validate merge steps (subType-based)
+  if (step.subType === "merge") {
     issues.push(...validateMergeStep(step, location, context));
   }
 
@@ -148,7 +139,7 @@ function validateContainerWithChildren(
   const issues: ValidationIssue[] = [];
 
   if (!step.children || step.children.length === 0) {
-    const typeLabel = getStepTypeLabel(step.type);
+    const typeLabel = getStepTypeLabel(step.type, step.subType);
     issues.push(
       createStepIssue(
         "STEP_EMPTY_CONTAINER",
@@ -196,7 +187,7 @@ function validateContainerWithBranches(
     .filter(({ branch }) => branch.length === 0);
 
   if (emptyBranches.length > 0) {
-    const severity = step.type === "generator" ? "error" : "warning";
+    const severity = step.subType === "generator" ? "error" : "warning";
     for (const { index } of emptyBranches) {
       issues.push(
         createStepIssue(
@@ -320,13 +311,13 @@ function validateMergeStep(
   let foundBranch = false;
   for (let i = stepIndex - 1; i >= 0; i--) {
     const prevStep = context.steps[i];
-    if (prevStep.type === "branch" || prevStep.type === "generator") {
+    if (prevStep.subType === "branch" || prevStep.subType === "generator") {
       foundBranch = true;
       break;
     }
     // If we hit another merge first without a branch, that's fine
     // (nested merges are allowed)
-    if (prevStep.type === "merge") {
+    if (prevStep.subType === "merge") {
       break;
     }
   }
@@ -397,24 +388,32 @@ function validateModelStep(
 /**
  * Get human-readable label for step type.
  */
-function getStepTypeLabel(type: StepType): string {
+function getStepTypeLabel(type: StepType, subType?: StepSubType): string {
+  // Check subType labels first for finer distinction
+  if (subType) {
+    const subTypeLabels: Record<string, string> = {
+      branch: "Branch",
+      merge: "Merge",
+      generator: "Generator",
+      sample_augmentation: "Sample Augmentation",
+      feature_augmentation: "Feature Augmentation",
+      sample_filter: "Sample Filter",
+      concat_transform: "Concat Transform",
+      sequential: "Sequential",
+      chart: "Chart",
+      comment: "Comment",
+    };
+    if (subType in subTypeLabels) return subTypeLabels[subType];
+  }
   const labels: Record<StepType, string> = {
     preprocessing: "Preprocessing",
     y_processing: "Target Processing",
     splitting: "Splitting",
     model: "Model",
-    generator: "Generator",
-    branch: "Branch",
-    merge: "Merge",
     filter: "Filter",
     augmentation: "Augmentation",
-    sample_augmentation: "Sample Augmentation",
-    feature_augmentation: "Feature Augmentation",
-    sample_filter: "Sample Filter",
-    concat_transform: "Concat Transform",
-    sequential: "Sequential",
-    chart: "Chart",
-    comment: "Comment",
+    flow: "Flow Control",
+    utility: "Utility",
   };
   return labels[type] || type;
 }

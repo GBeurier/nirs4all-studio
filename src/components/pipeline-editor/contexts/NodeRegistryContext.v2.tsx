@@ -93,6 +93,8 @@ export interface NodeDefinition {
   defaultBranches?: number;
   /** Generator kind (for generator nodes) */
   generatorKind?: "or" | "cartesian";
+  /** Visibility tier for UI filtering */
+  tier?: "core" | "standard" | "advanced";
 }
 
 /**
@@ -185,6 +187,7 @@ function jsonNodeToNodeDefinition(node: JsonNodeDefinition): NodeDefinition {
     parameters: node.parameters,
     isContainer: node.isContainer,
     isGenerator: node.isGenerator,
+    tier: node.tier,
   };
 }
 

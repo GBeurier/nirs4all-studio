@@ -1,138 +1,356 @@
 [
   {
-    "id": "filter.outlier_detection",
-    "name": "OutlierDetection",
+    "id": "filter.y_outlier",
+    "name": "YOutlierFilter",
     "type": "filter",
-    "classPath": "nirs4all.operators.filters.OutlierDetection",
-    "description": "Detect and remove outliers",
-    "longDescription": "Identifies and optionally removes outlier samples using various methods.",
+    "classPath": "nirs4all.operators.filters.YOutlierFilter",
+    "description": "Filter samples with outlier target (y) values",
+    "longDescription": "Identifies samples whose y-values are statistical outliers using IQR, Z-score, percentile, or MAD methods. Commonly used to remove samples with extreme or erroneous target values before training.",
     "category": "Outlier",
-    "tags": ["filter", "outlier", "detection", "removal"],
+    "tags": [
+      "filter",
+      "outlier",
+      "y",
+      "target",
+      "iqr",
+      "zscore"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
         "name": "method",
         "type": "select",
-        "default": "hotelling",
+        "default": "iqr",
         "options": [
-          { "value": "hotelling", "label": "Hotelling T²" },
-          { "value": "isolation_forest", "label": "Isolation Forest" },
-          { "value": "lof", "label": "Local Outlier Factor" },
-          { "value": "mahalanobis", "label": "Mahalanobis Distance" }
+          {
+            "value": "iqr",
+            "label": "Interquartile Range (IQR)"
+          },
+          {
+            "value": "zscore",
+            "label": "Z-score"
+          },
+          {
+            "value": "percentile",
+            "label": "Percentile"
+          },
+          {
+            "value": "mad",
+            "label": "Median Absolute Deviation (MAD)"
+          }
         ],
         "description": "Outlier detection method"
       },
       {
         "name": "threshold",
         "type": "float",
-        "default": 0.95,
-        "min": 0.5,
-        "max": 0.999,
-        "step": 0.01,
-        "description": "Confidence threshold for outlier detection"
+        "default": 1.5,
+        "min": 0.1,
+        "max": 10,
+        "step": 0.1,
+        "description": "Detection threshold. IQR: multiplies IQR (1.5=mild, 3.0=extreme). Z-score: number of std deviations (3.0 is common). MAD: commonly 3.5."
       },
       {
-        "name": "remove",
-        "type": "bool",
-        "default": false,
-        "description": "Remove detected outliers from dataset"
+        "name": "lower_percentile",
+        "type": "float",
+        "default": 1,
+        "min": 0,
+        "max": 50,
+        "step": 0.5,
+        "description": "Lower percentile cutoff (only used with percentile method)",
+        "dependsOn": "method",
+        "dependsOnValue": "percentile"
+      },
+      {
+        "name": "upper_percentile",
+        "type": "float",
+        "default": 99,
+        "min": 50,
+        "max": 100,
+        "step": 0.5,
+        "description": "Upper percentile cutoff (only used with percentile method)",
+        "dependsOn": "method",
+        "dependsOnValue": "percentile"
       }
-    ]
+    ],
+    "tier": "core"
   },
   {
-    "id": "filter.sample_selector",
-    "name": "SampleSelector",
+    "id": "filter.x_outlier",
+    "name": "XOutlierFilter",
     "type": "filter",
-    "classPath": "nirs4all.operators.filters.SampleSelector",
-    "description": "Select samples by criteria",
-    "longDescription": "Filter samples based on metadata, indices, or value ranges.",
+    "classPath": "nirs4all.operators.filters.XOutlierFilter",
+    "description": "Filter samples with outlier spectral features",
+    "longDescription": "Identifies samples whose spectra are statistical outliers using Mahalanobis distance, robust Mahalanobis, PCA residual (Q-statistic), PCA leverage (Hotelling T²), Isolation Forest, or Local Outlier Factor methods.",
+    "category": "Outlier",
+    "tags": [
+      "filter",
+      "outlier",
+      "x",
+      "spectral",
+      "mahalanobis",
+      "pca",
+      "isolation_forest",
+      "lof"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "method",
+        "type": "select",
+        "default": "mahalanobis",
+        "options": [
+          {
+            "value": "mahalanobis",
+            "label": "Mahalanobis Distance"
+          },
+          {
+            "value": "robust_mahalanobis",
+            "label": "Robust Mahalanobis (MinCovDet)"
+          },
+          {
+            "value": "pca_residual",
+            "label": "PCA Residual (Q-statistic)"
+          },
+          {
+            "value": "pca_leverage",
+            "label": "PCA Leverage (Hotelling T²)"
+          },
+          {
+            "value": "isolation_forest",
+            "label": "Isolation Forest"
+          },
+          {
+            "value": "lof",
+            "label": "Local Outlier Factor (LOF)"
+          }
+        ],
+        "description": "Outlier detection method"
+      },
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": null,
+        "min": 0.01,
+        "max": 100,
+        "step": 0.1,
+        "description": "Detection threshold. If null, uses method-specific defaults (e.g., 3.0 for Mahalanobis, auto for PCA). Not used by isolation_forest/lof.",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": null,
+        "min": 1,
+        "max": 100,
+        "description": "Number of PCA components for PCA-based methods, or dimensionality reduction for Mahalanobis. If null, auto-determined.",
+        "isAdvanced": true
+      },
+      {
+        "name": "contamination",
+        "type": "float",
+        "default": 0.1,
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.01,
+        "description": "Expected proportion of outliers (used by isolation_forest and lof methods)",
+        "dependsOn": "method",
+        "dependsOnValue": "isolation_forest"
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": null,
+        "description": "Random state for reproducibility (used by isolation_forest and robust_mahalanobis)",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "core"
+  },
+  {
+    "id": "filter.spectral_quality",
+    "name": "SpectralQualityFilter",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.SpectralQualityFilter",
+    "description": "Filter samples with poor spectral quality",
+    "longDescription": "Identifies and excludes samples with spectral quality issues such as high NaN ratio, excessive zeros, low variance (flat spectra), infinite values, or values outside expected range (saturation detection).",
+    "category": "Quality",
+    "tags": [
+      "filter",
+      "quality",
+      "nan",
+      "noise",
+      "saturation",
+      "spectral"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "max_nan_ratio",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "description": "Maximum allowed ratio of NaN values per spectrum (0-1). Default 0.1 = 10%."
+      },
+      {
+        "name": "max_zero_ratio",
+        "type": "float",
+        "default": 0.5,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "description": "Maximum allowed ratio of zero values per spectrum (0-1). Default 0.5 = 50%."
+      },
+      {
+        "name": "min_variance",
+        "type": "float",
+        "default": 1e-8,
+        "min": 0,
+        "max": 1,
+        "step": 1e-8,
+        "description": "Minimum variance threshold. Samples below this are excluded (flat spectra)."
+      },
+      {
+        "name": "max_value",
+        "type": "float",
+        "default": null,
+        "description": "Maximum allowed value in spectrum. Samples with any value above this are excluded (saturation detection). Null = no limit.",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_value",
+        "type": "float",
+        "default": null,
+        "description": "Minimum allowed value in spectrum. Samples with any value below this are excluded. Null = no limit.",
+        "isAdvanced": true
+      },
+      {
+        "name": "check_inf",
+        "type": "bool",
+        "default": true,
+        "description": "Whether to check for and exclude samples containing infinite values."
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "filter.high_leverage",
+    "name": "HighLeverageFilter",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.HighLeverageFilter",
+    "description": "Filter high-leverage samples that may unduly influence models",
+    "longDescription": "Identifies samples with high leverage (influence) on model fitting using the hat matrix diagonal. High-leverage points are far from the center of the predictor space and can have disproportionate effects on regression models.",
+    "category": "Outlier",
+    "tags": [
+      "filter",
+      "leverage",
+      "hat_matrix",
+      "influence",
+      "pca"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "method",
+        "type": "select",
+        "default": "hat",
+        "options": [
+          {
+            "value": "hat",
+            "label": "Direct Hat Matrix"
+          },
+          {
+            "value": "pca",
+            "label": "PCA-based Leverage"
+          }
+        ],
+        "description": "Leverage computation method. 'hat' works well when n_samples > n_features. 'pca' is better for high-dimensional spectral data."
+      },
+      {
+        "name": "threshold_multiplier",
+        "type": "float",
+        "default": 2,
+        "min": 1,
+        "max": 10,
+        "step": 0.5,
+        "description": "Multiple of average leverage used as threshold. Common values: 2.0 (lenient), 3.0 (strict)."
+      },
+      {
+        "name": "absolute_threshold",
+        "type": "float",
+        "default": null,
+        "min": 0.01,
+        "max": 0.99,
+        "step": 0.01,
+        "description": "Absolute leverage threshold (0-1). If set, overrides threshold_multiplier.",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": null,
+        "min": 1,
+        "max": 100,
+        "description": "Number of PCA components for 'pca' method. If null, auto-determined.",
+        "dependsOn": "method",
+        "dependsOnValue": "pca",
+        "isAdvanced": true
+      },
+      {
+        "name": "center",
+        "type": "bool",
+        "default": true,
+        "description": "Whether to center the data before computing leverage. Recommended.",
+        "isAdvanced": true
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "filter.metadata",
+    "name": "MetadataFilter",
+    "type": "filter",
+    "classPath": "nirs4all.operators.filters.MetadataFilter",
+    "description": "Filter samples based on metadata column values",
+    "longDescription": "Excludes samples based on metadata criteria. Supports excluding specific values, keeping only specific values, or applying a custom condition function to a metadata column.",
     "category": "Selection",
-    "tags": ["filter", "sample", "selection", "subset"],
+    "tags": [
+      "filter",
+      "metadata",
+      "selection",
+      "category",
+      "quality_flag"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
         "name": "column",
         "type": "string",
         "default": "",
-        "description": "Metadata column to filter by"
+        "required": true,
+        "description": "Name of the metadata column to filter on"
       },
       {
-        "name": "values",
+        "name": "values_to_exclude",
         "type": "array",
-        "default": [],
-        "description": "Values to include"
-      }
-    ]
-  },
-  {
-    "id": "filter.y_range",
-    "name": "YRangeFilter",
-    "type": "filter",
-    "classPath": "nirs4all.operators.filters.YRangeFilter",
-    "description": "Filter samples by Y value range",
-    "longDescription": "Keeps only samples where Y falls within specified range.",
-    "category": "Range",
-    "tags": ["filter", "range", "target", "y"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "min_y",
-        "type": "float",
-        "description": "Minimum Y value (optional)"
+        "default": null,
+        "description": "List of values to exclude. Samples with these values are removed."
       },
       {
-        "name": "max_y",
-        "type": "float",
-        "description": "Maximum Y value (optional)"
-      }
-    ]
-  },
-  {
-    "id": "filter.duplicates",
-    "name": "DuplicateRemover",
-    "type": "filter",
-    "classPath": "nirs4all.operators.filters.DuplicateRemover",
-    "description": "Remove duplicate samples",
-    "longDescription": "Identifies and removes duplicate spectral samples.",
-    "category": "Cleaning",
-    "tags": ["filter", "duplicate", "cleaning", "removal"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "tolerance",
-        "type": "float",
-        "default": 1e-6,
-        "min": 0,
-        "max": 0.01,
-        "description": "Tolerance for considering samples as duplicates"
-      }
-    ]
-  },
-  {
-    "id": "filter.quality",
-    "name": "QualityFilter",
-    "type": "filter",
-    "classPath": "nirs4all.operators.filters.QualityFilter",
-    "description": "Filter by spectral quality metrics",
-    "longDescription": "Removes samples with poor spectral quality (noise, saturation, etc.).",
-    "category": "Quality",
-    "tags": ["filter", "quality", "noise", "spectral"],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "max_noise",
-        "type": "float",
-        "default": 0.1,
-        "min": 0,
-        "max": 1,
-        "description": "Maximum allowed noise level"
+        "name": "values_to_keep",
+        "type": "array",
+        "default": null,
+        "description": "List of values to keep. Only samples with these values are retained."
       },
       {
-        "name": "check_saturation",
+        "name": "exclude_missing",
         "type": "bool",
         "default": true,
-        "description": "Check for detector saturation"
+        "description": "Whether to exclude samples with missing/null values in the column."
       }
-    ]
+    ],
+    "tier": "standard"
   }
 ]

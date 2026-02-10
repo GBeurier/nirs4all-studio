@@ -36,10 +36,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { usePipelineDnd } from "../../PipelineDndContext";
-import { stepColors } from "../../types";
+import { getStepColor } from "../../types";
 import type { TreeNodeProps } from "./types";
 import {
-  stepIcons,
+  getStepIcon,
   isContainerStep,
   getContainerChildLabel,
   isBranchableStep,
@@ -88,7 +88,7 @@ export function TreeNode({
   // Check if this is a container step with children
   const isContainer = isContainerStep(step);
   const containerChildren = step.children ?? [];
-  const childLabel = getContainerChildLabel(step.type);
+  const childLabel = getContainerChildLabel(step);
 
   // DnD setup
   const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({
@@ -111,13 +111,13 @@ export function TreeNode({
     },
   });
 
-  const Icon = stepIcons[step.type];
-  const colors = stepColors[step.type];
+  const Icon = getStepIcon(step);
+  const colors = getStepColor(step);
 
   // Use memoized computed values from utilities
   const sweepInfo = useMemo(() => computeSweepInfo(step), [step.paramSweeps, step.stepGenerator]);
   const finetuneInfo = useMemo(() => computeFinetuneInfo(step), [step.finetuneConfig]);
-  const generatorInfo = useMemo(() => computeGeneratorInfo(step), [step.type, step.generatorKind, step.generatorOptions, step.branches]);
+  const generatorInfo = useMemo(() => computeGeneratorInfo(step), [step.type, step.subType, step.generatorKind, step.generatorOptions, step.branches]);
   const displayParams = useMemo(() => getDisplayParams(step, sweepInfo.sweepKeys), [step.params, sweepInfo.sweepKeys]);
 
   // Determine if this node is foldable
@@ -298,7 +298,7 @@ export function TreeNode({
               onRemoveBranchNested={onRemoveBranchNested}
               onAddChild={onAddChild}
               onRemoveChild={onRemoveChild}
-              isGenerator={step.type === "generator"}
+              isGenerator={step.subType === "generator"}
               branchLabel={branchLabel}
             />
           ))}
@@ -307,7 +307,7 @@ export function TreeNode({
             <button
               onClick={onAddBranch}
               className={`flex items-center gap-1.5 text-xs py-1 px-2 rounded hover:bg-muted/50 transition-colors ml-2 mt-1 ${
-                step.type === "generator"
+                step.subType === "generator"
                   ? "text-orange-500 hover:text-orange-600"
                   : "text-muted-foreground hover:text-primary"
               }`}

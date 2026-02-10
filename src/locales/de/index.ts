@@ -83,10 +83,12 @@ const de = {
     datasets: "Datensätze",
     pipelines: "Pipelines",
     pipelineEditor: "Pipeline-Editor",
+    runEditor: "Ausführungs-Editor",
     editor: "Editor",
     playground: "Spielwiese",
     inspector: "Inspektor",
     runs: "Ausführungen",
+    results: "Ergebnisse",
     scores: "Ergebnisse",
     predictions: "Vorhersagen",
     aggregatedResults: "Aggregierte Ergebnisse",
@@ -435,10 +437,9 @@ const de = {
   layout: {
     sidebar: {
       groups: {
-        data: "Daten",
+        prepare: "Vorbereiten",
         explore: "Erkunden",
         results: "Ergebnisse",
-        lab: "Labor",
       },
     },
     header: {
@@ -468,6 +469,7 @@ const de = {
   datasets: {
     title: "Datensätze",
     subtitle: "Verwalten Sie Ihre Spektraldatensätze und Konfigurationen",
+    workspace: "Arbeitsbereich",
     empty: "Noch keine Datensätze",
     emptyNoMatch: "Keine Treffer",
     emptyHint: "Beginnen Sie, indem Sie einen Datensatz zu Ihrem Arbeitsbereich hinzufügen",

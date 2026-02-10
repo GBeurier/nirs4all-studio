@@ -7,7 +7,11 @@
     "description": "K-fold cross validation",
     "longDescription": "Splits data into K consecutive folds for cross-validation.",
     "category": "sklearn",
-    "tags": ["splitting", "kfold", "cross-validation"],
+    "tags": [
+      "splitting",
+      "kfold",
+      "cross-validation"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -36,7 +40,8 @@
     "supportsParameterSweeps": true,
     "legacyClassPaths": [
       "sklearn.model_selection._split.KFold"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "splitting.repeated_kfold",
@@ -46,7 +51,12 @@
     "description": "Repeated K-fold CV",
     "longDescription": "Repeats K-fold cross-validation multiple times with different randomization.",
     "category": "sklearn",
-    "tags": ["splitting", "kfold", "repeated", "cross-validation"],
+    "tags": [
+      "splitting",
+      "kfold",
+      "repeated",
+      "cross-validation"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -76,7 +86,8 @@
     "supportsParameterSweeps": true,
     "legacyClassPaths": [
       "sklearn.model_selection._split.RepeatedKFold"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "splitting.shuffle_split",
@@ -86,7 +97,11 @@
     "description": "Random repeated train/test splits",
     "longDescription": "Generates random train/test indices for multiple iterations.",
     "category": "sklearn",
-    "tags": ["splitting", "shuffle", "random"],
+    "tags": [
+      "splitting",
+      "shuffle",
+      "random"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -119,7 +134,8 @@
     "supportsParameterSweeps": true,
     "legacyClassPaths": [
       "sklearn.model_selection._split.ShuffleSplit"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "splitting.stratified_kfold",
@@ -129,7 +145,12 @@
     "description": "Stratified K-fold CV (classification)",
     "longDescription": "K-fold cross-validation with stratification for classification problems.",
     "category": "sklearn",
-    "tags": ["splitting", "stratified", "kfold", "classification"],
+    "tags": [
+      "splitting",
+      "stratified",
+      "kfold",
+      "classification"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -157,7 +178,8 @@
     "supportsParameterSweeps": true,
     "legacyClassPaths": [
       "sklearn.model_selection._split.StratifiedKFold"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "splitting.leave_one_out",
@@ -167,13 +189,18 @@
     "description": "Leave-one-out cross validation",
     "longDescription": "Each sample is used once as test set while remaining samples form training set.",
     "category": "sklearn",
-    "tags": ["splitting", "loo", "leave-one-out"],
+    "tags": [
+      "splitting",
+      "loo",
+      "leave-one-out"
+    ],
     "source": "sklearn",
     "parameters": [],
     "supportsParameterSweeps": false,
     "legacyClassPaths": [
       "sklearn.model_selection._split.LeaveOneOut"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "splitting.group_kfold",
@@ -183,7 +210,11 @@
     "description": "Group-aware K-fold",
     "longDescription": "K-fold cross-validation ensuring samples from the same group are not in both train and test sets.",
     "category": "sklearn",
-    "tags": ["splitting", "group", "kfold"],
+    "tags": [
+      "splitting",
+      "group",
+      "kfold"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -198,7 +229,8 @@
     "supportsParameterSweeps": true,
     "legacyClassPaths": [
       "sklearn.model_selection._split.GroupKFold"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "splitting.group_shuffle_split",
@@ -208,7 +240,11 @@
     "description": "Group-aware shuffle split",
     "longDescription": "Random train/test splits with group awareness.",
     "category": "sklearn",
-    "tags": ["splitting", "group", "shuffle"],
+    "tags": [
+      "splitting",
+      "group",
+      "shuffle"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -229,6 +265,7 @@
         "description": "Proportion for test set"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   }
 ]

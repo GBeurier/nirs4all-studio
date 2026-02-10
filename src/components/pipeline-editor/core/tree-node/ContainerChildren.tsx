@@ -6,12 +6,12 @@
  */
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { Plus, GripVertical, Trash2, Waves } from "lucide-react";
+import { Plus, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePipelineDnd } from "../../PipelineDndContext";
-import { stepColors } from "../../types";
+import { getStepColor } from "../../types";
 import type { ContainerChildrenNodeProps, ContainerChildItemProps } from "./types";
-import { stepIcons } from "./utils";
+import { getStepIcon } from "./utils";
 
 /**
  * Container children node - renders children of container steps
@@ -110,8 +110,8 @@ export function ContainerChildItem({
   onRemove,
   colors,
 }: ContainerChildItemProps) {
-  const Icon = stepIcons[child.type] || Waves;
-  const childColors = stepColors[child.type] || colors;
+  const Icon = getStepIcon(child);
+  const childColors = getStepColor(child);
   const { isDragging: globalIsDragging, activeId } = usePipelineDnd();
   const isBeingDragged = activeId === child.id;
 

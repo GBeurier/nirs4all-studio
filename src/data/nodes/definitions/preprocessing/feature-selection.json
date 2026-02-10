@@ -7,7 +7,13 @@
     "description": "Competitive Adaptive Reweighted Sampling",
     "longDescription": "Variable selection method that uses PLS to iteratively select important wavelengths.",
     "category": "Feature Selection",
-    "tags": ["feature", "selection", "cars", "wavelength", "pls"],
+    "tags": [
+      "feature",
+      "selection",
+      "cars",
+      "wavelength",
+      "pls"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -20,7 +26,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [5, 30]
+        "finetuneRange": [
+          5,
+          30
+        ]
       },
       {
         "name": "n_sampling_runs",
@@ -33,7 +42,8 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "advanced"
   },
   {
     "id": "preprocessing.mcuve",
@@ -43,7 +53,12 @@
     "description": "Monte Carlo Uninformative Variable Elimination",
     "longDescription": "Removes uninformative variables using Monte Carlo sampling.",
     "category": "Feature Selection",
-    "tags": ["feature", "selection", "mcuve", "monte-carlo"],
+    "tags": [
+      "feature",
+      "selection",
+      "mcuve",
+      "monte-carlo"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -66,7 +81,8 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "advanced"
   },
   {
     "id": "preprocessing.vip",
@@ -76,7 +92,13 @@
     "description": "Variable Importance in Projection",
     "longDescription": "Selects variables based on their importance in PLS projection.",
     "category": "Feature Selection",
-    "tags": ["feature", "selection", "vip", "pls", "importance"],
+    "tags": [
+      "feature",
+      "selection",
+      "vip",
+      "pls",
+      "importance"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -91,18 +113,22 @@
       {
         "name": "threshold",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.5,
-        "max": 3.0,
+        "max": 3,
         "step": 0.1,
         "description": "VIP score threshold for variable selection",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "float",
-        "finetuneRange": [0.5, 2.0]
+        "finetuneRange": [
+          0.5,
+          2
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

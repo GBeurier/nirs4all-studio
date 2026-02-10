@@ -13,7 +13,6 @@ import {
   Settings,
   Repeat,
   Sparkles,
-  Grid3X3,
   Filter,
   Layers,
   BarChart,
@@ -39,9 +38,10 @@ import {
 } from "@/components/ui/tooltip";
 import { usePipelineDnd } from "./PipelineDndContext";
 import {
-  stepColors,
+  getStepColor,
   type PipelineStep,
   type StepType,
+  type StepSubType,
   calculateStepVariants,
   formatSweepDisplay,
 } from "./types";
@@ -51,11 +51,16 @@ const stepIcons: Record<StepType, typeof Waves> = {
   y_processing: BarChart,
   splitting: Shuffle,
   model: Target,
-  generator: Sparkles,
-  branch: GitBranch,
-  merge: GitMerge,
   filter: Filter,
   augmentation: Layers,
+  flow: GitBranch,
+  utility: Sparkles,
+};
+
+const stepSubTypeIcons: Record<StepSubType, typeof Waves> = {
+  branch: GitBranch,
+  merge: GitMerge,
+  generator: Sparkles,
   sample_augmentation: Zap,
   feature_augmentation: Layers,
   sample_filter: Filter,
@@ -128,8 +133,11 @@ export function PipelineNode({
     },
   });
 
-  const Icon = stepIcons[step.type];
-  const colors = stepColors[step.type];
+  // Use subType-aware icon and color resolution
+  const Icon = (step.subType && step.subType in stepSubTypeIcons)
+    ? stepSubTypeIcons[step.subType]
+    : stepIcons[step.type];
+  const colors = getStepColor(step);
 
   // Check for parameter sweeps or step generators
   const hasParamSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
@@ -344,8 +352,8 @@ export function PipelineNode({
         )}
       </div>
 
-      {/* Branches (for branch type steps) */}
-      {step.type === "branch" && step.branches && (
+      {/* Branches (for branch subType steps) */}
+      {step.subType === "branch" && step.branches && (
         <BranchesContainer
           step={step}
           path={path}
@@ -356,8 +364,8 @@ export function PipelineNode({
         />
       )}
 
-      {/* Generator options (for generator type steps - similar to branches) */}
-      {step.type === "generator" && step.branches && (
+      {/* Generator options (for generator subType steps - similar to branches) */}
+      {step.subType === "generator" && step.branches && (
         <BranchesContainer
           step={step}
           path={path}
@@ -545,8 +553,10 @@ function BranchDropZone({ branchIndex, branch, parentPath, depth, onRemoveBranch
 
 // Compact preview of a step in a branch
 function BranchStepPreview({ step, index }: { step: PipelineStep; index: number }) {
-  const Icon = stepIcons[step.type];
-  const colors = stepColors[step.type];
+  const Icon = (step.subType && step.subType in stepSubTypeIcons)
+    ? stepSubTypeIcons[step.subType]
+    : stepIcons[step.type];
+  const colors = getStepColor(step);
 
   return (
     <div className={`flex items-center gap-1.5 px-2 py-1 rounded border ${colors.border} ${colors.bg}`}>

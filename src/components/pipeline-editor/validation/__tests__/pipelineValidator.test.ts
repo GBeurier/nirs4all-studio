@@ -69,7 +69,8 @@ describe("validateStep", () => {
   it("should validate container with children", () => {
     const childStep = createMockStep({ type: "preprocessing" });
     const step = createMockStep({
-      type: "sample_augmentation",
+      type: "flow",
+      subType: "sample_augmentation",
       children: [childStep],
     });
     const context = createContext([step]);
@@ -82,7 +83,8 @@ describe("validateStep", () => {
 
   it("should error on branch with empty branches array", () => {
     const step = createMockStep({
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       branches: [],
     });
     const context = createContext([step]);
@@ -95,7 +97,8 @@ describe("validateStep", () => {
   it("should validate branch with non-empty branches", () => {
     const childStep = createMockStep({ type: "preprocessing" });
     const step = createMockStep({
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       branches: [[childStep]],
     });
     const context = createContext([step]);
@@ -137,7 +140,8 @@ describe("findDuplicateStepIds", () => {
     const nestedStep = createMockStep({ id: "nested-1" });
     const branchStep = createMockStep({
       id: "branch-1",
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       branches: [[nestedStep], [createMockStep({ id: "nested-1" })]],
     });
     const steps: PipelineStep[] = [branchStep];
@@ -224,7 +228,7 @@ describe("validatePipeline", () => {
   it("should error on merge without branch", () => {
     const steps: PipelineStep[] = [
       createMockStep({ type: "preprocessing" }),
-      createMockStep({ type: "merge", id: "merge-1", name: "Merge" }),
+      createMockStep({ type: "flow", subType: "merge", id: "merge-1", name: "Merge" }),
       createMockStep({ type: "model" }),
     ];
     const context = createContext(steps);
@@ -238,13 +242,14 @@ describe("validatePipeline", () => {
 
   it("should not error on merge with preceding branch", () => {
     const branchStep = createMockStep({
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       id: "branch-1",
       branches: [[createMockStep()], [createMockStep()]],
     });
     const steps: PipelineStep[] = [
       branchStep,
-      createMockStep({ type: "merge", id: "merge-1", name: "Merge" }),
+      createMockStep({ type: "flow", subType: "merge", id: "merge-1", name: "Merge" }),
       createMockStep({ type: "model" }),
     ];
     const context = createContext(steps);
@@ -271,7 +276,8 @@ describe("countTotalSteps", () => {
   it("should count nested steps in containers", () => {
     const childSteps = [createMockStep(), createMockStep()];
     const containerStep = createMockStep({
-      type: "sample_augmentation",
+      type: "flow",
+      subType: "sample_augmentation",
       children: childSteps,
     });
     const steps: PipelineStep[] = [containerStep, createMockStep()];
@@ -282,7 +288,8 @@ describe("countTotalSteps", () => {
 
   it("should count nested steps in branches", () => {
     const branchStep = createMockStep({
-      type: "branch",
+      type: "flow",
+      subType: "branch",
       branches: [
         [createMockStep(), createMockStep()],
         [createMockStep()],
@@ -315,7 +322,8 @@ describe("getPipelineSummary", () => {
   it("should detect branches", () => {
     const steps: PipelineStep[] = [
       createMockStep({
-        type: "branch",
+        type: "flow",
+        subType: "branch",
         branches: [[createMockStep()]],
       }),
     ];
@@ -327,7 +335,7 @@ describe("getPipelineSummary", () => {
 
   it("should detect generators as branches", () => {
     const steps: PipelineStep[] = [
-      createMockStep({ type: "generator", branches: [[createMockStep()]] }),
+      createMockStep({ type: "utility", subType: "generator", branches: [[createMockStep()]] }),
     ];
 
     const summary = getPipelineSummary(steps);

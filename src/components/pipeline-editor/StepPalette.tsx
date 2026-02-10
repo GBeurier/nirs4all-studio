@@ -8,17 +8,12 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
-  GitMerge,
   GripVertical,
   Sparkles,
   Filter,
   Zap,
   BarChart3,
   Star,
-  Layers,
-  Combine,
-  LineChart,
-  MessageSquare,
 } from "lucide-react";
 import { motion } from "@/lib/motion";
 import { Input } from "@/components/ui/input";
@@ -44,7 +39,7 @@ import {
   type PipelineStep,
 } from "./types";
 import { useNodeRegistryOptional, type NodeDefinition } from "./contexts/NodeRegistryContext";
-import { usePipelineEditorPreferencesOptional } from "./contexts/PipelineEditorPreferencesContext";
+import { usePipelineEditorPreferencesOptional, type TierLevel } from "./contexts/PipelineEditorPreferencesContext";
 import { parametersToDefaultParams } from "@/data/nodes";
 
 const stepIcons: Record<StepType, typeof Waves> = {
@@ -52,18 +47,10 @@ const stepIcons: Record<StepType, typeof Waves> = {
   y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
-  generator: Sparkles,
-  branch: GitBranch,
-  merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
-  sample_augmentation: Zap,
-  feature_augmentation: Layers,
-  sample_filter: Filter,
-  concat_transform: Combine,
-  sequential: Layers,
-  chart: LineChart,
-  comment: MessageSquare,
+  flow: GitBranch,
+  utility: Sparkles,
 };
 
 /**
@@ -90,6 +77,7 @@ function nodeDefToStepOption(node: NodeDefinition): StepOption {
     tags: node.tags,
     defaultBranches,
     generatorKind: node.generatorKind,
+    tier: node.tier,
   };
 }
 
@@ -186,51 +174,38 @@ interface StepPaletteProps {
 }
 
 // Order of step types in the palette (most commonly used first)
-// Note: Some categories are merged together (see mergedCategories)
 const stepTypeOrder: StepType[] = [
   "preprocessing",
   "splitting",
   "model",
   "y_processing",
-  "generator",
-  "branch",      // Includes merge
-  "filter",      // Includes sample_filter
-  "augmentation", // Augmentation operators (noise, drift, etc.)
-  "sample_augmentation", // Container types: includes feature_augmentation, concat_transform
-  "chart",
-  "comment",
+  "flow",
+  "filter",
+  "augmentation",
+  "utility",
 ];
 
-// Categories that get merged together in the UI
-const mergedCategories: Partial<Record<StepType, { types: StepType[]; label: string }>> = {
-  branch: { types: ["branch", "merge"], label: "Branching & Merge" },
-  filter: { types: ["filter", "sample_filter"], label: "Filters" },
-  sample_augmentation: { types: ["sample_augmentation", "feature_augmentation", "concat_transform"], label: "Feature Processing" },
+/** Tier selector labels */
+const TIER_LABELS: Record<TierLevel, string> = {
+  core: "Essential",
+  standard: "Standard",
+  all: "All",
 };
 
-// Types that should be hidden because they're merged into another category
-const hiddenTypes = new Set<StepType>(["merge", "feature_augmentation", "concat_transform", "sample_filter"]);
+/** Tier selector tooltips */
+const TIER_TOOLTIPS: Record<TierLevel, string> = {
+  core: "Essential NIRS operators only",
+  standard: "Standard operators (nirs4all + common sklearn)",
+  all: "All operators including advanced and deep learning",
+};
 
-const EXTENDED_MODE_STORAGE_KEY = "pipelineEditor.extendedMode";
-
-function readLocalStorageBoolean(key: string, fallback: boolean): boolean {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return raw === "true";
-  } catch {
-    return fallback;
-  }
-}
-
-function writeLocalStorageBoolean(key: string, value: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, value ? "true" : "false");
-  } catch {
-    // ignore
-  }
+/** Check if a StepOption passes the tier filter */
+function passesTierFilter(opt: StepOption, tierLevel: TierLevel): boolean {
+  if (tierLevel === "all") return true;
+  const tier = opt.tier ?? (opt.isAdvanced ? "advanced" : "standard");
+  if (tierLevel === "core") return tier === "core";
+  // "standard" — exclude advanced
+  return tier !== "advanced";
 }
 
 
@@ -239,19 +214,16 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
   const prefs = usePipelineEditorPreferencesOptional();
-  const [extendedModeFallback, setExtendedModeFallback] = useState<boolean>(() =>
-    readLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, false)
-  );
+  const [tierLevelFallback, setTierLevelFallback] = useState<TierLevel>("standard");
 
-  const extendedMode = prefs?.extendedMode ?? extendedModeFallback;
-  const setExtendedMode = useCallback(
-    (value: boolean) => {
+  const tierLevel: TierLevel = prefs?.tierLevel ?? tierLevelFallback;
+  const setTierLevel = useCallback(
+    (value: TierLevel) => {
       if (prefs) {
-        prefs.setExtendedMode(value);
+        prefs.setTierLevel(value);
         return;
       }
-      setExtendedModeFallback(value);
-      writeLocalStorageBoolean(EXTENDED_MODE_STORAGE_KEY, value);
+      setTierLevelFallback(value);
     },
     [prefs]
   );
@@ -271,15 +243,8 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     return stepOptions[type] ?? [];
   }, [useRegistry, registryContext]);
 
-  // Get all options for a type, including merged types
+  // Get all options for a type
   const getOptionsForType = useCallback((type: StepType): { option: StepOption; actualType: StepType }[] => {
-    const merged = mergedCategories[type];
-    if (merged) {
-      // Return options from all merged types
-      return merged.types.flatMap(t =>
-        getStepOptionsForType(t).map(opt => ({ option: opt, actualType: t }))
-      );
-    }
     return getStepOptionsForType(type).map(opt => ({ option: opt, actualType: type }));
   }, [getStepOptionsForType]);
 
@@ -288,7 +253,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       const allOptions = getOptionsForType(type);
       return allOptions.filter(
         ({ option: opt }) =>
-          (extendedMode || !opt.isAdvanced) &&
+          passesTierFilter(opt, tierLevel) &&
           (
             opt.name.toLowerCase().includes(search.toLowerCase()) ||
             opt.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -296,7 +261,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
           )
       );
     },
-    [search, getOptionsForType, extendedMode]
+    [search, getOptionsForType, tierLevel]
   );
 
   // Keep the open sections consistent when toggling extended mode during an active search.
@@ -304,12 +269,11 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     if (!search.trim()) return;
     const matchingSections = new Set<StepType>();
     stepTypeOrder.forEach((type) => {
-      if (hiddenTypes.has(type)) return;
       const matches = filteredOptions(type);
       if (matches.length > 0) matchingSections.add(type);
     });
     setOpenSections(matchingSections);
-  }, [extendedMode, search, filteredOptions]);
+  }, [tierLevel, search, filteredOptions]);
 
   // When search changes, update search state
   const handleSearchChange = (value: string) => {
@@ -318,7 +282,6 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       // Open all sections that have matches
       const matchingSections = new Set<StepType>();
       stepTypeOrder.forEach((type) => {
-        if (hiddenTypes.has(type)) return;
         const matches = filteredOptions(type);
         if (matches.length > 0) {
           matchingSections.add(type);
@@ -352,7 +315,6 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const totalSteps = useMemo(
     () =>
       stepTypeOrder
-        .filter(type => !hiddenTypes.has(type))
         .reduce(
           (acc, type) => acc + filteredOptions(type).length,
           0
@@ -373,31 +335,33 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
               {totalSteps}
             </Badge>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => setExtendedMode(!extendedMode)}
-                  className={`text-[9px] font-medium px-1.5 py-0.5 rounded transition-colors ${
-                    extendedMode
-                      ? "bg-primary/20 text-primary hover:bg-primary/30"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                >
-                  {extendedMode ? "EXT" : "STD"}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-                {extendedMode
-                  ? "Extended mode: all sklearn, nirs4all, and TensorFlow operators"
-                  : "Standard mode: curated operators only"}
-              </TooltipContent>
-            </Tooltip>
+            <div className="flex items-center rounded overflow-hidden border border-border">
+              {(["core", "standard", "all"] as TierLevel[]).map((tier) => (
+                <Tooltip key={tier}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setTierLevel(tier)}
+                      className={`text-[9px] font-medium px-1.5 py-0.5 transition-colors ${
+                        tierLevel === tier
+                          ? "bg-primary/20 text-primary"
+                          : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
+                      }`}
+                    >
+                      {TIER_LABELS[tier]}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs max-w-[200px]">
+                    {TIER_TOOLTIPS[tier]}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
           </div>
         </div>
 
-        {extendedMode && registryContext?.isLoading && (
-          <div className="text-[10px] text-muted-foreground/70">Loading extended…</div>
+        {tierLevel === "all" && registryContext?.isLoading && (
+          <div className="text-[10px] text-muted-foreground/70">Loading extended...</div>
         )}
         {registryContext?.error && (
           <div className="text-[10px] text-destructive">{registryContext.error.message}</div>
@@ -418,22 +382,16 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       <ScrollArea className="flex-1">
         <div className="pl-4 py-4 pr-5 space-y-3">
           {stepTypeOrder.map((type) => {
-            // Skip hidden types (they're merged into other categories)
-            if (hiddenTypes.has(type)) return null;
-
             const Icon = stepIcons[type];
             const colors = stepColors[type];
             const options = filteredOptions(type);
             if (options.length === 0 && search) return null;
 
-            // Get the display label (merged or original)
-            const merged = mergedCategories[type];
-            const displayLabel = merged ? merged.label : stepTypeLabels[type];
+            const displayLabel = stepTypeLabels[type];
 
-            // Group by category (using the option's category or type as fallback for merged)
+            // Group by category
             const groupedMap = new Map<string, { option: StepOption; actualType: StepType }[]>();
             for (const item of options) {
-              // For merged categories, use a combo key to distinguish source types
               const categoryKey = item.option.category || "General";
               if (!groupedMap.has(categoryKey)) {
                 groupedMap.set(categoryKey, []);

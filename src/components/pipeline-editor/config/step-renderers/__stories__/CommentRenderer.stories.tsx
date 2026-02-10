@@ -50,7 +50,8 @@ export const Empty: Story = {
   args: {
     step: {
       id: "comment-1",
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "_comment",
       params: { text: "" },
     },
@@ -61,7 +62,8 @@ export const WithText: Story = {
   args: {
     step: {
       id: "comment-2",
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "_comment",
       params: { text: "This preprocessing step normalizes the spectra using SNV." },
     },
@@ -72,7 +74,8 @@ export const LongComment: Story = {
   args: {
     step: {
       id: "comment-3",
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "_comment",
       params: {
         text: `This section handles data preprocessing:
@@ -95,7 +98,8 @@ export const DataQualityNote: Story = {
   args: {
     step: {
       id: "comment-quality",
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "_comment",
       params: {
         text: "Data quality check: Remove outliers with Mahalanobis distance > 3",
@@ -108,7 +112,8 @@ export const ModelExplanation: Story = {
   args: {
     step: {
       id: "comment-model",
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "_comment",
       params: {
         text: "Using PLS with 10 components based on cross-validation results from 2024-01-15",
@@ -121,7 +126,8 @@ export const WarningNote: Story = {
   args: {
     step: {
       id: "comment-warning",
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "_comment",
       params: {
         text: "⚠️ WARNING: This pipeline requires at least 100 samples for reliable prediction",

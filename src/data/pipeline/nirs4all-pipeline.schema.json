@@ -1,0 +1,560 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nirs4all.org/schemas/pipeline/1.0",
+  "title": "nirs4all Native Pipeline Format",
+  "description": "Schema for nirs4all pipeline definitions. This is the canonical JSON format that maps directly to nirs4all.run(pipeline=[...]) Python syntax.",
+  "type": "object",
+  "required": ["version", "steps"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version"
+    },
+    "name": {
+      "type": "string",
+      "description": "Optional pipeline name for identification"
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable description"
+    },
+    "random_state": {
+      "type": "integer",
+      "description": "Optional global random seed for reproducibility"
+    },
+    "steps": {
+      "type": "array",
+      "description": "Ordered list of pipeline steps",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "step": {
+      "description": "A single pipeline step. Can be a string (class name with defaults), or an object with keyword wrappers.",
+      "oneOf": [
+        { "$ref": "#/$defs/classNameStep" },
+        { "$ref": "#/$defs/classWithParamsStep" },
+        { "$ref": "#/$defs/modelStep" },
+        { "$ref": "#/$defs/yProcessingStep" },
+        { "$ref": "#/$defs/branchStep" },
+        { "$ref": "#/$defs/mergeStep" },
+        { "$ref": "#/$defs/excludeStep" },
+        { "$ref": "#/$defs/tagStep" },
+        { "$ref": "#/$defs/sampleAugmentationStep" },
+        { "$ref": "#/$defs/featureAugmentationStep" },
+        { "$ref": "#/$defs/orGeneratorStep" },
+        { "$ref": "#/$defs/rangeGeneratorStep" },
+        { "$ref": "#/$defs/logRangeGeneratorStep" },
+        { "$ref": "#/$defs/cartesianGeneratorStep" },
+        { "$ref": "#/$defs/gridGeneratorStep" },
+        { "$ref": "#/$defs/chartStep" }
+      ]
+    },
+
+    "classNameStep": {
+      "type": "string",
+      "description": "Operator class name with default parameters. Examples: 'StandardNormalVariate', 'KFold', 'SNV'",
+      "minLength": 1
+    },
+
+    "classWithParamsStep": {
+      "type": "object",
+      "description": "Operator with explicit parameters. The key is the class name, the value is a params object. Example: {\"SavitzkyGolay\": {\"window_length\": 11, \"polyorder\": 3}}",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "patternProperties": {
+        "^[A-Z][a-zA-Z0-9_]*$": {
+          "type": "object",
+          "description": "Parameters passed to the operator constructor",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false,
+      "not": {
+        "anyOf": [
+          { "required": ["model"] },
+          { "required": ["y_processing"] },
+          { "required": ["branch"] },
+          { "required": ["merge"] },
+          { "required": ["exclude"] },
+          { "required": ["tag"] },
+          { "required": ["sample_augmentation"] },
+          { "required": ["feature_augmentation"] },
+          { "required": ["_or_"] },
+          { "required": ["_range_"] },
+          { "required": ["_log_range_"] },
+          { "required": ["_cartesian_"] },
+          { "required": ["_grid_"] },
+          { "required": ["chart_2d"] },
+          { "required": ["chart_y"] }
+        ]
+      }
+    },
+
+    "operatorRef": {
+      "description": "Reference to an operator: either a class name string or {ClassName: {params}}",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Class name with defaults",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "description": "Class name with params",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+
+    "modelStep": {
+      "type": "object",
+      "description": "Model step wrapped with 'model' keyword. Example: {\"model\": {\"PLSRegression\": {\"n_components\": 10}}}",
+      "required": ["model"],
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/operatorRef"
+        },
+        "name": {
+          "type": "string",
+          "description": "Custom name for the model step (used in MetaModel references)"
+        },
+        "finetune_params": {
+          "$ref": "#/$defs/finetuneParams"
+        },
+        "train_params": {
+          "type": "object",
+          "description": "Training parameters for deep learning models (epochs, batch_size, etc.)",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "yProcessingStep": {
+      "type": "object",
+      "description": "Target (Y) processing step. Example: {\"y_processing\": \"StandardScaler\"} or {\"y_processing\": {\"MinMaxScaler\": {\"feature_range\": [0, 1]}}}",
+      "required": ["y_processing"],
+      "properties": {
+        "y_processing": {
+          "$ref": "#/$defs/operatorRef"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "branchStep": {
+      "type": "object",
+      "description": "Parallel branch execution. Can be indexed arrays or dict-style (by_metadata, by_tag, by_source).",
+      "required": ["branch"],
+      "properties": {
+        "branch": {
+          "oneOf": [
+            {
+              "type": "array",
+              "description": "Indexed branches: each element is a sub-pipeline",
+              "items": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/step" }
+              }
+            },
+            {
+              "type": "object",
+              "description": "Named/dynamic branches (by_metadata, by_tag, by_source, or named)",
+              "additionalProperties": true
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "mergeStep": {
+      "type": "object",
+      "description": "Merge branch results. Simple: {\"merge\": \"predictions\"}, or complex with selection config.",
+      "required": ["merge"],
+      "properties": {
+        "merge": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["predictions", "concat", "features", "mean", "voting"],
+              "description": "Simple merge mode"
+            },
+            {
+              "type": "object",
+              "description": "Complex merge with prediction selection",
+              "properties": {
+                "predictions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "branch": { "type": "integer" },
+                      "select": {
+                        "oneOf": [
+                          { "type": "string", "enum": ["best", "all"] },
+                          { "type": "object", "properties": { "top_k": { "type": "integer" } } }
+                        ]
+                      },
+                      "metric": { "type": "string" }
+                    }
+                  }
+                },
+                "features": {
+                  "type": "array",
+                  "items": { "type": "integer" }
+                },
+                "output_as": {
+                  "type": "string",
+                  "enum": ["features", "predictions"]
+                },
+                "on_missing": {
+                  "type": "string",
+                  "enum": ["warn", "error", "drop"]
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "excludeStep": {
+      "type": "object",
+      "description": "Exclude samples from training based on filter criteria. Example: {\"exclude\": {\"YOutlierFilter\": {\"method\": \"iqr\"}}, \"mode\": \"any\"}",
+      "required": ["exclude"],
+      "properties": {
+        "exclude": {
+          "oneOf": [
+            { "$ref": "#/$defs/operatorRef" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/operatorRef" }
+            }
+          ]
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["any", "all", "vote"],
+          "description": "How multiple filters combine"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "tagStep": {
+      "type": "object",
+      "description": "Tag samples without excluding them. Example: {\"tag\": {\"YOutlierFilter\": {\"method\": \"iqr\"}}}",
+      "required": ["tag"],
+      "properties": {
+        "tag": {
+          "oneOf": [
+            { "$ref": "#/$defs/operatorRef" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/operatorRef" }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "sampleAugmentationStep": {
+      "type": "object",
+      "description": "Training-time sample augmentation. Example: {\"sample_augmentation\": {\"transformers\": [...], \"count\": 3}}",
+      "required": ["sample_augmentation"],
+      "properties": {
+        "sample_augmentation": {
+          "type": "object",
+          "required": ["transformers"],
+          "properties": {
+            "transformers": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/operatorRef" },
+              "description": "List of augmentation operators"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of augmented copies per original sample"
+            },
+            "selection": {
+              "type": "string",
+              "enum": ["random", "all", "sequential"],
+              "description": "How transformers are selected for each sample"
+            },
+            "random_state": {
+              "type": "integer",
+              "description": "Random seed for reproducibility"
+            },
+            "variation_scope": {
+              "type": "string",
+              "enum": ["sample", "batch"],
+              "description": "Whether variation parameters change per-sample or per-batch"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "featureAugmentationStep": {
+      "type": "object",
+      "description": "Feature-level augmentation (extend/add/replace features). Can be a list of transforms or _or_ generator.",
+      "required": ["feature_augmentation"],
+      "properties": {
+        "feature_augmentation": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/operatorRef" },
+              "description": "Direct list of transforms"
+            },
+            {
+              "type": "object",
+              "description": "Generator syntax with _or_ and pick/count",
+              "properties": {
+                "_or_": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/operatorRef" }
+                },
+                "pick": { "$ref": "#/$defs/pickValue" },
+                "count": { "type": "integer" }
+              }
+            }
+          ]
+        },
+        "action": {
+          "type": "string",
+          "enum": ["extend", "add", "replace"],
+          "description": "How augmented features are combined with originals"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "orGeneratorStep": {
+      "type": "object",
+      "description": "Choose among alternative steps/sub-pipelines. Example: {\"_or_\": [\"SNV\", \"MSC\", \"Detrend\"]}",
+      "required": ["_or_"],
+      "properties": {
+        "_or_": {
+          "type": "array",
+          "description": "List of alternative steps or sub-pipelines",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/step" },
+              {
+                "type": "array",
+                "description": "Sub-pipeline (sequence of steps)",
+                "items": { "$ref": "#/$defs/step" }
+              }
+            ]
+          }
+        },
+        "pick": { "$ref": "#/$defs/pickValue" },
+        "arrange": { "$ref": "#/$defs/pickValue" },
+        "then_pick": { "$ref": "#/$defs/pickValue" },
+        "then_arrange": { "$ref": "#/$defs/pickValue" },
+        "count": {
+          "type": "integer",
+          "description": "Maximum number of variants to generate"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "rangeGeneratorStep": {
+      "type": "object",
+      "description": "Linear parameter sweep. Example: {\"_range_\": [1, 30, 5], \"param\": \"n_components\"}",
+      "required": ["_range_", "param"],
+      "properties": {
+        "_range_": {
+          "type": "array",
+          "description": "[start, end, step]",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 3
+        },
+        "param": {
+          "type": "string",
+          "description": "Parameter name this range applies to"
+        },
+        "count": {
+          "type": "integer",
+          "description": "Maximum number of values"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "logRangeGeneratorStep": {
+      "type": "object",
+      "description": "Logarithmic parameter sweep. Example: {\"_log_range_\": [0.001, 1.0, 5], \"param\": \"alpha\"}",
+      "required": ["_log_range_", "param"],
+      "properties": {
+        "_log_range_": {
+          "type": "array",
+          "description": "[start, end, count]",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 3
+        },
+        "param": {
+          "type": "string",
+          "description": "Parameter name this range applies to"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "cartesianGeneratorStep": {
+      "type": "object",
+      "description": "Cartesian product of stages. Example: {\"_cartesian_\": [[\"SNV\", \"MSC\"], [\"PLS\", \"Ridge\"]]}",
+      "required": ["_cartesian_"],
+      "properties": {
+        "_cartesian_": {
+          "type": "array",
+          "description": "List of stages, each stage is a list of alternatives",
+          "items": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "$ref": "#/$defs/step" },
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/step" }
+                }
+              ]
+            }
+          }
+        },
+        "pick": { "$ref": "#/$defs/pickValue" },
+        "arrange": { "$ref": "#/$defs/pickValue" },
+        "count": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+
+    "gridGeneratorStep": {
+      "type": "object",
+      "description": "Grid search over parameter values. Example: {\"_grid_\": {\"n_components\": [5, 10, 15], \"alpha\": [0.1, 1.0]}}",
+      "required": ["_grid_"],
+      "properties": {
+        "_grid_": {
+          "type": "object",
+          "description": "Mapping of parameter names to lists of values",
+          "additionalProperties": {
+            "type": "array"
+          }
+        },
+        "count": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+
+    "chartStep": {
+      "type": "object",
+      "description": "Visualization chart step. Example: {\"chart_2d\": {\"kind\": \"prediction\"}}",
+      "oneOf": [
+        {
+          "required": ["chart_2d"],
+          "properties": {
+            "chart_2d": {
+              "oneOf": [
+                { "type": "object", "additionalProperties": true },
+                { "type": "boolean", "const": true }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["chart_y"],
+          "properties": {
+            "chart_y": {
+              "oneOf": [
+                { "type": "object", "additionalProperties": true },
+                { "type": "boolean", "const": true }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "finetuneParams": {
+      "type": "object",
+      "description": "Optuna-based hyperparameter optimization configuration",
+      "properties": {
+        "n_trials": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of Optuna trials"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Maximum optimization time in seconds"
+        },
+        "approach": {
+          "type": "string",
+          "enum": ["grouped", "individual", "single", "cross"],
+          "description": "How trials are distributed across folds"
+        },
+        "eval_mode": {
+          "type": "string",
+          "enum": ["best", "mean"],
+          "description": "Score evaluation mode"
+        },
+        "sample": {
+          "type": "string",
+          "enum": ["grid", "random", "hyperband"],
+          "description": "Sampling strategy"
+        },
+        "model_params": {
+          "type": "object",
+          "description": "Parameter search spaces. Values are objects with {type, low, high} or arrays for categorical.",
+          "additionalProperties": true
+        },
+        "train_params": {
+          "type": "object",
+          "description": "Training parameter search spaces (for DL models)",
+          "additionalProperties": true
+        },
+        "trial_train_params": {
+          "type": "object",
+          "description": "Fixed training parameters for each trial (quick training)",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "pickValue": {
+      "description": "Selection count: single integer or [min, max] range",
+      "oneOf": [
+        { "type": "integer", "minimum": 1 },
+        {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      ]
+    }
+  }
+}

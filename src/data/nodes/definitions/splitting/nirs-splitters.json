@@ -7,7 +7,12 @@
     "description": "Kennard-Stone representative sampling",
     "longDescription": "Selects representative samples that cover the design space uniformly using distance-based selection.",
     "category": "NIRS",
-    "tags": ["splitting", "kennard-stone", "representative", "distance"],
+    "tags": [
+      "splitting",
+      "kennard-stone",
+      "representative",
+      "distance"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -25,14 +30,24 @@
         "type": "select",
         "default": "euclidean",
         "options": [
-          { "value": "euclidean", "label": "Euclidean" },
-          { "value": "mahalanobis", "label": "Mahalanobis" },
-          { "value": "cosine", "label": "Cosine" }
+          {
+            "value": "euclidean",
+            "label": "Euclidean"
+          },
+          {
+            "value": "mahalanobis",
+            "label": "Mahalanobis"
+          },
+          {
+            "value": "cosine",
+            "label": "Cosine"
+          }
         ],
         "description": "Distance metric for sample selection"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "core"
   },
   {
     "id": "splitting.spxy",
@@ -42,7 +57,12 @@
     "description": "Sample Partitioning based on X and Y",
     "longDescription": "Selects samples considering both feature space (X) and target space (Y) for better representation.",
     "category": "NIRS",
-    "tags": ["splitting", "spxy", "joint", "xy"],
+    "tags": [
+      "splitting",
+      "spxy",
+      "joint",
+      "xy"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -56,7 +76,8 @@
         "sweepable": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   },
   {
     "id": "splitting.spxy_gfold",
@@ -66,7 +87,12 @@
     "description": "SPXY-based cross-validation",
     "longDescription": "K-fold cross-validation using SPXY partitioning for each fold.",
     "category": "NIRS",
-    "tags": ["splitting", "spxy", "kfold", "cross-validation"],
+    "tags": [
+      "splitting",
+      "spxy",
+      "kfold",
+      "cross-validation"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -82,7 +108,8 @@
     "supportsParameterSweeps": true,
     "legacyClassPaths": [
       "nirs4all.operators.splitters.splitters.SPXYGFold"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "splitting.kmeans_splitter",
@@ -92,7 +119,11 @@
     "description": "K-means clustering based split",
     "longDescription": "Splits data based on K-means clustering to ensure diverse representation in train and test sets.",
     "category": "NIRS",
-    "tags": ["splitting", "kmeans", "clustering"],
+    "tags": [
+      "splitting",
+      "kmeans",
+      "clustering"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -114,7 +145,8 @@
         "description": "Proportion of samples for test set"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   },
   {
     "id": "splitting.split_splitter",
@@ -124,7 +156,10 @@
     "description": "Optimized splitting algorithm",
     "longDescription": "Optimized sample partitioning algorithm for spectroscopic data.",
     "category": "NIRS",
-    "tags": ["splitting", "optimized"],
+    "tags": [
+      "splitting",
+      "optimized"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -137,7 +172,8 @@
         "description": "Proportion of samples for test set"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   },
   {
     "id": "splitting.kbins_stratified",
@@ -147,7 +183,12 @@
     "description": "Bins-based stratification for regression",
     "longDescription": "Stratified splitting for regression problems by binning the target variable.",
     "category": "NIRS",
-    "tags": ["splitting", "stratified", "bins", "regression"],
+    "tags": [
+      "splitting",
+      "stratified",
+      "bins",
+      "regression"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -168,7 +209,8 @@
         "description": "Proportion of samples for test set"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   },
   {
     "id": "splitting.binned_stratified_group_kfold",
@@ -178,7 +220,13 @@
     "description": "Group-aware binned stratified K-fold",
     "longDescription": "K-fold cross-validation with stratification based on binned target values and group awareness.",
     "category": "NIRS",
-    "tags": ["splitting", "stratified", "group", "kfold", "bins"],
+    "tags": [
+      "splitting",
+      "stratified",
+      "group",
+      "kfold",
+      "bins"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -198,7 +246,8 @@
         "description": "Number of bins for stratification"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   },
   {
     "id": "splitting.systematic_circular",
@@ -208,7 +257,11 @@
     "description": "Systematic circular sampling",
     "longDescription": "Systematic sampling with circular wrapping for even distribution.",
     "category": "NIRS",
-    "tags": ["splitting", "systematic", "circular"],
+    "tags": [
+      "splitting",
+      "systematic",
+      "circular"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -221,6 +274,7 @@
         "description": "Proportion of samples for test set"
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "tier": "standard"
   }
 ]

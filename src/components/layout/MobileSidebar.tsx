@@ -9,12 +9,12 @@ import {
   Search,
   Play,
   BarChart3,
-  Layers,
   Target,
   Beaker,
   Settings,
   Menu,
   X,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,26 +28,23 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const dataNavItems: NavItem[] = [
+const prepareNavItems: NavItem[] = [
   { title: "Datasets", href: "/datasets", icon: Database },
   { title: "Pipelines", href: "/pipelines", icon: GitBranch },
   { title: "Pipeline Editor", href: "/pipelines/new", icon: Pencil },
+  { title: "Run Editor", href: "/editor", icon: Wand2 },
 ];
 
 const exploreNavItems: NavItem[] = [
   { title: "Playground", href: "/playground", icon: FlaskConical },
   { title: "Inspector", href: "/inspector", icon: Search },
+  { title: "Lab", href: "/lab", icon: Beaker },
 ];
 
 const resultsNavItems: NavItem[] = [
   { title: "Runs", href: "/runs", icon: Play },
-  { title: "Scores", href: "/results", icon: BarChart3 },
-  { title: "Aggregated", href: "/results/aggregated", icon: Layers },
+  { title: "Results", href: "/results", icon: BarChart3 },
   { title: "Predictions", href: "/predictions", icon: Target },
-];
-
-const labNavItems: NavItem[] = [
-  { title: "Lab", href: "/lab", icon: Beaker },
 ];
 
 export function MobileSidebar() {
@@ -182,13 +179,11 @@ export function MobileSidebar() {
               {/* Navigation */}
               <ScrollArea className="flex-1 px-3 py-4">
                 <div className="space-y-6">
-                  {renderNavGroup("Data", dataNavItems)}
+                  {renderNavGroup("Prepare", prepareNavItems)}
                   <Separator className="mx-3" />
                   {renderNavGroup("Explore", exploreNavItems)}
                   <Separator className="mx-3" />
                   {renderNavGroup("Results", resultsNavItems)}
-                  <Separator className="mx-3" />
-                  {renderNavGroup("Lab", labNavItems)}
                 </div>
               </ScrollArea>
 

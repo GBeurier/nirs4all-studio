@@ -7,11 +7,17 @@
     "description": "Haar wavelet decomposition",
     "longDescription": "Applies Haar wavelet decomposition for feature extraction.",
     "category": "Wavelet",
-    "tags": ["wavelet", "haar", "decomposition", "features"],
+    "tags": [
+      "wavelet",
+      "haar",
+      "decomposition",
+      "features"
+    ],
     "source": "nirs4all",
     "parameters": [],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.wavelet",
@@ -21,7 +27,11 @@
     "description": "Wavelet transform",
     "longDescription": "General wavelet transform for denoising and feature extraction.",
     "category": "Wavelet",
-    "tags": ["wavelet", "transform", "denoising"],
+    "tags": [
+      "wavelet",
+      "transform",
+      "denoising"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -41,11 +51,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 7]
+        "finetuneRange": [
+          1,
+          7
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.wavelet_pca",
@@ -55,7 +69,12 @@
     "description": "Wavelet-based dimensionality reduction",
     "longDescription": "Combines wavelet decomposition with PCA for dimensionality reduction.",
     "category": "Wavelet",
-    "tags": ["wavelet", "pca", "reduction", "dimensionality"],
+    "tags": [
+      "wavelet",
+      "pca",
+      "reduction",
+      "dimensionality"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -68,10 +87,14 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [5, 50]
+        "finetuneRange": [
+          5,
+          50
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "advanced"
   }
 ]

@@ -58,7 +58,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { type PipelineStep, type StepType, stepColors, calculateStepVariants } from "./types";
+import { type PipelineStep, calculateStepVariants } from "./types";
 
 // Branch metadata interface
 export interface BranchMetadata {

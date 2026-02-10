@@ -2,12 +2,18 @@
   {
     "id": "generator.choose_one",
     "name": "ChooseOne",
-    "type": "generator",
+    "type": "utility",
+    "subType": "generator",
     "classPath": "_or_",
     "description": "Generator: try one item from a list",
     "longDescription": "Pipeline generator that creates variants by trying each item from a list one at a time.",
     "category": "Selection",
-    "tags": ["generator", "choice", "variants", "sweep"],
+    "tags": [
+      "generator",
+      "choice",
+      "variants",
+      "sweep"
+    ],
     "source": "nirs4all",
     "isGenerator": true,
     "isContainer": true,
@@ -23,17 +29,24 @@
         "description": "List of items to choose from (preprocessing steps, models, etc.)",
         "required": true
       }
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "generator.choose_n",
     "name": "ChooseN",
-    "type": "generator",
+    "type": "utility",
+    "subType": "generator",
     "classPath": "_and_",
     "description": "Generator: choose N items from a list",
     "longDescription": "Pipeline generator that creates variants by selecting N items from a list.",
     "category": "Selection",
-    "tags": ["generator", "choice", "combination", "variants"],
+    "tags": [
+      "generator",
+      "choice",
+      "combination",
+      "variants"
+    ],
     "source": "nirs4all",
     "isGenerator": true,
     "isContainer": true,
@@ -56,17 +69,24 @@
         "max": 10,
         "description": "Number of items to select"
       }
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "generator.cartesian",
     "name": "Cartesian",
-    "type": "generator",
+    "type": "utility",
+    "subType": "generator",
     "classPath": "_cartesian_",
     "description": "Generator: Cartesian product of options",
     "longDescription": "Creates all combinations from multiple lists (Cartesian product).",
     "category": "Combination",
-    "tags": ["generator", "cartesian", "product", "combinations"],
+    "tags": [
+      "generator",
+      "cartesian",
+      "product",
+      "combinations"
+    ],
     "source": "nirs4all",
     "isGenerator": true,
     "isContainer": true,
@@ -74,17 +94,24 @@
     "generatorType": "cartesian",
     "generatorKind": "cartesian",
     "defaultBranches": 2,
-    "parameters": []
+    "parameters": [],
+    "tier": "core"
   },
   {
     "id": "generator.range",
     "name": "Range",
-    "type": "generator",
+    "type": "utility",
+    "subType": "generator",
     "classPath": "_range_",
     "description": "Generator: parameter range sweep",
     "longDescription": "Generates values over a range for parameter sweeping.",
     "category": "Parameters",
-    "tags": ["generator", "range", "sweep", "parameters"],
+    "tags": [
+      "generator",
+      "range",
+      "sweep",
+      "parameters"
+    ],
     "source": "nirs4all",
     "isGenerator": true,
     "generatorType": "range",
@@ -115,6 +142,7 @@
         "default": "n_components",
         "description": "Parameter name to sweep"
       }
-    ]
+    ],
+    "tier": "core"
   }
 ]

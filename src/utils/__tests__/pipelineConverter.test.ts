@@ -138,7 +138,8 @@ describe("pipelineConverter", () => {
       expect(steps).toHaveLength(3);
 
       const branchStep = steps[2];
-      expect(branchStep.type).toBe("branch");
+      expect(branchStep.type).toBe("flow");
+      expect(branchStep.subType).toBe("branch");
       expect(branchStep.branches).toHaveLength(2);
       expect(branchStep.branchMetadata?.[0].name).toBe("snv_branch");
       expect(branchStep.branchMetadata?.[1].name).toBe("msc_branch");
@@ -150,10 +151,12 @@ describe("pipelineConverter", () => {
       expect(steps).toHaveLength(5);
 
       const branchStep = steps[2];
-      expect(branchStep.type).toBe("branch");
+      expect(branchStep.type).toBe("flow");
+      expect(branchStep.subType).toBe("branch");
 
       const mergeStep = steps[3];
-      expect(mergeStep.type).toBe("merge");
+      expect(mergeStep.type).toBe("flow");
+      expect(mergeStep.subType).toBe("merge");
 
       const metaModelStep = steps[4];
       expect(metaModelStep.type).toBe("model");
@@ -320,7 +323,8 @@ describe("pipelineConverter", () => {
         ],
       });
 
-      expect(steps[0].type).toBe("sample_augmentation");
+      expect(steps[0].type).toBe("flow");
+      expect(steps[0].subType).toBe("sample_augmentation");
       expect(steps[0].name).toBe("SampleAugmentation");
     });
   });

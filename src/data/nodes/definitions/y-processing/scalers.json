@@ -7,12 +7,18 @@
     "description": "Standardize target to zero mean, unit variance",
     "longDescription": "Standardizes targets by removing the mean and scaling to unit variance.",
     "category": "Scaling",
-    "tags": ["scaling", "standardize", "normalize", "target"],
+    "tags": [
+      "scaling",
+      "standardize",
+      "normalize",
+      "target"
+    ],
     "source": "sklearn",
     "parameters": [],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.StandardScaler"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "y_processing.min_max_scaler",
@@ -22,7 +28,12 @@
     "description": "Scale target to [0, 1] range",
     "longDescription": "Transforms targets by scaling each to a given range (default 0-1).",
     "category": "Scaling",
-    "tags": ["scaling", "minmax", "normalize", "target"],
+    "tags": [
+      "scaling",
+      "minmax",
+      "normalize",
+      "target"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -34,7 +45,8 @@
     ],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.MinMaxScaler"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "y_processing.robust_scaler",
@@ -44,12 +56,18 @@
     "description": "Scale target using statistics robust to outliers",
     "longDescription": "Scales targets using statistics that are robust to outliers (median and IQR).",
     "category": "Scaling",
-    "tags": ["scaling", "robust", "outlier", "target"],
+    "tags": [
+      "scaling",
+      "robust",
+      "outlier",
+      "target"
+    ],
     "source": "sklearn",
     "parameters": [],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.RobustScaler"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "y_processing.power_transformer",
@@ -59,7 +77,13 @@
     "description": "Apply power transform (Box-Cox/Yeo-Johnson)",
     "longDescription": "Apply a power transform to make target data more Gaussian-like.",
     "category": "Transform",
-    "tags": ["transform", "power", "boxcox", "yeo-johnson", "target"],
+    "tags": [
+      "transform",
+      "power",
+      "boxcox",
+      "yeo-johnson",
+      "target"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -67,15 +91,22 @@
         "type": "select",
         "default": "yeo-johnson",
         "options": [
-          { "value": "yeo-johnson", "label": "Yeo-Johnson (handles negatives)" },
-          { "value": "box-cox", "label": "Box-Cox (positive only)" }
+          {
+            "value": "yeo-johnson",
+            "label": "Yeo-Johnson (handles negatives)"
+          },
+          {
+            "value": "box-cox",
+            "label": "Box-Cox (positive only)"
+          }
         ],
         "description": "Power transform method"
       }
     ],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.PowerTransformer"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "y_processing.quantile_transformer",
@@ -85,7 +116,13 @@
     "description": "Transform to uniform or normal distribution",
     "longDescription": "Transform targets to follow a uniform or normal distribution using quantiles.",
     "category": "Transform",
-    "tags": ["transform", "quantile", "uniform", "normal", "target"],
+    "tags": [
+      "transform",
+      "quantile",
+      "uniform",
+      "normal",
+      "target"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -93,8 +130,14 @@
         "type": "select",
         "default": "uniform",
         "options": [
-          { "value": "uniform", "label": "Uniform" },
-          { "value": "normal", "label": "Normal (Gaussian)" }
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "normal",
+            "label": "Normal (Gaussian)"
+          }
         ],
         "description": "Output distribution"
       },
@@ -109,6 +152,7 @@
     ],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.QuantileTransformer"
-    ]
+    ],
+    "tier": "standard"
   }
 ]

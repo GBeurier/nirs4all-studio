@@ -19,6 +19,7 @@ import {
   Info,
   Loader2,
   Command,
+  FileCode,
   FileJson,
   FolderOpen,
   Settings,
@@ -83,6 +84,7 @@ import {
   FocusPanelRing,
   NavigationStatusBar,
   DatasetBinding,
+  PipelineYAMLView,
 } from "@/components/pipeline-editor";
 import { DatasetBindingProvider, NodeRegistryProvider, PipelineEditorPreferencesProvider } from "@/components/pipeline-editor/contexts";
 import { useKeyboardNavigation, KEYBOARD_SHORTCUTS, formatShortcut } from "@/hooks/useKeyboardNavigation";
@@ -125,6 +127,7 @@ export default function PipelineEditor() {
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"tree" | "code">("tree");
 
   // File input ref for importing
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -513,8 +516,10 @@ export default function PipelineEditor() {
 
       return {
         id: step.id,
-        // Map editor step types to API step types (generator -> branch for API compatibility)
-        type: step.type === "generator" ? "branch" : step.type as PipelineStep["type"],
+        // Map editor step types to API step types
+        // flow/utility types map to their subType for API compatibility (e.g., "branch", "merge")
+        // generator subType maps to "branch" for the API
+        type: (step.subType === "generator" ? "branch" : step.subType || step.type) as PipelineStep["type"],
         name: step.name,
         params: step.params || {},
         // Include generator configuration for variant counting
@@ -828,6 +833,23 @@ export default function PipelineEditor() {
                   </PopoverContent>
                 </Popover>
 
+                {/* Code view toggle */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={viewMode === "code" ? "secondary" : "ghost"}
+                      size="icon"
+                      onClick={() => setViewMode(viewMode === "code" ? "tree" : "code")}
+                      disabled={totalSteps === 0}
+                    >
+                      <FileCode className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {viewMode === "code" ? "Switch to Tree View" : "View as Code"}
+                  </TooltipContent>
+                </Tooltip>
+
                 {/* Keyboard shortcuts button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -892,6 +914,14 @@ export default function PipelineEditor() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="bg-popover">
+                    <DropdownMenuItem
+                      onClick={() => setViewMode(viewMode === "code" ? "tree" : "code")}
+                      disabled={totalSteps === 0}
+                    >
+                      <FileCode className="h-4 w-4 mr-2" />
+                      {viewMode === "code" ? "Switch to Tree View" : "View as Code"}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleExportJson}>
                       <Download className="h-4 w-4 mr-2" />
                       Export as JSON (Editor)
@@ -1013,24 +1043,33 @@ export default function PipelineEditor() {
                   <StepPalette onAddStep={addStep} />
                 </div>
 
-                {/* Center: Pipeline Tree */}
+                {/* Center: Pipeline Tree or Code View */}
                 <div
                   ref={panelRefs.tree}
                   className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
                   onClick={() => setFocusedPanel("tree")}
                 >
                   <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
-                  <PipelineTree
-                    steps={steps}
-                    selectedStepId={selectedStepId}
-                    onSelectStep={setSelectedStepId}
-                    onRemoveStep={removeStep}
-                    onDuplicateStep={duplicateStep}
-                    onAddBranch={addBranch}
-                    onRemoveBranch={removeBranch}
-                    onAddChild={addChild}
-                    onRemoveChild={removeChild}
-                  />
+                  {viewMode === "code" ? (
+                    <PipelineYAMLView
+                      steps={steps}
+                      pipelineName={pipelineName}
+                      randomState={pipelineConfig.seed}
+                      className="h-full"
+                    />
+                  ) : (
+                    <PipelineTree
+                      steps={steps}
+                      selectedStepId={selectedStepId}
+                      onSelectStep={setSelectedStepId}
+                      onRemoveStep={removeStep}
+                      onDuplicateStep={duplicateStep}
+                      onAddBranch={addBranch}
+                      onRemoveBranch={removeBranch}
+                      onAddChild={addChild}
+                      onRemoveChild={removeChild}
+                    />
+                  )}
                 </div>
 
                 {/* Right Panel: Configuration */}

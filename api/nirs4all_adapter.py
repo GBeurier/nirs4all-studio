@@ -7,6 +7,10 @@ Phase 6 Implementation:
 - Support for finetuning (finetune_params, Optuna)
 - Support for y_processing and feature_augmentation
 - Export to Python code and YAML
+
+Phase 5 (Native Format):
+- build_native_pipeline(): accepts nirs4all-native JSON and converts to Python objects
+- Simpler than build_full_pipeline() since native format maps directly to nirs4all syntax
 """
 
 from __future__ import annotations
@@ -243,14 +247,33 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
 def _normalize_params(name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(params or {})
 
+    # Generic: reconstruct tuple parameters from _min/_max suffix pairs.
+    # For any pair of keys like "shift_range_min" and "shift_range_max",
+    # combine them into "shift_range": (min_val, max_val) and remove the
+    # suffixed keys.  This handles augmentation operators whose Python
+    # constructors accept tuple parameters (e.g. shift_range, offset_range).
+    min_keys = [k for k in list(normalized) if k.endswith("_min")]
+    for min_key in min_keys:
+        base = min_key[:-4]  # strip "_min"
+        max_key = base + "_max"
+        if max_key in normalized:
+            min_val = normalized.pop(min_key)
+            max_val = normalized.pop(max_key)
+            if min_val is not None and max_val is not None:
+                normalized[base] = (min_val, max_val)
+            elif min_val is not None:
+                normalized[base] = (min_val, min_val)
+            elif max_val is not None:
+                normalized[base] = (max_val, max_val)
+            # If both are None, don't set the tuple param (let the
+            # operator use its own default).
+
     if name == "MinMaxScaler":
-        min_val = normalized.pop("feature_range_min", None)
-        max_val = normalized.pop("feature_range_max", None)
-        if min_val is not None or max_val is not None:
-            normalized["feature_range"] = (
-                0 if min_val is None else min_val,
-                1 if max_val is None else max_val,
-            )
+        # MinMaxScaler is already handled by the generic logic above
+        # (feature_range_min / feature_range_max -> feature_range).
+        # Keep a fallback for backwards-compatibility with old configs
+        # that might still use the tuple directly.
+        pass
 
     if name == "SavitzkyGolay":
         if "window" in normalized and "window_length" not in normalized:
@@ -689,8 +712,13 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
     """
     Build complete pipeline with generators, finetuning, y_processing support.
 
+    .. deprecated::
+        Use :func:`build_native_pipeline` instead when the frontend sends steps
+        in nirs4all-native format. This function handles the legacy editor format
+        and is kept for backward compatibility.
+
     Args:
-        steps: Frontend pipeline steps
+        steps: Frontend pipeline steps (legacy editor format)
         config: Optional pipeline-level configuration
 
     Returns:
@@ -1207,4 +1235,335 @@ def import_pipeline_from_yaml(yaml_content: str) -> Dict[str, Any]:
         "steps": data.get("steps", []),
         "y_processing": data.get("y_processing"),
     }
+
+
+# ============================================================================
+# Phase 5: Native Pipeline Format
+# ============================================================================
+
+# All modules to search when resolving class names by short name
+ALL_RESOLVE_MODULES = (
+    NIRS4ALL_PREPROCESSING_MODULES
+    + NIRS4ALL_SPLITTER_MODULES
+    + NIRS4ALL_MODEL_MODULES
+    + SKLEARN_PREPROCESSING_MODULES
+    + SKLEARN_SPLITTER_MODULES
+    + SKLEARN_MODEL_MODULES
+)
+
+# Combined alias map for resolving short names
+_ALL_ALIASES = {
+    **PREPROCESSING_ALIASES,
+    **SPLITTER_ALIASES,
+    **MODEL_ALIASES,
+}
+
+
+def _resolve_class_by_name(name: str) -> Any:
+    """Resolve a class by its short display name.
+
+    Tries the alias map first, then searches all known modules.
+    This is used by the native pipeline format where classes are
+    referenced by short names (e.g., "PLSRegression", "SNV").
+
+    Args:
+        name: Short class name like "PLSRegression" or alias like "SNV"
+
+    Returns:
+        The resolved class object
+
+    Raises:
+        HTTPException: If the class cannot be found
+    """
+    lookup_name = _ALL_ALIASES.get(name, name)
+
+    cls = _resolve_class(lookup_name, ALL_RESOLVE_MODULES)
+    if cls is not None:
+        return cls
+
+    # If alias lookup failed, try the original name as well
+    if lookup_name != name:
+        cls = _resolve_class(name, ALL_RESOLVE_MODULES)
+        if cls is not None:
+            return cls
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unknown operator '{name}'. Not found in any registered module.",
+    )
+
+
+def _instantiate_native(ref: Any) -> Any:
+    """Instantiate an operator from a native format reference.
+
+    Handles both forms:
+    - String: "ClassName" -> resolve and instantiate with defaults
+    - Dict: {"ClassName": {"param": value}} -> resolve and instantiate with params
+
+    Args:
+        ref: A string class name or dict {name: params}
+
+    Returns:
+        Instantiated operator object
+    """
+    if isinstance(ref, str):
+        cls = _resolve_class_by_name(ref)
+        return cls()
+
+    if isinstance(ref, dict):
+        if len(ref) == 1:
+            name, params = next(iter(ref.items()))
+            cls = _resolve_class_by_name(name)
+            normalized = _normalize_params(name, params or {})
+            try:
+                return cls(**normalized)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid parameters for {name}: {exc}",
+                )
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Invalid operator reference: {ref}",
+    )
+
+
+def _instantiate_native_list(refs: Any) -> List[Any]:
+    """Instantiate a list of operator references, or a single reference as a list."""
+    if isinstance(refs, list):
+        return [_instantiate_native(ref) for ref in refs]
+    return [_instantiate_native(refs)]
+
+
+def build_native_pipeline(native_steps: List[Any]) -> List[Any]:
+    """Convert nirs4all-native JSON format to Python pipeline objects.
+
+    This accepts the native pipeline format that maps directly to what
+    nirs4all.run(pipeline=[...]) expects. The format uses short class names
+    and keyword wrappers (model, y_processing, branch, merge, etc.).
+
+    This is much simpler than build_full_pipeline() because the native
+    format already matches nirs4all's internal structure.
+
+    Args:
+        native_steps: List of steps in native JSON format. Each step is either:
+            - A string class name: "StandardNormalVariate"
+            - A dict with class+params: {"SavitzkyGolay": {"window_length": 11}}
+            - A keyword-wrapped step: {"model": ...}, {"branch": ...}, etc.
+
+    Returns:
+        List of Python objects ready for nirs4all.run(pipeline=result)
+
+    Raises:
+        HTTPException: If any step cannot be resolved or instantiated
+    """
+    require_nirs4all()
+
+    result = []
+    for step in native_steps:
+        built = _build_native_step(step)
+        if built is not None:
+            result.append(built)
+
+    if not result:
+        raise HTTPException(status_code=400, detail="Pipeline has no executable steps")
+
+    return result
+
+
+def _build_native_step(step: Any) -> Any:
+    """Convert a single native-format step to a Python object.
+
+    Dispatches based on the step structure:
+    - String -> instantiate operator with defaults
+    - Dict with "model" -> model wrapper
+    - Dict with "y_processing" -> y_processing wrapper
+    - Dict with "branch" -> recursive branch
+    - Dict with "merge" -> merge config
+    - Dict with "exclude" / "tag" -> filter wrappers
+    - Dict with "_or_", "_range_", etc. -> pass through (nirs4all handles these)
+    - Dict with "sample_augmentation" -> augmentation config
+    - Dict with "chart_2d" / "chart_y" -> pass through
+    - Dict with single key matching class name -> instantiate with params
+    """
+    if isinstance(step, str):
+        cls = _resolve_class_by_name(step)
+        return cls()
+
+    if not isinstance(step, dict):
+        return step
+
+    # model keyword
+    if "model" in step:
+        model_instance = _instantiate_native(step["model"])
+        result = {"model": model_instance}
+        if "name" in step:
+            result["name"] = step["name"]
+        if "finetune_params" in step:
+            result["finetune_params"] = _build_native_finetune_params(step["finetune_params"])
+        if "train_params" in step:
+            result["train_params"] = step["train_params"]
+        return result
+
+    # y_processing keyword
+    if "y_processing" in step:
+        return {"y_processing": _instantiate_native(step["y_processing"])}
+
+    # branch keyword
+    if "branch" in step:
+        branch_data = step["branch"]
+        if isinstance(branch_data, list):
+            # Indexed branches: [[steps], [steps]]
+            return {"branch": [build_native_pipeline(b) for b in branch_data]}
+        elif isinstance(branch_data, dict):
+            # Named/dynamic branches (by_metadata, by_tag, by_source, or named)
+            # Pass through as-is since nirs4all handles these internally
+            processed = {}
+            for key, value in branch_data.items():
+                if isinstance(value, list):
+                    processed[key] = build_native_pipeline(value)
+                else:
+                    processed[key] = value
+            return {"branch": processed}
+        return {"branch": branch_data}
+
+    # merge keyword
+    if "merge" in step:
+        return {"merge": step["merge"]}
+
+    # exclude keyword (sample filter)
+    if "exclude" in step:
+        exclude_val = step["exclude"]
+        result = {"exclude": _instantiate_native_list(exclude_val)}
+        if "mode" in step:
+            result["mode"] = step["mode"]
+        return result
+
+    # tag keyword
+    if "tag" in step:
+        return {"tag": _instantiate_native_list(step["tag"])}
+
+    # sample_augmentation keyword
+    if "sample_augmentation" in step:
+        aug_config = step["sample_augmentation"]
+        transformers = _instantiate_native_list(aug_config.get("transformers", []))
+        result_config = {"transformers": transformers}
+        for key in ("count", "selection", "random_state", "variation_scope"):
+            if key in aug_config:
+                result_config[key] = aug_config[key]
+        return {"sample_augmentation": result_config}
+
+    # feature_augmentation keyword
+    if "feature_augmentation" in step:
+        aug_data = step["feature_augmentation"]
+        if isinstance(aug_data, list):
+            # Direct list of transforms
+            transforms = _instantiate_native_list(aug_data)
+            result = {"feature_augmentation": transforms}
+        elif isinstance(aug_data, dict) and "_or_" in aug_data:
+            # Generator syntax - pass through, nirs4all handles expansion
+            or_items = _instantiate_native_list(aug_data["_or_"])
+            gen_config = {"_or_": or_items}
+            for key in ("pick", "count"):
+                if key in aug_data:
+                    gen_config[key] = aug_data[key]
+            result = {"feature_augmentation": gen_config}
+        else:
+            result = {"feature_augmentation": aug_data}
+        if "action" in step:
+            result["action"] = step["action"]
+        return result
+
+    # Generator keywords - pass through to nirs4all (it handles expansion)
+    for gen_key in ("_or_", "_range_", "_log_range_", "_cartesian_", "_grid_",
+                     "_zip_", "_chain_", "_sample_"):
+        if gen_key in step:
+            return step
+
+    # Chart keywords - pass through
+    if "chart_2d" in step or "chart_y" in step:
+        return step
+
+    # concat_transform keyword
+    if "concat_transform" in step:
+        transforms = []
+        for t in step["concat_transform"]:
+            if isinstance(t, list):
+                transforms.append([_build_native_step(s) for s in t])
+            else:
+                transforms.append(_build_native_step(t))
+        return {"concat_transform": transforms}
+
+    # Default: single key is {ClassName: {params}} - instantiate
+    if len(step) == 1:
+        name, params = next(iter(step.items()))
+        # Ensure it looks like a class name (starts with uppercase)
+        if name[0:1].isupper():
+            return _instantiate_native(step)
+
+    # Unknown format - pass through
+    return step
+
+
+def _build_native_finetune_params(finetune_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert native finetune_params to nirs4all format.
+
+    The native format already closely matches what nirs4all expects, but
+    we need to convert model_params entries that use the object format
+    ({"type": "int", "low": 1, "high": 20}) into the tuple format
+    that nirs4all's OptunaManager expects (("int", 1, 20)).
+
+    Args:
+        finetune_config: Native finetune_params dict
+
+    Returns:
+        Converted finetune_params ready for nirs4all
+    """
+    result = dict(finetune_config)
+
+    # Convert model_params from object format to tuple format
+    if "model_params" in result:
+        converted_params = {}
+        for param_name, param_config in result["model_params"].items():
+            if isinstance(param_config, list):
+                # Already categorical format: [value1, value2, ...]
+                converted_params[param_name] = ("categorical", param_config)
+            elif isinstance(param_config, dict):
+                ptype = param_config.get("type", "int")
+                if param_config.get("log"):
+                    ptype = "log_float"
+                low = param_config.get("low")
+                high = param_config.get("high")
+                if ptype == "categorical":
+                    choices = param_config.get("choices", [])
+                    converted_params[param_name] = ("categorical", choices)
+                else:
+                    converted_params[param_name] = (ptype, low, high)
+            else:
+                converted_params[param_name] = param_config
+        result["model_params"] = converted_params
+
+    # Same conversion for train_params
+    if "train_params" in result:
+        converted_params = {}
+        for param_name, param_config in result["train_params"].items():
+            if isinstance(param_config, list):
+                converted_params[param_name] = ("categorical", param_config)
+            elif isinstance(param_config, dict):
+                ptype = param_config.get("type", "float")
+                if param_config.get("log"):
+                    ptype = "log_float"
+                low = param_config.get("low")
+                high = param_config.get("high")
+                if ptype == "categorical":
+                    choices = param_config.get("choices", [])
+                    converted_params[param_name] = ("categorical", choices)
+                else:
+                    converted_params[param_name] = (ptype, low, high)
+            else:
+                converted_params[param_name] = param_config
+        result["train_params"] = converted_params
+
+    return result
 

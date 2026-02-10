@@ -25,6 +25,7 @@ import {
   Zap,
   BarChart3,
   Layers,
+  FlaskConical,
   Combine,
   LineChart,
   MessageSquare,
@@ -33,9 +34,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   stepOptions,
-  stepColors,
+  getStepColor,
   type PipelineStep,
   type StepType,
+  type StepSubType,
   type ParameterSweep,
   calculateStepVariants,
 } from "./types";
@@ -43,19 +45,25 @@ import { FinetuningBadge } from "./FinetuneConfig";
 import { useStepRenderer } from "./config/step-renderers";
 import { useParamInput } from "./shared/useParamInput";
 
-// Step type icons mapping
+// Step type icons mapping (8 consolidated types)
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
   y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
-  generator: Sparkles,
-  branch: GitBranch,
-  merge: GitMerge,
   filter: Filter,
   augmentation: Zap,
-  sample_augmentation: Zap,
-  feature_augmentation: Layers,
+  flow: GitBranch,
+  utility: Sparkles,
+};
+
+// Sub-type icons for finer distinction
+const stepSubTypeIcons: Record<StepSubType, typeof Waves> = {
+  branch: GitBranch,
+  merge: GitMerge,
+  generator: Sparkles,
+  sample_augmentation: Layers,
+  feature_augmentation: FlaskConical,
   sample_filter: Filter,
   concat_transform: Combine,
   sequential: Layers,
@@ -106,11 +114,14 @@ export function StepConfigPanel({
     );
   }
 
-  // Get the appropriate renderer for this step type
-  const { Renderer, usesParameterProps } = useStepRenderer(step.type);
+  // Get the appropriate renderer for this step type (with subType override)
+  const { Renderer, usesParameterProps } = useStepRenderer(step.type, step.subType);
 
-  const Icon = stepIcons[step.type];
-  const colors = stepColors[step.type];
+  // Use subType-aware icon and color resolution
+  const Icon = (step.subType && step.subType in stepSubTypeIcons)
+    ? stepSubTypeIcons[step.subType]
+    : stepIcons[step.type];
+  const colors = getStepColor(step);
   const currentOption = stepOptions[step.type]?.find((o) => o.name === step.name);
 
   // Handlers for parameter operations

@@ -31,6 +31,7 @@ export {
   usePipelineEditorPreferences,
   usePipelineEditorPreferencesOptional,
   type PipelineEditorPreferences,
+  type TierLevel,
 } from "./PipelineEditorPreferencesContext";
 
 // Phase 4: Pipeline Integration

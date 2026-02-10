@@ -16,7 +16,7 @@
  * - Name is display name (e.g., "SNV", "PLSRegression")
  */
 
-import type { PipelineStep as EditorPipelineStep, StepType, FinetuneParamConfig, FinetuneParamType } from "@/components/pipeline-editor/types";
+import type { PipelineStep as EditorPipelineStep, StepType, StepSubType, FinetuneParamConfig, FinetuneParamType } from "@/components/pipeline-editor/types";
 import type { PipelineStep as ApiPipelineStep } from "@/types/pipelines";
 import { generateStepId } from "@/components/pipeline-editor/types";
 
@@ -427,7 +427,8 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
     if (step === "chart_2d" || step === "chart_y") {
       return {
         id: generateStepId(),
-        type: "chart",
+        type: "utility",
+        subType: "chart",
         name: step,
         params: {},
         chartConfig: {
@@ -451,7 +452,8 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
     const text = (step as { _comment: string })._comment;
     return {
       id: generateStepId(),
-      type: "comment",
+      type: "utility",
+      subType: "comment",
       name: "Comment",
       params: { text },
     };
@@ -519,7 +521,8 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
     }
     return {
       id: generateStepId(),
-      type: "chart",
+      type: "utility",
+      subType: "chart",
       name: chartType,
       params: chartParams,
       chartConfig: {
@@ -757,7 +760,8 @@ function convertBranchToEditor(step: Nirs4allBranchStep): EditorPipelineStep {
 
   return {
     id: generateStepId(),
-    type: "branch",
+    type: "flow",
+    subType: "branch",
     name: "ParallelBranch",
     params: {},
     branches,
@@ -771,7 +775,8 @@ function convertMergeToEditor(step: Nirs4allMergeStep): EditorPipelineStep {
   if (typeof merge === "string") {
     return {
       id: generateStepId(),
-      type: "merge",
+      type: "flow",
+      subType: "merge",
       name: merge === "predictions" ? "Stacking" : "Concatenate",
       params: { merge_type: merge },
       mergeConfig: {
@@ -783,7 +788,8 @@ function convertMergeToEditor(step: Nirs4allMergeStep): EditorPipelineStep {
   // Complex merge with predictions, features, output_as
   return {
     id: generateStepId(),
-    type: "merge",
+    type: "flow",
+    subType: "merge",
     name: "Stacking",
     params: {},
     mergeConfig: {
@@ -843,7 +849,8 @@ function convertSampleAugmentationToEditor(step: Nirs4allSampleAugmentationStep)
 
   return {
     id: generateStepId(),
-    type: "sample_augmentation",
+    type: "flow",
+    subType: "sample_augmentation",
     name: "SampleAugmentation",
     params: {
       count: aug.count || 1,
@@ -886,7 +893,8 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
 
     return {
       id: generateStepId(),
-      type: "feature_augmentation",
+      type: "flow",
+      subType: "feature_augmentation",
       name: "FeatureAugmentation",
       params: { action: step.action || "extend" },
       children: childSteps,
@@ -915,7 +923,8 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
 
   return {
     id: generateStepId(),
-    type: "feature_augmentation",
+    type: "flow",
+    subType: "feature_augmentation",
     name: "FeatureAugmentation",
     params: {
       action: step.action || "extend",
@@ -956,7 +965,8 @@ function convertSampleFilterToEditor(step: Nirs4allSampleFilterStep): EditorPipe
 
   return {
     id: generateStepId(),
-    type: "sample_filter",
+    type: "flow",
+    subType: "sample_filter",
     name: "SampleFilter",
     params: {
       mode: filter.mode || "any",
@@ -1009,7 +1019,8 @@ function convertConcatTransformToEditor(step: Nirs4allConcatTransformStep): Edit
 
   return {
     id: generateStepId(),
-    type: "concat_transform",
+    type: "flow",
+    subType: "concat_transform",
     name: "ConcatTransform",
     params: {},
     children: childSteps,
@@ -1025,7 +1036,8 @@ function convertOrGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipeline
 
   return {
     id: generateStepId(),
-    type: "generator",
+    type: "utility",
+    subType: "generator",
     name: "Choose",
     params: {},
     branches: alternatives.map(alt => [convertStepToEditor(alt)]),
@@ -1077,6 +1089,43 @@ function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
     return step.rawNirs4all as Nirs4allStep;
   }
 
+  // For flow/utility types, dispatch by subType
+  if (step.type === "flow" && step.subType) {
+    switch (step.subType) {
+      case "branch":
+        return convertEditorBranchToNirs4all(step);
+      case "merge":
+        return convertEditorMergeToNirs4all(step);
+      case "generator":
+        return convertEditorGeneratorToNirs4all(step);
+      case "sample_augmentation":
+        return convertEditorSampleAugmentationToNirs4all(step);
+      case "feature_augmentation":
+        return convertEditorFeatureAugmentationToNirs4all(step);
+      case "sample_filter":
+        return convertEditorSampleFilterToNirs4all(step);
+      case "concat_transform":
+        return convertEditorConcatTransformToNirs4all(step);
+      case "sequential":
+        // Sequential containers export their children inline
+        if (step.children?.length) {
+          return step.children.map(child => convertEditorStepToNirs4all(child)) as unknown as Nirs4allStep;
+        }
+        return buildClassStep(classPath, step.params);
+    }
+  }
+
+  if (step.type === "utility" && step.subType) {
+    switch (step.subType) {
+      case "chart":
+        return convertEditorChartToNirs4all(step);
+      case "comment":
+        return { _comment: step.params.text as string || "" } as unknown as Nirs4allStep;
+      case "generator":
+        return convertEditorGeneratorToNirs4all(step);
+    }
+  }
+
   switch (step.type) {
     case "model":
       return convertEditorModelToNirs4all(step, classPath);
@@ -1084,36 +1133,8 @@ function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
     case "y_processing":
       return convertEditorYProcessingToNirs4all(step, classPath);
 
-    case "branch":
-      return convertEditorBranchToNirs4all(step);
-
-    case "merge":
-      return convertEditorMergeToNirs4all(step);
-
-    case "generator":
-      return convertEditorGeneratorToNirs4all(step);
-
     case "augmentation":
       return convertEditorAugmentationToNirs4all(step);
-
-    case "sample_augmentation":
-      return convertEditorSampleAugmentationToNirs4all(step);
-
-    case "feature_augmentation":
-      return convertEditorFeatureAugmentationToNirs4all(step);
-
-    case "sample_filter":
-      return convertEditorSampleFilterToNirs4all(step);
-
-    case "concat_transform":
-      return convertEditorConcatTransformToNirs4all(step);
-
-    case "chart":
-      return convertEditorChartToNirs4all(step);
-
-    case "comment":
-      // Skip comments in export or return empty object
-      return { _comment: step.params.text as string || "" } as unknown as Nirs4allStep;
 
     case "filter":
       return convertEditorFilterToNirs4all(step);

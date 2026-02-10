@@ -7,7 +7,11 @@
     "description": "Gaussian smoothing filter",
     "longDescription": "Applies Gaussian convolution for smoothing spectra.",
     "category": "Smoothing",
-    "tags": ["smoothing", "gaussian", "filter"],
+    "tags": [
+      "smoothing",
+      "gaussian",
+      "filter"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -21,14 +25,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "float",
-        "finetuneRange": [0.5, 10]
+        "finetuneRange": [
+          0.5,
+          10
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.signal.Gaussian"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "preprocessing.moving_average",
@@ -38,7 +46,12 @@
     "description": "Moving average smoothing",
     "longDescription": "Simple moving average filter for smoothing spectra.",
     "category": "Smoothing",
-    "tags": ["smoothing", "moving", "average", "filter"],
+    "tags": [
+      "smoothing",
+      "moving",
+      "average",
+      "filter"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -52,10 +65,14 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [3, 31]
+        "finetuneRange": [
+          3,
+          31
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

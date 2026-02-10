@@ -7,7 +7,12 @@
     "description": "Smoothing and derivatives",
     "longDescription": "Savitzky-Golay filter for smoothing or computing derivatives while preserving spectral features. Window length must be odd.",
     "category": "Derivatives",
-    "tags": ["smoothing", "derivative", "filter", "polynomial"],
+    "tags": [
+      "smoothing",
+      "derivative",
+      "filter",
+      "polynomial"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -20,12 +25,31 @@
         "description": "Size of the moving window (must be odd)",
         "sweepable": true,
         "sweepPresets": [
-          { "label": "Small (5-15)", "type": "range", "values": { "from": 5, "to": 15, "step": 2 } },
-          { "label": "Medium (11-31)", "type": "range", "values": { "from": 11, "to": 31, "step": 4 } }
+          {
+            "label": "Small (5-15)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 15,
+              "step": 2
+            }
+          },
+          {
+            "label": "Medium (11-31)",
+            "type": "range",
+            "values": {
+              "from": 11,
+              "to": 31,
+              "step": 4
+            }
+          }
         ],
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [5, 51]
+        "finetuneRange": [
+          5,
+          51
+        ]
       },
       {
         "name": "polyorder",
@@ -37,16 +61,31 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 5]
+        "finetuneRange": [
+          1,
+          5
+        ]
       },
       {
         "name": "deriv",
         "type": "select",
         "default": 0,
         "options": [
-          { "value": 0, "label": "Smoothing only", "description": "No derivative" },
-          { "value": 1, "label": "First derivative", "description": "Rate of change" },
-          { "value": 2, "label": "Second derivative", "description": "Curvature" }
+          {
+            "value": 0,
+            "label": "Smoothing only",
+            "description": "No derivative"
+          },
+          {
+            "value": 1,
+            "label": "First derivative",
+            "description": "Rate of change"
+          },
+          {
+            "value": 2,
+            "label": "Second derivative",
+            "description": "Curvature"
+          }
         ],
         "description": "Derivative order (0=smoothing, 1=first, 2=second)",
         "sweepable": true
@@ -56,7 +95,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.nirs.SavitzkyGolay"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.first_derivative",
@@ -66,14 +106,19 @@
     "description": "First spectral derivative",
     "longDescription": "Computes the first derivative of spectra, useful for removing constant baseline offsets.",
     "category": "Derivatives",
-    "tags": ["derivative", "first", "baseline"],
+    "tags": [
+      "derivative",
+      "first",
+      "baseline"
+    ],
     "source": "nirs4all",
     "parameters": [],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.nirs.FirstDerivative"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.second_derivative",
@@ -83,13 +128,18 @@
     "description": "Second spectral derivative",
     "longDescription": "Computes the second derivative of spectra, useful for resolving overlapping peaks.",
     "category": "Derivatives",
-    "tags": ["derivative", "second", "peaks"],
+    "tags": [
+      "derivative",
+      "second",
+      "peaks"
+    ],
     "source": "nirs4all",
     "parameters": [],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.nirs.SecondDerivative"
-    ]
+    ],
+    "tier": "core"
   }
 ]

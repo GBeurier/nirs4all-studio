@@ -7,7 +7,12 @@
     "description": "Support Vector Regression",
     "longDescription": "Epsilon-Support Vector Regression using kernel methods.",
     "category": "SVM",
-    "tags": ["svm", "svr", "kernel", "regression"],
+    "tags": [
+      "svm",
+      "svr",
+      "kernel",
+      "regression"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -15,24 +20,39 @@
         "type": "select",
         "default": "rbf",
         "options": [
-          { "value": "rbf", "label": "RBF (Gaussian)" },
-          { "value": "linear", "label": "Linear" },
-          { "value": "poly", "label": "Polynomial" },
-          { "value": "sigmoid", "label": "Sigmoid" }
+          {
+            "value": "rbf",
+            "label": "RBF (Gaussian)"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
         ],
         "description": "Kernel type"
       },
       {
         "name": "C",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.001,
         "max": 1000,
         "description": "Regularization parameter",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.01, 100]
+        "finetuneRange": [
+          0.01,
+          100
+        ]
       },
       {
         "name": "epsilon",
@@ -45,7 +65,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "float",
-        "finetuneRange": [0.01, 0.5]
+        "finetuneRange": [
+          0.01,
+          0.5
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -53,7 +76,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.svm._classes.SVR"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "model.svc",
@@ -63,7 +87,12 @@
     "description": "Support Vector Classification",
     "longDescription": "C-Support Vector Classification using kernel methods.",
     "category": "SVM",
-    "tags": ["svm", "svc", "kernel", "classification"],
+    "tags": [
+      "svm",
+      "svc",
+      "kernel",
+      "classification"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -71,28 +100,44 @@
         "type": "select",
         "default": "rbf",
         "options": [
-          { "value": "rbf", "label": "RBF (Gaussian)" },
-          { "value": "linear", "label": "Linear" },
-          { "value": "poly", "label": "Polynomial" },
-          { "value": "sigmoid", "label": "Sigmoid" }
+          {
+            "value": "rbf",
+            "label": "RBF (Gaussian)"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
         ],
         "description": "Kernel type"
       },
       {
         "name": "C",
         "type": "float",
-        "default": 1.0,
+        "default": 1,
         "min": 0.001,
         "max": 1000,
         "description": "Regularization parameter",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.01, 100]
+        "finetuneRange": [
+          0.01,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

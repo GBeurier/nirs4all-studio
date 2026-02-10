@@ -223,7 +223,7 @@ export function useKeyboardNavigation(
     const { step } = currentItem;
 
     // If step has branches, navigate into first child
-    if (step.type === "branch" || step.type === "generator") {
+    if (step.subType === "branch" || step.subType === "generator") {
       const firstChild = getFirstChildStep(step);
       if (firstChild) {
         onSelectStep(firstChild.id);

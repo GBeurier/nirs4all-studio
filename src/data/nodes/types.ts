@@ -16,22 +16,48 @@
 
 /**
  * All possible node types (step categories).
+ *
+ * Consolidated from 16 to 8 functional types that align with nirs4all
+ * pipeline keywords:
+ * - `preprocessing` - TransformerMixin steps
+ * - `y_processing` - Target variable scaling
+ * - `model` - Model steps
+ * - `splitting` - CV splitter steps
+ * - `augmentation` - Augmentation operators (used inside containers)
+ * - `filter` - Filter operators (used inside tag/exclude)
+ * - `flow` - Pipeline flow control (branch, merge, containers, generators)
+ * - `utility` - Non-executing / visualization (generators, charts, comments)
  */
 export type NodeType =
   | "preprocessing"
   | "y_processing"
   | "splitting"
   | "model"
-  | "generator"
+  | "augmentation"
+  | "filter"
+  | "flow"
+  | "utility";
+
+/**
+ * Sub-types for `flow` nodes that require distinct rendering behavior.
+ *
+ * These preserve the old type values so the pipeline editor can distinguish
+ * branches from merges from containers, etc.
+ */
+export type FlowSubType =
   | "branch"
   | "merge"
-  | "filter"
-  | "augmentation"
+  | "generator"
   | "sample_augmentation"
   | "feature_augmentation"
   | "sample_filter"
   | "concat_transform"
-  | "sequential"
+  | "sequential";
+
+/**
+ * Sub-types for `utility` nodes.
+ */
+export type UtilitySubType =
   | "chart"
   | "comment";
 
@@ -253,6 +279,13 @@ export interface NodeDefinition {
   name: string;
   /** Category: "preprocessing", "model", etc. */
   type: NodeType;
+  /**
+   * Sub-type for flow/utility nodes that require distinct rendering.
+   * Preserves the legacy type value (e.g. "branch", "merge", "generator",
+   * "sample_augmentation", "chart", "comment") so the pipeline editor
+   * can still distinguish them visually.
+   */
+  subType?: FlowSubType | UtilitySubType;
 
   // === nirs4all Mapping ===
   /** Full import path: "nirs4all.operators.transforms.StandardNormalVariate" */
@@ -348,6 +381,10 @@ export interface NodeDefinition {
   /** Convenience flags for UI rendering. */
   isVisualization?: boolean;
   isComment?: boolean;
+
+  // === Tier ===
+  /** Visibility tier for UI filtering: core (essential), standard (default), advanced (opt-in) */
+  tier?: "core" | "standard" | "advanced";
 
   // === Versioning & Migration ===
   source: NodeSourceExtended;

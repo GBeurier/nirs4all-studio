@@ -80,7 +80,7 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
   function processSteps(stepList: PipelineStep[]) {
     for (const step of stepList) {
       // Check if this is a generator step
-      if (step.type === "generator" && step.branches) {
+      if (step.subType === "generator" && step.branches) {
         const genVariants = calculateStepVariants(step);
         if (genVariants > 1) {
           generatorVariants *= genVariants;

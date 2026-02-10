@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Form, NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Database,
@@ -9,13 +9,18 @@ import {
   Search,
   Play,
   BarChart3,
-  Layers,
   Target,
   Beaker,
   Settings,
   ChevronLeft,
   ChevronRight,
+  Wand2,
   type LucideIcon,
+  Volleyball,
+  TableProperties,
+  TvMinimalPlay,
+  GitFork,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,26 +40,23 @@ interface NavItem {
   badge?: number;
 }
 
-const dataNavItems: NavItem[] = [
+const prepareNavItems: NavItem[] = [
   { titleKey: "nav.datasets", href: "/datasets", icon: Database },
-  { titleKey: "nav.pipelines", href: "/pipelines", icon: GitBranch },
+  { titleKey: "nav.pipelines", href: "/pipelines", icon: GitFork },
   { titleKey: "nav.pipelineEditor", href: "/pipelines/new", icon: Pencil },
+  { titleKey: "nav.runEditor", href: "/editor", icon: Play },
 ];
 
 const exploreNavItems: NavItem[] = [
-  { titleKey: "nav.playground", href: "/playground", icon: FlaskConical },
+  { titleKey: "nav.playground", href: "/playground", icon: Volleyball },
   { titleKey: "nav.inspector", href: "/inspector", icon: Search },
+  { titleKey: "nav.lab", href: "/lab", icon: FlaskConical },
 ];
 
 const resultsNavItems: NavItem[] = [
-  { titleKey: "nav.runs", href: "/runs", icon: Play },
-  { titleKey: "nav.scores", href: "/results", icon: BarChart3 },
-  { titleKey: "nav.aggregatedResults", href: "/results/aggregated", icon: Layers },
-  { titleKey: "nav.predictions", href: "/predictions", icon: Target },
-];
-
-const labNavItems: NavItem[] = [
-  { titleKey: "nav.lab", href: "/lab", icon: Beaker },
+  { titleKey: "nav.history", href: "/runs", icon: TvMinimalPlay },
+  { titleKey: "nav.results", href: "/results", icon: Trophy },
+  { titleKey: "nav.predictions", href: "/predictions", icon: TableProperties },
 ];
 
 export function AppSidebar() {
@@ -163,13 +165,11 @@ export function AppSidebar() {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
         <div className="space-y-6">
-          {renderNavGroup("layout.sidebar.groups.data", dataNavItems)}
+          {renderNavGroup("layout.sidebar.groups.prepare", prepareNavItems)}
           <Separator className="mx-3" />
           {renderNavGroup("layout.sidebar.groups.explore", exploreNavItems)}
           <Separator className="mx-3" />
           {renderNavGroup("layout.sidebar.groups.results", resultsNavItems)}
-          <Separator className="mx-3" />
-          {renderNavGroup("layout.sidebar.groups.lab", labNavItems)}
         </div>
       </ScrollArea>
 

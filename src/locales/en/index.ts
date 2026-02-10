@@ -84,10 +84,12 @@ const en = {
     datasets: "Datasets",
     pipelines: "Pipelines",
     pipelineEditor: "Pipeline Editor",
+    runEditor: "Run",
     editor: "Editor",
     playground: "Playground",
     inspector: "Inspector",
-    runs: "Runs",
+    history: "History",
+    results: "Results",
     scores: "Scores",
     predictions: "Predictions",
     aggregatedResults: "Aggregated Results",
@@ -437,10 +439,9 @@ const en = {
   layout: {
     sidebar: {
       groups: {
-        data: "Data",
+        prepare: "Prepare",
         explore: "Explore",
         results: "Results",
-        lab: "Lab",
       },
     },
     header: {
@@ -470,6 +471,7 @@ const en = {
   datasets: {
     title: "Datasets",
     subtitle: "Manage your spectral datasets and configurations",
+    workspace: "Workspace",
     empty: "No datasets yet",
     emptyNoMatch: "No matches",
     emptyHint: "Get started by adding a dataset to your workspace",

@@ -7,7 +7,11 @@
     "description": "Standard Normal Variate normalization",
     "longDescription": "Normalizes each spectrum to have zero mean and unit variance. Commonly used for scatter correction in NIRS data.",
     "category": "NIRS Core",
-    "tags": ["normalization", "scatter", "correction"],
+    "tags": [
+      "normalization",
+      "scatter",
+      "correction"
+    ],
     "source": "nirs4all",
     "parameters": [],
     "supportsParameterSweeps": true,
@@ -15,7 +19,8 @@
     "legacyClassPaths": [
       "nirs4all.operators.transforms.scalers.StandardNormalVariate",
       "nirs4all.operators.transforms.nirs.StandardNormalVariate"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.robust_snv",
@@ -25,11 +30,17 @@
     "description": "Outlier-resistant SNV (RNV)",
     "longDescription": "Robust Normal Variate - uses robust statistics (median/MAD) instead of mean/std for outlier resistance.",
     "category": "NIRS Core",
-    "tags": ["normalization", "scatter", "robust", "outlier"],
+    "tags": [
+      "normalization",
+      "scatter",
+      "robust",
+      "outlier"
+    ],
     "source": "nirs4all",
     "parameters": [],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.local_snv",
@@ -39,11 +50,17 @@
     "description": "Local Standard Normal Variate (LSNV)",
     "longDescription": "Applies SNV in a sliding window for local scatter correction.",
     "category": "NIRS Core",
-    "tags": ["normalization", "scatter", "local", "window"],
+    "tags": [
+      "normalization",
+      "scatter",
+      "local",
+      "window"
+    ],
     "source": "nirs4all",
     "parameters": [],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "preprocessing.msc",
@@ -53,7 +70,12 @@
     "description": "Multiplicative Scatter Correction",
     "longDescription": "Corrects for scatter effects by regressing each spectrum against a reference spectrum (typically the mean).",
     "category": "NIRS Core",
-    "tags": ["scatter", "correction", "multiplicative", "reference"],
+    "tags": [
+      "scatter",
+      "correction",
+      "multiplicative",
+      "reference"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -61,8 +83,14 @@
         "type": "select",
         "default": "mean",
         "options": [
-          { "value": "mean", "label": "Mean spectrum" },
-          { "value": "median", "label": "Median spectrum" }
+          {
+            "value": "mean",
+            "label": "Mean spectrum"
+          },
+          {
+            "value": "median",
+            "label": "Median spectrum"
+          }
         ],
         "description": "Reference spectrum for correction"
       }
@@ -71,7 +99,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "preprocessing.emsc",
@@ -81,7 +110,12 @@
     "description": "Extended Multiplicative Scatter Correction",
     "longDescription": "Extended MSC with polynomial baseline correction and optional interference components.",
     "category": "NIRS Core",
-    "tags": ["scatter", "correction", "extended", "baseline"],
+    "tags": [
+      "scatter",
+      "correction",
+      "extended",
+      "baseline"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -89,13 +123,20 @@
         "type": "select",
         "default": "mean",
         "options": [
-          { "value": "mean", "label": "Mean spectrum" },
-          { "value": "median", "label": "Median spectrum" }
+          {
+            "value": "mean",
+            "label": "Mean spectrum"
+          },
+          {
+            "value": "median",
+            "label": "Median spectrum"
+          }
         ],
         "description": "Reference spectrum for correction"
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

@@ -51,6 +51,8 @@
     "validate:nodes": "node scripts/validate-nodes.cjs",
     "validate:registry": "node scripts/validate-node-registry.cjs",
     "generate:extended-registry": "python scripts/generate_extended_registry.py --out public/node-registry/extended.json --validate",
+    "generate:registry": "python scripts/generate_registry.py --validate --skip-tensorflow",
+    "validate:canonical-registry": "python scripts/generate_registry.py --validate --skip-tensorflow",
     "registry:snapshot": "node scripts/check-registry-snapshot.cjs",
     "registry:snapshot:update": "node scripts/check-registry-snapshot.cjs --update",
     "setup:wsl": "bash scripts/setup-wsl.sh",

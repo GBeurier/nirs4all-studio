@@ -4,12 +4,16 @@
  * Provides the appropriate renderer component for a given step type.
  * Supports lazy loading for better bundle splitting.
  *
+ * Uses a two-tier registry:
+ * 1. SUBTYPE_RENDERER_REGISTRY: Checked first for flow/utility sub-types
+ * 2. RENDERER_REGISTRY: Fallback keyed by the 8 consolidated StepTypes
+ *
  * Phase 3 Implementation - Component Refactoring
  * @see docs/_internals/implementation_roadmap.md
  */
 
 import { lazy, useMemo, type ComponentType } from "react";
-import type { StepType } from "../../types";
+import type { StepType, StepSubType } from "../../types";
 import type {
   StepRendererProps,
   ParameterRendererProps,
@@ -93,10 +97,10 @@ interface RendererConfig {
 }
 
 /**
- * Registry mapping step types to their renderers
+ * Primary registry mapping the 8 consolidated step types to their renderers.
+ * Used as fallback when no subType-specific renderer is found.
  */
 const RENDERER_REGISTRY: Record<StepType, RendererConfig> = {
-  // Standard renderers using DefaultRenderer with parameter props
   preprocessing: {
     component: DefaultRenderer,
     usesParameterProps: true,
@@ -117,15 +121,8 @@ const RENDERER_REGISTRY: Record<StepType, RendererConfig> = {
     usesParameterProps: true,
     isLazy: false,
   },
-
-  // Specialized renderers
   model: {
     component: ModelRenderer,
-    usesParameterProps: true,
-    isLazy: true,
-  },
-  merge: {
-    component: MergeRenderer,
     usesParameterProps: true,
     isLazy: true,
   },
@@ -134,18 +131,40 @@ const RENDERER_REGISTRY: Record<StepType, RendererConfig> = {
     usesParameterProps: false,
     isLazy: true,
   },
-  chart: {
-    component: ChartRenderer,
-    usesParameterProps: false,
-    isLazy: true,
+  // Default renderers for flow/utility (overridden by subType)
+  flow: {
+    component: DefaultRenderer,
+    usesParameterProps: true,
+    isLazy: false,
   },
-  comment: {
-    component: CommentRenderer,
-    usesParameterProps: false,
-    isLazy: true,
+  utility: {
+    component: DefaultRenderer,
+    usesParameterProps: true,
+    isLazy: false,
   },
+};
 
-  // Container renderers
+/**
+ * Sub-type renderer overrides for flow and utility steps.
+ * Checked first before falling back to the type-level registry.
+ */
+const SUBTYPE_RENDERER_REGISTRY: Partial<Record<StepSubType, RendererConfig>> = {
+  // Flow sub-types
+  branch: {
+    component: DefaultRenderer,
+    usesParameterProps: true,
+    isLazy: false,
+  },
+  merge: {
+    component: MergeRenderer,
+    usesParameterProps: true,
+    isLazy: true,
+  },
+  generator: {
+    component: GeneratorRenderer,
+    usesParameterProps: false,
+    isLazy: true,
+  },
   sample_augmentation: {
     component: SampleAugmentationRenderer,
     usesParameterProps: false,
@@ -171,52 +190,47 @@ const RENDERER_REGISTRY: Record<StepType, RendererConfig> = {
     usesParameterProps: false,
     isLazy: true,
   },
-
-  // Generator renderer
-  generator: {
-    component: GeneratorRenderer,
+  // Utility sub-types
+  chart: {
+    component: ChartRenderer,
     usesParameterProps: false,
     isLazy: true,
   },
-  branch: {
-    component: DefaultRenderer,
-    usesParameterProps: true,
-    isLazy: false,
+  comment: {
+    component: CommentRenderer,
+    usesParameterProps: false,
+    isLazy: true,
   },
 };
 
 /**
- * Hook to get the appropriate renderer for a step type.
+ * Hook to get the appropriate renderer for a step.
  *
- * @param type - The step type to get a renderer for
+ * Checks subType first (for flow/utility steps), then falls back
+ * to the type-level registry.
+ *
+ * @param type - The step type
+ * @param subType - Optional sub-type for flow/utility steps
  * @returns The renderer component and metadata
  *
  * @example
- * const { Renderer, usesParameterProps, isLazy } = useStepRenderer(step.type);
- *
- * if (usesParameterProps) {
- *   return (
- *     <Suspense fallback={<Skeleton />}>
- *       <Renderer
- *         step={step}
- *         onUpdate={onUpdate}
- *         renderParamInput={renderParamInput}
- *         handleNameChange={handleNameChange}
- *         handleResetParams={handleResetParams}
- *         {...otherProps}
- *       />
- *     </Suspense>
- *   );
- * } else {
- *   return (
- *     <Suspense fallback={<Skeleton />}>
- *       <Renderer step={step} onUpdate={onUpdate} {...otherProps} />
- *     </Suspense>
- *   );
- * }
+ * const { Renderer, usesParameterProps, isLazy } = useStepRenderer(step.type, step.subType);
  */
-export function useStepRenderer(type: StepType): UseStepRendererResult {
+export function useStepRenderer(type: StepType, subType?: StepSubType): UseStepRendererResult {
   return useMemo(() => {
+    // Check subType-specific renderer first
+    if (subType) {
+      const subTypeConfig = SUBTYPE_RENDERER_REGISTRY[subType];
+      if (subTypeConfig) {
+        return {
+          Renderer: subTypeConfig.component,
+          usesParameterProps: subTypeConfig.usesParameterProps,
+          isLazy: subTypeConfig.isLazy,
+        };
+      }
+    }
+
+    // Fall back to type-level renderer
     const config = RENDERER_REGISTRY[type];
 
     if (!config) {
@@ -233,7 +247,7 @@ export function useStepRenderer(type: StepType): UseStepRendererResult {
       usesParameterProps: config.usesParameterProps,
       isLazy: config.isLazy,
     };
-  }, [type]);
+  }, [type, subType]);
 }
 
 /**
@@ -244,8 +258,12 @@ export function getAvailableStepTypes(): StepType[] {
 }
 
 /**
- * Check if a step type uses parameter props
+ * Check if a step type/subType uses parameter props
  */
-export function stepTypeUsesParameterProps(type: StepType): boolean {
+export function stepTypeUsesParameterProps(type: StepType, subType?: StepSubType): boolean {
+  if (subType) {
+    const subTypeConfig = SUBTYPE_RENDERER_REGISTRY[subType];
+    if (subTypeConfig) return subTypeConfig.usesParameterProps;
+  }
   return RENDERER_REGISTRY[type]?.usesParameterProps ?? true;
 }

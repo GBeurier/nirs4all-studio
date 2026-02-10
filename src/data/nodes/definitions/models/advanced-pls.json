@@ -7,7 +7,12 @@
     "description": "Orthogonal PLS (removes orthogonal variation)",
     "longDescription": "Orthogonal Partial Least Squares separates systematic variation into predictive and orthogonal components.",
     "category": "Advanced PLS",
-    "tags": ["pls", "orthogonal", "opls", "variation"],
+    "tags": [
+      "pls",
+      "orthogonal",
+      "opls",
+      "variation"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -20,7 +25,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 20]
+        "finetuneRange": [
+          1,
+          20
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -28,7 +36,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.pls.OPLS"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "model.oplsda",
@@ -38,7 +47,12 @@
     "description": "Orthogonal PLS-DA (classification)",
     "longDescription": "OPLS combined with discriminant analysis for classification.",
     "category": "Advanced PLS",
-    "tags": ["pls", "orthogonal", "classification", "discriminant"],
+    "tags": [
+      "pls",
+      "orthogonal",
+      "classification",
+      "discriminant"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -51,11 +65,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 20]
+        "finetuneRange": [
+          1,
+          20
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "standard"
   },
   {
     "id": "model.ikpls",
@@ -65,7 +83,12 @@
     "description": "Improved Kernel PLS (faster)",
     "longDescription": "Optimized PLS algorithm with improved computational efficiency.",
     "category": "Advanced PLS",
-    "tags": ["pls", "kernel", "fast", "optimized"],
+    "tags": [
+      "pls",
+      "kernel",
+      "fast",
+      "optimized"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -78,7 +101,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -86,7 +112,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.pls.IKPLS"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "model.sparse_pls",
@@ -96,7 +123,13 @@
     "description": "Sparse PLS with L1 regularization",
     "longDescription": "PLS with sparsity constraint for automatic variable selection.",
     "category": "Advanced PLS",
-    "tags": ["pls", "sparse", "l1", "regularization", "selection"],
+    "tags": [
+      "pls",
+      "sparse",
+      "l1",
+      "regularization",
+      "selection"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -109,24 +142,31 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 20]
+        "finetuneRange": [
+          1,
+          20
+        ]
       },
       {
         "name": "alpha",
         "type": "float",
         "default": 0.1,
         "min": 0.001,
-        "max": 1.0,
+        "max": 1,
         "step": 0.01,
         "description": "Sparsity parameter",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.001, 1.0]
+        "finetuneRange": [
+          0.001,
+          1
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "standard"
   },
   {
     "id": "model.lwpls",
@@ -136,7 +176,12 @@
     "description": "Locally Weighted PLS",
     "longDescription": "Local PLS models weighted by sample similarity for non-linear relationships.",
     "category": "Advanced PLS",
-    "tags": ["pls", "local", "weighted", "nonlinear"],
+    "tags": [
+      "pls",
+      "local",
+      "weighted",
+      "nonlinear"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -149,7 +194,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 20]
+        "finetuneRange": [
+          1,
+          20
+        ]
       },
       {
         "name": "n_neighbors",
@@ -161,14 +209,18 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [10, 100]
+        "finetuneRange": [
+          10,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.models.pls.LWPLS"
-    ]
+    ],
+    "tier": "advanced"
   },
   {
     "id": "model.interval_pls",
@@ -178,7 +230,12 @@
     "description": "Interval PLS for spectral band selection",
     "longDescription": "Divides spectrum into intervals and selects the most informative ones.",
     "category": "Advanced PLS",
-    "tags": ["pls", "interval", "band", "selection"],
+    "tags": [
+      "pls",
+      "interval",
+      "band",
+      "selection"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -201,7 +258,8 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   },
   {
     "id": "model.robust_pls",
@@ -211,7 +269,11 @@
     "description": "Robust PLS (outlier resistant)",
     "longDescription": "PLS with robust estimation methods for handling outliers.",
     "category": "Advanced PLS",
-    "tags": ["pls", "robust", "outlier"],
+    "tags": [
+      "pls",
+      "robust",
+      "outlier"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -224,11 +286,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 20]
+        "finetuneRange": [
+          1,
+          20
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   },
   {
     "id": "model.simpls",
@@ -238,7 +304,11 @@
     "description": "SIMPLS algorithm",
     "longDescription": "Statistically Inspired Modification of PLS - faster and numerically stable.",
     "category": "Advanced PLS",
-    "tags": ["pls", "simpls", "fast"],
+    "tags": [
+      "pls",
+      "simpls",
+      "fast"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -251,11 +321,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "standard"
   },
   {
     "id": "model.dipls",
@@ -265,7 +339,11 @@
     "description": "Discriminant PLS",
     "longDescription": "Domain-invariant PLS for transfer learning scenarios.",
     "category": "Advanced PLS",
-    "tags": ["pls", "discriminant", "transfer"],
+    "tags": [
+      "pls",
+      "discriminant",
+      "transfer"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -279,7 +357,8 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   },
   {
     "id": "model.recursive_pls",
@@ -289,7 +368,12 @@
     "description": "Recursive PLS (adaptive)",
     "longDescription": "Online/adaptive PLS that updates with new samples.",
     "category": "Advanced PLS",
-    "tags": ["pls", "recursive", "adaptive", "online"],
+    "tags": [
+      "pls",
+      "recursive",
+      "adaptive",
+      "online"
+    ],
     "source": "nirs4all",
     "parameters": [
       {
@@ -303,6 +387,7 @@
       }
     ],
     "supportsParameterSweeps": true,
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "tier": "advanced"
   }
 ]

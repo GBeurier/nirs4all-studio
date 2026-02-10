@@ -2,7 +2,8 @@
   {
     "id": "container.sample_augmentation",
     "name": "SampleAugmentation",
-    "type": "sample_augmentation",
+    "type": "flow",
+    "subType": "sample_augmentation",
     "classPath": "sample_augmentation",
     "description": "Container for sample augmentation steps",
     "longDescription": "Wraps augmentation steps that add new samples (applied to training only).",
@@ -45,12 +46,14 @@
     "layout": {
       "orientation": "vertical",
       "label": "Sample Augmentation (Train Only)"
-    }
+    },
+    "tier": "core"
   },
   {
     "id": "container.feature_augmentation",
     "name": "FeatureAugmentation",
-    "type": "feature_augmentation",
+    "type": "flow",
+    "subType": "feature_augmentation",
     "classPath": "feature_augmentation",
     "description": "Container for feature augmentation steps",
     "longDescription": "Wraps steps that add new features (applied during both train and predict).",
@@ -72,12 +75,14 @@
     "layout": {
       "orientation": "vertical",
       "label": "Feature Augmentation"
-    }
+    },
+    "tier": "standard"
   },
   {
     "id": "container.sample_filter",
     "name": "SampleFilterContainer",
-    "type": "sample_filter",
+    "type": "flow",
+    "subType": "sample_filter",
     "classPath": "sample_filter",
     "description": "Container for sample filter steps",
     "longDescription": "Wraps filter steps that remove samples (applied to training only).",
@@ -100,12 +105,14 @@
     "layout": {
       "orientation": "vertical",
       "label": "Sample Filter (Train Only)"
-    }
+    },
+    "tier": "core"
   },
   {
     "id": "container.concat_transform",
     "name": "ConcatTransform",
-    "type": "concat_transform",
+    "type": "flow",
+    "subType": "concat_transform",
     "classPath": "concat_transform",
     "description": "Concatenate transformations",
     "longDescription": "Container that concatenates the outputs of multiple transformations.",
@@ -134,6 +141,7 @@
     "layout": {
       "orientation": "vertical",
       "label": "Concatenate Transforms"
-    }
+    },
+    "tier": "standard"
   }
 ]

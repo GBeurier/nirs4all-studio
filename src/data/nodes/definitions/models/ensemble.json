@@ -7,7 +7,12 @@
     "description": "Random Forest Regressor",
     "longDescription": "Ensemble of decision trees for regression with bagging.",
     "category": "Ensemble",
-    "tags": ["ensemble", "random-forest", "trees", "regression"],
+    "tags": [
+      "ensemble",
+      "random-forest",
+      "trees",
+      "regression"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -20,7 +25,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [50, 500]
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "max_depth",
@@ -32,7 +40,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [3, 30]
+        "finetuneRange": [
+          3,
+          30
+        ]
       },
       {
         "name": "random_state",
@@ -47,7 +58,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.ensemble._forest.RandomForestRegressor"
-    ]
+    ],
+    "tier": "core"
   },
   {
     "id": "model.random_forest_classifier",
@@ -57,7 +69,12 @@
     "description": "Random Forest Classifier",
     "longDescription": "Ensemble of decision trees for classification with bagging.",
     "category": "Ensemble",
-    "tags": ["ensemble", "random-forest", "trees", "classification"],
+    "tags": [
+      "ensemble",
+      "random-forest",
+      "trees",
+      "classification"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -70,7 +87,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [50, 500]
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "max_depth",
@@ -82,7 +102,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [3, 30]
+        "finetuneRange": [
+          3,
+          30
+        ]
       },
       {
         "name": "random_state",
@@ -97,7 +120,8 @@
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.ensemble._forest.RandomForestClassifier"
-    ]
+    ],
+    "tier": "standard"
   },
   {
     "id": "model.xgboost",
@@ -107,7 +131,12 @@
     "description": "XGBoost Gradient Boosting",
     "longDescription": "Extreme Gradient Boosting - optimized distributed gradient boosting library.",
     "category": "Ensemble",
-    "tags": ["ensemble", "xgboost", "boosting", "gradient"],
+    "tags": [
+      "ensemble",
+      "xgboost",
+      "boosting",
+      "gradient"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -120,7 +149,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [50, 500]
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "learning_rate",
@@ -133,7 +165,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.01, 0.5]
+        "finetuneRange": [
+          0.01,
+          0.5
+        ]
       },
       {
         "name": "max_depth",
@@ -145,12 +180,16 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [3, 15]
+        "finetuneRange": [
+          3,
+          15
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   },
   {
     "id": "model.lightgbm",
@@ -160,7 +199,13 @@
     "description": "LightGBM Gradient Boosting",
     "longDescription": "Light Gradient Boosting Machine - fast, distributed, high-performance gradient boosting.",
     "category": "Ensemble",
-    "tags": ["ensemble", "lightgbm", "boosting", "gradient", "fast"],
+    "tags": [
+      "ensemble",
+      "lightgbm",
+      "boosting",
+      "gradient",
+      "fast"
+    ],
     "source": "sklearn",
     "parameters": [
       {
@@ -173,7 +218,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [50, 500]
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "learning_rate",
@@ -186,7 +234,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "log_float",
-        "finetuneRange": [0.01, 0.5]
+        "finetuneRange": [
+          0.01,
+          0.5
+        ]
       },
       {
         "name": "num_leaves",
@@ -198,11 +249,15 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [10, 100]
+        "finetuneRange": [
+          10,
+          100
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
-    "supportsStepGenerator": true
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]
