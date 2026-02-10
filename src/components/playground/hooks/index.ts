@@ -11,3 +11,6 @@ export type {
   UsePlaygroundExportOptions,
   UsePlaygroundExportResult,
 } from './usePlaygroundExport';
+
+export { useStaggeredChartMount } from './useStaggeredChartMount';
+export type { } from './useStaggeredChartMount';

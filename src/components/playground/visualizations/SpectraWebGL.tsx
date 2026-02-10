@@ -114,6 +114,19 @@ interface LineData {
   pointCount: number;
 }
 
+/** Result of LTTB decimation computation */
+interface DecimationResult {
+  /** Combined Float32Array with all decimated points (x,y pairs) */
+  allPoints: Float32Array;
+  /** Per-spectrum metadata with offsets into allPoints */
+  metadata: Array<{
+    index: number;
+    isOriginal: boolean;
+    pointCount: number;
+    offset: number;
+  }>;
+}
+
 // ============= Quality Configuration =============
 
 interface QualityConfig {
@@ -301,6 +314,57 @@ function decimatePoints(
     result[i * 2 + 1] = sampled[i].y;
   }
   return result;
+}
+
+/**
+ * Compute LTTB decimation for all visible spectra (synchronous).
+ * Compute LTTB decimation for all visible spectra.
+ */
+function computeDecimation(
+  spectra: number[][],
+  originalSpectra: number[][] | null,
+  wavelengths: number[],
+  visibleIndices: number[],
+  xViewRange: [number, number],
+  yRange: [number, number],
+  targetPoints: number,
+): DecimationResult {
+  const metadata: DecimationResult['metadata'] = [];
+  const chunks: Float32Array[] = [];
+  let totalElements = 0;
+
+  for (const idx of visibleIndices) {
+    const spectrum = spectra[idx];
+    if (!spectrum) continue;
+    const points = decimatePoints(wavelengths, spectrum, targetPoints, xViewRange, yRange);
+    if (points.length >= 4) {
+      metadata.push({ index: idx, isOriginal: false, pointCount: points.length / 2, offset: totalElements });
+      chunks.push(points);
+      totalElements += points.length;
+    }
+  }
+
+  if (originalSpectra) {
+    for (const idx of visibleIndices) {
+      const spectrum = originalSpectra[idx];
+      if (!spectrum) continue;
+      const points = decimatePoints(wavelengths, spectrum, targetPoints, xViewRange, yRange);
+      if (points.length >= 4) {
+        metadata.push({ index: idx, isOriginal: true, pointCount: points.length / 2, offset: totalElements });
+        chunks.push(points);
+        totalElements += points.length;
+      }
+    }
+  }
+
+  const allPoints = new Float32Array(totalElements);
+  let writeOffset = 0;
+  for (const chunk of chunks) {
+    allPoints.set(chunk, writeOffset);
+    writeOffset += chunk.length;
+  }
+
+  return { allPoints, metadata };
 }
 
 // ============= WebGL Scene Components =============
@@ -1598,120 +1662,54 @@ export function SpectraWebGL({
     return { yMin: Math.min(...y), yMax: Math.max(...y) };
   }, [y]);
 
-  // Prepare line data with decimation
-  // IMPORTANT: hoveredSampleIdx is NOT in deps to avoid expensive recomputation on every hover
-  // Hover highlighting is handled separately in the render phase
+  // ============= Decimation computation (synchronous) =============
+  // LTTB decimation runs on the main thread via useMemo.
+  const decimation = useMemo<DecimationResult>(() =>
+    computeDecimation(spectra, originalSpectra ?? null, wavelengths,
+      effectiveVisibleIndices, xViewRange, yRange, qualityConfig.maxPointsPerSpectrum),
+    [spectra, originalSpectra, wavelengths, effectiveVisibleIndices, xViewRange, yRange, qualityConfig.maxPointsPerSpectrum]
+  );
+
+  // Build LineData from decimation result + color assignments (cheap, runs on main thread)
+  // IMPORTANT: hoveredSampleIdx is NOT in deps to avoid recomputation on every hover
   const lines = useMemo<LineData[]>(() => {
+    if (!decimation || decimation.metadata.length === 0) return [];
+
+    const { allPoints, metadata } = decimation;
     const baseCol = parseColor(baseColor);
     const origCol = originalColor ? parseColor(originalColor) : null;
     const selectedCol = parseColor(selectedColor ?? SELECTION_COLORS.selected);
     const pinnedCol = parseColor(pinnedColor);
 
-    const result: LineData[] = [];
-    const maxPoints = qualityConfig.maxPointsPerSpectrum;
+    return metadata.map(({ index, isOriginal, pointCount, offset }) => {
+      const isSelected = selectedIndicesSet.has(index);
+      const isPinned = pinnedIndicesSet.has(index);
 
-    // Add processed spectra
-    for (const idx of effectiveVisibleIndices) {
-      const spectrum = spectra[idx];
-      if (!spectrum) continue;
-
-      const isSelected = selectedIndicesSet.has(idx);
-      const isPinned = pinnedIndicesSet.has(idx);
-
-      // Calculate color - apply selection/pinned only when applySelectionColoring is true
-      // hover is handled separately in render phase
+      // Color assignment (same logic as before, separated from decimation)
       let color: THREE.Color;
-      if (applySelectionColoring && isPinned) {
-        color = pinnedCol;
-      } else if (applySelectionColoring && isSelected) {
-        color = selectedCol;
-      } else if (sampleColors && sampleColors[idx]) {
-        color = parseColor(sampleColors[idx]);
-      } else if (y && y[idx] !== undefined) {
-        color = getTargetColor(y[idx], yTargetMin, yTargetMax);
+      if (!isOriginal) {
+        if (applySelectionColoring && isPinned) color = pinnedCol;
+        else if (applySelectionColoring && isSelected) color = selectedCol;
+        else if (sampleColors?.[index]) color = parseColor(sampleColors[index]);
+        else if (y?.[index] !== undefined) color = getTargetColor(y[index], yTargetMin, yTargetMax);
+        else color = baseCol;
       } else {
-        color = baseCol;
+        if (origCol) color = origCol;
+        else if (isPinned) color = pinnedCol;
+        else if (isSelected) color = selectedCol;
+        else if (sampleColors?.[index]) color = parseColor(sampleColors[index]);
+        else if (y?.[index] !== undefined) color = getTargetColor(y[index], yTargetMin, yTargetMax);
+        else color = baseCol;
       }
 
-      // Decimate points using LTTB algorithm - normalizes to [0,1] based on xViewRange
-      const points = decimatePoints(
-        wavelengths,
-        spectrum,
-        maxPoints,
-        xViewRange,
-        yRange
-      );
+      // Extract points from the combined buffer
+      const points = allPoints.slice(offset, offset + pointCount * 2);
 
-      if (points.length >= 4) { // At least 2 points
-        result.push({
-          points,
-          color,
-          index: idx,
-          isSelected,
-          isPinned,
-          isOriginal: false,
-          pointCount: points.length / 2,
-        });
-      }
-    }
-
-    // Add original spectra if provided
-    // Use same base colors as processed spectra (transparency handled in render)
-    if (originalSpectra) {
-      for (const idx of effectiveVisibleIndices) {
-        const spectrum = originalSpectra[idx];
-        if (!spectrum) continue;
-
-        const isSelected = selectedIndicesSet.has(idx);
-        const isPinned = pinnedIndicesSet.has(idx);
-
-        // Use same color as processed spectrum to preserve coloration
-        // If originalColor is explicitly provided, use that; otherwise use base color
-        let color: THREE.Color;
-        if (origCol) {
-          // User explicitly set a color for original spectra
-          color = origCol;
-        } else if (isPinned) {
-          color = pinnedCol;
-        } else if (isSelected) {
-          color = selectedCol;
-        } else if (sampleColors && sampleColors[idx]) {
-          color = parseColor(sampleColors[idx]);
-        } else if (y && y[idx] !== undefined) {
-          color = getTargetColor(y[idx], yTargetMin, yTargetMax);
-        } else {
-          color = baseCol;
-        }
-
-        // Decimate points
-        const points = decimatePoints(
-          wavelengths,
-          spectrum,
-          maxPoints,
-          xViewRange,
-          yRange
-        );
-
-        if (points.length >= 4) {
-          result.push({
-            points,
-            color,
-            index: idx,
-            isSelected,
-            isPinned,
-            isOriginal: true,
-            pointCount: points.length / 2,
-          });
-        }
-      }
-    }
-
-    return result;
+      return { points, color, index, isSelected, isPinned, isOriginal, pointCount };
+    });
   }, [
-    spectra, originalSpectra, wavelengths, effectiveVisibleIndices,
-    selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
-    baseColor, originalColor, selectedColor, pinnedColor, sampleColors,
-    xViewRange, yRange, qualityConfig.maxPointsPerSpectrum, applySelectionColoring,
+    decimation, selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
+    baseColor, originalColor, selectedColor, pinnedColor, sampleColors, applySelectionColoring,
   ]);
 
   // Debounce ref for zoom updates

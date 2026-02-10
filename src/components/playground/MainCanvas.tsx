@@ -68,10 +68,11 @@ import {
 import { CanvasToolbar } from './CanvasToolbar';
 import { ChartPanel } from './ChartPanel';
 import { usePlaygroundExport, type ChartRefs } from './hooks/usePlaygroundExport';
+import { useStaggeredChartMount } from './hooks/useStaggeredChartMount';
 import { useSpectraChartConfig } from '@/lib/playground/useSpectraChartConfig';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
 
-import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, PerChartLoadingState } from '@/types/playground';
+import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, PerChartLoadingState, SubsetInfo } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 
 // ============= Types =============
@@ -107,6 +108,10 @@ interface MainCanvasProps {
   onComputeUmapChange?: (enabled: boolean) => void;
   /** Whether UMAP is currently being computed */
   isUmapLoading?: boolean;
+  /** Subset mode: 'all' or 'visible' (OPT-3) */
+  subsetMode?: 'all' | 'visible';
+  /** Callback when subset mode changes */
+  onSubsetModeChange?: (mode: 'all' | 'visible') => void;
   // === Phase 5: Advanced Filtering & Metrics ===
   /** Computed metrics for current dataset */
   metrics?: MetricsResult | null;
@@ -204,6 +209,8 @@ export function MainCanvas({
   computeUmap: _computeUmap = false,
   onComputeUmapChange,
   isUmapLoading = false,
+  subsetMode: _subsetMode = 'all',
+  onSubsetModeChange,
   // Phase 5 props
   metrics,
   onDetectOutliers,
@@ -373,6 +380,41 @@ export function MainCanvas({
   const deferredResult = useDeferredValue(result);
   const isSecondaryChartsStale = deferredResult !== result;
 
+  // Check if we have metadata partition
+  const hasMetadataPartition = useMemo(() => {
+    if (!rawData?.metadata || rawData.metadata.length === 0) return false;
+    const first = rawData.metadata[0];
+    return first && 'set' in first;
+  }, [rawData?.metadata]);
+
+  // Check if we have folds (from splitter) or metadata partition
+  const hasFolds = useMemo(() => {
+    return (result?.folds && result.folds.n_folds > 0) || hasMetadataPartition;
+  }, [result?.folds, hasMetadataPartition]);
+
+  const hasRepetitions = useMemo(() => {
+    return result?.repetitions?.has_repetitions ?? false;
+  }, [result?.repetitions]);
+
+  // Effective visible charts (filter out folds/repetitions if not available)
+  const effectiveVisibleCharts = useMemo(() => {
+    const visible = new Set(visibleCharts);
+    if (!hasFolds && visible.has('folds')) {
+      visible.delete('folds');
+    }
+    if (!hasRepetitions && visible.has('repetitions')) {
+      visible.delete('repetitions');
+    }
+    return visible;
+  }, [visibleCharts, hasFolds, hasRepetitions]);
+
+  // OPT-8: Staggered chart mounting to avoid rendering burst
+  const hasData = !!(rawData || result);
+  const { isChartMounted } = useStaggeredChartMount({
+    hasData,
+    visibleCharts: effectiveVisibleCharts,
+  });
+
   // Skeleton display logic
   const showSkeletons = isLoading && !result;
 
@@ -452,35 +494,6 @@ export function MainCanvas({
       clearSelection();
     }
   }, [onFilterToSelection, selectedCount, selectedSamples, clearSelection]);
-
-  // Check if we have a train/test partition from metadata
-  const hasMetadataPartition = useMemo(() => {
-    if (!rawData?.metadata || rawData.metadata.length === 0) return false;
-    const first = rawData.metadata[0];
-    return first && 'set' in first;
-  }, [rawData?.metadata]);
-
-  // Check if we have folds (from splitter) or metadata partition
-  const hasFolds = useMemo(() => {
-    return (result?.folds && result.folds.n_folds > 0) || hasMetadataPartition;
-  }, [result?.folds, hasMetadataPartition]);
-
-  // Check if we have repetitions
-  const hasRepetitions = useMemo(() => {
-    return result?.repetitions?.has_repetitions ?? false;
-  }, [result?.repetitions]);
-
-  // Effective visible charts (filter out folds/repetitions if not available)
-  const effectiveVisibleCharts = useMemo(() => {
-    const visible = new Set(visibleCharts);
-    if (!hasFolds && visible.has('folds')) {
-      visible.delete('folds');
-    }
-    if (!hasRepetitions && visible.has('repetitions')) {
-      visible.delete('repetitions');
-    }
-    return visible;
-  }, [visibleCharts, hasFolds, hasRepetitions]);
 
   // Count visible (non-hidden, non-minimized) charts for layout
   const visibleNonMinimizedCount = useMemo(() => {
@@ -895,6 +908,10 @@ export function MainCanvas({
         // Phase 8: Reset functionality
         onResetPlayground={onResetPlayground}
         hasStateToReset={hasStateToReset}
+        // OPT-3: Subset mode
+        subsetMode={_subsetMode}
+        onSubsetModeChange={onSubsetModeChange}
+        subsetInfo={result?.subsetInfo}
       />
 
       {/* Charts grid */}
@@ -925,7 +942,7 @@ export function MainCanvas({
             pinnedCount={pinnedCount}
             className=""
           >
-            {showSkeletons ? (
+            {showSkeletons || !isChartMounted('spectra') ? (
               <ChartSkeleton type="spectra" />
             ) : result ? (
               <SpectraChartV2
@@ -1022,7 +1039,7 @@ export function MainCanvas({
             sampleCount={filteredIndices.length}
             selectedCount={selectedCount}
           >
-            {showSkeletons ? (
+            {showSkeletons || !isChartMounted('histogram') ? (
               <ChartSkeleton type="histogram" />
             ) : yValues.length > 0 ? (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
@@ -1057,7 +1074,7 @@ export function MainCanvas({
             onHide={() => handleHide('folds')}
             sampleCount={totalSamples}
           >
-            {showSkeletons ? (
+            {showSkeletons || !isChartMounted('folds') ? (
               <ChartSkeleton type="folds" />
             ) : (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
@@ -1089,7 +1106,7 @@ export function MainCanvas({
             sampleCount={totalSamples}
             selectedCount={selectedCount}
           >
-            {showSkeletons ? (
+            {showSkeletons || !isChartMounted('pca') ? (
               <ChartSkeleton type="pca" />
             ) : deferredResult?.pca ? (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
@@ -1129,7 +1146,7 @@ export function MainCanvas({
             onHide={() => handleHide('repetitions')}
             sampleCount={totalSamples}
           >
-            {showSkeletons ? (
+            {showSkeletons || !isChartMounted('repetitions') ? (
               <ChartSkeleton type="histogram" />
             ) : deferredResult?.repetitions ? (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>

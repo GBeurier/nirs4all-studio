@@ -98,6 +98,10 @@ export interface ExecuteOptions {
   split_index?: number;
   use_cache?: boolean;
   bio_sample_column?: string;
+  /** Subset mode: 'all' processes all samples (default), 'visible' pre-samples for faster processing */
+  subset_mode?: 'all' | 'visible';
+  /** Max samples to display in 'visible' subset mode (default 200) */
+  max_samples_displayed?: number;
 }
 
 /**
@@ -433,9 +437,19 @@ export interface ExecuteResponse {
   filter_info?: FilterInfo;
   repetitions?: RepetitionResult;
   metrics?: MetricsResult;
+  subset_info?: SubsetInfo;
   execution_trace: StepTrace[];
   step_errors: StepError[];
   is_raw_data?: boolean;
+}
+
+/**
+ * Information about subset mode when active
+ */
+export interface SubsetInfo {
+  subset_mode: 'all' | 'visible';
+  total_samples: number;
+  displayed_samples: number;
 }
 
 // ============= Operator Registry Types =============
@@ -555,6 +569,7 @@ export interface PlaygroundResult {
   filterInfo?: FilterInfo;
   repetitions?: RepetitionResult;
   metrics?: MetricsResult;
+  subsetInfo?: SubsetInfo;
   executionTimeMs: number;
   trace: StepTrace[];
   errors: StepError[];

@@ -75,6 +75,35 @@ export async function executePlayground(
 }
 
 /**
+ * Request model for executing a playground pipeline on a server-side dataset.
+ * Eliminates the data round-trip by sending only the dataset_id.
+ */
+export interface ExecuteDatasetRequest {
+  dataset_id: string;
+  steps: PlaygroundStep[];
+  sampling?: ExecuteRequest['sampling'];
+  options?: Record<string, unknown>;
+}
+
+/**
+ * Execute a playground pipeline using a server-side dataset reference.
+ *
+ * Instead of uploading the full spectra matrix, sends only the dataset_id.
+ * The backend loads the dataset server-side, eliminating the data round-trip.
+ * Returns the same response format as executePlayground().
+ *
+ * @param request - Request with dataset_id, steps, and options
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Execution response with processed data and metadata
+ */
+export async function executeDatasetPlayground(
+  request: ExecuteDatasetRequest,
+  signal?: AbortSignal
+): Promise<ExecuteResponse> {
+  return api.post<ExecuteResponse>('/playground/execute-dataset', request, { signal });
+}
+
+/**
  * Get available operators from the backend
  *
  * @returns All preprocessing and splitting operators with metadata
@@ -155,6 +184,8 @@ export function buildExecuteRequest(params: {
   splitIndex?: number;
   useCache?: boolean;
   bioSampleColumn?: string;
+  subsetMode?: 'all' | 'visible';
+  maxSamplesDisplayed?: number;
 }): ExecuteRequest {
   return {
     data: {
@@ -179,6 +210,8 @@ export function buildExecuteRequest(params: {
       split_index: params.splitIndex,
       use_cache: params.useCache ?? true,
       bio_sample_column: params.bioSampleColumn,
+      subset_mode: params.subsetMode ?? 'all',
+      max_samples_displayed: params.maxSamplesDisplayed,
     },
   };
 }

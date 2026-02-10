@@ -12,6 +12,7 @@ Phase 6: Workspace management and AutoML search.
 import traceback
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi import HTTPException
@@ -41,6 +42,7 @@ from api.synthesis import router as synthesis_router
 from api.transfer import router as transfer_router
 from api.shap import router as shap_router
 from api.aggregated_predictions import router as aggregated_predictions_router
+from api.projects import router as projects_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -99,6 +101,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GZip compression for responses >= 1KB (OPT-9a)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Include API routes
 app.include_router(workspace_router, prefix="/api", tags=["workspace"])
 app.include_router(datasets_router, prefix="/api", tags=["datasets"])
@@ -119,6 +124,7 @@ app.include_router(updates_router, prefix="/api", tags=["updates"])
 app.include_router(synthesis_router, prefix="/api", tags=["synthesis"])
 app.include_router(transfer_router, prefix="/api", tags=["transfer"])
 app.include_router(shap_router, prefix="/api", tags=["shap"])
+app.include_router(projects_router, prefix="/api", tags=["projects"])
 
 
 # ============= Startup Events =============

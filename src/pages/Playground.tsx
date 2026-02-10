@@ -91,12 +91,15 @@ export default function Playground() {
     computeUmap,
     setComputeUmap,
     isUmapLoading,
+    subsetMode,
+    setSubsetMode,
     chartLoadingStates,
   } = usePlaygroundPipeline(rawData, {
     enableBackend: true,
     sampling: {
       method: 'all',
     },
+    datasetId: currentDatasetInfo?.datasetId,
   });
 
   // Handle add operator from definition
@@ -463,6 +466,8 @@ export default function Playground() {
                     setComputeUmap={setComputeUmap}
                     isUmapLoading={isUmapLoading}
                     chartLoadingStates={chartLoadingStates}
+                    subsetMode={subsetMode}
+                    setSubsetMode={setSubsetMode}
                     // Export handlers
                     exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
                     exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
@@ -529,6 +534,8 @@ interface PlaygroundContentProps {
   setComputeUmap: (compute: boolean) => void;
   isUmapLoading: boolean;
   chartLoadingStates: ReturnType<typeof usePlaygroundPipeline>['chartLoadingStates'];
+  subsetMode: 'all' | 'visible';
+  setSubsetMode: (mode: 'all' | 'visible') => void;
   exportToPipelineEditor?: () => void;
   exportPipelineJson?: () => void;
   exportDataCsv?: () => void;
@@ -585,6 +592,8 @@ function PlaygroundContent({
   setComputeUmap,
   isUmapLoading,
   chartLoadingStates,
+  subsetMode,
+  setSubsetMode,
   exportToPipelineEditor,
   exportPipelineJson,
   exportDataCsv,
@@ -719,6 +728,8 @@ function PlaygroundContent({
         computeUmap={computeUmap}
         onComputeUmapChange={setComputeUmap}
         isUmapLoading={isUmapLoading}
+        subsetMode={subsetMode}
+        onSubsetModeChange={setSubsetMode}
         // Phase 6 props
         renderMode={renderMode}
         onRenderModeChange={setRenderMode}

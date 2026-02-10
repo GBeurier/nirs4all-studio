@@ -73,7 +73,7 @@ import { SelectionModeToggle } from './SelectionTools';
 import { ReferenceModeControls } from './ReferenceModeControls';
 import { useSelection } from '@/context/SelectionContext';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
-import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo } from '@/types/playground';
+import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo, SubsetInfo } from '@/types/playground';
 import {
   type GlobalColorConfig,
   type GlobalColorMode,
@@ -197,6 +197,14 @@ export interface CanvasToolbarProps {
   onResetPlayground?: () => void;
   /** Whether there's state to reset */
   hasStateToReset?: boolean;
+
+  // OPT-3: Subset mode
+  /** Current subset mode ('all' or 'visible') */
+  subsetMode?: 'all' | 'visible';
+  /** Callback when subset mode changes */
+  onSubsetModeChange?: (mode: 'all' | 'visible') => void;
+  /** Subset info from the backend response */
+  subsetInfo?: SubsetInfo;
 }
 
 // ============= Sub-Components =============
@@ -463,6 +471,10 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   // Phase 8: Reset functionality
   onResetPlayground,
   hasStateToReset = false,
+  // OPT-3: Subset mode
+  subsetMode = 'all',
+  onSubsetModeChange,
+  subsetInfo,
 }: CanvasToolbarProps) {
   // Get selection context for tool mode
   const selectionCtx = useSelection();
@@ -618,6 +630,52 @@ export const CanvasToolbar = memo(function CanvasToolbar({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+              )}
+            </>
+          )}
+
+          {/* OPT-3: Subset mode toggle */}
+          {onSubsetModeChange && totalSamples > 200 && (
+            <>
+              <Separator orientation="vertical" className="h-4 mx-1" />
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={subsetMode === 'visible' ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className={cn(
+                        'h-5 text-[10px] gap-1 px-1.5',
+                        subsetMode === 'visible' && 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                      )}
+                      onMouseDown={onInteractionStart}
+                      onClick={() => onSubsetModeChange(subsetMode === 'all' ? 'visible' : 'all')}
+                    >
+                      <Filter className="w-3 h-3" />
+                      {subsetMode === 'visible' ? 'Subset' : 'All'}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    {subsetMode === 'visible' ? (
+                      <div className="text-xs">
+                        <p className="font-medium">Subset mode (faster)</p>
+                        <p>Processing {subsetInfo?.displayed_samples ?? 200} of {subsetInfo?.total_samples ?? totalSamples} samples.</p>
+                        <p className="text-muted-foreground mt-1">Click to process all samples. Fold distributions may not be representative in subset mode.</p>
+                      </div>
+                    ) : (
+                      <div className="text-xs">
+                        <p className="font-medium">All samples mode</p>
+                        <p>Processing all {totalSamples} samples.</p>
+                        <p className="text-muted-foreground mt-1">Click to process a representative subset for faster rendering.</p>
+                      </div>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {subsetMode === 'visible' && subsetInfo && (
+                <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+                  {subsetInfo.displayed_samples}/{subsetInfo.total_samples}
+                </Badge>
               )}
             </>
           )}

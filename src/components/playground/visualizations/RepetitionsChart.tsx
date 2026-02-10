@@ -251,7 +251,7 @@ export function RepetitionsChart({
   const [initialZoomSet, setInitialZoomSet] = useState(false);
 
   // Renderer type (Recharts/WebGL)
-  const [rendererType, setRendererType] = useState<'recharts' | 'webgl'>('recharts');
+  const [rendererType, setRendererType] = useState<'recharts' | 'webgl'>('webgl');
 
   // SelectionContext integration
   const selectionCtx = useSelectionContext ? useSelection() : null;

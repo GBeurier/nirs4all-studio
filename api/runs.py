@@ -205,6 +205,8 @@ class Run(BaseModel):
     total_pipelines: Optional[int] = None
     completed_pipelines: Optional[int] = None
     workspace_path: Optional[str] = None  # For persistence
+    store_run_id: Optional[str] = None  # DuckDB WorkspaceStore run UUID
+    project_id: Optional[str] = None  # Project grouping
 
 
 class InlinePipeline(BaseModel):
@@ -225,6 +227,7 @@ class ExperimentConfig(BaseModel):
     shuffle: bool = True
     random_state: Optional[int] = None
     inline_pipeline: Optional[InlinePipeline] = None  # Unsaved pipeline from editor
+    project_id: Optional[str] = None  # Project grouping
 
 
 class QuickRunRequest(BaseModel):
@@ -657,6 +660,7 @@ def _create_mock_run(config: ExperimentConfig) -> Run:
         total_pipelines=total_pipelines,
         completed_pipelines=0,
         workspace_path=workspace.path if workspace else None,
+        project_id=config.project_id,
     )
 
     return run
@@ -760,6 +764,27 @@ async def _execute_run(run_id: str):
                     pipeline.model_path = result.get("model_path")
                     pipeline.logs = result.get("logs", pipeline.logs or [])
                     pipeline.tested_variants = result.get("variants_tested", 1)
+
+                    # Capture store_run_id from the first pipeline that returns one
+                    result_store_run_id = result.get("store_run_id")
+                    if result_store_run_id and not run.store_run_id:
+                        run.store_run_id = result_store_run_id
+
+                        # Set project_id on the store run if specified
+                        if run.project_id and run.workspace_path:
+                            try:
+                                from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+                                if STORE_AVAILABLE:
+                                    adapter = StoreAdapter(Path(run.workspace_path))
+                                    try:
+                                        adapter.store._fetch_pl(
+                                            "UPDATE runs SET project_id = $2 WHERE run_id = $1",
+                                            [result_store_run_id, run.project_id],
+                                        )
+                                    finally:
+                                        adapter.close()
+                            except Exception as e:
+                                print(f"Failed to set project_id on store run: {e}")
 
                     # Log summary based on variants tested
                     variants_info = f" ({pipeline.tested_variants} variants tested)" if pipeline.tested_variants > 1 else ""
@@ -1198,6 +1223,16 @@ async def _execute_pipeline_training(
             except Exception:
                 pass
 
+        # Extract store_run_id from the orchestrator
+        store_run_id = None
+        try:
+            if hasattr(result, '_runner') and result._runner is not None:
+                orchestrator = getattr(result._runner, 'orchestrator', None)
+                if orchestrator is not None:
+                    store_run_id = getattr(orchestrator, 'last_run_id', None)
+        except Exception:
+            pass
+
         # Export model bundle (.n4a) using RunResult.export()
         model_path = None
         if workspace_path:
@@ -1218,6 +1253,7 @@ async def _execute_pipeline_training(
             "model_path": model_path,
             "logs": thread_logs,
             "variants_tested": num_predictions,
+            "store_run_id": store_run_id,
         }
 
     # Run the pipeline in a thread pool
@@ -1545,6 +1581,7 @@ def _create_run_from_config(
         total_pipelines=total_pipeline_runs,
         completed_pipelines=0,
         workspace_path=workspace_path,
+        project_id=config.project_id,
     )
 
     return run

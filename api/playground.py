@@ -59,6 +59,7 @@ from .shared.metrics_computer import (
     ALL_METRICS,
     CHEMOMETRIC_METRICS,
 )
+from .shared.decimation import decimate_wavelengths
 
 router = APIRouter(prefix="/playground", tags=["playground"])
 
@@ -98,6 +99,23 @@ class ExecuteRequest(BaseModel):
     """Request model for executing playground pipeline."""
 
     data: PlaygroundData = Field(..., description="Spectral data to process")
+    steps: List[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
+    sampling: Optional[SamplingOptions] = Field(None, description="Sampling options for large datasets")
+    options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional options: compute_pca, compute_statistics, max_wavelengths_returned, split_index"
+    )
+
+
+class ExecuteDatasetRequest(BaseModel):
+    """Request model for executing playground pipeline on a workspace dataset.
+
+    Instead of sending the full spectral data matrix, the client sends only
+    a dataset_id. The backend loads the dataset server-side, eliminating the
+    data round-trip (Backend → Frontend → Backend).
+    """
+
+    dataset_id: str = Field(..., description="Workspace dataset identifier")
     steps: List[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
     sampling: Optional[SamplingOptions] = Field(None, description="Sampling options for large datasets")
     options: Dict[str, Any] = Field(
@@ -159,6 +177,7 @@ class ExecuteResponse(BaseModel):
     filter_info: Optional[Dict[str, Any]] = Field(None, description="Filter results if filters applied")
     repetitions: Optional[Dict[str, Any]] = Field(None, description="Repetition analysis if detected or configured")
     metrics: Optional[Dict[str, Any]] = Field(None, description="Spectral metrics if computed (Phase 5)")
+    subset_info: Optional[Dict[str, Any]] = Field(None, description="Subset mode info: subset_mode, total_samples, displayed_samples")
     execution_trace: List[StepTrace] = Field(default_factory=list, description="Per-step execution info")
     step_errors: List[Dict[str, Any]] = Field(default_factory=list, description="Any step-level errors")
     is_raw_data: bool = Field(default=False, description="True if no operators were applied")
@@ -196,15 +215,22 @@ class PlaygroundExecutor:
         data: PlaygroundData,
         steps: List[PlaygroundStep],
         sampling: Optional[SamplingOptions] = None,
-        options: Optional[Dict[str, Any]] = None
+        options: Optional[Dict[str, Any]] = None,
+        *,
+        X_np: Optional[np.ndarray] = None,
+        y_np: Optional[np.ndarray] = None,
+        wavelengths_np: Optional[List[float]] = None,
     ) -> ExecuteResponse:
         """Execute pipeline on data.
 
         Args:
-            data: Input spectral data
+            data: Input spectral data (used when X_np is not provided)
             steps: Pipeline steps to execute
             sampling: Sampling options for large datasets
             options: Additional execution options
+            X_np: Pre-converted numpy X array (avoids list→numpy conversion)
+            y_np: Pre-converted numpy y array (avoids list→numpy conversion)
+            wavelengths_np: Pre-extracted wavelength list (avoids re-extraction)
 
         Returns:
             ExecuteResponse with results and traces
@@ -212,17 +238,82 @@ class PlaygroundExecutor:
         start_time = time.perf_counter()
         options = options or {}
 
-        # Convert input to numpy arrays
-        X_original = np.array(data.x, dtype=np.float64)
-        y = np.array(data.y, dtype=np.float64) if data.y else None
-        wavelengths = data.wavelengths or list(range(X_original.shape[1]))
+        # Use pre-converted numpy arrays if provided (fast path from execute-dataset)
+        if X_np is not None:
+            X_original = X_np if X_np.dtype == np.float64 else X_np.astype(np.float64)
+            y = y_np.astype(np.float64) if y_np is not None else None
+            wavelengths = wavelengths_np or list(range(X_original.shape[1]))
+        else:
+            # Convert input from Python lists to numpy arrays (slow path)
+            X_original = np.array(data.x, dtype=np.float64)
+            y = np.array(data.y, dtype=np.float64) if data.y else None
+            wavelengths = data.wavelengths or list(range(X_original.shape[1]))
 
         # Convert metadata to numpy arrays if provided
         metadata = None
         if data.metadata:
             metadata = {k: np.array(v) for k, v in data.metadata.items()}
 
-        # Apply sampling if needed
+        # Subset mode: when 'visible', select a representative subset BEFORE processing
+        subset_mode = options.get("subset_mode", "all")
+        subset_info = None
+        total_samples = X_original.shape[0]
+
+        if subset_mode == "visible":
+            max_displayed = options.get("max_samples_displayed", 200)
+            n_select = min(max_displayed, total_samples)
+
+            if n_select < total_samples:
+                # Use stratified sampling if Y is available for representative subset
+                rng = np.random.RandomState(42)
+                if y is not None:
+                    try:
+                        from sklearn.model_selection import StratifiedShuffleSplit
+                        n_unique = len(np.unique(y))
+                        max_bins = min(5, n_unique, n_select // 2)
+                        if max_bins >= 2:
+                            y_binned = np.digitize(y, np.percentile(y, np.linspace(0, 100, max_bins + 1)[1:-1]))
+                            bin_counts = np.bincount(y_binned)
+                            if np.all(bin_counts >= 2):
+                                sss = StratifiedShuffleSplit(n_splits=1, test_size=n_select / total_samples, random_state=42)
+                                _, subset_indices = next(sss.split(X_original, y_binned))
+                            else:
+                                subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+                        else:
+                            subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+                    except Exception:
+                        subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+                else:
+                    subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+
+                # Apply subset to the original data before any processing
+                X_original = X_original[subset_indices]
+                if y is not None:
+                    y = y[subset_indices]
+                if metadata:
+                    metadata = {k: v[subset_indices] for k, v in metadata.items()}
+                if data.sample_ids:
+                    data = PlaygroundData(
+                        x=[data.x[i] for i in subset_indices],
+                        y=[data.y[i] for i in subset_indices] if data.y else None,
+                        wavelengths=data.wavelengths,
+                        sample_ids=[data.sample_ids[i] for i in subset_indices],
+                        metadata={k: [v[i] for i in subset_indices] for k, v in data.metadata.items()} if data.metadata else None,
+                    )
+
+                subset_info = {
+                    "subset_mode": "visible",
+                    "total_samples": total_samples,
+                    "displayed_samples": n_select,
+                }
+            else:
+                subset_info = {
+                    "subset_mode": "visible",
+                    "total_samples": total_samples,
+                    "displayed_samples": total_samples,
+                }
+
+        # Apply sampling if needed (post-subset sampling, usually 'all' when subset_mode is active)
         sample_indices = self._apply_sampling(X_original, y, sampling)
         X_sampled = X_original[sample_indices]
         y_sampled = y[sample_indices] if y is not None else None
@@ -388,14 +479,17 @@ class PlaygroundExecutor:
             except Exception as e:
                 metrics_result = {"error": str(e)}
 
-        # Downsample wavelengths if requested
+        # Downsample wavelengths for visualization using LTTB.
+        # Only decimate when explicitly requested via max_wavelengths_returned > 0.
         max_wavelengths = options.get("max_wavelengths_returned")
         wavelengths_out = wavelengths
         X_sampled_out = X_sampled
         X_processed_out = X_processed
 
-        if max_wavelengths and len(wavelengths) > max_wavelengths:
-            indices = np.linspace(0, len(wavelengths) - 1, max_wavelengths, dtype=int)
+        if max_wavelengths and max_wavelengths > 0 and len(wavelengths) > max_wavelengths:
+            # Use LTTB on the processed mean spectrum for feature-preserving decimation
+            wl_array = np.asarray(wavelengths, dtype=np.float64)
+            indices = decimate_wavelengths(wl_array, X_processed, max_wavelengths)
             wavelengths_out = [wavelengths[i] for i in indices]
             X_sampled_out = X_sampled[:, indices]
             X_processed_out = X_processed[:, indices]
@@ -425,6 +519,7 @@ class PlaygroundExecutor:
             filter_info=filter_info,
             repetitions=repetition_result,
             metrics=metrics_result,
+            subset_info=subset_info,
             execution_trace=execution_trace,
             step_errors=step_errors,
             is_raw_data=is_raw_data
@@ -1181,6 +1276,20 @@ def _compute_cache_key(data: PlaygroundData, steps: List[PlaygroundStep], option
     return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
 
+def _compute_dataset_cache_key(dataset_id: str, steps: List[PlaygroundStep], options: Dict[str, Any]) -> str:
+    """Compute cache key for a dataset-ref request.
+
+    Uses dataset_id directly instead of fingerprinting data arrays,
+    avoiding the need to iterate over numpy arrays.
+    """
+    key_data = {
+        "dataset_id": dataset_id,
+        "steps": [(s.id, s.name, s.enabled, json.dumps(s.params, sort_keys=True)) for s in steps],
+        "options": json.dumps(options, sort_keys=True),
+    }
+    return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
+
+
 def _get_cached(cache_key: str) -> Optional[ExecuteResponse]:
     """Get cached result if valid."""
     if cache_key in _cache:
@@ -1303,6 +1412,137 @@ async def execute_pipeline(request: ExecuteRequest):
             steps=request.steps,
             sampling=request.sampling,
             options=request.options
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipeline execution failed: {str(e)}"
+        )
+
+    # Cache result
+    if use_cache and cache_key:
+        _set_cached(cache_key, result)
+
+    return result
+
+
+@router.post("/execute-dataset", response_model=ExecuteResponse, response_class=ORJSONResponse)
+async def execute_dataset_pipeline(request: ExecuteDatasetRequest):
+    """Execute a playground pipeline on a workspace dataset by reference.
+
+    Instead of receiving the full spectral data matrix from the client,
+    this endpoint loads the dataset server-side using its workspace ID.
+    This eliminates the data round-trip (Backend → Frontend → Backend)
+    that occurs with the regular /execute endpoint.
+
+    The response format is identical to POST /playground/execute.
+
+    Args:
+        request: ExecuteDatasetRequest with dataset_id, steps, and options
+
+    Returns:
+        ExecuteResponse with processed data and visualization info
+    """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available. Install it in Settings > Dependencies."
+        )
+
+    if len(request.steps) > MAX_STEPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many pipeline steps: {len(request.steps)}. Maximum allowed: {MAX_STEPS}."
+        )
+
+    # Load dataset server-side
+    from .spectra import _load_dataset
+
+    dataset = _load_dataset(request.dataset_id)
+    if not dataset:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dataset '{request.dataset_id}' not found or could not be loaded"
+        )
+
+    # Extract X, y, wavelengths from SpectroDataset as numpy arrays (no .tolist() conversion)
+    try:
+        X = dataset.x({"partition": "train"}, layout="2d")
+        if isinstance(X, list):
+            X = X[0]
+
+        y_array = None
+        try:
+            y_raw = dataset.y({"partition": "train"})
+            if y_raw is not None and len(y_raw) > 0:
+                y_array = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+        except Exception:
+            pass
+
+        try:
+            headers = dataset.headers(0)
+            if headers is not None and len(headers) > 0:
+                if len(headers) == 1 and isinstance(headers[0], (list, tuple, np.ndarray)):
+                    headers = list(headers[0])
+                wavelengths = [float(h) for h in headers]
+            else:
+                wavelengths = list(range(X.shape[1]))
+        except Exception:
+            wavelengths = list(range(X.shape[1]))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract data from dataset '{request.dataset_id}': {str(e)}"
+        )
+
+    # Validate size limits
+    n_samples, n_features = X.shape
+
+    if n_samples > MAX_SAMPLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many samples: {n_samples}. Maximum allowed: {MAX_SAMPLES}. "
+                   f"Use sampling options to reduce dataset size."
+        )
+
+    if n_features > MAX_FEATURES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many features: {n_features}. Maximum allowed: {MAX_FEATURES}. "
+                   f"Consider resampling or cropping wavelengths."
+        )
+
+    # Build a minimal PlaygroundData for cache key and sample_ids access
+    # IMPORTANT: We do NOT call X.tolist() — numpy arrays are passed directly
+    # to the executor via the X_np fast path.
+    data = PlaygroundData(
+        x=[],  # Empty — not used, numpy passed directly
+        y=None,
+        wavelengths=wavelengths,
+    )
+
+    # Check cache using a fast fingerprint (not requiring .tolist())
+    use_cache = request.options.get("use_cache", True)
+    cache_key = None
+
+    if use_cache:
+        cache_key = _compute_dataset_cache_key(request.dataset_id, request.steps, request.options)
+        cached = _get_cached(cache_key)
+        if cached:
+            return cached
+
+    # Execute pipeline — pass numpy arrays directly (no list conversion)
+    executor = PlaygroundExecutor(verbose=0)
+
+    try:
+        result = executor.execute(
+            data=data,
+            steps=request.steps,
+            sampling=request.sampling,
+            options=request.options,
+            X_np=X,
+            y_np=y_array,
+            wavelengths_np=wavelengths,
         )
     except Exception as e:
         raise HTTPException(

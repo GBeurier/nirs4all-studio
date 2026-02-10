@@ -16,6 +16,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -84,7 +85,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [wsConnections, setWsConnections] = useState<Map<string, WebSocket>>(new Map());
+  const wsConnectionsRef = useRef<Map<string, WebSocket>>(new Map());
 
   // Fetch active runs periodically
   const { data: activeRunsData, refetch: refreshActiveRuns } = useQuery({
@@ -95,9 +96,9 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   });
 
   // Connect WebSocket for a specific run
-  const connectToRun = useCallback((runId: string, runName: string, status: RunStatus) => {
+  const connectToRun = useCallback((runId: string, _runName: string, status: RunStatus) => {
     // Already connected
-    if (wsConnections.has(runId)) return;
+    if (wsConnectionsRef.current.has(runId)) return;
 
     // Only connect for running/queued runs
     if (status !== "running" && status !== "queued") return;
@@ -162,39 +163,27 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       };
 
       ws.onclose = () => {
-        setWsConnections((prev) => {
-          const updated = new Map(prev);
-          updated.delete(runId);
-          return updated;
-        });
+        wsConnectionsRef.current.delete(runId);
       };
 
       ws.onerror = () => {
         ws.close();
       };
 
-      setWsConnections((prev) => {
-        const updated = new Map(prev);
-        updated.set(runId, ws);
-        return updated;
-      });
+      wsConnectionsRef.current.set(runId, ws);
     } catch {
       // WebSocket not available
     }
-  }, [wsConnections]);
+  }, []);
 
   // Cleanup WebSocket for completed/failed runs
   const disconnectFromRun = useCallback((runId: string) => {
-    const ws = wsConnections.get(runId);
+    const ws = wsConnectionsRef.current.get(runId);
     if (ws) {
       ws.close();
-      setWsConnections((prev) => {
-        const updated = new Map(prev);
-        updated.delete(runId);
-        return updated;
-      });
+      wsConnectionsRef.current.delete(runId);
     }
-  }, [wsConnections]);
+  }, []);
 
   // Sync active runs with our progress map
   useEffect(() => {
@@ -267,9 +256,9 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      wsConnections.forEach((ws) => ws.close());
+      wsConnectionsRef.current.forEach((ws) => ws.close());
     };
-  }, [wsConnections]);
+  }, []);
 
   // Convert map to array, sorted by update time
   const activeRuns = Array.from(runProgressMap.values())

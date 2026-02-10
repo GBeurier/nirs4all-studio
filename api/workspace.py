@@ -1742,6 +1742,34 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
         )
 
 
+@router.get("/workspaces/{workspace_id}/runs/enriched")
+async def get_enriched_workspace_runs(workspace_id: str, project_id: Optional[str] = None, limit: int = 50, offset: int = 0):
+    """Get enriched runs with per-dataset scores, top chains, and stats."""
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+        if not STORE_AVAILABLE:
+            return {"runs": [], "total": 0}
+
+        workspace_path = Path(ws.path)
+        store_path = workspace_path / "store.duckdb"
+        if not store_path.exists():
+            return {"runs": [], "total": 0}
+
+        adapter = StoreAdapter(workspace_path)
+        try:
+            return adapter.get_enriched_runs(limit=limit, offset=offset, project_id=project_id)
+        finally:
+            adapter.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/workspaces/{workspace_id}/runs/{run_id}")
 async def get_workspace_run_detail(workspace_id: str, run_id: str):
     """Get detailed information about a specific run.
@@ -1816,6 +1844,30 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
         raise HTTPException(
             status_code=500, detail=f"Failed to delete run: {str(e)}"
         )
+
+
+@router.get("/workspaces/{workspace_id}/runs/{run_id}/datasets/{dataset_name}/scores")
+async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: str, n_bins: int = 20):
+    """Get score distribution histogram data for a run+dataset."""
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+        if not STORE_AVAILABLE:
+            return {"dataset_name": dataset_name, "metric": None, "partitions": {}}
+
+        workspace_path = Path(ws.path)
+        adapter = StoreAdapter(workspace_path)
+        try:
+            return adapter.get_score_distribution(run_id, dataset_name, n_bins=n_bins)
+        finally:
+            adapter.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/workspaces/{workspace_id}/results")

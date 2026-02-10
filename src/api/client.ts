@@ -312,6 +312,10 @@ export async function removeDatasetFromGroup(
   return api.delete(`/workspace/groups/${groupId}/datasets/${datasetId}`);
 }
 
+// Enriched Runs & Projects types
+import type { EnrichedRunsResponse, ScoreDistribution } from "@/types/enriched-runs";
+import type { ProjectsResponse } from "@/types/projects";
+
 // Dataset API - Extended
 import type {
   Dataset,
@@ -2172,5 +2176,40 @@ export async function getPredictionArrays(
   predictionId: string
 ): Promise<PredictionArraysResponse> {
   return api.get(`/aggregated-predictions/${predictionId}/arrays`);
+}
+
+// ============================================================================
+// Enriched Runs
+// ============================================================================
+
+export async function getEnrichedRuns(workspaceId: string, projectId?: string): Promise<EnrichedRunsResponse> {
+  const params = new URLSearchParams();
+  if (projectId) params.set("project_id", projectId);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return api.get(`/workspaces/${workspaceId}/runs/enriched${query}`);
+}
+
+export async function getScoreDistribution(workspaceId: string, runId: string, datasetName: string): Promise<ScoreDistribution> {
+  return api.get(`/workspaces/${workspaceId}/runs/${runId}/datasets/${encodeURIComponent(datasetName)}/scores`);
+}
+
+// ============================================================================
+// Projects
+// ============================================================================
+
+export async function listProjects(): Promise<ProjectsResponse> {
+  return api.get("/projects");
+}
+
+export async function createProject(data: { name: string; description?: string; color?: string }): Promise<{ project_id: string; name: string }> {
+  return api.post("/projects", data);
+}
+
+export async function updateProject(projectId: string, data: { name?: string; description?: string; color?: string }): Promise<{ success: boolean }> {
+  return api.put(`/projects/${projectId}`, data);
+}
+
+export async function deleteProject(projectId: string): Promise<{ success: boolean }> {
+  return api.delete(`/projects/${projectId}`);
 }
 

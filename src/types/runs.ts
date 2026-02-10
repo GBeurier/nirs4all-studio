@@ -161,6 +161,7 @@ export interface Run {
 
   // Discovery metadata
   manifest_path?: string;
+  store_run_id?: string;
   run_dir?: string;
   results_count?: number;
 }

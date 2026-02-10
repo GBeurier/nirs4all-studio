@@ -71,6 +71,8 @@ export interface UsePlaygroundPipelineOptions {
   executeOptions?: ExecuteOptions;
   /** Whether to enable backend execution */
   enableBackend?: boolean;
+  /** Workspace dataset ID — when set, uses server-side dataset loading to avoid data round-trip */
+  datasetId?: string | null;
 }
 
 /**
@@ -120,6 +122,10 @@ export interface UsePlaygroundPipelineResult {
   setComputeUmap: (enabled: boolean) => void;
   isUmapLoading: boolean;
 
+  // Subset mode (OPT-3: process only a subset of samples for faster rendering)
+  subsetMode: 'all' | 'visible';
+  setSubsetMode: (mode: 'all' | 'visible') => void;
+
   // Granular chart loading states
   chartLoadingStates: PerChartLoadingState;
 }
@@ -135,7 +141,7 @@ export function usePlaygroundPipeline(
   rawData: SpectralData | null,
   options: UsePlaygroundPipelineOptions = {}
 ): UsePlaygroundPipelineResult {
-  const { sampling, executeOptions: externalExecuteOptions, enableBackend = true } = options;
+  const { sampling, executeOptions: externalExecuteOptions, enableBackend = true, datasetId } = options;
 
   // Pipeline state - initialize from sessionStorage
   const [operators, setOperatorsRaw] = useState<UnifiedOperator[]>(() => loadPersistedState());
@@ -144,6 +150,9 @@ export function usePlaygroundPipeline(
 
   // UMAP computation state
   const [computeUmap, setComputeUmap] = useState(externalExecuteOptions?.compute_umap ?? false);
+
+  // Subset mode — OPT-3: process only a visible subset of samples for faster rendering
+  const [subsetMode, setSubsetMode] = useState<'all' | 'visible'>('all');
 
   // Wrapper to persist state on every change
   const setOperators = useCallback((newOperators: UnifiedOperator[]) => {
@@ -198,7 +207,9 @@ export function usePlaygroundPipeline(
   const executeOptions: ExecuteOptions = useMemo(() => ({
     ...externalExecuteOptions,
     compute_umap: computeUmap,
-  }), [externalExecuteOptions, computeUmap]);
+    // OPT-3: subset mode for faster processing on large datasets
+    subset_mode: subsetMode,
+  }), [externalExecuteOptions, computeUmap, subsetMode]);
 
   // Backend execution (uses effective operators for step comparison)
   const {
@@ -212,6 +223,7 @@ export function usePlaygroundPipeline(
     enabled: enableBackend && rawData !== null,
     sampling,
     executeOptions,
+    datasetId,
   });
 
   // Change detection for granular chart loading states
@@ -418,6 +430,11 @@ export function usePlaygroundPipeline(
     computeUmap,
     setComputeUmap,
     isUmapLoading,
+    // Full resolution mode
+
+    // Subset mode
+    subsetMode,
+    setSubsetMode,
     // Granular chart loading states
     chartLoadingStates,
   };

@@ -7,7 +7,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useEffect, useMemo, useCallback } from 'react';
-import { executePlayground, buildExecuteRequest } from '@/api/playground';
+import { executePlayground, executeDatasetPlayground, buildExecuteRequest } from '@/api/playground';
 import {
   useDebouncedValue,
   DEBOUNCE_DELAYS,
@@ -38,6 +38,8 @@ export interface UsePlaygroundQueryOptions {
   executeOptions?: ExecuteOptions;
   /** Debounce delay in ms (default: 150) */
   debounceMs?: number;
+  /** Workspace dataset ID — when set, uses server-side dataset loading to avoid data round-trip */
+  datasetId?: string | null;
   /** Callback when execution completes */
   onSuccess?: (result: PlaygroundResult) => void;
   /** Callback when execution fails */
@@ -78,6 +80,7 @@ function transformResponse(response: ExecuteResponse): PlaygroundResult {
     folds: response.folds,
     filterInfo: response.filter_info,
     repetitions: response.repetitions,
+    subsetInfo: response.subset_info,
     executionTimeMs: response.execution_time_ms,
     trace: response.execution_trace,
     errors: response.step_errors,
@@ -109,6 +112,7 @@ export function usePlaygroundQuery(
     sampling: samplingOpts,
     executeOptions,
     debounceMs = DEBOUNCE_DELAYS.STRUCTURE_CHANGE,
+    datasetId,
     onSuccess,
     onError,
   } = options;
@@ -148,17 +152,25 @@ export function usePlaygroundQuery(
   }
 
   // Build query key from debounced values
+  // Include datasetId so TanStack Query properly caches per-dataset
   const queryKey = useMemo(() => {
     if (!data) return ['playground', 'execute', null] as const;
 
-    return createPlaygroundQueryKey(
+    const baseKey = createPlaygroundQueryKey(
       data.spectra,
       data.y,
       stableOperatorsRef.current,
       sampling,
       executeOptions
     );
-  }, [data, debouncedPipelineHash, sampling, executeOptions]);
+
+    // Add datasetId to distinguish dataset-ref vs raw-data queries
+    if (datasetId) {
+      return [...baseKey, 'dataset', datasetId] as const;
+    }
+
+    return baseKey;
+  }, [data, debouncedPipelineHash, sampling, executeOptions, datasetId]);
 
   // Query function with abort support
   const queryFn = useCallback(async (): Promise<PlaygroundResult> => {
@@ -178,41 +190,69 @@ export function usePlaygroundQuery(
 
     const steps = unifiedToPlaygroundSteps(stableOperatorsRef.current);
 
-    // Convert metadata from array of objects to record of arrays if present
-    let metadata: Record<string, unknown[]> | undefined;
-    if (data.metadata && data.metadata.length > 0) {
-      metadata = {};
-      // Get all keys from first metadata object
-      const keys = Object.keys(data.metadata[0]);
-      for (const key of keys) {
-        metadata[key] = data.metadata.map(m => m[key]);
-      }
-    }
-
-    // Check if metadata has bio_sample column for repetition detection
-    const hasBioSample = metadata && 'bio_sample' in metadata;
-
-    const request = buildExecuteRequest({
-      spectra: data.spectra,
-      wavelengths: data.wavelengths,
-      y: data.y,
-      sampleIds: data.sampleIds,
-      metadata,
-      steps,
-      samplingMethod: sampling.method,
-      maxSamples: sampling.n_samples,
-      computePca: executeOptions?.compute_pca ?? true,
-      computeUmap: executeOptions?.compute_umap ?? false,
-      umapParams: executeOptions?.umap_params,
-      computeStatistics: executeOptions?.compute_statistics ?? true,
-      maxWavelengths: executeOptions?.max_wavelengths_returned,
-      splitIndex: executeOptions?.split_index,
-      useCache: executeOptions?.use_cache ?? true,
-      bioSampleColumn: hasBioSample ? 'bio_sample' : undefined,
-    });
-
     try {
-      const response = await executePlayground(request, controller.signal);
+      let response: ExecuteResponse;
+
+      // Use dataset-ref endpoint when a workspace datasetId is available.
+      // This avoids uploading the full spectra matrix back to the server.
+      if (datasetId) {
+        response = await executeDatasetPlayground(
+          {
+            dataset_id: datasetId,
+            steps,
+            sampling: sampling.method !== 'all'
+              ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
+              : undefined,
+            options: {
+              compute_pca: executeOptions?.compute_pca ?? true,
+              compute_umap: executeOptions?.compute_umap ?? false,
+              umap_params: executeOptions?.umap_params,
+              compute_statistics: executeOptions?.compute_statistics ?? true,
+              max_wavelengths_returned: executeOptions?.max_wavelengths_returned,
+              split_index: executeOptions?.split_index,
+              use_cache: executeOptions?.use_cache ?? true,
+              subset_mode: executeOptions?.subset_mode ?? 'all',
+              max_samples_displayed: executeOptions?.max_samples_displayed,
+            },
+          },
+          controller.signal
+        );
+      } else {
+        // Fallback: send full data (for uploads, demos, non-workspace data)
+        let metadata: Record<string, unknown[]> | undefined;
+        if (data.metadata && data.metadata.length > 0) {
+          metadata = {};
+          const keys = Object.keys(data.metadata[0]);
+          for (const key of keys) {
+            metadata[key] = data.metadata.map(m => m[key]);
+          }
+        }
+
+        const hasBioSample = metadata && 'bio_sample' in metadata;
+
+        const request = buildExecuteRequest({
+          spectra: data.spectra,
+          wavelengths: data.wavelengths,
+          y: data.y,
+          sampleIds: data.sampleIds,
+          metadata,
+          steps,
+          samplingMethod: sampling.method,
+          maxSamples: sampling.n_samples,
+          computePca: executeOptions?.compute_pca ?? true,
+          computeUmap: executeOptions?.compute_umap ?? false,
+          umapParams: executeOptions?.umap_params,
+          computeStatistics: executeOptions?.compute_statistics ?? true,
+          maxWavelengths: executeOptions?.max_wavelengths_returned,
+          splitIndex: executeOptions?.split_index,
+          useCache: executeOptions?.use_cache ?? true,
+          bioSampleColumn: hasBioSample ? 'bio_sample' : undefined,
+          subsetMode: executeOptions?.subset_mode ?? 'all',
+          maxSamplesDisplayed: executeOptions?.max_samples_displayed,
+        });
+
+        response = await executePlayground(request, controller.signal);
+      }
 
       // Check if still mounted before processing
       if (!isMountedRef.current) {
@@ -232,7 +272,7 @@ export function usePlaygroundQuery(
         abortControllerRef.current = null;
       }
     }
-  }, [data, debouncedPipelineHash, sampling, executeOptions]);
+  }, [data, datasetId, debouncedPipelineHash, sampling, executeOptions]);
 
   // Main query
   const query = useQuery({
