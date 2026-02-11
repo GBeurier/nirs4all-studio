@@ -1,35 +1,22 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Play,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
   RefreshCw,
-  CircleDashed,
-  Eye,
   ChevronDown,
   ChevronRight,
   Database,
-  Layers,
   Box,
-  Settings2,
   Search,
-  FolderOpen,
   ExternalLink,
-  ArrowUp,
-  ArrowDown,
-  Calendar,
   BarChart3,
   Download,
-  Trophy,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -38,27 +25,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { PipelineRun, runStatusConfig, RunStatus, Result, RunMetrics } from "@/types/runs";
-import { ResultDetailSheet } from "@/components/results/ResultDetailSheet";
-import { NoWorkspaceState, ErrorState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
+import { isBetterScore, formatScore, formatMetricName } from "@/lib/scores";
+import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import {
   getLinkedWorkspaces,
-  getN4AWorkspaceResults,
+  getWorkspaceResultsSummary,
 } from "@/api/client";
-import type {
-  LinkedWorkspace,
-} from "@/types/linked-workspaces";
-
-/**
- * A dataset with its associated pipeline results
- * This is the primary display unit on the Results page
- */
-interface DatasetWithResults {
-  dataset_name: string;
-  pipelines: PipelineRun[];
-  total_predictions: number;
-  created_at: string;
-}
+import type { DatasetTopChains } from "@/types/runs";
+import { TopScoreItem } from "@/components/runs/TopScoreItem";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -73,194 +47,43 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-const statusIcons = {
-  queued: Clock,
-  running: RefreshCw,
-  completed: CheckCircle2,
-  failed: AlertCircle,
-  paused: Clock,
-  partial: CircleDashed,
-};
-
-function mapResultToMetrics(result: Result): RunMetrics | undefined {
-  if (result.best_score == null) return undefined;
-  const metric = result.metric?.toLowerCase() || "";
-  if (metric.includes("rmse")) {
-    return { r2: 0, rmse: result.best_score };
-  }
-  if (metric.includes("r2")) {
-    return { r2: result.best_score, rmse: 0 };
-  }
-  return { r2: result.best_score, rmse: 0 };
-}
-
-/**
- * Transform workspace results into datasets with their pipelines.
- * Groups results by dataset - pipelines are directly under datasets.
- */
-function transformResults(results: Result[]): DatasetWithResults[] {
-  const resultsByDataset = results.reduce((acc, result) => {
-    const datasetName = result.dataset || "Unknown";
-    if (!acc[datasetName]) {
-      acc[datasetName] = [];
-    }
-    acc[datasetName].push(result);
-    return acc;
-  }, {} as Record<string, Result[]>);
-
-  return Object.entries(resultsByDataset).map(([datasetName, datasetResults]) => {
-    const sortedResults = [...datasetResults].sort((a, b) => {
-      return (a.pipeline_config || "").localeCompare(b.pipeline_config || "");
-    });
-
-    const firstResult = sortedResults[0];
-
-    const pipelines: PipelineRun[] = sortedResults.map((result) => {
-      const primaryModel = result.best_model || extractModelFromName(result.pipeline_config);
-      return {
-        id: result.id,
-        pipeline_id: result.pipeline_config_id,
-        pipeline_name: result.pipeline_config || result.pipeline_config_id,
-        model: primaryModel,
-        preprocessing: extractPreprocessingFromName(result.pipeline_config),
-        split_strategy: "CV",
-        status: "completed" as RunStatus,
-        progress: 100,
-        metrics: mapResultToMetrics(result),
-        score: result.best_score ?? null,
-        score_metric: result.metric ?? null,
-        val_score: result.val_score ?? result.best_score ?? null,
-        test_score: result.test_score ?? null,
-        has_refit: result.has_refit ?? false,
-        is_final_model: result.has_refit ?? false,
-        refit_model_id: result.refit_model_id,
-        started_at: result.created_at || undefined,
-      };
-    });
-
-    const totalPredictions = sortedResults.reduce(
-      (sum, r) => sum + (r.predictions_count || 0),
-      0
-    );
-
-    return {
-      dataset_name: datasetName,
-      pipelines,
-      total_predictions: totalPredictions,
-      created_at: firstResult?.created_at || new Date().toISOString(),
-    };
-  });
-}
-
-/**
- * Extract model name from pipeline name
- */
-function extractModelFromName(name: string | undefined): string {
-  if (!name) return "Unknown";
-  const modelPatterns = [
-    /\b(PLS|PLSRegression)\b/i,
-    /\b(RF|RandomForest)\b/i,
-    /\b(SVR|SVM)\b/i,
-    /\b(XGB|XGBoost)\b/i,
-    /\b(LGBM|LightGBM)\b/i,
-    /\b(CNN|CNN1D)\b/i,
-    /\b(MLP|NeuralNet)\b/i,
-    /\b(Ridge)\b/i,
-    /\b(Lasso)\b/i,
-    /\b(ElasticNet)\b/i,
-  ];
-
-  for (const pattern of modelPatterns) {
-    const match = name.match(pattern);
-    if (match) return match[1].toUpperCase();
-  }
-
-  return "Model";
-}
-
-/**
- * Extract preprocessing name from pipeline name
- */
-function extractPreprocessingFromName(name: string | undefined): string {
-  if (!name) return "None";
-  const prepPatterns = [
-    /\b(SNV)\b/i,
-    /\b(MSC)\b/i,
-    /\b(SG|SavitzkyGolay)\b/i,
-    /\b(Detrend)\b/i,
-    /\b(Normalize)\b/i,
-    /\b(StandardScaler)\b/i,
-    /\b(MinMaxScaler)\b/i,
-  ];
-
-  for (const pattern of prepPatterns) {
-    const match = name.match(pattern);
-    if (match) return match[1].toUpperCase();
-  }
-
-  return "None";
-}
-
-type PipelineSortField = "name" | "score" | "date";
-type SortOrder = "asc" | "desc";
-
 export default function Results() {
   const { t } = useTranslation();
-  const [datasets, setDatasets] = useState<DatasetWithResults[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeWorkspace, setActiveWorkspace] = useState<LinkedWorkspace | null>(null);
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
-  const [selectedPipeline, setSelectedPipeline] = useState<{pipeline: PipelineRun; datasetName: string} | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [pipelineSortField, setPipelineSortField] = useState<PipelineSortField>("score");
-  const [pipelineSortOrder, setPipelineSortOrder] = useState<SortOrder>("desc");
 
-  // Load workspace and results on mount
-  useEffect(() => {
-    loadData();
-  }, []);
+  // Fetch linked workspaces
+  const { data: workspacesData } = useQuery({
+    queryKey: ["linked-workspaces"],
+    queryFn: getLinkedWorkspaces,
+    staleTime: 30000,
+  });
 
-  const loadData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      // Get active workspace
-      const workspacesRes = await getLinkedWorkspaces();
-      const active = workspacesRes.workspaces.find((w) => w.is_active);
+  const activeWorkspace = workspacesData?.workspaces.find((w) => w.is_active) ?? null;
 
-      if (!active) {
-        setActiveWorkspace(null);
-        setDatasets([]);
-        setIsLoading(false);
-        return;
-      }
+  // Fetch results summary from DuckDB
+  const {
+    data: summaryData,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["results-summary", activeWorkspace?.id],
+    queryFn: () => getWorkspaceResultsSummary(activeWorkspace!.id),
+    enabled: !!activeWorkspace,
+    staleTime: 30000,
+  });
 
-      setActiveWorkspace(active);
+  const datasets = useMemo<DatasetTopChains[]>(
+    () => summaryData?.datasets || [],
+    [summaryData],
+  );
 
-      // Load results from workspace
-      const resultsRes = await getN4AWorkspaceResults(active.id);
-      const transformedDatasets = transformResults(resultsRes.results || []);
-      setDatasets(transformedDatasets);
-
-      // Expand first dataset by default
-      if (transformedDatasets.length > 0) {
-        setExpandedDatasets(new Set([transformedDatasets[0].dataset_name]));
-      }
-    } catch (err) {
-      console.error("[Results] Error loading results:", err);
-      setError(err instanceof Error ? err.message : "Failed to load results");
-    } finally {
-      setIsLoading(false);
+  // Auto-expand first dataset on initial load
+  useMemo(() => {
+    if (datasets.length > 0 && expandedDatasets.size === 0) {
+      setExpandedDatasets(new Set([datasets[0].dataset_name]));
     }
-  };
-
-  const openResultDetails = (pipeline: PipelineRun, datasetName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedPipeline({ pipeline, datasetName });
-    setSheetOpen(true);
-  };
+  }, [datasets, expandedDatasets.size]);
 
   const toggleDataset = (name: string) => {
     setExpandedDatasets((prev) => {
@@ -271,86 +94,64 @@ export default function Results() {
     });
   };
 
-  // Compute stats from datasets
+  // Stats
   const stats = useMemo(() => {
-    const allPipelines = datasets.flatMap(d => d.pipelines);
-    const completedCount = allPipelines.filter((p) => p.status === "completed").length;
-    const failedCount = allPipelines.filter((p) => p.status === "failed").length;
-    const totalPipelines = allPipelines.length;
-    const bestScore = allPipelines.reduce((best, p) => {
-      const candidate = p.score ?? p.metrics?.r2 ?? p.metrics?.rmse ?? 0;
-      return Math.max(best, candidate);
-    }, 0);
-    return { completedCount, failedCount, totalPipelines, datasetCount: datasets.length, bestScore };
+    const totalModels = datasets.reduce((sum, d) => sum + d.top_chains.length, 0);
+    let bestFinal: number | null = null;
+    let bestFinalMetric: string | null = null;
+    let bestFinalModel: string | null = null;
+    let bestCV: number | null = null;
+    let bestCVMetric: string | null = null;
+    for (const d of datasets) {
+      for (const chain of d.top_chains) {
+        if (chain.final_test_score != null) {
+          if (bestFinal == null || isBetterScore(chain.final_test_score, bestFinal, d.metric)) {
+            bestFinal = chain.final_test_score;
+            bestFinalMetric = d.metric;
+            bestFinalModel = chain.model_name;
+          }
+        }
+        if (chain.avg_val_score != null) {
+          if (bestCV == null || isBetterScore(chain.avg_val_score, bestCV, d.metric)) {
+            bestCV = chain.avg_val_score;
+            bestCVMetric = d.metric;
+          }
+        }
+      }
+    }
+    return {
+      datasetCount: datasets.length,
+      totalModels,
+      bestFinal,
+      bestFinalMetric,
+      bestFinalModel,
+      bestCV,
+      bestCVMetric,
+      hasFinal: bestFinal != null,
+    };
   }, [datasets]);
 
-  // Filter datasets by search query
+  // Filter by search
   const filteredDatasets = useMemo(() => {
     return datasets.filter((d) =>
       d.dataset_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [datasets, searchQuery]);
 
-  const getDatasetStats = (dataset: DatasetWithResults) => {
-    const pipelineCount = dataset.pipelines.length;
-    const models = new Set(dataset.pipelines.map((p) => p.model));
-    const completedCount = dataset.pipelines.filter(p => p.status === "completed").length;
-    const bestScore = Math.max(...dataset.pipelines.map(p => p.score ?? p.metrics?.r2 ?? p.metrics?.rmse ?? 0));
-    return { pipelineCount, modelCount: models.size, completedCount, bestScore };
-  };
-
-  // Sort pipelines based on current sort settings
-  const sortPipelines = (pipelines: PipelineRun[]): PipelineRun[] => {
-    return [...pipelines].sort((a, b) => {
-      let comparison = 0;
-
-      switch (pipelineSortField) {
-        case "score":
-          comparison = (a.score ?? a.metrics?.r2 ?? a.metrics?.rmse ?? 0) - (b.score ?? b.metrics?.r2 ?? b.metrics?.rmse ?? 0);
-          break;
-        case "date":
-          comparison = (a.started_at || "").localeCompare(b.started_at || "");
-          break;
-        case "name":
-        default:
-          comparison = (a.pipeline_name || "").localeCompare(b.pipeline_name || "");
-          break;
-      }
-
-      return pipelineSortOrder === "desc" ? -comparison : comparison;
-    });
-  };
-
-  const toggleSort = (field: PipelineSortField) => {
-    if (pipelineSortField === field) {
-      setPipelineSortOrder(prev => prev === "asc" ? "desc" : "asc");
-    } else {
-      setPipelineSortField(field);
-      setPipelineSortOrder(field === "score" ? "desc" : "asc");
-    }
-  };
-
-  // Loading skeleton
+  // Loading
   if (isLoading) {
     return (
-      <motion.div
-        className="space-y-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
+      <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
         <motion.div variants={itemVariants} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
             <p className="text-muted-foreground">{t("results.loading")}</p>
           </div>
         </motion.div>
-        <div className="grid gap-4 md:grid-cols-5">
-          {[...Array(5)].map((_, i) => (
+        <div className="grid gap-4 md:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
             <Card key={i} className="glass-card">
-              <CardContent className="p-4">
-                <Skeleton className="h-12 w-full" />
-              </CardContent>
+              <CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent>
             </Card>
           ))}
         </div>
@@ -359,21 +160,14 @@ export default function Results() {
     );
   }
 
-  // No workspace linked
+  // No workspace
   if (!activeWorkspace) {
     return (
-      <motion.div
-        className="space-y-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
+      <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
         <motion.div variants={itemVariants}>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-            <p className="text-muted-foreground">
-              {t("results.subtitle")}
-            </p>
+            <p className="text-muted-foreground">{t("results.subtitle")}</p>
           </div>
         </motion.div>
         <motion.div variants={itemVariants}>
@@ -386,54 +180,16 @@ export default function Results() {
     );
   }
 
-  // Error state
-  if (error) {
-    return (
-      <motion.div
-        className="space-y-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        <motion.div variants={itemVariants}>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-            <p className="text-muted-foreground">
-              {t("results.subtitle")}
-            </p>
-          </div>
-        </motion.div>
-        <motion.div variants={itemVariants}>
-          <ErrorState
-            title={t("results.error", { defaultValue: "Failed to load results" })}
-            message={error}
-            onRetry={loadData}
-          />
-        </motion.div>
-      </motion.div>
-    );
-  }
-
   return (
-    <motion.div
-      className="space-y-6"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
+    <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
       {/* Header */}
-      <motion.div
-        variants={itemVariants}
-        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-      >
+      <motion.div variants={itemVariants} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-          <p className="text-muted-foreground">
-            Workspace: {activeWorkspace.name}
-          </p>
+          <p className="text-muted-foreground">Workspace: {activeWorkspace.name}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={loadData}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -445,7 +201,7 @@ export default function Results() {
       </motion.div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="glass-card">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -460,44 +216,34 @@ export default function Results() {
         <Card className="glass-card">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
-              <Layers className="h-5 w-5 text-primary" />
+              <Box className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">{t("results.stats.pipelines")}</p>
-              <p className="text-2xl font-bold text-foreground">{stats.totalPipelines}</p>
+              <p className="text-sm text-muted-foreground">Top Models</p>
+              <p className="text-2xl font-bold text-foreground">{stats.totalModels}</p>
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-chart-1/10">
-              <CheckCircle2 className="h-5 w-5 text-chart-1" />
+            <div className={cn("p-2 rounded-lg", stats.hasFinal ? "bg-emerald-500/10" : "bg-chart-1/10")}>
+              <BarChart3 className={cn("h-5 w-5", stats.hasFinal ? "text-emerald-500" : "text-chart-1")} />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{t("results.stats.completed")}</p>
-              <p className="text-2xl font-bold text-foreground">{stats.completedCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass-card">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{t("results.stats.failed")}</p>
-              <p className="text-2xl font-bold text-foreground">{stats.failedCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass-card">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-chart-1/10">
-              <BarChart3 className="h-5 w-5 text-chart-1" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Best Score</p>
-              <p className="text-2xl font-bold text-foreground">{stats.bestScore.toFixed(3)}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-muted-foreground">{stats.hasFinal ? "Best Final Score" : "Best CV Score"}</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className={cn("text-2xl font-bold font-mono tabular-nums", stats.hasFinal ? "text-emerald-500" : "text-foreground")}>
+                  {stats.hasFinal
+                    ? formatScore(stats.bestFinal)
+                    : formatScore(stats.bestCV)}
+                </p>
+                <span className="text-xs text-muted-foreground uppercase">
+                  {formatMetricName(stats.hasFinal ? stats.bestFinalMetric : stats.bestCVMetric)}
+                </span>
+              </div>
+              {stats.bestFinalModel && stats.hasFinal && (
+                <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">{stats.bestFinalModel}</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -516,27 +262,25 @@ export default function Results() {
         </div>
       </div>
 
-      {/* Datasets with Results List */}
+      {/* Datasets with top models */}
       {filteredDatasets.length === 0 ? (
-        <div>
-          <NoResultsState
-            title={t("results.noResults", { defaultValue: "No results found" })}
-            description={t("results.noResultsHint", { defaultValue: "Run experiments to generate results. Compare model performance, view prediction plots, and analyze residuals." })}
-          />
-        </div>
+        <NoResultsState
+          title={t("results.noResults", { defaultValue: "No results found" })}
+          description={t("results.noResultsHint", { defaultValue: "Run experiments to generate results. Compare model performance, view prediction plots, and analyze residuals." })}
+        />
       ) : (
         <div className="space-y-4">
           {filteredDatasets.map((dataset) => {
-            const { pipelineCount, modelCount, completedCount, bestScore } = getDatasetStats(dataset);
             const isExpanded = expandedDatasets.has(dataset.dataset_name);
-            const hasFailedPipelines = dataset.pipelines.some(p => p.status === "failed");
+            const finalChain = dataset.top_chains.find(c => c.final_test_score != null);
+            const topChain = dataset.top_chains[0];
+            const bestFinalScore = finalChain?.final_test_score ?? null;
+            const bestCvScore = topChain?.avg_val_score;
+            const displayScore = bestFinalScore ?? bestCvScore;
 
             return (
               <Card key={dataset.dataset_name} className="overflow-hidden">
-                <Collapsible
-                  open={isExpanded}
-                  onOpenChange={() => toggleDataset(dataset.dataset_name)}
-                >
+                <Collapsible open={isExpanded} onOpenChange={() => toggleDataset(dataset.dataset_name)}>
                   <CollapsibleTrigger asChild>
                     <CardHeader className="p-4 cursor-pointer hover:bg-muted/30 transition-colors">
                       <div className="flex items-center justify-between">
@@ -550,28 +294,22 @@ export default function Results() {
                             <Database className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <h3 className="font-semibold text-foreground">
-                              {dataset.dataset_name}
-                            </h3>
+                            <h3 className="font-semibold text-foreground">{dataset.dataset_name}</h3>
                             <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                               <span className="flex items-center gap-1">
-                                <Layers className="h-3.5 w-3.5" />
-                                {pipelineCount} pipelines
-                              </span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1">
                                 <Box className="h-3.5 w-3.5" />
-                                {modelCount} models
+                                {dataset.top_chains.length} models
                               </span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1">
-                                <CheckCircle2 className="h-3.5 w-3.5 text-chart-1" />
-                                {completedCount} completed
-                              </span>
-                              {dataset.total_predictions > 0 && (
+                              {dataset.metric && (
                                 <>
                                   <span>•</span>
-                                  <span>{dataset.total_predictions} predictions</span>
+                                  <span>{dataset.metric.toUpperCase()}</span>
+                                </>
+                              )}
+                              {dataset.task_type && (
+                                <>
+                                  <span>•</span>
+                                  <span className="capitalize">{dataset.task_type}</span>
                                 </>
                               )}
                             </div>
@@ -579,23 +317,17 @@ export default function Results() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          {bestScore > 0 && (
-                            <Badge variant="outline" className="text-chart-1 border-chart-1/30">
-                              Best Score {bestScore.toFixed(3)}
+                          {displayScore != null && (
+                            <Badge variant="outline" className={cn(
+                              "font-mono",
+                              bestFinalScore != null
+                                ? "text-emerald-500 border-emerald-500/30"
+                                : "text-chart-1 border-chart-1/30",
+                            )}>
+                              {bestFinalScore != null ? "Final" : "CV"}{dataset.metric ? ` ${formatMetricName(dataset.metric)}` : ""} {formatScore(displayScore)}
                             </Badge>
                           )}
-                          {hasFailedPipelines && (
-                            <Badge variant="destructive" className="text-xs">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              Failed
-                            </Badge>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                          <Button variant="ghost" size="sm" asChild onClick={(e) => e.stopPropagation()}>
                             <Link to={`/datasets/${encodeURIComponent(dataset.dataset_name)}`}>
                               <ExternalLink className="h-4 w-4 mr-1" />
                               Dataset
@@ -607,132 +339,23 @@ export default function Results() {
                   </CollapsibleTrigger>
 
                   <CollapsibleContent>
-                    <CardContent className="px-4 pb-4 pt-0 space-y-2">
-                      {/* Sort controls for pipelines */}
-                      <div className="flex items-center justify-end gap-1 mb-2">
-                        <span className="text-xs text-muted-foreground mr-2">Sort by:</span>
-                        <Button
-                          variant={pipelineSortField === "score" ? "secondary" : "ghost"}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => toggleSort("score")}
-                        >
-                          Score
-                          {pipelineSortField === "score" && (
-                            pipelineSortOrder === "desc" ? <ArrowDown className="h-3 w-3 ml-1" /> : <ArrowUp className="h-3 w-3 ml-1" />
-                          )}
-                        </Button>
-                        <Button
-                          variant={pipelineSortField === "date" ? "secondary" : "ghost"}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => toggleSort("date")}
-                        >
-                          <Calendar className="h-3 w-3 mr-1" />
-                          Date
-                          {pipelineSortField === "date" && (
-                            pipelineSortOrder === "desc" ? <ArrowDown className="h-3 w-3 ml-1" /> : <ArrowUp className="h-3 w-3 ml-1" />
-                          )}
-                        </Button>
-                        <Button
-                          variant={pipelineSortField === "name" ? "secondary" : "ghost"}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => toggleSort("name")}
-                        >
-                          Name
-                          {pipelineSortField === "name" && (
-                            pipelineSortOrder === "desc" ? <ArrowDown className="h-3 w-3 ml-1" /> : <ArrowUp className="h-3 w-3 ml-1" />
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Pipeline list directly under dataset */}
-                      {sortPipelines(dataset.pipelines).map((pipeline) => {
-                        const PipelineStatusIcon = statusIcons[pipeline.status];
-                        const pipelineConfig = runStatusConfig[pipeline.status];
-                        return (
-                          <div
-                            key={pipeline.id}
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/20 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              <PipelineStatusIcon
-                                className={cn(
-                                  "h-4 w-4",
-                                  pipelineConfig.color,
-                                  pipelineConfig.iconClass
-                                )}
-                              />
-                              <span className="text-sm font-medium text-foreground">
-                                {pipeline.pipeline_name}
-                              </span>
-                              <Badge variant="outline" className="text-xs">
-                                {pipeline.model === "Unknown" ? t("results.unknown") : pipeline.model === "Model" ? t("results.model") : pipeline.model}
-                              </Badge>
-                              <Badge variant="secondary" className="text-xs">
-                                {pipeline.preprocessing === "None" ? t("results.none") : pipeline.preprocessing}
-                              </Badge>
-                              {pipeline.has_refit && (
-                                <Badge className="text-xs bg-emerald-500/15 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20" variant="outline">
-                                  <Trophy className="h-3 w-3 mr-1" />
-                                  Final Model
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4">
-                              {pipeline.status === "running" && (
-                                <div className="flex items-center gap-2 w-32">
-                                  <Progress
-                                    value={pipeline.progress}
-                                    className="h-1.5"
-                                  />
-                                  <span className="text-xs text-muted-foreground">
-                                    {pipeline.progress}%
-                                  </span>
-                                </div>
-                              )}
-                              {(pipeline.score != null || pipeline.val_score != null || pipeline.test_score != null || pipeline.metrics?.r2 != null || pipeline.metrics?.rmse != null) && (
-                                <div className="flex gap-3 text-xs">
-                                  {/* CV Score */}
-                                  {pipeline.val_score != null ? (
-                                    <span className="text-chart-1 font-semibold" title="Cross-validation score">
-                                      CV {pipeline.val_score.toFixed(3)}
-                                    </span>
-                                  ) : pipeline.score != null ? (
-                                    <span className="text-chart-1 font-semibold">
-                                      {(pipeline.score_metric || "Score").toUpperCase()} {pipeline.score.toFixed(3)}
-                                    </span>
-                                  ) : pipeline.metrics?.r2 != null ? (
-                                    <span className="text-chart-1 font-semibold">
-                                      R² {pipeline.metrics.r2.toFixed(3)}
-                                    </span>
-                                  ) : null}
-                                  {/* Final Score (from refit) */}
-                                  {pipeline.test_score != null && (
-                                    <span className="text-emerald-500 font-semibold" title="Final model score (refit on full data)">
-                                      Final {pipeline.test_score.toFixed(3)}
-                                    </span>
-                                  )}
-                                  {pipeline.metrics?.rmse != null && pipeline.metrics.rmse > 0 && (
-                                    <span className="text-muted-foreground">
-                                      RMSE {pipeline.metrics.rmse.toFixed(2)}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => openResultDetails(pipeline, dataset.dataset_name, e)}
-                              >
-                                <Eye className="h-3.5 w-3.5 mr-1" />
-                                Details
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <CardContent className="px-4 pb-4 pt-0 space-y-1">
+                      {dataset.top_chains.length > 0 ? (
+                        dataset.top_chains.map((chain, index) => (
+                          <TopScoreItem
+                            key={chain.chain_id}
+                            chain={chain}
+                            rank={index + 1}
+                            taskType={dataset.task_type}
+                            runId={chain.run_id || ""}
+                            datasetName={dataset.dataset_name}
+                          />
+                        ))
+                      ) : (
+                        <div className="text-sm text-muted-foreground text-center py-4">
+                          No scored models available
+                        </div>
+                      )}
                     </CardContent>
                   </CollapsibleContent>
                 </Collapsible>
@@ -741,13 +364,6 @@ export default function Results() {
           })}
         </div>
       )}
-
-      <ResultDetailSheet
-        pipeline={selectedPipeline?.pipeline ?? null}
-        datasetName={selectedPipeline?.datasetName ?? ""}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-      />
     </motion.div>
   );
 }

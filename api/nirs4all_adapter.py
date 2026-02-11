@@ -142,7 +142,12 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
         dataset_path = dataset.get("path")
         if not dataset_path:
             raise HTTPException(status_code=400, detail=f"Dataset '{dataset_id}' has no files or path")
-        return {"folder": dataset_path}
+        config_dict = {"folder": dataset_path}
+        # Include linked dataset name so nirs4all stores it in DuckDB
+        dataset_name = dataset.get("name")
+        if dataset_name:
+            config_dict["name"] = dataset_name
+        return config_dict
 
     # Build nirs4all config from files array
     nirs4all_config: Dict[str, Any] = {
@@ -238,6 +243,11 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
     if task_type and task_type != "auto":
         nirs4all_config["task_type"] = task_type
 
+    # Include linked dataset name so nirs4all stores it in DuckDB
+    dataset_name = dataset.get("name")
+    if dataset_name:
+        nirs4all_config["name"] = dataset_name
+
     # Clean up None values
     nirs4all_config = {k: v for k, v in nirs4all_config.items() if v is not None}
 
@@ -305,6 +315,15 @@ def _resolve_class(name: str, module_candidates: Iterable[str]) -> Optional[Any]
     return None
 
 
+NIRS4ALL_FILTER_MODULES = [
+    "nirs4all.operators.filters",
+]
+
+NIRS4ALL_AUGMENTATION_MODULES = [
+    "nirs4all.operators.augmentation",
+]
+
+
 def _resolve_operator_class(name: str, step_type: str) -> Any:
     lookup_name = name
 
@@ -323,6 +342,13 @@ def _resolve_operator_class(name: str, step_type: str) -> Any:
         cls = _resolve_class(lookup_name, NIRS4ALL_MODEL_MODULES)
         if cls is None:
             cls = _resolve_class(lookup_name, SKLEARN_MODEL_MODULES)
+    elif step_type == "filter":
+        cls = _resolve_class(lookup_name, NIRS4ALL_FILTER_MODULES)
+        if cls is None:
+            # Filters may also live in preprocessing modules
+            cls = _resolve_class(lookup_name, NIRS4ALL_PREPROCESSING_MODULES)
+    elif step_type == "augmentation":
+        cls = _resolve_class(lookup_name, NIRS4ALL_AUGMENTATION_MODULES)
     else:
         cls = None
 
@@ -587,48 +613,129 @@ def _build_branch(children: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
     return {"branch": branches}
 
 
+def _build_generator_step(
+    branches: List[List[Dict[str, Any]]],
+    generator_kind: str,
+    generator_options: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build a generator step (OR or Cartesian) from branches.
+
+    Handles both legacy type="generator" and consolidated type="utility" subType="generator".
+    """
+    generator_options = generator_options or {}
+
+    if generator_kind == "cartesian":
+        # Cartesian product of stages
+        stages = []
+        for branch in branches:
+            stage = []
+            for s in branch:
+                built = build_full_step(s)
+                if built is not None:
+                    stage.append(built)
+            stages.append(stage)
+        return {"_cartesian_": stages}
+
+    # Default: OR generator
+    alternatives = []
+    for branch in branches:
+        if len(branch) == 1:
+            built = build_full_step(branch[0])
+            alternatives.append(built)
+        else:
+            alternatives.append([build_full_step(s) for s in branch])
+    result: Dict[str, Any] = {"_or_": alternatives}
+    if generator_options.get("pick"):
+        result["pick"] = generator_options["pick"]
+    if generator_options.get("arrange"):
+        result["arrange"] = generator_options["arrange"]
+    if generator_options.get("count"):
+        result["count"] = generator_options["count"]
+    if generator_options.get("then_pick"):
+        result["then_pick"] = generator_options["then_pick"]
+    if generator_options.get("then_arrange"):
+        result["then_arrange"] = generator_options["then_arrange"]
+    return result
+
+
 def build_full_step(step: Dict[str, Any]) -> Any:
     """
     Build a single pipeline step with full generator/finetuning support.
 
-    Handles editor format with:
-    - generatorKind: "or" | "cartesian"
-    - generatorOptions: {pick, arrange, count, ...}
-    - branches: [[...], [...]] for branch/generator steps
-    - stepGenerator: step-level generators like _range_
+    Handles both legacy format (type="branch"/"generator"/"merge") and
+    consolidated editor format (type="flow"/"utility" with subType).
 
-    Returns the nirs4all-compatible step representation.
+    Consolidated type mapping:
+    - flow + branch     → parallel branches
+    - flow + merge      → merge predictions/features
+    - flow + sample_augmentation/feature_augmentation/sample_filter/concat_transform → containers
+    - flow + sequential → sequential group of steps
+    - utility + generator → OR/Cartesian generator
+    - utility + chart/comment → non-executing (skipped)
+    - filter            → filter operators (resolve like preprocessing)
+    - augmentation      → augmentation operators (resolve like preprocessing)
+
+    Returns the nirs4all-compatible step representation, a list of steps
+    (for sequential containers), or None for non-executing steps.
     """
     step_type = step.get("type", "")
     step_name = step.get("name", "")
+    sub_type = step.get("subType", "")
     params = step.get("params", {})
     sweeps = step.get("paramSweeps", {})
     finetune = step.get("finetuneConfig")
     children = step.get("children", [])
     branches = step.get("branches", [])
     generator_options = step.get("generatorOptions", {})
+    generator_kind = step.get("generatorKind", "")
 
-    # Handle branch nodes
+    # --- Consolidated type: "flow" with subType ---
+    if step_type == "flow":
+        if sub_type == "branch" and branches:
+            return _build_branch(branches)
+        if sub_type == "merge":
+            merge_config = step.get("mergeConfig")
+            if merge_config and merge_config.get("mode"):
+                return {"merge": merge_config["mode"]}
+            merge_type = params.get("merge_type", "predictions")
+            return {"merge": merge_type}
+        if sub_type == "sample_augmentation" and children:
+            built = [build_full_step(c) for c in children]
+            built = [b for b in built if b is not None]
+            return built or None
+        if sub_type == "feature_augmentation" and children:
+            built = [build_full_step(c) for c in children]
+            built = [b for b in built if b is not None]
+            return built or None
+        if sub_type == "sample_filter" and children:
+            filters = [build_full_step(c) for c in children]
+            filters = [f for f in filters if f is not None]
+            if not filters:
+                return None
+            mode = step.get("sampleFilterConfig", {}).get("mode", "any")
+            return {"exclude": filters, "mode": mode}
+        if sub_type == "concat_transform" and branches:
+            return _build_branch(branches)
+        if sub_type == "sequential" and children:
+            built = [build_full_step(c) for c in children]
+            return [b for b in built if b is not None] or None
+        # Unknown flow subType — skip
+        return None
+
+    # --- Consolidated type: "utility" with subType ---
+    if step_type == "utility":
+        if sub_type == "generator" and branches:
+            return _build_generator_step(branches, generator_kind, generator_options)
+        # Charts and comments are non-executing
+        return None
+
+    # --- Legacy: branch nodes ---
     if step_type == "branch" and branches:
         return _build_branch(branches)
 
-    # Handle generator steps (editor format with generatorKind="or" and branches)
+    # --- Legacy: generator steps ---
     if step_type == "generator" and branches:
-        alternatives = []
-        for branch in branches:
-            if len(branch) == 1:
-                alternatives.append(build_full_step(branch[0]))
-            else:
-                alternatives.append([build_full_step(s) for s in branch])
-        result = {"_or_": alternatives}
-        # Apply generator options (pick, arrange, count)
-        if generator_options.get("pick"):
-            result["pick"] = generator_options["pick"]
-        if generator_options.get("arrange"):
-            result["arrange"] = generator_options["arrange"]
-        if generator_options.get("count"):
-            result["count"] = generator_options["count"]
-        return result
+        return _build_generator_step(branches, generator_kind, generator_options)
 
     # Handle OR generator (choice) - legacy format
     if step_type == "choice" or step.get("generator", {}).get("_or_"):
@@ -641,7 +748,7 @@ def build_full_step(step: Dict[str, Any]) -> Any:
             return {"y_processing": y_scaler}
         return None
 
-    # Handle merge
+    # Handle merge (legacy type)
     if step_type == "merge":
         merge_type = params.get("merge_type", "predictions")
         return {"merge": merge_type}
@@ -747,6 +854,7 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
     # Process each step
     for step in steps:
         step_type = step.get("type", "")
+        sub_type = step.get("subType", "")
 
         if step_type == "metrics":
             metrics.append(step.get("name", ""))
@@ -776,16 +884,29 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
             has_generators = True
         if step.get("stepGenerator"):
             has_generators = True
-        if step_type == "generator" and step.get("branches"):
+        # Legacy "generator" type or consolidated "utility" + "generator" subType
+        is_generator = (
+            (step_type == "generator" and step.get("branches"))
+            or (step_type == "utility" and sub_type == "generator" and step.get("branches"))
+        )
+        if is_generator:
             has_generators = True
-            # Count branches
+            branches = step.get("branches", [])
+            if branches:
+                branch_count = max(branch_count, len(branches))
+        # Consolidated "flow" + "branch" subType
+        if step_type == "flow" and sub_type == "branch" and step.get("branches"):
             branches = step.get("branches", [])
             if branches:
                 branch_count = max(branch_count, len(branches))
 
         built_step = build_full_step(step)
         if built_step is not None:
-            pipeline_steps.append(built_step)
+            # build_full_step may return a list (e.g., for sequential containers)
+            if isinstance(built_step, list):
+                pipeline_steps.extend(built_step)
+            else:
+                pipeline_steps.append(built_step)
 
     # Count variants using nirs4all's count_combinations
     estimated_variants = 1
@@ -932,9 +1053,12 @@ def _extract_first_model(steps: List[Dict[str, Any]]) -> str:
         if step.get("type") == "model":
             return step.get("name", "Unknown")
         for branch in step.get("branches", []):
-            for substep in branch:
-                if substep.get("type") == "model":
-                    return substep.get("name", "Unknown")
+            result = _extract_first_model(branch)
+            if result != "Unknown":
+                return result
+        for child in step.get("children", []):
+            if child.get("type") == "model":
+                return child.get("name", "Unknown")
     return "Unknown"
 
 
@@ -945,9 +1069,10 @@ def _extract_preprocessing_names(steps: List[Dict[str, Any]]) -> List[str]:
         if step.get("type") == "preprocessing":
             names.append(step.get("name", "Unknown"))
         for branch in step.get("branches", []):
-            for substep in branch:
-                if substep.get("type") == "preprocessing":
-                    names.append(substep.get("name", "Unknown"))
+            names.extend(_extract_preprocessing_names(branch))
+        for child in step.get("children", []):
+            if child.get("type") == "preprocessing":
+                names.append(child.get("name", "Unknown"))
     return names
 
 

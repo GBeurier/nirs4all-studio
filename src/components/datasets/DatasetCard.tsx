@@ -32,12 +32,22 @@ import {
 } from "@/components/ui/tooltip";
 import { DatasetStatusBadge } from "./DatasetStatusBadge";
 import { openFolderInExplorer } from "@/api/client";
+import { formatScore } from "@/lib/scores";
 import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";
+
+export interface DatasetScoreInfo {
+  score: number;
+  metric: string;
+  model?: string;
+  isFinal: boolean;
+  cvScore?: number | null;
+}
 
 interface DatasetCardProps {
   dataset: Dataset;
   groups: DatasetGroup[];
   selected?: boolean;
+  bestScore?: DatasetScoreInfo | null;
   onSelect?: (dataset: Dataset) => void;
   onPreview?: (dataset: Dataset) => void;
   onEdit?: (dataset: Dataset) => void;
@@ -61,6 +71,7 @@ export function DatasetCard({
   dataset,
   groups,
   selected,
+  bestScore,
   onSelect,
   onPreview,
   onEdit,
@@ -118,6 +129,41 @@ export function DatasetCard({
         </div>
         <p className="text-sm text-muted-foreground font-mono truncate">{dataset.path}</p>
       </div>
+
+      {/* Best Score Display */}
+      {bestScore && (
+        <div className="hidden lg:flex flex-col items-end gap-0.5 flex-shrink-0 min-w-[140px]">
+          <div className="flex items-baseline gap-1.5">
+            <span className={`text-lg font-bold font-mono tabular-nums ${
+              bestScore.isFinal ? "text-emerald-500" : "text-chart-1"
+            }`}>
+              {formatScore(bestScore.score)}
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase">
+              {bestScore.metric}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span className={`font-medium uppercase ${
+              bestScore.isFinal ? "text-emerald-500/70" : "text-chart-1/70"
+            }`}>
+              {bestScore.isFinal ? "Final" : "CV"}
+            </span>
+            {bestScore.model && (
+              <>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <span className="font-mono truncate max-w-[90px]" title={bestScore.model}>{bestScore.model}</span>
+              </>
+            )}
+            {bestScore.isFinal && bestScore.cvScore != null && (
+              <>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <span className="font-mono">CV {formatScore(bestScore.cvScore)}</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Stats - visible on larger screens */}
       <div className="hidden md:flex items-center gap-8 text-sm flex-shrink-0">

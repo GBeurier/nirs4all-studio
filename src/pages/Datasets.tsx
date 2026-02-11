@@ -47,6 +47,7 @@ import {
   useDragDrop,
   type DroppedContent,
 } from "@/components/datasets";
+import type { DatasetScoreInfo } from "@/components/datasets/DatasetCard";
 import type { WizardInitialState } from "@/components/datasets/DatasetWizard";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import {
@@ -66,6 +67,7 @@ import {
   reloadWorkspace,
   detectUnified,
   detectFilesList,
+  getWorkspaceResultsSummary,
 } from "@/api/client";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
 
@@ -320,6 +322,51 @@ export default function Datasets() {
     loadData();
   }, [loadData]);
 
+  // Best scores per dataset (from results summary) — keyed by linked_dataset_id
+  const [datasetScores, setDatasetScores] = useState<Map<string, DatasetScoreInfo>>(new Map());
+  useEffect(() => {
+    (async () => {
+      try {
+        const linkedRes = await getLinkedWorkspaces();
+        const active = linkedRes.workspaces.find((ws) => ws.is_active);
+        if (!active) return;
+        const summary = await getWorkspaceResultsSummary(active.id);
+        const scores = new Map<string, DatasetScoreInfo>();
+        for (const ds of summary.datasets || []) {
+          const chains = ds.top_chains || [];
+          // Use linked_dataset_id (resolved by backend) for matching
+          const matchKey = ds.linked_dataset_id || ds.dataset_name;
+          if (!chains.length || !ds.metric || !matchKey) continue;
+
+          // Prefer chains with final (refit) scores
+          const finalChain = chains.find(c => c.final_test_score != null);
+          if (finalChain) {
+            scores.set(matchKey, {
+              score: finalChain.final_test_score!,
+              metric: ds.metric,
+              model: finalChain.model_name,
+              isFinal: true,
+              cvScore: finalChain.avg_val_score ?? undefined,
+            });
+          } else {
+            // Fall back to best CV chain
+            const cvChain = chains[0];
+            if (cvChain?.avg_val_score != null) {
+              scores.set(matchKey, {
+                score: cvChain.avg_val_score,
+                metric: ds.metric,
+                model: cvChain.model_name,
+                isFinal: false,
+              });
+            }
+          }
+        }
+        setDatasetScores(scores);
+      } catch {
+        // Scores are optional, ignore errors
+      }
+    })();
+  }, [datasets.length]);
 
   // Normalize datasets to ensure they have required fields
   const normalizedDatasets = datasets.map((ds, index) => {
@@ -798,6 +845,7 @@ export default function Datasets() {
                   dataset={dataset}
                   groups={groups}
                   selected={quickViewDataset?.id === dataset.id}
+                  bestScore={datasetScores.get(dataset.id) ?? null}
                   onSelect={(ds) => setQuickViewDataset(ds)}
                   onPreview={(ds) => setQuickViewDataset(ds)}
                   onEdit={() => handleEditDataset(dataset)}

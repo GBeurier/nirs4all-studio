@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { PredictDialog } from "./PredictDialog";
 import { cn } from "@/lib/utils";
+import { formatScore, formatMetricName } from "@/lib/scores";
 import { RunStatus, runStatusConfig } from "@/types/runs";
 import type { EnrichedRun, EnrichedDatasetRun, TopChainResult } from "@/types/enriched-runs";
 
@@ -69,12 +70,6 @@ const StatusIcon = ({ status }: { status: RunStatus }) => {
     <Icon className={cn("h-4 w-4", config.color, config.iconClass)} />
   );
 };
-
-function formatScore(score: number | null | undefined): string {
-  if (score == null) return "-";
-  return score.toFixed(4);
-}
-
 function formatDuration(seconds: number | null): string {
   if (seconds == null) return "-";
   if (seconds < 60) return `${seconds}s`;
@@ -191,44 +186,60 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
               ) : (
                 <>
                   {/* Best Results Summary */}
-                  {run.datasets.some((ds) => ds.best_avg_val_score != null) && (
-                    <div className="p-4 rounded-lg border bg-chart-1/5 border-chart-1/20">
+                  {run.datasets.some((ds) => ds.best_final_score != null || ds.best_avg_val_score != null) && (
+                    <div className="p-4 rounded-lg border bg-card">
                       <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
                         <BarChart3 className="h-4 w-4 text-chart-1" />
                         Best Results
                       </h4>
-                      <div className="space-y-2">
-                        {run.datasets.filter((ds) => ds.best_avg_val_score != null).map((ds) => (
-                          <div key={ds.dataset_name} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Database className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-sm">{ds.dataset_name}</span>
-                              {ds.metric && (
-                                <Badge variant="outline" className="text-[10px]">{ds.metric.toUpperCase()}</Badge>
-                              )}
+                      <div className="space-y-2.5">
+                        {run.datasets.filter((ds) => ds.best_final_score != null || ds.best_avg_val_score != null).map((ds) => {
+                          const hasFinal = ds.best_final_score != null;
+                          return (
+                            <div key={ds.dataset_name} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Database className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-sm">{ds.dataset_name}</span>
+                                {ds.metric && (
+                                  <Badge variant="outline" className="text-[10px]">{formatMetricName(ds.metric)}</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 font-mono text-sm">
+                                {hasFinal ? (
+                                  <>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <span className="text-emerald-500 font-bold">{formatScore(ds.best_final_score)}</span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Best final test score (refit)</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                    {ds.best_avg_val_score != null && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <span className="text-muted-foreground text-xs">CV {formatScore(ds.best_avg_val_score)}</span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>Best avg CV validation score</TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </>
+                                ) : (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <span className="text-chart-1 font-bold">{formatScore(ds.best_avg_val_score)}</span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Best avg CV validation score</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 font-mono text-sm">
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <span className="text-chart-1 font-bold">{formatScore(ds.best_avg_val_score)}</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Best avg validation score</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              {ds.best_avg_test_score != null && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <span className="text-muted-foreground">{formatScore(ds.best_avg_test_score)}</span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Best avg test score</TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -250,28 +261,34 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
                             <TableRow className="bg-muted/30">
                               <TableHead className="text-xs">Dataset</TableHead>
                               <TableHead className="text-xs">Preprocessing</TableHead>
-                              <TableHead className="text-xs text-right">Avg Val</TableHead>
-                              <TableHead className="text-xs text-right">Avg Test</TableHead>
+                              <TableHead className="text-xs text-right">Final Test</TableHead>
+                              <TableHead className="text-xs text-right">CV Val</TableHead>
+                              <TableHead className="text-xs text-right">CV Test</TableHead>
                               <TableHead className="text-xs text-right">Folds</TableHead>
                               <TableHead className="text-xs">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {chains.map((chain) => (
-                              <TableRow key={`${chain.chain_id}-${chain.dataset_name}`}>
-                                <TableCell className="text-xs font-mono">{chain.dataset_name}</TableCell>
-                                <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]" title={chain.preprocessings}>
-                                  {chain.preprocessings || "-"}
-                                </TableCell>
-                                <TableCell className="text-right font-mono text-xs text-chart-1">
-                                  {formatScore(chain.avg_val_score)}
-                                </TableCell>
-                                <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                                  {formatScore(chain.avg_test_score)}
-                                </TableCell>
-                                <TableCell className="text-right text-xs text-muted-foreground">
-                                  {chain.fold_count}
-                                </TableCell>
+                            {chains.map((chain) => {
+                              const hasFinal = chain.final_test_score != null;
+                              return (
+                                <TableRow key={`${chain.chain_id}-${chain.dataset_name}`}>
+                                  <TableCell className="text-xs font-mono">{chain.dataset_name}</TableCell>
+                                  <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]" title={chain.preprocessings}>
+                                    {chain.preprocessings || "-"}
+                                  </TableCell>
+                                  <TableCell className={cn("text-right font-mono text-xs", hasFinal ? "text-emerald-500 font-semibold" : "text-muted-foreground")}>
+                                    {hasFinal ? formatScore(chain.final_test_score) : "-"}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-xs text-chart-1">
+                                    {formatScore(chain.avg_val_score)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                                    {formatScore(chain.avg_test_score)}
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs text-muted-foreground">
+                                    {chain.fold_count}
+                                  </TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-1">
                                     <TooltipProvider>
@@ -299,7 +316,8 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
                                   </div>
                                 </TableCell>
                               </TableRow>
-                            ))}
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       </div>
@@ -369,6 +387,7 @@ function EnrichedDatasetCard({
   runId: string;
 }) {
   const models = new Set(dataset.top_5.map((c) => c.model_name));
+  const hasFinal = dataset.best_final_score != null;
 
   return (
     <div
@@ -386,9 +405,14 @@ function EnrichedDatasetCard({
             <Badge variant="outline" className="text-[10px]">{dataset.task_type}</Badge>
           )}
         </div>
-        {dataset.best_avg_val_score != null && (
-          <Badge variant="outline" className="text-chart-1 border-chart-1/30 font-mono">
-            {dataset.metric?.toUpperCase()} {formatScore(dataset.best_avg_val_score)}
+        {(hasFinal || dataset.best_avg_val_score != null) && (
+          <Badge variant="outline" className={cn(
+            "font-mono",
+            hasFinal
+              ? "text-emerald-500 border-emerald-500/30"
+              : "text-chart-1 border-chart-1/30",
+          )}>
+            {hasFinal ? "Final" : "CV"} {formatMetricName(dataset.metric)} {formatScore(hasFinal ? dataset.best_final_score : dataset.best_avg_val_score)}
           </Badge>
         )}
       </div>
@@ -411,20 +435,34 @@ function EnrichedDatasetCard({
       {/* Top chain preview */}
       {dataset.top_5.length > 0 && (
         <div className="mt-3 space-y-1">
-          {dataset.top_5.slice(0, 3).map((chain, i) => (
-            <div key={chain.chain_id} className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className={cn(
-                  "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                  i === 0 ? "bg-chart-1/20 text-chart-1" : "bg-muted text-muted-foreground",
-                )}>
-                  {i + 1}
-                </span>
-                <span className="truncate">{chain.model_name}</span>
+          {dataset.top_5.slice(0, 3).map((chain, i) => {
+            const chainHasFinal = chain.final_test_score != null;
+            return (
+              <div key={chain.chain_id} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={cn(
+                    "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                    i === 0
+                      ? (chainHasFinal ? "bg-emerald-500/20 text-emerald-500" : "bg-chart-1/20 text-chart-1")
+                      : "bg-muted text-muted-foreground",
+                  )}>
+                    {i + 1}
+                  </span>
+                  <span className="truncate">{chain.model_name}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 font-mono">
+                  {chainHasFinal ? (
+                    <>
+                      <span className="text-emerald-500">{formatScore(chain.final_test_score)}</span>
+                      <span className="text-muted-foreground text-[10px]">CV {formatScore(chain.avg_val_score)}</span>
+                    </>
+                  ) : (
+                    <span className="text-chart-1">{formatScore(chain.avg_val_score)}</span>
+                  )}
+                </div>
               </div>
-              <span className="font-mono text-chart-1 shrink-0">{formatScore(chain.avg_val_score)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

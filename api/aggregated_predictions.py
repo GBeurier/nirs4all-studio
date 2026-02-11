@@ -1,8 +1,8 @@
-"""Aggregated predictions API endpoints backed by DuckDB.
+"""Chain summary API endpoints backed by DuckDB.
 
 Provides FastAPI endpoints for:
-- Querying aggregated predictions (chain × metric × dataset)
-- Drill-down from aggregated view to chain detail
+- Querying chain summaries (one row per chain with CV/final scores)
+- Drill-down from chain summary to individual predictions
 - Individual prediction arrays retrieval
 - Metric-aware top-N ranking
 
@@ -41,42 +41,50 @@ router = APIRouter(prefix="/aggregated-predictions", tags=["aggregated-predictio
 # ============================================================================
 
 
-class AggregatedPrediction(BaseModel):
-    """One row of the aggregated predictions view."""
+class ChainSummary(BaseModel):
+    """One row of the v_chain_summary view."""
 
     run_id: str
     pipeline_id: str
     chain_id: str
-    model_name: str
+    model_name: Optional[str] = None
     model_class: str
     preprocessings: Optional[str] = None
     branch_path: Optional[Any] = None
     source_index: Optional[int] = None
     model_step_idx: int
-    metric: str
-    dataset_name: str
-    fold_count: int
-    partition_count: int
-    partitions: List[str]
-    min_val_score: Optional[float] = None
-    max_val_score: Optional[float] = None
-    avg_val_score: Optional[float] = None
-    min_test_score: Optional[float] = None
-    max_test_score: Optional[float] = None
-    avg_test_score: Optional[float] = None
-    min_train_score: Optional[float] = None
-    max_train_score: Optional[float] = None
-    avg_train_score: Optional[float] = None
-    prediction_ids: List[str]
-    fold_ids: List[str]
+    metric: Optional[str] = None
+    task_type: Optional[str] = None
+    dataset_name: Optional[str] = None
+    best_params: Optional[Any] = None
+    # CV scores
+    cv_val_score: Optional[float] = None
+    cv_test_score: Optional[float] = None
+    cv_train_score: Optional[float] = None
+    cv_fold_count: int = 0
+    cv_scores: Optional[Any] = None
+    # Final/refit scores
+    final_test_score: Optional[float] = None
+    final_train_score: Optional[float] = None
+    final_scores: Optional[Any] = None
+    # Pipeline status from JOIN
+    pipeline_status: Optional[str] = None
 
 
-class AggregatedPredictionsResponse(BaseModel):
-    """Response for aggregated predictions query."""
+# Deprecated alias
+AggregatedPrediction = ChainSummary
 
-    predictions: List[AggregatedPrediction]
+
+class ChainSummariesResponse(BaseModel):
+    """Response for chain summaries query."""
+
+    predictions: List[ChainSummary]
     total: int
     generated_at: str
+
+
+# Deprecated alias
+AggregatedPredictionsResponse = ChainSummariesResponse
 
 
 class PartitionPrediction(BaseModel):
@@ -104,7 +112,7 @@ class ChainDetailResponse(BaseModel):
     """Response for chain detail with predictions."""
 
     chain_id: str
-    aggregated: Optional[AggregatedPrediction] = None
+    summary: Optional[ChainSummary] = None
     predictions: List[PartitionPrediction]
     pipeline: Optional[Dict[str, Any]] = None
 
@@ -182,7 +190,7 @@ def _get_store() -> "WorkspaceStore":
 # ============================================================================
 
 
-@router.get("", response_model=AggregatedPredictionsResponse)
+@router.get("", response_model=ChainSummariesResponse)
 async def get_aggregated_predictions(
     run_id: Optional[str] = Query(None, description="Filter by run ID"),
     pipeline_id: Optional[str] = Query(None, description="Filter by pipeline ID"),
@@ -191,14 +199,14 @@ async def get_aggregated_predictions(
     model_class: Optional[str] = Query(None, description="Filter by model class"),
     metric: Optional[str] = Query(None, description="Filter by metric"),
 ):
-    """Query aggregated predictions.
+    """Query chain summaries.
 
-    Returns one row per (chain_id, metric, dataset_name) combination.
-    All filter parameters are optional and AND-combined.
+    Returns one row per chain with CV averages, final/refit scores, and
+    chain metadata.  All filter parameters are optional and AND-combined.
     """
     store = _get_store()
     try:
-        df = store.query_aggregated_predictions(
+        df = store.query_chain_summaries(
             run_id=run_id,
             pipeline_id=pipeline_id,
             chain_id=chain_id,
@@ -207,7 +215,7 @@ async def get_aggregated_predictions(
             metric=metric,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-        return AggregatedPredictionsResponse(
+        return ChainSummariesResponse(
             predictions=records,
             total=len(records),
             generated_at=datetime.now(timezone.utc).isoformat(),
@@ -220,20 +228,20 @@ async def get_aggregated_predictions(
 async def get_top_aggregated_predictions(
     metric: str = Query(..., description="Metric to rank by"),
     n: int = Query(10, ge=1, le=100, description="Number of results"),
-    score_column: str = Query("avg_val_score", description="Score column to sort by"),
+    score_column: str = Query("cv_val_score", description="Score column to sort by"),
     run_id: Optional[str] = Query(None),
     pipeline_id: Optional[str] = Query(None),
     dataset_name: Optional[str] = Query(None),
     model_class: Optional[str] = Query(None),
 ):
-    """Get top-N aggregated predictions ranked by metric score.
+    """Get top-N chain summaries ranked by metric score.
 
     Sort direction is auto-detected from the metric name (ascending for
     error metrics like RMSE, descending for score metrics like R²).
     """
     store = _get_store()
     try:
-        df = store.query_top_aggregated_predictions(
+        df = store.query_top_chains(
             metric=metric,
             n=n,
             score_column=score_column,
@@ -260,35 +268,35 @@ async def get_chain_detail(
     metric: Optional[str] = Query(None),
     dataset_name: Optional[str] = Query(None),
 ):
-    """Get aggregated summary and predictions for a specific chain.
+    """Get chain summary and predictions for a specific chain.
 
-    Returns the aggregated view plus individual prediction rows for
+    Returns the chain summary plus individual prediction rows for
     drill-down. Pipeline metadata (generator_choices) is included
     when available.
     """
     store = _get_store()
     try:
-        # Get aggregated entry
-        agg_df = store.query_aggregated_predictions(
+        # Get chain summary
+        agg_df = store.query_chain_summaries(
             chain_id=chain_id,
             metric=metric,
             dataset_name=dataset_name,
         )
-        aggregated = None
+        summary = None
         if len(agg_df) > 0:
-            aggregated = _sanitize_dict(dict(agg_df.row(0, named=True)))
+            summary = _sanitize_dict(dict(agg_df.row(0, named=True)))
 
         # Get individual prediction rows
         pred_df = store.get_chain_predictions(chain_id)
         predictions = [_sanitize_dict(dict(row)) for row in pred_df.iter_rows(named=True)]
 
-        if not predictions and aggregated is None:
+        if not predictions and summary is None:
             raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found or has no predictions")
 
         # Get pipeline metadata (generator_choices)
         pipeline_info = None
-        if aggregated and aggregated.get("pipeline_id"):
-            pipeline = store.get_pipeline(aggregated["pipeline_id"])
+        if summary and summary.get("pipeline_id"):
+            pipeline = store.get_pipeline(summary["pipeline_id"])
             if pipeline:
                 pipeline_info = _sanitize_dict({
                     "pipeline_id": pipeline["pipeline_id"],
@@ -303,7 +311,7 @@ async def get_chain_detail(
 
         return ChainDetailResponse(
             chain_id=chain_id,
-            aggregated=aggregated,
+            summary=summary,
             predictions=predictions,
             pipeline=pipeline_info,
         )

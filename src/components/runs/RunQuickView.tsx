@@ -145,14 +145,14 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
 
             {/* Predictions table */}
             <div className="rounded-lg border overflow-hidden">
-              <h4 className="text-sm font-medium p-3 bg-muted/30 border-b">Aggregated Predictions</h4>
+              <h4 className="text-sm font-medium p-3 bg-muted/30 border-b">Chain Summaries</h4>
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/20">
                     <TableHead className="text-xs">Model</TableHead>
                     <TableHead className="text-xs">Preprocessing</TableHead>
-                    <TableHead className="text-xs text-right">Avg Val</TableHead>
-                    <TableHead className="text-xs text-right">Avg Test</TableHead>
+                    <TableHead className="text-xs text-right">CV Val</TableHead>
+                    <TableHead className="text-xs text-right">CV Test</TableHead>
                     <TableHead className="text-xs text-right">Folds</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -161,20 +161,20 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
                     <TableRow key={pred.chain_id || i}>
                       <TableCell className="text-xs">
                         <Badge variant="outline" className="font-mono text-xs">
-                          {pred.model_name}
+                          {pred.model_name ?? pred.model_class}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]">
                         {pred.preprocessings || "-"}
                       </TableCell>
                       <TableCell className="text-xs text-right font-mono text-chart-1">
-                        {pred.avg_val_score != null ? pred.avg_val_score.toFixed(4) : "-"}
+                        {pred.cv_val_score != null ? pred.cv_val_score.toFixed(4) : "-"}
                       </TableCell>
                       <TableCell className="text-xs text-right font-mono text-muted-foreground">
-                        {pred.avg_test_score != null ? pred.avg_test_score.toFixed(4) : "-"}
+                        {pred.cv_test_score != null ? pred.cv_test_score.toFixed(4) : "-"}
                       </TableCell>
                       <TableCell className="text-xs text-right text-muted-foreground">
-                        {pred.fold_count ?? "-"}
+                        {pred.cv_fold_count ?? "-"}
                       </TableCell>
                     </TableRow>
                   ))}

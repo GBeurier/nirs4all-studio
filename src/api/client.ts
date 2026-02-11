@@ -1405,6 +1405,16 @@ export async function getN4AWorkspaceResults(
 }
 
 /**
+ * Get results summary: top 5 models per dataset across all runs,
+ * with final (refit) scores.
+ */
+export async function getWorkspaceResultsSummary(
+  workspaceId: string,
+): Promise<import("@/types/runs").ResultsSummaryResponse> {
+  return api.get(`/workspaces/${workspaceId}/results/summary`);
+}
+
+/**
  * Get datasets discovered from run manifests.
  * Includes full metadata like n_samples, y_stats, and path status.
  */

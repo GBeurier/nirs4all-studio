@@ -181,7 +181,12 @@ class StoreAdapter:
 
         # Top predictions
         top_df = self._store.top_predictions(n=10, dataset_name=dataset_name)
-        top_predictions = [_sanitize_dict(dict(row)) for row in top_df.iter_rows(named=True)]
+        top_predictions = []
+        for row in top_df.iter_rows(named=True):
+            d = _sanitize_dict(dict(row))
+            if "prediction_id" in d and "id" not in d:
+                d["id"] = d.pop("prediction_id")
+            top_predictions.append(d)
 
         # Model breakdown
         models: dict[str, dict[str, Any]] = {}
@@ -234,7 +239,38 @@ class StoreAdapter:
             dataset_name=dataset_name, model_class=model_class, partition=partition,
             limit=limit, offset=offset,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = []
+        for row in df.iter_rows(named=True):
+            d = _sanitize_dict(dict(row))
+            # Rename prediction_id → id for frontend compatibility
+            if "prediction_id" in d and "id" not in d:
+                d["id"] = d.pop("prediction_id")
+            records.append(d)
+
+        # Enrich refit predictions: set val_score from chain summary
+        refit_chain_ids = list({
+            r.get("chain_id", "")
+            for r in records
+            if r.get("refit_context") is not None and r.get("chain_id")
+        })
+        if refit_chain_ids:
+            try:
+                ph = ", ".join(f"${i + 1}" for i in range(len(refit_chain_ids)))
+                cv_df = self._store._fetch_pl(
+                    f"SELECT chain_id, cv_val_score FROM v_chain_summary WHERE chain_id IN ({ph})",
+                    refit_chain_ids,
+                )
+                cv_val_map: dict[str, float | None] = {}
+                for cv_row in cv_df.iter_rows(named=True):
+                    cid = cv_row.get("chain_id", "")
+                    avs = cv_row.get("cv_val_score")
+                    if avs is not None and isinstance(avs, (int, float)):
+                        cv_val_map[cid] = round(float(avs), 6)
+                for rec in records:
+                    if rec.get("refit_context") is not None and rec.get("chain_id") in cv_val_map:
+                        rec["val_score"] = cv_val_map[rec["chain_id"]]
+            except Exception:
+                pass
 
         # Total count (without limit) for the frontend pagination display.
         total_df = self._store.query_predictions(
@@ -286,10 +322,10 @@ class StoreAdapter:
         }
 
     # ------------------------------------------------------------------
-    # Aggregated Predictions
+    # Chain Summaries (v_chain_summary)
     # ------------------------------------------------------------------
 
-    def get_aggregated_predictions(
+    def get_chain_summaries(
         self,
         run_id: str | None = None,
         pipeline_id: str | None = None,
@@ -298,7 +334,10 @@ class StoreAdapter:
         model_class: str | None = None,
         metric: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Query aggregated predictions (one row per chain × metric × dataset).
+        """Query chain summaries (one row per chain).
+
+        Each row contains CV averages, final/refit scores, multi-metric
+        JSON, and chain metadata.
 
         Args:
             run_id: Optional run filter.
@@ -309,9 +348,9 @@ class StoreAdapter:
             metric: Optional metric filter.
 
         Returns:
-            List of sanitized aggregated prediction dicts.
+            List of sanitized chain summary dicts.
         """
-        df = self._store.query_aggregated_predictions(
+        df = self._store.query_chain_summaries(
             run_id=run_id,
             pipeline_id=pipeline_id,
             chain_id=chain_id,
@@ -321,31 +360,37 @@ class StoreAdapter:
         )
         return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 
-    def get_top_aggregated_predictions(
+    # Deprecated alias
+    get_aggregated_predictions = get_chain_summaries
+
+    def get_top_chain_summaries(
         self,
-        metric: str,
+        metric: str | None = None,
         n: int = 10,
-        score_column: str = "avg_val_score",
+        score_column: str = "cv_val_score",
         **filters: Any,
     ) -> list[dict[str, Any]]:
-        """Get top-N aggregated predictions ranked by metric.
+        """Get top-N chain summaries ranked by score.
 
         Args:
-            metric: Metric name for ranking (e.g. ``"rmse"``, ``"r2"``).
+            metric: Optional metric name filter.
             n: Number of top results.
             score_column: Column to sort by.
             **filters: Additional filters (run_id, pipeline_id, etc.).
 
         Returns:
-            List of sanitized top aggregated prediction dicts.
+            List of sanitized top chain summary dicts.
         """
-        df = self._store.query_top_aggregated_predictions(
+        df = self._store.query_top_chains(
             metric=metric,
             n=n,
             score_column=score_column,
             **filters,
         )
         return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    # Deprecated alias
+    get_top_aggregated_predictions = get_top_chain_summaries
 
     def get_chain_predictions(
         self,
@@ -445,7 +490,7 @@ class StoreAdapter:
             pipelines_df = store.list_pipelines(run_id=run_id)
             pipeline_count = len(pipelines_df)
 
-            # Get aggregated predictions for this run (uses v_aggregated_predictions view)
+            # Get chain summaries for this run (uses v_chain_summary view)
             agg_df = store.query_aggregated_predictions(run_id=run_id)
             agg_rows = list(agg_df.iter_rows(named=True)) if len(agg_df) > 0 else []
 
@@ -499,16 +544,16 @@ class StoreAdapter:
                 metric_info = get_metric_info(metric)
                 higher_is_better = metric_info.get("higher_is_better", True)
 
-                # Sort aggregated entries by avg_val_score
+                # Sort aggregated entries by cv_val_score
                 sorted_agg = sorted(
-                    [a for a in agg_list if a.get("avg_val_score") is not None],
-                    key=lambda x: x.get("avg_val_score", 0),
+                    [a for a in agg_list if a.get("cv_val_score") is not None],
+                    key=lambda x: x.get("cv_val_score", 0),
                     reverse=higher_is_better,
                 )
 
                 best = sorted_agg[0] if sorted_agg else {}
-                best_avg_val = _sanitize_float(best.get("avg_val_score"))
-                best_avg_test = _sanitize_float(best.get("avg_test_score"))
+                best_avg_val = _sanitize_float(best.get("cv_val_score"))
+                best_avg_test = _sanitize_float(best.get("cv_test_score"))
 
                 # Historical best for gain calculation
                 gain = None
@@ -519,22 +564,112 @@ class StoreAdapter:
                 except Exception:
                     pass
 
-                # Top 5 chains
+                # Top 5 chains with final (refit) scores
+                top_5_entries = sorted_agg[:5]
+                top_5_chain_ids = {e.get("chain_id", "") for e in top_5_entries}
+
+                # Also find refit-only chains for this run+dataset
+                refit_only_chains: list[dict[str, Any]] = []
+                try:
+                    refit_df = store._fetch_pl(
+                        "SELECT p.chain_id, p.model_name, p.model_class, p.test_score, p.train_score, "
+                        "p.scores, p.preprocessings "
+                        "FROM predictions p "
+                        "JOIN chains c ON p.chain_id = c.chain_id "
+                        "JOIN pipelines pl ON c.pipeline_id = pl.pipeline_id "
+                        "WHERE pl.run_id = $1 AND p.dataset_name = $2 "
+                        "AND p.refit_context IS NOT NULL AND p.fold_id = 'final' AND p.partition = 'test'",
+                        [run_id, ds_name],
+                    )
+                    for rrow in refit_df.iter_rows(named=True):
+                        if rrow.get("chain_id", "") not in top_5_chain_ids:
+                            refit_only_chains.append(dict(rrow))
+                except Exception:
+                    pass
+
+                # Load chain summary data (cv_scores + final scores already precomputed)
+                all_chain_ids = list(top_5_chain_ids | {r.get("chain_id", "") for r in refit_only_chains})
+                chain_summary_map: dict[str, dict[str, Any]] = {}
+                if all_chain_ids:
+                    try:
+                        ph = ", ".join(f"${i + 1}" for i in range(len(all_chain_ids)))
+                        cs_df = store._fetch_pl(
+                            f"SELECT chain_id, cv_scores, final_test_score, final_train_score, final_scores "
+                            f"FROM v_chain_summary WHERE chain_id IN ({ph})",
+                            all_chain_ids,
+                        )
+                        for cs_row in cs_df.iter_rows(named=True):
+                            cid = cs_row.get("chain_id", "")
+                            chain_summary_map[cid] = dict(cs_row)
+                    except Exception:
+                        pass
+
                 top_5 = []
-                for entry in sorted_agg[:5]:
-                    # Get detailed scores from predictions for this chain
+                best_final_score = None
+                for entry in top_5_entries:
                     chain_id = entry.get("chain_id", "")
-                    scores_detail = self._get_chain_multi_metric_scores(chain_id)
+                    cs = chain_summary_map.get(chain_id, {})
+                    cv_scores_raw = cs.get("cv_scores")
+                    scores_detail = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
+                    final_ts = _sanitize_float(cs.get("final_test_score"))
+                    final_trs = _sanitize_float(cs.get("final_train_score"))
+                    final_scores_raw = cs.get("final_scores")
+                    final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+
+                    if final_ts is not None:
+                        if best_final_score is None:
+                            best_final_score = final_ts
+                        elif higher_is_better and final_ts > best_final_score:
+                            best_final_score = final_ts
+                        elif not higher_is_better and final_ts < best_final_score:
+                            best_final_score = final_ts
 
                     top_5.append(_sanitize_dict({
                         "chain_id": chain_id,
                         "model_name": entry.get("model_name", ""),
                         "model_class": entry.get("model_class", ""),
                         "preprocessings": entry.get("preprocessings", ""),
-                        "avg_val_score": entry.get("avg_val_score"),
-                        "avg_test_score": entry.get("avg_test_score"),
-                        "fold_count": entry.get("fold_count", 0),
+                        "avg_val_score": entry.get("cv_val_score"),
+                        "avg_test_score": entry.get("cv_test_score"),
+                        "avg_train_score": entry.get("cv_train_score"),
+                        "fold_count": entry.get("cv_fold_count", 0),
                         "scores": scores_detail,
+                        "final_test_score": final_ts,
+                        "final_train_score": final_trs,
+                        "final_scores": final_scores,
+                    }))
+
+                # Add refit-only chains not in top_5
+                for rchain in refit_only_chains:
+                    rchain_id = rchain.get("chain_id", "")
+                    cs = chain_summary_map.get(rchain_id, {})
+                    rts = _sanitize_float(cs.get("final_test_score") or rchain.get("test_score"))
+                    rtrs = _sanitize_float(cs.get("final_train_score") or rchain.get("train_score"))
+                    rfinal_scores_raw = cs.get("final_scores") or rchain.get("scores")
+                    rfinal_scores = json.loads(rfinal_scores_raw) if isinstance(rfinal_scores_raw, str) else (rfinal_scores_raw or {})
+
+                    if rts is not None:
+                        if best_final_score is None:
+                            best_final_score = rts
+                        elif higher_is_better and rts > best_final_score:
+                            best_final_score = rts
+                        elif not higher_is_better and rts < best_final_score:
+                            best_final_score = rts
+
+                    top_5.append(_sanitize_dict({
+                        "chain_id": rchain_id,
+                        "model_name": rchain.get("model_name", ""),
+                        "model_class": rchain.get("model_class", ""),
+                        "preprocessings": rchain.get("preprocessings", ""),
+                        "avg_val_score": None,
+                        "avg_test_score": None,
+                        "avg_train_score": None,
+                        "fold_count": 0,
+                        "scores": {},
+                        "final_test_score": rts,
+                        "final_train_score": rtrs,
+                        "final_scores": rfinal_scores,
+                        "is_refit_only": True,
                     }))
 
                 # Get task_type from first prediction
@@ -550,6 +685,7 @@ class StoreAdapter:
                     "dataset_name": ds_name,
                     "best_avg_val_score": best_avg_val,
                     "best_avg_test_score": best_avg_test,
+                    "best_final_score": _sanitize_float(best_final_score),
                     "metric": metric,
                     "task_type": task_type,
                     "gain_from_previous_best": gain,
@@ -659,7 +795,7 @@ class StoreAdapter:
         return 0
 
     def _get_dataset_historical_best(self, dataset_name: str, metric: str, exclude_run_id: str | None = None) -> float | None:
-        """Get the best historical avg_val_score for a dataset across all runs."""
+        """Get the best historical cv_val_score for a dataset across all runs."""
         try:
             from nirs4all.pipeline.run import get_metric_info
             metric_info = get_metric_info(metric)
@@ -668,13 +804,13 @@ class StoreAdapter:
 
             if exclude_run_id:
                 df = self._store._fetch_pl(
-                    f"SELECT {agg_fn}(avg_val_score) AS best FROM v_aggregated_predictions "
+                    f"SELECT {agg_fn}(cv_val_score) AS best FROM v_chain_summary "
                     "WHERE dataset_name = $1 AND metric = $2 AND run_id != $3",
                     [dataset_name, metric, exclude_run_id]
                 )
             else:
                 df = self._store._fetch_pl(
-                    f"SELECT {agg_fn}(avg_val_score) AS best FROM v_aggregated_predictions "
+                    f"SELECT {agg_fn}(cv_val_score) AS best FROM v_chain_summary "
                     "WHERE dataset_name = $1 AND metric = $2",
                     [dataset_name, metric]
                 )
@@ -686,48 +822,117 @@ class StoreAdapter:
             pass
         return None
 
-    def _get_chain_multi_metric_scores(self, chain_id: str) -> dict[str, dict[str, float | None]]:
-        """Get averaged multi-metric scores for a chain across folds.
+    # ------------------------------------------------------------------
+    # Results Summary (top models per dataset)
+    # ------------------------------------------------------------------
 
-        Returns dict like: {"val": {"r2": 0.95, "rmse": 0.12, "rpd": 3.2}, "test": {...}}
+    def get_dataset_top_chains(self, n: int = 5) -> dict[str, Any]:
+        """Get top N models per dataset across all runs, with final scores.
+
+        Uses the ``v_chain_summary`` view which has both CV averages and
+        final/refit scores pre-computed on each chain row.
+
+        Returns:
+            ``{"datasets": [{"dataset_name", "metric", "task_type", "top_chains": [...]}]}``
         """
-        result: dict[str, dict[str, float | None]] = {"val": {}, "test": {}}
+        store = self._store
         try:
-            df = self._store._fetch_pl(
-                "SELECT partition, scores FROM predictions "
-                "WHERE chain_id = $1 AND refit_context IS NULL AND partition IN ('val', 'test')",
-                [chain_id]
-            )
-            # Accumulate scores per partition
-            partition_scores: dict[str, dict[str, list[float]]] = {"val": {}, "test": {}}
-            for row in df.iter_rows(named=True):
-                part = row.get("partition", "")
-                scores_raw = row.get("scores")
-                if not scores_raw:
-                    continue
-                scores = json.loads(scores_raw) if isinstance(scores_raw, str) else scores_raw
-                if not isinstance(scores, dict):
-                    continue
-                # scores format: {"val": {"r2": 0.95, "rmse": 0.12}, "test": {...}} or flat {"r2": 0.95}
-                # Try nested first (scores[partition])
-                inner = scores.get(part, scores)
-                if isinstance(inner, dict):
-                    if part not in partition_scores:
-                        partition_scores[part] = {}
-                    for metric_name, val in inner.items():
-                        if isinstance(val, (int, float)) and not (isinstance(val, float) and (math.isnan(val) or math.isinf(val))):
-                            if metric_name not in partition_scores[part]:
-                                partition_scores[part][metric_name] = []
-                            partition_scores[part][metric_name].append(float(val))
-
-            # Average scores
-            for part in ("val", "test"):
-                for metric_name, values in partition_scores.get(part, {}).items():
-                    if values:
-                        result[part][metric_name] = round(sum(values) / len(values), 6)
+            all_df = store.query_chain_summaries()
         except Exception:
-            pass
-        return _sanitize_dict(result)
+            return {"datasets": []}
+
+        if len(all_df) == 0:
+            return {"datasets": []}
+
+        from nirs4all.pipeline.run import get_metric_info
+
+        # Group chains by dataset
+        datasets_result: list[dict[str, Any]] = []
+        rows = list(all_df.iter_rows(named=True))
+        datasets: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            ds = row.get("dataset_name") or ""
+            if ds:
+                datasets.setdefault(ds, []).append(dict(row))
+
+        for ds_name in sorted(datasets):
+            ds_chains = datasets[ds_name]
+            metric = next((c.get("metric") for c in ds_chains if c.get("metric")), "r2")
+            task_type = next((c.get("task_type") for c in ds_chains if c.get("task_type")), None)
+            metric_info = get_metric_info(metric)
+            higher_is_better = metric_info.get("higher_is_better", True)
+
+            # Separate CV chains (have cv_fold_count > 0) and refit-only
+            cv_chains = [c for c in ds_chains if (c.get("cv_fold_count") or 0) > 0]
+            refit_only = [c for c in ds_chains if (c.get("cv_fold_count") or 0) == 0 and c.get("final_test_score") is not None]
+
+            # Sort CV chains by cv_val_score
+            cv_chains.sort(
+                key=lambda x: x.get("cv_val_score") if x.get("cv_val_score") is not None else (float("inf") if not higher_is_better else float("-inf")),
+                reverse=higher_is_better,
+            )
+
+            top_chains = []
+            cv_chain_ids: set[str] = set()
+
+            for entry in cv_chains[:n]:
+                chain_id = entry.get("chain_id", "")
+                cv_chain_ids.add(chain_id)
+                cv_scores_raw = entry.get("cv_scores")
+                cv_scores = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
+                final_scores_raw = entry.get("final_scores")
+                final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+                top_chains.append(_sanitize_dict({
+                    "chain_id": chain_id,
+                    "run_id": entry.get("run_id", ""),
+                    "model_name": entry.get("model_name", ""),
+                    "model_class": entry.get("model_class", ""),
+                    "preprocessings": entry.get("preprocessings", ""),
+                    "avg_val_score": entry.get("cv_val_score"),
+                    "avg_test_score": entry.get("cv_test_score"),
+                    "avg_train_score": entry.get("cv_train_score"),
+                    "fold_count": entry.get("cv_fold_count", 0),
+                    "scores": cv_scores,
+                    "final_test_score": entry.get("final_test_score"),
+                    "final_train_score": entry.get("final_train_score"),
+                    "final_scores": final_scores,
+                }))
+
+            # Add refit-only chains
+            for entry in refit_only:
+                chain_id = entry.get("chain_id", "")
+                if chain_id in cv_chain_ids:
+                    continue
+                final_scores_raw = entry.get("final_scores")
+                final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+                top_chains.append(_sanitize_dict({
+                    "chain_id": chain_id,
+                    "run_id": entry.get("run_id", ""),
+                    "model_name": entry.get("model_name", ""),
+                    "model_class": entry.get("model_class", ""),
+                    "preprocessings": entry.get("preprocessings", ""),
+                    "avg_val_score": None,
+                    "avg_test_score": None,
+                    "avg_train_score": None,
+                    "fold_count": 0,
+                    "scores": {},
+                    "final_test_score": entry.get("final_test_score"),
+                    "final_train_score": entry.get("final_train_score"),
+                    "final_scores": final_scores,
+                    "is_refit_only": True,
+                }))
+
+            if not top_chains:
+                continue
+
+            datasets_result.append(_sanitize_dict({
+                "dataset_name": ds_name,
+                "metric": metric,
+                "task_type": task_type,
+                "top_chains": top_chains,
+            }))
+
+        return {"datasets": datasets_result}
 
     # ------------------------------------------------------------------
     # Score Distribution

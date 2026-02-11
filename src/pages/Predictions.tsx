@@ -778,9 +778,16 @@ export default function Predictions() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="text-xs">
-                      {pred.partition || "—"}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {pred.partition || "—"}
+                      </Badge>
+                      {pred.fold_id === "final" && (
+                        <Badge variant="outline" className="text-xs text-emerald-500 border-emerald-500/30">
+                          Final
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <span className="truncate max-w-[150px] block text-muted-foreground text-xs">

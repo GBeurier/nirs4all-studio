@@ -1,6 +1,8 @@
 ## NEXT
 
-- remove dashboard: Menu > Datasets - Pipelines - Editor | Playground - Inspector | Runs - Scores - Predictions | Lab (Synthesis, transfer, Stats, etc.) | Settings
+- Stop refresh dataset on delete
+
+- playground first loading is awfully slow. Can it be //. and // on charts. All fully //. + subsampling on 4k spectra. Too too slow. Subsample apply also. It means with display only data and apply PCA on visibles points. Change scope if slow.
 
 ## GENERAL
 **Global**

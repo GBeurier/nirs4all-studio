@@ -295,6 +295,23 @@ export interface ResultListResponse {
 }
 
 // ============================================================================
+// Results Summary Types (top models per dataset)
+// ============================================================================
+
+export interface DatasetTopChains {
+  dataset_name: string;
+  linked_dataset_id: string | null;
+  metric: string | null;
+  task_type: string | null;
+  top_chains: import("@/types/enriched-runs").TopChainResult[];
+}
+
+export interface ResultsSummaryResponse {
+  workspace_id: string;
+  datasets: DatasetTopChains[];
+}
+
+// ============================================================================
 // Discovered Dataset Types (Phase 2.2)
 // ============================================================================
 

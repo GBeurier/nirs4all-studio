@@ -1296,8 +1296,76 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
         step_name = step.get("name", "")
         step_params = step.get("params", {})
         step_type = step.get("type", "")
+        sub_type = step.get("subType", "")
         generator = step.get("generator")
         children = step.get("children", [])
+        branches = step.get("branches", [])
+        generator_kind = step.get("generatorKind", "")
+        generator_options = step.get("generatorOptions", {})
+
+        # --- Consolidated "flow" type ---
+        if step_type == "flow":
+            if sub_type == "branch" and branches:
+                branch_paths = []
+                for branch_steps in branches:
+                    branch_paths.append(_convert_frontend_steps_to_nirs4all(branch_steps))
+                result.append({"branch": branch_paths})
+                continue
+            if sub_type == "merge":
+                merge_config = step.get("mergeConfig")
+                if merge_config and merge_config.get("mode"):
+                    result.append({"merge": merge_config["mode"]})
+                else:
+                    result.append({"merge": step_params.get("merge_type", "predictions")})
+                continue
+            if sub_type in ("sample_augmentation", "feature_augmentation") and children:
+                child_steps = _convert_frontend_steps_to_nirs4all(children)
+                result.extend(child_steps)
+                continue
+            if sub_type == "sample_filter" and children:
+                child_steps = _convert_frontend_steps_to_nirs4all(children)
+                mode = step.get("sampleFilterConfig", {}).get("mode", "any")
+                result.append({"exclude": child_steps, "mode": mode})
+                continue
+            if sub_type == "concat_transform" and branches:
+                branch_paths = []
+                for branch_steps in branches:
+                    branch_paths.append(_convert_frontend_steps_to_nirs4all(branch_steps))
+                result.append({"branch": branch_paths})
+                continue
+            if sub_type == "sequential" and children:
+                child_steps = _convert_frontend_steps_to_nirs4all(children)
+                result.extend(child_steps)
+                continue
+            # Unknown flow subType — skip
+            continue
+
+        # --- Consolidated "utility" type ---
+        if step_type == "utility":
+            if sub_type == "generator" and branches:
+                alternatives = []
+                for branch in branches:
+                    branch_steps = _convert_frontend_steps_to_nirs4all(branch)
+                    if len(branch_steps) == 1:
+                        alternatives.append(branch_steps[0])
+                    else:
+                        alternatives.append(branch_steps)
+                if generator_kind == "cartesian":
+                    result.append({"_cartesian_": alternatives})
+                else:
+                    gen_step: Dict[str, Any] = {"_or_": alternatives}
+                    if generator_options.get("pick"):
+                        gen_step["pick"] = generator_options["pick"]
+                    if generator_options.get("arrange"):
+                        gen_step["arrange"] = generator_options["arrange"]
+                    if generator_options.get("count"):
+                        gen_step["count"] = generator_options["count"]
+                    result.append(gen_step)
+                continue
+            # Charts and comments are non-executing
+            continue
+
+        # --- Legacy and standard types below ---
 
         # Build the base step representation
         # For nirs4all, we represent operators as class names or dicts
@@ -1312,16 +1380,14 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
         elif step_type == "y_processing":
             base_step = {"y_processing": base_step}
 
-        # Handle generator step type (choice/or node)
+        # Handle generator step type (choice/or node) - legacy
         if step_type == "generator" and children:
-            # This is a ChooseOne/ChooseN node
             alternatives = []
             for child in children:
                 child_steps = _convert_frontend_steps_to_nirs4all([child])
                 alternatives.extend(child_steps)
             if alternatives:
                 gen_step = {"_or_": alternatives}
-                # Include pick/count from generator options
                 if generator:
                     if generator.get("pick"):
                         gen_step["pick"] = generator["pick"]
@@ -1330,7 +1396,7 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
                 result.append(gen_step)
             continue
 
-        # Handle branch step type
+        # Handle branch step type - legacy
         if step_type == "branch" and children:
             branch_paths = []
             for child in children:
@@ -1342,9 +1408,7 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
 
         # Apply generator wrapper if present on regular steps
         if generator:
-            # Generator contains _or_, _range_, _log_range_, pick, etc.
             if "_or_" in generator and generator["_or_"]:
-                # The _or_ contains alternatives
                 gen_step = {"_or_": generator["_or_"]}
                 if generator.get("pick"):
                     gen_step["pick"] = generator["pick"]
@@ -1352,11 +1416,9 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
                     gen_step["count"] = generator["count"]
                 result.append(gen_step)
             elif "_range_" in generator and generator["_range_"]:
-                # Range generator on a param
                 gen_step = {"_range_": generator["_range_"]}
                 result.append(gen_step)
             elif "_log_range_" in generator and generator["_log_range_"]:
-                # Log range generator
                 gen_step = {"_log_range_": generator["_log_range_"]}
                 result.append(gen_step)
             else:
@@ -1364,10 +1426,9 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
         else:
             result.append(base_step)
 
-        # Handle children for other container steps (sample_augmentation, etc.)
+        # Handle children for other container steps - legacy
         if children and step_type not in ("branch", "generator"):
             child_steps = _convert_frontend_steps_to_nirs4all(children)
-            # These are typically wrapped in the container keyword
             if step_type == "sample_augmentation":
                 result.append({"sample_augmentation": {"transformers": child_steps}})
             elif step_type == "feature_augmentation":

@@ -1,50 +1,53 @@
 /**
- * Types for aggregated predictions from DuckDB store.
+ * Types for chain summaries from DuckDB store.
  *
  * These types correspond to the backend endpoints in
  * /api/aggregated-predictions/ which read from the
- * v_aggregated_predictions VIEW.
+ * v_chain_summary VIEW.
  */
 
-/** One row from the aggregated predictions VIEW. */
-export interface AggregatedPrediction {
+/** One row from the v_chain_summary VIEW. */
+export interface ChainSummary {
   run_id: string;
   pipeline_id: string;
   chain_id: string;
-  model_name: string;
+  model_name: string | null;
   model_class: string;
   preprocessings: string | null;
-  branch_path: string | null;
+  branch_path: unknown | null;
   source_index: number | null;
   model_step_idx: number;
-  metric: string;
-  dataset_name: string;
-  fold_count: number;
-  partition_count: number;
-  partitions: string[];
-  min_val_score: number | null;
-  max_val_score: number | null;
-  avg_val_score: number | null;
-  min_test_score: number | null;
-  max_test_score: number | null;
-  avg_test_score: number | null;
-  min_train_score: number | null;
-  max_train_score: number | null;
-  avg_train_score: number | null;
-  prediction_ids: string[];
-  fold_ids: string[];
+  metric: string | null;
+  task_type: string | null;
+  dataset_name: string | null;
+  best_params: unknown | null;
+  // CV scores (averaged across folds)
+  cv_val_score: number | null;
+  cv_test_score: number | null;
+  cv_train_score: number | null;
+  cv_fold_count: number;
+  cv_scores: Record<string, Record<string, number>> | null;
+  // Final/refit scores
+  final_test_score: number | null;
+  final_train_score: number | null;
+  final_scores: unknown | null;
+  // Pipeline status from JOIN
+  pipeline_status: string | null;
 }
+
+/** @deprecated Use ChainSummary instead. */
+export type AggregatedPrediction = ChainSummary;
 
 /** Response from GET /api/aggregated-predictions */
 export interface AggregatedPredictionsResponse {
-  predictions: AggregatedPrediction[];
+  predictions: ChainSummary[];
   total: number;
   generated_at: string;
 }
 
 /** Response from GET /api/aggregated-predictions/top */
 export interface TopAggregatedPredictionsResponse {
-  predictions: AggregatedPrediction[];
+  predictions: ChainSummary[];
   total: number;
   metric: string;
   score_column: string;
@@ -86,7 +89,7 @@ export interface ChainPipelineInfo {
 /** Response from GET /api/aggregated-predictions/chain/{chain_id} */
 export interface ChainDetailResponse {
   chain_id: string;
-  aggregated: AggregatedPrediction | null;
+  summary: ChainSummary | null;
   predictions: PartitionPrediction[];
   pipeline: ChainPipelineInfo | null;
 }
@@ -111,7 +114,7 @@ export interface PredictionArraysResponse {
   n_samples: number;
 }
 
-/** Filters for querying aggregated predictions. */
+/** Filters for querying chain summaries. */
 export interface AggregatedPredictionFilters {
   run_id?: string;
   pipeline_id?: string;

@@ -1870,6 +1870,103 @@ async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: s
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list) -> None:
+    """Resolve DuckDB dataset_name → linked dataset ID using smart matching.
+
+    Matching strategies (in priority order):
+    1. Exact name match (case-insensitive)
+    2. folder_to_name(linked_path) is a prefix of DuckDB name (longest wins)
+    3. Linked name is a prefix of DuckDB name (longest wins)
+
+    Mutates each entry in datasets_result to add ``linked_dataset_id``.
+    """
+    if not linked_datasets:
+        return
+
+    # Build list of (id, name_lower, folder_name_lower) tuples
+    linked_info: list[tuple[str, str, str]] = []
+    for ld in linked_datasets:
+        ld_id = ld.id if hasattr(ld, "id") else ld.get("id", "")
+        ld_name = ld.name if hasattr(ld, "name") else ld.get("name", "")
+        ld_path = ld.path if hasattr(ld, "path") else ld.get("path", "")
+        name_lower = ld_name.lower() if ld_name else ""
+        folder_lower = ""
+        if ld_path:
+            folder_lower = "".join(c if c.isalnum() else "_" for c in Path(ld_path).name).lower()
+        linked_info.append((ld_id, name_lower, folder_lower))
+
+    for ds_entry in datasets_result:
+        duckdb_name = ds_entry.get("dataset_name", "")
+        if not duckdb_name:
+            continue
+
+        duckdb_lower = duckdb_name.lower()
+
+        # Strategy 1: exact name match (case-insensitive)
+        for ld_id, name_lower, _ in linked_info:
+            if duckdb_lower == name_lower:
+                ds_entry["linked_dataset_id"] = ld_id
+                break
+        if "linked_dataset_id" in ds_entry:
+            continue
+
+        # Strategy 2: folder_to_name(path) is a prefix of DuckDB name (longest wins)
+        best_id: str | None = None
+        best_len = 0
+        for ld_id, _, folder_lower in linked_info:
+            if folder_lower and duckdb_lower.startswith(folder_lower) and len(folder_lower) > best_len:
+                best_id = ld_id
+                best_len = len(folder_lower)
+
+        if best_id:
+            ds_entry["linked_dataset_id"] = best_id
+            continue
+
+        # Strategy 3: linked name prefix (longest wins)
+        for ld_id, name_lower, _ in linked_info:
+            if name_lower and duckdb_lower.startswith(name_lower) and len(name_lower) > best_len:
+                best_id = ld_id
+                best_len = len(name_lower)
+
+        if best_id:
+            ds_entry["linked_dataset_id"] = best_id
+
+
+@router.get("/workspaces/{workspace_id}/results/summary")
+async def get_workspace_results_summary(workspace_id: str):
+    """Get results summary: top 5 models per dataset across all runs."""
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+        if not STORE_AVAILABLE:
+            return {"workspace_id": workspace_id, "datasets": []}
+
+        workspace_path = Path(ws.path)
+        store_path = workspace_path / "store.duckdb"
+        if not store_path.exists():
+            return {"workspace_id": workspace_id, "datasets": []}
+
+        adapter = StoreAdapter(workspace_path)
+        try:
+            result = adapter.get_dataset_top_chains()
+            result["workspace_id"] = workspace_id
+
+            # Resolve DuckDB dataset names to linked dataset IDs
+            linked_datasets = app_config.get_datasets()
+            _resolve_dataset_mapping(result.get("datasets", []), linked_datasets)
+
+            return result
+        finally:
+            adapter.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/workspaces/{workspace_id}/results")
 async def get_workspace_results(
     workspace_id: str,

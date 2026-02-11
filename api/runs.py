@@ -716,6 +716,29 @@ async def _execute_run(run_id: str):
         pipeline_index = 0
         total_pipelines = run.total_pipelines or 1
 
+        # Pre-create a single store run so all pipelines are grouped together
+        shared_store_run_id: Optional[str] = None
+        if total_pipelines > 1 and run.workspace_path:
+            try:
+                from nirs4all.pipeline.storage import WorkspaceStore
+                _pre_store = WorkspaceStore(Path(run.workspace_path))
+                dataset_meta = [{"name": d.dataset_name} for d in run.datasets]
+                shared_store_run_id = _pre_store.begin_run(
+                    name=run.name or "run",
+                    config={"n_pipelines": total_pipelines, "n_datasets": len(run.datasets)},
+                    datasets=dataset_meta,
+                )
+                run.store_run_id = shared_store_run_id
+                if run.project_id:
+                    _pre_store._fetch_pl(
+                        "UPDATE runs SET project_id = $2 WHERE run_id = $1",
+                        [shared_store_run_id, run.project_id],
+                    )
+                _pre_store.close()
+            except Exception as e:
+                print(f"[WARN] Failed to pre-create store run: {e}")
+                shared_store_run_id = None
+
         for dataset in run.datasets:
             for pipeline in dataset.pipelines:
                 # Check for cancellation
@@ -753,6 +776,7 @@ async def _execute_run(run_id: str):
                         run.workspace_path,
                         run_id,
                         pipeline_progress_callback if ws_available else None,
+                        store_run_id=shared_store_run_id,
                     )
 
                     pipeline.status = "completed"
@@ -765,26 +789,10 @@ async def _execute_run(run_id: str):
                     pipeline.logs = result.get("logs", pipeline.logs or [])
                     pipeline.tested_variants = result.get("variants_tested", 1)
 
-                    # Capture store_run_id from the first pipeline that returns one
+                    # Capture store_run_id (from shared pre-created run or single pipeline)
                     result_store_run_id = result.get("store_run_id")
                     if result_store_run_id and not run.store_run_id:
                         run.store_run_id = result_store_run_id
-
-                        # Set project_id on the store run if specified
-                        if run.project_id and run.workspace_path:
-                            try:
-                                from api.store_adapter import StoreAdapter, STORE_AVAILABLE
-                                if STORE_AVAILABLE:
-                                    adapter = StoreAdapter(Path(run.workspace_path))
-                                    try:
-                                        adapter.store._fetch_pl(
-                                            "UPDATE runs SET project_id = $2 WHERE run_id = $1",
-                                            [result_store_run_id, run.project_id],
-                                        )
-                                    finally:
-                                        adapter.close()
-                            except Exception as e:
-                                print(f"Failed to set project_id on store run: {e}")
 
                     # Log summary based on variants tested
                     variants_info = f" ({pipeline.tested_variants} variants tested)" if pipeline.tested_variants > 1 else ""
@@ -844,6 +852,17 @@ async def _execute_run(run_id: str):
 
         _save_run_manifest(run)
 
+        # Complete the shared store run
+        if shared_store_run_id and run.workspace_path:
+            try:
+                from nirs4all.pipeline.storage import WorkspaceStore
+                _post_store = WorkspaceStore(Path(run.workspace_path))
+                summary = {"total_pipelines": total_pipelines}
+                _post_store.complete_run(shared_store_run_id, summary)
+                _post_store.close()
+            except Exception as e:
+                print(f"[WARN] Failed to complete store run: {e}")
+
         if ws_available:
             await notify_job_completed(run_id, {
                 "run_id": run_id,
@@ -856,12 +875,23 @@ async def _execute_run(run_id: str):
         run.completed_at = datetime.now().isoformat()
         _save_run_manifest(run)
 
+        # Fail the shared store run
+        if shared_store_run_id and run.workspace_path:
+            try:
+                from nirs4all.pipeline.storage import WorkspaceStore
+                _fail_store = WorkspaceStore(Path(run.workspace_path))
+                _fail_store.fail_run(shared_store_run_id, str(e))
+                _fail_store.close()
+            except Exception:
+                pass
+
         if ws_available:
             await notify_job_failed(run_id, str(e))
 
     finally:
         # Clean up cancellation flag
         _run_cancellation_flags.pop(run_id, None)
+
 
 
 async def _execute_pipeline_training(
@@ -871,6 +901,7 @@ async def _execute_pipeline_training(
     workspace_path: Optional[str],
     run_id: str,
     progress_callback: Optional[Any] = None,
+    store_run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Execute pipeline training using nirs4all.run().
@@ -1135,7 +1166,7 @@ async def _execute_pipeline_training(
             log("[INFO] Executing nirs4all.run() with dataset config...")
             log(f"[INFO] Training {model_name}...")
 
-            result = nirs4all.run(
+            run_kwargs = dict(
                 pipeline=nirs4all_steps,
                 dataset=dataset_config,
                 verbose=1,
@@ -1144,6 +1175,9 @@ async def _execute_pipeline_training(
                 plots_visible=False,
                 workspace_path=workspace_path,
             )
+            if store_run_id:
+                run_kwargs["store_run_id"] = store_run_id
+            result = nirs4all.run(**run_kwargs)
         finally:
             root_logger.removeHandler(log_handler)
 
@@ -1223,13 +1257,15 @@ async def _execute_pipeline_training(
             except Exception:
                 pass
 
-        # Extract store_run_id from the orchestrator
-        store_run_id = None
+        # Extract result_store_run_id from the orchestrator
+        result_store_run_id = store_run_id  # Start with the caller-provided ID
         try:
             if hasattr(result, '_runner') and result._runner is not None:
                 orchestrator = getattr(result._runner, 'orchestrator', None)
                 if orchestrator is not None:
-                    store_run_id = getattr(orchestrator, 'last_run_id', None)
+                    orch_run_id = getattr(orchestrator, 'last_run_id', None)
+                    if orch_run_id:
+                        result_store_run_id = orch_run_id
         except Exception:
             pass
 
@@ -1253,7 +1289,7 @@ async def _execute_pipeline_training(
             "model_path": model_path,
             "logs": thread_logs,
             "variants_tested": num_predictions,
-            "store_run_id": store_run_id,
+            "store_run_id": result_store_run_id,
         }
 
     # Run the pipeline in a thread pool

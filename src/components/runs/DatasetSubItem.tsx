@@ -8,6 +8,7 @@ import {
   TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatScore } from "@/lib/scores";
 import type { EnrichedDatasetRun } from "@/types/enriched-runs";
 import { TopScoreItem } from "./TopScoreItem";
 import { RunQuickView } from "./RunQuickView";
@@ -17,11 +18,6 @@ interface DatasetSubItemProps {
   runId: string;
   runName: string;
   workspaceId: string;
-}
-
-function formatScore(score: number | null): string {
-  if (score == null) return "-";
-  return score.toFixed(4);
 }
 
 function GainBadge({ gain, metric }: { gain: number | null; metric: string | null }) {
@@ -66,9 +62,18 @@ export function DatasetSubItem({ dataset, runId, runName, workspaceId }: Dataset
               )}
               <Database className="h-4 w-4 text-primary shrink-0" />
               <span className="font-medium text-sm truncate">{dataset.dataset_name}</span>
-              {dataset.best_avg_val_score != null && (
-                <Badge variant="outline" className="text-xs font-mono text-chart-1 border-chart-1/30 shrink-0">
-                  {dataset.metric?.toUpperCase()} {formatScore(dataset.best_avg_val_score)}
+              {(dataset.best_final_score != null || dataset.best_avg_val_score != null) && (
+                <Badge variant="outline" className={cn(
+                  "text-xs font-mono shrink-0",
+                  dataset.best_final_score != null
+                    ? "text-emerald-500 border-emerald-500/30"
+                    : "text-chart-1 border-chart-1/30",
+                )}>
+                  {dataset.best_final_score != null ? (
+                    <>Final {dataset.metric?.toUpperCase()} {formatScore(dataset.best_final_score)}</>
+                  ) : (
+                    <>{dataset.metric?.toUpperCase()} {formatScore(dataset.best_avg_val_score)}</>
+                  )}
                 </Badge>
               )}
               <GainBadge gain={dataset.gain_from_previous_best} metric={dataset.metric} />

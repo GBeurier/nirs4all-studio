@@ -45,7 +45,7 @@ def mock_polars_df():
 
 @pytest.fixture()
 def sample_aggregated_rows():
-    """Sample aggregated prediction rows."""
+    """Sample chain summary rows (v_chain_summary schema)."""
     return [
         {
             "run_id": "run-001",
@@ -58,21 +58,18 @@ def sample_aggregated_rows():
             "source_index": None,
             "model_step_idx": 0,
             "metric": "rmse",
+            "task_type": "regression",
             "dataset_name": "dataset_a",
-            "fold_count": 5,
-            "partition_count": 2,
-            "partitions": ["val", "test"],
-            "min_val_score": 0.10,
-            "max_val_score": 0.15,
-            "avg_val_score": 0.12,
-            "min_test_score": 0.11,
-            "max_test_score": 0.16,
-            "avg_test_score": 0.13,
-            "min_train_score": None,
-            "max_train_score": None,
-            "avg_train_score": None,
-            "prediction_ids": ["pred-001", "pred-002", "pred-003", "pred-004", "pred-005"],
-            "fold_ids": ["fold-0", "fold-1", "fold-2", "fold-3", "fold-4"],
+            "best_params": None,
+            "cv_val_score": 0.12,
+            "cv_test_score": 0.13,
+            "cv_train_score": None,
+            "cv_fold_count": 5,
+            "cv_scores": None,
+            "final_test_score": None,
+            "final_train_score": None,
+            "final_scores": None,
+            "pipeline_status": "completed",
         },
         {
             "run_id": "run-001",
@@ -85,21 +82,18 @@ def sample_aggregated_rows():
             "source_index": None,
             "model_step_idx": 0,
             "metric": "rmse",
+            "task_type": "regression",
             "dataset_name": "dataset_a",
-            "fold_count": 5,
-            "partition_count": 2,
-            "partitions": ["val", "test"],
-            "min_val_score": 0.20,
-            "max_val_score": 0.28,
-            "avg_val_score": 0.24,
-            "min_test_score": 0.22,
-            "max_test_score": 0.30,
-            "avg_test_score": 0.26,
-            "min_train_score": None,
-            "max_train_score": None,
-            "avg_train_score": None,
-            "prediction_ids": ["pred-006", "pred-007", "pred-008", "pred-009", "pred-010"],
-            "fold_ids": ["fold-0", "fold-1", "fold-2", "fold-3", "fold-4"],
+            "best_params": None,
+            "cv_val_score": 0.24,
+            "cv_test_score": 0.26,
+            "cv_train_score": None,
+            "cv_fold_count": 5,
+            "cv_scores": None,
+            "final_test_score": None,
+            "final_train_score": None,
+            "final_scores": None,
+            "pipeline_status": "completed",
         },
     ]
 
@@ -181,8 +175,8 @@ def mock_workspace(tmp_path):
 def mock_store(mock_polars_df, sample_aggregated_rows):
     """Create a fully mocked WorkspaceStore."""
     store = MagicMock()
-    store.query_aggregated_predictions.return_value = mock_polars_df(sample_aggregated_rows)
-    store.query_top_aggregated_predictions.return_value = mock_polars_df(sample_aggregated_rows[:1])
+    store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows)
+    store.query_top_chains.return_value = mock_polars_df(sample_aggregated_rows[:1])
     store.get_chain_predictions.return_value = mock_polars_df([])
     store.get_prediction_arrays.return_value = None
     store.get_pipeline.return_value = None
@@ -236,7 +230,7 @@ class TestStoreAdapterAggregated:
 
     def test_get_aggregated_predictions(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
-        mock_store.query_aggregated_predictions.return_value = mock_polars_df(sample_aggregated_rows)
+        mock_store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows)
 
         adapter = self._make_adapter(mock_store)
         result = adapter.get_aggregated_predictions()
@@ -244,11 +238,11 @@ class TestStoreAdapterAggregated:
         assert len(result) == 2
         assert result[0]["chain_id"] == "chain-001"
         assert result[1]["chain_id"] == "chain-002"
-        mock_store.query_aggregated_predictions.assert_called_once()
+        mock_store.query_chain_summaries.assert_called_once()
 
     def test_get_aggregated_predictions_with_filters(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
-        mock_store.query_aggregated_predictions.return_value = mock_polars_df(sample_aggregated_rows[:1])
+        mock_store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows[:1])
 
         adapter = self._make_adapter(mock_store)
         result = adapter.get_aggregated_predictions(
@@ -258,7 +252,7 @@ class TestStoreAdapterAggregated:
         )
 
         assert len(result) == 1
-        mock_store.query_aggregated_predictions.assert_called_once_with(
+        mock_store.query_chain_summaries.assert_called_once_with(
             run_id="run-001",
             pipeline_id=None,
             chain_id=None,
@@ -269,17 +263,17 @@ class TestStoreAdapterAggregated:
 
     def test_get_top_aggregated_predictions(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
-        mock_store.query_top_aggregated_predictions.return_value = mock_polars_df(sample_aggregated_rows[:1])
+        mock_store.query_top_chains.return_value = mock_polars_df(sample_aggregated_rows[:1])
 
         adapter = self._make_adapter(mock_store)
         result = adapter.get_top_aggregated_predictions(metric="rmse", n=5)
 
         assert len(result) == 1
         assert result[0]["metric"] == "rmse"
-        mock_store.query_top_aggregated_predictions.assert_called_once_with(
+        mock_store.query_top_chains.assert_called_once_with(
             metric="rmse",
             n=5,
-            score_column="avg_val_score",
+            score_column="cv_val_score",
         )
 
     def test_get_chain_predictions(self, mock_polars_df, sample_chain_prediction_rows):
@@ -351,32 +345,29 @@ class TestStoreAdapterAggregated:
                 "source_index": None,
                 "model_step_idx": 0,
                 "metric": "rmse",
+                "task_type": "regression",
                 "dataset_name": "dataset_a",
-                "fold_count": 1,
-                "partition_count": 1,
-                "partitions": ["val"],
-                "min_val_score": float("nan"),
-                "max_val_score": float("nan"),
-                "avg_val_score": float("nan"),
-                "min_test_score": None,
-                "max_test_score": None,
-                "avg_test_score": None,
-                "min_train_score": None,
-                "max_train_score": None,
-                "avg_train_score": None,
-                "prediction_ids": ["pred-001"],
-                "fold_ids": ["fold-0"],
+                "best_params": None,
+                "cv_val_score": float("nan"),
+                "cv_test_score": float("nan"),
+                "cv_train_score": float("nan"),
+                "cv_fold_count": 1,
+                "cv_scores": None,
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": None,
+                "pipeline_status": "completed",
             }
         ]
         mock_store = MagicMock()
-        mock_store.query_aggregated_predictions.return_value = mock_polars_df(rows)
+        mock_store.query_chain_summaries.return_value = mock_polars_df(rows)
 
         adapter = self._make_adapter(mock_store)
         result = adapter.get_aggregated_predictions()
 
-        assert result[0]["min_val_score"] is None
-        assert result[0]["max_val_score"] is None
-        assert result[0]["avg_val_score"] is None
+        assert result[0]["cv_val_score"] is None
+        assert result[0]["cv_test_score"] is None
+        assert result[0]["cv_train_score"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +392,7 @@ class TestGetAggregatedPredictions:
         data = resp.json()
         pred = data["predictions"][0]
 
-        # Required fields from AggregatedPrediction model
+        # Required fields from ChainSummary model
         assert "run_id" in pred
         assert "pipeline_id" in pred
         assert "chain_id" in pred
@@ -409,17 +400,17 @@ class TestGetAggregatedPredictions:
         assert "model_class" in pred
         assert "metric" in pred
         assert "dataset_name" in pred
-        assert "fold_count" in pred
-        assert "partition_count" in pred
-        assert "partitions" in pred
-        assert isinstance(pred["partitions"], list)
-        assert "prediction_ids" in pred
-        assert isinstance(pred["prediction_ids"], list)
+        assert "cv_fold_count" in pred
+        assert "task_type" in pred
+        assert "cv_val_score" in pred
+        assert "cv_test_score" in pred
+        assert "cv_train_score" in pred
+        assert "pipeline_status" in pred
 
     def test_filter_by_run_id(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions?run_id=run-001")
         assert resp.status_code == 200
-        patched_endpoints.query_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_chain_summaries.assert_called_with(
             run_id="run-001",
             pipeline_id=None,
             chain_id=None,
@@ -431,7 +422,7 @@ class TestGetAggregatedPredictions:
     def test_filter_by_model_class(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions?model_class=PLSRegression")
         assert resp.status_code == 200
-        patched_endpoints.query_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_chain_summaries.assert_called_with(
             run_id=None,
             pipeline_id=None,
             chain_id=None,
@@ -443,7 +434,7 @@ class TestGetAggregatedPredictions:
     def test_filter_by_metric(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions?metric=rmse")
         assert resp.status_code == 200
-        patched_endpoints.query_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_chain_summaries.assert_called_with(
             run_id=None,
             pipeline_id=None,
             chain_id=None,
@@ -459,7 +450,7 @@ class TestGetAggregatedPredictions:
             "&model_class=PLSRegression&metric=rmse"
         )
         assert resp.status_code == 200
-        patched_endpoints.query_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_chain_summaries.assert_called_with(
             run_id="run-001",
             pipeline_id="pipe-001",
             chain_id=None,
@@ -469,14 +460,14 @@ class TestGetAggregatedPredictions:
         )
 
     def test_empty_result(self, client, patched_endpoints, mock_polars_df):
-        patched_endpoints.query_aggregated_predictions.return_value = mock_polars_df(
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(
             [{"run_id": "x"}]  # dummy row used only for column extraction
         )
         # Use empty rows
         empty_df = MagicMock()
         empty_df.__len__ = lambda self: 0
         empty_df.iter_rows = MagicMock(return_value=iter([]))
-        patched_endpoints.query_aggregated_predictions.return_value = empty_df
+        patched_endpoints.query_chain_summaries.return_value = empty_df
 
         resp = client.get("/api/aggregated-predictions?run_id=nonexistent")
         assert resp.status_code == 200
@@ -504,17 +495,17 @@ class TestGetTopAggregatedPredictions:
     def test_top_with_n(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions/top?metric=rmse&n=5")
         assert resp.status_code == 200
-        patched_endpoints.query_top_aggregated_predictions.assert_called_once()
+        patched_endpoints.query_top_chains.assert_called_once()
 
     def test_top_with_score_column(self, client, patched_endpoints):
         resp = client.get(
-            "/api/aggregated-predictions/top?metric=rmse&score_column=avg_test_score"
+            "/api/aggregated-predictions/top?metric=rmse&score_column=cv_test_score"
         )
         assert resp.status_code == 200
-        patched_endpoints.query_top_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_top_chains.assert_called_with(
             metric="rmse",
             n=10,
-            score_column="avg_test_score",
+            score_column="cv_test_score",
             run_id=None,
             pipeline_id=None,
             dataset_name=None,
@@ -530,10 +521,10 @@ class TestGetTopAggregatedPredictions:
             "/api/aggregated-predictions/top?metric=r2&run_id=run-001&model_class=PLSRegression"
         )
         assert resp.status_code == 200
-        patched_endpoints.query_top_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_top_chains.assert_called_with(
             metric="r2",
             n=10,
-            score_column="avg_val_score",
+            score_column="cv_val_score",
             run_id="run-001",
             pipeline_id=None,
             dataset_name=None,
@@ -553,7 +544,7 @@ class TestGetChainDetail:
         self, client, patched_endpoints, mock_polars_df,
         sample_aggregated_rows, sample_chain_prediction_rows,
     ):
-        patched_endpoints.query_aggregated_predictions.return_value = mock_polars_df(
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(
             sample_aggregated_rows[:1]
         )
         patched_endpoints.get_chain_predictions.return_value = mock_polars_df(
@@ -575,8 +566,8 @@ class TestGetChainDetail:
         data = resp.json()
 
         assert data["chain_id"] == "chain-001"
-        assert data["aggregated"] is not None
-        assert data["aggregated"]["chain_id"] == "chain-001"
+        assert data["summary"] is not None
+        assert data["summary"]["chain_id"] == "chain-001"
         assert len(data["predictions"]) == 3
         assert data["pipeline"] is not None
         assert data["pipeline"]["pipeline_id"] == "pipe-001"
@@ -586,7 +577,7 @@ class TestGetChainDetail:
         empty_df.__len__ = lambda self: 0
         empty_df.iter_rows = MagicMock(return_value=iter([]))
 
-        patched_endpoints.query_aggregated_predictions.return_value = empty_df
+        patched_endpoints.query_chain_summaries.return_value = empty_df
         patched_endpoints.get_chain_predictions.return_value = empty_df
 
         resp = client.get("/api/aggregated-predictions/chain/nonexistent")
@@ -596,7 +587,7 @@ class TestGetChainDetail:
         self, client, patched_endpoints, mock_polars_df,
         sample_aggregated_rows, sample_chain_prediction_rows,
     ):
-        patched_endpoints.query_aggregated_predictions.return_value = mock_polars_df(
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(
             sample_aggregated_rows[:1]
         )
         patched_endpoints.get_chain_predictions.return_value = mock_polars_df(
@@ -605,7 +596,7 @@ class TestGetChainDetail:
 
         resp = client.get("/api/aggregated-predictions/chain/chain-001?metric=rmse")
         assert resp.status_code == 200
-        patched_endpoints.query_aggregated_predictions.assert_called_with(
+        patched_endpoints.query_chain_summaries.assert_called_with(
             chain_id="chain-001",
             metric="rmse",
             dataset_name=None,
@@ -812,7 +803,7 @@ class TestDrillDownFlow:
         chain_id = predictions[0]["chain_id"]
 
         # Step 2: Drill down to chain detail
-        patched_endpoints.query_aggregated_predictions.return_value = mock_polars_df(
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(
             sample_aggregated_rows[:1]
         )
         patched_endpoints.get_chain_predictions.return_value = mock_polars_df(

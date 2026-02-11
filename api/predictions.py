@@ -2,32 +2,21 @@
 Predictions API routes for nirs4all webapp.
 
 This module provides FastAPI routes for:
-- Managing prediction records (CRUD) [DEPRECATED - use /api/aggregated-predictions]
 - Running predictions on single samples or batches
 - Prediction with uncertainty/confidence intervals
 - Prediction explanation (feature importance)
 
 Uses nirs4all library for all prediction and explanation operations.
 
-DEPRECATION NOTICE:
-    The CRUD endpoints (list, get, create, delete, stats, export) that store
-    prediction records as JSON files are deprecated. Use the DuckDB-backed
-    /api/aggregated-predictions endpoints instead, which provide chain-level
-    aggregation with drill-down to individual folds and partitions.
-
-    The inference endpoints (single, batch, dataset, confidence, explain)
-    remain current and are NOT deprecated.
+For stored predictions (DuckDB), see the /api/aggregated-predictions
+endpoints in aggregated_predictions.py.
 """
 
-import json
-import warnings
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
@@ -49,25 +38,6 @@ except ImportError:
 
 
 # ============= Request/Response Models =============
-
-
-class PredictionCreate(BaseModel):
-    """Request model for creating a prediction record."""
-
-    pipeline_id: str
-    dataset_id: str
-    samples: List[Dict[str, Any]]
-    results: Dict[str, Any]
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class PredictionFilter(BaseModel):
-    """Filter model for listing predictions."""
-
-    pipeline_id: Optional[str] = None
-    dataset_id: Optional[str] = None
-    from_date: Optional[str] = None
-    to_date: Optional[str] = None
 
 
 class PredictSingleRequest(BaseModel):
@@ -177,39 +147,6 @@ class ExplanationResult(BaseModel):
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Deprecation helpers
-# ---------------------------------------------------------------------------
-
-_DEPRECATION_MSG = (
-    "This endpoint is deprecated. Use /api/aggregated-predictions endpoints "
-    "backed by the DuckDB store instead."
-)
-
-
-def _deprecated_response(data: dict) -> JSONResponse:
-    """Wrap a response with deprecation headers."""
-    warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
-    return JSONResponse(
-        content=data,
-        headers={
-            "Deprecation": "true",
-            "Sunset": "2026-06-01",
-            "Link": '</api/aggregated-predictions>; rel="successor-version"',
-            "X-Deprecation-Notice": _DEPRECATION_MSG,
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-
-def _get_predictions_dir() -> Path:
-    """Get the predictions directory for the current workspace."""
-    predictions_path = workspace_manager.get_predictions_path()
-    if not predictions_path:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-    path = Path(predictions_path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 def _resolve_model_path(model_id: str, workspace_path: str) -> str:
@@ -254,253 +191,6 @@ def _resolve_model_path(model_id: str, workspace_path: str) -> str:
         status_code=404,
         detail=f"Model '{model_id}' not found in workspace models directory",
     )
-
-
-def _load_prediction(prediction_id: str) -> Dict[str, Any]:
-    """Load a prediction from file."""
-    predictions_dir = _get_predictions_dir()
-    prediction_file = predictions_dir / f"{prediction_id}.json"
-
-    if not prediction_file.exists():
-        raise HTTPException(status_code=404, detail="Prediction not found")
-
-    try:
-        with open(prediction_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to load prediction: {str(e)}"
-        )
-
-
-def _save_prediction(prediction: Dict[str, Any]) -> None:
-    """Save a prediction to file."""
-    predictions_dir = _get_predictions_dir()
-    prediction_file = predictions_dir / f"{prediction['id']}.json"
-
-    try:
-        with open(prediction_file, "w", encoding="utf-8") as f:
-            json.dump(prediction, f, indent=2)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to save prediction: {str(e)}"
-        )
-
-
-@router.get("/predictions", deprecated=True)
-async def list_predictions(
-    pipeline_id: Optional[str] = None,
-    dataset_id: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
-):
-    """List predictions with optional filtering.
-
-    .. deprecated::
-        Use ``GET /api/aggregated-predictions`` instead.
-    """
-    try:
-        predictions_dir = _get_predictions_dir()
-        predictions = []
-
-        for prediction_file in predictions_dir.glob("*.json"):
-            try:
-                with open(prediction_file, "r", encoding="utf-8") as f:
-                    prediction = json.load(f)
-
-                    # Apply filters
-                    if pipeline_id and prediction.get("pipeline_id") != pipeline_id:
-                        continue
-                    if dataset_id and prediction.get("dataset_id") != dataset_id:
-                        continue
-
-                    predictions.append(prediction)
-            except Exception:
-                continue
-
-        # Sort by created_at descending
-        predictions.sort(key=lambda p: p.get("created_at", ""), reverse=True)
-
-        # Apply pagination
-        total = len(predictions)
-        predictions = predictions[offset:offset + limit]
-
-        return _deprecated_response({
-            "predictions": predictions,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        })
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list predictions: {str(e)}"
-        )
-
-
-@router.get("/predictions/{prediction_id}", deprecated=True)
-async def get_prediction(prediction_id: str):
-    """Get a specific prediction by ID.
-
-    .. deprecated::
-        Use ``GET /api/aggregated-predictions/chain/{chain_id}`` instead.
-    """
-    prediction = _load_prediction(prediction_id)
-    return _deprecated_response({"prediction": prediction})
-
-
-@router.post("/predictions", deprecated=True)
-async def create_prediction(prediction_data: PredictionCreate):
-    """Create a new prediction record.
-
-    .. deprecated::
-        Predictions are now created automatically during pipeline execution
-        and stored in the DuckDB store. Use ``GET /api/aggregated-predictions``
-        to query them.
-    """
-    try:
-        now = datetime.now().isoformat()
-        prediction_id = f"pred_{int(datetime.now().timestamp())}"
-
-        prediction = {
-            "id": prediction_id,
-            "pipeline_id": prediction_data.pipeline_id,
-            "dataset_id": prediction_data.dataset_id,
-            "samples_count": len(prediction_data.samples),
-            "samples": prediction_data.samples,
-            "results": prediction_data.results,
-            "metadata": prediction_data.metadata or {},
-            "created_at": now,
-        }
-
-        _save_prediction(prediction)
-
-        return _deprecated_response({"success": True, "prediction": prediction})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create prediction: {str(e)}"
-        )
-
-
-@router.delete("/predictions/{prediction_id}", deprecated=True)
-async def delete_prediction(prediction_id: str):
-    """Delete a prediction record.
-
-    .. deprecated::
-        Use ``DELETE /api/runs/{run_id}`` to delete runs and their
-        associated predictions from the DuckDB store.
-    """
-    try:
-        predictions_dir = _get_predictions_dir()
-        prediction_file = predictions_dir / f"{prediction_id}.json"
-
-        if not prediction_file.exists():
-            raise HTTPException(status_code=404, detail="Prediction not found")
-
-        prediction_file.unlink()
-
-        return _deprecated_response({"success": True, "message": "Prediction deleted"})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete prediction: {str(e)}"
-        )
-
-
-@router.get("/predictions/stats", deprecated=True)
-async def get_predictions_stats():
-    """Get aggregate statistics for predictions.
-
-    .. deprecated::
-        Use ``GET /api/aggregated-predictions/top`` for ranked results
-        or ``GET /api/aggregated-predictions`` for filtered queries.
-    """
-    try:
-        predictions_dir = _get_predictions_dir()
-        stats = {
-            "total": 0,
-            "by_pipeline": {},
-            "by_dataset": {},
-            "recent": [],
-        }
-
-        predictions = []
-        for prediction_file in predictions_dir.glob("*.json"):
-            try:
-                with open(prediction_file, "r", encoding="utf-8") as f:
-                    prediction = json.load(f)
-                    predictions.append(prediction)
-
-                    stats["total"] += 1
-
-                    # Count by pipeline
-                    pid = prediction.get("pipeline_id", "unknown")
-                    stats["by_pipeline"][pid] = stats["by_pipeline"].get(pid, 0) + 1
-
-                    # Count by dataset
-                    did = prediction.get("dataset_id", "unknown")
-                    stats["by_dataset"][did] = stats["by_dataset"].get(did, 0) + 1
-            except Exception:
-                continue
-
-        # Get recent predictions
-        predictions.sort(key=lambda p: p.get("created_at", ""), reverse=True)
-        stats["recent"] = [
-            {
-                "id": p["id"],
-                "pipeline_id": p.get("pipeline_id"),
-                "dataset_id": p.get("dataset_id"),
-                "created_at": p.get("created_at"),
-                "samples_count": p.get("samples_count", 0),
-            }
-            for p in predictions[:10]
-        ]
-
-        return _deprecated_response({"stats": stats})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get prediction stats: {str(e)}"
-        )
-
-
-@router.post("/predictions/export", deprecated=True)
-async def export_predictions(prediction_ids: List[str], format: str = "csv"):
-    """Export predictions to a file format.
-
-    .. deprecated::
-        Use ``GET /api/aggregated-predictions`` to query results from
-        the DuckDB store.
-    """
-    try:
-        predictions = []
-        for pred_id in prediction_ids:
-            try:
-                prediction = _load_prediction(pred_id)
-                predictions.append(prediction)
-            except HTTPException:
-                continue
-
-        if not predictions:
-            raise HTTPException(status_code=404, detail="No predictions found")
-
-        # TODO: Implement actual export to CSV/JSON/Excel
-        return _deprecated_response({
-            "success": True,
-            "message": f"Export to {format} not implemented yet",
-            "count": len(predictions),
-        })
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to export predictions: {str(e)}"
-        )
 
 
 # ============= Prediction Execution Routes =============

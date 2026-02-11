@@ -26,6 +26,7 @@ export interface EnrichedDatasetRun {
   dataset_name: string;
   best_avg_val_score: number | null;
   best_avg_test_score: number | null;
+  best_final_score: number | null;
   metric: string | null;
   task_type: string | null;
   gain_from_previous_best: number | null;
@@ -35,16 +36,22 @@ export interface EnrichedDatasetRun {
 
 export interface TopChainResult {
   chain_id: string;
+  run_id?: string;
   model_name: string;
   model_class: string;
   preprocessings: string;
   avg_val_score: number | null;
   avg_test_score: number | null;
+  avg_train_score: number | null;
   fold_count: number;
   scores: {
     val: Record<string, number>;
     test: Record<string, number>;
   };
+  final_test_score: number | null;
+  final_train_score: number | null;
+  final_scores: Record<string, number>;
+  is_refit_only?: boolean;
 }
 
 export interface ScoreDistribution {

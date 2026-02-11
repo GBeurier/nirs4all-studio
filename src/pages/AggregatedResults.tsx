@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAggregatedPredictions } from "@/api/client";
-import type { AggregatedPrediction } from "@/types/aggregated-predictions";
+import type { ChainSummary } from "@/types/aggregated-predictions";
 import {
   NoWorkspaceState,
   ErrorState,
@@ -84,22 +84,22 @@ function formatScore(value: number | null | undefined): string {
   return value.toFixed(4);
 }
 
-type SortKey = "model" | "avg_val" | "avg_test" | "dataset" | "metric" | "folds";
+type SortKey = "model" | "cv_val" | "cv_test" | "final_test" | "dataset" | "metric" | "folds";
 
 export default function AggregatedResults() {
   const { t } = useTranslation();
 
   // State
-  const [predictions, setPredictions] = useState<AggregatedPrediction[]>([]);
+  const [predictions, setPredictions] = useState<ChainSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [datasetFilter, setDatasetFilter] = useState("all");
   const [modelClassFilter, setModelClassFilter] = useState("all");
   const [metricFilter, setMetricFilter] = useState("all");
-  const [sortKey, setSortKey] = useState<SortKey>("avg_val");
+  const [sortKey, setSortKey] = useState<SortKey>("cv_val");
   const [sortAsc, setSortAsc] = useState(true);
-  const [selectedPrediction, setSelectedPrediction] = useState<AggregatedPrediction | null>(null);
+  const [selectedPrediction, setSelectedPrediction] = useState<ChainSummary | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Load data
@@ -126,9 +126,9 @@ export default function AggregatedResults() {
     const modelClasses = new Set<string>();
     const metrics = new Set<string>();
     for (const p of predictions) {
-      datasets.add(p.dataset_name);
+      if (p.dataset_name) datasets.add(p.dataset_name);
       modelClasses.add(p.model_class);
-      metrics.add(p.metric);
+      if (p.metric) metrics.add(p.metric);
     }
     return {
       datasets: Array.from(datasets).sort(),
@@ -146,9 +146,9 @@ export default function AggregatedResults() {
       const q = search.toLowerCase();
       items = items.filter(
         (p) =>
-          p.model_name.toLowerCase().includes(q) ||
+          (p.model_name ?? "").toLowerCase().includes(q) ||
           p.model_class.toLowerCase().includes(q) ||
-          p.dataset_name.toLowerCase().includes(q) ||
+          (p.dataset_name ?? "").toLowerCase().includes(q) ||
           (p.preprocessings && p.preprocessings.toLowerCase().includes(q))
       );
     }
@@ -163,22 +163,25 @@ export default function AggregatedResults() {
       let cmp = 0;
       switch (sortKey) {
         case "model":
-          cmp = a.model_name.localeCompare(b.model_name);
+          cmp = (a.model_name ?? "").localeCompare(b.model_name ?? "");
           break;
-        case "avg_val":
-          cmp = (a.avg_val_score ?? Infinity) - (b.avg_val_score ?? Infinity);
+        case "cv_val":
+          cmp = (a.cv_val_score ?? Infinity) - (b.cv_val_score ?? Infinity);
           break;
-        case "avg_test":
-          cmp = (a.avg_test_score ?? Infinity) - (b.avg_test_score ?? Infinity);
+        case "cv_test":
+          cmp = (a.cv_test_score ?? Infinity) - (b.cv_test_score ?? Infinity);
+          break;
+        case "final_test":
+          cmp = (a.final_test_score ?? Infinity) - (b.final_test_score ?? Infinity);
           break;
         case "dataset":
-          cmp = a.dataset_name.localeCompare(b.dataset_name);
+          cmp = (a.dataset_name ?? "").localeCompare(b.dataset_name ?? "");
           break;
         case "metric":
-          cmp = a.metric.localeCompare(b.metric);
+          cmp = (a.metric ?? "").localeCompare(b.metric ?? "");
           break;
         case "folds":
-          cmp = a.fold_count - b.fold_count;
+          cmp = a.cv_fold_count - b.cv_fold_count;
           break;
       }
       return sortAsc ? cmp : -cmp;
@@ -190,9 +193,9 @@ export default function AggregatedResults() {
   // Stats
   const stats = useMemo(() => ({
     total: predictions.length,
-    datasets: new Set(predictions.map((p) => p.dataset_name)).size,
+    datasets: new Set(predictions.map((p) => p.dataset_name).filter(Boolean)).size,
     models: new Set(predictions.map((p) => p.model_class)).size,
-    metrics: new Set(predictions.map((p) => p.metric)).size,
+    metrics: new Set(predictions.map((p) => p.metric).filter(Boolean)).size,
   }), [predictions]);
 
   const handleSort = (key: SortKey) => {
@@ -201,7 +204,7 @@ export default function AggregatedResults() {
     } else {
       setSortKey(key);
       // Default direction based on whether scores are "lower is better"
-      setSortAsc(key === "avg_val" || key === "avg_test");
+      setSortAsc(key === "cv_val" || key === "cv_test" || key === "final_test");
     }
   };
 
@@ -404,15 +407,21 @@ export default function AggregatedResults() {
                     </TableHead>
                     <TableHead
                       className="cursor-pointer hover:text-foreground text-right"
-                      onClick={() => handleSort("avg_val")}
+                      onClick={() => handleSort("cv_val")}
                     >
-                      Avg Val <SortIcon columnKey="avg_val" />
+                      CV Val <SortIcon columnKey="cv_val" />
                     </TableHead>
                     <TableHead
                       className="cursor-pointer hover:text-foreground text-right"
-                      onClick={() => handleSort("avg_test")}
+                      onClick={() => handleSort("cv_test")}
                     >
-                      Avg Test <SortIcon columnKey="avg_test" />
+                      CV Test <SortIcon columnKey="cv_test" />
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer hover:text-foreground text-right"
+                      onClick={() => handleSort("final_test")}
+                    >
+                      Final <SortIcon columnKey="final_test" />
                     </TableHead>
                     <TableHead
                       className="cursor-pointer hover:text-foreground text-center"
@@ -420,13 +429,13 @@ export default function AggregatedResults() {
                     >
                       Folds <SortIcon columnKey="folds" />
                     </TableHead>
-                    <TableHead>Partitions</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((pred) => {
-                    const lowerIsBetter = isLowerBetter(pred.metric);
+                    const lowerIsBetter = isLowerBetter(pred.metric ?? "");
+                    const hasFinal = pred.final_test_score != null;
                     return (
                       <TableRow
                         key={`${pred.chain_id}-${pred.metric}-${pred.dataset_name}`}
@@ -438,7 +447,7 @@ export default function AggregatedResults() {
                       >
                         <TableCell>
                           <div>
-                            <div className="font-medium text-sm">{pred.model_name}</div>
+                            <div className="font-medium text-sm">{pred.model_name ?? "—"}</div>
                             <div className="text-xs text-muted-foreground">{pred.preprocessings || "—"}</div>
                           </div>
                         </TableCell>
@@ -448,35 +457,26 @@ export default function AggregatedResults() {
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-sm">
                           <span className={cn(
-                            pred.avg_val_score != null && "font-medium",
-                            pred.avg_val_score != null && !lowerIsBetter && pred.avg_val_score > 0.9 && "text-green-600 dark:text-green-400",
-                            pred.avg_val_score != null && lowerIsBetter && pred.avg_val_score < 0.1 && "text-green-600 dark:text-green-400",
+                            pred.cv_val_score != null && "font-medium",
+                            pred.cv_val_score != null && !lowerIsBetter && pred.cv_val_score > 0.9 && "text-green-600 dark:text-green-400",
+                            pred.cv_val_score != null && lowerIsBetter && pred.cv_val_score < 0.1 && "text-green-600 dark:text-green-400",
                           )}>
-                            {formatScore(pred.avg_val_score)}
+                            {formatScore(pred.cv_val_score)}
                           </span>
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-sm">
-                          {formatScore(pred.avg_test_score)}
+                          {formatScore(pred.cv_test_score)}
                         </TableCell>
-                        <TableCell className="text-center text-sm">{pred.fold_count}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-0.5">
-                            {pred.partitions.map((p) => (
-                              <Badge
-                                key={p}
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px] px-1 py-0",
-                                  p === "val" && "border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300",
-                                  p === "test" && "border-green-300 text-green-700 dark:border-green-700 dark:text-green-300",
-                                  p === "train" && "border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-300",
-                                )}
-                              >
-                                {p}
-                              </Badge>
-                            ))}
-                          </div>
+                        <TableCell className="text-right tabular-nums text-sm">
+                          {hasFinal ? (
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                              {formatScore(pred.final_test_score)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
+                        <TableCell className="text-center text-sm">{pred.cv_fold_count}</TableCell>
                         <TableCell>
                           <Eye className="h-4 w-4 text-muted-foreground" />
                         </TableCell>

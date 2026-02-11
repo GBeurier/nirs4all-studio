@@ -22,6 +22,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { getActiveRuns, getRun } from "@/api/client";
 import type { Run, RunStatus } from "@/types/runs";
+import { getWebSocketBaseUrl } from "@/lib/websocket";
 
 // WebSocket message types
 interface WsMessage {
@@ -103,77 +104,84 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
     // Only connect for running/queued runs
     if (status !== "running" && status !== "queued") return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    // Mark as pending to prevent duplicate async connections
+    wsConnectionsRef.current.set(runId, null as unknown as WebSocket);
 
-    try {
-      const ws = new WebSocket(wsUrl);
+    getWebSocketBaseUrl().then((baseUrl) => {
+      // Check if disconnected while resolving URL
+      if (!wsConnectionsRef.current.has(runId)) return;
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({
-          type: "subscribe",
-          channel: `job:${runId}`,
-          data: {},
-        }));
-      };
+      const wsUrl = `${baseUrl}/ws`;
 
-      ws.onmessage = (event) => {
-        try {
-          const message: WsMessage = JSON.parse(event.data);
-          if (message.channel === `job:${runId}`) {
-            setRunProgressMap((prev) => {
-              const existing = prev.get(runId);
-              if (!existing) return prev;
+      try {
+        const ws = new WebSocket(wsUrl);
 
-              const newState = { ...existing };
+        ws.onopen = () => {
+          ws.send(JSON.stringify({
+            type: "subscribe",
+            channel: `job:${runId}`,
+            data: {},
+          }));
+        };
 
-              // Handle progress updates
-              if (message.type === "job_progress" && message.data) {
-                if (message.data.progress !== undefined) {
-                  newState.progress = message.data.progress;
+        ws.onmessage = (event) => {
+          try {
+            const message: WsMessage = JSON.parse(event.data);
+            if (message.channel === `job:${runId}`) {
+              setRunProgressMap((prev) => {
+                const existing = prev.get(runId);
+                if (!existing) return prev;
+
+                const newState = { ...existing };
+
+                // Handle progress updates
+                if (message.type === "job_progress" && message.data) {
+                  if (message.data.progress !== undefined) {
+                    newState.progress = message.data.progress;
+                  }
+                  if (message.data.message) {
+                    newState.message = message.data.message;
+                  }
                 }
-                if (message.data.message) {
-                  newState.message = message.data.message;
+
+                // Handle log messages
+                if (message.data?.log) {
+                  const newLogs = [...newState.logs, message.data.log];
+                  newState.logs = newLogs.slice(-50); // Keep last 50 logs
                 }
-              }
 
-              // Handle log messages
-              if (message.data?.log) {
-                const newLogs = [...newState.logs, message.data.log];
-                newState.logs = newLogs.slice(-50); // Keep last 50 logs
-              }
+                // Handle completion
+                if (message.type === "job_completed") {
+                  newState.status = "completed";
+                  newState.progress = 100;
+                } else if (message.type === "job_failed") {
+                  newState.status = "failed";
+                }
 
-              // Handle completion
-              if (message.type === "job_completed") {
-                newState.status = "completed";
-                newState.progress = 100;
-              } else if (message.type === "job_failed") {
-                newState.status = "failed";
-              }
-
-              newState.updatedAt = Date.now();
-              const updated = new Map(prev);
-              updated.set(runId, newState);
-              return updated;
-            });
+                newState.updatedAt = Date.now();
+                const updated = new Map(prev);
+                updated.set(runId, newState);
+                return updated;
+              });
+            }
+          } catch {
+            // Ignore parse errors
           }
-        } catch {
-          // Ignore parse errors
-        }
-      };
+        };
 
-      ws.onclose = () => {
+        ws.onclose = () => {
+          wsConnectionsRef.current.delete(runId);
+        };
+
+        ws.onerror = () => {
+          ws.close();
+        };
+
+        wsConnectionsRef.current.set(runId, ws);
+      } catch {
         wsConnectionsRef.current.delete(runId);
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-
-      wsConnectionsRef.current.set(runId, ws);
-    } catch {
-      // WebSocket not available
-    }
+      }
+    });
   }, []);
 
   // Cleanup WebSocket for completed/failed runs

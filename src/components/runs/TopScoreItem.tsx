@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Box, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatScore, formatMetricValue, getMetricsForTaskType } from "@/lib/scores";
 import type { TopChainResult } from "@/types/enriched-runs";
 
 interface TopScoreItemProps {
@@ -13,35 +14,29 @@ interface TopScoreItemProps {
   datasetName: string;
 }
 
-// Metrics to show per task type
-const REGRESSION_METRICS = ["r2", "rmse", "rpd"] as const;
-const CLASSIFICATION_METRICS = ["accuracy", "f1", "auc"] as const;
-
-function getMetricsToShow(taskType: string | null): readonly string[] {
-  if (taskType === "classification") return CLASSIFICATION_METRICS;
-  return REGRESSION_METRICS;
-}
-
-function formatMetricValue(value: number | undefined | null, metric: string): string {
-  if (value == null) return "-";
-  // RMSE can be large, use fewer decimals
-  if (["rmse", "mse", "mae"].includes(metric)) return value.toFixed(3);
-  return value.toFixed(4);
+function ScoreCell({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-muted-foreground text-[10px] uppercase font-medium">{label}</span>
+      <span className={cn("font-mono text-xs", className)}>{value}</span>
+    </div>
+  );
 }
 
 export function TopScoreItem({ chain, rank, taskType, runId, datasetName }: TopScoreItemProps) {
-  const metrics = getMetricsToShow(taskType);
+  const metrics = getMetricsForTaskType(taskType);
+  const hasFinal = chain.final_test_score != null;
 
   return (
     <div className={cn(
       "flex items-center justify-between p-2.5 rounded-md border bg-card text-sm",
-      rank === 1 && "border-chart-1/30 bg-chart-1/5",
+      rank === 1 && (hasFinal ? "border-emerald-500/30 bg-emerald-500/5" : "border-chart-1/30 bg-chart-1/5"),
     )}>
       <div className="flex items-center gap-3 min-w-0">
         {/* Rank badge */}
         <span className={cn(
           "w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0",
-          rank === 1 ? "bg-chart-1/20 text-chart-1" : "bg-muted text-muted-foreground",
+          rank === 1 ? (hasFinal ? "bg-emerald-500/20 text-emerald-500" : "bg-chart-1/20 text-chart-1") : "bg-muted text-muted-foreground",
         )}>
           {rank}
         </span>
@@ -61,28 +56,62 @@ export function TopScoreItem({ chain, rank, taskType, runId, datasetName }: TopS
         </div>
       </div>
 
-      {/* 2x3 score grid */}
       <div className="flex items-center gap-4 shrink-0">
-        <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-xs">
-          {/* Header row */}
-          {metrics.map((m) => (
-            <span key={`h-${m}`} className="text-muted-foreground font-medium text-center uppercase text-[10px]">
-              {m}
-            </span>
-          ))}
-          {/* Val row */}
-          {metrics.map((m) => (
-            <span key={`v-${m}`} className="font-mono text-chart-1 text-center">
-              {formatMetricValue(chain.scores?.val?.[m], m)}
-            </span>
-          ))}
-          {/* Test row */}
-          {metrics.map((m) => (
-            <span key={`t-${m}`} className="font-mono text-muted-foreground text-center">
-              {formatMetricValue(chain.scores?.test?.[m], m)}
-            </span>
-          ))}
-        </div>
+        {hasFinal ? (
+          /* Final (refit) scores: Final test | CV val | CV test | Final train */
+          <div className="flex items-center gap-3 text-xs">
+            <ScoreCell
+              label="Final"
+              value={formatScore(chain.final_test_score)}
+              className="font-semibold text-emerald-500 text-sm"
+            />
+            <ScoreCell
+              label="CV"
+              value={formatScore(chain.avg_val_score)}
+              className="text-muted-foreground"
+            />
+            <ScoreCell
+              label="Test"
+              value={formatScore(chain.avg_test_score)}
+              className="text-muted-foreground"
+            />
+            <ScoreCell
+              label="Train"
+              value={formatScore(chain.final_train_score)}
+              className="text-muted-foreground"
+            />
+            {/* Expanded final metrics if available */}
+            {Object.keys(chain.final_scores || {}).length > 0 && (
+              <div className="hidden xl:flex gap-2 text-muted-foreground border-l pl-3 ml-1">
+                {metrics.filter((m) => chain.final_scores?.[m] != null).map((m) => (
+                  <span key={m} className="font-mono">
+                    <span className="uppercase text-[10px]">{m}</span>{" "}
+                    {formatMetricValue(chain.final_scores[m], m)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Fallback: CV val/test score grid */
+          <div className="grid grid-cols-3 gap-x-4 gap-y-0.5 text-xs">
+            {metrics.map((m) => (
+              <span key={`h-${m}`} className="text-muted-foreground font-medium text-center uppercase text-[10px]">
+                {m}
+              </span>
+            ))}
+            {metrics.map((m) => (
+              <span key={`v-${m}`} className="font-mono text-chart-1 text-center">
+                {formatMetricValue(chain.scores?.val?.[m], m)}
+              </span>
+            ))}
+            {metrics.map((m) => (
+              <span key={`t-${m}`} className="font-mono text-muted-foreground text-center">
+                {formatMetricValue(chain.scores?.test?.[m], m)}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Actions */}
         <Button variant="ghost" size="sm" className="text-xs h-7" asChild>

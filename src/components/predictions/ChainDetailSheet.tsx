@@ -1,8 +1,8 @@
 /**
  * ChainDetailSheet — slide-over showing chain-level prediction details.
  *
- * Displays the aggregated summary for a chain, then lists individual
- * fold/partition rows with drill-down to prediction arrays.
+ * Displays the chain summary (CV + final scores) for a chain, then lists
+ * individual fold/partition rows with drill-down to prediction arrays.
  */
 
 import { useState, useEffect, Fragment } from "react";
@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -47,15 +46,15 @@ import {
 import { cn } from "@/lib/utils";
 import { getChainDetail, getChainPartitionDetail, getPredictionArrays } from "@/api/client";
 import type {
-  AggregatedPrediction,
+  ChainSummary,
   ChainDetailResponse,
   PartitionPrediction,
   PredictionArraysResponse,
 } from "@/types/aggregated-predictions";
 
 interface ChainDetailSheetProps {
-  /** Pre-loaded aggregated row (from the list page). */
-  prediction: AggregatedPrediction | null;
+  /** Pre-loaded chain summary row (from the list page). */
+  prediction: ChainSummary | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -110,7 +109,7 @@ export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetail
       setLoading(true);
       try {
         const [chainDetail, partitions] = await Promise.all([
-          getChainDetail(prediction.chain_id, { metric: prediction.metric }),
+          getChainDetail(prediction.chain_id, { metric: prediction.metric ?? undefined }),
           getChainPartitionDetail(prediction.chain_id),
         ]);
         setDetail(chainDetail);
@@ -152,13 +151,15 @@ export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetail
 
   if (!prediction) return null;
 
+  const hasFinal = prediction.final_test_score != null;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-xl w-full overflow-y-auto">
         <SheetHeader className="pb-4">
           <SheetTitle className="flex items-center gap-2">
             <Box className="h-5 w-5 text-muted-foreground" />
-            {prediction.model_name}
+            {prediction.model_name ?? prediction.model_class}
           </SheetTitle>
           <SheetDescription>
             Chain detail — {prediction.metric} on {prediction.dataset_name}
@@ -181,7 +182,7 @@ export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetail
               </h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-muted-foreground">Model</div>
-                <div className="font-medium">{prediction.model_name}</div>
+                <div className="font-medium">{prediction.model_name ?? "—"}</div>
                 <div className="text-muted-foreground">Class</div>
                 <div>{prediction.model_class}</div>
                 <div className="text-muted-foreground">Preprocessing</div>
@@ -194,67 +195,89 @@ export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetail
                 <div>
                   <Badge variant="secondary">{prediction.metric}</Badge>
                 </div>
+                {prediction.task_type && (
+                  <>
+                    <div className="text-muted-foreground">Task</div>
+                    <div className="capitalize">{prediction.task_type}</div>
+                  </>
+                )}
               </div>
             </div>
 
             <Separator />
 
-            {/* Score summary */}
+            {/* CV Scores */}
             <div className="space-y-3">
               <h4 className="text-sm font-medium flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> Scores
+                <BarChart3 className="h-4 w-4" /> CV Scores
               </h4>
-              <div className="grid grid-cols-4 gap-1 text-xs">
-                <div className="font-medium text-muted-foreground">Partition</div>
-                <div className="font-medium text-muted-foreground text-right">Min</div>
-                <div className="font-medium text-muted-foreground text-right">Avg</div>
-                <div className="font-medium text-muted-foreground text-right">Max</div>
-
-                {prediction.partitions.includes("val") && (
-                  <>
-                    <div><PartitionBadge partition="val" /></div>
-                    <div className="text-right"><ScoreCell value={prediction.min_val_score} /></div>
-                    <div className="text-right"><ScoreCell value={prediction.avg_val_score} best /></div>
-                    <div className="text-right"><ScoreCell value={prediction.max_val_score} /></div>
-                  </>
-                )}
-                {prediction.partitions.includes("test") && (
-                  <>
-                    <div><PartitionBadge partition="test" /></div>
-                    <div className="text-right"><ScoreCell value={prediction.min_test_score} /></div>
-                    <div className="text-right"><ScoreCell value={prediction.avg_test_score} best /></div>
-                    <div className="text-right"><ScoreCell value={prediction.max_test_score} /></div>
-                  </>
-                )}
-                {prediction.partitions.includes("train") && (
-                  <>
-                    <div><PartitionBadge partition="train" /></div>
-                    <div className="text-right"><ScoreCell value={prediction.min_train_score} /></div>
-                    <div className="text-right"><ScoreCell value={prediction.avg_train_score} best /></div>
-                    <div className="text-right"><ScoreCell value={prediction.max_train_score} /></div>
-                  </>
-                )}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-muted-foreground">Val (avg)</div>
+                <div><ScoreCell value={prediction.cv_val_score} best /></div>
+                <div className="text-muted-foreground">Test (avg)</div>
+                <div><ScoreCell value={prediction.cv_test_score} /></div>
+                <div className="text-muted-foreground">Train (avg)</div>
+                <div><ScoreCell value={prediction.cv_train_score} /></div>
+                <div className="text-muted-foreground">Folds</div>
+                <div>{prediction.cv_fold_count}</div>
               </div>
+              {/* Multi-metric CV scores */}
+              {prediction.cv_scores && Object.keys(prediction.cv_scores).length > 0 && (
+                <div className="mt-2 rounded-md border p-2">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Multi-metric</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    {Object.entries(prediction.cv_scores).map(([partition, metrics]) => (
+                      <Fragment key={partition}>
+                        <div className="col-span-2 font-medium text-muted-foreground mt-1">
+                          <PartitionBadge partition={partition} />
+                        </div>
+                        {Object.entries(metrics).map(([m, v]) => (
+                          <Fragment key={m}>
+                            <div className="text-muted-foreground pl-2">{m}</div>
+                            <div className="tabular-nums font-mono">{formatScore(v)}</div>
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Final/Refit Scores */}
+            {hasFinal && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <Target className="h-4 w-4" /> Final (Refit) Scores
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="text-muted-foreground">Test</div>
+                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      <ScoreCell value={prediction.final_test_score} best />
+                    </div>
+                    <div className="text-muted-foreground">Train</div>
+                    <div><ScoreCell value={prediction.final_train_score} /></div>
+                  </div>
+                </div>
+              </>
+            )}
 
             <Separator />
 
-            {/* Fold/partition counts */}
+            {/* Configuration */}
             <div className="space-y-3">
               <h4 className="text-sm font-medium flex items-center gap-2">
                 <Layers className="h-4 w-4" /> Configuration
               </h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Folds</div>
-                <div>{prediction.fold_count}</div>
-                <div className="text-muted-foreground">Partitions</div>
-                <div className="flex gap-1">
-                  {prediction.partitions.map((p) => (
-                    <PartitionBadge key={p} partition={p} />
-                  ))}
+                <div className="text-muted-foreground">Pipeline Status</div>
+                <div>
+                  <Badge variant={prediction.pipeline_status === "completed" ? "default" : "secondary"}>
+                    {prediction.pipeline_status || "unknown"}
+                  </Badge>
                 </div>
-                <div className="text-muted-foreground">Total predictions</div>
-                <div>{prediction.prediction_ids.length}</div>
               </div>
             </div>
 
