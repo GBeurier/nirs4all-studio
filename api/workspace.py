@@ -11,13 +11,16 @@ Phase 8 Implementation:
 - Workspace discovery for runs, exports, predictions, templates
 """
 
-from datetime import datetime
-from pathlib import Path
+import asyncio
+import inspect
 import json
 import shutil
 import time
 import zipfile
-from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -25,6 +28,46 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
+from .jobs import job_manager, JobType, JobStatus
+from .store_adapter import StoreAdapter
+
+# WebSocket notifications (optional)
+try:
+    from websocket import (
+        notify_maintenance_started,
+        notify_maintenance_progress,
+        notify_maintenance_completed,
+        notify_maintenance_failed,
+    )
+    WS_AVAILABLE = True
+except Exception:
+    notify_maintenance_started = None  # type: ignore[assignment]
+    notify_maintenance_progress = None  # type: ignore[assignment]
+    notify_maintenance_completed = None  # type: ignore[assignment]
+    notify_maintenance_failed = None  # type: ignore[assignment]
+    WS_AVAILABLE = False
+
+# Optional nirs4all storage integrations
+try:
+    from nirs4all.pipeline.storage import WorkspaceStore
+    STORE_AVAILABLE = True
+except ImportError:
+    WorkspaceStore = None  # type: ignore[assignment, misc]
+    STORE_AVAILABLE = False
+
+try:
+    from nirs4all.data.predictions import Predictions
+    PREDICTIONS_AVAILABLE = True
+except ImportError:
+    Predictions = None  # type: ignore[assignment, misc]
+    PREDICTIONS_AVAILABLE = False
+
+try:
+    from nirs4all.pipeline.storage.migration import migrate_arrays_to_parquet
+    MIGRATION_AVAILABLE = True
+except ImportError:
+    migrate_arrays_to_parquet = None  # type: ignore[assignment, misc]
+    MIGRATION_AVAILABLE = False
 
 
 # Simple TTL cache for workspace discovery operations
@@ -1008,8 +1051,111 @@ class WorkspaceStatsResponse(BaseModel):
     space_usage: List[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
     linked_datasets_count: int = Field(0, description="Number of linked datasets")
     linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
+    duckdb_size_bytes: int = Field(0, description="DuckDB metadata store size")
+    parquet_arrays_size_bytes: int = Field(0, description="Total Parquet array files size")
+    storage_mode: str = Field("unknown", description="Storage backend: migrated, legacy, new")
     created_at: str = Field(..., description="Workspace creation time")
     last_accessed: str = Field(..., description="Last access time")
+
+
+class StorageStatusResponse(BaseModel):
+    """Response model for workspace storage status."""
+    storage_mode: str
+    has_prediction_arrays_table: bool
+    has_arrays_directory: bool
+    migration_needed: bool
+
+
+class MigrationRequest(BaseModel):
+    """Request to migrate prediction arrays to Parquet."""
+    dry_run: bool = Field(False, description="Run migration in dry-run mode")
+    batch_size: Optional[int] = Field(None, description="Batch size for migration")
+
+
+class MigrationJobResponse(BaseModel):
+    """Response when a migration job is enqueued."""
+    job_id: str
+
+
+class MigrationStatusResponse(BaseModel):
+    """Response for migration status."""
+    migration_needed: bool
+    storage_mode: str
+    legacy_row_count: Optional[int] = None
+    estimated_duration_seconds: Optional[int] = None
+
+
+class MigrationReportResponse(BaseModel):
+    """Migration report (dry run or completed)."""
+    total_rows: int = 0
+    rows_migrated: int = 0
+    datasets_migrated: List[str] = Field(default_factory=list)
+    verification_passed: bool = False
+    verification_sample_size: int = 0
+    verification_mismatches: int = 0
+    duckdb_size_before: int = 0
+    duckdb_size_after: int = 0
+    parquet_total_size: int = 0
+    duration_seconds: float = 0.0
+    errors: List[str] = Field(default_factory=list)
+
+
+class CompactRequest(BaseModel):
+    dataset_name: Optional[str] = Field(None, description="Dataset name to compact (all if omitted)")
+
+
+class CompactDatasetStats(BaseModel):
+    rows_before: int = 0
+    rows_after: int = 0
+    rows_removed: int = 0
+    bytes_before: int = 0
+    bytes_after: int = 0
+
+
+class CompactReport(BaseModel):
+    datasets: Dict[str, CompactDatasetStats] = Field(default_factory=dict)
+
+
+class CleanDeadLinksRequest(BaseModel):
+    dry_run: bool = Field(False, description="Preview cleanup without deleting")
+
+
+class CleanDeadLinksReport(BaseModel):
+    metadata_orphans_removed: int = 0
+    array_orphans_removed: int = 0
+
+
+class RemoveBottomRequest(BaseModel):
+    fraction: float = Field(..., ge=0.0, le=1.0)
+    metric: Optional[str] = None
+    partition: Optional[str] = None
+    dataset_name: Optional[str] = None
+    dry_run: bool = Field(False, description="Preview removal without deleting")
+
+
+class RemoveBottomReport(BaseModel):
+    removed: int = 0
+    remaining: int = 0
+    threshold_score: float = 0.0
+
+
+class DatasetStorageInfo(BaseModel):
+    name: str
+    prediction_count: int = 0
+    parquet_size_bytes: int = 0
+
+
+class StorageHealthResponse(BaseModel):
+    storage_mode: str
+    migration_needed: bool
+    duckdb_size_bytes: int = 0
+    parquet_total_size_bytes: int = 0
+    total_predictions: int = 0
+    total_datasets: int = 0
+    datasets: List[DatasetStorageInfo] = Field(default_factory=list)
+    orphan_metadata_count: int = 0
+    orphan_array_count: int = 0
+    corrupt_files: List[str] = Field(default_factory=list)
 
 
 class CleanCacheRequest(BaseModel):
@@ -1071,6 +1217,279 @@ def _compute_directory_size(directory: Path) -> tuple[int, int]:
     return total_size, file_count
 
 
+def _to_plain_dict(value: Any) -> Any:
+    """Convert rich objects (dataclass/Pydantic) to plain JSON-serializable structures."""
+    if is_dataclass(value):
+        return {k: _to_plain_dict(v) for k, v in asdict(value).items()}
+    if hasattr(value, "model_dump") and callable(getattr(value, "model_dump", None)):
+        return _to_plain_dict(value.model_dump())  # type: ignore[no-any-return]
+    if isinstance(value, dict):
+        return {k: _to_plain_dict(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_plain_dict(v) for v in value]
+    return value
+
+
+def _get_storage_status_for_workspace(workspace_path: Path) -> dict[str, Any]:
+    """Resolve storage mode/status for a workspace."""
+    has_arrays_directory = (workspace_path / "arrays").exists()
+    db_path = workspace_path / "store.duckdb"
+
+    status = {
+        "storage_mode": "new",
+        "has_prediction_arrays_table": False,
+        "has_arrays_directory": has_arrays_directory,
+        "migration_needed": False,
+    }
+
+    # Avoid opening WorkspaceStore when no DB exists (it can create one).
+    if not db_path.exists():
+        if has_arrays_directory:
+            status["storage_mode"] = "migrated"
+        return status
+
+    if not STORE_AVAILABLE:
+        status["storage_mode"] = "unknown"
+        return status
+
+    try:
+        with StoreAdapter(workspace_path) as adapter:
+            return adapter.get_store_status()
+    except Exception:
+        status["storage_mode"] = "unknown"
+        return status
+
+
+def _get_legacy_arrays_row_count(workspace_path: Path) -> Optional[int]:
+    """Count legacy rows in prediction_arrays if the table exists."""
+    if not STORE_AVAILABLE:
+        return None
+    if not (workspace_path / "store.duckdb").exists():
+        return None
+
+    try:
+        store = WorkspaceStore(workspace_path)
+    except Exception:
+        return None
+
+    try:
+        has_table = False
+        try:
+            table_df = store._fetch_pl(  # type: ignore[attr-defined]
+                "SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_name = 'prediction_arrays'"
+            )
+            if len(table_df) > 0:
+                has_table = int(table_df.row(0, named=True).get("cnt", 0) or 0) > 0
+        except Exception:
+            has_table = False
+
+        if not has_table:
+            return None
+
+        count_df = store._fetch_pl("SELECT COUNT(*) AS cnt FROM prediction_arrays")
+        if len(count_df) == 0:
+            return 0
+        return int(count_df.row(0, named=True).get("cnt", 0) or 0)
+    except Exception:
+        return None
+    finally:
+        try:
+            store.close()
+        except Exception:
+            pass
+
+
+def _estimate_migration_duration_seconds(legacy_row_count: Optional[int]) -> Optional[int]:
+    """Estimate migration time from row count using a conservative throughput heuristic."""
+    if legacy_row_count is None:
+        return None
+    if legacy_row_count == 0:
+        return 0
+    rows_per_second = 10_000
+    return max(1, int(legacy_row_count / rows_per_second))
+
+
+def _run_async_notification(coro: Any) -> None:
+    """Run an async notification from sync code safely."""
+    if not coro:
+        return
+    try:
+        asyncio.run(coro)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    except Exception:
+        pass
+
+
+def _emit_maintenance_started(job_id: str, operation: str, details: dict[str, Any]) -> None:
+    if WS_AVAILABLE and notify_maintenance_started is not None:
+        _run_async_notification(notify_maintenance_started(job_id, operation, details))
+
+
+def _emit_maintenance_progress(job_id: str, progress: float, message: str = "") -> None:
+    if WS_AVAILABLE and notify_maintenance_progress is not None:
+        _run_async_notification(notify_maintenance_progress(job_id, progress, message))
+
+
+def _emit_maintenance_completed(job_id: str, operation: str, report: dict[str, Any]) -> None:
+    if WS_AVAILABLE and notify_maintenance_completed is not None:
+        _run_async_notification(notify_maintenance_completed(job_id, operation, report))
+
+
+def _emit_maintenance_failed(job_id: str, operation: str, error: str) -> None:
+    if WS_AVAILABLE and notify_maintenance_failed is not None:
+        _run_async_notification(notify_maintenance_failed(job_id, operation, error))
+
+
+def _has_active_non_maintenance_jobs() -> bool:
+    """Return True if a non-maintenance job is pending/running."""
+    try:
+        jobs = job_manager.list_jobs(limit=500)
+    except Exception:
+        return False
+
+    for job in jobs:
+        if job.status not in (JobStatus.PENDING, JobStatus.RUNNING):
+            continue
+        if job.type != JobType.MAINTENANCE:
+            return True
+    return False
+
+
+def _prepare_predictions_instance(workspace_path: Path) -> tuple[Any, Any]:
+    """Create a Predictions instance and optional store handle for maintenance operations."""
+    if not PREDICTIONS_AVAILABLE:
+        raise HTTPException(status_code=501, detail="nirs4all Predictions API is not available")
+
+    store = None
+    predictions_obj = None
+    errors: list[str] = []
+
+    if hasattr(Predictions, "from_workspace"):
+        try:
+            predictions_obj = Predictions.from_workspace(workspace_path)  # type: ignore[attr-defined]
+            return predictions_obj, store
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if STORE_AVAILABLE:
+        try:
+            store = WorkspaceStore(workspace_path)
+            predictions_obj = Predictions(store=store)
+            return predictions_obj, store
+        except Exception as exc:
+            errors.append(str(exc))
+
+    detail = (
+        "Current nirs4all version does not expose a store-backed Predictions interface "
+        "required for maintenance operations."
+    )
+    if errors:
+        detail = f"{detail} Last error: {errors[-1]}"
+    raise HTTPException(status_code=501, detail=detail)
+
+
+def _invoke_predictions_method(workspace_path: Path, method_name: str, **kwargs: Any) -> dict[str, Any]:
+    """Call a maintenance method on Predictions with compatibility fallbacks."""
+    predictions_obj, store = _prepare_predictions_instance(workspace_path)
+    try:
+        method = getattr(predictions_obj, method_name, None)
+        if method is None or not callable(method):
+            raise HTTPException(
+                status_code=501,
+                detail=f"Current nirs4all version does not support '{method_name}'",
+            )
+
+        result = method(**kwargs)
+        plain = _to_plain_dict(result)
+        if isinstance(plain, dict):
+            return plain
+        return {"result": plain}
+    finally:
+        if store is not None:
+            try:
+                store.close()
+            except Exception:
+                pass
+
+
+def _normalize_migration_report(report: Any) -> dict[str, Any]:
+    """Map migration report object/dict to API response shape."""
+    raw = _to_plain_dict(report)
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "total_rows": int(raw.get("total_rows", 0) or 0),
+        "rows_migrated": int(raw.get("rows_migrated", 0) or 0),
+        "datasets_migrated": list(raw.get("datasets_migrated", []) or []),
+        "verification_passed": bool(raw.get("verification_passed", False)),
+        "verification_sample_size": int(raw.get("verification_sample_size", 0) or 0),
+        "verification_mismatches": int(raw.get("verification_mismatches", 0) or 0),
+        "duckdb_size_before": int(raw.get("duckdb_size_before", 0) or 0),
+        "duckdb_size_after": int(raw.get("duckdb_size_after", 0) or 0),
+        "parquet_total_size": int(raw.get("parquet_total_size", 0) or 0),
+        "duration_seconds": float(raw.get("duration_seconds", 0.0) or 0.0),
+        "errors": [str(e) for e in (raw.get("errors", []) or [])],
+    }
+
+
+def _call_migrate_arrays_to_parquet(
+    workspace_path: Path,
+    *,
+    dry_run: bool,
+    batch_size: Optional[int] = None,
+) -> dict[str, Any]:
+    """Call migration function with backward-compatible signature handling."""
+    if not MIGRATION_AVAILABLE or migrate_arrays_to_parquet is None:
+        raise HTTPException(status_code=501, detail="Migration API is not available in current nirs4all version")
+
+    kwargs: dict[str, Any] = {"dry_run": dry_run}
+    if batch_size is not None:
+        kwargs["batch_size"] = batch_size
+
+    try:
+        signature = inspect.signature(migrate_arrays_to_parquet)
+        accepted = set(signature.parameters.keys())
+        kwargs = {k: v for k, v in kwargs.items() if k in accepted}
+    except Exception:
+        pass
+
+    report = migrate_arrays_to_parquet(workspace_path, **kwargs)  # type: ignore[misc]
+    return _normalize_migration_report(report)
+
+
+def _extract_orphan_counts(report: dict[str, Any]) -> tuple[int, int]:
+    metadata_orphans = int(
+        report.get("metadata_orphans_removed")
+        or report.get("orphan_metadata_count")
+        or report.get("metadata_orphans")
+        or 0
+    )
+    array_orphans = int(
+        report.get("array_orphans_removed")
+        or report.get("orphan_array_count")
+        or report.get("array_orphans")
+        or 0
+    )
+    return metadata_orphans, array_orphans
+
+
+def _extract_corrupt_files(report: dict[str, Any]) -> list[str]:
+    candidates = [
+        report.get("corrupt_files"),
+        report.get("corrupted_files"),
+        report.get("invalid_files"),
+    ]
+    for value in candidates:
+        if isinstance(value, list):
+            return [str(item) for item in value]
+    return []
+
+
 @router.get("/workspace/stats", response_model=WorkspaceStatsResponse)
 async def get_workspace_stats():
     """
@@ -1091,6 +1510,7 @@ async def get_workspace_stats():
             ("results", workspace_path / "results"),
             ("models", workspace_path / "models"),
             ("predictions", workspace_path / "predictions"),
+            ("Prediction arrays", workspace_path / "arrays"),
             ("pipelines", workspace_path / "pipelines"),
             ("cache", workspace_path / ".cache"),
             ("temp", workspace_path / ".tmp"),
@@ -1098,6 +1518,8 @@ async def get_workspace_stats():
 
         space_usage: List[SpaceUsageItem] = []
         total_workspace_size = 0
+        duckdb_size_bytes = 0
+        parquet_arrays_size_bytes = 0
 
         # Compute size for each category
         for name, directory in categories:
@@ -1109,12 +1531,16 @@ async def get_workspace_stats():
                 percentage=0.0,  # Will be calculated after total is known
             ))
             total_workspace_size += size_bytes
+            if name == "Prediction arrays":
+                parquet_arrays_size_bytes = size_bytes
 
         # Add workspace.json and other root files
         for file in workspace_path.iterdir():
             if file.is_file():
                 try:
                     total_workspace_size += file.stat().st_size
+                    if file.name == "store.duckdb":
+                        duckdb_size_bytes = file.stat().st_size
                 except (OSError, PermissionError):
                     pass
 
@@ -1131,6 +1557,8 @@ async def get_workspace_stats():
                 size, _ = _compute_directory_size(dataset_path)
                 external_datasets_size += size
 
+        storage_status = _get_storage_status_for_workspace(workspace_path)
+
         return WorkspaceStatsResponse(
             path=str(workspace_path),
             name=workspace.name,
@@ -1138,6 +1566,9 @@ async def get_workspace_stats():
             space_usage=space_usage,
             linked_datasets_count=len(workspace.datasets),
             linked_datasets_external_size=external_datasets_size,
+            duckdb_size_bytes=duckdb_size_bytes,
+            parquet_arrays_size_bytes=parquet_arrays_size_bytes,
+            storage_mode=str(storage_status.get("storage_mode", "unknown")),
             created_at=workspace.created_at,
             last_accessed=workspace.last_accessed,
         )
@@ -1147,6 +1578,342 @@ async def get_workspace_stats():
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get workspace stats: {str(e)}"
+        )
+
+
+@router.get("/workspace/storage-status", response_model=StorageStatusResponse)
+async def get_workspace_storage_status():
+    """Get current workspace storage backend status."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        status = _get_storage_status_for_workspace(Path(workspace.path))
+        return StorageStatusResponse(**status)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get storage status: {str(e)}"
+        )
+
+
+@router.get("/workspace/migrate/status", response_model=MigrationStatusResponse)
+async def get_workspace_migration_status():
+    """Get migration status and rough migration estimate."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+        status = _get_storage_status_for_workspace(workspace_path)
+        legacy_row_count = _get_legacy_arrays_row_count(workspace_path)
+        estimated_duration_seconds = _estimate_migration_duration_seconds(legacy_row_count)
+
+        return MigrationStatusResponse(
+            migration_needed=bool(status.get("migration_needed", False)),
+            storage_mode=str(status.get("storage_mode", "unknown")),
+            legacy_row_count=legacy_row_count,
+            estimated_duration_seconds=estimated_duration_seconds,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get migration status: {str(e)}"
+        )
+
+
+@router.post(
+    "/workspace/migrate",
+    response_model=Union[MigrationJobResponse, MigrationReportResponse],
+)
+async def migrate_workspace_arrays(request: MigrationRequest):
+    """Migrate legacy prediction arrays to Parquet sidecar files."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+
+        if request.dry_run:
+            report = _call_migrate_arrays_to_parquet(
+                workspace_path,
+                dry_run=True,
+                batch_size=request.batch_size,
+            )
+            return MigrationReportResponse(**report)
+
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before migration.",
+            )
+
+        job_config = {
+            "operation": "migration",
+            "workspace_path": str(workspace_path),
+            "dry_run": False,
+            "batch_size": request.batch_size,
+        }
+        job = job_manager.create_job(JobType.MAINTENANCE, job_config)
+
+        def _run_migration_task(job_obj: Any, progress_callback: Any) -> dict[str, Any]:
+            operation = "migration"
+
+            def _progress(value: float, message: str) -> None:
+                try:
+                    progress_callback(value, message)
+                except Exception:
+                    pass
+                _emit_maintenance_progress(job_obj.id, value, message)
+
+            _emit_maintenance_started(
+                job_obj.id,
+                operation,
+                {
+                    "workspace_path": str(workspace_path),
+                    "batch_size": request.batch_size,
+                },
+            )
+            _progress(2.0, "Preparing migration")
+            try:
+                report = _call_migrate_arrays_to_parquet(
+                    workspace_path,
+                    dry_run=False,
+                    batch_size=request.batch_size,
+                )
+                _progress(100.0, "Migration completed")
+                _emit_maintenance_completed(job_obj.id, operation, report)
+                return {"operation": operation, "report": report}
+            except Exception as exc:
+                _emit_maintenance_failed(job_obj.id, operation, str(exc))
+                raise
+
+        job_manager.submit_job(job, _run_migration_task)
+        return MigrationJobResponse(job_id=job.id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start migration: {str(e)}"
+        )
+
+
+@router.post("/workspace/compact", response_model=CompactReport)
+async def compact_workspace_storage(request: CompactRequest):
+    """Compact Parquet array files for one dataset or all datasets."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before compaction.",
+            )
+
+        result = _invoke_predictions_method(
+            Path(workspace.path),
+            "compact",
+            dataset_name=request.dataset_name,
+        )
+
+        if "datasets" not in result:
+            dataset_key = request.dataset_name or "all"
+            if all(k in result for k in ("rows_before", "rows_after", "rows_removed")):
+                result = {"datasets": {dataset_key: result}}
+            else:
+                result = {"datasets": {}}
+
+        return CompactReport(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compact storage: {str(e)}")
+
+
+@router.post("/workspace/clean-dead-links", response_model=CleanDeadLinksReport)
+async def clean_workspace_dead_links(request: CleanDeadLinksRequest):
+    """Clean orphan metadata/array links in storage."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        if not request.dry_run and _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before cleanup.",
+            )
+
+        result = _invoke_predictions_method(
+            Path(workspace.path),
+            "clean_dead_links",
+            dry_run=request.dry_run,
+        )
+        return CleanDeadLinksReport(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clean dead links: {str(e)}")
+
+
+@router.post("/workspace/remove-bottom", response_model=RemoveBottomReport)
+async def remove_bottom_predictions(request: RemoveBottomRequest):
+    """Remove the bottom fraction of predictions based on a ranking metric."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        if not request.dry_run and _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before removal.",
+            )
+
+        result = _invoke_predictions_method(
+            Path(workspace.path),
+            "remove_bottom",
+            fraction=request.fraction,
+            metric=request.metric or "val_score",
+            partition=request.partition or "val",
+            dataset_name=request.dataset_name,
+            dry_run=request.dry_run,
+        )
+        return RemoveBottomReport(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove bottom predictions: {str(e)}")
+
+
+@router.get("/workspace/storage-health", response_model=StorageHealthResponse)
+async def get_workspace_storage_health():
+    """Combined storage health: integrity check + stats + migration status."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+        status = _get_storage_status_for_workspace(workspace_path)
+
+        duckdb_size_bytes = 0
+        duckdb_path = workspace_path / "store.duckdb"
+        if duckdb_path.exists():
+            try:
+                duckdb_size_bytes = duckdb_path.stat().st_size
+            except Exception:
+                duckdb_size_bytes = 0
+
+        arrays_path = workspace_path / "arrays"
+        parquet_total_size_bytes, _ = _compute_directory_size(arrays_path)
+
+        total_predictions = 0
+        dataset_rows: list[dict[str, Any]] = []
+        if STORE_AVAILABLE and duckdb_path.exists():
+            try:
+                store = WorkspaceStore(workspace_path)
+                try:
+                    total_df = store._fetch_pl("SELECT COUNT(*) AS cnt FROM predictions")
+                    if len(total_df) > 0:
+                        total_predictions = int(total_df.row(0, named=True).get("cnt", 0) or 0)
+
+                    dataset_df = store._fetch_pl(
+                        "SELECT dataset_name, COUNT(*) AS prediction_count "
+                        "FROM predictions GROUP BY dataset_name ORDER BY dataset_name"
+                    )
+                    dataset_rows = list(dataset_df.iter_rows(named=True))
+                finally:
+                    store.close()
+            except Exception:
+                dataset_rows = []
+
+        datasets: list[DatasetStorageInfo] = []
+        parquet_by_dataset: dict[str, int] = {}
+        if arrays_path.exists() and arrays_path.is_dir():
+            for parquet_file in arrays_path.glob("*.parquet"):
+                dataset_name = parquet_file.stem
+                try:
+                    parquet_by_dataset[dataset_name] = parquet_file.stat().st_size
+                except Exception:
+                    parquet_by_dataset[dataset_name] = 0
+
+        seen_names: set[str] = set()
+        for row in dataset_rows:
+            ds_name = str(row.get("dataset_name") or "")
+            if not ds_name:
+                continue
+            seen_names.add(ds_name)
+            datasets.append(
+                DatasetStorageInfo(
+                    name=ds_name,
+                    prediction_count=int(row.get("prediction_count", 0) or 0),
+                    parquet_size_bytes=int(parquet_by_dataset.get(ds_name, 0)),
+                )
+            )
+
+        for ds_name, ds_size in parquet_by_dataset.items():
+            if ds_name in seen_names:
+                continue
+            datasets.append(
+                DatasetStorageInfo(
+                    name=ds_name,
+                    prediction_count=0,
+                    parquet_size_bytes=int(ds_size),
+                )
+            )
+
+        datasets.sort(key=lambda d: d.name.lower())
+
+        orphan_metadata_count = 0
+        orphan_array_count = 0
+        corrupt_files: list[str] = []
+
+        # Best-effort integrity/orphan detection using predictions maintenance APIs.
+        if PREDICTIONS_AVAILABLE:
+            try:
+                dry_result = _invoke_predictions_method(
+                    workspace_path,
+                    "clean_dead_links",
+                    dry_run=True,
+                )
+                orphan_metadata_count, orphan_array_count = _extract_orphan_counts(dry_result)
+            except Exception:
+                pass
+
+            try:
+                integrity_result = _invoke_predictions_method(workspace_path, "integrity_check")
+                corrupt_files = _extract_corrupt_files(integrity_result)
+                if orphan_metadata_count == 0 and orphan_array_count == 0:
+                    orphan_metadata_count, orphan_array_count = _extract_orphan_counts(integrity_result)
+            except Exception:
+                pass
+
+        return StorageHealthResponse(
+            storage_mode=str(status.get("storage_mode", "unknown")),
+            migration_needed=bool(status.get("migration_needed", False)),
+            duckdb_size_bytes=duckdb_size_bytes,
+            parquet_total_size_bytes=parquet_total_size_bytes,
+            total_predictions=total_predictions,
+            total_datasets=len(datasets),
+            datasets=datasets,
+            orphan_metadata_count=orphan_metadata_count,
+            orphan_array_count=orphan_array_count,
+            corrupt_files=corrupt_files,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get storage health: {str(e)}"
         )
 
 

@@ -16,3 +16,6 @@ export { BackendStatus } from "./BackendStatus";
 export { ErrorLogViewer } from "./ErrorLogViewer";
 export { LanguageSelector } from "./LanguageSelector";
 export { DependenciesManager } from "./DependenciesManager";
+export { StorageHealthWidget } from "./StorageHealthWidget";
+export { MaintenanceActions } from "./MaintenanceActions";
+export { MigrationDialog } from "./MigrationDialog";

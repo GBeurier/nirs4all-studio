@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSynthesisBuilder } from "./SynthesisBuilderContext";
+import { api } from "@/api/client";
 
 // ============= Types =============
 
@@ -105,19 +106,7 @@ interface PreviewResponse {
 }
 
 async function fetchPreview(request: PreviewRequest): Promise<PreviewResponse> {
-  const response = await fetch("/api/synthesis/preview", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
+  return api.post<PreviewResponse>("/synthesis/preview", request);
 }
 
 // ============= Provider =============

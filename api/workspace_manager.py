@@ -170,6 +170,7 @@ class WorkspaceScanner:
         has_runs = (self.workspace_dir / "runs").exists() if has_workspace_dir else False
         has_exports = (self.workspace_dir / "exports").exists() if has_workspace_dir else False
         has_predictions = any(self.workspace_path.glob("*.meta.parquet"))
+        has_arrays = (self.workspace_path / "arrays").exists() or (self.workspace_dir / "arrays").exists()
 
         # Also accept legacy directory structure
         has_legacy = (
@@ -178,8 +179,8 @@ class WorkspaceScanner:
             or (self.workspace_path / "models").exists()
         )
 
-        if not (has_runs or has_exports or has_predictions or has_legacy):
-            return False, "No runs/, exports/, prediction files, or workspace.json found"
+        if not (has_runs or has_exports or has_predictions or has_arrays or has_legacy):
+            return False, "No runs/, exports/, prediction files, arrays/, or workspace.json found"
 
         return True, "Valid nirs4all workspace"
 

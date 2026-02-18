@@ -74,6 +74,8 @@ function getCategoryIcon(name: string) {
       return <Database className="h-4 w-4" />;
     case "predictions":
       return <FolderOpen className="h-4 w-4" />;
+    case "Prediction arrays":
+      return <Database className="h-4 w-4" />;
     case "pipelines":
       return <Archive className="h-4 w-4" />;
     case "cache":
@@ -95,6 +97,8 @@ function getCategoryColor(name: string): string {
       return "bg-green-500";
     case "predictions":
       return "bg-purple-500";
+    case "Prediction arrays":
+      return "bg-cyan-500";
     case "pipelines":
       return "bg-orange-500";
     case "cache":
@@ -353,7 +357,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Summary */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Total Size</p>
             <p className="text-2xl font-bold">
@@ -367,6 +371,16 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
               <span className="text-sm font-normal text-muted-foreground ml-2">
                 ({formatBytes(stats.linked_datasets_external_size)} external)
               </span>
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Storage Mode</p>
+            <p className="text-xl font-semibold capitalize">{stats.storage_mode}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">DuckDB / Parquet</p>
+            <p className="text-sm font-medium">
+              {formatBytes(stats.duckdb_size_bytes)} / {formatBytes(stats.parquet_arrays_size_bytes)}
             </p>
           </div>
         </div>

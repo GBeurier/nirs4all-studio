@@ -32,6 +32,12 @@ class MessageType(str, Enum):
     JOB_CANCELLED = "job_cancelled"
     JOB_METRICS = "job_metrics"
 
+    # Maintenance messages
+    MAINTENANCE_STARTED = "maintenance_started"
+    MAINTENANCE_PROGRESS = "maintenance_progress"
+    MAINTENANCE_COMPLETED = "maintenance_completed"
+    MAINTENANCE_FAILED = "maintenance_failed"
+
     # Training-specific messages
     TRAINING_EPOCH = "training_epoch"
     TRAINING_BATCH = "training_batch"
@@ -459,6 +465,94 @@ async def notify_job_failed(job_id: str, error: str, traceback: Optional[str] = 
             "job_id": job_id,
             "error": error,
             "traceback": traceback,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_maintenance_started(job_id: str, operation: str, details: dict) -> None:
+    """
+    Notify subscribers that a maintenance operation has started.
+
+    Args:
+        job_id: Job identifier
+        operation: Operation name (migration, compact, cleanup, etc.)
+        details: Extra details for the operation
+    """
+    channel = f"job:{job_id}"
+    message = WebSocketMessage(
+        type=MessageType.MAINTENANCE_STARTED,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "operation": operation,
+            "details": details,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_maintenance_progress(job_id: str, progress: float, message: str = "") -> None:
+    """
+    Notify subscribers of maintenance progress updates.
+
+    Args:
+        job_id: Job identifier
+        progress: Progress percentage (0-100)
+        message: Progress message
+    """
+    channel = f"job:{job_id}"
+    msg = WebSocketMessage(
+        type=MessageType.MAINTENANCE_PROGRESS,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "progress": progress,
+            "message": message,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, msg)
+
+
+async def notify_maintenance_completed(job_id: str, operation: str, report: dict) -> None:
+    """
+    Notify subscribers that a maintenance operation completed.
+
+    Args:
+        job_id: Job identifier
+        operation: Operation name
+        report: Operation report data
+    """
+    channel = f"job:{job_id}"
+    message = WebSocketMessage(
+        type=MessageType.MAINTENANCE_COMPLETED,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "operation": operation,
+            "report": report,
+        },
+    )
+    await ws_manager.broadcast_to_channel(channel, message)
+
+
+async def notify_maintenance_failed(job_id: str, operation: str, error: str) -> None:
+    """
+    Notify subscribers that a maintenance operation failed.
+
+    Args:
+        job_id: Job identifier
+        operation: Operation name
+        error: Error message
+    """
+    channel = f"job:{job_id}"
+    message = WebSocketMessage(
+        type=MessageType.MAINTENANCE_FAILED,
+        channel=channel,
+        data={
+            "job_id": job_id,
+            "operation": operation,
+            "error": error,
         },
     )
     await ws_manager.broadcast_to_channel(channel, message)

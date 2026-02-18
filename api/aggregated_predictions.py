@@ -13,12 +13,17 @@ All data is read from the workspace's DuckDB store via
 from __future__ import annotations
 
 import math
+import re
+import shutil
+import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
@@ -31,6 +36,14 @@ try:
 except ImportError:
     WorkspaceStore = None  # type: ignore[assignment, misc]
     STORE_AVAILABLE = False
+
+try:
+    import polars as pl
+
+    POLARS_AVAILABLE = True
+except ImportError:
+    pl = None  # type: ignore[assignment]
+    POLARS_AVAILABLE = False
 
 
 router = APIRouter(prefix="/aggregated-predictions", tags=["aggregated-predictions"])
@@ -129,6 +142,30 @@ class PredictionArraysResponse(BaseModel):
     n_samples: int = 0
 
 
+class ExportRequest(BaseModel):
+    """Bulk export request."""
+
+    dataset_names: Optional[List[str]] = Field(
+        default=None,
+        description="Dataset names to export. Null exports all available datasets.",
+    )
+    format: str = Field(default="zip", description="Export format: parquet | zip")
+
+
+class SQLQueryRequest(BaseModel):
+    """Request model for read-only SQL query endpoint."""
+
+    sql: str = Field(..., description="Read-only SQL query")
+
+
+class SQLQueryResponse(BaseModel):
+    """Response model for SQL query results."""
+
+    columns: List[str]
+    rows: List[List[Any]]
+    row_count: int
+
+
 # ============================================================================
 # Helpers
 # ============================================================================
@@ -183,6 +220,52 @@ def _get_store() -> "WorkspaceStore":
         )
 
     return WorkspaceStore(workspace_path)
+
+
+def _get_workspace_path() -> Path:
+    """Get current workspace path or raise HTTPException."""
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
+    return Path(workspace.path)
+
+
+def _sanitize_cell(value: Any) -> Any:
+    """Sanitize scalar values for JSON serialization."""
+    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _is_read_only_sql(sql: str) -> bool:
+    """Basic guardrail to allow only read-only SQL."""
+    normalized = re.sub(r"--.*?$|/\*.*?\*/", " ", sql, flags=re.MULTILINE | re.DOTALL).strip().lower()
+    if not normalized:
+        return False
+
+    if not (normalized.startswith("select") or normalized.startswith("with")):
+        return False
+
+    forbidden = re.compile(
+        r"\b(insert|update|delete|drop|alter|create|replace|truncate|attach|detach|copy|vacuum|call)\b",
+        re.IGNORECASE,
+    )
+    return forbidden.search(normalized) is None
+
+
+def _list_array_datasets(workspace_path: Path) -> dict[str, Path]:
+    """Map dataset name -> parquet file path under arrays/."""
+    arrays_dir = workspace_path / "arrays"
+    if not arrays_dir.exists() or not arrays_dir.is_dir():
+        return {}
+    mapping: dict[str, Path] = {}
+    for parquet_file in arrays_dir.glob("*.parquet"):
+        mapping[parquet_file.stem] = parquet_file
+    return mapping
 
 
 # ============================================================================
@@ -381,5 +464,150 @@ async def get_prediction_arrays(prediction_id: str):
             result["sample_indices"] = None
 
         return result
+    finally:
+        store.close()
+
+
+@router.get("/export/{dataset_name}.parquet")
+async def export_dataset_parquet(
+    dataset_name: str,
+    background_tasks: BackgroundTasks,
+    partition: Optional[str] = Query(None, description="Optional partition filter"),
+    model_name: Optional[str] = Query(None, description="Optional model name filter"),
+):
+    """Export one dataset's prediction arrays as a portable parquet file."""
+    workspace_path = _get_workspace_path()
+    datasets = _list_array_datasets(workspace_path)
+    source_file = datasets.get(dataset_name)
+    if source_file is None:
+        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_name}' not found in arrays/")
+
+    # Fast path: return existing parquet file directly.
+    if partition is None and model_name is None:
+        return FileResponse(
+            path=str(source_file),
+            media_type="application/octet-stream",
+            filename=f"{dataset_name}.parquet",
+        )
+
+    if not POLARS_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="Polars is required for filtered parquet export",
+        )
+
+    try:
+        df = pl.read_parquet(source_file)  # type: ignore[union-attr]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read parquet: {exc}") from exc
+
+    if partition is not None:
+        if "partition" not in df.columns:
+            raise HTTPException(status_code=400, detail="Parquet file does not contain 'partition' column")
+        df = df.filter(pl.col("partition") == partition)  # type: ignore[union-attr]
+
+    if model_name is not None:
+        if "model_name" not in df.columns:
+            raise HTTPException(status_code=400, detail="Parquet file does not contain 'model_name' column")
+        df = df.filter(pl.col("model_name") == model_name)  # type: ignore[union-attr]
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="n4a_export_"))
+    output_file = tmp_dir / f"{dataset_name}.parquet"
+    try:
+        df.write_parquet(output_file)  # type: ignore[union-attr]
+    except Exception as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Failed to write filtered parquet: {exc}") from exc
+
+    background_tasks.add_task(shutil.rmtree, str(tmp_dir), True)
+    return FileResponse(
+        path=str(output_file),
+        media_type="application/octet-stream",
+        filename=f"{dataset_name}.parquet",
+    )
+
+
+@router.post("/export")
+async def export_datasets(request: ExportRequest, background_tasks: BackgroundTasks):
+    """Bulk export one or more datasets as parquet or zip."""
+    export_format = (request.format or "zip").lower()
+    if export_format not in {"parquet", "zip"}:
+        raise HTTPException(status_code=400, detail="format must be 'parquet' or 'zip'")
+
+    workspace_path = _get_workspace_path()
+    datasets = _list_array_datasets(workspace_path)
+    if not datasets:
+        raise HTTPException(status_code=404, detail="No dataset parquet files found in arrays/")
+
+    selected = request.dataset_names if request.dataset_names is not None else sorted(datasets.keys())
+    selected = [name for name in selected if name]
+    if not selected:
+        raise HTTPException(status_code=400, detail="No datasets selected for export")
+
+    missing = [name for name in selected if name not in datasets]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Datasets not found in arrays/: {', '.join(sorted(missing))}",
+        )
+
+    if export_format == "parquet":
+        if len(selected) != 1:
+            raise HTTPException(
+                status_code=400,
+                detail="format='parquet' requires exactly one dataset",
+            )
+        ds_name = selected[0]
+        return FileResponse(
+            path=str(datasets[ds_name]),
+            media_type="application/octet-stream",
+            filename=f"{ds_name}.parquet",
+        )
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="n4a_export_zip_"))
+    zip_path = tmp_dir / "predictions_export.zip"
+    try:
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for ds_name in selected:
+                src = datasets[ds_name]
+                zf.write(src, arcname=f"{ds_name}.parquet")
+    except Exception as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Failed to build export archive: {exc}") from exc
+
+    background_tasks.add_task(shutil.rmtree, str(tmp_dir), True)
+    return FileResponse(
+        path=str(zip_path),
+        media_type="application/zip",
+        filename="predictions_export.zip",
+    )
+
+
+@router.post("/query", response_model=SQLQueryResponse)
+async def query_predictions_metadata(request: SQLQueryRequest):
+    """Run a read-only SQL query against prediction metadata tables."""
+    sql = request.sql.strip()
+    if not _is_read_only_sql(sql):
+        raise HTTPException(
+            status_code=400,
+            detail="Only read-only SELECT/WITH queries are allowed",
+        )
+
+    store = _get_store()
+    try:
+        df = store._fetch_pl(sql)
+        columns = list(df.columns)
+        rows: list[list[Any]] = []
+        for row in df.iter_rows(named=False):
+            rows.append([_sanitize_cell(value) for value in row])
+        return SQLQueryResponse(
+            columns=columns,
+            rows=rows,
+            row_count=len(rows),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to execute query: {exc}") from exc
     finally:
         store.close()

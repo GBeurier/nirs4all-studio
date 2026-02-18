@@ -37,6 +37,7 @@ class JobType(str, Enum):
     AUTOML = "automl"
     EXPORT = "export"
     ANALYSIS = "analysis"
+    MAINTENANCE = "maintenance"
     # Update-related jobs
     UPDATE_DOWNLOAD = "update_download"
     UPDATE_APPLY = "update_apply"

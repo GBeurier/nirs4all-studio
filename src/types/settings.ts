@@ -24,6 +24,9 @@ export interface WorkspaceStatsResponse {
   space_usage: SpaceUsageItem[];
   linked_datasets_count: number;
   linked_datasets_external_size: number;
+  duckdb_size_bytes: number;
+  parquet_arrays_size_bytes: number;
+  storage_mode: string;
 
   created_at: string;
   last_accessed: string;

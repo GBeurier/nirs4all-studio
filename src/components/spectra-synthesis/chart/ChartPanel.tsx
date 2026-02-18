@@ -87,20 +87,36 @@ export function ChartPanel({ className }: ChartPanelProps) {
 
       {/* Main content area */}
       <div className="flex-1 min-h-0 flex flex-col">
-        {isLoading ? (
-          <LoadingState />
-        ) : error ? (
-          <ErrorState error={error} onRetry={handleGenerate} canRetry={canGenerate} />
-        ) : data ? (
+        {data ? (
           <>
-            {/* Main spectra chart */}
-            <div className="flex-1 min-h-0 p-3">
+            {/* Main spectra chart - with loading/error overlay */}
+            <div className="flex-1 min-h-0 p-3 relative">
               <SpectraChart
                 data={data}
                 showMean={showMean}
                 showStdBand={showStdBand}
                 className="h-full"
               />
+              {isLoading && (
+                <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
+                  <div className="flex items-center gap-2 bg-background/90 rounded-md px-3 py-2 shadow-sm border">
+                    <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                    <span className="text-xs text-muted-foreground">Regenerating...</span>
+                  </div>
+                </div>
+              )}
+              {error && !isLoading && (
+                <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
+                  <div className="text-center bg-background/90 rounded-md px-4 py-3 shadow-sm border max-w-xs">
+                    <AlertCircle className="h-5 w-5 text-destructive mx-auto mb-1" />
+                    <p className="text-xs text-muted-foreground mb-2">{error}</p>
+                    <Button variant="outline" size="sm" onClick={handleGenerate} disabled={!canGenerate}>
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Bottom row: Histogram + Metadata */}
@@ -118,6 +134,10 @@ export function ChartPanel({ className }: ChartPanelProps) {
               <StatsBar data={data} />
             </div>
           </>
+        ) : isLoading ? (
+          <LoadingState />
+        ) : error ? (
+          <ErrorState error={error} onRetry={handleGenerate} canRetry={canGenerate} />
         ) : (
           <EmptyState onGenerate={handleGenerate} canGenerate={canGenerate} hasErrors={hasErrors} />
         )}

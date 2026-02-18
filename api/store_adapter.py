@@ -73,6 +73,66 @@ class StoreAdapter:
         """Return the underlying ``WorkspaceStore``."""
         return self._store
 
+    def get_store_status(self) -> dict[str, Any]:
+        """Return storage backend status for the workspace store.
+
+        Returns:
+            {
+                "storage_mode": "migrated" | "legacy" | "mid_migration" | "new",
+                "has_prediction_arrays_table": bool,
+                "has_arrays_directory": bool,
+                "migration_needed": bool,
+            }
+        """
+        # Prefer native implementation if available
+        if hasattr(self._store, "get_storage_status"):
+            try:
+                status = self._store.get_storage_status()  # type: ignore[attr-defined]
+                if isinstance(status, dict) and "storage_mode" in status:
+                    return {
+                        "storage_mode": status.get("storage_mode", "new"),
+                        "has_prediction_arrays_table": bool(status.get("has_prediction_arrays_table", False)),
+                        "has_arrays_directory": bool(status.get("has_arrays_directory", False)),
+                        "migration_needed": bool(status.get("migration_needed", False)),
+                    }
+            except Exception:
+                pass
+
+        workspace_path = getattr(self._store, "_workspace_path", None) or Path(".")
+        arrays_dir = Path(workspace_path) / "arrays"
+        has_arrays_directory = arrays_dir.exists() and arrays_dir.is_dir()
+
+        has_prediction_arrays_table = False
+        try:
+            df = self._store._fetch_pl(
+                "SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_name = 'prediction_arrays'"
+            )
+            if len(df) > 0:
+                has_prediction_arrays_table = int(df.row(0, named=True).get("cnt", 0) or 0) > 0
+        except Exception:
+            try:
+                df = self._store._fetch_pl("PRAGMA show_tables")
+                if "name" in df.columns:
+                    has_prediction_arrays_table = "prediction_arrays" in df.get_column("name").to_list()
+            except Exception:
+                has_prediction_arrays_table = False
+
+        if has_prediction_arrays_table and not has_arrays_directory:
+            storage_mode = "legacy"
+        elif has_prediction_arrays_table and has_arrays_directory:
+            storage_mode = "mid_migration"
+        elif not has_prediction_arrays_table and has_arrays_directory:
+            storage_mode = "migrated"
+        else:
+            storage_mode = "new"
+
+        return {
+            "storage_mode": storage_mode,
+            "has_prediction_arrays_table": has_prediction_arrays_table,
+            "has_arrays_directory": has_arrays_directory,
+            "migration_needed": storage_mode in ("legacy", "mid_migration"),
+        }
+
     # ------------------------------------------------------------------
     # Runs
     # ------------------------------------------------------------------

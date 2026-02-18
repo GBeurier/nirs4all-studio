@@ -43,6 +43,7 @@ from api.transfer import router as transfer_router
 from api.shap import router as shap_router
 from api.aggregated_predictions import router as aggregated_predictions_router
 from api.projects import router as projects_router
+from api.inspector import router as inspector_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -125,6 +126,7 @@ app.include_router(synthesis_router, prefix="/api", tags=["synthesis"])
 app.include_router(transfer_router, prefix="/api", tags=["transfer"])
 app.include_router(shap_router, prefix="/api", tags=["shap"])
 app.include_router(projects_router, prefix="/api", tags=["projects"])
+app.include_router(inspector_router, prefix="/api", tags=["inspector"])
 
 
 # ============= Startup Events =============

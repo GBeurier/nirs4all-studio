@@ -14,9 +14,9 @@ export default function Lab() {
   const location = useLocation();
 
   return (
-    <div className="space-y-4">
+    <div className="h-full flex flex-col">
       {/* Tab navigation */}
-      <div className="flex items-center gap-1 border-b border-border/50">
+      <div className="shrink-0 flex items-center gap-1 border-b border-border/50">
         {labTabs.map((tab) => {
           const Icon = tab.icon;
           const active = location.pathname.startsWith(tab.href);
@@ -39,7 +39,9 @@ export default function Lab() {
       </div>
 
       {/* Tab content */}
-      <Outlet />
+      <div className="flex-1 min-h-0 pt-4">
+        <Outlet />
+      </div>
     </div>
   );
 }

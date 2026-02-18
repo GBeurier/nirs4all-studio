@@ -201,6 +201,27 @@ class AxiosLikeClient {
 
 export const apiClient = new AxiosLikeClient();
 
+async function requestBinary(
+  endpoint: string,
+  method: "GET" | "POST" = "GET",
+  body?: unknown
+): Promise<Blob> {
+  const baseUrl = await getApiBaseUrl();
+  const response = await fetch(`${baseUrl}${endpoint}`, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const detail = errorData.detail || `HTTP error ${response.status}`;
+    throw { detail, status: response.status } as ApiError;
+  }
+
+  return response.blob();
+}
+
 // Health check
 export async function checkHealth(): Promise<{ status: string }> {
   return api.get("/health");
@@ -1050,12 +1071,80 @@ import type {
   ImportWorkspaceResponse,
 
 } from "@/types/settings";
+import type {
+  StorageStatusResponse,
+  MigrationStatusResponse,
+  MigrationReport,
+  MigrationJobResponse,
+  StorageHealthResponse,
+  CompactReport,
+  CleanDeadLinksReport,
+  RemoveBottomReport,
+} from "@/types/storage";
 
 /**
  * Get workspace statistics including space usage breakdown
  */
 export async function getWorkspaceStats(): Promise<WorkspaceStatsResponse> {
   return api.get("/workspace/stats");
+}
+
+/**
+ * Get storage backend status for current workspace.
+ */
+export async function getStorageStatus(): Promise<StorageStatusResponse> {
+  return api.get("/workspace/storage-status");
+}
+
+/**
+ * Get migration status/estimate for current workspace.
+ */
+export async function getMigrationStatus(): Promise<MigrationStatusResponse> {
+  return api.get("/workspace/migrate/status");
+}
+
+/**
+ * Start migration (background job) or run dry run synchronously.
+ */
+export async function startMigration(options?: {
+  dry_run?: boolean;
+  batch_size?: number;
+}): Promise<MigrationJobResponse | MigrationReport> {
+  return api.post("/workspace/migrate", options ?? {});
+}
+
+/**
+ * Get combined storage health data.
+ */
+export async function getStorageHealth(): Promise<StorageHealthResponse> {
+  return api.get("/workspace/storage-health");
+}
+
+/**
+ * Compact parquet arrays for one dataset or all datasets.
+ */
+export async function compactStorage(datasetName?: string): Promise<CompactReport> {
+  return api.post("/workspace/compact", { dataset_name: datasetName });
+}
+
+/**
+ * Clean dead metadata/array links.
+ */
+export async function cleanDeadLinks(dryRun: boolean): Promise<CleanDeadLinksReport> {
+  return api.post("/workspace/clean-dead-links", { dry_run: dryRun });
+}
+
+/**
+ * Remove bottom-ranked predictions with optional dry-run.
+ */
+export async function removeBottomPredictions(options: {
+  fraction: number;
+  metric?: string;
+  partition?: string;
+  dataset_name?: string;
+  dry_run: boolean;
+}): Promise<RemoveBottomReport> {
+  return api.post("/workspace/remove-bottom", options);
 }
 
 /**
@@ -2186,6 +2275,48 @@ export async function getPredictionArrays(
   predictionId: string
 ): Promise<PredictionArraysResponse> {
   return api.get(`/aggregated-predictions/${predictionId}/arrays`);
+}
+
+/**
+ * Download portable parquet for one dataset.
+ */
+export async function downloadAggregatedDatasetParquet(
+  datasetName: string,
+  options?: { partition?: string; model_name?: string }
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (options?.partition) params.set("partition", options.partition);
+  if (options?.model_name) params.set("model_name", options.model_name);
+  const query = params.toString();
+  return requestBinary(
+    `/aggregated-predictions/export/${encodeURIComponent(datasetName)}.parquet${query ? `?${query}` : ""}`,
+    "GET"
+  );
+}
+
+/**
+ * Bulk export dataset parquet files as zip (or single parquet).
+ */
+export async function exportAggregatedPredictions(options: {
+  dataset_names?: string[];
+  format: "parquet" | "zip";
+}): Promise<Blob> {
+  return requestBinary("/aggregated-predictions/export", "POST", options);
+}
+
+export interface AggregatedSQLQueryResponse {
+  columns: string[];
+  rows: unknown[][];
+  row_count: number;
+}
+
+/**
+ * Run read-only SQL query against aggregated predictions metadata.
+ */
+export async function runAggregatedPredictionsQuery(
+  sql: string
+): Promise<AggregatedSQLQueryResponse> {
+  return api.post("/aggregated-predictions/query", { sql });
 }
 
 // ============================================================================

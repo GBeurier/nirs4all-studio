@@ -58,6 +58,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -72,6 +80,7 @@ import {
   getLinkedWorkspaces,
   getN4AWorkspacePredictionsData,
   getN4AWorkspacePredictionsSummary,
+  exportAggregatedPredictions,
 } from "@/api/client";
 import type {
   PredictionRecord,
@@ -127,6 +136,9 @@ export default function Predictions() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
 
   // Phase 1: Load summary on mount (instant ~10-50ms)
   useEffect(() => {
@@ -326,8 +338,78 @@ export default function Predictions() {
     toast.error("Deleting predictions is not yet supported.");
   };
 
+  const openExportDialog = (datasetNames?: string[]) => {
+    const initial = datasetNames && datasetNames.length > 0 ? datasetNames : datasets;
+    setExportSelection(new Set(initial));
+    setExportDialogOpen(true);
+  };
+
+  const toggleExportDataset = (datasetName: string) => {
+    const next = new Set(exportSelection);
+    if (next.has(datasetName)) {
+      next.delete(datasetName);
+    } else {
+      next.add(datasetName);
+    }
+    setExportSelection(next);
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPredictions = async () => {
+    const datasetNames = Array.from(exportSelection);
+    if (datasetNames.length === 0) {
+      toast.error("Select at least one dataset to export");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const format = datasetNames.length === 1 ? "parquet" : "zip";
+      const blob = await exportAggregatedPredictions({
+        dataset_names: datasetNames,
+        format,
+      });
+      const filename =
+        format === "parquet"
+          ? `${datasetNames[0]}.parquet`
+          : `predictions_export_${new Date().toISOString().slice(0, 10)}.zip`;
+      downloadBlob(blob, filename);
+      toast.success(`Export ready: ${filename}`);
+      setExportDialogOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to export predictions";
+      toast.error(message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleExportSelected = () => {
-    toast.info(`Exporting ${selectedIds.size} predictions`);
+    const selectedDatasetNames = Array.from(
+      new Set(
+        filteredPredictions
+          .filter((pred) => selectedIds.has(pred.id))
+          .map((pred) => pred.source_dataset || pred.dataset_name)
+          .filter((name): name is string => Boolean(name))
+      )
+    );
+
+    if (selectedDatasetNames.length === 0) {
+      toast.info(`No datasets resolved from ${selectedIds.size} selected predictions`);
+      return;
+    }
+
+    openExportDialog(selectedDatasetNames);
   };
 
   const handleAnalyzeSelected = () => {
@@ -496,6 +578,17 @@ export default function Predictions() {
           <Button variant="outline" onClick={loadSummary} size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              openExportDialog(filterDataset !== "all" ? [filterDataset] : datasets)
+            }
+            disabled={datasets.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export Predictions
           </Button>
           <Link to="/results">
             <Button variant="outline" className="gap-2">
@@ -944,6 +1037,59 @@ export default function Predictions() {
           No predictions found matching your criteria
         </div>
       )}
+
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Export Predictions</DialogTitle>
+            <DialogDescription>
+              Select dataset parquet files to export. One dataset downloads as `.parquet`, multiple datasets as `.zip`.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 max-h-72 overflow-auto">
+            {datasets.map((dataset) => (
+              <label key={dataset} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={exportSelection.has(dataset)}
+                  onCheckedChange={() => toggleExportDataset(dataset)}
+                />
+                <span>{dataset}</span>
+              </label>
+            ))}
+            {datasets.length === 0 && (
+              <p className="text-sm text-muted-foreground">No datasets available</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setExportSelection(new Set(datasets))}
+              disabled={isExporting || datasets.length === 0}
+            >
+              Select All
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setExportSelection(new Set())}
+              disabled={isExporting}
+            >
+              Clear
+            </Button>
+            <Button onClick={handleExportPredictions} disabled={isExporting}>
+              {isExporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                "Download"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Quick View Dialog */}
       <PredictionQuickView

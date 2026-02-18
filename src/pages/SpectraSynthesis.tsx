@@ -258,7 +258,7 @@ function SpectraSynthesisContent() {
           <ResizableHandle withHandle />
 
           {/* Right panel - Configuration (40%) */}
-          <ResizablePanel defaultSize={40} minSize={25} maxSize={55}>
+          <ResizablePanel defaultSize={40} minSize={25} maxSize={55} className="overflow-hidden">
             <ConfigurationPanel />
           </ResizablePanel>
         </ResizablePanelGroup>

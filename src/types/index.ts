@@ -7,3 +7,4 @@ export * from "./pipelines";
 export * from "./playground";
 export * from "./runs";
 export * from "./settings";
+export * from "./storage";

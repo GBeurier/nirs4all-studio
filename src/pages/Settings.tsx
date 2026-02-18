@@ -84,6 +84,7 @@ import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscover
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { DependenciesManager } from "@/components/settings/DependenciesManager";
 import { ConfigPathSettings } from "@/components/settings/ConfigPathSettings";
+import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
 import {
   getWorkspace,
   getLinkedWorkspaces,
@@ -386,6 +387,7 @@ export default function Settings() {
 
             {/* Workspace Statistics */}
             {workspacePath && <WorkspaceStats />}
+            {workspacePath && <StorageHealthWidget />}
 
             {/* Discovery Panel */}
             {activeN4AWorkspaceId && (

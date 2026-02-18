@@ -454,6 +454,26 @@ const de = {
     title: "Inspektor",
     comingSoon: "Die Stapelanalyse von Vorhersagen kommt bald. Dieses Tool ermöglicht es Ihnen, Vorhersageergebnisse im Detail zu inspizieren und zu analysieren.",
     underConstruction: "Im Aufbau",
+    sidebar: {
+      source: "Quelle",
+      selectRun: "Ausführung",
+      selectDataset: "Datensatz",
+      groups: "Gruppen",
+      groupBy: "Gruppieren nach...",
+      selection: "Auswahl",
+      clearSelection: "Löschen",
+    },
+    panels: {
+      scatter: "Vorh. vs Beob.",
+      rankings: "Rangliste",
+      histogram: "Score-Verteilung",
+    },
+    toolbar: {
+      scoreColumn: "Score",
+      partition: "Partition",
+    },
+    noData: "Keine Daten verfügbar.",
+    loading: "Daten werden geladen...",
   },
 
   // ============= Lab =============

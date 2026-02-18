@@ -18,7 +18,6 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
-  Area,
   type TooltipProps,
 } from "recharts";
 import type { PreviewData } from "../contexts";
@@ -262,23 +261,29 @@ export function SpectraChart({
             />
           ))}
 
-          {/* Standard deviation band */}
+          {/* Standard deviation lines */}
           {showStdBand && (
-            <Area
+            <Line
               dataKey="upper"
               type="monotone"
-              stroke="none"
-              fill="hsl(var(--primary))"
-              fillOpacity={0.1}
+              stroke="hsl(var(--primary))"
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              strokeOpacity={0.5}
+              dot={false}
+              isAnimationActive={false}
             />
           )}
           {showStdBand && (
-            <Area
+            <Line
               dataKey="lower"
               type="monotone"
-              stroke="none"
-              fill="hsl(var(--background))"
-              fillOpacity={1}
+              stroke="hsl(var(--primary))"
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              strokeOpacity={0.5}
+              dot={false}
+              isAnimationActive={false}
             />
           )}
 

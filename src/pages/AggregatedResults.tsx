@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -38,10 +39,17 @@ import {
   ArrowUp,
   ArrowDown,
   Eye,
+  Download,
   Box,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAggregatedPredictions } from "@/api/client";
+import { toast } from "sonner";
+import {
+  getAggregatedPredictions,
+  downloadAggregatedDatasetParquet,
+  runAggregatedPredictionsQuery,
+} from "@/api/client";
+import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import type { ChainSummary } from "@/types/aggregated-predictions";
 import {
   NoWorkspaceState,
@@ -88,6 +96,7 @@ type SortKey = "model" | "cv_val" | "cv_test" | "final_test" | "dataset" | "metr
 
 export default function AggregatedResults() {
   const { t } = useTranslation();
+  const isDeveloperMode = useIsDeveloperMode();
 
   // State
   const [predictions, setPredictions] = useState<ChainSummary[]>([]);
@@ -101,6 +110,10 @@ export default function AggregatedResults() {
   const [sortAsc, setSortAsc] = useState(true);
   const [selectedPrediction, setSelectedPrediction] = useState<ChainSummary | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sql, setSql] = useState("SELECT dataset_name, COUNT(*) AS predictions FROM predictions GROUP BY 1 ORDER BY 2 DESC");
+  const [sqlLoading, setSqlLoading] = useState(false);
+  const [sqlError, setSqlError] = useState<string | null>(null);
+  const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: unknown[][]; row_count: number } | null>(null);
 
   // Load data
   const loadData = async () => {
@@ -119,6 +132,40 @@ export default function AggregatedResults() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleDownloadDataset = async (datasetName: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      const blob = await downloadAggregatedDatasetParquet(datasetName);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${datasetName}.parquet`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${datasetName}.parquet`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to download parquet";
+      toast.error(message);
+    }
+  };
+
+  const handleRunSql = async () => {
+    setSqlLoading(true);
+    setSqlError(null);
+    try {
+      const result = await runAggregatedPredictionsQuery(sql);
+      setSqlResult(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to run query";
+      setSqlError(message);
+      toast.error(message);
+    } finally {
+      setSqlLoading(false);
+    }
+  };
 
   // Facets for filter dropdowns
   const facets = useMemo(() => {
@@ -363,7 +410,7 @@ export default function AggregatedResults() {
       {/* Empty */}
       {!loading && predictions.length === 0 && !error && (
         <EmptyState
-          icon={<BarChart3 className="h-12 w-12" />}
+          icon={BarChart3}
           title={t("aggregatedResults.empty", "No aggregated results yet")}
           description={t(
             "aggregatedResults.emptyHint",
@@ -375,6 +422,66 @@ export default function AggregatedResults() {
       {/* Results table */}
       {!loading && filtered.length > 0 && (
         <motion.div variants={itemVariants}>
+          {isDeveloperMode && (
+            <Card className="mb-4">
+              <CardHeader className="pb-3">
+                <div className="text-sm font-medium">Developer SQL Query</div>
+                <p className="text-xs text-muted-foreground">
+                  Read-only SQL against prediction metadata (DuckDB tables/views).
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Textarea
+                  value={sql}
+                  onChange={(e) => setSql(e.target.value)}
+                  className="font-mono text-xs min-h-[100px]"
+                />
+                <div className="flex items-center gap-2">
+                  <Button onClick={handleRunSql} disabled={sqlLoading}>
+                    {sqlLoading ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Running...
+                      </>
+                    ) : (
+                      "Run Query"
+                    )}
+                  </Button>
+                  {sqlResult && (
+                    <span className="text-xs text-muted-foreground">
+                      {sqlResult.row_count} rows
+                    </span>
+                  )}
+                </div>
+                {sqlError && <p className="text-sm text-destructive">{sqlError}</p>}
+                {sqlResult && sqlResult.columns.length > 0 && (
+                  <div className="max-h-56 overflow-auto rounded border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {sqlResult.columns.map((col) => (
+                            <TableHead key={col}>{col}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sqlResult.rows.slice(0, 50).map((row, idx) => (
+                          <TableRow key={idx}>
+                            {row.map((value, colIdx) => (
+                              <TableCell key={`${idx}-${colIdx}`} className="text-xs">
+                                {String(value)}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="pb-2 pt-4 px-4">
               <div className="flex items-center justify-between">
@@ -429,7 +536,7 @@ export default function AggregatedResults() {
                     >
                       Folds <SortIcon columnKey="folds" />
                     </TableHead>
-                    <TableHead className="w-10" />
+                    <TableHead className="w-20" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -478,7 +585,19 @@ export default function AggregatedResults() {
                         </TableCell>
                         <TableCell className="text-center text-sm">{pred.cv_fold_count}</TableCell>
                         <TableCell>
-                          <Eye className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={(e) => pred.dataset_name && handleDownloadDataset(pred.dataset_name, e)}
+                              disabled={!pred.dataset_name}
+                              title="Download parquet"
+                            >
+                              <Download className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -494,7 +613,7 @@ export default function AggregatedResults() {
       {!loading && predictions.length > 0 && filtered.length === 0 && (
         <motion.div variants={itemVariants}>
           <EmptyState
-            icon={<Search className="h-10 w-10" />}
+            icon={Search}
             title="No matching results"
             description="Try adjusting your filters or search terms."
           />

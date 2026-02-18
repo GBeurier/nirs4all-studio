@@ -126,6 +126,11 @@ export function useJobUpdates(jobId: string | null) {
         setProgress(0);
       });
 
+      client.on('maintenance_started', () => {
+        setStatus('running');
+        setProgress(0);
+      });
+
       client.on('job_progress', (msg) => {
         const data = msg.data as unknown as JobProgressData;
         setStatus('running');
@@ -134,13 +139,31 @@ export function useJobUpdates(jobId: string | null) {
         setMetrics(data.metrics);
       });
 
+      client.on('maintenance_progress', (msg) => {
+        const data = msg.data as unknown as JobProgressData;
+        setStatus('running');
+        setProgress(data.progress);
+        setProgressMessage(data.message);
+      });
+
       client.on('job_completed', (msg) => {
         setStatus('completed');
         setProgress(100);
         setResult(msg.data.result as Record<string, unknown>);
       });
 
+      client.on('maintenance_completed', (msg) => {
+        setStatus('completed');
+        setProgress(100);
+        setResult((msg.data.report ?? msg.data) as Record<string, unknown>);
+      });
+
       client.on('job_failed', (msg) => {
+        setStatus('failed');
+        setError(msg.data.error as string);
+      });
+
+      client.on('maintenance_failed', (msg) => {
         setStatus('failed');
         setError(msg.data.error as string);
       });
