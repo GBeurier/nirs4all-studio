@@ -1,0 +1,96 @@
+/* nirs4all Studio Documentation - Custom Styles */
+
+/* Widen the content area for better screenshot display */
+.wy-nav-content {
+    max-width: 1000px;
+}
+
+/* Style figure captions */
+.figure .caption {
+    font-style: italic;
+    color: #555;
+    margin-top: 8px;
+}
+
+/* Callout numbers for annotated screenshots */
+.callout-list {
+    counter-reset: callout;
+    list-style: none;
+    padding-left: 0;
+}
+
+.callout-list li {
+    counter-increment: callout;
+    padding-left: 2em;
+    position: relative;
+    margin-bottom: 0.5em;
+}
+
+.callout-list li::before {
+    content: counter(callout);
+    position: absolute;
+    left: 0;
+    background: #0d9488;
+    color: white;
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 1.5em;
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
+/* Teal accent for admonitions */
+.admonition.tip {
+    border-left-color: #0d9488;
+}
+
+.admonition.tip > .admonition-title {
+    background-color: #0d948820;
+}
+
+/* Screenshot images - consistent styling */
+figure img {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Badge styling for tutorials */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.badge-beginner {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.badge-intermediate {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.badge-advanced {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Step indicators for tutorials */
+.step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2em;
+    height: 2em;
+    background: #0d9488;
+    color: white;
+    border-radius: 50%;
+    font-weight: bold;
+    margin-right: 0.5em;
+}
