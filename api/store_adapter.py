@@ -574,6 +574,24 @@ class StoreAdapter:
             else:
                 datasets_meta = []
 
+            # Extract run config from runs.config JSON
+            config_raw = row.get("config")
+            if isinstance(config_raw, str):
+                try:
+                    run_config_data = json.loads(config_raw)
+                except Exception:
+                    run_config_data = {}
+            elif isinstance(config_raw, dict):
+                run_config_data = config_raw
+            else:
+                run_config_data = {}
+
+            # Build dataset metadata lookup from runs.datasets JSON
+            datasets_meta_map: dict[str, dict] = {}
+            for dm in datasets_meta:
+                if isinstance(dm, dict):
+                    datasets_meta_map[dm.get("name", "")] = dm
+
             # Ensure we have all datasets even if no predictions yet
             for dm in datasets_meta:
                 ds_name = dm.get("name", "") if isinstance(dm, dict) else str(dm)
@@ -583,6 +601,8 @@ class StoreAdapter:
             # Build per-dataset enriched data
             enriched_datasets = []
             for ds_name, agg_list in datasets_map.items():
+                ds_meta = datasets_meta_map.get(ds_name, {})
+
                 if not agg_list:
                     enriched_datasets.append({
                         "dataset_name": ds_name,
@@ -593,6 +613,8 @@ class StoreAdapter:
                         "gain_from_previous_best": None,
                         "pipeline_count": 0,
                         "top_5": [],
+                        "n_samples": ds_meta.get("n_samples"),
+                        "n_features": ds_meta.get("n_features"),
                     })
                     continue
 
@@ -628,8 +650,10 @@ class StoreAdapter:
                 top_5_entries = sorted_agg[:5]
                 top_5_chain_ids = {e.get("chain_id", "") for e in top_5_entries}
 
-                # Also find refit-only chains for this run+dataset
-                refit_only_chains: list[dict[str, Any]] = []
+                # Find ALL refit predictions for this run+dataset (used as fallback
+                # when v_chain_summary hasn't been backfilled yet, and to detect
+                # refit-only chains not in the top 5).
+                refit_predictions_map: dict[str, dict[str, Any]] = {}
                 try:
                     refit_df = store._fetch_pl(
                         "SELECT p.chain_id, p.model_name, p.model_class, p.test_score, p.train_score, "
@@ -642,13 +666,13 @@ class StoreAdapter:
                         [run_id, ds_name],
                     )
                     for rrow in refit_df.iter_rows(named=True):
-                        if rrow.get("chain_id", "") not in top_5_chain_ids:
-                            refit_only_chains.append(dict(rrow))
+                        refit_predictions_map[rrow.get("chain_id", "")] = dict(rrow)
                 except Exception:
                     pass
 
                 # Load chain summary data (cv_scores + final scores already precomputed)
-                all_chain_ids = list(top_5_chain_ids | {r.get("chain_id", "") for r in refit_only_chains})
+                refit_only_chain_ids = {cid for cid in refit_predictions_map if cid not in top_5_chain_ids}
+                all_chain_ids = list(top_5_chain_ids | refit_only_chain_ids)
                 chain_summary_map: dict[str, dict[str, Any]] = {}
                 if all_chain_ids:
                     try:
@@ -676,6 +700,14 @@ class StoreAdapter:
                     final_scores_raw = cs.get("final_scores")
                     final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
 
+                    # Fallback: if chain_summary not backfilled, use refit prediction directly
+                    refit_pred = refit_predictions_map.get(chain_id)
+                    if final_ts is None and refit_pred:
+                        final_ts = _sanitize_float(refit_pred.get("test_score"))
+                        final_trs = _sanitize_float(refit_pred.get("train_score"))
+                        rp_scores_raw = refit_pred.get("scores")
+                        final_scores = json.loads(rp_scores_raw) if isinstance(rp_scores_raw, str) else (rp_scores_raw or {})
+
                     if final_ts is not None:
                         if best_final_score is None:
                             best_final_score = final_ts
@@ -700,8 +732,8 @@ class StoreAdapter:
                     }))
 
                 # Add refit-only chains not in top_5
-                for rchain in refit_only_chains:
-                    rchain_id = rchain.get("chain_id", "")
+                for rchain_id in refit_only_chain_ids:
+                    rchain = refit_predictions_map[rchain_id]
                     cs = chain_summary_map.get(rchain_id, {})
                     rts = _sanitize_float(cs.get("final_test_score") or rchain.get("test_score"))
                     rtrs = _sanitize_float(cs.get("final_train_score") or rchain.get("train_score"))
@@ -741,6 +773,14 @@ class StoreAdapter:
                 except Exception:
                     pass
 
+                # Dataset sample/feature counts from metadata, fallback to prediction data
+                n_samples = ds_meta.get("n_samples")
+                n_features = ds_meta.get("n_features")
+                if (n_samples is None or n_features is None) and len(pred_df) > 0:
+                    pred_row = pred_df.row(0, named=True)
+                    n_samples = n_samples or pred_row.get("n_samples")
+                    n_features = n_features or pred_row.get("n_features")
+
                 enriched_datasets.append(_sanitize_dict({
                     "dataset_name": ds_name,
                     "best_avg_val_score": best_avg_val,
@@ -751,6 +791,8 @@ class StoreAdapter:
                     "gain_from_previous_best": gain,
                     "pipeline_count": len(set(a.get("pipeline_id") for a in agg_list)),
                     "top_5": top_5,
+                    "n_samples": n_samples,
+                    "n_features": n_features,
                 }))
 
             # Compute total stats
@@ -793,6 +835,45 @@ class StoreAdapter:
             # Artifact size
             artifact_size = self._get_run_artifact_size(run_id)
 
+            # Model class distribution from chains
+            model_classes: list[dict[str, Any]] = []
+            try:
+                mc_df = store._fetch_pl(
+                    "SELECT c.model_class, COUNT(*) as count "
+                    "FROM chains c "
+                    "JOIN pipelines pl ON c.pipeline_id = pl.pipeline_id "
+                    "WHERE pl.run_id = $1 "
+                    "GROUP BY c.model_class ORDER BY count DESC",
+                    [run_id]
+                )
+                for mc_row in mc_df.iter_rows(named=True):
+                    model_classes.append({
+                        "name": mc_row.get("model_class", ""),
+                        "count": mc_row.get("count", 0),
+                    })
+            except Exception:
+                pass
+
+            # Derive CV config from predictions + stored run config
+            run_cv_config: dict[str, Any] = {}
+            try:
+                cv_info_df = store._fetch_pl(
+                    "SELECT COUNT(DISTINCT fold_id) as fold_count, "
+                    "FIRST(metric) as metric "
+                    "FROM predictions "
+                    "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
+                    "AND refit_context IS NULL AND fold_id != 'avg'",
+                    [run_id]
+                )
+                if len(cv_info_df) > 0:
+                    cv_info = cv_info_df.row(0, named=True)
+                    run_cv_config["cv_folds"] = cv_info.get("fold_count", 0) or 0
+                    run_cv_config["metric"] = cv_info.get("metric")
+            except Exception:
+                pass
+            # Stored config takes priority
+            run_cv_config.update({k: v for k, v in run_config_data.items() if v is not None})
+
             enriched_runs.append(_sanitize_dict({
                 "run_id": run_id,
                 "name": row.get("name", ""),
@@ -809,6 +890,8 @@ class StoreAdapter:
                 "total_folds": total_folds,
                 "datasets": enriched_datasets,
                 "error": row.get("error"),
+                "config": _sanitize_dict(run_cv_config),
+                "model_classes": model_classes,
             }))
 
         return {"runs": enriched_runs, "total": len(enriched_runs)}

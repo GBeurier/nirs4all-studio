@@ -7,7 +7,7 @@ import path from "node:path";
 const electron = require("electron") as typeof import("electron");
 const { BrowserWindow } = electron;
 
-const HEALTH_CHECK_TIMEOUT = 30000; // 30 seconds
+const HEALTH_CHECK_TIMEOUT = 60000; // 60 seconds (backend imports are heavy)
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
 const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health checks
 const MAX_RESTART_ATTEMPTS = 3;

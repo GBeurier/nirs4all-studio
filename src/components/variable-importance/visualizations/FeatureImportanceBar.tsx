@@ -19,16 +19,20 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
-import type { ShapResultsResponse } from '@/types/shap';
+import type { ShapResultsResponse, BinnedImportanceData } from '@/types/shap';
 
 interface FeatureImportanceBarProps {
   results: ShapResultsResponse;
+  binnedData?: BinnedImportanceData;
 }
 
-export function FeatureImportanceBar({ results }: FeatureImportanceBarProps) {
+export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceBarProps) {
+  // Use rebinned data if available, otherwise from results
+  const activeBinned = binnedData || results.binned_importance;
+
   // Prepare binned importance data for the chart
   const chartData = useMemo(() => {
-    const { binned_importance } = results;
+    const binned_importance = activeBinned;
     const maxImportance = Math.max(...binned_importance.bin_values);
 
     return binned_importance.bin_centers
@@ -42,11 +46,11 @@ export function FeatureImportanceBar({ results }: FeatureImportanceBarProps) {
       .sort((a, b) => b.importance - a.importance)
       .slice(0, 15)
       .map((item, idx) => ({ ...item, rank: idx + 1 }));
-  }, [results]);
+  }, [activeBinned]);
 
   // Export to CSV
   const handleExport = () => {
-    const { binned_importance } = results;
+    const binned_importance = activeBinned;
 
     const rows = binned_importance.bin_centers.map((center, idx) => ({
       wavelength_start: binned_importance.bin_ranges[idx][0],

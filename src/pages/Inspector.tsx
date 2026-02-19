@@ -13,6 +13,7 @@ import { InspectorColorProvider } from '@/context/InspectorColorContext';
 import { InspectorViewProvider } from '@/context/InspectorViewContext';
 import { InspectorSidebar } from '@/components/inspector/InspectorSidebar';
 import { InspectorCanvas } from '@/components/inspector/InspectorCanvas';
+import { SourceFilterBar } from '@/components/inspector/SourceFilterBar';
 
 export default function Inspector() {
   return (
@@ -34,9 +35,12 @@ export default function Inspector() {
 
 function InspectorContent() {
   return (
-    <div className="h-full flex -m-6">
-      <InspectorSidebar />
-      <InspectorCanvas />
+    <div className="h-full flex flex-col -m-6">
+      <SourceFilterBar />
+      <div className="flex-1 flex min-h-0">
+        <InspectorSidebar />
+        <InspectorCanvas />
+      </div>
     </div>
   );
 }

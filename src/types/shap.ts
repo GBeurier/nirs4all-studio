@@ -6,19 +6,24 @@
 
 // ============= Request Types =============
 
-export type ModelSource = 'run' | 'bundle';
 export type ExplainerType = 'auto' | 'tree' | 'kernel' | 'linear';
 export type BinAggregation = 'sum' | 'sum_abs' | 'mean' | 'mean_abs';
 export type Partition = 'train' | 'test' | 'all';
 
 export interface ShapComputeRequest {
-  model_source: ModelSource;
-  model_id: string;
+  chain_id?: string;
+  bundle_path?: string;
   dataset_id: string;
   partition: Partition;
   explainer_type: ExplainerType;
   n_samples?: number | null;
   n_background: number;
+  bin_size: number;
+  bin_stride: number;
+  bin_aggregation: BinAggregation;
+}
+
+export interface RebinRequest {
   bin_size: number;
   bin_stride: number;
   bin_aggregation: BinAggregation;
@@ -57,18 +62,11 @@ export interface ShapResultsResponse {
   n_features: number;
   base_value: number;
   execution_time_ms: number;
-
-  // Feature importance (top features)
   feature_importance: FeatureImportance[];
-
-  // Wavelengths and raw data
   wavelengths: number[];
   mean_abs_shap: number[];
-
-  // Binned data for spectral visualization
+  mean_spectrum: number[];
   binned_importance: BinnedImportanceData;
-
-  // Sample info
   sample_indices: number[];
 }
 
@@ -77,6 +75,20 @@ export interface SpectralImportanceData {
   mean_spectrum: number[];
   mean_abs_shap: number[];
   binned_importance: BinnedImportanceData;
+}
+
+export interface SpectralDetailData {
+  wavelengths: number[];
+  mean_spectrum: number[];
+  mean_abs_shap: number[];
+  n_samples: number;
+}
+
+export interface ScatterData {
+  y_true: number[];
+  y_pred: number[];
+  sample_indices: number[];
+  residuals: number[];
 }
 
 export interface BeeswarmPoint {
@@ -113,19 +125,36 @@ export interface SampleExplanationResponse {
   contributions: FeatureContribution[];
 }
 
-export interface AvailableModel {
-  source: ModelSource;
-  model_id: string;
-  display_name: string;
-  model_type: string;
+export interface AvailableChain {
+  chain_id: string;
   dataset_name: string;
-  created_at?: string | null;
-  metrics: Record<string, number>;
+  model_class: string;
+  model_name: string;
+  preprocessings: string;
+  run_id: string;
+  metric: string;
+  cv_val_score: number | null;
+  final_test_score: number | null;
+  cv_fold_count: number;
+  has_refit: boolean;
+}
+
+export interface DatasetChains {
+  dataset_name: string;
+  metric: string;
+  task_type: string | null;
+  chains: AvailableChain[];
+}
+
+export interface AvailableBundle {
+  bundle_path: string;
+  display_name: string;
+  dataset_name: string;
 }
 
 export interface AvailableModelsResponse {
-  runs: AvailableModel[];
-  bundles: AvailableModel[];
+  datasets: DatasetChains[];
+  bundles: AvailableBundle[];
 }
 
 export interface ExplainerTypeInfo {
@@ -147,31 +176,6 @@ export interface ShapConfigResponse {
 
 export type ShapTab = 'spectral' | 'beeswarm' | 'waterfall' | 'ranking';
 
-export interface ShapAnalysisState {
-  // Selection
-  modelSource: ModelSource;
-  modelId: string | null;
-  datasetId: string | null;
-  partition: Partition;
-
-  // Configuration
-  explainerType: ExplainerType;
-  nSamples: number | null;
-  binSize: number;
-  binStride: number;
-  binAggregation: BinAggregation;
-
-  // Results
-  jobId: string | null;
-  status: 'idle' | 'computing' | 'completed' | 'failed';
-  results: ShapResultsResponse | null;
-  error: string | null;
-
-  // UI
-  selectedSampleIdx: number;
-  activeTab: ShapTab;
-}
-
 // ============= Chart Data Types =============
 
 export interface SpectralChartData {
@@ -191,9 +195,9 @@ export interface BeeswarmChartData {
   bins: Array<{
     label: string;
     points: Array<{
-      x: number; // SHAP value
-      y: number; // jittered position
-      color: number; // feature value (normalized 0-1)
+      x: number;
+      y: number;
+      color: number;
       sampleIdx: number;
     }>;
   }>;

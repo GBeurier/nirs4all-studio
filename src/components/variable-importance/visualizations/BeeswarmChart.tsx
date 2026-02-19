@@ -17,6 +17,7 @@ import type { BeeswarmDataResponse, BeeswarmBin } from '@/types/shap';
 interface BeeswarmChartProps {
   jobId: string;
   onSampleSelect?: (sampleIdx: number) => void;
+  selectedSamples?: number[];
 }
 
 // Generate jittered y-positions for points within each bin
@@ -50,7 +51,8 @@ function getPointColor(featureValue: number): string {
   return '#3b82f6'; // blue-500
 }
 
-export function BeeswarmChart({ jobId, onSampleSelect }: BeeswarmChartProps) {
+export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: BeeswarmChartProps) {
+  const selectedSet = new Set(selectedSamples);
   const [data, setData] = useState<BeeswarmDataResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,14 +188,19 @@ export function BeeswarmChart({ jobId, onSampleSelect }: BeeswarmChartProps) {
               }
             }}
           >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={getPointColor(entry.color)}
-                fillOpacity={0.7}
-                cursor="pointer"
-              />
-            ))}
+            {chartData.map((entry, index) => {
+              const isSelected = selectedSet.has(entry.sampleIdx);
+              return (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={isSelected ? '#f59e0b' : getPointColor(entry.color)}
+                  fillOpacity={isSelected ? 1 : 0.7}
+                  stroke={isSelected ? '#f59e0b' : 'none'}
+                  strokeWidth={isSelected ? 2 : 0}
+                  cursor="pointer"
+                />
+              );
+            })}
           </Scatter>
         </ScatterChart>
       </ResponsiveContainer>

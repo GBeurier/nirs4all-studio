@@ -50,6 +50,7 @@ export interface InspectorDataContextValue {
   availableModels: string[];
   availableDatasets: string[];
   availableRuns: string[];
+  availablePreprocessings: string[];
 
   // Groups
   groups: InspectorGroup[];
@@ -406,6 +407,7 @@ export function InspectorDataProvider({ children }: { children: ReactNode }) {
     availableModels: data?.available_models ?? [],
     availableDatasets: data?.available_datasets ?? [],
     availableRuns: data?.available_runs ?? [],
+    availablePreprocessings: data?.available_preprocessings ?? [],
     groups,
     groupMode,
     setGroupMode,

@@ -37,14 +37,26 @@ import type {
 
 /**
  * Load chain summaries and metadata for the Inspector.
+ * Supports multi-value filters via repeated query params.
  */
 export async function getInspectorData(
   filters?: InspectorDataFilters
 ): Promise<InspectorDataResponse> {
   const params = new URLSearchParams();
-  if (filters?.run_id) params.set('run_id', filters.run_id);
-  if (filters?.dataset_name) params.set('dataset_name', filters.dataset_name);
-  if (filters?.model_class) params.set('model_class', filters.model_class);
+  if (filters?.run_ids) {
+    for (const id of filters.run_ids) params.append('run_id', id);
+  }
+  if (filters?.dataset_names) {
+    for (const name of filters.dataset_names) params.append('dataset_name', name);
+  }
+  if (filters?.model_classes) {
+    for (const mc of filters.model_classes) params.append('model_class', mc);
+  }
+  if (filters?.preprocessings) {
+    for (const p of filters.preprocessings) params.append('preprocessings', p);
+  }
+  if (filters?.task_type) params.set('task_type', filters.task_type);
+  if (filters?.metric) params.set('metric', filters.metric);
   const qs = params.toString();
   return api.get<InspectorDataResponse>(`/inspector/data${qs ? `?${qs}` : ''}`);
 }
@@ -62,14 +74,18 @@ export async function getScatterData(
  * Get score distribution histogram bins.
  */
 export async function getHistogramData(params: {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column?: string;
   n_bins?: number;
 }): Promise<HistogramResponse> {
   const qs = new URLSearchParams();
-  if (params.run_id) qs.set('run_id', params.run_id);
-  if (params.dataset_name) qs.set('dataset_name', params.dataset_name);
+  if (params.run_id) {
+    for (const id of params.run_id) qs.append('run_id', id);
+  }
+  if (params.dataset_name) {
+    for (const name of params.dataset_name) qs.append('dataset_name', name);
+  }
   if (params.score_column) qs.set('score_column', params.score_column);
   if (params.n_bins) qs.set('n_bins', String(params.n_bins));
   const query = qs.toString();
@@ -80,16 +96,20 @@ export async function getHistogramData(params: {
  * Get rankings data (sorted chain summaries with rank).
  */
 export async function getRankingsData(params: {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column?: string;
   sort_ascending?: boolean;
   limit?: number;
   offset?: number;
 }): Promise<RankingsResponse> {
   const qs = new URLSearchParams();
-  if (params.run_id) qs.set('run_id', params.run_id);
-  if (params.dataset_name) qs.set('dataset_name', params.dataset_name);
+  if (params.run_id) {
+    for (const id of params.run_id) qs.append('run_id', id);
+  }
+  if (params.dataset_name) {
+    for (const name of params.dataset_name) qs.append('dataset_name', name);
+  }
   if (params.score_column) qs.set('score_column', params.score_column);
   if (params.sort_ascending !== undefined) qs.set('sort_ascending', String(params.sort_ascending));
   if (params.limit) qs.set('limit', String(params.limit));

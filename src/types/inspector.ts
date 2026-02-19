@@ -67,6 +67,7 @@ export interface InspectorDataResponse {
   available_models: string[];
   available_datasets: string[];
   available_runs: string[];
+  available_preprocessings: string[];
   generated_at: string;
 }
 
@@ -130,8 +131,8 @@ export interface RankingsResponse {
 // ============= Heatmap (Phase 2) =============
 
 export interface HeatmapRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   x_variable: string;
   y_variable: string;
   score_column: string;
@@ -160,8 +161,8 @@ export interface HeatmapResponse {
 // ============= Candlestick / Box Plot (Phase 2) =============
 
 export interface CandlestickRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   category_variable: string;
   score_column: string;
 }
@@ -193,9 +194,12 @@ export interface ScatterRequest {
 }
 
 export interface InspectorDataFilters {
-  run_id?: string;
-  dataset_name?: string;
-  model_class?: string;
+  run_ids?: string[];
+  dataset_names?: string[];
+  model_classes?: string[];
+  preprocessings?: string[];
+  task_type?: string;
+  metric?: string;
 }
 
 // ============= Filter Types (Phase 2) =============
@@ -295,8 +299,8 @@ export const SCORE_COLUMNS: { value: ScoreColumn; label: string }[] = [
 // ============= Branch Comparison (Phase 3) =============
 
 export interface BranchComparisonRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column: string;
 }
 
@@ -428,8 +432,8 @@ export interface RobustnessResponse {
 // ============= Metric Correlation (Phase 4) =============
 
 export interface MetricCorrelationRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   metrics?: string[];
   method?: 'pearson' | 'spearman';
 }
@@ -480,8 +484,8 @@ export interface GroupByExpressionConfig {
 // ============= Preprocessing Impact (Phase 5) =============
 
 export interface PreprocessingImpactRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column: string;
 }
 
@@ -503,8 +507,8 @@ export interface PreprocessingImpactResponse {
 // ============= Hyperparameter Sensitivity (Phase 5) =============
 
 export interface HyperparameterRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   param_name: string;
   score_column: string;
 }
@@ -551,8 +555,8 @@ export interface BiasVarianceResponse {
 // ============= Learning Curve (Phase 5) =============
 
 export interface LearningCurveRequest {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column: string;
   model_class?: string;
 }

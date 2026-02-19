@@ -140,7 +140,7 @@ export function useInspectorExport() {
 
     const csv = [header, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const prefix = filters.run_id ? `run-${filters.run_id}` : 'inspector';
+    const prefix = filters.run_ids?.length ? `run-${filters.run_ids[0]}` : 'inspector';
     downloadBlob(blob, `${prefix}-chains-${timestampStr()}.csv`);
     toast.success(`Exported ${chains.length} chains as CSV`);
   }, [chains, filters]);

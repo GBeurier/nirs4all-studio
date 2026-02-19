@@ -2,7 +2,7 @@ export { InspectorSidebar } from './InspectorSidebar';
 export { InspectorCanvas } from './InspectorCanvas';
 export { InspectorPanel } from './InspectorPanel';
 export { InspectorToolbar } from './InspectorToolbar';
-export { SourceSelector } from './SourceSelector';
+export { SourceFilterBar } from './SourceFilterBar';
 export { GroupBuilder } from './GroupBuilder';
 export { GroupChip } from './GroupChip';
 export { FilterPanel } from './FilterPanel';

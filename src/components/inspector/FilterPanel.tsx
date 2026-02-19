@@ -1,8 +1,8 @@
 /**
  * FilterPanel — Chain-level filter controls for Inspector sidebar.
  *
- * Provides: task type, score range slider, outlier filter, selection filter.
- * Uses InspectorFilterContext for state management.
+ * Provides: score range slider, outlier filter, selection filter.
+ * Task type filtering moved to SourceFilterBar (server-side).
  */
 
 import { useTranslation } from 'react-i18next';
@@ -16,11 +16,9 @@ import { useInspectorFilter } from '@/context/InspectorFilterContext';
 export function FilterPanel() {
   const { t } = useTranslation();
   const {
-    taskType,
     scoreRange,
     outlier,
     selection,
-    setTaskTypeFilter,
     setScoreRange,
     setOutlierFilter,
     setSelectionFilter,
@@ -53,23 +51,6 @@ export function FilterPanel() {
             Clear
           </Button>
         )}
-      </div>
-
-      {/* Task Type */}
-      <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">
-          {t('inspector.sidebar.taskType', 'Task Type')}
-        </label>
-        <Select value={taskType} onValueChange={setTaskTypeFilter}>
-          <SelectTrigger className="h-7 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="regression">Regression</SelectItem>
-            <SelectItem value="classification">Classification</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Score Range */}

@@ -20,6 +20,15 @@ export interface EnrichedRun {
   total_folds: number;
   datasets: EnrichedDatasetRun[];
   error?: string | null;
+  config?: {
+    cv_folds?: number;
+    cv_strategy?: string;
+    metric?: string;
+    random_state?: number;
+    n_pipelines?: number;
+    n_datasets?: number;
+  };
+  model_classes?: Array<{ name: string; count: number }>;
 }
 
 export interface EnrichedDatasetRun {
@@ -32,6 +41,8 @@ export interface EnrichedDatasetRun {
   gain_from_previous_best: number | null;
   pipeline_count: number;
   top_5: TopChainResult[];
+  n_samples?: number | null;
+  n_features?: number | null;
 }
 
 export interface TopChainResult {

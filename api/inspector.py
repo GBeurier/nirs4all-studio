@@ -85,6 +85,7 @@ class InspectorDataResponse(BaseModel):
     available_models: List[str]
     available_datasets: List[str]
     available_runs: List[str]
+    available_preprocessings: List[str]
     generated_at: str
 
 
@@ -172,8 +173,8 @@ class RankingsResponse(BaseModel):
 class HeatmapRequest(BaseModel):
     """Request body for /inspector/heatmap."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     x_variable: str = "model_class"
     y_variable: str = "preprocessings"
     score_column: str = "cv_val_score"
@@ -211,8 +212,8 @@ class HeatmapResponse(BaseModel):
 class CandlestickRequest(BaseModel):
     """Request body for /inspector/candlestick."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     category_variable: str = "model_class"
     score_column: str = "cv_val_score"
 
@@ -314,37 +315,68 @@ def _is_lower_better(metric: Optional[str]) -> bool:
 
 @router.get("/data")
 async def get_inspector_data(
-    run_id: Optional[str] = Query(None, description="Filter by run ID"),
-    dataset_name: Optional[str] = Query(None, description="Filter by dataset name"),
-    model_class: Optional[str] = Query(None, description="Filter by model class"),
+    run_id: Optional[List[str]] = Query(None, description="Filter by run ID(s)"),
+    dataset_name: Optional[List[str]] = Query(None, description="Filter by dataset name(s)"),
+    model_class: Optional[List[str]] = Query(None, description="Filter by model class(es)"),
+    preprocessings: Optional[List[str]] = Query(None, description="Filter by preprocessing step(s)"),
+    task_type: Optional[str] = Query(None, description="Filter by task type"),
+    metric: Optional[str] = Query(None, description="Filter by metric"),
 ):
     """Load chain summaries and metadata for the Inspector.
 
     Returns all matching chains plus lists of unique values for
-    populating sidebar dropdowns (metrics, models, datasets, runs).
+    populating filter bar dropdowns (metrics, models, datasets, runs, preprocessings).
+    Supports multi-value filters via repeated query params.
     """
     store = _get_store()
     try:
+        # Normalize single-element lists to single values for backward compat
+        _run_id = run_id if run_id and len(run_id) > 1 else (run_id[0] if run_id else None)
+        _dataset_name = dataset_name if dataset_name and len(dataset_name) > 1 else (dataset_name[0] if dataset_name else None)
+        _model_class = model_class if model_class and len(model_class) > 1 else (model_class[0] if model_class else None)
+
         df = store.query_chain_summaries(
-            run_id=run_id,
-            dataset_name=dataset_name,
-            model_class=model_class,
+            run_id=_run_id,
+            dataset_name=_dataset_name,
+            model_class=_model_class,
+            task_type=task_type,
+            metric=metric,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 
-        # Extract unique values for sidebar dropdowns
-        metrics = sorted({r.get("metric") for r in records if r.get("metric")})
+        # Post-filter by preprocessing steps (substring match)
+        if preprocessings:
+            filtered = []
+            for r in records:
+                preps = r.get("preprocessings") or ""
+                if any(p in preps for p in preprocessings):
+                    filtered.append(r)
+            records = filtered
+
+        # Extract unique values for filter bar dropdowns
+        metrics_set = sorted({r.get("metric") for r in records if r.get("metric")})
         models = sorted({r.get("model_class") for r in records if r.get("model_class")})
         datasets = sorted({r.get("dataset_name") for r in records if r.get("dataset_name")})
         runs = sorted({r.get("run_id") for r in records if r.get("run_id")})
 
+        # Extract unique preprocessing step names (split by " | ")
+        prep_steps: set[str] = set()
+        for r in records:
+            preps = r.get("preprocessings")
+            if preps:
+                for segment in str(preps).split(" | "):
+                    step = segment.strip()
+                    if step:
+                        prep_steps.add(step)
+
         return InspectorDataResponse(
             chains=records,
             total=len(records),
-            available_metrics=metrics,
+            available_metrics=metrics_set,
             available_models=models,
             available_datasets=datasets,
             available_runs=runs,
+            available_preprocessings=sorted(prep_steps),
             generated_at=datetime.now(timezone.utc).isoformat(),
         )
     finally:
@@ -429,8 +461,8 @@ async def get_scatter_data(request: ScatterRequest):
 
 @router.get("/histogram")
 async def get_histogram_data(
-    run_id: Optional[str] = Query(None),
-    dataset_name: Optional[str] = Query(None),
+    run_id: Optional[List[str]] = Query(None),
+    dataset_name: Optional[List[str]] = Query(None),
     score_column: str = Query("cv_val_score", description="Score column for histogram"),
     n_bins: int = Query(20, ge=5, le=100, description="Number of bins"),
 ):
@@ -442,8 +474,8 @@ async def get_histogram_data(
     store = _get_store()
     try:
         df = store.query_chain_summaries(
-            run_id=run_id,
-            dataset_name=dataset_name,
+            run_id=run_id or None,
+            dataset_name=dataset_name or None,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 
@@ -498,8 +530,8 @@ async def get_histogram_data(
 
 @router.get("/rankings")
 async def get_rankings_data(
-    run_id: Optional[str] = Query(None),
-    dataset_name: Optional[str] = Query(None),
+    run_id: Optional[List[str]] = Query(None),
+    dataset_name: Optional[List[str]] = Query(None),
     score_column: str = Query("cv_val_score", description="Score column to sort by"),
     sort_ascending: Optional[bool] = Query(None, description="Sort direction (auto-detected if None)"),
     limit: int = Query(50, ge=1, le=500),
@@ -513,8 +545,8 @@ async def get_rankings_data(
     store = _get_store()
     try:
         df = store.query_chain_summaries(
-            run_id=run_id,
-            dataset_name=dataset_name,
+            run_id=run_id or None,
+            dataset_name=dataset_name or None,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 
@@ -729,8 +761,8 @@ async def get_candlestick_data(request: CandlestickRequest):
 class BranchComparisonRequest(BaseModel):
     """Request body for /inspector/branch-comparison."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     score_column: str = "cv_val_score"
 
 
@@ -1155,8 +1187,8 @@ class RobustnessResponse(BaseModel):
 class MetricCorrelationRequest(BaseModel):
     """Request body for /inspector/correlation."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     metrics: Optional[List[str]] = None
     method: str = "spearman"  # pearson, spearman
 
@@ -1548,8 +1580,8 @@ async def get_metric_correlation(request: MetricCorrelationRequest):
 class PreprocessingImpactRequest(BaseModel):
     """Request body for /inspector/preprocessing-impact."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     score_column: str = "cv_val_score"
 
 
@@ -1575,8 +1607,8 @@ class PreprocessingImpactResponse(BaseModel):
 class HyperparameterRequest(BaseModel):
     """Request body for /inspector/hyperparameter."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     param_name: str
     score_column: str = "cv_val_score"
 
@@ -1631,8 +1663,8 @@ class BiasVarianceResponse(BaseModel):
 class LearningCurveRequest(BaseModel):
     """Request body for /inspector/learning-curve."""
 
-    run_id: Optional[str] = None
-    dataset_name: Optional[str] = None
+    run_id: Optional[List[str]] = None
+    dataset_name: Optional[List[str]] = None
     score_column: str = "cv_val_score"
     model_class: Optional[str] = None
 

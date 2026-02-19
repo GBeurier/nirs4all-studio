@@ -1,18 +1,20 @@
 /**
  * InspectorSidebar — Left sidebar for Inspector page.
  *
- * Contains: Source Selector, Filter Panel, Color Config, Group Builder, Selection Info.
+ * Contains: Filter Panel, Color Config (collapsed), Group Builder, Selection Info.
+ * Source filtering moved to SourceFilterBar at page top.
  */
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, RefreshCw, XCircle, Pin } from 'lucide-react';
+import { Search, RefreshCw, XCircle, Pin, ChevronDown, ChevronRight, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useInspectorData } from '@/context/InspectorDataContext';
 import { useInspectorSelection } from '@/context/InspectorSelectionContext';
-import { SourceSelector } from './SourceSelector';
 import { FilterPanel } from './FilterPanel';
 import { ColorConfigPanel } from './ColorConfigPanel';
 import { GroupBuilder } from './GroupBuilder';
@@ -22,6 +24,7 @@ export function InspectorSidebar() {
   const { t } = useTranslation();
   const { chains, isLoading, error, refresh, totalChains } = useInspectorData();
   const { selectedCount, hasSelection, clear, selectAll, pinnedCount, clearPins } = useInspectorSelection();
+  const [colorOpen, setColorOpen] = useState(false);
 
   return (
     <div className="w-80 border-r border-border bg-card/50 flex flex-col shrink-0">
@@ -39,11 +42,6 @@ export function InspectorSidebar() {
       {/* Scrollable content */}
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-5">
-          {/* Source Selection */}
-          <SourceSelector />
-
-          <Separator className="opacity-50" />
-
           {/* Status */}
           {error && (
             <div className="text-xs text-destructive bg-destructive/10 rounded p-2">
@@ -58,8 +56,19 @@ export function InspectorSidebar() {
 
               <Separator className="opacity-50" />
 
-              {/* Color Config */}
-              <ColorConfigPanel />
+              {/* Color Config — collapsed by default */}
+              <Collapsible open={colorOpen} onOpenChange={setColorOpen}>
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center gap-2 text-sm font-medium text-foreground w-full hover:text-primary transition-colors">
+                    {colorOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    <Palette className="w-4 h-4 text-muted-foreground" />
+                    <span>Colors</span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <ColorConfigPanel />
+                </CollapsibleContent>
+              </Collapsible>
 
               <Separator className="opacity-50" />
 
@@ -139,7 +148,7 @@ export function InspectorSidebar() {
           {chains.length === 0 && !isLoading && !error && (
             <div className="text-center text-sm text-muted-foreground py-8">
               <p>{t('inspector.noData', 'No data available.')}</p>
-              <p className="mt-1 text-xs">Select a run or dataset, or run a pipeline first.</p>
+              <p className="mt-1 text-xs">Run a pipeline first, then use the filter bar above to explore results.</p>
             </div>
           )}
         </div>

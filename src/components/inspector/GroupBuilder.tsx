@@ -1,11 +1,13 @@
 /**
  * GroupBuilder — Group creation panel for Inspector sidebar.
  *
- * Supports 5 group modes: by_variable, by_range, by_top_k, by_branch, by_expression.
+ * Primary modes: by_variable, by_top_k.
+ * Advanced modes (behind toggle): by_range, by_branch, by_expression.
  */
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers } from 'lucide-react';
+import { Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,10 +25,13 @@ const GROUP_BY_OPTIONS: { value: GroupByVariable; label: string }[] = [
   { value: 'task_type', label: 'Task Type' },
 ];
 
-const MODE_OPTIONS: { value: GroupMode; label: string }[] = [
+const PRIMARY_MODES: { value: GroupMode; label: string }[] = [
   { value: 'by_variable', label: 'Variable' },
-  { value: 'by_range', label: 'Range' },
   { value: 'by_top_k', label: 'Top K' },
+];
+
+const ADVANCED_MODES: { value: GroupMode; label: string }[] = [
+  { value: 'by_range', label: 'Range' },
   { value: 'by_branch', label: 'Branch' },
   { value: 'by_expression', label: 'Expr' },
 ];
@@ -41,6 +46,10 @@ export function GroupBuilder() {
     scoreColumn, chains,
   } = useInspectorData();
   const { select, selectedChains } = useInspectorSelection();
+  const [advancedVisible, setAdvancedVisible] = useState(() => {
+    // Show advanced if current mode is an advanced mode
+    return ADVANCED_MODES.some(m => m.value === groupMode);
+  });
 
   if (chains.length === 0) return null;
 
@@ -53,6 +62,8 @@ export function GroupBuilder() {
     }
   };
 
+  const allModes = advancedVisible ? [...PRIMARY_MODES, ...ADVANCED_MODES] : PRIMARY_MODES;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -61,16 +72,15 @@ export function GroupBuilder() {
       </div>
 
       {/* Mode selector */}
-      <div className="flex gap-1">
-        {MODE_OPTIONS.map(opt => (
+      <div className="flex gap-1 flex-wrap">
+        {allModes.map(opt => (
           <Button
             key={opt.value}
             variant={groupMode === opt.value ? 'default' : 'outline'}
             size="sm"
-            className="h-6 px-2 text-[10px] flex-1"
+            className="h-6 px-2 text-[10px]"
             onClick={() => {
               setGroupMode(opt.value);
-              // Set defaults when switching mode
               if (opt.value === 'by_range' && !rangeConfig) {
                 setRangeConfig({ column: scoreColumn, binCount: 5 });
               }
@@ -82,6 +92,15 @@ export function GroupBuilder() {
             {opt.label}
           </Button>
         ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-1.5 text-[10px] text-muted-foreground"
+          onClick={() => setAdvancedVisible(!advancedVisible)}
+        >
+          {advancedVisible ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          {advancedVisible ? 'Less' : 'More'}
+        </Button>
       </div>
 
       {/* Mode-specific config */}

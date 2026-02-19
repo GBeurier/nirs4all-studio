@@ -72,6 +72,24 @@ const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ============= Storage Helpers =============
 
+function migrateSession(state: InspectorSessionState): InspectorSessionState {
+  const filters = state.filters as Record<string, unknown>;
+  // Migrate old single-string filter fields to array format
+  if (filters && typeof filters.run_id === 'string') {
+    filters.run_ids = [filters.run_id];
+    delete filters.run_id;
+  }
+  if (filters && typeof filters.dataset_name === 'string') {
+    filters.dataset_names = [filters.dataset_name];
+    delete filters.dataset_name;
+  }
+  if (filters && typeof filters.model_class === 'string') {
+    filters.model_classes = [filters.model_class];
+    delete filters.model_class;
+  }
+  return state;
+}
+
 function loadSession(): InspectorSessionState | null {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
@@ -84,7 +102,7 @@ function loadSession(): InspectorSessionState | null {
       return null;
     }
 
-    return parsed;
+    return migrateSession(parsed);
   } catch {
     return null;
   }

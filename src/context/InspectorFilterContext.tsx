@@ -26,13 +26,11 @@ import type {
 
 export interface InspectorFilterContextValue {
   // Filter state
-  taskType: string;
   scoreRange: [number, number] | null;
   outlier: InspectorOutlierFilter;
   selection: InspectorSelectionFilter;
 
   // Setters
-  setTaskTypeFilter: (taskType: string) => void;
   setScoreRange: (range: [number, number] | null) => void;
   setOutlierFilter: (filter: InspectorOutlierFilter) => void;
   setSelectionFilter: (filter: InspectorSelectionFilter) => void;
@@ -106,7 +104,6 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
   const { chains, scoreColumn } = useInspectorData();
   const { selectedChains, hasSelection } = useInspectorSelection();
 
-  const [taskType, setTaskType] = useState('all');
   const [scoreRange, setScoreRange] = useState<[number, number] | null>(null);
   const [outlier, setOutlier] = useState<InspectorOutlierFilter>('all');
   const [selection, setSelection] = useState<InspectorSelectionFilter>('all');
@@ -127,16 +124,7 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
   const filteredChains = useMemo(() => {
     let result = chains as InspectorChainSummary[];
 
-    // 1. Task type filter
-    if (taskType !== 'all') {
-      result = result.filter(c => {
-        if (!c.task_type) return false;
-        if (taskType === 'regression') return c.task_type === 'regression';
-        return c.task_type === 'binary_classification' || c.task_type === 'multiclass_classification' || c.task_type === 'classification';
-      });
-    }
-
-    // 2. Score range filter
+    // 1. Score range filter
     if (scoreRange) {
       const [min, max] = scoreRange;
       result = result.filter(c => {
@@ -145,7 +133,7 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // 3. Outlier filter
+    // 2. Outlier filter
     if (outlier !== 'all') {
       if (outlier === 'hide') {
         result = result.filter(c => !outlierChainIds.has(c.chain_id));
@@ -154,7 +142,7 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 4. Selection filter
+    // 3. Selection filter
     if (selection !== 'all' && hasSelection) {
       if (selection === 'selected') {
         result = result.filter(c => selectedChains.has(c.chain_id));
@@ -164,7 +152,7 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
     }
 
     return result;
-  }, [chains, taskType, scoreRange, scoreColumn, outlier, outlierChainIds, selection, hasSelection, selectedChains]);
+  }, [chains, scoreRange, scoreColumn, outlier, outlierChainIds, selection, hasSelection, selectedChains]);
 
   const filteredChainIds = useMemo(
     () => new Set(filteredChains.map(c => c.chain_id)),
@@ -173,26 +161,22 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (taskType !== 'all') count++;
     if (scoreRange !== null) count++;
     if (outlier !== 'all') count++;
     if (selection !== 'all') count++;
     return count;
-  }, [taskType, scoreRange, outlier, selection]);
+  }, [scoreRange, outlier, selection]);
 
   const clearAllFilters = useCallback(() => {
-    setTaskType('all');
     setScoreRange(null);
     setOutlier('all');
     setSelection('all');
   }, []);
 
   const value = useMemo<InspectorFilterContextValue>(() => ({
-    taskType,
     scoreRange,
     outlier,
     selection,
-    setTaskTypeFilter: setTaskType,
     setScoreRange,
     setOutlierFilter: setOutlier,
     setSelectionFilter: setSelection,
@@ -204,7 +188,7 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
     scoreStats,
     outlierChainIds,
   }), [
-    taskType, scoreRange, outlier, selection, clearAllFilters,
+    scoreRange, outlier, selection, clearAllFilters,
     filteredChains, filteredChainIds, activeFilterCount,
     scoreStats, outlierChainIds,
   ]);

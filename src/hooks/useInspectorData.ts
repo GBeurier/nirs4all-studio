@@ -31,8 +31,8 @@ export function useInspectorScatter(request: ScatterRequest | null) {
  * Fetch score distribution histogram.
  */
 export function useInspectorHistogram(params: {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column?: string;
   n_bins?: number;
 } | null) {
@@ -48,8 +48,8 @@ export function useInspectorHistogram(params: {
  * Fetch rankings data.
  */
 export function useInspectorRankings(params: {
-  run_id?: string;
-  dataset_name?: string;
+  run_id?: string[];
+  dataset_name?: string[];
   score_column?: string;
   sort_ascending?: boolean;
   limit?: number;

@@ -5,14 +5,15 @@ import { TrendingUp, Loader2, PlayCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 import { VariableImportanceForm } from '@/components/variable-importance/VariableImportanceForm';
 import { ResultsPanel } from '@/components/variable-importance/ResultsPanel';
 import { computeShapExplanation, getShapResults } from '@/api/shap';
+import { useJobUpdates } from '@/hooks/useWebSocket';
 import type {
   ShapComputeRequest,
   ShapResultsResponse,
   ShapTab,
-  ModelSource,
   ExplainerType,
   BinAggregation,
   Partition,
@@ -35,53 +36,78 @@ export default function VariableImportance() {
   const { t } = useTranslation();
 
   // Selection state
-  const [modelSource, setModelSource] = useState<ModelSource>('run');
-  const [modelId, setModelId] = useState<string | null>(null);
-  const [datasetId, setDatasetId] = useState<string | null>(null);
+  const [chainId, setChainId] = useState<string | null>(null);
+  const [datasetName, setDatasetName] = useState<string | null>(null);
   const [partition, setPartition] = useState<Partition>('test');
 
   // Configuration state
   const [explainerType, setExplainerType] = useState<ExplainerType>('auto');
-  const [nSamples, setNSamples] = useState<number | null>(null);
   const [binSize, setBinSize] = useState(20);
   const [binStride, setBinStride] = useState(10);
   const [binAggregation, setBinAggregation] = useState<BinAggregation>('sum');
 
-  // Results state
+  // Job / results state
   const [jobId, setJobId] = useState<string | null>(null);
   const [results, setResults] = useState<ShapResultsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // UI state
   const [activeTab, setActiveTab] = useState<ShapTab>('spectral');
-  const [selectedSampleIdx, setSelectedSampleIdx] = useState(0);
+  const [selectedSamples, setSelectedSamples] = useState<number[]>([]);
 
-  // Reset sample selection when results change
+  // WebSocket progress tracking
+  const { status: jobStatus, progress, progressMessage, error: wsError } = useJobUpdates(jobId);
+
+  const isRunning = jobStatus === 'running' || isSubmitting;
+
+  // When job completes, fetch full results
   useEffect(() => {
-    if (results) {
-      setSelectedSampleIdx(0);
+    if (jobStatus === 'completed' && jobId) {
+      getShapResults(jobId)
+        .then((r) => {
+          setResults(r);
+          setSelectedSamples([]);
+          setIsSubmitting(false);
+        })
+        .catch((err) => {
+          setError(err.message || 'Failed to fetch results');
+          setIsSubmitting(false);
+        });
     }
-  }, [results]);
+    if (jobStatus === 'failed') {
+      setError(wsError || 'SHAP computation failed');
+      setIsSubmitting(false);
+    }
+  }, [jobStatus, jobId, wsError]);
+
+  const handleChainSelect = useCallback((newChainId: string | null, newDatasetName: string | null) => {
+    setChainId(newChainId);
+    setDatasetName(newDatasetName);
+  }, []);
 
   const handleRunAnalysis = useCallback(async () => {
-    if (!modelId || !datasetId) {
-      setError('Please select a model and dataset.');
+    if (!chainId || !datasetName) {
+      setError('Please select a model to explain.');
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     setError(null);
     setResults(null);
+    setJobId(null);
 
     try {
+      // Determine if this is a chain or bundle
+      const isBundle = chainId.endsWith('.n4a') || chainId.includes('/') || chainId.includes('\\');
+
       const request: ShapComputeRequest = {
-        model_source: modelSource,
-        model_id: modelId,
-        dataset_id: datasetId,
+        chain_id: isBundle ? undefined : chainId,
+        bundle_path: isBundle ? chainId : undefined,
+        dataset_id: datasetName,
         partition,
         explainer_type: explainerType,
-        n_samples: nSamples,
+        n_samples: null,
         n_background: 100,
         bin_size: binSize,
         bin_stride: binStride,
@@ -91,32 +117,21 @@ export default function VariableImportance() {
       const response = await computeShapExplanation(request);
       setJobId(response.job_id);
 
+      // If somehow completed synchronously
       if (response.status === 'completed') {
-        // Fetch full results
         const fullResults = await getShapResults(response.job_id);
         setResults(fullResults);
-      } else {
-        setError(response.message || 'SHAP computation failed');
+        setSelectedSamples([]);
+        setIsSubmitting(false);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Analysis failed';
       setError(message);
-    } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
-  }, [
-    modelSource,
-    modelId,
-    datasetId,
-    partition,
-    explainerType,
-    nSamples,
-    binSize,
-    binStride,
-    binAggregation,
-  ]);
+  }, [chainId, datasetName, partition, explainerType, binSize, binStride, binAggregation]);
 
-  const canRun = modelId && datasetId && !isLoading;
+  const canRun = chainId && datasetName && !isRunning;
 
   return (
     <motion.div
@@ -137,30 +152,18 @@ export default function VariableImportance() {
                 <TrendingUp className="h-4 w-4 text-primary" />
               </div>
               <CardTitle className="text-lg">
-                {t('shap.title', 'Variable Importance')}
+                {t('shap.title', 'SHAP Analysis')}
               </CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <VariableImportanceForm
-              modelSource={modelSource}
-              onModelSourceChange={setModelSource}
-              modelId={modelId}
-              onModelIdChange={setModelId}
-              datasetId={datasetId}
-              onDatasetIdChange={setDatasetId}
+              chainId={chainId}
+              onChainSelect={handleChainSelect}
               partition={partition}
               onPartitionChange={setPartition}
               explainerType={explainerType}
               onExplainerTypeChange={setExplainerType}
-              nSamples={nSamples}
-              onNSamplesChange={setNSamples}
-              binSize={binSize}
-              onBinSizeChange={setBinSize}
-              binStride={binStride}
-              onBinStrideChange={setBinStride}
-              binAggregation={binAggregation}
-              onBinAggregationChange={setBinAggregation}
             />
 
             {error && (
@@ -175,7 +178,7 @@ export default function VariableImportance() {
               onClick={handleRunAnalysis}
               disabled={!canRun}
             >
-              {isLoading ? (
+              {isRunning ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {t('shap.computing', 'Computing...')}
@@ -188,7 +191,17 @@ export default function VariableImportance() {
               )}
             </Button>
 
-            {!modelId && (
+            {/* Progress bar during computation */}
+            {isRunning && jobId && (
+              <div className="space-y-2">
+                <Progress value={progress} className="h-2" />
+                <p className="text-xs text-muted-foreground text-center">
+                  {progressMessage || 'Starting...'}
+                </p>
+              </div>
+            )}
+
+            {!chainId && (
               <p className="text-xs text-muted-foreground text-center">
                 {t('shap.selectModel', 'Select a model to explain')}
               </p>
@@ -208,8 +221,14 @@ export default function VariableImportance() {
             jobId={jobId!}
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            selectedSampleIdx={selectedSampleIdx}
-            onSampleChange={setSelectedSampleIdx}
+            selectedSamples={selectedSamples}
+            onSamplesChange={setSelectedSamples}
+            binSize={binSize}
+            binStride={binStride}
+            binAggregation={binAggregation}
+            onBinSizeChange={setBinSize}
+            onBinStrideChange={setBinStride}
+            onBinAggregationChange={setBinAggregation}
           />
         ) : (
           <Card className="h-full min-h-[400px] flex items-center justify-center">
@@ -223,7 +242,7 @@ export default function VariableImportance() {
               <p className="text-muted-foreground max-w-md mx-auto mb-4">
                 {t(
                   'shap.instructions',
-                  'Select a trained model and dataset, then click "Compute Explanations" to analyze which wavelengths are most important for predictions.'
+                  'Select a trained model, then click "Compute Explanations" to analyze which wavelengths are most important for predictions.'
                 )}
               </p>
               <div className="flex flex-wrap gap-2 justify-center text-xs text-muted-foreground">

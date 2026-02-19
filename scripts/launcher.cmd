@@ -291,7 +291,7 @@ if %errorlevel%==0 (
     goto :backend_ready
 )
 set /a retries+=1
-if %retries% lss 30 goto :wait_backend
+if %retries% lss 60 goto :wait_backend
 echo   Backend: timeout (may still be starting)
 
 :backend_ready
@@ -373,7 +373,7 @@ if %errorlevel%==0 (
     goto :prod_ready
 )
 set /a retries+=1
-if %retries% lss 30 goto :wait_prod
+if %retries% lss 60 goto :wait_prod
 echo   Server: timeout (may still be starting)
 
 :prod_ready

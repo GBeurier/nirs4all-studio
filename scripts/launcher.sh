@@ -135,7 +135,7 @@ kill_port() {
 wait_for_service() {
     local url=$1
     local name=$2
-    local max_retries=30
+    local max_retries=120
     local retry=0
 
     echo -e "${BLUE}Waiting for $name...${NC}"

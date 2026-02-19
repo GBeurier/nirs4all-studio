@@ -104,8 +104,8 @@ export function InspectorCanvas() {
   const histogramParams = useMemo(() => {
     if (!isPanelVisible('histogram') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       score_column: scoreColumn,
     };
   }, [isPanelVisible, chains.length, filters, scoreColumn]);
@@ -116,8 +116,8 @@ export function InspectorCanvas() {
   const rankingsParams = useMemo(() => {
     if (!isPanelVisible('rankings') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       score_column: scoreColumn,
     };
   }, [isPanelVisible, chains.length, filters, scoreColumn]);
@@ -128,8 +128,8 @@ export function InspectorCanvas() {
   const heatmapParams = useMemo(() => {
     if (!isPanelVisible('heatmap') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       x_variable: 'model_class',
       y_variable: 'preprocessings',
       score_column: scoreColumn,
@@ -143,8 +143,8 @@ export function InspectorCanvas() {
   const candlestickParams = useMemo(() => {
     if (!isPanelVisible('candlestick') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       category_variable: 'model_class',
       score_column: scoreColumn,
     };
@@ -156,8 +156,8 @@ export function InspectorCanvas() {
   const branchComparisonParams = useMemo(() => {
     if (!isPanelVisible('branch_comparison') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       score_column: scoreColumn,
     };
   }, [isPanelVisible, chains.length, filters, scoreColumn]);
@@ -216,8 +216,8 @@ export function InspectorCanvas() {
   const correlationParams = useMemo(() => {
     if (!isPanelVisible('correlation') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
     };
   }, [isPanelVisible, chains.length, filters]);
 
@@ -229,8 +229,8 @@ export function InspectorCanvas() {
   const preprocImpactParams = useMemo(() => {
     if (!isPanelVisible('preprocessing_impact') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       score_column: scoreColumn,
     };
   }, [isPanelVisible, chains.length, filters, scoreColumn]);
@@ -261,8 +261,8 @@ export function InspectorCanvas() {
   const hyperparamParams = useMemo(() => {
     if (!isPanelVisible('hyperparameter') || chains.length === 0 || !activeHyperParam) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       param_name: activeHyperParam,
       score_column: scoreColumn,
     };
@@ -285,8 +285,8 @@ export function InspectorCanvas() {
   const learningCurveParams = useMemo(() => {
     if (!isPanelVisible('learning_curve') || chains.length === 0) return null;
     return {
-      run_id: filters.run_id,
-      dataset_name: filters.dataset_name,
+      run_id: filters.run_ids,
+      dataset_name: filters.dataset_names,
       score_column: scoreColumn,
     };
   }, [isPanelVisible, chains.length, filters, scoreColumn]);
@@ -304,10 +304,10 @@ export function InspectorCanvas() {
 
   // Panel rendering order
   const panelOrder: InspectorPanelType[] = [
-    'scatter', 'residuals', 'rankings', 'heatmap', 'candlestick', 'histogram',
-    'branch_comparison', 'branch_topology', 'fold_stability',
-    'confusion', 'robustness', 'correlation',
-    'preprocessing_impact', 'hyperparameter', 'bias_variance', 'learning_curve',
+    'rankings', 'heatmap', 'histogram', 'candlestick', 'scatter', 'preprocessing_impact',
+    'residuals', 'branch_comparison', 'fold_stability', 'confusion',
+    'branch_topology', 'robustness', 'correlation',
+    'hyperparameter', 'bias_variance', 'learning_curve',
   ];
 
   // Common panel props builder

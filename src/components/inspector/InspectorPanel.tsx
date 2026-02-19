@@ -13,12 +13,14 @@ import {
   Minimize2,
   X,
   ChevronUp,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { InspectorPanelType, InspectorViewState } from '@/types/inspector';
 import { PANEL_MAP } from '@/lib/inspector/chartRegistry';
+import { useInspectorExport } from '@/hooks/useInspectorExport';
 
 // ============= Types =============
 
@@ -69,6 +71,7 @@ function PanelHeader({
   onMinimize,
   onRestore,
   onHide,
+  onExportPng,
   onDoubleClick,
   headerContent,
 }: {
@@ -79,6 +82,7 @@ function PanelHeader({
   onMinimize?: () => void;
   onRestore?: () => void;
   onHide?: () => void;
+  onExportPng?: () => void;
   onDoubleClick: () => void;
   headerContent?: ReactNode;
 }) {
@@ -104,6 +108,17 @@ function PanelHeader({
       {headerContent && <div className="flex items-center gap-1">{headerContent}</div>}
 
       <div className="flex items-center gap-0.5">
+        {!isMinimized && onExportPng && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onExportPng(); }}>
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Export PNG</TooltipContent>
+          </Tooltip>
+        )}
+
         {isMinimized && onRestore && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -198,8 +213,13 @@ export const InspectorPanel = forwardRef<HTMLDivElement, InspectorPanelProps>(
     },
     ref,
   ) {
+    const { exportPanelAsPng } = useInspectorExport();
     const isMinimized = viewState === 'minimized';
     const isHidden = viewState === 'hidden';
+
+    const handleExportPng = useCallback(() => {
+      exportPanelAsPng(panelType);
+    }, [exportPanelAsPng, panelType]);
 
     const handleHeaderDoubleClick = useCallback(() => {
       if (isMinimized) onRestore?.();
@@ -233,6 +253,7 @@ export const InspectorPanel = forwardRef<HTMLDivElement, InspectorPanelProps>(
             onMinimize={onMinimize}
             onRestore={onRestore}
             onHide={onHide}
+            onExportPng={handleExportPng}
             onDoubleClick={handleHeaderDoubleClick}
             headerContent={headerContent}
           />

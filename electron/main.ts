@@ -12,6 +12,9 @@ if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
   app.commandLine.appendSwitch("ozone-platform-hint", "x11");
 }
 
+// Disable Autofill CDP domain (not supported in Electron, causes DevTools errors)
+app.commandLine.appendSwitch("disable-features", "Autofill,AutofillServerCommunication");
+
 const backendManager = new BackendManager();
 
 let mainWindow: BrowserWindow | null = null;
