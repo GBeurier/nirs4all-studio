@@ -1,9 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -16,43 +15,71 @@ import type { BinAggregation, BinnedImportanceData } from '@/types/shap';
 
 interface BinningControlsProps {
   jobId: string;
-  binSize: number;
-  binStride: number;
-  binAggregation: BinAggregation;
-  onBinSizeChange: (size: number) => void;
-  onBinStrideChange: (stride: number) => void;
-  onBinAggregationChange: (agg: BinAggregation) => void;
+  initialBinSize: number;
+  initialBinStride: number;
+  initialAggregation: string;
   onBinnedDataUpdate: (data: BinnedImportanceData) => void;
 }
 
-export function BinningControls({
+export const BinningControls = memo(function BinningControls({
   jobId,
-  binSize,
-  binStride,
-  binAggregation,
-  onBinSizeChange,
-  onBinStrideChange,
-  onBinAggregationChange,
+  initialBinSize,
+  initialBinStride,
+  initialAggregation,
   onBinnedDataUpdate,
 }: BinningControlsProps) {
   const { t } = useTranslation();
-  const [isRebinning, setIsRebinning] = useState(false);
 
-  const handleRebin = useCallback(async () => {
-    setIsRebinning(true);
-    try {
-      const result = await rebinShapResults(jobId, {
-        bin_size: binSize,
-        bin_stride: binStride,
-        bin_aggregation: binAggregation,
-      });
-      onBinnedDataUpdate(result.binned_importance);
-    } catch {
-      // Rebin failed silently — the original data remains
-    } finally {
-      setIsRebinning(false);
+  const [binSize, setBinSize] = useState(initialBinSize);
+  const [binStride, setBinStride] = useState(initialBinStride);
+  const [binAggregation, setBinAggregation] = useState<BinAggregation>(
+    (initialAggregation as BinAggregation) || 'sum',
+  );
+  const [isRebinning, setIsRebinning] = useState(false);
+  const [rebinError, setRebinError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const onBinnedDataUpdateRef = useRef(onBinnedDataUpdate);
+  onBinnedDataUpdateRef.current = onBinnedDataUpdate;
+
+  // Auto-rebin with debounce whenever any parameter changes
+  const doRebin = useCallback(
+    (size: number, stride: number, agg: BinAggregation) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(async () => {
+        setIsRebinning(true);
+        setRebinError(null);
+        try {
+          const result = await rebinShapResults(jobId, {
+            bin_size: size,
+            bin_stride: stride,
+            bin_aggregation: agg,
+          });
+          onBinnedDataUpdateRef.current(result.binned_importance);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Rebin failed';
+          setRebinError(msg);
+          console.error('Rebin failed:', err);
+        } finally {
+          setIsRebinning(false);
+        }
+      }, 400);
+    },
+    [jobId],
+  );
+
+  // Track whether this is the first render (skip initial rebin)
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
     }
-  }, [jobId, binSize, binStride, binAggregation, onBinnedDataUpdate]);
+    doRebin(binSize, binStride, binAggregation);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [binSize, binStride, binAggregation, doRebin]);
 
   return (
     <div className="flex items-end gap-3 flex-wrap">
@@ -65,7 +92,7 @@ export function BinningControls({
           value={binSize}
           onChange={(e) => {
             const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val >= 1) onBinSizeChange(val);
+            if (!isNaN(val) && val >= 1) setBinSize(val);
           }}
           className="w-20 h-8 text-sm"
           min={1}
@@ -82,7 +109,7 @@ export function BinningControls({
           value={binStride}
           onChange={(e) => {
             const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val >= 1) onBinStrideChange(val);
+            if (!isNaN(val) && val >= 1) setBinStride(val);
           }}
           className="w-20 h-8 text-sm"
           min={1}
@@ -96,7 +123,7 @@ export function BinningControls({
         </Label>
         <Select
           value={binAggregation}
-          onValueChange={(v) => onBinAggregationChange(v as BinAggregation)}
+          onValueChange={(v) => setBinAggregation(v as BinAggregation)}
         >
           <SelectTrigger className="w-28 h-8 text-sm">
             <SelectValue />
@@ -110,20 +137,15 @@ export function BinningControls({
         </Select>
       </div>
 
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-8"
-        onClick={handleRebin}
-        disabled={isRebinning}
-      >
-        {isRebinning ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-        ) : (
-          <RefreshCw className="h-3.5 w-3.5 mr-1" />
-        )}
-        {t('shap.binning.rebin', 'Rebin')}
-      </Button>
+      {isRebinning && (
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mb-1" />
+      )}
+      {rebinError && (
+        <span className="flex items-center gap-1 text-xs text-destructive mb-1" title={rebinError}>
+          <AlertCircle className="h-3 w-3" />
+          Error
+        </span>
+      )}
     </div>
   );
-}
+});

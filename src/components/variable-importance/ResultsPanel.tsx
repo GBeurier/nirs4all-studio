@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Activity, BarChart3, Droplets, List, Clock, Hash, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { BeeswarmChart } from './visualizations/BeeswarmChart';
 import { WaterfallChart } from './visualizations/WaterfallChart';
 import { FeatureImportanceBar } from './visualizations/FeatureImportanceBar';
 import { PredictionScatter } from './visualizations/PredictionScatter';
-import type { ShapResultsResponse, ShapTab, BinAggregation, BinnedImportanceData } from '@/types/shap';
+import type { ShapResultsResponse, ShapTab, BinnedImportanceData } from '@/types/shap';
 
 interface ResultsPanelProps {
   results: ShapResultsResponse;
@@ -19,12 +19,6 @@ interface ResultsPanelProps {
   onTabChange: (tab: ShapTab) => void;
   selectedSamples: number[];
   onSamplesChange: (samples: number[]) => void;
-  binSize: number;
-  binStride: number;
-  binAggregation: BinAggregation;
-  onBinSizeChange: (size: number) => void;
-  onBinStrideChange: (stride: number) => void;
-  onBinAggregationChange: (agg: BinAggregation) => void;
 }
 
 export function ResultsPanel({
@@ -34,16 +28,10 @@ export function ResultsPanel({
   onTabChange,
   selectedSamples,
   onSamplesChange,
-  binSize,
-  binStride,
-  binAggregation,
-  onBinSizeChange,
-  onBinStrideChange,
-  onBinAggregationChange,
 }: ResultsPanelProps) {
   const { t } = useTranslation();
 
-  // Local binned data state for dynamic rebinning
+  // Rebinned data lives here — only updated when "Rebin" is clicked
   const [rebinnedData, setRebinnedData] = useState<BinnedImportanceData | null>(null);
 
   const handleBinnedDataUpdate = useCallback((data: BinnedImportanceData) => {
@@ -60,183 +48,148 @@ export function ResultsPanel({
     [onSamplesChange],
   );
 
+  // Stable toggle callback for beeswarm
   const handleBeeswarmSelect = useCallback(
     (sampleIdx: number) => {
-      const current = new Set(selectedSamples);
-      if (current.has(sampleIdx)) {
-        current.delete(sampleIdx);
-      } else {
-        current.add(sampleIdx);
-      }
-      onSamplesChange(Array.from(current).sort((a, b) => a - b));
+      onSamplesChange((prev: number[]) => {
+        const set = new Set(prev);
+        if (set.has(sampleIdx)) set.delete(sampleIdx);
+        else set.add(sampleIdx);
+        return Array.from(set).sort((a, b) => a - b);
+      });
     },
-    [selectedSamples, onSamplesChange],
+    [onSamplesChange],
   );
 
+  // Memoize initial binning params to avoid re-init on re-render
+  const initialBinParams = useMemo(() => ({
+    binSize: results.binned_importance.bin_size,
+    binStride: results.binned_importance.bin_stride,
+    aggregation: results.binned_importance.aggregation,
+  }), [results.binned_importance.bin_size, results.binned_importance.bin_stride, results.binned_importance.aggregation]);
+
+  const activeBinnedData = rebinnedData ?? undefined;
+
   return (
-    <div className="flex gap-4 h-full">
-      {/* Main results area */}
-      <Card className="flex-1 min-w-0">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              {t('shap.results.title', 'SHAP Analysis Results')}
-            </CardTitle>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant="secondary" className="flex items-center gap-1">
-                <Hash className="h-3 w-3" />
-                {results.n_samples} {t('shap.results.samples', 'samples')}
-              </Badge>
-              <Badge variant="secondary" className="flex items-center gap-1">
-                <Target className="h-3 w-3" />
-                {results.explainer_type}
-              </Badge>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {results.execution_time_ms.toFixed(0)}ms
-              </Badge>
-            </div>
-          </div>
-
-          {/* Binning controls bar */}
-          <div className="pt-2 border-t mt-2">
-            <BinningControls
-              jobId={jobId}
-              binSize={binSize}
-              binStride={binStride}
-              binAggregation={binAggregation}
-              onBinSizeChange={onBinSizeChange}
-              onBinStrideChange={onBinStrideChange}
-              onBinAggregationChange={onBinAggregationChange}
-              onBinnedDataUpdate={handleBinnedDataUpdate}
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => onTabChange(value as ShapTab)}
-            className="h-full"
-          >
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="spectral" className="flex items-center gap-1">
-                <Activity className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t('shap.tabs.spectral', 'Spectral')}
-                </span>
-              </TabsTrigger>
-              <TabsTrigger value="beeswarm" className="flex items-center gap-1">
-                <Droplets className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t('shap.tabs.beeswarm', 'Beeswarm')}
-                </span>
-              </TabsTrigger>
-              <TabsTrigger value="waterfall" className="flex items-center gap-1">
-                <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t('shap.tabs.waterfall', 'Waterfall')}
-                </span>
-              </TabsTrigger>
-              <TabsTrigger value="ranking" className="flex items-center gap-1">
-                <List className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t('shap.tabs.ranking', 'Ranking')}
-                </span>
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="spectral" className="mt-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    'shap.spectral.description',
-                    'Important wavelength regions highlighted on the mean spectrum. Darker colors indicate higher importance.',
-                  )}
-                </p>
-                <div className="h-[500px]">
-                  <SpectralImportanceChart
-                    jobId={jobId}
-                    results={results}
-                    binnedData={rebinnedData ?? undefined}
-                    selectedSamples={selectedSamples}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="beeswarm" className="mt-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    'shap.beeswarm.description',
-                    'Distribution of SHAP values across samples. Each point is a sample, colored by feature value.',
-                  )}
-                </p>
-                <div className="h-[500px]">
-                  <BeeswarmChart
-                    jobId={jobId}
-                    onSampleSelect={handleBeeswarmSelect}
-                    selectedSamples={selectedSamples}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="waterfall" className="mt-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    'shap.waterfall.description',
-                    'How features contribute to the prediction for a single sample.',
-                  )}
-                </p>
-                <div className="h-[500px]">
-                  <WaterfallChart
-                    jobId={jobId}
-                    sampleIdx={waterfallSampleIdx}
-                    totalSamples={results.n_samples}
-                    onSampleChange={handleWaterfallSampleChange}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="ranking" className="mt-4">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    'shap.ranking.description',
-                    'Top wavelength regions ranked by mean absolute SHAP value.',
-                  )}
-                </p>
-                <div className="h-[500px]">
-                  <FeatureImportanceBar
-                    results={results}
-                    binnedData={rebinnedData ?? undefined}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Right sidebar: Prediction scatter */}
-      <Card className="w-72 shrink-0 hidden xl:block">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">
-            {t('shap.scatter.title', 'Predictions')}
+    <Card className="h-full">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            {t('shap.results.title', 'SHAP Analysis Results')}
           </CardTitle>
-        </CardHeader>
-        <CardContent className="h-[calc(100%-3rem)]">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Hash className="h-3 w-3" />
+              {results.n_samples} {t('shap.results.samples', 'samples')}
+            </Badge>
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Target className="h-3 w-3" />
+              {results.explainer_type}
+            </Badge>
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {results.execution_time_ms.toFixed(0)}ms
+            </Badge>
+          </div>
+        </div>
+
+        {/* Binning controls bar */}
+        <div className="pt-2 border-t mt-2">
+          <BinningControls
+            jobId={jobId}
+            initialBinSize={initialBinParams.binSize}
+            initialBinStride={initialBinParams.binStride}
+            initialAggregation={initialBinParams.aggregation}
+            onBinnedDataUpdate={handleBinnedDataUpdate}
+          />
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Prediction scatter — horizontal compact panel */}
+        <div className="h-[220px] border rounded-lg p-3">
           <PredictionScatter
             jobId={jobId}
             selectedSamples={selectedSamples}
             onSamplesChange={onSamplesChange}
           />
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+
+        {/* Tabs */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => onTabChange(value as ShapTab)}
+        >
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="spectral" className="flex items-center gap-1">
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t('shap.tabs.spectral', 'Spectral')}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="beeswarm" className="flex items-center gap-1">
+              <Droplets className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t('shap.tabs.beeswarm', 'Beeswarm')}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="waterfall" className="flex items-center gap-1">
+              <BarChart3 className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t('shap.tabs.waterfall', 'Waterfall')}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="ranking" className="flex items-center gap-1">
+              <List className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t('shap.tabs.ranking', 'Ranking')}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="spectral" className="mt-4">
+            <div className="h-[500px]">
+              <SpectralImportanceChart
+                jobId={jobId}
+                results={results}
+                binnedData={activeBinnedData}
+                selectedSamples={selectedSamples}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="beeswarm" className="mt-4">
+            <div className="h-[500px]">
+              <BeeswarmChart
+                jobId={jobId}
+                onSampleSelect={handleBeeswarmSelect}
+                selectedSamples={selectedSamples}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="waterfall" className="mt-4">
+            <div className="h-[500px]">
+              <WaterfallChart
+                jobId={jobId}
+                sampleIdx={waterfallSampleIdx}
+                totalSamples={results.n_samples}
+                onSampleChange={handleWaterfallSampleChange}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="ranking" className="mt-4">
+            <div className="h-[500px]">
+              <FeatureImportanceBar
+                results={results}
+                binnedData={activeBinnedData}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   );
 }

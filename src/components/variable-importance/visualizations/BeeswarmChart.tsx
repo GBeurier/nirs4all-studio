@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, memo } from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   ScatterChart,
@@ -28,8 +28,7 @@ function jitterPoints(bin: BeeswarmBin, binIndex: number): Array<{
   sampleIdx: number;
   binLabel: string;
 }> {
-  return bin.points.map((point, pointIdx) => {
-    // Jitter within the bin's y-range
+  return bin.points.map((point) => {
     const jitter = (Math.random() - 0.5) * 0.6;
     return {
       x: point.shap_value,
@@ -43,16 +42,19 @@ function jitterPoints(bin: BeeswarmBin, binIndex: number): Array<{
 
 // Get color based on feature value (0-1)
 function getPointColor(featureValue: number): string {
-  // Low values = blue, high values = red (standard SHAP coloring)
-  if (featureValue > 0.8) return '#ef4444'; // red-500
-  if (featureValue > 0.6) return '#f97316'; // orange-500
-  if (featureValue > 0.4) return '#eab308'; // yellow-500
-  if (featureValue > 0.2) return '#22c55e'; // green-500
-  return '#3b82f6'; // blue-500
+  if (featureValue > 0.8) return '#ef4444';
+  if (featureValue > 0.6) return '#f97316';
+  if (featureValue > 0.4) return '#eab308';
+  if (featureValue > 0.2) return '#22c55e';
+  return '#3b82f6';
 }
 
-export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: BeeswarmChartProps) {
-  const selectedSet = new Set(selectedSamples);
+export const BeeswarmChart = memo(function BeeswarmChart({
+  jobId,
+  onSampleSelect,
+  selectedSamples = [],
+}: BeeswarmChartProps) {
+  const selectedSet = useMemo(() => new Set(selectedSamples), [selectedSamples]);
   const [data, setData] = useState<BeeswarmDataResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,6 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
   useEffect(() => {
     setLoading(true);
     setError(null);
-
     getBeeswarmData(jobId, 200)
       .then((response) => {
         setData(response);
@@ -72,10 +73,8 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
       });
   }, [jobId]);
 
-  // Prepare chart data with jittered positions
   const chartData = useMemo(() => {
     if (!data) return [];
-
     const allPoints: Array<{
       x: number;
       y: number;
@@ -83,22 +82,15 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
       sampleIdx: number;
       binLabel: string;
     }> = [];
-
     data.bins.forEach((bin, binIndex) => {
-      const jitteredPoints = jitterPoints(bin, binIndex);
-      allPoints.push(...jitteredPoints);
+      allPoints.push(...jitterPoints(bin, binIndex));
     });
-
     return allPoints;
   }, [data]);
 
-  // Y-axis tick labels (bin labels)
   const yTickLabels = useMemo(() => {
     if (!data) return [];
-    return data.bins.map((bin, idx) => ({
-      value: idx,
-      label: bin.label,
-    }));
+    return data.bins.map((bin, idx) => ({ value: idx, label: bin.label }));
   }, [data]);
 
   if (loading) {
@@ -134,12 +126,7 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
             type="number"
             dataKey="x"
             domain={['auto', 'auto']}
-            label={{
-              value: 'SHAP value (impact on prediction)',
-              position: 'bottom',
-              offset: 20,
-              className: 'fill-muted-foreground text-xs',
-            }}
+            label={{ value: 'SHAP value (impact on prediction)', position: 'bottom', offset: 20, className: 'fill-muted-foreground text-xs' }}
             className="text-xs"
           />
           <YAxis
@@ -147,17 +134,11 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
             dataKey="y"
             domain={[-0.5, data.bins.length - 0.5]}
             ticks={yTickLabels.map((t) => t.value)}
-            tickFormatter={(value) => {
+            tickFormatter={(value: number) => {
               const tick = yTickLabels.find((t) => t.value === value);
               return tick?.label || '';
             }}
-            label={{
-              value: 'Wavelength Region (cm⁻¹)',
-              angle: -90,
-              position: 'insideLeft',
-              offset: -80,
-              className: 'fill-muted-foreground text-xs',
-            }}
+            label={{ value: 'Wavelength Region (cm\u207B\u00B9)', angle: -90, position: 'insideLeft', offset: -80, className: 'fill-muted-foreground text-xs' }}
             className="text-xs"
             width={90}
           />
@@ -170,18 +151,15 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
                 <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                   <p className="font-medium">{point.binLabel} cm⁻¹</p>
                   <p>SHAP: {point.x.toFixed(4)}</p>
-                  <p className="text-muted-foreground">
-                    Feature value: {(point.color * 100).toFixed(0)}%
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Sample #{point.sampleIdx}
-                  </p>
+                  <p className="text-muted-foreground">Feature value: {(point.color * 100).toFixed(0)}%</p>
+                  <p className="text-xs text-muted-foreground">Sample #{point.sampleIdx}</p>
                 </div>
               );
             }}
           />
           <Scatter
             data={chartData}
+            isAnimationActive={false}
             onClick={(data) => {
               if (onSampleSelect && data?.sampleIdx !== undefined) {
                 onSampleSelect(data.sampleIdx);
@@ -192,7 +170,7 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
               const isSelected = selectedSet.has(entry.sampleIdx);
               return (
                 <Cell
-                  key={`cell-${index}`}
+                  key={index}
                   fill={isSelected ? '#f59e0b' : getPointColor(entry.color)}
                   fillOpacity={isSelected ? 1 : 0.7}
                   stroke={isSelected ? '#f59e0b' : 'none'}
@@ -205,30 +183,14 @@ export function BeeswarmChart({ jobId, onSampleSelect, selectedSamples = [] }: B
         </ScatterChart>
       </ResponsiveContainer>
 
-      {/* Color legend */}
-      <div className="flex items-center justify-center gap-6 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-6 py-2 text-xs text-muted-foreground shrink-0">
         <span>Feature value:</span>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full bg-blue-500" />
-          <span>Low</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full bg-green-500" />
-          <span>Medium-Low</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full bg-yellow-500" />
-          <span>Medium</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full bg-orange-500" />
-          <span>Medium-High</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full bg-red-500" />
-          <span>High</span>
-        </div>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-blue-500" />Low</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-green-500" />Med-Low</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-yellow-500" />Med</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-orange-500" />Med-High</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500" />High</span>
       </div>
     </div>
   );
-}
+});

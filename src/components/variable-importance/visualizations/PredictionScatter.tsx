@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, memo } from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   ScatterChart,
@@ -20,7 +20,7 @@ interface PredictionScatterProps {
   onSamplesChange: (samples: number[]) => void;
 }
 
-export function PredictionScatter({
+export const PredictionScatter = memo(function PredictionScatter({
   jobId,
   selectedSamples,
   onSamplesChange,
@@ -28,10 +28,10 @@ export function PredictionScatter({
   const [data, setData] = useState<ScatterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const selectedSet = useRef(new Set<number>());
+  const onSamplesChangeRef = useRef(onSamplesChange);
+  onSamplesChangeRef.current = onSamplesChange;
 
-  // Keep ref in sync
-  selectedSet.current = new Set(selectedSamples);
+  const selectedSet = useMemo(() => new Set(selectedSamples), [selectedSamples]);
 
   useEffect(() => {
     setLoading(true);
@@ -58,13 +58,11 @@ export function PredictionScatter({
     }));
   }, [data]);
 
-  // Compute color based on absolute residual
   const maxAbsRes = useMemo(() => {
     if (chartPoints.length === 0) return 1;
     return Math.max(...chartPoints.map((p) => p.absResidual), 1e-9);
   }, [chartPoints]);
 
-  // Diagonal bounds for reference line
   const bounds = useMemo(() => {
     if (chartPoints.length === 0) return { min: 0, max: 1 };
     const allVals = chartPoints.flatMap((p) => [p.yTrue, p.yPred]);
@@ -73,29 +71,49 @@ export function PredictionScatter({
 
   const getPointColor = useCallback(
     (absResidual: number, isSelected: boolean): string => {
-      if (isSelected) return '#f59e0b'; // amber-500 for selected
+      if (isSelected) return '#f59e0b';
       const ratio = absResidual / maxAbsRes;
-      // Green (well predicted) → red (outlier)
-      if (ratio > 0.7) return '#ef4444'; // red-500
-      if (ratio > 0.4) return '#f97316'; // orange-500
-      if (ratio > 0.2) return '#84cc16'; // lime-500
-      return '#22c55e'; // green-500
+      if (ratio > 0.7) return '#ef4444';
+      if (ratio > 0.4) return '#f97316';
+      if (ratio > 0.2) return '#84cc16';
+      return '#22c55e';
     },
     [maxAbsRes],
   );
 
+  // Stable click handler using ref to avoid re-renders
   const handlePointClick = useCallback(
     (point: { sampleIdx: number }) => {
       const idx = point.sampleIdx;
-      const current = new Set(selectedSet.current);
-      if (current.has(idx)) {
-        current.delete(idx);
-      } else {
-        current.add(idx);
-      }
-      onSamplesChange(Array.from(current).sort((a, b) => a - b));
+      onSamplesChangeRef.current((prev: number[]) => {
+        const set = new Set(prev);
+        if (set.has(idx)) set.delete(idx);
+        else set.add(idx);
+        return Array.from(set).sort((a, b) => a - b);
+      });
     },
-    [onSamplesChange],
+    [],
+  );
+
+  const handleClear = useCallback(() => {
+    onSamplesChangeRef.current([]);
+  }, []);
+
+  // Memoize tooltip to avoid re-creating on every render
+  const tooltipContent = useCallback(
+    ({ active, payload }: { active?: boolean; payload?: Array<{ payload: typeof chartPoints[0] }> }) => {
+      if (!active || !payload || !payload.length) return null;
+      const p = payload[0].payload;
+      return (
+        <div className="bg-popover border rounded-lg shadow-lg p-2 text-xs">
+          <p className="font-medium">Sample #{p.sampleIdx}</p>
+          <p>True: {p.yTrue.toFixed(3)}</p>
+          <p>Pred: {p.yPred.toFixed(3)}</p>
+          <p className="text-muted-foreground">Residual: {p.residual.toFixed(3)}</p>
+        </div>
+      );
+    },
+    [],
   );
 
   if (loading) {
@@ -106,10 +124,10 @@ export function PredictionScatter({
     );
   }
 
-  if (error || !data) {
+  if (error || !data || data.y_true.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-        {error || 'No data'}
+        {error || 'No prediction data available'}
       </div>
     );
   }
@@ -118,85 +136,62 @@ export function PredictionScatter({
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-1">
         <h4 className="text-xs font-medium text-muted-foreground">
-          y<sub>pred</sub> vs y<sub>true</sub>
+          Predicted vs True — click points to select samples
         </h4>
-        {selectedSamples.length > 0 && (
-          <button
-            className="text-xs text-primary hover:underline"
-            onClick={() => onSamplesChange([])}
-          >
-            Clear ({selectedSamples.length})
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {selectedSamples.length > 0 && (
+            <button
+              className="text-xs text-primary hover:underline"
+              onClick={handleClear}
+            >
+              Clear ({selectedSamples.length} selected)
+            </button>
+          )}
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-green-500" />Good</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-500" />Outlier</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-500" />Selected</span>
+          </div>
+        </div>
       </div>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 5, right: 5, left: 0, bottom: 20 }}>
+          <ScatterChart margin={{ top: 5, right: 20, left: 10, bottom: 25 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis
               type="number"
               dataKey="yTrue"
               domain={['auto', 'auto']}
               tick={{ fontSize: 10 }}
-              label={{
-                value: 'True',
-                position: 'bottom',
-                offset: 5,
-                fontSize: 10,
-                className: 'fill-muted-foreground',
-              }}
+              label={{ value: 'True', position: 'bottom', offset: 10, fontSize: 10, className: 'fill-muted-foreground' }}
             />
             <YAxis
               type="number"
               dataKey="yPred"
               domain={['auto', 'auto']}
               tick={{ fontSize: 10 }}
-              width={40}
-              label={{
-                value: 'Pred',
-                angle: -90,
-                position: 'insideLeft',
-                offset: 5,
-                fontSize: 10,
-                className: 'fill-muted-foreground',
-              }}
+              width={50}
+              label={{ value: 'Predicted', angle: -90, position: 'insideLeft', offset: 5, fontSize: 10, className: 'fill-muted-foreground' }}
             />
             <ReferenceLine
-              segment={[
-                { x: bounds.min, y: bounds.min },
-                { x: bounds.max, y: bounds.max },
-              ]}
+              segment={[{ x: bounds.min, y: bounds.min }, { x: bounds.max, y: bounds.max }]}
               stroke="hsl(var(--muted-foreground))"
               strokeDasharray="4 4"
               strokeOpacity={0.5}
             />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload || !payload.length) return null;
-                const p = payload[0].payload;
-                return (
-                  <div className="bg-popover border rounded-lg shadow-lg p-2 text-xs">
-                    <p className="font-medium">Sample #{p.sampleIdx}</p>
-                    <p>True: {p.yTrue.toFixed(3)}</p>
-                    <p>Pred: {p.yPred.toFixed(3)}</p>
-                    <p className="text-muted-foreground">
-                      Residual: {p.residual.toFixed(3)}
-                    </p>
-                  </div>
-                );
-              }}
-            />
+            <Tooltip content={tooltipContent} />
             <Scatter
               data={chartPoints}
+              isAnimationActive={false}
               onClick={(data) => {
                 if (data?.sampleIdx !== undefined) handlePointClick(data);
               }}
             >
               {chartPoints.map((entry, index) => {
-                const isSelected = selectedSet.current.has(entry.sampleIdx);
+                const isSelected = selectedSet.has(entry.sampleIdx);
                 return (
                   <Cell
-                    key={`cell-${index}`}
+                    key={index}
                     fill={getPointColor(entry.absResidual, isSelected)}
                     fillOpacity={isSelected ? 1 : 0.7}
                     stroke={isSelected ? '#f59e0b' : 'none'}
@@ -210,20 +205,6 @@ export function PredictionScatter({
           </ScatterChart>
         </ResponsiveContainer>
       </div>
-      <div className="flex items-center justify-center gap-3 pt-1 text-[10px] text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-green-500" />
-          <span>Good</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-red-500" />
-          <span>Outlier</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-2 h-2 rounded-full bg-amber-500" />
-          <span>Selected</span>
-        </div>
-      </div>
     </div>
   );
-}
+});

@@ -847,7 +847,14 @@ def _compute_binned_importance(
     shap_values: np.ndarray, wavelengths: List[float],
     bin_size: int, bin_stride: int, bin_aggregation: str
 ) -> BinnedImportanceData:
-    """Compute binned importance from raw SHAP values."""
+    """Compute binned importance from raw SHAP values.
+
+    Aggregation modes (applied per bin across wavelengths, then averaged across samples):
+    - sum:      sum of raw SHAP per sample, then mean across samples (signed, allows cancellation)
+    - sum_abs:  sum of |SHAP| per sample, then mean across samples (unsigned, total magnitude)
+    - mean:     mean of raw SHAP per sample, then mean across samples (signed, normalized by bin size)
+    - mean_abs: mean of |SHAP| per sample, then mean across samples (unsigned, normalized by bin size)
+    """
     n_features = len(wavelengths)
     bin_centers = []
     bin_values = []
@@ -857,20 +864,28 @@ def _compute_binned_importance(
     while start < n_features - bin_size + 1:
         end = start + bin_size
         bin_wl = wavelengths[start:end]
-        bin_shap = np.abs(shap_values[:, start:end]).mean(axis=0)
+        # Raw SHAP slice: shape (n_samples, bin_size)
+        bin_shap_raw = shap_values[:, start:end]
 
         bin_centers.append(float(np.mean(bin_wl)))
         bin_ranges.append((float(bin_wl[0]), float(bin_wl[-1])))
 
         if bin_aggregation == "sum":
-            bin_values.append(float(bin_shap.sum()))
+            # Sum signed SHAP across wavelengths per sample, then mean across samples
+            val = float(bin_shap_raw.sum(axis=1).mean())
         elif bin_aggregation == "sum_abs":
-            bin_values.append(float(np.abs(bin_shap).sum()))
+            # Sum |SHAP| across wavelengths per sample, then mean across samples
+            val = float(np.abs(bin_shap_raw).sum(axis=1).mean())
         elif bin_aggregation == "mean":
-            bin_values.append(float(bin_shap.mean()))
+            # Mean signed SHAP across wavelengths per sample, then mean across samples
+            val = float(bin_shap_raw.mean(axis=1).mean())
         elif bin_aggregation == "mean_abs":
-            bin_values.append(float(np.abs(bin_shap).mean()))
+            # Mean |SHAP| across wavelengths per sample, then mean across samples
+            val = float(np.abs(bin_shap_raw).mean(axis=1).mean())
+        else:
+            val = float(np.abs(bin_shap_raw).sum(axis=1).mean())
 
+        bin_values.append(val)
         start += bin_stride
 
     return BinnedImportanceData(

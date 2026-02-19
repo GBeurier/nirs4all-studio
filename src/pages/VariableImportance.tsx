@@ -15,7 +15,6 @@ import type {
   ShapResultsResponse,
   ShapTab,
   ExplainerType,
-  BinAggregation,
   Partition,
 } from '@/types/shap';
 
@@ -42,9 +41,6 @@ export default function VariableImportance() {
 
   // Configuration state
   const [explainerType, setExplainerType] = useState<ExplainerType>('auto');
-  const [binSize, setBinSize] = useState(20);
-  const [binStride, setBinStride] = useState(10);
-  const [binAggregation, setBinAggregation] = useState<BinAggregation>('sum');
 
   // Job / results state
   const [jobId, setJobId] = useState<string | null>(null);
@@ -98,7 +94,6 @@ export default function VariableImportance() {
     setJobId(null);
 
     try {
-      // Determine if this is a chain or bundle
       const isBundle = chainId.endsWith('.n4a') || chainId.includes('/') || chainId.includes('\\');
 
       const request: ShapComputeRequest = {
@@ -109,15 +104,14 @@ export default function VariableImportance() {
         explainer_type: explainerType,
         n_samples: null,
         n_background: 100,
-        bin_size: binSize,
-        bin_stride: binStride,
-        bin_aggregation: binAggregation,
+        bin_size: 20,
+        bin_stride: 10,
+        bin_aggregation: 'sum',
       };
 
       const response = await computeShapExplanation(request);
       setJobId(response.job_id);
 
-      // If somehow completed synchronously
       if (response.status === 'completed') {
         const fullResults = await getShapResults(response.job_id);
         setResults(fullResults);
@@ -129,7 +123,7 @@ export default function VariableImportance() {
       setError(message);
       setIsSubmitting(false);
     }
-  }, [chainId, datasetName, partition, explainerType, binSize, binStride, binAggregation]);
+  }, [chainId, datasetName, partition, explainerType]);
 
   const canRun = chainId && datasetName && !isRunning;
 
@@ -191,7 +185,6 @@ export default function VariableImportance() {
               )}
             </Button>
 
-            {/* Progress bar during computation */}
             {isRunning && jobId && (
               <div className="space-y-2">
                 <Progress value={progress} className="h-2" />
@@ -223,12 +216,6 @@ export default function VariableImportance() {
             onTabChange={setActiveTab}
             selectedSamples={selectedSamples}
             onSamplesChange={setSelectedSamples}
-            binSize={binSize}
-            binStride={binStride}
-            binAggregation={binAggregation}
-            onBinSizeChange={setBinSize}
-            onBinStrideChange={setBinStride}
-            onBinAggregationChange={setBinAggregation}
           />
         ) : (
           <Card className="h-full min-h-[400px] flex items-center justify-center">
