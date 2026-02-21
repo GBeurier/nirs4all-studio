@@ -73,6 +73,7 @@ import {
   restoreSnapshot,
   deleteSnapshot,
   getWebappChangelog,
+  requestRestart,
   type ConfigSnapshot,
   type ChangelogEntry,
 } from "@/api/client";
@@ -129,6 +130,7 @@ export function UpdatesSection() {
   const [nirs4allDialogOpen, setNirs4allDialogOpen] = useState(false);
   const [webappDialogOpen, setWebappDialogOpen] = useState(false);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
+  const [needsRestart, setNeedsRestart] = useState(false);
 
   const isLoading = statusLoading || settingsLoading;
 
@@ -186,7 +188,12 @@ export function UpdatesSection() {
   };
 
   const handlePrereleaseToggle = (checked: boolean) => {
-    settingsMutation.mutate({ prerelease_channel: checked });
+    settingsMutation.mutate({ prerelease_channel: checked }, {
+      onSuccess: () => {
+        // Re-check for updates with the new channel setting
+        checkMutation.mutate();
+      },
+    });
   };
 
   return (
@@ -219,6 +226,33 @@ export function UpdatesSection() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Restart Banner */}
+        {needsRestart && (
+          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>Package changes require a backend restart to take effect.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
+                  if (electronApi?.restartBackend) {
+                    const result = await electronApi.restartBackend();
+                    if (result.success) setNeedsRestart(false);
+                  } else {
+                    await requestRestart();
+                    setNeedsRestart(false);
+                  }
+                }}
+              >
+                <RotateCcw className="mr-2 h-3 w-3" />
+                Restart Backend
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Webapp Update */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
           <div className="space-y-1">
@@ -234,6 +268,9 @@ export function UpdatesSection() {
                   <span className="font-mono text-primary">
                     {stagedUpdate?.version || status?.webapp?.latest_version}
                   </span>
+                  {status?.webapp?.is_prerelease && (
+                    <Badge variant="outline" className="text-xs py-0 ml-1">pre-release</Badge>
+                  )}
                 </>
               )}
             </div>
@@ -531,12 +568,15 @@ export function UpdatesSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
               {updateDownload.readyToApply
                 ? "Update Ready to Apply"
                 : updateDownload.isDownloading
                   ? "Downloading Update..."
                   : "Webapp Update Available"}
+              {status?.webapp?.is_prerelease && (
+                <Badge variant="outline" className="text-xs">Pre-release</Badge>
+              )}
             </DialogTitle>
             <DialogDescription>
               {updateDownload.readyToApply
@@ -795,7 +835,7 @@ export function UpdatesSection() {
             )}
             <p className="text-sm text-muted-foreground">
               This will install/upgrade nirs4all in the managed virtual environment.
-              No application restart is required.
+              A backend restart may be required afterward.
             </p>
           </div>
           <DialogFooter>
@@ -807,7 +847,12 @@ export function UpdatesSection() {
                 installMutation.mutate(
                   { version: status?.nirs4all?.latest_version || undefined },
                   {
-                    onSuccess: () => setNirs4allDialogOpen(false),
+                    onSuccess: (data) => {
+                      setNirs4allDialogOpen(false);
+                      if (data?.requires_restart) {
+                        setNeedsRestart(true);
+                      }
+                    },
                   }
                 );
               }}

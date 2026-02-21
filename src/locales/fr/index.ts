@@ -407,10 +407,69 @@ const fr = {
       },
     },
 
+    // Config Alignment
+    configAlignment: {
+      title: "Configuration recommandée",
+      description: "Comparer les packages installés avec la configuration recommandée",
+      aligned: "Aligné",
+      outdated: "Obsolète",
+      missing: "Manquant",
+      allAligned: "Tous les packages sont alignés avec la configuration recommandée",
+      driftDetected: "{{count}} package nécessite une attention",
+      driftDetected_other: "{{count}} packages nécessitent une attention",
+      activeProfile: "Profil : {{profile}}",
+      alignAll: "Tout aligner",
+      showDetails: "Afficher les détails",
+      hideDetails: "Masquer les détails",
+      source: "Config depuis {{source}} (app v{{version}})",
+      unavailable: "La configuration recommandée n'est pas disponible",
+    },
+
     // App info footer
     appInfo: {
       version: "nirs4all Studio v{{version}}",
       copyright: "© {{year}} nirs4all Studio",
+    },
+  },
+
+  // ============= Setup Wizard =============
+  setupWizard: {
+    title: "Bienvenue dans nirs4all Studio",
+    subtitle: "Configurons votre environnement pour la meilleure expérience",
+    skip: "Passer la configuration",
+    detect: {
+      title: "Détection du matériel",
+      description: "Recherche des capacités GPU pour recommander la meilleure configuration",
+      scanning: "Recherche du matériel GPU...",
+      noGpu: "Aucun GPU détecté — mode CPU recommandé",
+      autoAdvance: "Sélection du profil recommandé...",
+    },
+    profile: {
+      title: "Sélectionner le profil de calcul",
+      description: "Choisissez comment nirs4all doit fonctionner sur votre système. Modifiable plus tard dans les Paramètres.",
+      recommended: "Recommandé",
+    },
+    extras: {
+      title: "Packages optionnels",
+      description: "Sélectionnez des packages supplémentaires à installer. Installables aussi plus tard depuis les Paramètres.",
+      install: "Installer et continuer",
+      skipInstall: "Passer pour l'instant",
+    },
+    install: {
+      title: "Installation des packages",
+      description: "Configuration de votre environnement. Cela peut prendre quelques minutes.",
+      preparing: "Préparation de l'installation...",
+      installingProfile: "Installation des packages pour le profil sélectionné...",
+      complete: "Installation terminée !",
+      failed: "L'installation a échoué",
+      continueAnyway: "Continuer quand même",
+    },
+    ready: {
+      title: "Tout est prêt !",
+      description: "Votre environnement est configuré et prêt à l'emploi.",
+      profile: "Profil de calcul",
+      extras: "Packages optionnels",
+      launch: "Commencer",
     },
   },
 

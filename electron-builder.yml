@@ -11,8 +11,8 @@ files:
   - dist-electron/**/*
   - "!**/*.map"
 
-# Backend executable (packaged separately with PyInstaller)
-# The build script copies it to backend-dist/ before electron-builder runs
+# Backend (embedded Python + venv for installer mode, PyInstaller exe for standalone mode)
+# The build scripts populate backend-dist/ before electron-builder runs
 extraResources:
   - from: backend-dist/
     to: backend/

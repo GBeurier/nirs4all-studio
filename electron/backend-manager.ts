@@ -51,44 +51,36 @@ export class BackendManager {
   }
 
   /**
-   * Get the path to the Python backend executable
-   * In dev: uses uvicorn directly
-   * In production: uses PyInstaller-bundled executable
-   * Fallback: if bundled backend not found, use venv (for local prod testing)
+   * Get the path to the Python backend.
+   * Priority order:
+   *   1. Dev mode / forced venv: use ../.venv + uvicorn
+   *   2. Installer mode: embedded Python venv in resources/backend/venv/
+   *   3. Standalone mode: PyInstaller executable in resources/backend/
+   *   4. Fallback: dev venv (for local prod testing)
    */
   private getBackendPath(): { command: string; args: string[]; cwd?: string } {
     const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
     const forceVenv = process.env.NIRS4ALL_USE_VENV === "true";
 
-    // Check if bundled backend exists (production build)
-    const resourcesPath = process.resourcesPath;
-    const backendDir = path.join(resourcesPath, "backend");
-    const execName =
-      process.platform === "win32"
-        ? "nirs4all-backend.exe"
-        : "nirs4all-backend";
-    const bundledBackendPath = path.join(backendDir, execName);
+    // 1. Dev mode or forced venv: use the development .venv
+    if (isDev || forceVenv) {
+      return this.getDevBackendPath();
+    }
 
     const fs = require("fs");
-    const hasBundledBackend = fs.existsSync(bundledBackendPath);
+    const resourcesPath = process.resourcesPath;
+    const backendDir = path.join(resourcesPath, "backend");
 
-    // Use venv if: dev mode, forced, or bundled backend not available
-    const useVenv = isDev || forceVenv || !hasBundledBackend;
+    // 2. Installer mode: embedded Python + venv
+    const venvPythonPath =
+      process.platform === "win32"
+        ? path.join(backendDir, "venv", "Scripts", "python.exe")
+        : path.join(backendDir, "venv", "bin", "python");
 
-    if (useVenv) {
-      if (!isDev && !forceVenv && !hasBundledBackend) {
-        console.log("Bundled backend not found, falling back to venv");
-      }
-      // Development/fallback mode: run uvicorn with Python
-      // The venv is at ../.venv relative to the webapp directory
-      const venvPath = path.join(process.cwd(), "..", ".venv");
-      const pythonPath =
-        process.platform === "win32"
-          ? path.join(venvPath, "Scripts", "python.exe")
-          : path.join(venvPath, "bin", "python");
-
+    if (fs.existsSync(venvPythonPath)) {
+      console.log("Using embedded Python venv backend");
       return {
-        command: pythonPath,
+        command: venvPythonPath,
         args: [
           "-m",
           "uvicorn",
@@ -98,15 +90,54 @@ export class BackendManager {
           "--port",
           this.port.toString(),
         ],
-        cwd: process.cwd(), // Need cwd for uvicorn to find main.py
+        cwd: backendDir,
       };
-    } else {
-      // Production mode: use packaged backend
+    }
+
+    // 3. Standalone mode: PyInstaller executable
+    const execName =
+      process.platform === "win32"
+        ? "nirs4all-backend.exe"
+        : "nirs4all-backend";
+    const bundledBackendPath = path.join(backendDir, execName);
+
+    if (fs.existsSync(bundledBackendPath)) {
+      console.log("Using PyInstaller bundled backend");
       return {
         command: bundledBackendPath,
         args: ["--port", this.port.toString()],
       };
     }
+
+    // 4. Fallback: dev venv (for local prod testing)
+    console.log("Bundled backend not found, falling back to dev venv");
+    return this.getDevBackendPath();
+  }
+
+  /**
+   * Get backend path for development mode.
+   * Uses the .venv relative to the webapp's parent directory.
+   */
+  private getDevBackendPath(): { command: string; args: string[]; cwd?: string } {
+    const venvPath = path.join(process.cwd(), "..", ".venv");
+    const pythonPath =
+      process.platform === "win32"
+        ? path.join(venvPath, "Scripts", "python.exe")
+        : path.join(venvPath, "bin", "python");
+
+    return {
+      command: pythonPath,
+      args: [
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        this.port.toString(),
+      ],
+      cwd: process.cwd(),
+    };
   }
 
   /**

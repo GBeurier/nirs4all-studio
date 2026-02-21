@@ -7,6 +7,10 @@
  *
  * Options:
  *   --flavor cpu|gpu      Build flavor (default: cpu)
+ *   --mode installer|standalone  Build mode (default: installer)
+ *                         installer: embedded Python + venv (supports runtime pip)
+ *                         standalone: PyInstaller frozen executable
+ *   --standalone          Shorthand for --mode standalone
  *   --clean               Clean all build artifacts before building
  *   --skip-backend        Skip building the Python backend (use existing)
  *   --skip-frontend       Skip building the frontend (use existing)
@@ -25,6 +29,7 @@ const isWindows = process.platform === "win32";
 // Parse arguments
 const args = process.argv.slice(2);
 let flavor = "cpu";
+let mode = "installer"; // "installer" (embedded Python + venv) or "standalone" (PyInstaller exe)
 let clean = false;
 let skipBackend = false;
 let skipFrontend = false;
@@ -35,6 +40,10 @@ for (let i = 0; i < args.length; i++) {
     flavor = args[++i];
   } else if (args[i] === "--clean") {
     clean = true;
+  } else if (args[i] === "--mode" && args[i + 1]) {
+    mode = args[++i];
+  } else if (args[i] === "--standalone") {
+    mode = "standalone";
   } else if (args[i] === "--skip-backend") {
     skipBackend = true;
   } else if (args[i] === "--skip-frontend") {
@@ -50,11 +59,18 @@ if (!["cpu", "gpu"].includes(flavor)) {
   process.exit(1);
 }
 
+// Validate mode
+if (!["installer", "standalone"].includes(mode)) {
+  console.error(`Error: Invalid mode '${mode}'. Must be 'installer' or 'standalone'.`);
+  process.exit(1);
+}
+
 console.log("========================================");
 console.log("  nirs4all Release Build");
 console.log("========================================");
 console.log("");
 console.log("Build configuration:");
+console.log(`  Mode: ${mode}`);
 console.log(`  Flavor: ${flavor.toUpperCase()}`);
 console.log(`  Platform: ${platform || "current"}`);
 console.log("");
@@ -103,8 +119,13 @@ async function main() {
 
     // Step 1: Build Python backend
     if (!skipBackend) {
-      console.log(`=== Step 1: Building Python backend (${flavor.toUpperCase()}) ===`);
-      await runCommand("node", ["scripts/build-backend.cjs", "--flavor", flavor]);
+      if (mode === "installer") {
+        console.log(`=== Step 1: Setting up embedded Python environment (${flavor.toUpperCase()}) ===`);
+        await runCommand("node", ["scripts/setup-python-env.cjs", "--flavor", flavor]);
+      } else {
+        console.log(`=== Step 1: Building Python backend with PyInstaller (${flavor.toUpperCase()}) ===`);
+        await runCommand("node", ["scripts/build-backend.cjs", "--flavor", flavor]);
+      }
       console.log("");
     } else {
       console.log("=== Step 1: Skipping backend build ===");

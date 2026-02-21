@@ -84,6 +84,7 @@ import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscover
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { DependenciesManager } from "@/components/settings/DependenciesManager";
 import { ConfigPathSettings } from "@/components/settings/ConfigPathSettings";
+import { ConfigAlignment } from "@/components/settings/ConfigAlignment";
 import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
 import {
   getWorkspace,
@@ -472,6 +473,9 @@ export default function Settings() {
 
             {/* Updates Section */}
             <UpdatesSection />
+
+            {/* Config Alignment */}
+            <ConfigAlignment />
 
             {/* Dependencies Manager */}
             <DependenciesManager />

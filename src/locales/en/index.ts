@@ -405,6 +405,24 @@ const en = {
       },
     },
 
+    // Config Alignment
+    configAlignment: {
+      title: "Recommended Configuration",
+      description: "Compare installed packages with the recommended configuration for your profile",
+      aligned: "Aligned",
+      outdated: "Outdated",
+      missing: "Missing",
+      allAligned: "All packages are aligned with recommended configuration",
+      driftDetected: "{{count}} package needs attention",
+      driftDetected_other: "{{count}} packages need attention",
+      activeProfile: "Profile: {{profile}}",
+      alignAll: "Align All",
+      showDetails: "Show package details",
+      hideDetails: "Hide package details",
+      source: "Config from {{source}} (app v{{version}})",
+      unavailable: "Recommended configuration is not available",
+    },
+
     // App info footer
     appInfo: {
       version: "nirs4all Studio v{{version}}",
@@ -965,6 +983,47 @@ const en = {
       save: "Save",
       discard: "Discard",
       stay: "Stay",
+    },
+  },
+
+  // ============= Setup Wizard =============
+  setupWizard: {
+    title: "Welcome to nirs4all Studio",
+    subtitle: "Let's configure your environment for the best experience",
+    skip: "Skip Setup",
+    detect: {
+      title: "Detecting Hardware",
+      description: "Scanning for GPU capabilities to recommend the best configuration",
+      scanning: "Scanning for GPU hardware...",
+      noGpu: "No GPU detected — CPU mode recommended",
+      autoAdvance: "Selecting recommended profile...",
+    },
+    profile: {
+      title: "Select Compute Profile",
+      description: "Choose how nirs4all should run on your system. You can change this later in Settings.",
+      recommended: "Recommended",
+    },
+    extras: {
+      title: "Optional Packages",
+      description: "Select additional packages to install. These can also be installed later from Settings.",
+      install: "Install & Continue",
+      skipInstall: "Skip for Now",
+    },
+    install: {
+      title: "Installing Packages",
+      description: "Setting up your environment. This may take a few minutes.",
+      preparing: "Preparing installation...",
+      installingProfile: "Installing packages for selected profile...",
+      complete: "Installation complete!",
+      failed: "Installation failed",
+      continueAnyway: "Continue Anyway",
+    },
+    ready: {
+      title: "You're All Set!",
+      description: "Your environment is configured and ready to use.",
+      profile: "Compute Profile",
+      extras: "Optional Packages",
+      launch: "Get Started",
     },
   },
 

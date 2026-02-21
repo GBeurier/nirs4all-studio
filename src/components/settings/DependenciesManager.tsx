@@ -58,6 +58,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   getDependencies,
   installDependency,
@@ -66,6 +67,7 @@ import {
   refreshDependencies,
   getVenvPath,
   setVenvPath,
+  requestRestart,
 } from "@/api/client";
 import { selectFolder } from "@/utils/fileDialogs";
 import type {
@@ -316,6 +318,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     success: boolean;
     message: string;
   } | null>(null);
+  const [needsRestart, setNeedsRestart] = useState(false);
 
   const loadDependencies = async (forceRefresh = false) => {
     try {
@@ -399,6 +402,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         success: result.success,
         message: result.message,
       });
+      if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
     } catch (err) {
       setLastAction({
@@ -423,6 +427,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         success: result.success,
         message: result.message,
       });
+      if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
     } catch (err) {
       setLastAction({
@@ -447,6 +452,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         success: result.success,
         message: result.message,
       });
+      if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
     } catch (err) {
       setLastAction({
@@ -698,6 +704,33 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               Dismiss
             </Button>
           </div>
+        )}
+
+        {/* Restart Banner */}
+        {needsRestart && (
+          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>Package changes require a backend restart to take effect.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
+                  if (electronApi?.restartBackend) {
+                    const result = await electronApi.restartBackend();
+                    if (result.success) setNeedsRestart(false);
+                  } else {
+                    await requestRestart();
+                    setNeedsRestart(false);
+                  }
+                }}
+              >
+                <RotateCcw className="mr-2 h-3 w-3" />
+                Restart Backend
+              </Button>
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Categories */}

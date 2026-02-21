@@ -49,6 +49,7 @@ from api.shap import router as shap_router
 from api.aggregated_predictions import router as aggregated_predictions_router
 from api.projects import router as projects_router
 from api.inspector import router as inspector_router
+from api.recommended_config import router as config_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -132,6 +133,7 @@ app.include_router(transfer_router, prefix="/api", tags=["transfer"])
 app.include_router(shap_router, prefix="/api", tags=["shap"])
 app.include_router(projects_router, prefix="/api", tags=["projects"])
 app.include_router(inspector_router, prefix="/api", tags=["inspector"])
+app.include_router(config_router, prefix="/api", tags=["config"])
 
 
 # ============= Startup Events =============
@@ -165,10 +167,14 @@ async def startup_event():
     except Exception as e:
         logger.error("Failed to restore active workspace: %s", e)
 
+    import asyncio
+
     # Check for updates in background if auto-check is enabled
     if update_manager.settings.auto_check:
-        import asyncio
         asyncio.create_task(check_updates_background())
+
+    # Pre-cache recommended config in background
+    asyncio.create_task(cache_recommended_config_background())
 
 
 async def check_updates_background():
@@ -182,6 +188,20 @@ async def check_updates_background():
             logger.info("nirs4all update available: %s", status.nirs4all.latest_version)
     except Exception as e:
         logger.error("Background update check failed: %s", e)
+
+
+async def cache_recommended_config_background():
+    """Background task to pre-cache recommended config from GitHub."""
+    try:
+        from api.recommended_config import _fetch_remote_config, _config_cache
+        remote = await _fetch_remote_config()
+        if remote:
+            _config_cache.set_cached_config(remote)
+            logger.info("Recommended config cached from remote (app_version=%s)", remote.get("app_version"))
+        else:
+            logger.debug("Could not fetch remote recommended config, bundled fallback will be used")
+    except Exception as e:
+        logger.debug("Background recommended config fetch failed: %s", e)
 
 
 # ============= WebSocket Endpoints =============

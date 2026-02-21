@@ -1725,6 +1725,7 @@ export interface WebappUpdateInfo {
   download_url: string | null;
   asset_name: string | null;
   checksum_sha256: string | null;
+  is_prerelease: boolean;
 }
 
 export interface Nirs4allUpdateInfo {
@@ -2051,6 +2052,7 @@ export interface PackageActionResponse {
   package: string;
   version?: string | null;
   output?: string[];
+  requires_restart?: boolean;
 }
 
 export interface VenvPathInfo {
@@ -2356,5 +2358,133 @@ export async function updateProject(projectId: string, data: { name?: string; de
 
 export async function deleteProject(projectId: string): Promise<{ success: boolean }> {
   return api.delete(`/projects/${projectId}`);
+}
+
+// ============= Recommended Config API =============
+
+export interface ProfileInfo {
+  id: string;
+  label: string;
+  description: string;
+  packages: Record<string, string>;
+}
+
+export interface OptionalPackageInfo {
+  name: string;
+  version: string;
+  description: string;
+  category: string;
+}
+
+export interface RecommendedConfigResponse {
+  schema_version: string;
+  app_version: string;
+  nirs4all: string;
+  profiles: ProfileInfo[];
+  optional: OptionalPackageInfo[];
+  fetched_from: string;
+  fetched_at: string;
+}
+
+export interface PackageDiff {
+  name: string;
+  installed_version: string | null;
+  recommended_version: string;
+  status: "aligned" | "outdated" | "missing" | "extra";
+  action: string | null;
+}
+
+export interface ConfigComparisonResponse {
+  profile: string | null;
+  profile_label: string | null;
+  packages: PackageDiff[];
+  aligned_count: number;
+  misaligned_count: number;
+  missing_count: number;
+  is_aligned: boolean;
+  checked_at: string;
+}
+
+export interface AlignConfigRequest {
+  profile: string;
+  optional_packages?: string[];
+  dry_run?: boolean;
+}
+
+export interface AlignConfigResponse {
+  success: boolean;
+  message: string;
+  installed: string[];
+  upgraded: string[];
+  failed: string[];
+  dry_run: boolean;
+}
+
+export interface SetupStatusResponse {
+  setup_completed: boolean;
+  selected_profile: string | null;
+  completed_at: string | null;
+}
+
+export interface GPUDetectionResponse {
+  has_cuda: boolean;
+  has_metal: boolean;
+  cuda_version: string | null;
+  gpu_name: string | null;
+  recommended_profiles: string[];
+}
+
+/**
+ * Get recommended configuration (profiles + optional packages)
+ */
+export async function getRecommendedConfig(forceRefresh: boolean = false): Promise<RecommendedConfigResponse> {
+  const params = forceRefresh ? "?force_refresh=true" : "";
+  return api.get(`/config/recommended${params}`);
+}
+
+/**
+ * Compare installed packages against recommended config
+ */
+export async function getConfigDiff(profile?: string, includeOptional?: boolean): Promise<ConfigComparisonResponse> {
+  const searchParams = new URLSearchParams();
+  if (profile) searchParams.set("profile", profile);
+  if (includeOptional) searchParams.set("include_optional", "true");
+  const qs = searchParams.toString();
+  return api.get(`/config/diff${qs ? `?${qs}` : ""}`);
+}
+
+/**
+ * Align packages with recommended config
+ */
+export async function alignConfig(request: AlignConfigRequest): Promise<AlignConfigResponse> {
+  return api.post("/config/align", request);
+}
+
+/**
+ * Get first-launch setup status
+ */
+export async function getSetupStatus(): Promise<SetupStatusResponse> {
+  return api.get("/config/setup-status");
+}
+
+/**
+ * Complete first-launch setup
+ */
+export async function completeSetup(profile: string, optionalPackages: string[] = []): Promise<SetupStatusResponse> {
+  return api.post("/config/complete-setup", { profile, optional_packages: optionalPackages });
+}
+
+/**
+ * Detect GPU hardware
+ */
+export async function detectGPU(): Promise<GPUDetectionResponse> {
+  return api.get("/config/detect-gpu");
+}
+
+/**
+ * Skip first-launch setup (defaults to CPU)
+ */
+export async function skipSetup(): Promise<SetupStatusResponse> {
+  return api.post("/config/skip-setup");
 }
 

@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+
+# Build outputs
+dist/
+dist-electron/
+release/
+backend-dist/
+
+# Development
+.git/
+.github/
+.vscode/
+*.md
+!README.md
+
+# Tests
+tests/
+e2e/
+playwright-report/
+test-results/
+
+# Electron (not used in Docker)
+electron/
+build/
+installer/
+
+# Specs
+*.spec
+
+# Environment
+.env
+.env.*
+
+# IDE
+*.swp
+*.swo
+.idea/

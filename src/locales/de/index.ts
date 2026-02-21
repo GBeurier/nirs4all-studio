@@ -403,10 +403,69 @@ const de = {
       },
     },
 
+    // Config Alignment
+    configAlignment: {
+      title: "Empfohlene Konfiguration",
+      description: "Installierte Pakete mit der empfohlenen Konfiguration vergleichen",
+      aligned: "Abgestimmt",
+      outdated: "Veraltet",
+      missing: "Fehlend",
+      allAligned: "Alle Pakete stimmen mit der empfohlenen Konfiguration überein",
+      driftDetected: "{{count}} Paket benötigt Aufmerksamkeit",
+      driftDetected_other: "{{count}} Pakete benötigen Aufmerksamkeit",
+      activeProfile: "Profil: {{profile}}",
+      alignAll: "Alle ausrichten",
+      showDetails: "Details anzeigen",
+      hideDetails: "Details ausblenden",
+      source: "Konfiguration von {{source}} (App v{{version}})",
+      unavailable: "Die empfohlene Konfiguration ist nicht verfügbar",
+    },
+
     // App info footer
     appInfo: {
       version: "nirs4all webapp v{{version}}",
       copyright: "© {{year}} nirs4all",
+    },
+  },
+
+  // ============= Setup Wizard =============
+  setupWizard: {
+    title: "Willkommen bei nirs4all Studio",
+    subtitle: "Konfigurieren wir Ihre Umgebung für das beste Erlebnis",
+    skip: "Einrichtung überspringen",
+    detect: {
+      title: "Hardware-Erkennung",
+      description: "GPU-Fähigkeiten werden erkannt, um die beste Konfiguration zu empfehlen",
+      scanning: "GPU-Hardware wird gesucht...",
+      noGpu: "Keine GPU erkannt — CPU-Modus empfohlen",
+      autoAdvance: "Empfohlenes Profil wird ausgewählt...",
+    },
+    profile: {
+      title: "Rechenprofil auswählen",
+      description: "Wählen Sie, wie nirs4all auf Ihrem System laufen soll. Änderbar in den Einstellungen.",
+      recommended: "Empfohlen",
+    },
+    extras: {
+      title: "Optionale Pakete",
+      description: "Zusätzliche Pakete zur Installation auswählen. Auch später in den Einstellungen installierbar.",
+      install: "Installieren und fortfahren",
+      skipInstall: "Vorerst überspringen",
+    },
+    install: {
+      title: "Pakete werden installiert",
+      description: "Ihre Umgebung wird eingerichtet. Dies kann einige Minuten dauern.",
+      preparing: "Installation wird vorbereitet...",
+      installingProfile: "Pakete für das ausgewählte Profil werden installiert...",
+      complete: "Installation abgeschlossen!",
+      failed: "Installation fehlgeschlagen",
+      continueAnyway: "Trotzdem fortfahren",
+    },
+    ready: {
+      title: "Alles bereit!",
+      description: "Ihre Umgebung ist konfiguriert und einsatzbereit.",
+      profile: "Rechenprofil",
+      extras: "Optionale Pakete",
+      launch: "Los geht's",
     },
   },
 

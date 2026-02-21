@@ -44,6 +44,12 @@ except ImportError:
 
 router = APIRouter(prefix="/updates", tags=["updates"])
 
+# Packages that require a backend restart after install/update/uninstall
+RESTART_REQUIRED_PACKAGES = {
+    "nirs4all", "numpy", "scipy", "scikit-learn", "pandas",
+    "duckdb", "pydantic", "fastapi", "uvicorn",
+}
+
 
 # ============= nirs4all Optional Dependencies Definition =============
 
@@ -264,6 +270,7 @@ class WebappUpdateInfo(BaseModel):
     download_url: Optional[str] = None
     asset_name: Optional[str] = None
     checksum_sha256: Optional[str] = None
+    is_prerelease: bool = False
 
 
 class Nirs4allUpdateInfo(BaseModel):
@@ -384,8 +391,14 @@ class UpdateManager:
 
     def update_settings(self, new_settings: UpdateSettings) -> None:
         """Update settings."""
+        old_prerelease = self._settings.prerelease_channel if self._settings else False
         self._settings = new_settings
         self._save_settings()
+        # Invalidate release cache if prerelease channel setting changed
+        if new_settings.prerelease_channel != old_prerelease:
+            cache = self._ensure_cache_loaded()
+            cache.pop("github_release", None)
+            self._save_cache()
 
     def get_webapp_version(self) -> str:
         """Get the current webapp version."""
@@ -465,6 +478,7 @@ class UpdateManager:
                 info.asset_name = cached.get("asset_name")
                 info.download_size_bytes = cached.get("download_size_bytes")
                 info.checksum_sha256 = cached.get("checksum_sha256")
+                info.is_prerelease = cached.get("is_prerelease", False)
                 info.update_available = self._compare_versions(
                     current_version, info.latest_version
                 )
@@ -472,7 +486,14 @@ class UpdateManager:
 
         # Fetch from GitHub API
         repo = self.settings.github_repo
-        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+        include_prereleases = self.settings.prerelease_channel
+
+        if include_prereleases:
+            # List all releases (includes pre-releases), take the newest
+            api_url = f"https://api.github.com/repos/{repo}/releases?per_page=1"
+        else:
+            # Only get the latest stable release
+            api_url = f"https://api.github.com/repos/{repo}/releases/latest"
 
         headers = {
             "Accept": "application/vnd.github.v3+json",
@@ -492,11 +513,18 @@ class UpdateManager:
 
             data = json.loads(content)
 
+            # If we requested all releases, data is a list — take the first one
+            if include_prereleases and isinstance(data, list):
+                if not data:
+                    return info
+                data = data[0]
+
             # Parse release info
             info.latest_version = data.get("tag_name", "").lstrip("v")
             info.release_url = data.get("html_url")
             info.release_notes = data.get("body", "")
             info.published_at = data.get("published_at")
+            info.is_prerelease = data.get("prerelease", False)
 
             # Find appropriate asset for this platform
             assets = data.get("assets", [])
@@ -527,6 +555,7 @@ class UpdateManager:
                 "asset_name": info.asset_name,
                 "download_size_bytes": info.download_size_bytes,
                 "checksum_sha256": info.checksum_sha256,
+                "is_prerelease": info.is_prerelease,
             }
             self._save_cache()
 
@@ -947,6 +976,7 @@ async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
         "message": message,
         "version": venv_manager.get_nirs4all_version(),
         "output": output[-50:],  # Last 50 lines
+        "requires_restart": True,  # nirs4all always requires restart
     }
 
 
@@ -1249,13 +1279,27 @@ async def restart_webapp() -> Dict[str, Any]:
     """
     Request webapp restart.
 
-    Note: This endpoint signals the intention to restart.
-    Actual restart must be handled by the launcher/frontend.
+    In Electron mode: the frontend should call window.electronApi.restartBackend().
+    In web mode: signals graceful shutdown so the process manager can restart.
     """
+    is_electron = os.environ.get("NIRS4ALL_ELECTRON") == "true"
+
+    if not is_electron:
+        # In web mode, schedule a graceful shutdown after response is sent.
+        # A process manager (systemd, Docker) should restart the process.
+        import signal
+
+        async def _shutdown():
+            await asyncio.sleep(1)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        asyncio.create_task(_shutdown())
+
     return {
         "success": True,
-        "message": "Restart requested. Please close and reopen the application.",
+        "message": "Restart requested.",
         "restart_required": True,
+        "is_electron": is_electron,
     }
 
 
@@ -1475,6 +1519,7 @@ async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
         "package": request.package,
         "version": installed_version,
         "output": output[-30:],  # Last 30 lines
+        "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
     }
 
 
@@ -1507,6 +1552,7 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> Dict[str, An
         "success": True,
         "message": message,
         "package": request.package,
+        "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
     }
 
 
@@ -1549,6 +1595,7 @@ async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
         "package": request.package,
         "version": installed_version,
         "output": output[-30:],
+        "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
     }
 
 

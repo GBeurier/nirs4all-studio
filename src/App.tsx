@@ -17,6 +17,7 @@ import SpectraSynthesis from "@/pages/SpectraSynthesis";
 import TransferAnalysis from "@/pages/TransferAnalysis";
 import VariableImportance from "@/pages/VariableImportance";
 import Settings from "@/pages/Settings";
+import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
           <Route path="shapley" element={<VariableImportance />} />
         </Route>
         <Route path="settings" element={<Settings />} />
+        <Route path="setup" element={<SetupWizard />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

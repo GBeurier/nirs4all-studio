@@ -1,8 +1,11 @@
 /**
  * Startup update check hook.
  *
- * On app mount, checks for available updates (using cached status)
- * and shows a toast notification if any are available.
+ * On app mount:
+ * 1. Checks if first-launch setup is needed (redirects to /setup)
+ * 2. Checks for available updates and shows toast notification
+ * 3. Checks for config drift and shows settings badge
+ *
  * Respects the auto_check setting.
  */
 
@@ -10,13 +13,30 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useUpdateStatus, useUpdateSettings } from "./useUpdates";
+import { useSetupStatus, useIsConfigAligned } from "./useRecommendedConfig";
 
 export function useStartupUpdateCheck() {
   const { data: status } = useUpdateStatus();
   const { data: settings } = useUpdateSettings();
+  const { data: setupStatus } = useSetupStatus();
+  const { isAligned, misalignedCount } = useIsConfigAligned();
   const navigate = useNavigate();
   const hasNotified = useRef(false);
+  const hasCheckedSetup = useRef(false);
 
+  // Check for first-launch setup
+  useEffect(() => {
+    if (hasCheckedSetup.current) return;
+    if (!setupStatus) return;
+
+    hasCheckedSetup.current = true;
+
+    if (!setupStatus.setup_completed) {
+      navigate("/setup", { replace: true });
+    }
+  }, [setupStatus, navigate]);
+
+  // Check for updates
   useEffect(() => {
     if (hasNotified.current) return;
     if (!status || !settings) return;
@@ -46,4 +66,20 @@ export function useStartupUpdateCheck() {
       },
     });
   }, [status, settings, navigate]);
+
+  // Config drift notification
+  useEffect(() => {
+    if (!setupStatus?.setup_completed) return;
+    if (isAligned) return;
+    if (misalignedCount === 0) return;
+
+    toast("Configuration drift detected", {
+      description: `${misalignedCount} package${misalignedCount > 1 ? "s" : ""} differ from recommended config`,
+      duration: 6000,
+      action: {
+        label: "Review",
+        onClick: () => navigate("/settings?tab=advanced"),
+      },
+    });
+  }, [isAligned, misalignedCount, setupStatus, navigate]);
 }
