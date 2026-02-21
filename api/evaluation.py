@@ -13,18 +13,18 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-
-from .workspace_manager import workspace_manager
 
 # Import nirs4all metrics and task detection
 from nirs4all.core.metrics import eval_multi, get_available_metrics
 from nirs4all.core.task_detection import detect_task_type
 from nirs4all.core.task_type import TaskType
+from pydantic import BaseModel, Field
+
+from .workspace_manager import workspace_manager
 
 try:
     from sklearn.metrics import confusion_matrix as sklearn_confusion_matrix
-    from sklearn.model_selection import cross_val_score, cross_val_predict, KFold
+    from sklearn.model_selection import KFold, cross_val_predict, cross_val_score
 
     SKLEARN_AVAILABLE = True
 except ImportError:
@@ -50,7 +50,7 @@ class EvaluateRequest(BaseModel):
     model_id: str = Field(..., description="ID of the trained model to evaluate")
     dataset_id: str = Field(..., description="ID of the dataset for evaluation")
     partition: str = Field("test", description="Dataset partition to use")
-    preprocessing_chain: List[Dict[str, Any]] = Field(
+    preprocessing_chain: list[dict[str, Any]] = Field(
         default=[], description="Preprocessing steps to apply"
     )
 
@@ -63,19 +63,19 @@ class EvaluateResult(BaseModel):
     partition: str
     task_type: str  # regression or classification
     num_samples: int
-    metrics: Dict[str, float]
-    predictions: List[float]
-    actual: List[float]
-    residuals: Optional[List[float]] = None
+    metrics: dict[str, float]
+    predictions: list[float]
+    actual: list[float]
+    residuals: list[float] | None = None
 
 
 class ConfusionMatrixRequest(BaseModel):
     """Request model for confusion matrix computation."""
 
-    y_true: List[Any] = Field(..., description="True labels")
-    y_pred: List[Any] = Field(..., description="Predicted labels")
-    labels: Optional[List[Any]] = Field(None, description="Class labels in order")
-    normalize: Optional[str] = Field(
+    y_true: list[Any] = Field(..., description="True labels")
+    y_pred: list[Any] = Field(..., description="Predicted labels")
+    labels: list[Any] | None = Field(None, description="Class labels in order")
+    normalize: str | None = Field(
         None, description="Normalization: 'true', 'pred', 'all', or None"
     )
 
@@ -83,26 +83,26 @@ class ConfusionMatrixRequest(BaseModel):
 class ConfusionMatrixResult(BaseModel):
     """Result of confusion matrix computation."""
 
-    matrix: List[List[float]]
-    labels: List[Any]
+    matrix: list[list[float]]
+    labels: list[Any]
     normalized: bool
 
 
 class ResidualRequest(BaseModel):
     """Request model for residual analysis."""
 
-    y_true: List[float] = Field(..., description="True values")
-    y_pred: List[float] = Field(..., description="Predicted values")
+    y_true: list[float] = Field(..., description="True values")
+    y_pred: list[float] = Field(..., description="Predicted values")
 
 
 class ResidualResult(BaseModel):
     """Result of residual analysis."""
 
-    residuals: List[float]
-    standardized_residuals: List[float]
-    statistics: Dict[str, float]
-    outlier_indices: List[int]
-    normality_test: Dict[str, float]
+    residuals: list[float]
+    standardized_residuals: list[float]
+    statistics: dict[str, float]
+    outlier_indices: list[int]
+    normality_test: dict[str, float]
 
 
 class CrossValRequest(BaseModel):
@@ -113,7 +113,7 @@ class CrossValRequest(BaseModel):
     partition: str = Field("train", description="Dataset partition to use")
     cv: int = Field(5, ge=2, le=20, description="Number of CV folds")
     scoring: str = Field("r2", description="Scoring metric: r2, neg_mse, neg_mae, accuracy")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
     return_predictions: bool = Field(False, description="Return cross-validated predictions")
 
 
@@ -124,11 +124,11 @@ class CrossValResult(BaseModel):
     dataset_id: str
     cv: int
     scoring: str
-    scores: List[float]
+    scores: list[float]
     mean_score: float
     std_score: float
-    predictions: Optional[List[float]] = None
-    actual: Optional[List[float]] = None
+    predictions: list[float] | None = None
+    actual: list[float] | None = None
 
 
 class ReportRequest(BaseModel):
@@ -148,7 +148,7 @@ class ReportResult(BaseModel):
     dataset_id: str
     generated_at: str
     format: str
-    content: Dict[str, Any]
+    content: dict[str, Any]
 
 
 # ============= Evaluation Routes =============
@@ -187,7 +187,7 @@ async def evaluate_model(request: EvaluateRequest):
         )
 
     # Load dataset
-    from .spectra import _load_dataset, _apply_preprocessing_chain
+    from .spectra import _apply_preprocessing_chain, _load_dataset
 
     dataset = _load_dataset(request.dataset_id)
     if not dataset:
@@ -275,7 +275,7 @@ async def confusion_matrix(request: ConfusionMatrixRequest):
     if request.labels:
         labels = request.labels
     else:
-        labels = sorted(list(set(y_true.tolist()) | set(y_pred.tolist())))
+        labels = sorted(set(y_true.tolist()) | set(y_pred.tolist()))
 
     # Compute confusion matrix
     cm = sklearn_confusion_matrix(y_true, y_pred, labels=labels)
@@ -381,7 +381,7 @@ async def cross_validate(request: CrossValRequest):
         )
 
     # Load dataset
-    from .spectra import _load_dataset, _apply_preprocessing_chain
+    from .spectra import _apply_preprocessing_chain, _load_dataset
 
     dataset = _load_dataset(request.dataset_id)
     if not dataset:
@@ -614,7 +614,7 @@ def _compute_kurtosis(data: np.ndarray) -> float:
     return float(np.mean(((data - mean) / std) ** 4) - 3)
 
 
-def _normality_test(data: np.ndarray) -> Dict[str, float]:
+def _normality_test(data: np.ndarray) -> dict[str, float]:
     """Perform normality test on data.
 
     Args:
@@ -624,7 +624,7 @@ def _normality_test(data: np.ndarray) -> Dict[str, float]:
         Dictionary with test results
     """
     try:
-        from scipy.stats import shapiro, normaltest
+        from scipy.stats import normaltest, shapiro
 
         n = len(data)
 
@@ -650,7 +650,7 @@ def _normality_test(data: np.ndarray) -> Dict[str, float]:
         return {"error": str(e)}
 
 
-def _build_model_from_pipeline(pipeline_config: Dict[str, Any]) -> Optional[Any]:
+def _build_model_from_pipeline(pipeline_config: dict[str, Any]) -> Any | None:
     """Build a sklearn model from pipeline configuration.
 
     Args:
@@ -672,7 +672,7 @@ def _build_model_from_pipeline(pipeline_config: Dict[str, Any]) -> Optional[Any]
     return None
 
 
-def _format_report_markdown(content: Dict[str, Any]) -> str:
+def _format_report_markdown(content: dict[str, Any]) -> str:
     """Format report content as Markdown.
 
     Args:
@@ -718,7 +718,7 @@ def _format_report_markdown(content: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_report_html(content: Dict[str, Any]) -> str:
+def _format_report_html(content: dict[str, Any]) -> str:
     """Format report content as HTML.
 
     Args:

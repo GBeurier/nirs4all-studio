@@ -19,16 +19,17 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
-from .jobs import job_manager, Job, JobStatus, JobType
+from .jobs import Job, JobStatus, JobType, job_manager
 from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -58,9 +59,9 @@ class SearchSpaceParam(BaseModel):
 
     name: str = Field(..., description="Parameter name")
     type: str = Field(..., description="Parameter type: int, float, categorical")
-    low: Optional[float] = Field(None, description="Lower bound (for int/float)")
-    high: Optional[float] = Field(None, description="Upper bound (for int/float)")
-    choices: Optional[List[Any]] = Field(None, description="Choices (for categorical)")
+    low: float | None = Field(None, description="Lower bound (for int/float)")
+    high: float | None = Field(None, description="Upper bound (for int/float)")
+    choices: list[Any] | None = Field(None, description="Choices (for categorical)")
     log: bool = Field(False, description="Use log scale (for int/float)")
 
 
@@ -69,7 +70,7 @@ class ModelSearchConfig(BaseModel):
 
     model_name: str = Field(..., description="Model class name")
     enabled: bool = Field(True, description="Whether to include in search")
-    params: List[SearchSpaceParam] = Field(
+    params: list[SearchSpaceParam] = Field(
         default_factory=list,
         description="Hyperparameters to tune",
     )
@@ -83,16 +84,16 @@ class AutoMLRequest(BaseModel):
     task_type: str = Field("regression", description="Task type: regression or classification")
     metric: str = Field("r2", description="Optimization metric")
     n_trials: int = Field(50, ge=5, le=500, description="Number of trials")
-    timeout_seconds: Optional[int] = Field(
+    timeout_seconds: int | None = Field(
         None, ge=60, description="Maximum time in seconds"
     )
     cv_folds: int = Field(5, ge=2, le=10, description="Cross-validation folds")
     validation_split: float = Field(0.2, ge=0.1, le=0.4, description="Validation split ratio")
-    random_state: Optional[int] = Field(42, description="Random seed")
-    preprocessing_chain: Optional[List[Dict[str, Any]]] = Field(
+    random_state: int | None = Field(42, description="Random seed")
+    preprocessing_chain: list[dict[str, Any]] | None = Field(
         None, description="Fixed preprocessing chain to apply"
     )
-    models: Optional[List[ModelSearchConfig]] = Field(
+    models: list[ModelSearchConfig] | None = Field(
         None, description="Models to search (None for defaults)"
     )
     include_preprocessing_search: bool = Field(
@@ -105,12 +106,12 @@ class TrialResult(BaseModel):
 
     trial_id: int
     model_name: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
     score: float
-    std: Optional[float] = None
+    std: float | None = None
     duration_seconds: float
     status: str  # "completed", "failed", "pruned"
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class AutoMLStatus(BaseModel):
@@ -122,8 +123,8 @@ class AutoMLStatus(BaseModel):
     progress_message: str
     trials_completed: int
     trials_total: int
-    best_score: Optional[float] = None
-    best_model: Optional[str] = None
+    best_score: float | None = None
+    best_model: str | None = None
     elapsed_seconds: float
     created_at: str
 
@@ -135,16 +136,16 @@ class AutoMLResults(BaseModel):
     status: str
     best_score: float
     best_model: str
-    best_params: Dict[str, Any]
-    all_trials: List[TrialResult]
-    model_path: Optional[str] = None
+    best_params: dict[str, Any]
+    all_trials: list[TrialResult]
+    model_path: str | None = None
     search_duration_seconds: float
 
 
 # ============= Default Search Spaces =============
 
 
-def get_default_regression_models() -> List[Dict[str, Any]]:
+def get_default_regression_models() -> list[dict[str, Any]]:
     """Get default model search space for regression tasks."""
     return [
         {
@@ -214,7 +215,7 @@ def get_default_regression_models() -> List[Dict[str, Any]]:
     ]
 
 
-def get_default_classification_models() -> List[Dict[str, Any]]:
+def get_default_classification_models() -> list[dict[str, Any]]:
     """Get default model search space for classification tasks."""
     return [
         {
@@ -485,7 +486,7 @@ async def get_automl_trials(job_id: str):
 
 @router.get("/automl/jobs")
 async def list_automl_jobs(
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = 50,
 ):
     """
@@ -551,7 +552,7 @@ async def list_available_models(task_type: str = "regression"):
 # ============= Pipeline Generator Helpers =============
 
 
-def _build_model_generator_step(models_config: List[Dict[str, Any]], n_trials: int) -> Dict[str, Any]:
+def _build_model_generator_step(models_config: list[dict[str, Any]], n_trials: int) -> dict[str, Any]:
     """
     Build a pipeline model step using nirs4all generator syntax.
 
@@ -667,7 +668,7 @@ def _get_model_class(model_name: str):
 def _run_automl_task(
     job: Job,
     progress_callback: Callable[[float, str], bool],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute the AutoML search task using nirs4all.run() with generator pipelines.
 
@@ -847,7 +848,7 @@ def _get_transformer_class(name: str):
 
 def _send_trial_notification(
     job_id: str,
-    trial_result: Dict[str, Any],
+    trial_result: dict[str, Any],
     trial_num: int,
     total_trials: int,
 ) -> None:

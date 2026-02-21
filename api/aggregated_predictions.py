@@ -17,7 +17,7 @@ import re
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -60,28 +60,28 @@ class ChainSummary(BaseModel):
     run_id: str
     pipeline_id: str
     chain_id: str
-    model_name: Optional[str] = None
+    model_name: str | None = None
     model_class: str
-    preprocessings: Optional[str] = None
-    branch_path: Optional[Any] = None
-    source_index: Optional[int] = None
+    preprocessings: str | None = None
+    branch_path: Any | None = None
+    source_index: int | None = None
     model_step_idx: int
-    metric: Optional[str] = None
-    task_type: Optional[str] = None
-    dataset_name: Optional[str] = None
-    best_params: Optional[Any] = None
+    metric: str | None = None
+    task_type: str | None = None
+    dataset_name: str | None = None
+    best_params: Any | None = None
     # CV scores
-    cv_val_score: Optional[float] = None
-    cv_test_score: Optional[float] = None
-    cv_train_score: Optional[float] = None
+    cv_val_score: float | None = None
+    cv_test_score: float | None = None
+    cv_train_score: float | None = None
     cv_fold_count: int = 0
-    cv_scores: Optional[Any] = None
+    cv_scores: Any | None = None
     # Final/refit scores
-    final_test_score: Optional[float] = None
-    final_train_score: Optional[float] = None
-    final_scores: Optional[Any] = None
+    final_test_score: float | None = None
+    final_train_score: float | None = None
+    final_scores: Any | None = None
     # Pipeline status from JOIN
-    pipeline_status: Optional[str] = None
+    pipeline_status: str | None = None
 
 
 # Deprecated alias
@@ -91,7 +91,7 @@ AggregatedPrediction = ChainSummary
 class ChainSummariesResponse(BaseModel):
     """Response for chain summaries query."""
 
-    predictions: List[ChainSummary]
+    predictions: list[ChainSummary]
     total: int
     generated_at: str
 
@@ -105,47 +105,47 @@ class PartitionPrediction(BaseModel):
 
     prediction_id: str
     pipeline_id: str
-    chain_id: Optional[str] = None
+    chain_id: str | None = None
     dataset_name: str
     model_name: str
     model_class: str
     fold_id: str
     partition: str
-    val_score: Optional[float] = None
-    test_score: Optional[float] = None
-    train_score: Optional[float] = None
+    val_score: float | None = None
+    test_score: float | None = None
+    train_score: float | None = None
     metric: str
     task_type: str
-    n_samples: Optional[int] = None
-    n_features: Optional[int] = None
-    preprocessings: Optional[str] = None
+    n_samples: int | None = None
+    n_features: int | None = None
+    preprocessings: str | None = None
 
 
 class ChainDetailResponse(BaseModel):
     """Response for chain detail with predictions."""
 
     chain_id: str
-    summary: Optional[ChainSummary] = None
-    predictions: List[PartitionPrediction]
-    pipeline: Optional[Dict[str, Any]] = None
+    summary: ChainSummary | None = None
+    predictions: list[PartitionPrediction]
+    pipeline: dict[str, Any] | None = None
 
 
 class PredictionArraysResponse(BaseModel):
     """Response for prediction arrays."""
 
     prediction_id: str
-    y_true: Optional[List[float]] = None
-    y_pred: Optional[List[float]] = None
-    y_proba: Optional[List[float]] = None
-    sample_indices: Optional[List[int]] = None
-    weights: Optional[List[float]] = None
+    y_true: list[float] | None = None
+    y_pred: list[float] | None = None
+    y_proba: list[float] | None = None
+    sample_indices: list[int] | None = None
+    weights: list[float] | None = None
     n_samples: int = 0
 
 
 class ExportRequest(BaseModel):
     """Bulk export request."""
 
-    dataset_names: Optional[List[str]] = Field(
+    dataset_names: list[str] | None = Field(
         default=None,
         description="Dataset names to export. Null exports all available datasets.",
     )
@@ -161,8 +161,8 @@ class SQLQueryRequest(BaseModel):
 class SQLQueryResponse(BaseModel):
     """Response model for SQL query results."""
 
-    columns: List[str]
-    rows: List[List[Any]]
+    columns: list[str]
+    rows: list[list[Any]]
     row_count: int
 
 
@@ -196,7 +196,7 @@ def _sanitize_dict(d: dict) -> dict:
     return out
 
 
-def _get_store() -> "WorkspaceStore":
+def _get_store() -> WorkspaceStore:
     """Get a WorkspaceStore for the current workspace (read-only queries).
 
     Raises HTTPException if no workspace is selected or store is unavailable.
@@ -275,12 +275,12 @@ def _list_array_datasets(workspace_path: Path) -> dict[str, Path]:
 
 @router.get("", response_model=ChainSummariesResponse)
 async def get_aggregated_predictions(
-    run_id: Optional[str] = Query(None, description="Filter by run ID"),
-    pipeline_id: Optional[str] = Query(None, description="Filter by pipeline ID"),
-    chain_id: Optional[str] = Query(None, description="Filter by chain ID"),
-    dataset_name: Optional[str] = Query(None, description="Filter by dataset name"),
-    model_class: Optional[str] = Query(None, description="Filter by model class"),
-    metric: Optional[str] = Query(None, description="Filter by metric"),
+    run_id: str | None = Query(None, description="Filter by run ID"),
+    pipeline_id: str | None = Query(None, description="Filter by pipeline ID"),
+    chain_id: str | None = Query(None, description="Filter by chain ID"),
+    dataset_name: str | None = Query(None, description="Filter by dataset name"),
+    model_class: str | None = Query(None, description="Filter by model class"),
+    metric: str | None = Query(None, description="Filter by metric"),
 ):
     """Query chain summaries.
 
@@ -301,7 +301,7 @@ async def get_aggregated_predictions(
         return ChainSummariesResponse(
             predictions=records,
             total=len(records),
-            generated_at=datetime.now(timezone.utc).isoformat(),
+            generated_at=datetime.now(UTC).isoformat(),
         )
     finally:
         store.close()
@@ -312,10 +312,10 @@ async def get_top_aggregated_predictions(
     metric: str = Query(..., description="Metric to rank by"),
     n: int = Query(10, ge=1, le=100, description="Number of results"),
     score_column: str = Query("cv_val_score", description="Score column to sort by"),
-    run_id: Optional[str] = Query(None),
-    pipeline_id: Optional[str] = Query(None),
-    dataset_name: Optional[str] = Query(None),
-    model_class: Optional[str] = Query(None),
+    run_id: str | None = Query(None),
+    pipeline_id: str | None = Query(None),
+    dataset_name: str | None = Query(None),
+    model_class: str | None = Query(None),
 ):
     """Get top-N chain summaries ranked by metric score.
 
@@ -339,7 +339,7 @@ async def get_top_aggregated_predictions(
             "total": len(records),
             "metric": metric,
             "score_column": score_column,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
     finally:
         store.close()
@@ -348,8 +348,8 @@ async def get_top_aggregated_predictions(
 @router.get("/chain/{chain_id}", response_model=ChainDetailResponse)
 async def get_chain_detail(
     chain_id: str,
-    metric: Optional[str] = Query(None),
-    dataset_name: Optional[str] = Query(None),
+    metric: str | None = Query(None),
+    dataset_name: str | None = Query(None),
 ):
     """Get chain summary and predictions for a specific chain.
 
@@ -405,8 +405,8 @@ async def get_chain_detail(
 @router.get("/chain/{chain_id}/detail")
 async def get_chain_partition_detail(
     chain_id: str,
-    partition: Optional[str] = Query(None, description="Partition filter: train, val, test"),
-    fold_id: Optional[str] = Query(None, description="Fold ID filter"),
+    partition: str | None = Query(None, description="Partition filter: train, val, test"),
+    fold_id: str | None = Query(None, description="Fold ID filter"),
 ):
     """Get individual prediction rows for a chain with partition/fold filtering.
 
@@ -472,8 +472,8 @@ async def get_prediction_arrays(prediction_id: str):
 async def export_dataset_parquet(
     dataset_name: str,
     background_tasks: BackgroundTasks,
-    partition: Optional[str] = Query(None, description="Optional partition filter"),
-    model_name: Optional[str] = Query(None, description="Optional model name filter"),
+    partition: str | None = Query(None, description="Optional partition filter"),
+    model_name: str | None = Query(None, description="Optional model name filter"),
 ):
     """Export one dataset's prediction arrays as a portable parquet file."""
     workspace_path = _get_workspace_path()

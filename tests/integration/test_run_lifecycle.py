@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient
 
 from .websocket_utils import RunProgressTracker
 
-
 # ============================================================================
 # Helper Fixtures
 # ============================================================================

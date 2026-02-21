@@ -11,18 +11,19 @@ import asyncio
 import threading
 import traceback
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from enum import StrEnum
+from typing import Any, Dict, List, Optional
 
 from ..shared.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Status of a background job."""
 
     PENDING = "pending"
@@ -32,7 +33,7 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Type of background job."""
 
     TRAINING = "training"
@@ -57,19 +58,19 @@ class Job:
     type: JobType
     status: JobStatus
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     progress: float = 0.0
     progress_message: str = ""
-    config: Dict[str, Any] = field(default_factory=dict)
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    error_traceback: Optional[str] = None
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    history: List[Dict[str, Any]] = field(default_factory=list)
+    config: dict[str, Any] = field(default_factory=dict)
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    error_traceback: str | None = None
+    metrics: dict[str, Any] = field(default_factory=dict)
+    history: list[dict[str, Any]] = field(default_factory=list)
     cancellation_requested: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert job to dictionary for JSON serialization."""
         return {
             "id": self.id,
@@ -87,7 +88,7 @@ class Job:
             "duration_seconds": self._get_duration(),
         }
 
-    def _get_duration(self) -> Optional[float]:
+    def _get_duration(self) -> float | None:
         """Get job duration in seconds."""
         if not self.started_at:
             return None
@@ -110,15 +111,15 @@ class JobManager:
         Args:
             max_workers: Maximum number of concurrent jobs
         """
-        self._jobs: Dict[str, Job] = {}
+        self._jobs: dict[str, Job] = {}
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()
-        self._callbacks: Dict[str, List[Callable[[Job], None]]] = {}
+        self._callbacks: dict[str, list[Callable[[Job], None]]] = {}
 
     def create_job(
         self,
         job_type: JobType,
-        config: Dict[str, Any],
+        config: dict[str, Any],
     ) -> Job:
         """Create a new job.
 
@@ -211,7 +212,7 @@ class JobManager:
             job.completed_at = datetime.now()
             self._notify_callbacks(job)
 
-    def get_job(self, job_id: str) -> Optional[Job]:
+    def get_job(self, job_id: str) -> Job | None:
         """Get a job by ID.
 
         Args:
@@ -225,10 +226,10 @@ class JobManager:
 
     def list_jobs(
         self,
-        job_type: Optional[JobType] = None,
-        status: Optional[JobStatus] = None,
+        job_type: JobType | None = None,
+        status: JobStatus | None = None,
         limit: int = 50,
-    ) -> List[Job]:
+    ) -> list[Job]:
         """List jobs with optional filtering.
 
         Args:
@@ -281,7 +282,7 @@ class JobManager:
     def update_job_metrics(
         self,
         job_id: str,
-        metrics: Dict[str, Any],
+        metrics: dict[str, Any],
         append_history: bool = True,
     ) -> bool:
         """Update job metrics.
@@ -375,10 +376,10 @@ class JobManager:
         try:
             # Import here to avoid circular imports
             from websocket import (
-                notify_job_started,
-                notify_job_progress,
                 notify_job_completed,
                 notify_job_failed,
+                notify_job_progress,
+                notify_job_started,
             )
 
             async def send_notification():

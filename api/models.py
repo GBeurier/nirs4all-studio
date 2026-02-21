@@ -19,8 +19,8 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
 from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -30,9 +30,9 @@ if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 try:
+    import nirs4all
     from nirs4all.operators import models as nirs4all_models
     from nirs4all.pipeline.bundle import BundleLoader
-    import nirs4all
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -56,7 +56,7 @@ class ModelInfo(BaseModel):
     description: str
     category: str  # regression, classification, both
     source: str  # sklearn, nirs4all, tensorflow, torch
-    params: Dict[str, Any] = {}
+    params: dict[str, Any] = {}
     supports_regression: bool = True
     supports_classification: bool = False
 
@@ -70,10 +70,10 @@ class TrainedModelInfo(BaseModel):
     model_type: str = "n4a_bundle"
     created_at: str
     file_size: int
-    dataset_name: Optional[str] = None
-    pipeline_uid: Optional[str] = None
-    nirs4all_version: Optional[str] = None
-    preprocessing_chain: Optional[str] = None
+    dataset_name: str | None = None
+    pipeline_uid: str | None = None
+    nirs4all_version: str | None = None
+    preprocessing_chain: str | None = None
 
 
 class BundleSummary(BaseModel):
@@ -84,21 +84,21 @@ class BundleSummary(BaseModel):
     created_at: str = ""
     preprocessing_chain: str = ""
     fold_strategy: str = "weighted_average"
-    model_step_index: Optional[int] = None
+    model_step_index: int | None = None
     step_count: int = 0
 
 
 class CompareModelsRequest(BaseModel):
     """Request for comparing multiple models (.n4a bundles)."""
 
-    model_paths: List[str] = Field(..., min_length=2, description="Paths to .n4a bundles to compare")
+    model_paths: list[str] = Field(..., min_length=2, description="Paths to .n4a bundles to compare")
     dataset_path: str = Field(..., description="Path to dataset for comparison")
 
 
 class ModelComparisonResult(BaseModel):
     """Result of model comparison."""
 
-    models: List[Dict[str, Any]]
+    models: list[dict[str, Any]]
     best_model_path: str
     comparison_metric: str
     dataset_path: str
@@ -300,10 +300,10 @@ if NIRS4ALL_AVAILABLE:
 # ============= Model Type Routes =============
 
 
-@router.get("/models", response_model=List[ModelInfo])
+@router.get("/models", response_model=list[ModelInfo])
 async def list_models(
-    category: Optional[str] = Query(None, description="Filter by category: regression, classification"),
-    source: Optional[str] = Query(None, description="Filter by source: sklearn, nirs4all"),
+    category: str | None = Query(None, description="Filter by category: regression, classification"),
+    source: str | None = Query(None, description="Filter by source: sklearn, nirs4all"),
 ):
     """
     List all available model types.
@@ -603,15 +603,17 @@ async def compare_models(request: CompareModelsRequest):
 
 
 @router.post("/models/{model_name}/instantiate")
-async def instantiate_model(model_name: str, params: Dict[str, Any] = {}):
+async def instantiate_model(model_name: str, params: dict[str, Any] | None = None):
     """
     Create a new model instance with specified parameters.
 
     Returns a confirmation that the model was created successfully.
     This is useful for validating parameters before training.
     """
+    if params is None:
+        params = {}
     try:
-        from .nirs4all_adapter import _resolve_operator_class, _normalize_params
+        from .nirs4all_adapter import _normalize_params, _resolve_operator_class
 
         model_class = _resolve_operator_class(model_name, "model")
         normalized_params = _normalize_params(model_name, params)
@@ -680,7 +682,7 @@ def _resolve_bundle_path(model_id: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
 
 
-def _extract_params_from_class(cls) -> Dict[str, Any]:
+def _extract_params_from_class(cls) -> dict[str, Any]:
     """Extract parameter schema from a class's __init__ signature.
 
     Args:

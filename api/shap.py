@@ -14,15 +14,16 @@ from __future__ import annotations
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
 from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,7 @@ if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 try:
-    from nirs4all.visualization.analysis.shap import ShapAnalyzer, SHAP_AVAILABLE
+    from nirs4all.visualization.analysis.shap import SHAP_AVAILABLE, ShapAnalyzer
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     logger.info("nirs4all not available for SHAP: %s", e)
@@ -40,14 +41,14 @@ except ImportError as e:
     SHAP_AVAILABLE = False
 
 try:
-    from .store_adapter import StoreAdapter, STORE_AVAILABLE
+    from .store_adapter import STORE_AVAILABLE, StoreAdapter
 except ImportError:
     STORE_AVAILABLE = False
 
 router = APIRouter()
 
 # In-memory storage for SHAP results (job_id -> results)
-_shap_results_cache: Dict[str, Dict[str, Any]] = {}
+_shap_results_cache: dict[str, dict[str, Any]] = {}
 
 
 # ============= Request/Response Models =============
@@ -57,15 +58,15 @@ class FeatureImportance(BaseModel):
     """Single feature importance entry."""
     feature_idx: int
     feature_name: str
-    wavelength: Optional[float] = None
+    wavelength: float | None = None
     importance: float
 
 
 class BinnedImportanceData(BaseModel):
     """Binned importance data for spectral visualization."""
-    bin_centers: List[float]
-    bin_values: List[float]
-    bin_ranges: List[Tuple[float, float]]
+    bin_centers: list[float]
+    bin_values: list[float]
+    bin_ranges: list[tuple[float, float]]
     bin_size: int
     bin_stride: int
     aggregation: str
@@ -80,8 +81,8 @@ class AvailableChain(BaseModel):
     preprocessings: str = ""
     run_id: str = ""
     metric: str = ""
-    cv_val_score: Optional[float] = None
-    final_test_score: Optional[float] = None
+    cv_val_score: float | None = None
+    final_test_score: float | None = None
     cv_fold_count: int = 0
     has_refit: bool = False
 
@@ -90,8 +91,8 @@ class DatasetChains(BaseModel):
     """Chains grouped by dataset."""
     dataset_name: str
     metric: str = ""
-    task_type: Optional[str] = None
-    chains: List[AvailableChain]
+    task_type: str | None = None
+    chains: list[AvailableChain]
 
 
 class AvailableBundle(BaseModel):
@@ -103,18 +104,18 @@ class AvailableBundle(BaseModel):
 
 class AvailableModelsResponse(BaseModel):
     """Response listing available models grouped by dataset."""
-    datasets: List[DatasetChains]
-    bundles: List[AvailableBundle]
+    datasets: list[DatasetChains]
+    bundles: list[AvailableBundle]
 
 
 class ShapComputeRequest(BaseModel):
     """Request model for SHAP computation."""
-    chain_id: Optional[str] = Field(None, description="Chain ID to explain (primary)")
-    bundle_path: Optional[str] = Field(None, description="Path to .n4a bundle (alternative)")
+    chain_id: str | None = Field(None, description="Chain ID to explain (primary)")
+    bundle_path: str | None = Field(None, description="Path to .n4a bundle (alternative)")
     dataset_id: str = Field(..., description="Dataset to explain")
     partition: Literal["train", "test", "all"] = Field("test", description="Data partition to use")
     explainer_type: Literal["auto", "tree", "kernel", "linear"] = Field("auto", description="SHAP explainer type")
-    n_samples: Optional[int] = Field(None, description="Limit number of samples (None = all)")
+    n_samples: int | None = Field(None, description="Limit number of samples (None = all)")
     n_background: int = Field(100, ge=10, le=500, description="Background samples for KernelExplainer")
     bin_size: int = Field(20, ge=5, le=100, description="Bin size for spectral aggregation")
     bin_stride: int = Field(10, ge=1, le=50, description="Stride between bins")
@@ -137,9 +138,9 @@ class RebinRequest(BaseModel):
 
 class SpectralImportanceData(BaseModel):
     """Data for spectral importance visualization."""
-    wavelengths: List[float]
-    mean_spectrum: List[float]
-    mean_abs_shap: List[float]
+    wavelengths: list[float]
+    mean_spectrum: list[float]
+    mean_abs_shap: list[float]
     binned_importance: BinnedImportanceData
 
 
@@ -156,19 +157,19 @@ class BeeswarmBin(BaseModel):
     center: float
     start_wavelength: float
     end_wavelength: float
-    points: List[BeeswarmPoint]
+    points: list[BeeswarmPoint]
 
 
 class BeeswarmDataResponse(BaseModel):
     """Response for beeswarm data."""
-    bins: List[BeeswarmBin]
+    bins: list[BeeswarmBin]
     base_value: float
 
 
 class FeatureContribution(BaseModel):
     """Feature contribution for waterfall plot."""
     feature_name: str
-    wavelength: Optional[float] = None
+    wavelength: float | None = None
     shap_value: float
     feature_value: float
     cumulative: float
@@ -179,7 +180,7 @@ class SampleExplanationResponse(BaseModel):
     sample_idx: int
     predicted_value: float
     base_value: float
-    contributions: List[FeatureContribution]
+    contributions: list[FeatureContribution]
 
 
 class ShapResultsResponse(BaseModel):
@@ -192,12 +193,12 @@ class ShapResultsResponse(BaseModel):
     n_features: int
     base_value: float
     execution_time_ms: float
-    feature_importance: List[FeatureImportance]
-    wavelengths: List[float]
-    mean_abs_shap: List[float]
-    mean_spectrum: List[float]
+    feature_importance: list[FeatureImportance]
+    wavelengths: list[float]
+    mean_abs_shap: list[float]
+    mean_spectrum: list[float]
     binned_importance: BinnedImportanceData
-    sample_indices: List[int]
+    sample_indices: list[int]
 
 
 class ExplainerTypeInfo(BaseModel):
@@ -205,15 +206,15 @@ class ExplainerTypeInfo(BaseModel):
     name: str
     display_name: str
     description: str
-    recommended_for: List[str]
+    recommended_for: list[str]
 
 
 class ShapConfigResponse(BaseModel):
     """Response for SHAP configuration options."""
-    explainer_types: List[ExplainerTypeInfo]
+    explainer_types: list[ExplainerTypeInfo]
     default_bin_size: int
     default_bin_stride: int
-    aggregation_methods: List[str]
+    aggregation_methods: list[str]
     shap_available: bool
 
 
@@ -263,8 +264,8 @@ async def get_available_models():
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all not available. SHAP analysis requires nirs4all.")
 
-    datasets: List[DatasetChains] = []
-    bundles: List[AvailableBundle] = []
+    datasets: list[DatasetChains] = []
+    bundles: list[AvailableBundle] = []
 
     try:
         datasets = _get_available_chains()
@@ -294,7 +295,7 @@ async def compute_shap_explanation(request: ShapComputeRequest):
         raise HTTPException(status_code=400, detail="Either chain_id or bundle_path is required")
 
     try:
-        from .jobs import job_manager, JobType
+        from .jobs import JobType, job_manager
         config = request.model_dump()
         job = job_manager.create_job(JobType.ANALYSIS, config)
         job_manager.submit_job(job, _run_shap_task)
@@ -355,7 +356,7 @@ async def get_spectral_importance(job_id: str):
 
 
 @router.get("/analysis/shap/results/{job_id}/spectral-detail")
-async def get_spectral_detail(job_id: str, sample_indices: Optional[str] = Query(None)):
+async def get_spectral_detail(job_id: str, sample_indices: str | None = Query(None)):
     """Get spectral data filtered to specific samples.
 
     When sample_indices is provided (comma-separated), returns SHAP
@@ -554,7 +555,7 @@ async def get_sample_explanation(job_id: str, sample_idx: int, top_n: int = 15):
 # ============= Job Task =============
 
 
-def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) -> Dict[str, Any]:
+def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) -> dict[str, Any]:
     """Execute SHAP analysis in background thread."""
     config = job.config
     job_id = job.id
@@ -622,7 +623,7 @@ def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) ->
 # ============= Helper Functions =============
 
 
-def _get_available_chains() -> List[DatasetChains]:
+def _get_available_chains() -> list[DatasetChains]:
     """Get available trained chains from the workspace store, grouped by dataset."""
     workspace = workspace_manager.get_active_workspace()
     if not workspace or not STORE_AVAILABLE:
@@ -636,7 +637,7 @@ def _get_available_chains() -> List[DatasetChains]:
         return []
 
     # Group by dataset_name
-    datasets_map: Dict[str, List[Dict[str, Any]]] = {}
+    datasets_map: dict[str, list[dict[str, Any]]] = {}
     for chain in summaries:
         ds = chain.get("dataset_name", "")
         if not ds:
@@ -700,7 +701,7 @@ def _get_available_chains() -> List[DatasetChains]:
     return result
 
 
-def _get_available_bundles() -> List[AvailableBundle]:
+def _get_available_bundles() -> list[AvailableBundle]:
     """Get available .n4a bundles from workspace exports."""
     workspace = workspace_manager.get_active_workspace()
     if not workspace:
@@ -721,7 +722,7 @@ def _get_available_bundles() -> List[AvailableBundle]:
     return bundles
 
 
-def _load_model_from_chain(chain_id: str) -> Tuple[Any, Dict[str, Any]]:
+def _load_model_from_chain(chain_id: str) -> tuple[Any, dict[str, Any]]:
     """Load a trained model from a chain's fold_final artifact."""
     workspace = workspace_manager.get_active_workspace()
     if not workspace:
@@ -750,7 +751,7 @@ def _load_model_from_chain(chain_id: str) -> Tuple[Any, Dict[str, Any]]:
         store.close()
 
 
-def _load_model_from_bundle(bundle_path: str) -> Tuple[Any, Dict[str, Any]]:
+def _load_model_from_bundle(bundle_path: str) -> tuple[Any, dict[str, Any]]:
     """Load a model from a .n4a bundle."""
     path = Path(bundle_path)
     if not path.exists():
@@ -761,7 +762,7 @@ def _load_model_from_bundle(bundle_path: str) -> Tuple[Any, Dict[str, Any]]:
     return bundle.model, {"type": "bundle", "path": str(path)}
 
 
-def _resolve_dataset_id_by_name(name: str) -> Optional[str]:
+def _resolve_dataset_id_by_name(name: str) -> str | None:
     """Resolve a dataset name (from chain summaries) to a dataset link ID.
 
     Chain summaries store the human-readable dataset_name (e.g. "corn"),
@@ -788,8 +789,8 @@ def _resolve_dataset_id_by_name(name: str) -> Optional[str]:
 
 
 def _load_dataset_for_shap(
-    dataset_id: str, partition: str, n_samples: Optional[int]
-) -> Tuple[np.ndarray, Optional[np.ndarray], List[float], List[str], List[int]]:
+    dataset_id: str, partition: str, n_samples: int | None
+) -> tuple[np.ndarray, np.ndarray | None, list[float], list[str], list[int]]:
     """Load dataset for SHAP analysis. Returns (X, y, wavelengths, feature_names, sample_indices).
 
     The dataset_id may be a dataset link ID (e.g. "dataset_17378_3") or a dataset name
@@ -846,7 +847,7 @@ def _load_dataset_for_shap(
 
 
 def _compute_binned_importance(
-    shap_values: np.ndarray, wavelengths: List[float],
+    shap_values: np.ndarray, wavelengths: list[float],
     bin_size: int, bin_stride: int, bin_aggregation: str
 ) -> BinnedImportanceData:
     """Compute binned importance from raw SHAP values.
@@ -897,10 +898,10 @@ def _compute_binned_importance(
 
 
 def _process_shap_results(
-    results: Dict[str, Any], job_id: str, model_id: str, dataset_id: str,
-    wavelengths: List[float], sample_indices: List[int], X: np.ndarray,
+    results: dict[str, Any], job_id: str, model_id: str, dataset_id: str,
+    wavelengths: list[float], sample_indices: list[int], X: np.ndarray,
     bin_size: int, bin_stride: int, bin_aggregation: str, execution_time_ms: float
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Process raw SHAP results into webapp-friendly format."""
     shap_values = results["shap_values"]
     base_value = results["base_value"]

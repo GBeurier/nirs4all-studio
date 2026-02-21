@@ -56,7 +56,7 @@ jobs:
           echo "Build outputs verified"
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Backend: Lint, Validate
+  # Backend: Lint, Test, Validate
   # ═══════════════════════════════════════════════════════════════════════════
   backend:
     name: Backend
@@ -83,6 +83,13 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-test.txt
+          pip install nirs4all
+
+      - name: Lint Python (ruff)
+        run: |
+          pip install ruff
+          ruff check .
 
       - name: Verify imports
         run: |
@@ -104,6 +111,20 @@ jobs:
         run: |
           python main.py --help
           echo "CLI arguments work"
+
+      - name: Run backend tests
+        run: |
+          python -m pytest tests/ -v --tb=short --timeout=120 --cov=api --cov-report=xml
+        env:
+          PYTHONPATH: .
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage.xml
+          retention-days: 7
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Electron: Build validation (Linux only for speed)

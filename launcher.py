@@ -8,8 +8,8 @@ This file is referenced by nirs4all-webapp.spec (line 228) and built by
 the release/pre-release CI workflows.
 """
 
-import sys
 import os
+import sys
 
 
 def main():

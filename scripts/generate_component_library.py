@@ -1,12 +1,12 @@
-import json
-import re
-import inspect
 import importlib
+import inspect
+import json
 import math
+import re
 from pathlib import Path
 
+from nirs4all.operators.models import cirad_tf, generic_tf
 from sklearn.utils import all_estimators
-from nirs4all.operators.models import generic_tf, cirad_tf
 
 try:
     import numpy as np  # type: ignore

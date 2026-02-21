@@ -9,18 +9,18 @@ Phase 5: WebSocket support for real-time updates.
 Phase 6: Workspace management and AutoML search.
 """
 
-import traceback
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi import HTTPException
-import uvicorn
-from pathlib import Path
 import os
+import traceback
+from pathlib import Path
 
-from api.shared.logger import setup_logging, get_logger
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
+
+from api.shared.logger import get_logger, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
@@ -28,28 +28,29 @@ logger = get_logger(__name__)
 # Desktop mode detection - skip unnecessary middleware when running in pywebview
 DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
 
-from api.workspace import router as workspace_router
-from api.datasets import router as datasets_router
-from api.pipelines import router as pipelines_router
-from api.predictions import router as predictions_router
-from api.system import router as system_router, log_error
-from api.spectra import router as spectra_router
-from api.preprocessing import router as preprocessing_router
-from api.training import router as training_router
-from api.models import router as models_router
-from api.analysis import router as analysis_router
-from api.evaluation import router as evaluation_router
-from api.automl import router as automl_router
-from api.runs import router as runs_router
-from api.playground import router as playground_router
-from api.updates import router as updates_router
-from api.synthesis import router as synthesis_router
-from api.transfer import router as transfer_router
-from api.shap import router as shap_router
 from api.aggregated_predictions import router as aggregated_predictions_router
-from api.projects import router as projects_router
+from api.analysis import router as analysis_router
+from api.automl import router as automl_router
+from api.datasets import router as datasets_router
+from api.evaluation import router as evaluation_router
 from api.inspector import router as inspector_router
+from api.models import router as models_router
+from api.pipelines import router as pipelines_router
+from api.playground import router as playground_router
+from api.predictions import router as predictions_router
+from api.preprocessing import router as preprocessing_router
+from api.projects import router as projects_router
 from api.recommended_config import router as config_router
+from api.runs import router as runs_router
+from api.shap import router as shap_router
+from api.spectra import router as spectra_router
+from api.synthesis import router as synthesis_router
+from api.system import log_error
+from api.system import router as system_router
+from api.training import router as training_router
+from api.transfer import router as transfer_router
+from api.updates import router as updates_router
+from api.workspace import router as workspace_router
 from websocket import ws_manager
 
 # Create FastAPI app
@@ -193,7 +194,7 @@ async def check_updates_background():
 async def cache_recommended_config_background():
     """Background task to pre-cache recommended config from GitHub."""
     try:
-        from api.recommended_config import _fetch_remote_config, _config_cache
+        from api.recommended_config import _config_cache, _fetch_remote_config
         remote = await _fetch_remote_config()
         if remote:
             _config_cache.set_cached_config(remote)

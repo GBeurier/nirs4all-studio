@@ -29,10 +29,9 @@ import math
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
-
 
 # ============================================================================
 # Utilities
@@ -47,7 +46,7 @@ def snake_case(name: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", s2).strip("_")
 
 
-def safe_first_line(doc: Optional[str]) -> str:
+def safe_first_line(doc: str | None) -> str:
     """Get the first non-empty line of a docstring."""
     if not doc:
         return ""
@@ -61,7 +60,7 @@ def module_prefix(module: str) -> str:
     return ".".join(parts[:2]) if len(parts) >= 2 else module
 
 
-def jsonable_default(value: Any) -> Tuple[bool, Any]:
+def jsonable_default(value: Any) -> tuple[bool, Any]:
     """Check if a value can be serialized to JSON and return sanitized version."""
     if value is inspect._empty:
         return False, None
@@ -130,9 +129,9 @@ def infer_param_type(default: Any) -> str:
     return "string"
 
 
-def build_parameters(cls: type) -> List[Dict[str, Any]]:
+def build_parameters(cls: type) -> list[dict[str, Any]]:
     """Extract parameters from a class's __init__ signature."""
-    params: List[Dict[str, Any]] = []
+    params: list[dict[str, Any]] = []
 
     try:
         sig = inspect.signature(cls.__init__)
@@ -148,7 +147,7 @@ def build_parameters(cls: type) -> List[Dict[str, Any]]:
         has_default, default_value = jsonable_default(p.default)
         param_type = infer_param_type(p.default if p.default is not inspect._empty else None)
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "name": name,
             "type": param_type,
             # Mark all generated params as advanced to reduce noise
@@ -234,7 +233,7 @@ def get_model_subcategory(module: str) -> str:
 # ============================================================================
 
 
-def generate_sklearn_transformers() -> List[Dict[str, Any]]:
+def generate_sklearn_transformers() -> list[dict[str, Any]]:
     """Generate nodes for all sklearn transformers."""
     try:
         from sklearn.utils import all_estimators
@@ -242,8 +241,8 @@ def generate_sklearn_transformers() -> List[Dict[str, Any]]:
         print("[WARN] sklearn not available, skipping transformers", file=sys.stderr)
         return []
 
-    nodes: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
+    nodes: list[dict[str, Any]] = []
+    seen: set[str] = set()
 
     for name, cls in all_estimators(type_filter="transformer"):
         slug = snake_case(name)
@@ -274,7 +273,7 @@ def generate_sklearn_transformers() -> List[Dict[str, Any]]:
     return nodes
 
 
-def generate_sklearn_models() -> List[Dict[str, Any]]:
+def generate_sklearn_models() -> list[dict[str, Any]]:
     """Generate nodes for all sklearn classifiers and regressors."""
     try:
         from sklearn.utils import all_estimators
@@ -283,14 +282,14 @@ def generate_sklearn_models() -> List[Dict[str, Any]]:
         return []
 
     # Collect both types for estimators that support both
-    info: Dict[str, Dict[str, Any]] = {}
+    info: dict[str, dict[str, Any]] = {}
     for est_type in ("classifier", "regressor"):
         for name, cls in all_estimators(type_filter=est_type):
             entry = info.setdefault(name, {"cls": cls, "types": set()})
             entry["types"].add(est_type)
 
-    nodes: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
+    nodes: list[dict[str, Any]] = []
+    seen: set[str] = set()
 
     for name, entry in info.items():
         slug = snake_case(name)
@@ -325,7 +324,7 @@ def generate_sklearn_models() -> List[Dict[str, Any]]:
     return nodes
 
 
-def generate_sklearn_splitters() -> List[Dict[str, Any]]:
+def generate_sklearn_splitters() -> list[dict[str, Any]]:
     """Generate nodes for sklearn cross-validation splitters."""
     try:
         import sklearn.model_selection as model_selection
@@ -352,7 +351,7 @@ def generate_sklearn_splitters() -> List[Dict[str, Any]]:
         "StratifiedGroupKFold",
     ]
 
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     for name in splitters:
         cls = getattr(model_selection, name, None)
@@ -809,16 +808,16 @@ def safe_import_class(class_path: str):
         return None
 
 
-def generate_nirs4all_operators() -> List[Dict[str, Any]]:
+def generate_nirs4all_operators() -> list[dict[str, Any]]:
     """Generate nodes for nirs4all operators."""
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     for class_path, info in NIRS4ALL_OPERATORS.items():
         slug = snake_case(info["name"])
         node_type = info["type"]
 
         # Try to import and get params
-        params: List[Dict[str, Any]] = []
+        params: list[dict[str, Any]] = []
         cls = safe_import_class(class_path)
         if cls is not None:
             params = build_parameters(cls)
@@ -839,9 +838,9 @@ def generate_nirs4all_operators() -> List[Dict[str, Any]]:
     return nodes
 
 
-def generate_tensorflow_models(skip: bool = False) -> List[Dict[str, Any]]:
+def generate_tensorflow_models(skip: bool = False) -> list[dict[str, Any]]:
     """Generate nodes for nirs4all TensorFlow models."""
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     if skip:
         print("[WARN] Skipping TensorFlow models (--skip-tensorflow)", file=sys.stderr)
@@ -885,7 +884,7 @@ def generate_tensorflow_models(skip: bool = False) -> List[Dict[str, Any]]:
                 description = safe_first_line(obj.__doc__) or f"TensorFlow model {name}"
 
                 # Extract params from function signature
-                params: List[Dict[str, Any]] = []
+                params: list[dict[str, Any]] = []
                 try:
                     sig = inspect.signature(obj)
                     for pname, p in sig.parameters.items():
@@ -895,7 +894,7 @@ def generate_tensorflow_models(skip: bool = False) -> List[Dict[str, Any]]:
                             continue
                         has_default, default_value = jsonable_default(p.default)
                         param_type = infer_param_type(p.default if p.default is not inspect._empty else None)
-                        entry: Dict[str, Any] = {
+                        entry: dict[str, Any] = {
                             "name": pname,
                             "type": param_type,
                             "isAdvanced": True,
@@ -932,9 +931,9 @@ def generate_tensorflow_models(skip: bool = False) -> List[Dict[str, Any]]:
 # ============================================================================
 
 
-def generate_all_nodes(skip_tensorflow: bool = False) -> List[Dict[str, Any]]:
+def generate_all_nodes(skip_tensorflow: bool = False) -> list[dict[str, Any]]:
     """Generate all extended registry nodes."""
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     # sklearn models FIRST - so they take precedence for dual-role classes like PLSRegression
     print("[INFO] Generating sklearn models...", file=sys.stderr)
@@ -972,9 +971,9 @@ def generate_all_nodes(skip_tensorflow: bool = False) -> List[Dict[str, Any]]:
     nodes.sort(key=lambda n: (TYPE_PRIORITY.get(n["type"], 99), n["id"]))
 
     # Dedupe by id AND classPath (keep first - which is model due to sorting)
-    seen_ids: Set[str] = set()
-    seen_classpaths: Set[str] = set()
-    deduped: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_classpaths: set[str] = set()
+    deduped: list[dict[str, Any]] = []
     for n in nodes:
         if n["id"] in seen_ids:
             continue
@@ -1024,8 +1023,8 @@ def main() -> int:
     print(f"Wrote {len(nodes)} nodes to {out_path.relative_to(repo_root)}")
 
     # Sidecar metadata
-    sklearn_version: Optional[str] = None
-    nirs4all_version: Optional[str] = None
+    sklearn_version: str | None = None
+    nirs4all_version: str | None = None
     try:
         import sklearn
 
@@ -1040,20 +1039,20 @@ def main() -> int:
         pass
 
     # Count by type
-    type_counts: Dict[str, int] = {}
+    type_counts: dict[str, int] = {}
     for n in nodes:
         t = n.get("type", "unknown")
         type_counts[t] = type_counts.get(t, 0) + 1
 
     # Count by source
-    source_counts: Dict[str, int] = {}
+    source_counts: dict[str, int] = {}
     for n in nodes:
         s = n.get("source", "unknown")
         source_counts[s] = source_counts.get(s, 0) + 1
 
     meta_path = out_path.with_name(out_path.stem + ".meta.json")
     meta = {
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "generatedAt": datetime.now(UTC).isoformat(),
         "nodeCount": len(nodes),
         "pythonVersion": sys.version.split()[0],
         "sklearnVersion": sklearn_version,

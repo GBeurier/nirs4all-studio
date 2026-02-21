@@ -11,10 +11,11 @@ import os
 import subprocess
 import sys
 import venv
-from dataclasses import dataclass, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import platformdirs
 
@@ -35,13 +36,13 @@ class VenvInfo:
     exists: bool
     is_valid: bool
     is_custom: bool = False
-    python_version: Optional[str] = None
-    pip_version: Optional[str] = None
-    created_at: Optional[str] = None
-    last_updated: Optional[str] = None
+    python_version: str | None = None
+    pip_version: str | None = None
+    created_at: str | None = None
+    last_updated: str | None = None
     size_bytes: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -50,9 +51,9 @@ class PackageInfo:
     """Information about an installed package."""
     name: str
     version: str
-    location: Optional[str] = None
+    location: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -77,7 +78,7 @@ class VenvManager:
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         # Default: use the current Python environment
         self._default_venv_path = Path(sys.prefix)
-        self._custom_venv_path: Optional[Path] = None
+        self._custom_venv_path: Path | None = None
         self._settings_loaded = False
 
     def _ensure_settings_loaded(self) -> None:
@@ -90,7 +91,7 @@ class VenvManager:
         """Load venv settings from file."""
         if self._settings_path.exists():
             try:
-                with open(self._settings_path, "r", encoding="utf-8") as f:
+                with open(self._settings_path, encoding="utf-8") as f:
                     settings = json.load(f)
                     custom_path = settings.get("custom_venv_path")
                     if custom_path:
@@ -131,11 +132,11 @@ class VenvManager:
         """Get the default venv path."""
         return self._default_venv_path
 
-    def get_custom_path(self) -> Optional[str]:
+    def get_custom_path(self) -> str | None:
         """Get the custom venv path if configured."""
         return str(self._custom_venv_path) if self._custom_venv_path else None
 
-    def set_custom_venv_path(self, path: Optional[str]) -> Tuple[bool, str]:
+    def set_custom_venv_path(self, path: str | None) -> tuple[bool, str]:
         """
         Set a custom virtual environment path.
 
@@ -277,17 +278,17 @@ class VenvManager:
         except Exception:
             return False
 
-    def _load_metadata(self) -> Optional[Dict[str, Any]]:
+    def _load_metadata(self) -> dict[str, Any] | None:
         """Load venv metadata from file."""
         if not self._metadata_path.exists():
             return None
         try:
-            with open(self._metadata_path, "r", encoding="utf-8") as f:
+            with open(self._metadata_path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return None
 
-    def _save_metadata(self, metadata: Dict[str, Any]) -> None:
+    def _save_metadata(self, metadata: dict[str, Any]) -> None:
         """Save venv metadata to file."""
         try:
             with open(self._metadata_path, "w", encoding="utf-8") as f:
@@ -308,9 +309,9 @@ class VenvManager:
 
     def create_venv(
         self,
-        progress_callback: Optional[Callable[[float, str], None]] = None,
+        progress_callback: Callable[[float, str], None] | None = None,
         force: bool = False,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Create the managed virtual environment.
 
@@ -392,11 +393,11 @@ class VenvManager:
     def install_package(
         self,
         package: str,
-        version: Optional[str] = None,
-        extras: Optional[List[str]] = None,
+        version: str | None = None,
+        extras: list[str] | None = None,
         upgrade: bool = False,
-        progress_callback: Optional[Callable[[float, str], None]] = None,
-    ) -> Tuple[bool, str, List[str]]:
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str, list[str]]:
         """
         Install a package in the managed venv.
 
@@ -474,7 +475,7 @@ class VenvManager:
 
         return True, f"Successfully installed {pkg_spec}", output_lines
 
-    def get_installed_packages(self) -> List[PackageInfo]:
+    def get_installed_packages(self) -> list[PackageInfo]:
         """Get list of installed packages in the venv."""
         if not self._is_valid_venv():
             return []
@@ -499,7 +500,7 @@ class VenvManager:
 
         return packages
 
-    def run_pip_command(self, args: List[str], timeout: int = 120) -> Optional[str]:
+    def run_pip_command(self, args: list[str], timeout: int = 120) -> str | None:
         """
         Run an arbitrary pip command and return stdout.
 
@@ -527,7 +528,7 @@ class VenvManager:
             logger.error("Error running pip command: %s", e)
             return None
 
-    def get_package_version(self, package: str) -> Optional[str]:
+    def get_package_version(self, package: str) -> str | None:
         """Get the installed version of a specific package."""
         packages = self.get_installed_packages()
         for pkg in packages:
@@ -542,8 +543,8 @@ class VenvManager:
     def uninstall_package(
         self,
         package: str,
-        progress_callback: Optional[Callable[[float, str], None]] = None,
-    ) -> Tuple[bool, str]:
+        progress_callback: Callable[[float, str], None] | None = None,
+    ) -> tuple[bool, str]:
         """
         Uninstall a package from the managed venv.
 
@@ -577,7 +578,7 @@ class VenvManager:
 
         return True, f"Successfully uninstalled {package}"
 
-    def get_outdated_packages(self) -> List[Dict[str, str]]:
+    def get_outdated_packages(self) -> list[dict[str, str]]:
         """Get list of outdated packages in the venv."""
         if not self._is_valid_venv():
             return []
@@ -607,7 +608,7 @@ class VenvManager:
         self,
         script: str,
         timeout: int = 300,
-    ) -> Tuple[int, str, str]:
+    ) -> tuple[int, str, str]:
         """
         Run a Python script in the managed venv.
 
@@ -634,7 +635,7 @@ class VenvManager:
         except Exception as e:
             return -1, "", str(e)
 
-    def get_nirs4all_version(self) -> Optional[str]:
+    def get_nirs4all_version(self) -> str | None:
         """Get the installed version of nirs4all in the managed venv."""
         if not self._is_valid_venv():
             return None
@@ -648,7 +649,7 @@ class VenvManager:
 
 
 # Lazy-initialized global venv manager instance
-_venv_manager: Optional[VenvManager] = None
+_venv_manager: VenvManager | None = None
 
 
 def get_venv_manager() -> VenvManager:

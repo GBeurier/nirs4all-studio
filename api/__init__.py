@@ -16,8 +16,8 @@ This package provides the REST API endpoints for:
 - Model evaluation and metrics (evaluation.py)
 """
 
-from .workspace_manager import workspace_manager, WorkspaceConfig
-from .jobs import job_manager, Job, JobStatus, JobType
+from .jobs import Job, JobStatus, JobType, job_manager
+from .workspace_manager import WorkspaceConfig, workspace_manager
 
 __all__ = [
     "workspace_manager",

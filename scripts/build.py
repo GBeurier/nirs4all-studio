@@ -21,7 +21,7 @@ import platform
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 
@@ -67,7 +67,7 @@ def update_version_json(version: str) -> dict:
 
     data = {
         'version': version,
-        'build_date': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'build_date': datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'commit': get_git_commit(),
     }
 
@@ -75,7 +75,7 @@ def update_version_json(version: str) -> dict:
         json.dump(data, f, indent=2)
         f.write('\n')
 
-    print(f"Updated version.json:")
+    print("Updated version.json:")
     print(f"  version: {data['version']}")
     print(f"  build_date: {data['build_date']}")
     print(f"  commit: {data['commit']}")
@@ -324,7 +324,7 @@ Examples:
     system, arch = get_platform_info()
 
     print("=" * 60)
-    print(f"nirs4all-webapp Build")
+    print("nirs4all-webapp Build")
     print("=" * 60)
     print(f"Version: {version}")
     print(f"Platform: {system}")

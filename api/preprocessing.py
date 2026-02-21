@@ -33,6 +33,9 @@ except ImportError as e:
     NIRS4ALL_AVAILABLE = False
 
 
+# Static fallback registry (empty - methods are discovered dynamically from nirs4all)
+PREPROCESSING_METHODS: dict[str, dict[str, Any]] = {}
+
 router = APIRouter()
 
 
@@ -40,27 +43,27 @@ class PreprocessingStep(BaseModel):
     """A single preprocessing step configuration."""
 
     name: str
-    params: Dict[str, Any] = {}
+    params: dict[str, Any] = {}
 
 
 class PreprocessingChain(BaseModel):
     """A chain of preprocessing steps."""
 
-    steps: List[PreprocessingStep] = []
+    steps: list[PreprocessingStep] = []
 
 
 class ApplyPreprocessingRequest(BaseModel):
     """Request model for applying preprocessing to data."""
 
-    data: List[List[float]] = Field(..., description="2D array of spectral data (samples x features)")
-    chain: List[PreprocessingStep] = Field(..., description="Preprocessing chain to apply")
+    data: list[list[float]] = Field(..., description="2D array of spectral data (samples x features)")
+    chain: list[PreprocessingStep] = Field(..., description="Preprocessing chain to apply")
 
 
 class PreviewPreprocessingRequest(BaseModel):
     """Request model for previewing preprocessing on a dataset."""
 
     dataset_id: str
-    chain: List[PreprocessingStep]
+    chain: list[PreprocessingStep]
     n_samples: int = Field(10, ge=1, le=100, description="Number of samples to preview")
     partition: str = "train"
 
@@ -68,7 +71,7 @@ class PreviewPreprocessingRequest(BaseModel):
 class ValidateChainRequest(BaseModel):
     """Request model for validating a preprocessing chain."""
 
-    chain: List[PreprocessingStep]
+    chain: list[PreprocessingStep]
 
 
 
@@ -489,8 +492,9 @@ async def discover_preprocessing_methods():
     discovered = []
 
     try:
-        from nirs4all.operators import transforms as tf_module
         import inspect
+
+        from nirs4all.operators import transforms as tf_module
 
         # Get all classes from transforms module
         for name, obj in inspect.getmembers(tf_module, inspect.isclass):
@@ -662,8 +666,9 @@ async def get_method_schema(name: str):
         )
 
     try:
-        from nirs4all.operators import transforms as tf_module
         import inspect
+
+        from nirs4all.operators import transforms as tf_module
 
         cls = getattr(tf_module, name, None)
         if not cls:

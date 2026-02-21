@@ -18,22 +18,23 @@ Refactored: Uses nirs4all.run() for training instead of custom implementation.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
-from .jobs import job_manager, Job, JobStatus, JobType
-from .shared.logger import get_logger
+from .jobs import Job, JobStatus, JobType, job_manager
 from .nirs4all_adapter import (
-    require_nirs4all,
     build_dataset_spec,
-    extract_metrics_from_prediction,
     ensure_models_dir,
+    extract_metrics_from_prediction,
+    require_nirs4all,
 )
+from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -52,7 +53,7 @@ class RefitConfig(BaseModel):
     """
 
     enabled: bool = Field(True, description="Whether to refit the best model on the full training set")
-    refit_params: Optional[Dict[str, Any]] = Field(None, description="Override parameters for the refit model (e.g., different epochs)")
+    refit_params: dict[str, Any] | None = Field(None, description="Override parameters for the refit model (e.g., different epochs)")
 
 
 class TrainingRequest(BaseModel):
@@ -63,9 +64,9 @@ class TrainingRequest(BaseModel):
     partition: str = Field("train", description="Dataset partition to use")
     verbose: int = Field(1, ge=0, le=3, description="Verbosity level")
     save_best_model: bool = Field(True, description="Save the best model checkpoint")
-    random_state: Optional[int] = Field(42, description="Random seed for reproducibility")
-    refit: Optional[Any] = Field(True, description="Refit configuration: True (default refit), False (no refit), or dict with refit_params")
-    refit_params: Optional[Dict[str, Any]] = Field(None, description="Override parameters for the refit model")
+    random_state: int | None = Field(42, description="Random seed for reproducibility")
+    refit: Any | None = Field(True, description="Refit configuration: True (default refit), False (no refit), or dict with refit_params")
+    refit_params: dict[str, Any] | None = Field(None, description="Override parameters for the refit model")
 
 
 class TrainingJobResponse(BaseModel):
@@ -76,12 +77,12 @@ class TrainingJobResponse(BaseModel):
     progress: float
     progress_message: str
     created_at: str
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    duration_seconds: Optional[float] = None
-    config: Dict[str, Any]
-    metrics: Dict[str, Any] = {}
-    error: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    duration_seconds: float | None = None
+    config: dict[str, Any]
+    metrics: dict[str, Any] = {}
+    error: str | None = None
 
 
 class TrainingMetricsResponse(BaseModel):
@@ -90,10 +91,10 @@ class TrainingMetricsResponse(BaseModel):
     job_id: str
     current_epoch: int
     total_epochs: int
-    train_metrics: Dict[str, float]
-    val_metrics: Optional[Dict[str, float]] = None
-    best_metrics: Optional[Dict[str, float]] = None
-    history: List[Dict[str, Any]] = []
+    train_metrics: dict[str, float]
+    val_metrics: dict[str, float] | None = None
+    best_metrics: dict[str, float] | None = None
+    history: list[dict[str, Any]] = []
 
 
 class TrainingResultResponse(BaseModel):
@@ -101,10 +102,10 @@ class TrainingResultResponse(BaseModel):
 
     job_id: str
     status: str
-    final_metrics: Dict[str, float]
-    best_metrics: Dict[str, float]
-    model_path: Optional[str] = None
-    history: List[Dict[str, Any]]
+    final_metrics: dict[str, float]
+    best_metrics: dict[str, float]
+    model_path: str | None = None
+    history: list[dict[str, Any]]
     duration_seconds: float
 
 
@@ -349,7 +350,7 @@ async def get_training_result(job_id: str):
 
 @router.get("/training/jobs")
 async def list_training_jobs(
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = 50,
 ):
     """
@@ -396,7 +397,7 @@ async def list_training_jobs(
 def _run_training_task(
     job: Job,
     progress_callback: Callable[[float, str], bool],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute the training task using nirs4all.run().
 
@@ -411,7 +412,8 @@ def _run_training_task(
         Training result dictionary
     """
     import nirs4all
-    from .nirs4all_adapter import build_full_pipeline, build_dataset_config
+
+    from .nirs4all_adapter import build_dataset_config, build_full_pipeline
 
     config = job.config
     start_time = time.time()
@@ -450,7 +452,7 @@ def _run_training_task(
         return {"error": "Cancelled"}
 
     # Build run kwargs, including refit config if present
-    run_kwargs: Dict[str, Any] = {
+    run_kwargs: dict[str, Any] = {
         "pipeline": pipeline_steps,
         "dataset": dataset_config,
         "verbose": config.get("verbose", 1),
@@ -565,7 +567,7 @@ def _run_training_task(
 
 def _send_training_completion_notification(
     job_id: str,
-    metrics: Dict[str, float],
+    metrics: dict[str, float],
     total_variants: int,
 ) -> None:
     """
@@ -696,8 +698,8 @@ def _send_refit_progress(job_id: str, progress: float, message: str = "") -> Non
 
 def _send_refit_completed(
     job_id: str,
-    score: Optional[float] = None,
-    metrics: Optional[Dict[str, Any]] = None,
+    score: float | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> None:
     """
     Emit REFIT_COMPLETED WebSocket event.
@@ -719,7 +721,7 @@ def _send_refit_completed(
         logger.error("Error sending refit completed notification: %s", e)
 
 
-def _send_refit_failed(job_id: str, error: str, tb: Optional[str] = None) -> None:
+def _send_refit_failed(job_id: str, error: str, tb: str | None = None) -> None:
     """
     Emit REFIT_FAILED WebSocket event.
 

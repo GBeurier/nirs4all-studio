@@ -571,7 +571,6 @@ class TestRunStateErrors:
         run_id = response.json()["id"]
 
         # Give it a moment to start
-        import time
         time.sleep(0.5)
 
         # Try to delete while running

@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import numpy as np
 import pytest
@@ -203,6 +203,7 @@ def patched_endpoints(mock_workspace, mock_store):
 def client(patched_endpoints):
     """Create a FastAPI TestClient with mocked dependencies."""
     from fastapi.testclient import TestClient
+
     from main import app
 
     with TestClient(app) as c:
@@ -730,6 +731,7 @@ class TestErrorHandling:
             mock_wm.get_current_workspace.return_value = None
 
             from fastapi.testclient import TestClient
+
             from main import app
 
             with TestClient(app) as c:
@@ -755,6 +757,7 @@ class TestErrorHandling:
             mock_wm.get_current_workspace.return_value = ws
 
             from fastapi.testclient import TestClient
+
             from main import app
 
             with TestClient(app) as c:
@@ -775,6 +778,7 @@ class TestErrorHandling:
             mock_wm.get_current_workspace.return_value = ws
 
             from fastapi.testclient import TestClient
+
             from main import app
 
             with TestClient(app) as c:

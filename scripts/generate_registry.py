@@ -29,10 +29,9 @@ import math
 import pkgutil
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, get_args, get_origin
-
 
 # ============================================================================
 # Utilities
@@ -47,7 +46,7 @@ def snake_case(name: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", s2).strip("_")
 
 
-def safe_first_line(doc: Optional[str]) -> str:
+def safe_first_line(doc: str | None) -> str:
     """Get the first non-empty line of a docstring."""
     if not doc:
         return ""
@@ -61,7 +60,7 @@ def module_prefix(module: str) -> str:
     return ".".join(parts[:2]) if len(parts) >= 2 else module
 
 
-def jsonable_default(value: Any) -> Tuple[bool, Any]:
+def jsonable_default(value: Any) -> tuple[bool, Any]:
     """Check if a value can be serialized to JSON and return sanitized version."""
     if value is inspect._empty:
         return False, None
@@ -189,7 +188,7 @@ def _infer_from_default(default: Any) -> str:
     return "string"
 
 
-def extract_literal_options(annotation: Any) -> Optional[List[Dict[str, Any]]]:
+def extract_literal_options(annotation: Any) -> list[dict[str, Any]] | None:
     """Extract options from a Literal type annotation."""
     if annotation is inspect._empty or annotation is None:
         return None
@@ -223,9 +222,9 @@ def should_split_tuple_param(annotation: Any, name: str, default: Any) -> bool:
 # ============================================================================
 
 
-def build_parameters(cls: type) -> List[Dict[str, Any]]:
+def build_parameters(cls: type) -> list[dict[str, Any]]:
     """Extract parameters from a class's __init__ signature with type hints."""
-    params: List[Dict[str, Any]] = []
+    params: list[dict[str, Any]] = []
 
     try:
         sig = inspect.signature(cls.__init__)
@@ -255,7 +254,7 @@ def build_parameters(cls: type) -> List[Dict[str, Any]]:
             if args and args[0] is int:
                 elem_type = "int"
             for suffix, idx in [("_min", 0), ("_max", 1)]:
-                entry: Dict[str, Any] = {
+                entry: dict[str, Any] = {
                     "name": f"{name}{suffix}",
                     "type": elem_type,
                     "isAdvanced": True,
@@ -273,7 +272,7 @@ def build_parameters(cls: type) -> List[Dict[str, Any]]:
         # Normal parameter
         param_type = infer_param_type_from_annotation(annotation, p.default)
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "name": name,
             "type": param_type,
             "isAdvanced": True,
@@ -296,9 +295,9 @@ def build_parameters(cls: type) -> List[Dict[str, Any]]:
     return params
 
 
-def build_function_parameters(func) -> List[Dict[str, Any]]:
+def build_function_parameters(func) -> list[dict[str, Any]]:
     """Extract parameters from a function's signature."""
-    params: List[Dict[str, Any]] = []
+    params: list[dict[str, Any]] = []
     try:
         sig = inspect.signature(func)
     except Exception:
@@ -316,7 +315,7 @@ def build_function_parameters(func) -> List[Dict[str, Any]]:
         has_default, default_value = jsonable_default(p.default)
         param_type = infer_param_type_from_annotation(annotation, p.default)
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "name": pname,
             "type": param_type,
             "isAdvanced": True,
@@ -360,9 +359,9 @@ MODEL_ALIASES = {
 }
 
 # Reverse aliases: class name -> list of aliases
-def build_reverse_aliases() -> Dict[str, List[str]]:
+def build_reverse_aliases() -> dict[str, list[str]]:
     """Build reverse alias map: class_name -> [alias1, alias2, ...]."""
-    reverse: Dict[str, List[str]] = {}
+    reverse: dict[str, list[str]] = {}
     for alias_map in (PREPROCESSING_ALIASES, SPLITTER_ALIASES, MODEL_ALIASES):
         for alias, class_name in alias_map.items():
             reverse.setdefault(class_name, []).append(alias)
@@ -439,9 +438,9 @@ def get_model_subcategory(module: str) -> str:
 # ============================================================================
 
 
-def _walk_package_classes(package_name: str) -> List[Tuple[str, type]]:
+def _walk_package_classes(package_name: str) -> list[tuple[str, type]]:
     """Recursively discover all classes in a package."""
-    results: List[Tuple[str, type]] = []
+    results: list[tuple[str, type]] = []
     try:
         pkg = importlib.import_module(package_name)
     except ImportError as e:
@@ -478,7 +477,7 @@ def _walk_package_classes(package_name: str) -> List[Tuple[str, type]]:
     return results
 
 
-def _determine_node_type(cls: type, package_path: str) -> Optional[str]:
+def _determine_node_type(cls: type, package_path: str) -> str | None:
     """Determine the NodeType for a class based on inheritance and package path."""
     cls_module = getattr(cls, "__module__", "")
 
@@ -524,10 +523,10 @@ def _get_class_path(cls: type) -> str:
     return f"{module}.{cls.__name__}"
 
 
-def discover_nirs4all_operators() -> List[Dict[str, Any]]:
+def discover_nirs4all_operators() -> list[dict[str, Any]]:
     """Auto-discover ALL nirs4all operators from the operators packages."""
-    nodes: List[Dict[str, Any]] = []
-    seen_classpaths: Set[str] = set()
+    nodes: list[dict[str, Any]] = []
+    seen_classpaths: set[str] = set()
 
     packages_to_scan = [
         ("nirs4all.operators.transforms", "preprocessing"),
@@ -576,7 +575,7 @@ def discover_nirs4all_operators() -> List[Dict[str, Any]]:
             # Aliases
             aliases = REVERSE_ALIASES.get(name, [])
 
-            node: Dict[str, Any] = {
+            node: dict[str, Any] = {
                 "id": node_id,
                 "name": name,
                 "type": node_type,
@@ -606,13 +605,13 @@ def discover_nirs4all_operators() -> List[Dict[str, Any]]:
 # ============================================================================
 
 
-def discover_tensorflow_models(skip: bool = False) -> List[Dict[str, Any]]:
+def discover_tensorflow_models(skip: bool = False) -> list[dict[str, Any]]:
     """Discover nirs4all TensorFlow model functions."""
     if skip:
         print("[WARN] Skipping TensorFlow models (--skip-tensorflow)", file=sys.stderr)
         return []
 
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
     try:
         import os
         os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
@@ -665,7 +664,7 @@ def discover_tensorflow_models(skip: bool = False) -> List[Dict[str, Any]]:
 # ============================================================================
 
 
-def generate_sklearn_transformers() -> List[Dict[str, Any]]:
+def generate_sklearn_transformers() -> list[dict[str, Any]]:
     """Generate nodes for all sklearn transformers."""
     try:
         from sklearn.utils import all_estimators
@@ -673,8 +672,8 @@ def generate_sklearn_transformers() -> List[Dict[str, Any]]:
         print("[WARN] sklearn not available, skipping transformers", file=sys.stderr)
         return []
 
-    nodes: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
+    nodes: list[dict[str, Any]] = []
+    seen: set[str] = set()
 
     for name, cls in all_estimators(type_filter="transformer"):
         slug = snake_case(name)
@@ -689,7 +688,7 @@ def generate_sklearn_transformers() -> List[Dict[str, Any]]:
         if not description:
             description = f"sklearn transformer {name}"
 
-        node: Dict[str, Any] = {
+        node: dict[str, Any] = {
             "id": f"preprocessing.{slug}",
             "name": name,
             "type": "preprocessing",
@@ -707,14 +706,14 @@ def generate_sklearn_transformers() -> List[Dict[str, Any]]:
     return nodes
 
 
-def generate_sklearn_y_processing() -> List[Dict[str, Any]]:
+def generate_sklearn_y_processing() -> list[dict[str, Any]]:
     """Generate y_processing nodes for sklearn scalers."""
     try:
         import sklearn.preprocessing as skp
     except ImportError:
         return []
 
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     for name in Y_PROCESSING_SCALERS:
         cls = getattr(skp, name, None)
@@ -743,7 +742,7 @@ def generate_sklearn_y_processing() -> List[Dict[str, Any]]:
     return nodes
 
 
-def generate_sklearn_models() -> List[Dict[str, Any]]:
+def generate_sklearn_models() -> list[dict[str, Any]]:
     """Generate nodes for all sklearn classifiers and regressors."""
     try:
         from sklearn.utils import all_estimators
@@ -751,14 +750,14 @@ def generate_sklearn_models() -> List[Dict[str, Any]]:
         print("[WARN] sklearn not available, skipping models", file=sys.stderr)
         return []
 
-    info: Dict[str, Dict[str, Any]] = {}
+    info: dict[str, dict[str, Any]] = {}
     for est_type in ("classifier", "regressor"):
         for name, cls in all_estimators(type_filter=est_type):
             entry = info.setdefault(name, {"cls": cls, "types": set()})
             entry["types"].add(est_type)
 
-    nodes: List[Dict[str, Any]] = []
-    seen: Set[str] = set()
+    nodes: list[dict[str, Any]] = []
+    seen: set[str] = set()
 
     for name, entry in info.items():
         slug = snake_case(name)
@@ -776,7 +775,7 @@ def generate_sklearn_models() -> List[Dict[str, Any]]:
             description = f"sklearn {', '.join(est_types)} {name}"
 
         aliases = REVERSE_ALIASES.get(name, [])
-        node: Dict[str, Any] = {
+        node: dict[str, Any] = {
             "id": f"model.{slug}",
             "name": name,
             "type": "model",
@@ -796,7 +795,7 @@ def generate_sklearn_models() -> List[Dict[str, Any]]:
     return nodes
 
 
-def generate_sklearn_splitters() -> List[Dict[str, Any]]:
+def generate_sklearn_splitters() -> list[dict[str, Any]]:
     """Generate nodes for sklearn cross-validation splitters."""
     try:
         import sklearn.model_selection as model_selection
@@ -812,7 +811,7 @@ def generate_sklearn_splitters() -> List[Dict[str, Any]]:
         "StratifiedGroupKFold",
     ]
 
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     for name in splitter_names:
         cls = getattr(model_selection, name, None)
@@ -847,7 +846,7 @@ def generate_sklearn_splitters() -> List[Dict[str, Any]]:
 # ============================================================================
 
 
-def load_ui_overlays(repo_root: Path) -> Dict[str, Any]:
+def load_ui_overlays(repo_root: Path) -> dict[str, Any]:
     """Load UI overlay data from ui-overlays.json."""
     overlay_path = repo_root / "src" / "data" / "nodes" / "ui-overlays.json"
     if not overlay_path.exists():
@@ -862,7 +861,7 @@ def load_ui_overlays(repo_root: Path) -> Dict[str, Any]:
         return {}
 
 
-def apply_ui_overlays(nodes: List[Dict[str, Any]], overlays: Dict[str, Any]) -> None:
+def apply_ui_overlays(nodes: list[dict[str, Any]], overlays: dict[str, Any]) -> None:
     """Apply UI overlay data (sweep presets, finetune ranges, display order, descriptions) to nodes."""
     for node in nodes:
         node_id = node["id"]
@@ -910,9 +909,9 @@ def apply_ui_overlays(nodes: List[Dict[str, Any]], overlays: Dict[str, Any]) -> 
 # ============================================================================
 
 
-def validate_registry(nodes: List[Dict[str, Any]]) -> List[str]:
+def validate_registry(nodes: list[dict[str, Any]]) -> list[str]:
     """Basic validation of the registry output."""
-    errors: List[str] = []
+    errors: list[str] = []
     required_fields = {"id", "name", "type", "description", "parameters", "source"}
     valid_types = {
         "preprocessing", "y_processing", "splitting", "model",
@@ -920,7 +919,7 @@ def validate_registry(nodes: List[Dict[str, Any]]) -> List[str]:
     }
     valid_sources = {"nirs4all", "sklearn", "custom", "editor"}
 
-    seen_ids: Set[str] = set()
+    seen_ids: set[str] = set()
 
     for i, node in enumerate(nodes):
         # Required fields
@@ -962,9 +961,9 @@ def validate_registry(nodes: List[Dict[str, Any]]) -> List[str]:
 # ============================================================================
 
 
-def generate_all_nodes(skip_tensorflow: bool = False, repo_root: Optional[Path] = None) -> List[Dict[str, Any]]:
+def generate_all_nodes(skip_tensorflow: bool = False, repo_root: Path | None = None) -> list[dict[str, Any]]:
     """Generate all registry nodes via auto-discovery."""
-    nodes: List[Dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
 
     # 1. nirs4all operators (auto-discovered)
     print("[INFO] Auto-discovering nirs4all operators...", file=sys.stderr)
@@ -1026,9 +1025,9 @@ def generate_all_nodes(skip_tensorflow: bool = False, repo_root: Optional[Path] 
     # Dedupe by ID (keep first due to priority sorting)
     # Note: classPath dedup excludes y_processing nodes since a scaler can serve
     # as both preprocessing (StandardScaler for X) and y_processing (StandardScaler for y)
-    seen_ids: Set[str] = set()
-    seen_classpaths: Set[str] = set()
-    deduped: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_classpaths: set[str] = set()
+    deduped: list[dict[str, Any]] = []
     for n in nodes:
         if n["id"] in seen_ids:
             continue
@@ -1089,8 +1088,8 @@ def main() -> int:
     print(f"Wrote {len(nodes)} nodes to {out_path.relative_to(repo_root)}")
 
     # Sidecar metadata
-    sklearn_version: Optional[str] = None
-    nirs4all_version: Optional[str] = None
+    sklearn_version: str | None = None
+    nirs4all_version: str | None = None
     try:
         import sklearn
         sklearn_version = getattr(sklearn, "__version__", None)
@@ -1102,8 +1101,8 @@ def main() -> int:
     except Exception:
         pass
 
-    type_counts: Dict[str, int] = {}
-    source_counts: Dict[str, int] = {}
+    type_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
     for n in nodes:
         t = n.get("type", "unknown")
         type_counts[t] = type_counts.get(t, 0) + 1
@@ -1112,7 +1111,7 @@ def main() -> int:
 
     meta_path = out_path.with_name(out_path.stem + ".meta.json")
     meta = {
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "generatedAt": datetime.now(UTC).isoformat(),
         "nodeCount": len(nodes),
         "pythonVersion": sys.version.split()[0],
         "sklearnVersion": sklearn_version,

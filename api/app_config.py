@@ -16,10 +16,10 @@ The app config folder location is determined by (in order of priority):
 import json
 import os
 import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from .shared.logger import get_logger
 
@@ -42,24 +42,24 @@ class DatasetLink:
     version: int = 1
     version_status: str = "current"
     last_verified: str = ""
-    config: Dict[str, Any] = field(default_factory=dict)
-    stats: Dict[str, Any] = field(default_factory=dict)
-    group_ids: List[str] = field(default_factory=list)
+    config: dict[str, Any] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
+    group_ids: list[str] = field(default_factory=list)
     # Computed fields from nirs4all
-    num_samples: Optional[int] = None
-    num_features: Optional[int] = None
+    num_samples: int | None = None
+    num_features: int | None = None
     n_sources: int = 1
-    task_type: Optional[str] = None
-    signal_types: List[str] = field(default_factory=list)
-    targets: List[Dict[str, Any]] = field(default_factory=list)
-    default_target: Optional[str] = None
-    description: Optional[str] = None
+    task_type: str | None = None
+    signal_types: list[str] = field(default_factory=list)
+    targets: list[dict[str, Any]] = field(default_factory=list)
+    default_target: str | None = None
+    description: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DatasetLink":
+    def from_dict(cls, data: dict[str, Any]) -> "DatasetLink":
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
@@ -88,15 +88,15 @@ class DatasetGroup:
     """A group for organizing datasets."""
     id: str
     name: str
-    dataset_ids: List[str] = field(default_factory=list)
+    dataset_ids: list[str] = field(default_factory=list)
     color: str = "#3b82f6"
     created_at: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DatasetGroup":
+    def from_dict(cls, data: dict[str, Any]) -> "DatasetGroup":
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),
@@ -261,7 +261,7 @@ class AppConfigManager:
     # App Settings
     # ============================================================================
 
-    def _default_app_settings(self) -> Dict[str, Any]:
+    def _default_app_settings(self) -> dict[str, Any]:
         """Get default app settings."""
         return {
             "version": "3.0",
@@ -275,17 +275,17 @@ class AppConfigManager:
             "last_updated": datetime.now().isoformat(),
         }
 
-    def get_app_settings(self) -> Dict[str, Any]:
+    def get_app_settings(self) -> dict[str, Any]:
         """Load app settings from disk."""
         if self._app_settings_path.exists():
             try:
-                with open(self._app_settings_path, "r", encoding="utf-8") as f:
+                with open(self._app_settings_path, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 logger.error("Failed to load app settings: %s", e)
         return self._default_app_settings()
 
-    def save_app_settings(self, settings: Dict[str, Any]) -> bool:
+    def save_app_settings(self, settings: dict[str, Any]) -> bool:
         """Save app settings to disk."""
         try:
             settings["last_updated"] = datetime.now().isoformat()
@@ -296,13 +296,13 @@ class AppConfigManager:
             logger.error("Failed to save app settings: %s", e)
             return False
 
-    def update_app_settings(self, updates: Dict[str, Any]) -> bool:
+    def update_app_settings(self, updates: dict[str, Any]) -> bool:
         """Update app settings with deep merge."""
         current = self.get_app_settings()
         merged = self._deep_merge(current, updates)
         return self.save_app_settings(merged)
 
-    def _deep_merge(self, base: Dict, updates: Dict) -> Dict:
+    def _deep_merge(self, base: dict, updates: dict) -> dict:
         """Deep merge two dictionaries."""
         result = base.copy()
         for key, value in updates.items():
@@ -316,12 +316,12 @@ class AppConfigManager:
     # UI Preferences
     # ============================================================================
 
-    def get_ui_preferences(self) -> Dict[str, Any]:
+    def get_ui_preferences(self) -> dict[str, Any]:
         """Get UI preferences."""
         settings = self.get_app_settings()
         return settings.get("ui_preferences", {})
 
-    def save_ui_preferences(self, preferences: Dict[str, Any]) -> bool:
+    def save_ui_preferences(self, preferences: dict[str, Any]) -> bool:
         """Save UI preferences."""
         settings = self.get_app_settings()
         settings["ui_preferences"] = {**settings.get("ui_preferences", {}), **preferences}
@@ -331,7 +331,7 @@ class AppConfigManager:
     # Favorites
     # ============================================================================
 
-    def get_favorites(self) -> List[str]:
+    def get_favorites(self) -> list[str]:
         """Get favorite pipeline IDs."""
         settings = self.get_app_settings()
         return settings.get("favorite_pipelines", [])
@@ -360,7 +360,7 @@ class AppConfigManager:
     # Global Dataset Links
     # ============================================================================
 
-    def _default_dataset_links(self) -> Dict[str, Any]:
+    def _default_dataset_links(self) -> dict[str, Any]:
         """Get default dataset links structure."""
         return {
             "version": "1.0",
@@ -369,17 +369,17 @@ class AppConfigManager:
             "last_updated": datetime.now().isoformat(),
         }
 
-    def _load_dataset_links(self) -> Dict[str, Any]:
+    def _load_dataset_links(self) -> dict[str, Any]:
         """Load dataset links from disk."""
         if self._dataset_links_path.exists():
             try:
-                with open(self._dataset_links_path, "r", encoding="utf-8") as f:
+                with open(self._dataset_links_path, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 logger.error("Failed to load dataset links: %s", e)
         return self._default_dataset_links()
 
-    def _save_dataset_links(self, data: Dict[str, Any]) -> bool:
+    def _save_dataset_links(self, data: dict[str, Any]) -> bool:
         """Save dataset links to disk."""
         try:
             data["last_updated"] = datetime.now().isoformat()
@@ -390,19 +390,19 @@ class AppConfigManager:
             logger.error("Failed to save dataset links: %s", e)
             return False
 
-    def get_datasets(self) -> List[DatasetLink]:
+    def get_datasets(self) -> list[DatasetLink]:
         """Get all linked datasets."""
         data = self._load_dataset_links()
         return [DatasetLink.from_dict(d) for d in data.get("datasets", [])]
 
-    def get_dataset(self, dataset_id: str) -> Optional[DatasetLink]:
+    def get_dataset(self, dataset_id: str) -> DatasetLink | None:
         """Get a specific dataset by ID."""
         for ds in self.get_datasets():
             if ds.id == dataset_id:
                 return ds
         return None
 
-    def link_dataset(self, path: str, config: Optional[Dict[str, Any]] = None) -> DatasetLink:
+    def link_dataset(self, path: str, config: dict[str, Any] | None = None) -> DatasetLink:
         """Link a dataset globally.
 
         Args:
@@ -474,7 +474,7 @@ class AppConfigManager:
         data["datasets"] = datasets
         return self._save_dataset_links(data)
 
-    def update_dataset(self, dataset_id: str, updates: Dict[str, Any]) -> Optional[DatasetLink]:
+    def update_dataset(self, dataset_id: str, updates: dict[str, Any]) -> DatasetLink | None:
         """Update a dataset's configuration.
 
         Args:
@@ -506,7 +506,7 @@ class AppConfigManager:
 
         return None
 
-    def refresh_dataset(self, dataset_id: str) -> Optional[DatasetLink]:
+    def refresh_dataset(self, dataset_id: str) -> DatasetLink | None:
         """Refresh a dataset's hash and stats.
 
         Args:
@@ -568,7 +568,7 @@ class AppConfigManager:
 
         return hasher.hexdigest()[:16]
 
-    def _compute_dataset_stats(self, dataset_path: Path) -> Dict[str, Any]:
+    def _compute_dataset_stats(self, dataset_path: Path) -> dict[str, Any]:
         """Compute basic statistics about a dataset."""
         stats = {
             "file_count": 0,
@@ -604,7 +604,7 @@ class AppConfigManager:
     # Dataset Groups
     # ============================================================================
 
-    def get_dataset_groups(self) -> List[DatasetGroup]:
+    def get_dataset_groups(self) -> list[DatasetGroup]:
         """Get all dataset groups."""
         data = self._load_dataset_links()
         return [DatasetGroup.from_dict(g) for g in data.get("groups", [])]
@@ -697,7 +697,7 @@ class AppConfigManager:
 
         return False
 
-    def remove_dataset_from_group(self, dataset_id: str, group_id: Optional[str] = None) -> bool:
+    def remove_dataset_from_group(self, dataset_id: str, group_id: str | None = None) -> bool:
         """Remove a dataset from a specific group.
 
         Args:

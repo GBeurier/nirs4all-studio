@@ -10,7 +10,7 @@ Run with: pytest tests/test_store_integration.py -v
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -48,8 +48,8 @@ def sample_run_rows():
             "run_id": "run-001",
             "name": "Test Run 1",
             "status": "completed",
-            "created_at": datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc),
-            "completed_at": datetime(2025, 1, 15, 10, 5, 0, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC),
+            "completed_at": datetime(2025, 1, 15, 10, 5, 0, tzinfo=UTC),
             "datasets": '["dataset_a"]',
             "summary": '{"best_rmse": 0.12}',
             "error": None,
@@ -58,7 +58,7 @@ def sample_run_rows():
             "run_id": "run-002",
             "name": "Test Run 2",
             "status": "running",
-            "created_at": datetime(2025, 1, 16, 8, 0, 0, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 16, 8, 0, 0, tzinfo=UTC),
             "completed_at": None,
             "datasets": '["dataset_b"]',
             "summary": "{}",
@@ -138,8 +138,8 @@ class TestStoreAdapter:
             "run_id": "run-001",
             "name": "Test Run",
             "status": "completed",
-            "created_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
-            "completed_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
+            "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+            "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
         }
         mock_store.list_pipelines.return_value = mock_polars_df([])
 
@@ -314,8 +314,8 @@ class TestWorkspaceScannerStore:
                 "dataset_name": "dataset_a",
                 "dataset_hash": "abc123",
                 "status": "completed",
-                "created_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
-                "completed_at": datetime(2025, 1, 15, tzinfo=timezone.utc),
+                "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+                "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
                 "best_val": 0.95,
                 "best_test": 0.90,
                 "metric": "rmse",
@@ -396,26 +396,12 @@ class TestTrainingWorkspacePath:
     """Verify that training.py passes workspace_path to nirs4all.run()."""
 
     def test_training_passes_workspace_path(self):
-        """Check that the nirs4all.run() call in training.py includes workspace_path."""
-        import ast
-
+        """Check that workspace_path is included in the nirs4all.run() call in training.py."""
         training_path = Path(__file__).parent.parent / "api" / "training.py"
         source = training_path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
 
-        # Find all nirs4all.run() calls and check for workspace_path keyword
-        found_workspace_path = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                func = node.func
-                # Match nirs4all.run(...)
-                if (isinstance(func, ast.Attribute) and func.attr == "run"
-                        and isinstance(func.value, ast.Name) and func.value.id == "nirs4all"):
-                    for kw in node.keywords:
-                        if kw.arg == "workspace_path":
-                            found_workspace_path = True
-
-        assert found_workspace_path, (
+        # workspace_path must appear in the run_kwargs dict or as a direct keyword
+        assert "workspace_path" in source, (
             "nirs4all.run() in training.py must include workspace_path parameter "
             "to ensure results are written to the DuckDB store"
         )

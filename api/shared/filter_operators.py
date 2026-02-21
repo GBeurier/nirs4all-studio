@@ -12,16 +12,19 @@ Phase 1 Implementation - Foundation & Selection System
 """
 
 from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 
 # Import nirs4all filters
 try:
     from nirs4all.operators.filters import (
+        HighLeverageFilter,
         SampleFilter,
+        SpectralQualityFilter,
         XOutlierFilter,
         YOutlierFilter,
-        SpectralQualityFilter,
-        HighLeverageFilter,
+    )
+    from nirs4all.operators.filters import (
         MetadataFilter as N4AMetadataFilter,
     )
     NIRS4ALL_FILTERS_AVAILABLE = True
@@ -51,7 +54,7 @@ class SampleIndexFilter:
 
     def __init__(
         self,
-        indices: List[int],
+        indices: list[int],
         mode: str = "keep",
     ):
         self.indices = set(indices) if indices else set()
@@ -61,8 +64,8 @@ class SampleIndexFilter:
     def fit_predict(
         self,
         X: np.ndarray,
-        y: Optional[np.ndarray] = None,
-        metadata: Optional[Dict[str, np.ndarray]] = None,
+        y: np.ndarray | None = None,
+        metadata: dict[str, np.ndarray] | None = None,
     ) -> np.ndarray:
         """Fit the filter and return a boolean mask.
 
@@ -107,8 +110,8 @@ class _Nirs4AllFilterAdapter:
     def fit_predict(
         self,
         X: np.ndarray,
-        y: Optional[np.ndarray] = None,
-        metadata: Optional[Dict[str, np.ndarray]] = None,
+        y: np.ndarray | None = None,
+        metadata: dict[str, np.ndarray] | None = None,
     ) -> np.ndarray:
         """Fit the filter and return a boolean mask.
 
@@ -137,7 +140,7 @@ class _Nirs4AllFilterAdapter:
         return self._removal_reason
 
 
-def get_filter_methods() -> List[Dict[str, Any]]:
+def get_filter_methods() -> list[dict[str, Any]]:
     """Get list of available filter methods with metadata.
 
     Introspects nirs4all filters dynamically to provide method information.
@@ -389,7 +392,7 @@ def get_filter_methods() -> List[Dict[str, Any]]:
     return methods
 
 
-def instantiate_filter(name: str, params: Dict[str, Any]) -> Optional[Union[SampleIndexFilter, _Nirs4AllFilterAdapter]]:
+def instantiate_filter(name: str, params: dict[str, Any]) -> SampleIndexFilter | _Nirs4AllFilterAdapter | None:
     """Create a filter instance from name and parameters.
 
     Args:
@@ -448,7 +451,7 @@ def instantiate_filter(name: str, params: Dict[str, Any]) -> Optional[Union[Samp
         return _Nirs4AllFilterAdapter(filter_instance)
 
 
-def _translate_legacy_params(name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def _translate_legacy_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
     """Translate legacy filter parameters to nirs4all equivalents.
 
     Args:
@@ -537,4 +540,4 @@ QCFilter = None  # Removed - use SpectralQualityFilter from nirs4all
 DistanceFilter = None  # Removed - use XOutlierFilter from nirs4all
 
 # Registry for backward compatibility - maps to instantiate_filter
-FILTER_REGISTRY: Dict[str, type] = {}  # Empty - use instantiate_filter instead
+FILTER_REGISTRY: dict[str, type] = {}  # Empty - use instantiate_filter instead

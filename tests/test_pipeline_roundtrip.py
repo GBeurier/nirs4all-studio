@@ -12,8 +12,8 @@ This test validates that all 10 pipeline samples can be:
 Run with: pytest tests/test_pipeline_roundtrip.py -v
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 # Add webapp to path
@@ -22,12 +22,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pytest
 
 from api.pipelines import (
-    list_pipeline_samples,
-    get_pipeline_sample,
-    _get_samples_dir,
     _get_canonical_pipeline,
+    _get_samples_dir,
+    get_pipeline_sample,
+    list_pipeline_samples,
 )
-
 
 # Sample IDs to test
 SAMPLE_IDS = [
@@ -174,7 +173,7 @@ class TestCanonicalFormatDetails:
         """Test generator syntax produces multiple configurations."""
         result = await get_pipeline_sample("06_generator_syntax", canonical=True)
 
-        assert result["has_generators"] == True
+        assert result["has_generators"] is True
         assert result["num_configurations"] > 1
 
     @pytest.mark.asyncio

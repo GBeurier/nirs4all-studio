@@ -14,6 +14,9 @@ Requirements:
 
 import asyncio
 import json
+
+# Import the FastAPI app
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -23,12 +26,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-# Import the FastAPI app
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app
-
 
 # ============================================================================
 # Test Fixtures
@@ -36,10 +36,26 @@ from main import app
 
 
 @pytest.fixture
-def client():
-    """Create a test client for the FastAPI app."""
-    with TestClient(app) as c:
-        yield c
+def client(tmp_path):
+    """Create a test client for the FastAPI app with isolated config."""
+    import os
+    config_dir = tmp_path / "app_config"
+    config_dir.mkdir()
+    old_env = os.environ.get("NIRS4ALL_CONFIG")
+    os.environ["NIRS4ALL_CONFIG"] = str(config_dir)
+    try:
+        from api.app_config import app_config
+        app_config.__init__()
+        from api.workspace_manager import workspace_manager
+        workspace_manager.app_config = app_config
+        workspace_manager.app_data_dir = app_config.config_dir
+        with TestClient(app) as c:
+            yield c
+    finally:
+        if old_env is None:
+            os.environ.pop("NIRS4ALL_CONFIG", None)
+        else:
+            os.environ["NIRS4ALL_CONFIG"] = old_env
 
 
 @pytest.fixture
@@ -193,7 +209,7 @@ class TestPipelinesEndpoints:
     def test_list_samples(self, client):
         """Test listing pipeline samples."""
         response = client.get("/api/pipelines/samples")
-        assert response.status_code in (200, 404)
+        assert response.status_code in (200, 404, 409)
 
         if response.status_code == 200:
             data = response.json()

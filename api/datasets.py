@@ -22,8 +22,8 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
 from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -33,13 +33,13 @@ if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 try:
-    from nirs4all.data.dataset import SpectroDataset
-    from nirs4all.data import DatasetConfigs
-    from nirs4all.data.detection import detect_file_parameters
-    from nirs4all.data.parsers.folder_parser import FolderParser
-    from nirs4all.data.loaders import load_file
     from nirs4all.core.task_detection import detect_task_type
     from nirs4all.core.task_type import TaskType
+    from nirs4all.data import DatasetConfigs
+    from nirs4all.data.dataset import SpectroDataset
+    from nirs4all.data.detection import detect_file_parameters
+    from nirs4all.data.loaders import load_file
+    from nirs4all.data.parsers.folder_parser import FolderParser
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -67,12 +67,12 @@ class DetectedFile(BaseModel):
     filename: str
     type: str = Field("unknown", description="File role: X, Y, metadata, unknown")
     split: str = Field("unknown", description="Data split: train, test, unknown")
-    source: Optional[int] = None
+    source: int | None = None
     format: str = Field("csv", description="File format")
     size_bytes: int = 0
     confidence: float = 0.0
-    num_rows: Optional[int] = None
-    num_columns: Optional[int] = None
+    num_rows: int | None = None
+    num_columns: int | None = None
 
 
 class DetectFilesRequest(BaseModel):
@@ -99,16 +99,16 @@ class DetectFormatRequest(BaseModel):
 class UnifiedDetectionResponse(BaseModel):
     """Response from unified detection using nirs4all."""
 
-    files: List[DetectedFile]
+    files: list[DetectedFile]
     folder_name: str
     total_size_bytes: int
     has_standard_structure: bool
-    parsing_options: Dict[str, Any] = Field(default_factory=dict)
-    confidence: Dict[str, float] = Field(default_factory=dict)
+    parsing_options: dict[str, Any] = Field(default_factory=dict)
+    confidence: dict[str, float] = Field(default_factory=dict)
     has_fold_file: bool = False
-    fold_file_path: Optional[str] = None
-    metadata_columns: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    fold_file_path: str | None = None
+    metadata_columns: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DatasetFileConfig(BaseModel):
@@ -117,8 +117,8 @@ class DatasetFileConfig(BaseModel):
     path: str
     type: str
     split: str
-    source: Optional[int] = None
-    overrides: Optional[Dict[str, Any]] = None
+    source: int | None = None
+    overrides: dict[str, Any] | None = None
 
 
 class ParsingOptions(BaseModel):
@@ -135,7 +135,7 @@ class PreviewDataRequest(BaseModel):
     """Request to preview dataset."""
 
     path: str = Field(..., description="Base path")
-    files: List[DatasetFileConfig] = Field(..., description="File configurations")
+    files: list[DatasetFileConfig] = Field(..., description="File configurations")
     parsing: ParsingOptions = Field(default_factory=ParsingOptions)
     max_samples: int = Field(100, description="Max samples to preview")
 
@@ -144,12 +144,12 @@ class PreviewDataResponse(BaseModel):
     """Response from dataset preview."""
 
     success: bool
-    error: Optional[str] = None
-    summary: Optional[Dict[str, Any]] = None
-    spectra_preview: Optional[Dict[str, Any]] = None
-    target_distribution: Optional[Dict[str, Any]] = None
-    spectra_per_source: Optional[Dict[int, Dict[str, Any]]] = None
-    target_distributions: Optional[Dict[str, Dict[str, Any]]] = None
+    error: str | None = None
+    summary: dict[str, Any] | None = None
+    spectra_preview: dict[str, Any] | None = None
+    target_distribution: dict[str, Any] | None = None
+    spectra_per_source: dict[int, dict[str, Any]] | None = None
+    target_distributions: dict[str, dict[str, Any]] | None = None
 
 
 class SyntheticPresetInfo(BaseModel):
@@ -171,10 +171,10 @@ class GenerateSyntheticRequest(BaseModel):
     n_samples: int = Field(500, ge=50, le=10000, description="Number of samples to generate")
     complexity: str = Field("simple", description="Complexity level: simple, realistic, complex")
     n_classes: int = Field(3, ge=2, le=20, description="Number of classes for classification tasks")
-    target_range: Optional[List[float]] = Field(None, description="Target value range [min, max] for regression")
+    target_range: list[float] | None = Field(None, description="Target value range [min, max] for regression")
     train_ratio: float = Field(0.8, ge=0.5, le=0.95, description="Proportion of samples for training")
-    wavelength_range: Optional[List[float]] = Field(None, description="Wavelength range [start, end] in nm")
-    name: Optional[str] = Field(None, description="Dataset name (auto-generated if not provided)")
+    wavelength_range: list[float] | None = Field(None, description="Wavelength range [start, end] in nm")
+    name: str | None = Field(None, description="Dataset name (auto-generated if not provided)")
     auto_link: bool = Field(True, description="Automatically link to workspace after generation")
 
 
@@ -182,10 +182,10 @@ class GenerateSyntheticResponse(BaseModel):
     """Response model for synthetic dataset generation."""
 
     success: bool
-    dataset_id: Optional[str] = None
+    dataset_id: str | None = None
     name: str
     path: str
-    summary: Dict[str, Any]
+    summary: dict[str, Any]
     linked: bool = False
     message: str
 
@@ -239,10 +239,10 @@ def _is_detectable_format(file_path: Path) -> bool:
 
 
 def _build_nirs4all_config(
-    files: List[DatasetFileConfig],
+    files: list[DatasetFileConfig],
     parsing: ParsingOptions,
-    base_path: Optional[Path] = None,
-) -> Dict[str, Any]:
+    base_path: Path | None = None,
+) -> dict[str, Any]:
     """Build nirs4all config dict from file configs and parsing options."""
     global_params = {
         "delimiter": parsing.delimiter,
@@ -256,7 +256,7 @@ def _build_nirs4all_config(
     if parsing.signal_type and parsing.signal_type != "auto":
         x_specific_params["signal_type"] = parsing.signal_type
 
-    config: Dict[str, Any] = {"global_params": global_params}
+    config: dict[str, Any] = {"global_params": global_params}
 
     for file_config in files:
         file_path = Path(file_config.path)
@@ -294,7 +294,7 @@ def _build_nirs4all_config(
     return config
 
 
-def _compute_spectra_preview(X: np.ndarray, wavelengths: np.ndarray) -> Dict[str, Any]:
+def _compute_spectra_preview(X: np.ndarray, wavelengths: np.ndarray) -> dict[str, Any]:
     """Compute spectra statistics for preview."""
     return {
         "wavelengths": wavelengths.tolist(),
@@ -306,7 +306,7 @@ def _compute_spectra_preview(X: np.ndarray, wavelengths: np.ndarray) -> Dict[str
     }
 
 
-def _compute_target_distribution(y: np.ndarray, is_regression: bool) -> Dict[str, Any]:
+def _compute_target_distribution(y: np.ndarray, is_regression: bool) -> dict[str, Any]:
     """Compute target distribution for preview."""
     if is_regression:
         hist, bin_edges = np.histogram(y, bins=20)
@@ -342,14 +342,14 @@ async def detect_unified(request: DetectFilesRequest):
     if not folder_path.is_dir():
         raise HTTPException(status_code=400, detail="Path is not a directory")
 
-    files: List[DetectedFile] = []
+    files: list[DetectedFile] = []
     total_size = 0
-    warnings: List[str] = []
-    parsing_options: Dict[str, Any] = {}
-    confidence: Dict[str, float] = {}
+    warnings: list[str] = []
+    parsing_options: dict[str, Any] = {}
+    confidence: dict[str, float] = {}
     has_fold_file = False
-    fold_file_path: Optional[str] = None
-    metadata_columns: List[str] = []
+    fold_file_path: str | None = None
+    metadata_columns: list[str] = []
 
     try:
         parser = FolderParser()
@@ -476,7 +476,7 @@ async def detect_unified(request: DetectFilesRequest):
 class DetectFilesListRequest(BaseModel):
     """Request to detect file roles from a list of individual file paths."""
 
-    paths: List[str] = Field(..., description="List of file paths to detect")
+    paths: list[str] = Field(..., description="List of file paths to detect")
 
 
 @router.post("/datasets/detect-files-list", response_model=UnifiedDetectionResponse)
@@ -487,14 +487,14 @@ async def detect_files_list(request: DetectFilesListRequest):
 
     from nirs4all.data.parsers.folder_parser import FILE_PATTERNS
 
-    files: List[DetectedFile] = []
+    files: list[DetectedFile] = []
     total_size = 0
-    warnings: List[str] = []
-    parsing_options: Dict[str, Any] = {}
-    confidence: Dict[str, float] = {}
+    warnings: list[str] = []
+    parsing_options: dict[str, Any] = {}
+    confidence: dict[str, float] = {}
     has_fold_file = False
-    fold_file_path: Optional[str] = None
-    metadata_columns: List[str] = []
+    fold_file_path: str | None = None
+    metadata_columns: list[str] = []
 
     parser = FolderParser()
 
@@ -780,25 +780,25 @@ class ValidateFilesRequest(BaseModel):
     """Request to validate file shapes."""
 
     path: str = Field(..., description="Base path for files")
-    files: List[DetectedFile] = Field(..., description="Files to validate")
-    parsing: Optional[Dict[str, Any]] = Field(None, description="Parsing options")
+    files: list[DetectedFile] = Field(..., description="Files to validate")
+    parsing: dict[str, Any] | None = Field(None, description="Parsing options")
 
 
 class FileShapeInfo(BaseModel):
     """Shape info for a validated file."""
 
     path: str
-    num_rows: Optional[int] = None
-    num_columns: Optional[int] = None
-    error: Optional[str] = None
+    num_rows: int | None = None
+    num_columns: int | None = None
+    error: str | None = None
 
 
 class ValidateFilesResponse(BaseModel):
     """Response from file validation."""
 
     success: bool
-    shapes: Dict[str, FileShapeInfo]
-    error: Optional[str] = None
+    shapes: dict[str, FileShapeInfo]
+    error: str | None = None
 
 
 @router.post("/datasets/validate-files", response_model=ValidateFilesResponse)
@@ -813,7 +813,7 @@ async def validate_files(request: ValidateFilesRequest):
 
     base_path = Path(request.path) if request.path else None
     parsing = request.parsing or {}
-    shapes: Dict[str, FileShapeInfo] = {}
+    shapes: dict[str, FileShapeInfo] = {}
 
     # Filter to X and Y files only
     files_to_validate = [f for f in request.files if f.type in ("X", "Y")]
@@ -1080,7 +1080,7 @@ async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
 
 
 @router.get("/datasets/synthetic-presets")
-async def get_synthetic_presets() -> Dict[str, List[SyntheticPresetInfo]]:
+async def get_synthetic_presets() -> dict[str, list[SyntheticPresetInfo]]:
     """Get available presets for synthetic data generation."""
     presets = [
         SyntheticPresetInfo(id="regression_small", name="Regression (Small)", description="250 samples for quick testing", task_type="regression", n_samples=250, complexity="simple", icon="activity"),
@@ -1126,7 +1126,7 @@ async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
             name=dataset_name,
         )
 
-        feature_kwargs: Dict[str, Any] = {"complexity": request.complexity}
+        feature_kwargs: dict[str, Any] = {"complexity": request.complexity}
         if request.wavelength_range and len(request.wavelength_range) == 2:
             feature_kwargs["wavelength_range"] = tuple(request.wavelength_range)
         builder.with_features(**feature_kwargs)
@@ -1232,10 +1232,10 @@ async def get_dataset(dataset_id: str):
 
 class UpdateDatasetRequest(BaseModel):
     """Request body for updating a dataset."""
-    name: Optional[str] = None
-    description: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
-    default_target: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    config: dict[str, Any] | None = None
+    default_target: str | None = None
 
 
 @router.put("/datasets/{dataset_id}")
@@ -1313,7 +1313,7 @@ async def load_dataset(dataset_id: str):
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     try:
-        from .spectra import _load_dataset, _clear_dataset_cache
+        from .spectra import _clear_dataset_cache, _load_dataset
         _clear_dataset_cache(dataset_id)
         ds = _load_dataset(dataset_id)
         if not ds:
@@ -1503,14 +1503,14 @@ class ScannedDataset(BaseModel):
 
     folder_path: str
     folder_name: str
-    groups: List[str] = []
-    files: List[DetectedFile] = []
-    parsing_options: Dict[str, Any] = {}
-    confidence: Dict[str, float] = {}
+    groups: list[str] = []
+    files: list[DetectedFile] = []
+    parsing_options: dict[str, Any] = {}
+    confidence: dict[str, float] = {}
     has_fold_file: bool = False
-    fold_file_path: Optional[str] = None
-    metadata_columns: List[str] = []
-    warnings: List[str] = []
+    fold_file_path: str | None = None
+    metadata_columns: list[str] = []
+    warnings: list[str] = []
 
 
 class ScanFolderRequest(BaseModel):
@@ -1524,9 +1524,9 @@ class ScanFolderResponse(BaseModel):
 
     success: bool
     root_path: str
-    datasets: List[ScannedDataset]
+    datasets: list[ScannedDataset]
     total_scanned_folders: int
-    warnings: List[str] = []
+    warnings: list[str] = []
 
 
 @router.post("/datasets/scan-folder", response_model=ScanFolderResponse)
@@ -1542,9 +1542,9 @@ async def scan_folder(request: ScanFolderRequest):
         raise HTTPException(status_code=400, detail=f"Not a valid directory: {request.path}")
 
     parser = FolderParser()
-    datasets: List[ScannedDataset] = []
+    datasets: list[ScannedDataset] = []
     scanned_count = 0
-    scan_warnings: List[str] = []
+    scan_warnings: list[str] = []
 
     key_to_type_split = {
         "train_x": ("X", "train"),
@@ -1558,13 +1558,13 @@ async def scan_folder(request: ScanFolderRequest):
 
     def _build_detected_files(config: dict, folder: Path) -> tuple:
         """Build DetectedFile list from FolderParser config."""
-        files: List[DetectedFile] = []
+        files: list[DetectedFile] = []
         has_fold = False
-        fold_path: Optional[str] = None
-        ds_warnings: List[str] = []
-        parsing_opts: Dict[str, Any] = {}
-        conf: Dict[str, float] = {}
-        meta_cols: List[str] = []
+        fold_path: str | None = None
+        ds_warnings: list[str] = []
+        parsing_opts: dict[str, Any] = {}
+        conf: dict[str, float] = {}
+        meta_cols: list[str] = []
 
         for key, (file_type, split) in key_to_type_split.items():
             value = config.get(key)
@@ -1642,7 +1642,7 @@ async def scan_folder(request: ScanFolderRequest):
 
         return files, parsing_opts, conf, has_fold, fold_path, meta_cols, ds_warnings
 
-    def scan_recursive(folder: Path, parent_groups: List[str]):
+    def scan_recursive(folder: Path, parent_groups: list[str]):
         nonlocal scanned_count
 
         if folder.name.startswith("."):

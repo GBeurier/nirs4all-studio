@@ -13,7 +13,7 @@ endpoints in aggregated_predictions.py.
 """
 
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -44,8 +44,8 @@ class PredictSingleRequest(BaseModel):
     """Request for single sample prediction."""
 
     model_id: str = Field(..., description="ID of the trained model to use")
-    spectrum: List[float] = Field(..., description="Spectrum data as 1D array")
-    preprocessing_chain: List[Dict[str, Any]] = Field(
+    spectrum: list[float] = Field(..., description="Spectrum data as 1D array")
+    preprocessing_chain: list[dict[str, Any]] = Field(
         default=[],
         description="Preprocessing steps to apply before prediction",
     )
@@ -55,12 +55,11 @@ class PredictBatchRequest(BaseModel):
     """Request for batch prediction."""
 
     model_id: str = Field(..., description="ID of the trained model to use")
-    spectra: List[List[float]] = Field(..., description="Spectra data as 2D array")
-    preprocessing_chain: List[Dict[str, Any]] = Field(
+    spectra: list[list[float]] = Field(..., description="Spectra data as 2D array")
+    preprocessing_chain: list[dict[str, Any]] = Field(
         default=[],
         description="Preprocessing steps to apply before prediction",
     )
-    save_results: bool = Field(False, description="Whether to save prediction record")
 
 
 class PredictDatasetRequest(BaseModel):
@@ -69,19 +68,18 @@ class PredictDatasetRequest(BaseModel):
     model_id: str = Field(..., description="ID of the trained model to use")
     dataset_id: str = Field(..., description="ID of the dataset to predict on")
     partition: str = Field("test", description="Dataset partition to use")
-    preprocessing_chain: List[Dict[str, Any]] = Field(
+    preprocessing_chain: list[dict[str, Any]] = Field(
         default=[],
         description="Preprocessing steps to apply before prediction",
     )
-    save_results: bool = Field(True, description="Whether to save prediction record")
 
 
 class PredictConfidenceRequest(BaseModel):
     """Request for prediction with confidence intervals."""
 
     model_id: str = Field(..., description="ID of the trained model to use")
-    spectra: List[List[float]] = Field(..., description="Spectra data as 2D array")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
+    spectra: list[list[float]] = Field(..., description="Spectra data as 2D array")
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
     method: str = Field(
         "bootstrap",
         description="Confidence estimation method: bootstrap, ensemble, jackknife",
@@ -94,13 +92,13 @@ class ExplainPredictionRequest(BaseModel):
     """Request for prediction explanation."""
 
     model_id: str = Field(..., description="ID of the trained model to use")
-    spectrum: List[float] = Field(..., description="Spectrum to explain")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
+    spectrum: list[float] = Field(..., description="Spectrum to explain")
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
     method: str = Field(
         "permutation",
         description="Explanation method: permutation, shap, gradient",
     )
-    wavelengths: Optional[List[float]] = Field(
+    wavelengths: list[float] | None = Field(
         None,
         description="Wavelength values for feature importance mapping",
     )
@@ -109,27 +107,27 @@ class ExplainPredictionRequest(BaseModel):
 class PredictionResult(BaseModel):
     """Result of a single prediction."""
 
-    prediction: float | List[float]
+    prediction: float | list[float]
     model_id: str
-    preprocessing_applied: List[str] = []
+    preprocessing_applied: list[str] = []
 
 
 class BatchPredictionResult(BaseModel):
     """Result of batch prediction."""
 
-    predictions: List[float | List[float]]
+    predictions: list[float | list[float]]
     model_id: str
     num_samples: int
-    preprocessing_applied: List[str] = []
+    preprocessing_applied: list[str] = []
 
 
 class ConfidencePredictionResult(BaseModel):
     """Result of prediction with confidence."""
 
-    predictions: List[float]
-    lower_bounds: List[float]
-    upper_bounds: List[float]
-    std_devs: List[float]
+    predictions: list[float]
+    lower_bounds: list[float]
+    upper_bounds: list[float]
+    std_devs: list[float]
     confidence_level: float
     method: str
 
@@ -138,9 +136,9 @@ class ExplanationResult(BaseModel):
     """Result of prediction explanation."""
 
     prediction: float
-    feature_importance: List[float]
-    top_features: List[Dict[str, Any]]
-    wavelengths: Optional[List[float]] = None
+    feature_importance: list[float]
+    top_features: list[dict[str, Any]]
+    wavelengths: list[float] | None = None
     method: str
 
 
@@ -293,22 +291,6 @@ async def predict_batch(request: PredictBatchRequest):
         if hasattr(pred_result, 'preprocessing_steps'):
             preprocessing_applied = pred_result.preprocessing_steps
 
-        # Optionally save results
-        if request.save_results:
-            now = datetime.now().isoformat()
-            prediction_id = f"pred_{int(datetime.now().timestamp())}"
-
-            record = {
-                "id": prediction_id,
-                "model_id": request.model_id,
-                "samples_count": len(request.spectra),
-                "predictions": results,
-                "preprocessing_applied": preprocessing_applied,
-                "created_at": now,
-            }
-
-            _save_prediction(record)
-
         return BatchPredictionResult(
             predictions=results,
             model_id=request.model_id,
@@ -386,7 +368,7 @@ async def predict_dataset(request: PredictDatasetRequest):
         # Compute metrics if actual values available
         metrics = None
         if y_true is not None and len(results) > 0:
-            from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+            from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
             y_pred = np.array(results)
             metrics = {
                 "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
@@ -407,27 +389,6 @@ async def predict_dataset(request: PredictDatasetRequest):
         # Include actual values if available
         if y_true is not None:
             result_data["actual_values"] = y_true.tolist() if hasattr(y_true, "tolist") else list(y_true)
-
-        # Optionally save results
-        if request.save_results:
-            now = datetime.now().isoformat()
-            prediction_id = f"pred_{int(datetime.now().timestamp())}"
-
-            record = {
-                "id": prediction_id,
-                "model_id": request.model_id,
-                "dataset_id": request.dataset_id,
-                "partition": request.partition,
-                "samples_count": len(results),
-                "predictions": results,
-                "actual_values": result_data.get("actual_values"),
-                "metrics": metrics,
-                "preprocessing_applied": preprocessing_applied,
-                "created_at": now,
-            }
-
-            _save_prediction(record)
-            result_data["prediction_id"] = prediction_id
 
         return result_data
 

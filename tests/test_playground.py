@@ -4,12 +4,12 @@ Tests for the Playground API.
 Phase 1: Backend API testing for Playground V1
 """
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-
-import sys
-from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))

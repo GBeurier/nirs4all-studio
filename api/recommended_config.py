@@ -21,8 +21,8 @@ import platformdirs
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .venv_manager import venv_manager
 from .shared.logger import get_logger
+from .venv_manager import venv_manager
 
 logger = get_logger(__name__)
 
@@ -32,8 +32,8 @@ try:
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
-    import urllib.request
     import urllib.error
+    import urllib.request
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -50,7 +50,7 @@ class ProfileInfo(BaseModel):
     id: str
     label: str
     description: str
-    packages: Dict[str, str]
+    packages: dict[str, str]
 
 
 class OptionalPackageInfo(BaseModel):
@@ -66,8 +66,8 @@ class RecommendedConfigResponse(BaseModel):
     schema_version: str
     app_version: str
     nirs4all: str
-    profiles: List[ProfileInfo]
-    optional: List[OptionalPackageInfo]
+    profiles: list[ProfileInfo]
+    optional: list[OptionalPackageInfo]
     fetched_from: str  # "bundled" or "remote"
     fetched_at: str
 
@@ -75,17 +75,17 @@ class RecommendedConfigResponse(BaseModel):
 class PackageDiff(BaseModel):
     """Difference between installed and recommended for a single package."""
     name: str
-    installed_version: Optional[str] = None
+    installed_version: str | None = None
     recommended_version: str
     status: str  # "aligned", "outdated", "missing", "extra"
-    action: Optional[str] = None  # "install", "upgrade", "none"
+    action: str | None = None  # "install", "upgrade", "none"
 
 
 class ConfigComparisonResponse(BaseModel):
     """Comparison of installed packages vs. recommended config."""
-    profile: Optional[str] = None
-    profile_label: Optional[str] = None
-    packages: List[PackageDiff]
+    profile: str | None = None
+    profile_label: str | None = None
+    packages: list[PackageDiff]
     aligned_count: int
     misaligned_count: int
     missing_count: int
@@ -96,7 +96,7 @@ class ConfigComparisonResponse(BaseModel):
 class AlignConfigRequest(BaseModel):
     """Request to align packages with recommended config."""
     profile: str
-    optional_packages: List[str] = []
+    optional_packages: list[str] = []
     dry_run: bool = False
 
 
@@ -104,32 +104,32 @@ class AlignConfigResponse(BaseModel):
     """Result of aligning packages."""
     success: bool
     message: str
-    installed: List[str] = []
-    upgraded: List[str] = []
-    failed: List[str] = []
+    installed: list[str] = []
+    upgraded: list[str] = []
+    failed: list[str] = []
     dry_run: bool = False
 
 
 class SetupStatusResponse(BaseModel):
     """Whether first-launch setup has been completed."""
     setup_completed: bool
-    selected_profile: Optional[str] = None
-    completed_at: Optional[str] = None
+    selected_profile: str | None = None
+    completed_at: str | None = None
 
 
 class GPUDetectionResponse(BaseModel):
     """Detected GPU hardware."""
     has_cuda: bool = False
     has_metal: bool = False
-    cuda_version: Optional[str] = None
-    gpu_name: Optional[str] = None
-    recommended_profiles: List[str]
+    cuda_version: str | None = None
+    gpu_name: str | None = None
+    recommended_profiles: list[str]
 
 
 class CompleteSetupRequest(BaseModel):
     """Mark setup as completed."""
     profile: str
-    optional_packages: List[str] = []
+    optional_packages: list[str] = []
 
 
 # ============= Config Cache =============
@@ -147,12 +147,12 @@ class RecommendedConfigCache:
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._setup_path = self._app_data_dir / self.SETUP_FILE
 
-    def get_cached_config(self) -> Optional[Dict[str, Any]]:
+    def get_cached_config(self) -> dict[str, Any] | None:
         """Get cached config if fresh enough."""
         if not self._cache_path.exists():
             return None
         try:
-            with open(self._cache_path, "r", encoding="utf-8") as f:
+            with open(self._cache_path, encoding="utf-8") as f:
                 data = json.load(f)
             cached_at = datetime.fromisoformat(data.get("cached_at", "2000-01-01"))
             if datetime.now() - cached_at > timedelta(hours=self.CACHE_TTL_HOURS):
@@ -161,7 +161,7 @@ class RecommendedConfigCache:
         except Exception:
             return None
 
-    def set_cached_config(self, config: Dict[str, Any]) -> None:
+    def set_cached_config(self, config: dict[str, Any]) -> None:
         """Cache a config."""
         self._app_data_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -170,12 +170,12 @@ class RecommendedConfigCache:
         except Exception as e:
             logger.warning("Could not save recommended config cache: %s", e)
 
-    def get_setup_status(self) -> Dict[str, Any]:
+    def get_setup_status(self) -> dict[str, Any]:
         """Get first-launch setup status."""
         if not self._setup_path.exists():
             return {"setup_completed": False, "selected_profile": None, "completed_at": None}
         try:
-            with open(self._setup_path, "r", encoding="utf-8") as f:
+            with open(self._setup_path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return {"setup_completed": False, "selected_profile": None, "completed_at": None}
@@ -201,7 +201,7 @@ _config_cache = RecommendedConfigCache()
 # ============= Helper Functions =============
 
 
-def _load_bundled_config() -> Dict[str, Any]:
+def _load_bundled_config() -> dict[str, Any]:
     """Load the bundled recommended-config.json shipped with the app."""
     # Try multiple locations: dev (repo root), production (resources/backend/)
     candidates = [
@@ -210,12 +210,12 @@ def _load_bundled_config() -> Dict[str, Any]:
     ]
     for path in candidates:
         if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
     raise FileNotFoundError("Bundled recommended-config.json not found")
 
 
-async def _fetch_remote_config() -> Optional[Dict[str, Any]]:
+async def _fetch_remote_config() -> dict[str, Any] | None:
     """Fetch recommended config from GitHub."""
     try:
         if HTTPX_AVAILABLE:
@@ -232,7 +232,7 @@ async def _fetch_remote_config() -> Optional[Dict[str, Any]]:
     return None
 
 
-def _parse_config(raw: Dict[str, Any], source: str) -> RecommendedConfigResponse:
+def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse:
     """Parse raw config dict into response model."""
     profiles = []
     for pid, pdata in raw.get("profiles", {}).items():
@@ -263,7 +263,7 @@ def _parse_config(raw: Dict[str, Any], source: str) -> RecommendedConfigResponse
     )
 
 
-def _get_installed_packages() -> Dict[str, str]:
+def _get_installed_packages() -> dict[str, str]:
     """Get dict of installed package names → versions from the venv."""
     try:
         packages = venv_manager.list_packages()
@@ -281,8 +281,8 @@ def _normalize_pkg_name(name: str) -> str:
 def _version_satisfies(installed: str, spec: str) -> bool:
     """Check if installed version satisfies a version spec like '>=0.7.1'."""
     try:
-        from packaging.version import Version
         from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
         return Version(installed) in SpecifierSet(spec)
     except ImportError:
         # Fallback: simple >= check
@@ -389,7 +389,7 @@ async def get_recommended_config(force_refresh: bool = False):
 
 
 @router.get("/diff", response_model=ConfigComparisonResponse)
-async def compare_config(profile: Optional[str] = None, include_optional: bool = False):
+async def compare_config(profile: str | None = None, include_optional: bool = False):
     """Compare installed packages against the recommended config.
 
     If no profile is specified, uses the profile from setup status
@@ -421,7 +421,7 @@ async def compare_config(profile: Optional[str] = None, include_optional: bool =
     installed = _get_installed_packages()
 
     # Build diff
-    diffs: List[PackageDiff] = []
+    diffs: list[PackageDiff] = []
     aligned_count = 0
     misaligned_count = 0
     missing_count = 0
@@ -519,15 +519,13 @@ async def align_config(request: AlignConfigRequest):
     optional_config = raw_config.get("optional", {})
 
     # Build list of packages to install/upgrade
-    to_install: List[str] = []
+    to_install: list[str] = []
     installed = _get_installed_packages()
 
     for pkg_name, version_spec in required_packages.items():
         norm_name = _normalize_pkg_name(pkg_name)
         installed_ver = installed.get(norm_name)
-        if installed_ver is None:
-            to_install.append(f"{pkg_name}{version_spec}")
-        elif not _version_satisfies(installed_ver, version_spec):
+        if installed_ver is None or not _version_satisfies(installed_ver, version_spec):
             to_install.append(f"{pkg_name}{version_spec}")
 
     for opt_name in request.optional_packages:
@@ -536,9 +534,7 @@ async def align_config(request: AlignConfigRequest):
             norm_name = _normalize_pkg_name(opt_name)
             installed_ver = installed.get(norm_name)
             version_spec = opt_data.get("version", "")
-            if installed_ver is None:
-                to_install.append(f"{opt_name}{version_spec}")
-            elif version_spec and not _version_satisfies(installed_ver, version_spec):
+            if installed_ver is None or version_spec and not _version_satisfies(installed_ver, version_spec):
                 to_install.append(f"{opt_name}{version_spec}")
 
     if request.dry_run:

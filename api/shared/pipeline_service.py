@@ -7,12 +7,12 @@ that are used by both the playground and preprocessing endpoints.
 Uses dynamic introspection of nirs4all operators instead of hardcoded mappings.
 """
 
-import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type
 import importlib
 import inspect
 import re
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from .logger import get_logger
 
@@ -24,10 +24,10 @@ if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 try:
-    from nirs4all.operators import transforms
     from nirs4all.operators import splitters as nirs_splitters
-    from nirs4all.operators.augmentation import spectral as augmentation_spectral
+    from nirs4all.operators import transforms
     from nirs4all.operators.augmentation import random as augmentation_random
+    from nirs4all.operators.augmentation import spectral as augmentation_spectral
     from sklearn.base import TransformerMixin
 
     NIRS4ALL_AVAILABLE = True
@@ -42,11 +42,11 @@ except ImportError as e:
 
 
 # Cache for dynamically discovered operators
-_preprocessing_cache: Optional[Dict[str, Type]] = None
-_splitter_cache: Optional[Dict[str, Tuple[str, str]]] = None
+_preprocessing_cache: dict[str, type] | None = None
+_splitter_cache: dict[str, tuple[str, str]] | None = None
 
 
-def _build_preprocessing_cache() -> Dict[str, Type]:
+def _build_preprocessing_cache() -> dict[str, type]:
     """Build cache of preprocessing operators from nirs4all.operators.transforms.
 
     Uses the module's __all__ exports and TransformerMixin detection for discovery.
@@ -113,7 +113,7 @@ def _build_preprocessing_cache() -> Dict[str, Type]:
     return cache
 
 
-def _build_splitter_cache() -> Dict[str, Tuple[str, str]]:
+def _build_splitter_cache() -> dict[str, tuple[str, str]]:
     """Build cache of splitter operators from sklearn and nirs4all.
 
     Returns:
@@ -148,7 +148,7 @@ def _build_splitter_cache() -> Dict[str, Tuple[str, str]]:
     return cache
 
 
-def _get_preprocessing_cache() -> Dict[str, Type]:
+def _get_preprocessing_cache() -> dict[str, type]:
     """Get or build preprocessing operator cache."""
     global _preprocessing_cache
     if _preprocessing_cache is None:
@@ -156,7 +156,7 @@ def _get_preprocessing_cache() -> Dict[str, Type]:
     return _preprocessing_cache
 
 
-def _get_splitter_cache() -> Dict[str, Tuple[str, str]]:
+def _get_splitter_cache() -> dict[str, tuple[str, str]]:
     """Get or build splitter operator cache."""
     global _splitter_cache
     if _splitter_cache is None:
@@ -167,7 +167,7 @@ def _get_splitter_cache() -> Dict[str, Tuple[str, str]]:
 def resolve_operator(
     name: str,
     operator_type: str = "preprocessing"
-) -> Optional[Type]:
+) -> type | None:
     """Resolve an operator name to its class using dynamic introspection.
 
     Args:
@@ -231,7 +231,7 @@ def resolve_operator(
         return None
 
 
-def convert_frontend_step(frontend_step: Dict[str, Any]) -> Dict[str, Any]:
+def convert_frontend_step(frontend_step: dict[str, Any]) -> dict[str, Any]:
     """Convert a frontend step format to nirs4all pipeline format.
 
     Frontend format:
@@ -270,9 +270,9 @@ def convert_frontend_step(frontend_step: Dict[str, Any]) -> Dict[str, Any]:
 
 def instantiate_operator(
     name: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     operator_type: str = "preprocessing"
-) -> Optional[Any]:
+) -> Any | None:
     """Create an operator instance from name and parameters.
 
     Args:
@@ -303,7 +303,7 @@ def instantiate_operator(
             ) from inner_e
 
 
-def get_valid_params(cls: Type, params: Dict[str, Any]) -> Dict[str, Any]:
+def get_valid_params(cls: type, params: dict[str, Any]) -> dict[str, Any]:
     """Filter params to only those accepted by the class constructor.
 
     Args:
@@ -333,9 +333,9 @@ def get_valid_params(cls: Type, params: Dict[str, Any]) -> Dict[str, Any]:
 
 def validate_step_params(
     name: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     operator_type: str = "preprocessing"
-) -> Tuple[bool, List[str], List[str]]:
+) -> tuple[bool, list[str], list[str]]:
     """Validate parameters for an operator.
 
     Uses dynamic introspection to validate operator parameters.
@@ -362,7 +362,7 @@ def validate_step_params(
         valid_params = set(sig.parameters.keys()) - {"self"}
 
         # Check for unknown parameters
-        for param_name in params.keys():
+        for param_name in params:
             if param_name not in valid_params:
                 has_kwargs = any(
                     p.kind == inspect.Parameter.VAR_KEYWORD
@@ -384,7 +384,7 @@ def validate_step_params(
     return len(errors) == 0, errors, warnings
 
 
-def get_preprocessing_methods() -> List[Dict[str, Any]]:
+def get_preprocessing_methods() -> list[dict[str, Any]]:
     """Get list of available preprocessing methods with metadata.
 
     Uses dynamic introspection of nirs4all.operators.transforms module.
@@ -445,7 +445,7 @@ def get_preprocessing_methods() -> List[Dict[str, Any]]:
     return methods
 
 
-def get_splitter_methods() -> List[Dict[str, Any]]:
+def get_splitter_methods() -> list[dict[str, Any]]:
     """Get list of available splitter methods with metadata.
 
     Uses dynamic introspection of sklearn and nirs4all splitter modules.
@@ -495,7 +495,7 @@ def get_splitter_methods() -> List[Dict[str, Any]]:
     return methods
 
 
-def get_augmentation_methods() -> List[Dict[str, Any]]:
+def get_augmentation_methods() -> list[dict[str, Any]]:
     """Get list of available augmentation methods with metadata.
 
     Augmentation methods generate synthetic variations of spectra for
@@ -547,7 +547,7 @@ def get_augmentation_methods() -> List[Dict[str, Any]]:
     return methods
 
 
-def _extract_method_info(cls: Type, name: str, operator_type: str) -> Optional[Dict[str, Any]]:
+def _extract_method_info(cls: type, name: str, operator_type: str) -> dict[str, Any] | None:
     """Extract method info from a class.
 
     Args:

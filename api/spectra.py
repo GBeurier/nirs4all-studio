@@ -15,9 +15,9 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from .workspace_manager import workspace_manager
 from .shared.logger import get_logger
 from .shared.pipeline_service import instantiate_operator
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -41,16 +41,16 @@ router = APIRouter()
 class SpectraRequest(BaseModel):
     """Request model for getting processed spectra."""
 
-    preprocessing_chain: List[Dict[str, Any]] = []
-    indices: Optional[List[int]] = None
+    preprocessing_chain: list[dict[str, Any]] = []
+    indices: list[int] | None = None
     partition: str = "train"
 
 
 # Cache for loaded datasets (use Any type to avoid import issues)
-_dataset_cache: Dict[str, Any] = {}
+_dataset_cache: dict[str, Any] = {}
 
 
-def _get_dataset_config(dataset_id: str) -> Optional[Dict[str, Any]]:
+def _get_dataset_config(dataset_id: str) -> dict[str, Any] | None:
     """Get dataset configuration from workspace."""
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
@@ -62,7 +62,7 @@ def _get_dataset_config(dataset_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[str, Any]:
+def _build_nirs4all_config_from_stored(dataset_config: dict[str, Any]) -> dict[str, Any]:
     """
     Build nirs4all DatasetConfigs-compatible config from stored dataset configuration.
 
@@ -92,7 +92,7 @@ def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[s
     if signal_type and signal_type != "auto":
         x_specific_params["signal_type"] = signal_type
 
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "global_params": global_params
     }
 
@@ -159,7 +159,7 @@ def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[s
                 config_file = folder_path / "dataset_config.json"
                 if config_file.exists():
                     import json
-                    with open(config_file, "r", encoding="utf-8") as f:
+                    with open(config_file, encoding="utf-8") as f:
                         folder_config = json.load(f)
                         config.update(folder_config)
                 else:
@@ -210,7 +210,7 @@ def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[s
                     # Auto-detect delimiter from detected X file
                     if detected_x_file and detected_x_file.exists():
                         try:
-                            with open(detected_x_file, "r", encoding="utf-8") as f:
+                            with open(detected_x_file, encoding="utf-8") as f:
                                 first_line = f.readline()
                                 # Count delimiters to find the most likely one
                                 semicolon_count = first_line.count(";")
@@ -237,7 +237,7 @@ def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[s
     return config
 
 
-def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
+def _load_dataset(dataset_id: str) -> SpectroDataset | None:
     """Load a dataset by ID, with caching."""
     global _dataset_cache
 
@@ -287,7 +287,7 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
         return None
 
 
-def _clear_dataset_cache(dataset_id: Optional[str] = None):
+def _clear_dataset_cache(dataset_id: str | None = None):
     """Clear dataset cache, optionally for specific dataset."""
     global _dataset_cache
     if dataset_id:
@@ -300,7 +300,7 @@ def _clear_dataset_cache(dataset_id: Optional[str] = None):
 async def get_spectra(
     dataset_id: str,
     start: int = Query(0, ge=0, description="Start index for pagination"),
-    end: Optional[int] = Query(None, description="End index (exclusive)"),
+    end: int | None = Query(None, description="End index (exclusive)"),
     partition: str = Query("train", description="Partition to get spectra from"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
     include_y: bool = Query(False, description="Whether to include target (y) values"),
@@ -623,7 +623,7 @@ async def get_spectra_statistics(
         )
 
 
-def _apply_preprocessing_chain(X: np.ndarray, chain: List[Dict[str, Any]]) -> np.ndarray:
+def _apply_preprocessing_chain(X: np.ndarray, chain: list[dict[str, Any]]) -> np.ndarray:
     """Apply a chain of preprocessing steps to spectral data.
 
     Uses shared pipeline_service for operator resolution to avoid duplicating

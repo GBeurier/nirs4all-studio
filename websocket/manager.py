@@ -15,7 +15,7 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, Optional, Set
 
 from fastapi import WebSocket
@@ -25,7 +25,7 @@ from api.shared.logger import get_logger
 logger = get_logger(__name__)
 
 
-class MessageType(str, Enum):
+class MessageType(StrEnum):
     """Types of WebSocket messages."""
 
     # Job-related messages
@@ -78,8 +78,8 @@ class WebSocketMessage:
 
     type: MessageType
     channel: str
-    data: Dict[str, Any] = field(default_factory=dict)
-    timestamp: Optional[str] = None
+    data: dict[str, Any] = field(default_factory=dict)
+    timestamp: str | None = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -116,18 +116,18 @@ class WebSocketManager:
     def __init__(self):
         """Initialize the WebSocket manager."""
         # All active connections
-        self._connections: Set[WebSocket] = set()
+        self._connections: set[WebSocket] = set()
 
         # Channel subscriptions: channel -> set of WebSockets
-        self._channels: Dict[str, Set[WebSocket]] = {}
+        self._channels: dict[str, set[WebSocket]] = {}
 
         # Connection metadata: WebSocket -> subscription info
-        self._connection_info: Dict[WebSocket, Dict[str, Any]] = {}
+        self._connection_info: dict[WebSocket, dict[str, Any]] = {}
 
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, client_id: Optional[str] = None) -> None:
+    async def connect(self, websocket: WebSocket, client_id: str | None = None) -> None:
         """
         Accept a new WebSocket connection.
 
@@ -335,7 +335,7 @@ class WebSocketManager:
         self,
         websocket: WebSocket,
         message_text: str,
-    ) -> Optional[WebSocketMessage]:
+    ) -> WebSocketMessage | None:
         """
         Handle an incoming WebSocket message.
 
@@ -386,7 +386,7 @@ ws_manager = WebSocketManager()
 # ============= Helper Functions for Job Updates =============
 
 
-async def notify_job_started(job_id: str, job_data: Dict[str, Any]) -> None:
+async def notify_job_started(job_id: str, job_data: dict[str, Any]) -> None:
     """
     Notify subscribers that a job has started.
 
@@ -407,7 +407,7 @@ async def notify_job_progress(
     job_id: str,
     progress: float,
     message: str = "",
-    metrics: Optional[Dict[str, Any]] = None,
+    metrics: dict[str, Any] | None = None,
 ) -> None:
     """
     Notify subscribers of job progress update.
@@ -432,7 +432,7 @@ async def notify_job_progress(
     await ws_manager.broadcast_to_channel(channel, msg)
 
 
-async def notify_job_completed(job_id: str, result: Dict[str, Any]) -> None:
+async def notify_job_completed(job_id: str, result: dict[str, Any]) -> None:
     """
     Notify subscribers that a job has completed.
 
@@ -452,7 +452,7 @@ async def notify_job_completed(job_id: str, result: Dict[str, Any]) -> None:
     await ws_manager.broadcast_to_channel(channel, message)
 
 
-async def notify_job_failed(job_id: str, error: str, traceback: Optional[str] = None) -> None:
+async def notify_job_failed(job_id: str, error: str, traceback: str | None = None) -> None:
     """
     Notify subscribers that a job has failed.
 
@@ -566,8 +566,8 @@ async def notify_training_epoch(
     job_id: str,
     epoch: int,
     total_epochs: int,
-    train_metrics: Dict[str, float],
-    val_metrics: Optional[Dict[str, float]] = None,
+    train_metrics: dict[str, float],
+    val_metrics: dict[str, float] | None = None,
 ) -> None:
     """
     Notify subscribers of training epoch completion.
@@ -595,7 +595,7 @@ async def notify_training_epoch(
     await ws_manager.broadcast_to_channel(channel, message)
 
 
-async def notify_job_metrics(job_id: str, metrics: Dict[str, Any]) -> None:
+async def notify_job_metrics(job_id: str, metrics: dict[str, Any]) -> None:
     """
     Notify subscribers of job metrics update.
 
@@ -615,7 +615,7 @@ async def notify_job_metrics(job_id: str, metrics: Dict[str, Any]) -> None:
     await ws_manager.broadcast_to_channel(channel, message)
 
 
-async def notify_job_log(job_id: str, log_entry: str, level: str = "info", context: Optional[Dict[str, Any]] = None) -> None:
+async def notify_job_log(job_id: str, log_entry: str, level: str = "info", context: dict[str, Any] | None = None) -> None:
     """
     Notify subscribers of a new log entry.
 
@@ -649,7 +649,7 @@ async def notify_fold_progress(
     current_fold: int,
     total_folds: int,
     status: str = "started",
-    metrics: Optional[Dict[str, float]] = None,
+    metrics: dict[str, float] | None = None,
 ) -> None:
     """
     Notify subscribers of fold progress.
@@ -863,8 +863,8 @@ async def notify_refit_step(
 
 async def notify_refit_completed(
     job_id: str,
-    score: Optional[float] = None,
-    metrics: Optional[Dict[str, Any]] = None,
+    score: float | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> None:
     """
     Notify subscribers that the refit phase completed successfully.
@@ -890,7 +890,7 @@ async def notify_refit_completed(
 async def notify_refit_failed(
     job_id: str,
     error: str,
-    traceback: Optional[str] = None,
+    traceback: str | None = None,
 ) -> None:
     """
     Notify subscribers that the refit phase failed.

@@ -17,11 +17,12 @@ from __future__ import annotations
 import json
 import os
 import sys
-import yaml
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 from .app_config import app_config
 from .shared.logger import get_logger
@@ -33,10 +34,10 @@ try:
     nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
     if str(nirs4all_path) not in sys.path:
         sys.path.insert(0, str(nirs4all_path))
+    from nirs4all import workspace as nirs4all_workspace
     from nirs4all.data import DatasetConfigs
     from nirs4all.data.config_parser import parse_config
     from nirs4all.data.loaders.loader import handle_data
-    from nirs4all import workspace as nirs4all_workspace
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     logger.info("nirs4all not available, using stub functionality: %s", e)
@@ -59,19 +60,19 @@ class LinkedWorkspace:
     name: str
     is_active: bool = False
     linked_at: str = ""
-    last_scanned: Optional[str] = None
-    discovered: Dict[str, Any] = field(default_factory=lambda: {
+    last_scanned: str | None = None
+    discovered: dict[str, Any] = field(default_factory=lambda: {
         "runs_count": 0,
         "datasets_count": 0,
         "exports_count": 0,
         "templates_count": 0,
     })
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LinkedWorkspace":
+    def from_dict(cls, data: dict[str, Any]) -> LinkedWorkspace:
         return cls(
             id=data.get("id", ""),
             path=data.get("path", ""),
@@ -148,7 +149,7 @@ class WorkspaceScanner:
         """Return ``True`` if a DuckDB store is available."""
         return self.store_adapter is not None
 
-    def is_valid_workspace(self) -> Tuple[bool, str]:
+    def is_valid_workspace(self) -> tuple[bool, str]:
         """Check if the path is a valid nirs4all workspace.
 
         Returns:
@@ -187,7 +188,7 @@ class WorkspaceScanner:
 
         return True, "Valid nirs4all workspace"
 
-    def scan(self) -> Dict[str, Any]:
+    def scan(self) -> dict[str, Any]:
         """Perform a full scan of the workspace.
 
         Returns:
@@ -231,7 +232,7 @@ class WorkspaceScanner:
 
         return result
 
-    def discover_runs(self) -> List[Dict[str, Any]]:
+    def discover_runs(self) -> list[dict[str, Any]]:
         """Discover all runs.
 
         When a DuckDB store exists, runs are read from ``store.list_runs()``.
@@ -245,7 +246,7 @@ class WorkspaceScanner:
             return self._discover_runs_from_store()
 
         # ---- Legacy filesystem path ----
-        runs: List[Dict[str, Any]] = []
+        runs: list[dict[str, Any]] = []
         runs_dir = self.workspace_dir / "runs"
 
         if not runs_dir.exists():
@@ -268,7 +269,7 @@ class WorkspaceScanner:
 
         return runs
 
-    def _discover_runs_from_store(self) -> List[Dict[str, Any]]:
+    def _discover_runs_from_store(self) -> list[dict[str, Any]]:
         """Discover runs via ``WorkspaceStore.list_runs()``.
 
         Returns:
@@ -321,7 +322,7 @@ class WorkspaceScanner:
             })
         return runs
 
-    def _discover_runs_new_format(self, runs_dir: Path) -> List[Dict[str, Any]]:
+    def _discover_runs_new_format(self, runs_dir: Path) -> list[dict[str, Any]]:
         """Discover runs using new run_manifest.yaml format.
 
         New format structure:
@@ -354,7 +355,7 @@ class WorkspaceScanner:
 
         return runs
 
-    def _parse_run_manifest(self, manifest_file: Path, run_dir: Path) -> Optional[Dict[str, Any]]:
+    def _parse_run_manifest(self, manifest_file: Path, run_dir: Path) -> dict[str, Any] | None:
         """Parse a run_manifest.yaml file (new format).
 
         Args:
@@ -365,7 +366,7 @@ class WorkspaceScanner:
             Dict with run information or None if parsing fails
         """
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
+            with open(manifest_file, encoding="utf-8") as f:
                 manifest = yaml.safe_load(f)
         except Exception:
             return None
@@ -440,7 +441,7 @@ class WorkspaceScanner:
             "resume_from": manifest.get("resume_from", None),
         }
 
-    def _discover_runs_legacy_format(self, runs_dir: Path) -> List[Dict[str, Any]]:
+    def _discover_runs_legacy_format(self, runs_dir: Path) -> list[dict[str, Any]]:
         """Discover runs using legacy format (per-dataset/pipeline manifests).
 
         Legacy format structure:
@@ -478,7 +479,7 @@ class WorkspaceScanner:
 
         return runs
 
-    def _parse_manifest(self, manifest_file: Path, dataset_name: str, pipeline_id: str) -> Optional[Dict[str, Any]]:
+    def _parse_manifest(self, manifest_file: Path, dataset_name: str, pipeline_id: str) -> dict[str, Any] | None:
         """Parse a manifest.yaml file and extract run information.
 
         Args:
@@ -490,7 +491,7 @@ class WorkspaceScanner:
             Dict with run information or None if parsing fails
         """
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
+            with open(manifest_file, encoding="utf-8") as f:
                 manifest = yaml.safe_load(f)
         except Exception:
             return None
@@ -523,7 +524,7 @@ class WorkspaceScanner:
             "manifest_path": str(manifest_file),
         }
 
-    def discover_predictions(self) -> List[Dict[str, Any]]:
+    def discover_predictions(self) -> list[dict[str, Any]]:
         """Discover prediction databases.
 
         When a DuckDB store exists, predictions are read from
@@ -538,7 +539,7 @@ class WorkspaceScanner:
             return self._discover_predictions_from_store()
 
         # ---- Legacy filesystem path ----
-        predictions: List[Dict[str, Any]] = []
+        predictions: list[dict[str, Any]] = []
 
         # Look for .meta.parquet files in workspace root
         for parquet_file in self.workspace_path.glob("*.meta.parquet"):
@@ -568,7 +569,7 @@ class WorkspaceScanner:
 
         return predictions
 
-    def _discover_predictions_from_store(self) -> List[Dict[str, Any]]:
+    def _discover_predictions_from_store(self) -> list[dict[str, Any]]:
         """Discover predictions via ``WorkspaceStore.query_predictions()``.
 
         Groups predictions by dataset and returns one entry per dataset,
@@ -585,7 +586,7 @@ class WorkspaceScanner:
             return []
 
         # Group by dataset_name to mirror the old per-file structure
-        dataset_counts: Dict[str, int] = {}
+        dataset_counts: dict[str, int] = {}
         for row in df.iter_rows(named=True):
             ds = row.get("dataset_name", "unknown")
             dataset_counts[ds] = dataset_counts.get(ds, 0) + 1
@@ -595,7 +596,7 @@ class WorkspaceScanner:
             for ds_name, count in sorted(dataset_counts.items())
         ]
 
-    def discover_exports(self) -> List[Dict[str, Any]]:
+    def discover_exports(self) -> list[dict[str, Any]]:
         """Discover all exports (n4a bundles, pipeline.json, summary.json, predictions.csv).
 
         Returns:
@@ -643,7 +644,7 @@ class WorkspaceScanner:
 
         return exports
 
-    def _parse_n4a_bundle(self, bundle_path: Path, dataset_name: str = "") -> Dict[str, Any]:
+    def _parse_n4a_bundle(self, bundle_path: Path, dataset_name: str = "") -> dict[str, Any]:
         """Parse an .n4a bundle (ZIP file with manifest.json).
 
         Args:
@@ -675,7 +676,7 @@ class WorkspaceScanner:
 
         return export_info
 
-    def _parse_pipeline_json(self, pipeline_file: Path, dataset_name: str) -> Dict[str, Any]:
+    def _parse_pipeline_json(self, pipeline_file: Path, dataset_name: str) -> dict[str, Any]:
         """Parse a pipeline.json export file.
 
         Args:
@@ -694,7 +695,7 @@ class WorkspaceScanner:
         }
 
         try:
-            with open(pipeline_file, "r", encoding="utf-8") as f:
+            with open(pipeline_file, encoding="utf-8") as f:
                 pipeline_data = json.load(f)
                 if isinstance(pipeline_data, list):
                     export_info["steps_count"] = len(pipeline_data)
@@ -703,7 +704,7 @@ class WorkspaceScanner:
 
         return export_info
 
-    def _parse_summary_json(self, summary_file: Path, dataset_name: str) -> Dict[str, Any]:
+    def _parse_summary_json(self, summary_file: Path, dataset_name: str) -> dict[str, Any]:
         """Parse a summary.json export file.
 
         Args:
@@ -721,7 +722,7 @@ class WorkspaceScanner:
         }
 
         try:
-            with open(summary_file, "r", encoding="utf-8") as f:
+            with open(summary_file, encoding="utf-8") as f:
                 summary_data = json.load(f)
                 export_info["test_score"] = summary_data.get("test_score")
                 export_info["val_score"] = summary_data.get("val_score")
@@ -732,7 +733,7 @@ class WorkspaceScanner:
 
         return export_info
 
-    def discover_templates(self) -> List[Dict[str, Any]]:
+    def discover_templates(self) -> list[dict[str, Any]]:
         """Discover library templates.
 
         Returns:
@@ -770,7 +771,7 @@ class WorkspaceScanner:
 
         return templates
 
-    def _parse_template(self, template_file: Path, template_type: str) -> Dict[str, Any]:
+    def _parse_template(self, template_file: Path, template_type: str) -> dict[str, Any]:
         """Parse a template file.
 
         Args:
@@ -787,7 +788,7 @@ class WorkspaceScanner:
         }
 
         try:
-            with open(template_file, "r", encoding="utf-8") as f:
+            with open(template_file, encoding="utf-8") as f:
                 data = json.load(f)
                 if template_type == "template":
                     template_info["description"] = data.get("description", "")
@@ -801,7 +802,7 @@ class WorkspaceScanner:
 
         return template_info
 
-    def extract_datasets(self, runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def extract_datasets(self, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Extract unique datasets from discovered runs.
 
         Supports both:
@@ -814,7 +815,7 @@ class WorkspaceScanner:
         Returns:
             List of unique dataset information with version tracking and full metadata
         """
-        datasets_map: Dict[str, Dict[str, Any]] = {}
+        datasets_map: dict[str, dict[str, Any]] = {}
 
         for run in runs:
             run_format = run.get("format", "v1")
@@ -889,7 +890,7 @@ class WorkspaceScanner:
 
         # Convert sets to lists for JSON serialization and resolve path status
         result = []
-        for key, info in datasets_map.items():
+        for _key, info in datasets_map.items():
             # Resolve path status
             path = info.get("path", "")
             status = "unknown"
@@ -925,7 +926,7 @@ class WorkspaceScanner:
 
         return result
 
-    def discover_results(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def discover_results(self, run_id: str | None = None) -> list[dict[str, Any]]:
         """Discover individual results (pipeline config x dataset combinations).
 
         When a DuckDB store exists, results are read from
@@ -943,7 +944,7 @@ class WorkspaceScanner:
             return self._discover_results_from_store(run_id)
 
         # ---- Legacy filesystem path ----
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         runs_dir = self.workspace_dir / "runs"
 
         if not runs_dir.exists():
@@ -998,10 +999,10 @@ class WorkspaceScanner:
     def _parse_result_manifest(
         self,
         manifest_file: Path,
-        run_id: Optional[str],
+        run_id: str | None,
         dataset_name: str,
         config_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Parse a result manifest.yaml file.
 
         Args:
@@ -1014,7 +1015,7 @@ class WorkspaceScanner:
             Dict with result information or None if parsing fails
         """
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
+            with open(manifest_file, encoding="utf-8") as f:
                 manifest = yaml.safe_load(f)
         except Exception:
             return None
@@ -1053,7 +1054,7 @@ class WorkspaceScanner:
             "manifest_path": str(manifest_file),
         }
 
-    def _discover_results_from_store(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _discover_results_from_store(self, run_id: str | None = None) -> list[dict[str, Any]]:
         """Discover results via ``WorkspaceStore.list_pipelines()``.
 
         Args:
@@ -1112,8 +1113,8 @@ class DatasetRegistry:
         """
         self.workspace_path = Path(workspace_path)
         self.registry_path = self.workspace_path / "datasets.yaml"
-        self._datasets: Dict[str, Dict[str, Any]] = {}
-        self._lock_file: Optional[Path] = None
+        self._datasets: dict[str, dict[str, Any]] = {}
+        self._lock_file: Path | None = None
 
     def _acquire_lock(self, timeout: float = 5.0) -> bool:
         """Acquire file lock for registry operations.
@@ -1124,8 +1125,8 @@ class DatasetRegistry:
         Returns:
             True if lock acquired, False otherwise
         """
-        import time
         import fcntl
+        import time
 
         self._lock_file = self.registry_path.with_suffix(".lock")
         start_time = time.time()
@@ -1136,7 +1137,7 @@ class DatasetRegistry:
                 self._lock_fd = open(self._lock_file, "w")
                 fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 return True
-            except (IOError, OSError):
+            except OSError:
                 time.sleep(0.1)
 
         return False
@@ -1154,7 +1155,7 @@ class DatasetRegistry:
             finally:
                 self._lock_fd = None
 
-    def load(self) -> Dict[str, Dict[str, Any]]:
+    def load(self) -> dict[str, dict[str, Any]]:
         """Load registry from disk with file locking.
 
         Returns:
@@ -1165,7 +1166,7 @@ class DatasetRegistry:
 
         try:
             if self.registry_path.exists():
-                with open(self.registry_path, "r", encoding="utf-8") as f:
+                with open(self.registry_path, encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
                     self._datasets = {
                         ds.get("hash") or ds.get("name"): ds
@@ -1203,7 +1204,7 @@ class DatasetRegistry:
         finally:
             self._release_lock()
 
-    def get_by_hash(self, hash_value: str) -> Optional[Dict[str, Any]]:
+    def get_by_hash(self, hash_value: str) -> dict[str, Any] | None:
         """Get dataset by hash.
 
         Args:
@@ -1214,7 +1215,7 @@ class DatasetRegistry:
         """
         return self._datasets.get(hash_value)
 
-    def get_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_by_name(self, name: str) -> dict[str, Any] | None:
         """Get dataset by name.
 
         Args:
@@ -1228,7 +1229,7 @@ class DatasetRegistry:
                 return ds
         return None
 
-    def add(self, dataset: Dict[str, Any]) -> str:
+    def add(self, dataset: dict[str, Any]) -> str:
         """Add or update a dataset in the registry.
 
         Args:
@@ -1289,7 +1290,7 @@ class DatasetRegistry:
         self._datasets[key]["status"] = status
         return True
 
-    def sync_from_runs(self, runs: List[Dict[str, Any]]) -> int:
+    def sync_from_runs(self, runs: list[dict[str, Any]]) -> int:
         """Sync registry with datasets discovered from runs.
 
         Args:
@@ -1327,7 +1328,7 @@ class DatasetRegistry:
 
         return added
 
-    def resolve_paths(self) -> Dict[str, str]:
+    def resolve_paths(self) -> dict[str, str]:
         """Resolve paths for all datasets using multi-stage filtering.
 
         Multi-stage resolution:
@@ -1432,7 +1433,7 @@ class DatasetRegistry:
                 hasher.update(chunk)
         return f"{algorithm}:{hasher.hexdigest()}"
 
-    def to_api_response(self) -> List[Dict[str, Any]]:
+    def to_api_response(self) -> list[dict[str, Any]]:
         """Convert registry to API response format.
 
         Returns:
@@ -1456,7 +1457,7 @@ class SchemaMigrator:
     CURRENT_SCHEMA_VERSION = "2.0"
 
     @classmethod
-    def detect_schema_version(cls, manifest: Dict[str, Any]) -> str:
+    def detect_schema_version(cls, manifest: dict[str, Any]) -> str:
         """Detect the schema version of a manifest.
 
         Args:
@@ -1480,7 +1481,7 @@ class SchemaMigrator:
         return "unknown"
 
     @classmethod
-    def migrate_to_v2(cls, v1_manifest: Dict[str, Any], dataset_name: str) -> Dict[str, Any]:
+    def migrate_to_v2(cls, v1_manifest: dict[str, Any], dataset_name: str) -> dict[str, Any]:
         """Migrate a v1 manifest to v2 format.
 
         Args:
@@ -1517,7 +1518,7 @@ class SchemaMigrator:
         }
 
     @classmethod
-    def normalize_manifest(cls, manifest: Dict[str, Any]) -> Dict[str, Any]:
+    def normalize_manifest(cls, manifest: dict[str, Any]) -> dict[str, Any]:
         """Normalize manifest fields to consistent types.
 
         Args:
@@ -1581,7 +1582,7 @@ class RunManager:
             self.runs_dir = workspace_dir / "runs"
         else:
             self.runs_dir = self.workspace_path / "runs"
-        self._locks: Dict[str, Any] = {}
+        self._locks: dict[str, Any] = {}
 
     def is_valid_transition(self, from_status: str, to_status: str) -> bool:
         """Check if a state transition is valid.
@@ -1596,7 +1597,7 @@ class RunManager:
         valid_targets = self.VALID_TRANSITIONS.get(from_status, [])
         return to_status in valid_targets
 
-    def create_checkpoint(self, run_id: str, result_id: str) -> Dict[str, Any]:
+    def create_checkpoint(self, run_id: str, result_id: str) -> dict[str, Any]:
         """Create a checkpoint for a run.
 
         Args:
@@ -1617,7 +1618,7 @@ class RunManager:
 
         if manifest_path.exists():
             try:
-                with open(manifest_path, "r") as f:
+                with open(manifest_path) as f:
                     manifest = yaml.safe_load(f) or {}
 
                 checkpoints = manifest.get("checkpoints", [])
@@ -1632,7 +1633,7 @@ class RunManager:
 
         return checkpoint
 
-    def get_checkpoints(self, run_id: str) -> List[Dict[str, Any]]:
+    def get_checkpoints(self, run_id: str) -> list[dict[str, Any]]:
         """Get all checkpoints for a run.
 
         Args:
@@ -1648,13 +1649,13 @@ class RunManager:
             return []
 
         try:
-            with open(manifest_path, "r") as f:
+            with open(manifest_path) as f:
                 manifest = yaml.safe_load(f) or {}
             return manifest.get("checkpoints", [])
         except Exception:
             return []
 
-    def get_resume_point(self, run_id: str) -> Optional[str]:
+    def get_resume_point(self, run_id: str) -> str | None:
         """Get the result ID to resume from.
 
         Args:
@@ -1680,8 +1681,8 @@ class RunManager:
         Returns:
             True if lock acquired
         """
-        import time
         import fcntl
+        import time
 
         run_dir = self.runs_dir / run_id
         lock_file = run_dir / ".lock"
@@ -1695,7 +1696,7 @@ class RunManager:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 self._locks[run_id] = lock_fd
                 return True
-            except (IOError, OSError):
+            except OSError:
                 time.sleep(0.1)
 
         return False
@@ -1722,7 +1723,7 @@ class RunManager:
         self,
         run_id: str,
         new_status: str,
-        error_message: Optional[str] = None
+        error_message: str | None = None
     ) -> bool:
         """Update run status with state machine validation.
 
@@ -1745,7 +1746,7 @@ class RunManager:
             return False
 
         try:
-            with open(manifest_path, "r") as f:
+            with open(manifest_path) as f:
                 manifest = yaml.safe_load(f) or {}
 
             current_status = manifest.get("status", "unknown")
@@ -1774,7 +1775,7 @@ class RunManager:
         finally:
             self.release_run_lock(run_id)
 
-    def cleanup_partial_run(self, run_id: str) -> Dict[str, Any]:
+    def cleanup_partial_run(self, run_id: str) -> dict[str, Any]:
         """Clean up a partial run, preserving completed results.
 
         Args:
@@ -1809,7 +1810,7 @@ class RunManager:
                 result_manifest = config_dir / "manifest.yaml"
                 if result_manifest.exists():
                     try:
-                        with open(result_manifest, "r") as f:
+                        with open(result_manifest) as f:
                             result_data = yaml.safe_load(f) or {}
                         result_id = result_data.get("uid", config_dir.name)
 
@@ -1834,15 +1835,15 @@ class WorkspaceConfig:
     name: str
     created_at: str
     last_accessed: str
-    datasets: List[Dict[str, Any]]
-    pipelines: List[Dict[str, Any]]
-    groups: List[Dict[str, Any]] = field(default_factory=list)
+    datasets: list[dict[str, Any]]
+    pipelines: list[dict[str, Any]]
+    groups: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "WorkspaceConfig":
+    def from_dict(cls, data: dict[str, Any]) -> WorkspaceConfig:
         return cls(
             path=data.get("path", ""),
             name=data.get("name", Path(data.get("path", "")).name if data.get("path") else "Unknown"),
@@ -1875,7 +1876,7 @@ class WorkspaceManager:
         # Ensure default workspace exists on first launch
         self.ensure_default_workspace()
 
-    def ensure_default_workspace(self) -> Optional[LinkedWorkspace]:
+    def ensure_default_workspace(self) -> LinkedWorkspace | None:
         """Create and link a default workspace if none exists.
 
         This is called on first launch to ensure users have a workspace
@@ -1975,7 +1976,7 @@ class WorkspaceManager:
 
         return linked_ws
 
-    def set_workspace(self, path: str) -> "WorkspaceConfig":
+    def set_workspace(self, path: str) -> WorkspaceConfig:
         """Legacy: Set current workspace - now links and activates the workspace.
 
         For backward compatibility, this method links the workspace if not
@@ -2004,7 +2005,7 @@ class WorkspaceManager:
         self.activate_workspace(linked_ws.id)
         return self._create_workspace_config_from_linked(linked_ws)
 
-    def get_current_workspace(self) -> Optional["WorkspaceConfig"]:
+    def get_current_workspace(self) -> WorkspaceConfig | None:
         """Legacy: Get current workspace config.
 
         Returns a WorkspaceConfig for the active linked workspace.
@@ -2015,7 +2016,7 @@ class WorkspaceManager:
             return None
         return self._create_workspace_config_from_linked(active)
 
-    def _create_workspace_config_from_linked(self, ws: LinkedWorkspace) -> "WorkspaceConfig":
+    def _create_workspace_config_from_linked(self, ws: LinkedWorkspace) -> WorkspaceConfig:
         """Create a WorkspaceConfig from a LinkedWorkspace for backward compatibility."""
         # Load workspace.json if it exists
         workspace_path = Path(ws.path)
@@ -2024,7 +2025,7 @@ class WorkspaceManager:
 
         if config_file.exists():
             try:
-                with open(config_file, "r", encoding="utf-8") as f:
+                with open(config_file, encoding="utf-8") as f:
                     config_data = json.load(f)
             except Exception:
                 pass
@@ -2042,14 +2043,14 @@ class WorkspaceManager:
             groups=[g.to_dict() for g in self.app_config.get_dataset_groups()],
         )
 
-    def reload_workspace(self) -> Optional["WorkspaceConfig"]:
+    def reload_workspace(self) -> WorkspaceConfig | None:
         """Legacy: Reload workspace config."""
         return self.get_current_workspace()
 
     # ----------------------- Dataset Management (Now Global) -----------------------
     # These methods now delegate to app_config for global dataset management.
 
-    def link_dataset(self, dataset_path: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def link_dataset(self, dataset_path: str, config: dict[str, Any] | None = None) -> dict[str, Any]:
         """Link a dataset globally (accessible across all workspaces)."""
         dataset = self.app_config.link_dataset(dataset_path, config)
         return dataset.to_dict()
@@ -2058,25 +2059,25 @@ class WorkspaceManager:
         """Unlink a dataset globally."""
         return self.app_config.unlink_dataset(dataset_id)
 
-    def update_dataset(self, dataset_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_dataset(self, dataset_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update a dataset's configuration."""
         dataset = self.app_config.update_dataset(dataset_id, updates)
         return dataset.to_dict() if dataset else None
 
-    def refresh_dataset(self, dataset_id: str) -> Optional[Dict[str, Any]]:
+    def refresh_dataset(self, dataset_id: str) -> dict[str, Any] | None:
         """Refresh dataset information (hash, stats)."""
         dataset = self.app_config.refresh_dataset(dataset_id)
         return dataset.to_dict() if dataset else None
 
     # ----------------------- Groups Management (Now Global) -----------------------
 
-    def get_groups(self) -> List[Dict[str, Any]]:
+    def get_groups(self) -> list[dict[str, Any]]:
         """Get all dataset groups with populated dataset_ids."""
         groups = [g.to_dict() for g in self.app_config.get_dataset_groups()]
         datasets = self.app_config.get_datasets()
 
         # Build a map of group_id -> dataset_ids from multi-group group_ids lists
-        group_datasets: Dict[str, List[str]] = {}
+        group_datasets: dict[str, list[str]] = {}
         for ds in datasets:
             for gid in ds.group_ids:
                 if gid not in group_datasets:
@@ -2089,7 +2090,7 @@ class WorkspaceManager:
 
         return groups
 
-    def create_group(self, name: str) -> Dict[str, Any]:
+    def create_group(self, name: str) -> dict[str, Any]:
         """Create a new dataset group."""
         group = self.app_config.create_dataset_group(name)
         return group.to_dict()
@@ -2120,26 +2121,26 @@ class WorkspaceManager:
 
     # ----------------------- Workspace Paths -----------------------
 
-    def get_active_workspace_path(self) -> Optional[str]:
+    def get_active_workspace_path(self) -> str | None:
         """Get the path to the active workspace for nirs4all runs."""
         active = self.get_active_workspace()
         return active.path if active else None
 
-    def get_results_path(self) -> Optional[str]:
+    def get_results_path(self) -> str | None:
         """Get the results directory path for the active workspace."""
         ws_path = self.get_active_workspace_path()
         if not ws_path:
             return None
         return str(Path(ws_path) / "runs")
 
-    def get_pipelines_path(self) -> Optional[str]:
+    def get_pipelines_path(self) -> str | None:
         """Get the pipelines directory path for the active workspace."""
         ws_path = self.get_active_workspace_path()
         if not ws_path:
             return None
         return str(Path(ws_path) / "pipelines")
 
-    def get_predictions_path(self) -> Optional[str]:
+    def get_predictions_path(self) -> str | None:
         """Get the predictions directory path for the active workspace.
 
         Returns the path to the 'predictions' subdirectory within the workspace
@@ -2152,7 +2153,7 @@ class WorkspaceManager:
 
     # ----------------------- Recent Workspaces (Legacy -> Linked) -----------------------
 
-    def add_to_recent(self, workspace_path: str, name: Optional[str] = None) -> None:
+    def add_to_recent(self, workspace_path: str, name: str | None = None) -> None:
         """Legacy: Add to recent workspaces - now links workspace instead."""
         # For backward compatibility, link the workspace if not already linked
         workspace_path = str(Path(workspace_path).resolve())
@@ -2176,7 +2177,7 @@ class WorkspaceManager:
                 return self.unlink_workspace(ws.id)
         return False
 
-    def get_recent_workspaces(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_workspaces(self, limit: int = 10) -> list[dict[str, Any]]:
         """Legacy: Get recent workspaces - returns linked workspaces instead."""
         workspaces = []
         for ws in self.get_linked_workspaces()[:limit]:
@@ -2191,38 +2192,38 @@ class WorkspaceManager:
             })
         return workspaces
 
-    def list_workspaces(self) -> List[Dict[str, Any]]:
+    def list_workspaces(self) -> list[dict[str, Any]]:
         """List all linked workspaces."""
         return self.get_recent_workspaces(limit=100)
 
-    def find_workspace_by_name(self, name: str) -> Optional[str]:
+    def find_workspace_by_name(self, name: str) -> str | None:
         """Find a workspace path by its name."""
         for ws in self.get_linked_workspaces():
             if ws.name == name:
                 return ws.path
         return None
 
-    def load_workspace_config(self, workspace_path: str) -> Optional[Dict[str, Any]]:
+    def load_workspace_config(self, workspace_path: str) -> dict[str, Any] | None:
         """Load workspace configuration from a given path."""
         config_file = Path(workspace_path) / "workspace.json"
         if not config_file.exists():
             return None
 
         try:
-            with open(config_file, "r", encoding="utf-8") as f:
+            with open(config_file, encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error("Failed to load workspace config: %s", e)
             return None
 
-    def update_workspace_config(self, workspace_path: str, updates: Dict[str, Any]) -> bool:
+    def update_workspace_config(self, workspace_path: str, updates: dict[str, Any]) -> bool:
         """Update workspace configuration."""
         config_file = Path(workspace_path) / "workspace.json"
         if not config_file.exists():
             return False
 
         try:
-            with open(config_file, "r", encoding="utf-8") as f:
+            with open(config_file, encoding="utf-8") as f:
                 config = json.load(f)
 
             # Only allow updating certain fields
@@ -2244,7 +2245,7 @@ class WorkspaceManager:
 
     # ----------------------- Custom Nodes Management -----------------------
 
-    def get_custom_nodes_path(self) -> Optional[Path]:
+    def get_custom_nodes_path(self) -> Path | None:
         """Get the path to the custom nodes file for the active workspace."""
         ws_path = self.get_active_workspace_path()
         if not ws_path:
@@ -2254,21 +2255,21 @@ class WorkspaceManager:
         nirs4all_dir.mkdir(exist_ok=True)
         return nirs4all_dir / "custom_nodes.json"
 
-    def get_custom_nodes(self) -> List[Dict[str, Any]]:
+    def get_custom_nodes(self) -> list[dict[str, Any]]:
         """Get all custom nodes for the active workspace."""
         nodes_path = self.get_custom_nodes_path()
         if not nodes_path or not nodes_path.exists():
             return []
 
         try:
-            with open(nodes_path, "r", encoding="utf-8") as f:
+            with open(nodes_path, encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get("nodes", [])
         except Exception as e:
             logger.error("Failed to load custom nodes: %s", e)
             return []
 
-    def save_custom_nodes(self, nodes: List[Dict[str, Any]]) -> bool:
+    def save_custom_nodes(self, nodes: list[dict[str, Any]]) -> bool:
         """Save all custom nodes for the active workspace."""
         nodes_path = self.get_custom_nodes_path()
         if not nodes_path:
@@ -2287,7 +2288,7 @@ class WorkspaceManager:
             logger.error("Failed to save custom nodes: %s", e)
             return False
 
-    def add_custom_node(self, node: Dict[str, Any]) -> Dict[str, Any]:
+    def add_custom_node(self, node: dict[str, Any]) -> dict[str, Any]:
         """Add a new custom node to the workspace."""
         if not self.get_active_workspace_path():
             raise RuntimeError("No active workspace")
@@ -2308,7 +2309,7 @@ class WorkspaceManager:
         self.save_custom_nodes(nodes)
         return node
 
-    def update_custom_node(self, node_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_custom_node(self, node_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
         """Update an existing custom node."""
         if not self.get_active_workspace_path():
             raise RuntimeError("No active workspace")
@@ -2340,7 +2341,7 @@ class WorkspaceManager:
             return True
         return False
 
-    def import_custom_nodes(self, nodes_to_import: List[Dict[str, Any]], overwrite: bool = False) -> Dict[str, Any]:
+    def import_custom_nodes(self, nodes_to_import: list[dict[str, Any]], overwrite: bool = False) -> dict[str, Any]:
         """Import custom nodes from an external source."""
         if not self.get_active_workspace_path():
             raise RuntimeError("No active workspace")
@@ -2379,7 +2380,7 @@ class WorkspaceManager:
         self.save_custom_nodes(existing_nodes)
         return {"imported": imported, "skipped": skipped, "errors": errors}
 
-    def get_sandbox_settings(self) -> Dict[str, Any]:
+    def get_sandbox_settings(self) -> dict[str, Any]:
         """Get sandbox settings for code execution."""
         return {
             "enabled": True,
@@ -2388,9 +2389,52 @@ class WorkspaceManager:
             "allowUserNodes": True,
         }
 
+    def _default_custom_node_settings(self) -> dict[str, Any]:
+        """Default custom node settings."""
+        return {
+            "enabled": True,
+            "allowedPackages": ["nirs4all", "sklearn", "scipy", "numpy", "pandas"],
+            "requireApproval": False,
+            "allowUserNodes": True,
+        }
+
+    def get_custom_node_settings(self) -> dict[str, Any]:
+        """Get custom node settings for the active workspace."""
+        nodes_path = self.get_custom_nodes_path()
+        if not nodes_path:
+            return self._default_custom_node_settings()
+
+        settings_path = nodes_path.parent / "custom_node_settings.json"
+        if not settings_path.exists():
+            return self._default_custom_node_settings()
+
+        try:
+            with open(settings_path, encoding="utf-8") as f:
+                data = json.load(f)
+                defaults = self._default_custom_node_settings()
+                return {**defaults, **data}
+        except Exception as e:
+            logger.error("Failed to load custom node settings: %s", e)
+            return self._default_custom_node_settings()
+
+    def save_custom_node_settings(self, settings: dict[str, Any]) -> bool:
+        """Save custom node settings for the active workspace."""
+        nodes_path = self.get_custom_nodes_path()
+        if not nodes_path:
+            return False
+
+        try:
+            settings_path = nodes_path.parent / "custom_node_settings.json"
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error("Failed to save custom node settings: %s", e)
+            return False
+
     # ----------------------- Workspace Settings -----------------------
 
-    def get_settings_path(self) -> Optional[Path]:
+    def get_settings_path(self) -> Path | None:
         """Get the path to the workspace settings file."""
         ws_path = self.get_active_workspace_path()
         if not ws_path:
@@ -2400,14 +2444,14 @@ class WorkspaceManager:
         nirs4all_dir.mkdir(exist_ok=True)
         return nirs4all_dir / "settings.json"
 
-    def get_workspace_settings(self) -> Dict[str, Any]:
+    def get_workspace_settings(self) -> dict[str, Any]:
         """Get workspace settings including data loading defaults."""
         settings_path = self.get_settings_path()
         if not settings_path or not settings_path.exists():
             return self._default_workspace_settings()
 
         try:
-            with open(settings_path, "r", encoding="utf-8") as f:
+            with open(settings_path, encoding="utf-8") as f:
                 data = json.load(f)
                 defaults = self._default_workspace_settings()
                 return self._deep_merge(defaults, data)
@@ -2416,9 +2460,9 @@ class WorkspaceManager:
             return self._default_workspace_settings()
 
     @staticmethod
-    def _deep_merge(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
         """Deep-merge two dicts."""
-        merged: Dict[str, Any] = dict(base)
+        merged: dict[str, Any] = dict(base)
         for key, value in overrides.items():
             if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
                 merged[key] = WorkspaceManager._deep_merge(merged[key], value)
@@ -2426,7 +2470,7 @@ class WorkspaceManager:
                 merged[key] = value
         return merged
 
-    def save_workspace_settings(self, settings: Dict[str, Any]) -> bool:
+    def save_workspace_settings(self, settings: dict[str, Any]) -> bool:
         """Save workspace settings."""
         settings_path = self.get_settings_path()
         if not settings_path:
@@ -2444,7 +2488,7 @@ class WorkspaceManager:
             logger.error("Failed to save workspace settings: %s", e)
             return False
 
-    def _default_workspace_settings(self) -> Dict[str, Any]:
+    def _default_workspace_settings(self) -> dict[str, Any]:
         """Get default workspace settings."""
         return {
             "data_loading_defaults": {
@@ -2467,12 +2511,12 @@ class WorkspaceManager:
             },
         }
 
-    def get_data_loading_defaults(self) -> Dict[str, Any]:
+    def get_data_loading_defaults(self) -> dict[str, Any]:
         """Get default data loading settings for the wizard."""
         settings = self.get_workspace_settings()
         return settings.get("data_loading_defaults", self._default_workspace_settings()["data_loading_defaults"])
 
-    def save_data_loading_defaults(self, defaults: Dict[str, Any]) -> bool:
+    def save_data_loading_defaults(self, defaults: dict[str, Any]) -> bool:
         """Save data loading default settings."""
         settings = self.get_workspace_settings()
         settings["data_loading_defaults"] = defaults
@@ -2484,35 +2528,35 @@ class WorkspaceManager:
         """Get the path to the app settings file."""
         return self.app_config._app_settings_path
 
-    def _load_app_settings(self) -> Dict[str, Any]:
+    def _load_app_settings(self) -> dict[str, Any]:
         """Load app settings from persistent storage."""
         return self.app_config.get_app_settings()
 
-    def _save_app_settings(self, settings: Dict[str, Any]) -> None:
+    def _save_app_settings(self, settings: dict[str, Any]) -> None:
         """Save app settings to persistent storage."""
         self.app_config.save_app_settings(settings)
 
-    def _default_app_settings(self) -> Dict[str, Any]:
+    def _default_app_settings(self) -> dict[str, Any]:
         """Get default app settings."""
         return self.app_config._default_app_settings()
 
-    def get_app_settings(self) -> Dict[str, Any]:
+    def get_app_settings(self) -> dict[str, Any]:
         """Get app settings (webapp-specific, not workspace-specific)."""
         return self.app_config.get_app_settings()
 
-    def save_app_settings(self, settings: Dict[str, Any]) -> bool:
+    def save_app_settings(self, settings: dict[str, Any]) -> bool:
         """Save app settings."""
         return self.app_config.update_app_settings(settings)
 
     # ----------------------- Linked Workspaces -----------------------
 
-    def get_linked_workspaces(self) -> List[LinkedWorkspace]:
+    def get_linked_workspaces(self) -> list[LinkedWorkspace]:
         """Get all linked nirs4all workspaces."""
         settings = self.app_config.get_app_settings()
         workspaces_data = settings.get("linked_workspaces", [])
         return [LinkedWorkspace.from_dict(ws) for ws in workspaces_data]
 
-    def get_active_workspace(self) -> Optional[LinkedWorkspace]:
+    def get_active_workspace(self) -> LinkedWorkspace | None:
         """Get the currently active linked workspace."""
         workspaces = self.get_linked_workspaces()
         for ws in workspaces:
@@ -2520,7 +2564,7 @@ class WorkspaceManager:
                 return ws
         return None
 
-    def link_workspace(self, path: str, name: Optional[str] = None) -> LinkedWorkspace:
+    def link_workspace(self, path: str, name: str | None = None) -> LinkedWorkspace:
         """Link a nirs4all workspace for discovery."""
         workspace_path = Path(path).resolve()
 
@@ -2587,7 +2631,7 @@ class WorkspaceManager:
         self.app_config.save_app_settings(settings)
         return True
 
-    def activate_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
+    def activate_workspace(self, workspace_id: str) -> LinkedWorkspace | None:
         """Set a linked workspace as active.
 
         This updates the webapp's active workspace and also calls
@@ -2618,7 +2662,7 @@ class WorkspaceManager:
 
         return found
 
-    def scan_workspace(self, workspace_id: str) -> Dict[str, Any]:
+    def scan_workspace(self, workspace_id: str) -> dict[str, Any]:
         """Trigger a scan of a linked workspace."""
         settings = self.app_config.get_app_settings()
         workspaces = settings.get("linked_workspaces", [])
@@ -2652,7 +2696,7 @@ class WorkspaceManager:
 
     def get_workspace_runs(
         self, workspace_id: str, source: str = "unified"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get discovered runs from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
@@ -2661,7 +2705,7 @@ class WorkspaceManager:
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_runs()
 
-    def get_workspace_predictions(self, workspace_id: str) -> List[Dict[str, Any]]:
+    def get_workspace_predictions(self, workspace_id: str) -> list[dict[str, Any]]:
         """Get discovered predictions from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
@@ -2670,7 +2714,7 @@ class WorkspaceManager:
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_predictions()
 
-    def get_workspace_exports(self, workspace_id: str) -> List[Dict[str, Any]]:
+    def get_workspace_exports(self, workspace_id: str) -> list[dict[str, Any]]:
         """Get discovered exports from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
@@ -2679,7 +2723,7 @@ class WorkspaceManager:
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_exports()
 
-    def get_workspace_templates(self, workspace_id: str) -> List[Dict[str, Any]]:
+    def get_workspace_templates(self, workspace_id: str) -> list[dict[str, Any]]:
         """Get discovered templates from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
         if not ws:
@@ -2688,7 +2732,7 @@ class WorkspaceManager:
         scanner = WorkspaceScanner(Path(ws.path))
         return scanner.discover_templates()
 
-    def _find_linked_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
+    def _find_linked_workspace(self, workspace_id: str) -> LinkedWorkspace | None:
         """Find a linked workspace by ID."""
         for ws in self.get_linked_workspaces():
             if ws.id == workspace_id:
@@ -2697,7 +2741,7 @@ class WorkspaceManager:
 
     # ----------------------- Favorite Pipelines -----------------------
 
-    def get_favorite_pipelines(self) -> List[str]:
+    def get_favorite_pipelines(self) -> list[str]:
         """Get list of favorite pipeline IDs."""
         return self.app_config.get_favorites()
 

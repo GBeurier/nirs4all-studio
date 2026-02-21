@@ -40,26 +40,26 @@ try:
 except ImportError:
     NIRS4ALL_AVAILABLE = False
 
-from .shared.pipeline_service import (
-    convert_frontend_step,
-    get_preprocessing_methods,
-    get_splitter_methods,
-    get_augmentation_methods,
-    instantiate_operator,
-    validate_step_params,
-)
+from .shared.decimation import decimate_wavelengths
 from .shared.filter_operators import (
     get_filter_methods,
     instantiate_filter,
 )
 from .shared.metrics_computer import (
-    MetricsComputer,
-    get_available_metrics,
-    FAST_METRICS,
     ALL_METRICS,
     CHEMOMETRIC_METRICS,
+    FAST_METRICS,
+    MetricsComputer,
+    get_available_metrics,
 )
-from .shared.decimation import decimate_wavelengths
+from .shared.pipeline_service import (
+    convert_frontend_step,
+    get_augmentation_methods,
+    get_preprocessing_methods,
+    get_splitter_methods,
+    instantiate_operator,
+    validate_step_params,
+)
 
 router = APIRouter(prefix="/playground", tags=["playground"])
 
@@ -73,18 +73,18 @@ class PlaygroundStep(BaseModel):
     id: str = Field(..., description="Unique step identifier")
     type: str = Field(..., description="Step type: 'preprocessing', 'augmentation', 'splitting', or 'filter'")
     name: str = Field(..., description="Operator class name (e.g., 'StandardNormalVariate')")
-    params: Dict[str, Any] = Field(default_factory=dict, description="Operator parameters")
+    params: dict[str, Any] = Field(default_factory=dict, description="Operator parameters")
     enabled: bool = Field(default=True, description="Whether the step is enabled")
 
 
 class PlaygroundData(BaseModel):
     """Input data for playground execution."""
 
-    x: List[List[float]] = Field(..., description="2D spectral data (samples x features)")
-    y: Optional[List[float]] = Field(None, description="Target values (optional)")
-    wavelengths: Optional[List[float]] = Field(None, description="Wavelength headers")
-    sample_ids: Optional[List[str]] = Field(None, description="Sample identifiers")
-    metadata: Optional[Dict[str, List[Any]]] = Field(None, description="Additional metadata columns")
+    x: list[list[float]] = Field(..., description="2D spectral data (samples x features)")
+    y: list[float] | None = Field(None, description="Target values (optional)")
+    wavelengths: list[float] | None = Field(None, description="Wavelength headers")
+    sample_ids: list[str] | None = Field(None, description="Sample identifiers")
+    metadata: dict[str, list[Any]] | None = Field(None, description="Additional metadata columns")
 
 
 class SamplingOptions(BaseModel):
@@ -99,9 +99,9 @@ class ExecuteRequest(BaseModel):
     """Request model for executing playground pipeline."""
 
     data: PlaygroundData = Field(..., description="Spectral data to process")
-    steps: List[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
-    sampling: Optional[SamplingOptions] = Field(None, description="Sampling options for large datasets")
-    options: Dict[str, Any] = Field(
+    steps: list[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
+    sampling: SamplingOptions | None = Field(None, description="Sampling options for large datasets")
+    options: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional options: compute_pca, compute_statistics, max_wavelengths_returned, split_index"
     )
@@ -116,9 +116,9 @@ class ExecuteDatasetRequest(BaseModel):
     """
 
     dataset_id: str = Field(..., description="Workspace dataset identifier")
-    steps: List[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
-    sampling: Optional[SamplingOptions] = Field(None, description="Sampling options for large datasets")
-    options: Dict[str, Any] = Field(
+    steps: list[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
+    sampling: SamplingOptions | None = Field(None, description="Sampling options for large datasets")
+    options: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional options: compute_pca, compute_statistics, max_wavelengths_returned, split_index"
     )
@@ -131,20 +131,20 @@ class StepTrace(BaseModel):
     name: str
     duration_ms: float
     success: bool
-    error: Optional[str] = None
-    output_shape: Optional[List[int]] = None
+    error: str | None = None
+    output_shape: list[int] | None = None
 
 
 class SpectrumStats(BaseModel):
     """Statistics for a spectrum or set of spectra."""
 
-    mean: List[float]
-    std: List[float]
-    min: List[float]
-    max: List[float]
-    p5: List[float]
-    p95: List[float]
-    global_stats: Dict[str, float]
+    mean: list[float]
+    std: list[float]
+    min: list[float]
+    max: list[float]
+    p5: list[float]
+    p95: list[float]
+    global_stats: dict[str, float]
 
 
 class FoldInfo(BaseModel):
@@ -152,10 +152,10 @@ class FoldInfo(BaseModel):
 
     train_count: int
     test_count: int
-    train_indices: List[int]
-    test_indices: List[int]
-    y_train_stats: Optional[Dict[str, float]] = None
-    y_test_stats: Optional[Dict[str, float]] = None
+    train_indices: list[int]
+    test_indices: list[int]
+    y_train_stats: dict[str, float] | None = None
+    y_test_stats: dict[str, float] | None = None
 
 
 class ExecuteResponse(BaseModel):
@@ -163,23 +163,23 @@ class ExecuteResponse(BaseModel):
 
     success: bool
     execution_time_ms: float
-    original: Dict[str, Any] = Field(
+    original: dict[str, Any] = Field(
         default_factory=dict,
         description="Original data: spectra subset, statistics, sample_indices"
     )
-    processed: Dict[str, Any] = Field(
+    processed: dict[str, Any] = Field(
         default_factory=dict,
         description="Processed data: spectra subset, statistics"
     )
-    pca: Optional[Dict[str, Any]] = Field(None, description="PCA projection if computed")
-    umap: Optional[Dict[str, Any]] = Field(None, description="UMAP projection if computed")
-    folds: Optional[Dict[str, Any]] = Field(None, description="Fold information if splitter present")
-    filter_info: Optional[Dict[str, Any]] = Field(None, description="Filter results if filters applied")
-    repetitions: Optional[Dict[str, Any]] = Field(None, description="Repetition analysis if detected or configured")
-    metrics: Optional[Dict[str, Any]] = Field(None, description="Spectral metrics if computed (Phase 5)")
-    subset_info: Optional[Dict[str, Any]] = Field(None, description="Subset mode info: subset_mode, total_samples, displayed_samples")
-    execution_trace: List[StepTrace] = Field(default_factory=list, description="Per-step execution info")
-    step_errors: List[Dict[str, Any]] = Field(default_factory=list, description="Any step-level errors")
+    pca: dict[str, Any] | None = Field(None, description="PCA projection if computed")
+    umap: dict[str, Any] | None = Field(None, description="UMAP projection if computed")
+    folds: dict[str, Any] | None = Field(None, description="Fold information if splitter present")
+    filter_info: dict[str, Any] | None = Field(None, description="Filter results if filters applied")
+    repetitions: dict[str, Any] | None = Field(None, description="Repetition analysis if detected or configured")
+    metrics: dict[str, Any] | None = Field(None, description="Spectral metrics if computed (Phase 5)")
+    subset_info: dict[str, Any] | None = Field(None, description="Subset mode info: subset_mode, total_samples, displayed_samples")
+    execution_trace: list[StepTrace] = Field(default_factory=list, description="Per-step execution info")
+    step_errors: list[dict[str, Any]] = Field(default_factory=list, description="Any step-level errors")
     is_raw_data: bool = Field(default=False, description="True if no operators were applied")
 
 
@@ -213,13 +213,13 @@ class PlaygroundExecutor:
     def execute(
         self,
         data: PlaygroundData,
-        steps: List[PlaygroundStep],
-        sampling: Optional[SamplingOptions] = None,
-        options: Optional[Dict[str, Any]] = None,
+        steps: list[PlaygroundStep],
+        sampling: SamplingOptions | None = None,
+        options: dict[str, Any] | None = None,
         *,
-        X_np: Optional[np.ndarray] = None,
-        y_np: Optional[np.ndarray] = None,
-        wavelengths_np: Optional[List[float]] = None,
+        X_np: np.ndarray | None = None,
+        y_np: np.ndarray | None = None,
+        wavelengths_np: list[float] | None = None,
     ) -> ExecuteResponse:
         """Execute pipeline on data.
 
@@ -327,8 +327,8 @@ class PlaygroundExecutor:
 
         # Execute pipeline steps
         X_processed = X_sampled.copy()
-        execution_trace: List[StepTrace] = []
-        step_errors: List[Dict[str, Any]] = []
+        execution_trace: list[StepTrace] = []
+        step_errors: list[dict[str, Any]] = []
         fold_info = None
         filter_info = None
         splitter_applied = False
@@ -530,8 +530,8 @@ class PlaygroundExecutor:
     def _apply_sampling(
         self,
         X: np.ndarray,
-        y: Optional[np.ndarray],
-        sampling: Optional[SamplingOptions]
+        y: np.ndarray | None,
+        sampling: SamplingOptions | None
     ) -> np.ndarray:
         """Apply sampling to select subset of samples.
 
@@ -644,9 +644,9 @@ class PlaygroundExecutor:
         self,
         step: PlaygroundStep,
         X: np.ndarray,
-        y: Optional[np.ndarray],
-        metadata: Optional[Dict[str, np.ndarray]]
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        y: np.ndarray | None,
+        metadata: dict[str, np.ndarray] | None
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         """Execute a filter step.
 
         Args:
@@ -671,9 +671,9 @@ class PlaygroundExecutor:
         self,
         step: PlaygroundStep,
         X: np.ndarray,
-        y: Optional[np.ndarray],
-        options: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        y: np.ndarray | None,
+        options: dict[str, Any]
+    ) -> dict[str, Any]:
         """Execute a splitter step.
 
         Args:
@@ -770,7 +770,7 @@ class PlaygroundExecutor:
             "split_index": split_index,
         }
 
-    def _compute_statistics(self, X: np.ndarray) -> Dict[str, Any]:
+    def _compute_statistics(self, X: np.ndarray) -> dict[str, Any]:
         """Compute per-wavelength statistics.
 
         Args:
@@ -799,9 +799,9 @@ class PlaygroundExecutor:
     def _compute_pca(
         self,
         X: np.ndarray,
-        y: Optional[np.ndarray],
-        fold_info: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        y: np.ndarray | None,
+        fold_info: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Compute PCA projection for visualization.
 
         Computes enough components to explain 99.9% variance (up to 10 max).
@@ -850,12 +850,12 @@ class PlaygroundExecutor:
     def _compute_umap(
         self,
         X: np.ndarray,
-        y: Optional[np.ndarray],
-        fold_info: Optional[Dict[str, Any]],
+        y: np.ndarray | None,
+        fold_info: dict[str, Any] | None,
         n_neighbors: int = 15,
         min_dist: float = 0.1,
         n_components: int = 2
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compute UMAP projection for visualization.
 
         UMAP (Uniform Manifold Approximation and Projection) is a dimension
@@ -928,13 +928,13 @@ class PlaygroundExecutor:
     def _compute_repetition_analysis(
         self,
         X: np.ndarray,
-        sample_ids: Optional[List[str]],
-        metadata: Optional[Dict[str, np.ndarray]],
-        pca_result: Optional[Dict[str, Any]],
-        umap_result: Optional[Dict[str, Any]],
-        y: Optional[np.ndarray],
-        options: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        sample_ids: list[str] | None,
+        metadata: dict[str, np.ndarray] | None,
+        pca_result: dict[str, Any] | None,
+        umap_result: dict[str, Any] | None,
+        y: np.ndarray | None,
+        options: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Compute repetition variability metrics for biological sample repeats.
 
         Identifies biological samples with multiple measurements (repetitions) and
@@ -973,7 +973,7 @@ class PlaygroundExecutor:
             sample_ids = [f"Sample_{i}" for i in range(n_samples)]
 
         # Try to identify biological sample grouping
-        bio_sample_map: Dict[str, List[int]] = defaultdict(list)
+        bio_sample_map: dict[str, list[int]] = defaultdict(list)
 
         if bio_sample_column and metadata and bio_sample_column in metadata:
             # Use specified metadata column
@@ -1014,7 +1014,7 @@ class PlaygroundExecutor:
             for pattern in patterns:
                 try:
                     compiled = re.compile(pattern)
-                    groups: Dict[str, List[int]] = defaultdict(list)
+                    groups: dict[str, list[int]] = defaultdict(list)
 
                     for idx, sample_id in enumerate(sample_ids):
                         match = compiled.match(str(sample_id))
@@ -1147,19 +1147,16 @@ class PlaygroundExecutor:
                 "p95_distance": float(np.percentile(all_distances, 95)) if all_distances else 0,
             },
             "high_variability_samples": high_variability[:10],  # Top 10 high variability
-            "bio_sample_groups": {
-                bio_id: indices
-                for bio_id, indices in list(bio_samples_with_reps.items())[:50]  # Limit to 50 for response size
-            },
+            "bio_sample_groups": dict(list(bio_samples_with_reps.items())[:50]),  # Limit to 50 for response size
         }
 
     def _compute_metrics(
         self,
         X: np.ndarray,
-        pca_result: Optional[Dict[str, Any]] = None,
-        wavelengths: Optional[np.ndarray] = None,
-        requested_metrics: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        pca_result: dict[str, Any] | None = None,
+        wavelengths: np.ndarray | None = None,
+        requested_metrics: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Compute spectral metrics for each sample.
 
         Phase 5 Implementation: Spectral Metrics System
@@ -1222,12 +1219,12 @@ class PlaygroundExecutor:
 
 
 # Simple TTL cache for pipeline results with LRU eviction
-_cache: Dict[str, Tuple[float, ExecuteResponse]] = {}
+_cache: dict[str, tuple[float, ExecuteResponse]] = {}
 _cache_ttl_seconds = 300  # 5 minutes
 _cache_max_entries = 100
 
 
-def _compute_cache_key(data: PlaygroundData, steps: List[PlaygroundStep], options: Dict[str, Any]) -> str:
+def _compute_cache_key(data: PlaygroundData, steps: list[PlaygroundStep], options: dict[str, Any]) -> str:
     """Compute cache key for a request.
 
     Uses a fingerprint of the data (shape + sampled values) to detect
@@ -1276,7 +1273,7 @@ def _compute_cache_key(data: PlaygroundData, steps: List[PlaygroundStep], option
     return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
 
-def _compute_dataset_cache_key(dataset_id: str, steps: List[PlaygroundStep], options: Dict[str, Any]) -> str:
+def _compute_dataset_cache_key(dataset_id: str, steps: list[PlaygroundStep], options: dict[str, Any]) -> str:
     """Compute cache key for a dataset-ref request.
 
     Uses dataset_id directly instead of fingerprinting data arrays,
@@ -1290,7 +1287,7 @@ def _compute_dataset_cache_key(dataset_id: str, steps: List[PlaygroundStep], opt
     return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
 
-def _get_cached(cache_key: str) -> Optional[ExecuteResponse]:
+def _get_cached(cache_key: str) -> ExecuteResponse | None:
     """Get cached result if valid."""
     if cache_key in _cache:
         timestamp, result = _cache[cache_key]
@@ -1621,7 +1618,7 @@ async def list_operators():
 
 
 @router.post("/validate")
-async def validate_pipeline(steps: List[PlaygroundStep]):
+async def validate_pipeline(steps: list[PlaygroundStep]):
     """Validate a playground pipeline configuration.
 
     Checks that all operators exist and parameters are valid.
@@ -1792,8 +1789,8 @@ class MetricsRequest(BaseModel):
     """Request model for computing specific metrics."""
 
     data: PlaygroundData = Field(..., description="Spectral data")
-    metrics: List[str] = Field(..., description="List of metric names to compute")
-    pca_result: Optional[Dict[str, Any]] = Field(None, description="Pre-computed PCA result")
+    metrics: list[str] = Field(..., description="List of metric names to compute")
+    pca_result: dict[str, Any] | None = Field(None, description="Pre-computed PCA result")
 
 
 class OutlierRequest(BaseModel):
@@ -1802,7 +1799,7 @@ class OutlierRequest(BaseModel):
     data: PlaygroundData = Field(..., description="Spectral data")
     method: str = Field("hotelling_t2", description="Detection method: 'hotelling_t2', 'q_residual', 'lof', 'distance'")
     threshold: float = Field(0.95, ge=0, le=1, description="Threshold for outlier detection (0-1)")
-    pca_result: Optional[Dict[str, Any]] = Field(None, description="Pre-computed PCA result")
+    pca_result: dict[str, Any] | None = Field(None, description="Pre-computed PCA result")
 
 
 class SimilarityRequest(BaseModel):
@@ -1811,8 +1808,8 @@ class SimilarityRequest(BaseModel):
     data: PlaygroundData = Field(..., description="Spectral data")
     reference_idx: int = Field(..., description="Index of reference sample")
     metric: str = Field("euclidean", description="Distance metric: 'euclidean', 'cosine', 'correlation'")
-    threshold: Optional[float] = Field(None, description="Distance threshold")
-    top_k: Optional[int] = Field(None, description="Return top K similar samples")
+    threshold: float | None = Field(None, description="Distance threshold")
+    top_k: int | None = Field(None, description="Return top K similar samples")
 
 
 @router.post("/metrics/compute")
@@ -1938,8 +1935,8 @@ async def find_similar_samples(request: SimilarityRequest):
 class DiffComputeRequest(BaseModel):
     """Request model for computing differences between reference and final datasets."""
 
-    X_ref: List[List[float]] = Field(..., description="Reference spectra (n_samples x n_features)")
-    X_final: List[List[float]] = Field(..., description="Final spectra (n_samples x n_features)")
+    X_ref: list[list[float]] = Field(..., description="Reference spectra (n_samples x n_features)")
+    X_final: list[list[float]] = Field(..., description="Final spectra (n_samples x n_features)")
     metric: str = Field(
         "euclidean",
         description="Distance metric: 'euclidean', 'manhattan', 'cosine', 'spectral_angle', 'correlation', 'mahalanobis', 'pca_distance'",
@@ -1950,8 +1947,8 @@ class DiffComputeRequest(BaseModel):
 class RepetitionVarianceRequest(BaseModel):
     """Request model for computing variance within repetition groups."""
 
-    X: List[List[float]] = Field(..., description="Spectral data (n_samples x n_features)")
-    group_ids: List[str] = Field(..., description="Group identifiers for each sample")
+    X: list[list[float]] = Field(..., description="Spectral data (n_samples x n_features)")
+    group_ids: list[str] = Field(..., description="Group identifiers for each sample")
     reference: str = Field(
         "group_mean",
         description="Reference type: 'group_mean', 'leave_one_out', 'first'",

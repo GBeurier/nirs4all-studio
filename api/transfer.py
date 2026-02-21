@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -27,9 +28,9 @@ if str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 try:
-    from nirs4all.visualization.analysis.transfer import PreprocPCAEvaluator
     from nirs4all.analysis.presets import PRESETS, list_presets
     from nirs4all.analysis.transfer_utils import get_base_preprocessings
+    from nirs4all.visualization.analysis.transfer import PreprocPCAEvaluator
 
     TRANSFER_AVAILABLE = True
 except ImportError as e:
@@ -46,21 +47,21 @@ class PreprocessingStep(BaseModel):
     """Configuration for a single preprocessing step."""
 
     name: str = Field(..., description="Preprocessing operator name (e.g., 'SNV', 'MSC', 'SG')")
-    params: Dict[str, Any] = Field(default={}, description="Operator parameters")
+    params: dict[str, Any] = Field(default={}, description="Operator parameters")
 
 
 class PreprocessingConfig(BaseModel):
     """Configuration for preprocessing in transfer analysis."""
 
     mode: Literal["preset", "manual"] = Field("preset", description="Preset or manual configuration")
-    preset: Optional[str] = Field("balanced", description="Preset name: fast, balanced, thorough, full")
-    manual_steps: Optional[List[str]] = Field(None, description="List of preprocessing names for manual mode")
+    preset: str | None = Field("balanced", description="Preset name: fast, balanced, thorough, full")
+    manual_steps: list[str] | None = Field(None, description="List of preprocessing names for manual mode")
 
 
 class TransferAnalysisRequest(BaseModel):
     """Request model for transfer analysis."""
 
-    dataset_ids: List[str] = Field(..., min_length=2, description="Dataset IDs to compare (at least 2)")
+    dataset_ids: list[str] = Field(..., min_length=2, description="Dataset IDs to compare (at least 2)")
     preprocessing: PreprocessingConfig = Field(default_factory=PreprocessingConfig)
     n_components: int = Field(10, ge=2, le=50, description="Number of PCA components")
     knn: int = Field(10, ge=2, le=50, description="Number of neighbors for trustworthiness")
@@ -77,8 +78,8 @@ class DatasetPairDistance(BaseModel):
     spread_dist_raw: float
     spread_dist_pp: float
     spread_improvement: float
-    subspace_angle_raw: Optional[float] = None
-    subspace_angle_pp: Optional[float] = None
+    subspace_angle_raw: float | None = None
+    subspace_angle_pp: float | None = None
 
 
 class PreprocessingRankingItem(BaseModel):
@@ -98,7 +99,7 @@ class PCACoordinate(BaseModel):
     dataset: str
     x: float  # PC1
     y: float  # PC2
-    z: Optional[float] = None  # PC3 (optional)
+    z: float | None = None  # PC3 (optional)
 
 
 class MetricConvergenceItem(BaseModel):
@@ -137,21 +138,21 @@ class TransferAnalysisResponse(BaseModel):
     execution_time_ms: float
 
     # Distance matrices per preprocessing
-    distance_matrices: Dict[str, List[DatasetPairDistance]]
+    distance_matrices: dict[str, list[DatasetPairDistance]]
 
     # Preprocessing ranking by metric
-    preprocessing_ranking: Dict[str, List[PreprocessingRankingItem]]
+    preprocessing_ranking: dict[str, list[PreprocessingRankingItem]]
 
     # PCA coordinates for visualization
-    pca_coordinates: Dict[str, List[PCACoordinate]]
+    pca_coordinates: dict[str, list[PCACoordinate]]
 
     # Metric convergence data
-    metric_convergence: List[MetricConvergenceItem]
+    metric_convergence: list[MetricConvergenceItem]
 
     # Summary and metadata
     summary: TransferAnalysisSummary
-    datasets: List[DatasetInfo]
-    preprocessings: List[str]
+    datasets: list[DatasetInfo]
+    preprocessings: list[str]
 
 
 class TransferPresetInfo(BaseModel):
@@ -159,7 +160,7 @@ class TransferPresetInfo(BaseModel):
 
     name: str
     description: str
-    config: Dict[str, Any]
+    config: dict[str, Any]
 
 
 class PreprocessingOptionInfo(BaseModel):
@@ -169,7 +170,7 @@ class PreprocessingOptionInfo(BaseModel):
     display_name: str
     category: str
     description: str
-    default_params: Dict[str, Any] = {}
+    default_params: dict[str, Any] = {}
 
 
 # ============= API Endpoints =============
@@ -270,7 +271,7 @@ async def compute_transfer_analysis(request: TransferAnalysisRequest):
     )
 
 
-@router.get("/analysis/transfer/presets", response_model=List[TransferPresetInfo])
+@router.get("/analysis/transfer/presets", response_model=list[TransferPresetInfo])
 async def get_transfer_presets():
     """Get available preset configurations for transfer analysis."""
     if not TRANSFER_AVAILABLE:
@@ -285,7 +286,7 @@ async def get_transfer_presets():
     ]
 
 
-@router.get("/analysis/transfer/preprocessing-options", response_model=List[PreprocessingOptionInfo])
+@router.get("/analysis/transfer/preprocessing-options", response_model=list[PreprocessingOptionInfo])
 async def get_preprocessing_options():
     """Get available preprocessing operators for manual selection."""
     if not TRANSFER_AVAILABLE:
@@ -385,7 +386,7 @@ def _load_dataset_data(dataset_id: str) -> tuple:
     return dataset, X, wavelengths
 
 
-def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, Callable[[np.ndarray], np.ndarray]]:
+def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> dict[str, Callable[[np.ndarray], np.ndarray]]:
     """Generate preprocessing functions based on configuration."""
     pipelines = {}
 
@@ -420,16 +421,16 @@ def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, 
 
 def _build_preprocessing_function(name: str) -> Callable[[np.ndarray], np.ndarray]:
     """Build a preprocessing function from a name using nirs4all operators."""
-    from sklearn.preprocessing import MinMaxScaler, StandardScaler, Normalizer
-    from nirs4all.operators.transforms.scalers import StandardNormalVariate
     from nirs4all.operators.transforms.nirs import (
+        AreaNormalization,
+        FirstDerivative,
         MultiplicativeScatterCorrection,
         SavitzkyGolay,
-        FirstDerivative,
         SecondDerivative,
-        AreaNormalization,
     )
+    from nirs4all.operators.transforms.scalers import StandardNormalVariate
     from nirs4all.operators.transforms.signal import Detrend
+    from sklearn.preprocessing import MinMaxScaler, Normalizer, StandardScaler
 
     # Define preprocessing mapping using nirs4all operators
     if name == "SNV":
@@ -483,7 +484,7 @@ def _build_preprocessing_function(name: str) -> Callable[[np.ndarray], np.ndarra
         return lambda X: X
 
 
-def _extract_distance_matrices(evaluator: PreprocPCAEvaluator) -> Dict[str, List[DatasetPairDistance]]:
+def _extract_distance_matrices(evaluator: PreprocPCAEvaluator) -> dict[str, list[DatasetPairDistance]]:
     """Extract distance matrices from evaluator results."""
     if evaluator.cross_dataset_df_ is None or evaluator.cross_dataset_df_.empty:
         return {}
@@ -516,7 +517,7 @@ def _extract_distance_matrices(evaluator: PreprocPCAEvaluator) -> Dict[str, List
     return result
 
 
-def _extract_preprocessing_ranking(evaluator: PreprocPCAEvaluator) -> Dict[str, List[PreprocessingRankingItem]]:
+def _extract_preprocessing_ranking(evaluator: PreprocPCAEvaluator) -> dict[str, list[PreprocessingRankingItem]]:
     """Extract preprocessing ranking from evaluator results."""
     result = {}
 
@@ -561,14 +562,14 @@ def _extract_preprocessing_ranking(evaluator: PreprocPCAEvaluator) -> Dict[str, 
 
 
 def _extract_pca_coordinates(
-    evaluator: PreprocPCAEvaluator, raw_data: Dict[str, np.ndarray]
-) -> Dict[str, List[PCACoordinate]]:
+    evaluator: PreprocPCAEvaluator, raw_data: dict[str, np.ndarray]
+) -> dict[str, list[PCACoordinate]]:
     """Extract PCA coordinates for visualization."""
     result = {}
 
     # Raw PCA coordinates
     raw_coords = []
-    for dataset_name in raw_data.keys():
+    for dataset_name in raw_data:
         if dataset_name in evaluator.raw_pcas_:
             Z, _, _ = evaluator.raw_pcas_[dataset_name]
             for i in range(Z.shape[0]):
@@ -584,11 +585,11 @@ def _extract_pca_coordinates(
     result["raw"] = raw_coords
 
     # Preprocessed PCA coordinates
-    preprocs = set(pp for (ds, pp) in evaluator.pp_pcas_.keys())
+    preprocs = {pp for (ds, pp) in evaluator.pp_pcas_}
 
     for pp_name in preprocs:
         pp_coords = []
-        for dataset_name in raw_data.keys():
+        for dataset_name in raw_data:
             if (dataset_name, pp_name) in evaluator.pp_pcas_:
                 Z, _, _ = evaluator.pp_pcas_[(dataset_name, pp_name)]
                 for i in range(Z.shape[0]):
@@ -606,7 +607,7 @@ def _extract_pca_coordinates(
     return result
 
 
-def _extract_metric_convergence(evaluator: PreprocPCAEvaluator) -> List[MetricConvergenceItem]:
+def _extract_metric_convergence(evaluator: PreprocPCAEvaluator) -> list[MetricConvergenceItem]:
     """Extract metric convergence data from evaluator."""
     result = []
 
@@ -645,7 +646,7 @@ def _extract_metric_convergence(evaluator: PreprocPCAEvaluator) -> List[MetricCo
     return result
 
 
-def _find_best_preprocessing(ranking: Dict[str, List[PreprocessingRankingItem]]) -> tuple:
+def _find_best_preprocessing(ranking: dict[str, list[PreprocessingRankingItem]]) -> tuple:
     """Find the best preprocessing based on centroid distance reduction."""
     if "centroid" not in ranking or not ranking["centroid"]:
         return "None", 0.0

@@ -25,7 +25,6 @@ from typing import Optional, Tuple
 
 import platformdirs
 
-
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
 
@@ -214,8 +213,8 @@ rm -f "$0"
 
 def create_updater_script(
     staging_dir: Path,
-    app_dir: Optional[Path] = None,
-) -> Tuple[Path, str]:
+    app_dir: Path | None = None,
+) -> tuple[Path, str]:
     """
     Create a platform-specific updater script.
 

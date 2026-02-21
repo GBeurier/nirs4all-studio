@@ -16,9 +16,10 @@ Phase 5 (Native Format):
 from __future__ import annotations
 
 import importlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
@@ -85,8 +86,8 @@ NIRS4ALL_MODEL_MODULES = [
 
 @dataclass
 class PipelineBuildResult:
-    steps: List[Any]
-    metrics: List[str]
+    steps: list[Any]
+    metrics: list[str]
 
 
 def require_nirs4all() -> None:
@@ -96,7 +97,7 @@ def require_nirs4all() -> None:
         raise HTTPException(status_code=501, detail=detail)
 
 
-def get_dataset_record(dataset_id: str) -> Dict[str, Any]:
+def get_dataset_record(dataset_id: str) -> dict[str, Any]:
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
@@ -121,7 +122,7 @@ def resolve_dataset_path(dataset_id: str) -> str:
     return str(path)
 
 
-def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
+def build_dataset_config(dataset_id: str) -> dict[str, Any]:
     """Build a nirs4all-compliant dataset configuration from webapp dataset record.
 
     Converts the webapp's dataset format (with files array and global_params)
@@ -150,7 +151,7 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
         return config_dict
 
     # Build nirs4all config from files array
-    nirs4all_config: Dict[str, Any] = {
+    nirs4all_config: dict[str, Any] = {
         "train_x": None,
         "train_y": None,
         "test_x": None,
@@ -254,7 +255,7 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
     return nirs4all_config
 
 
-def _normalize_params(name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(params or {})
 
     # Generic: reconstruct tuple parameters from _min/_max suffix pairs.
@@ -304,7 +305,7 @@ def _normalize_params(name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-def _resolve_class(name: str, module_candidates: Iterable[str]) -> Optional[Any]:
+def _resolve_class(name: str, module_candidates: Iterable[str]) -> Any | None:
     for module_path in module_candidates:
         try:
             module = importlib.import_module(module_path)
@@ -361,9 +362,9 @@ def _resolve_operator_class(name: str, step_type: str) -> Any:
     return cls
 
 
-def build_pipeline_steps(steps: List[Dict[str, Any]]) -> PipelineBuildResult:
-    pipeline_steps: List[Any] = []
-    metrics: List[str] = []
+def build_pipeline_steps(steps: list[dict[str, Any]]) -> PipelineBuildResult:
+    pipeline_steps: list[Any] = []
+    metrics: list[str] = []
 
     for step in steps:
         step_type = step.get("type", "")
@@ -404,7 +405,7 @@ def build_dataset_spec(dataset_id: str) -> str:
     return resolve_dataset_path(dataset_id)
 
 
-def extract_metrics_from_prediction(prediction: Dict[str, Any]) -> Dict[str, float]:
+def extract_metrics_from_prediction(prediction: dict[str, Any]) -> dict[str, float]:
     scores = prediction.get("scores") or {}
     if isinstance(scores, str):
         scores = {}
@@ -449,10 +450,10 @@ def ensure_models_dir(workspace_path: str) -> Path:
 @dataclass
 class FullPipelineBuildResult:
     """Complete pipeline with all nirs4all features."""
-    steps: List[Any]
-    metrics: List[str]
-    y_processing: Optional[Any]
-    finetuning_config: Optional[Dict[str, Any]]
+    steps: list[Any]
+    metrics: list[str]
+    y_processing: Any | None
+    finetuning_config: dict[str, Any] | None
     has_generators: bool
     estimated_variants: int
     total_model_count: int = 1
@@ -461,7 +462,7 @@ class FullPipelineBuildResult:
     branch_count: int = 1
 
 
-def _build_generator_sweep(sweep: Dict[str, Any], param_name: str) -> Dict[str, Any]:
+def _build_generator_sweep(sweep: dict[str, Any], param_name: str) -> dict[str, Any]:
     """Convert frontend sweep config to nirs4all generator syntax."""
     sweep_type = (sweep.get("type") or "range").lower()
 
@@ -486,7 +487,7 @@ def _build_generator_sweep(sweep: Dict[str, Any], param_name: str) -> Dict[str, 
     return {}
 
 
-def _sweep_to_param_node(sweep: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _sweep_to_param_node(sweep: dict[str, Any]) -> dict[str, Any] | None:
     """Convert a single param sweep config into a generator node for params."""
     if not sweep:
         return None
@@ -521,7 +522,7 @@ def _class_path_from_operator(operator_class: Any) -> str:
     return f"{operator_class.__module__}.{operator_class.__name__}"
 
 
-def _build_finetuning_params(finetune_config: Dict[str, Any]) -> Dict[str, Any]:
+def _build_finetuning_params(finetune_config: dict[str, Any]) -> dict[str, Any]:
     """Convert frontend finetuning config to nirs4all finetune_params."""
     if not finetune_config or not finetune_config.get("enabled"):
         return {}
@@ -560,7 +561,7 @@ def _build_finetuning_params(finetune_config: Dict[str, Any]) -> Dict[str, Any]:
     return finetune_params
 
 
-def _build_y_processing(y_config: Dict[str, Any]) -> Optional[Any]:
+def _build_y_processing(y_config: dict[str, Any]) -> Any | None:
     """Convert frontend y_processing config to nirs4all scaler instance."""
     if not y_config or not y_config.get("enabled"):
         return None
@@ -581,7 +582,7 @@ def _build_y_processing(y_config: Dict[str, Any]) -> Optional[Any]:
     return None
 
 
-def _build_or_generator(children: List[Dict[str, Any]], options: Dict[str, Any] = None) -> Dict[str, Any]:
+def _build_or_generator(children: list[dict[str, Any]], options: dict[str, Any] = None) -> dict[str, Any]:
     """Convert frontend OR generator children to nirs4all _or_ syntax."""
     alternatives = []
 
@@ -602,7 +603,7 @@ def _build_or_generator(children: List[Dict[str, Any]], options: Dict[str, Any] 
     return result
 
 
-def _build_branch(children: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
+def _build_branch(children: list[list[dict[str, Any]]]) -> dict[str, Any]:
     """Convert frontend branch children to nirs4all branch syntax."""
     branches = []
 
@@ -614,10 +615,10 @@ def _build_branch(children: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
 
 
 def _build_generator_step(
-    branches: List[List[Dict[str, Any]]],
+    branches: list[list[dict[str, Any]]],
     generator_kind: str,
-    generator_options: Dict[str, Any],
-) -> Dict[str, Any]:
+    generator_options: dict[str, Any],
+) -> dict[str, Any]:
     """Build a generator step (OR or Cartesian) from branches.
 
     Handles both legacy type="generator" and consolidated type="utility" subType="generator".
@@ -644,7 +645,7 @@ def _build_generator_step(
             alternatives.append(built)
         else:
             alternatives.append([build_full_step(s) for s in branch])
-    result: Dict[str, Any] = {"_or_": alternatives}
+    result: dict[str, Any] = {"_or_": alternatives}
     if generator_options.get("pick"):
         result["pick"] = generator_options["pick"]
     if generator_options.get("arrange"):
@@ -658,7 +659,7 @@ def _build_generator_step(
     return result
 
 
-def build_full_step(step: Dict[str, Any]) -> Any:
+def build_full_step(step: dict[str, Any]) -> Any:
     """
     Build a single pipeline step with full generator/finetuning support.
 
@@ -815,7 +816,7 @@ def build_full_step(step: Dict[str, Any]) -> Any:
     return instance
 
 
-def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = None) -> FullPipelineBuildResult:
+def build_full_pipeline(steps: list[dict[str, Any]], config: dict[str, Any] = None) -> FullPipelineBuildResult:
     """
     Build complete pipeline with generators, finetuning, y_processing support.
 
@@ -831,8 +832,8 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
     Returns:
         FullPipelineBuildResult with all pipeline components
     """
-    pipeline_steps: List[Any] = []
-    metrics: List[str] = []
+    pipeline_steps: list[Any] = []
+    metrics: list[str] = []
     y_processing = None
     has_generators = False
     finetuning_config = None
@@ -952,14 +953,14 @@ def build_full_pipeline(steps: List[Dict[str, Any]], config: Dict[str, Any] = No
 class PipelineVariant:
     """Represents a single expanded pipeline variant."""
     index: int
-    steps: List[Any]  # nirs4all-compatible steps
+    steps: list[Any]  # nirs4all-compatible steps
     description: str  # Human-readable description of choices
-    choices: Dict[str, Any]  # Mapping of parameter -> value for this variant
+    choices: dict[str, Any]  # Mapping of parameter -> value for this variant
     model_name: str  # Primary model name for this variant
-    preprocessing_names: List[str]  # Preprocessing steps for this variant
+    preprocessing_names: list[str]  # Preprocessing steps for this variant
 
 
-def expand_pipeline_variants(steps: List[Dict[str, Any]]) -> List[PipelineVariant]:
+def expand_pipeline_variants(steps: list[dict[str, Any]]) -> list[PipelineVariant]:
     """
     Expand pipeline steps into all concrete variants.
 
@@ -1007,9 +1008,7 @@ def expand_pipeline_variants(steps: List[Dict[str, Any]]) -> List[PipelineVarian
             for key, value in choice.items():
                 if key.startswith("_"):
                     # Generator choice (_or_, _range_, etc)
-                    if isinstance(value, type):
-                        value_str = value.__name__
-                    elif hasattr(value, '__name__'):
+                    if isinstance(value, type) or hasattr(value, '__name__'):
                         value_str = value.__name__
                     elif isinstance(value, dict) and "model" in value:
                         model = value.get("model")
@@ -1047,7 +1046,7 @@ def expand_pipeline_variants(steps: List[Dict[str, Any]]) -> List[PipelineVarian
     return variants
 
 
-def _extract_first_model(steps: List[Dict[str, Any]]) -> str:
+def _extract_first_model(steps: list[dict[str, Any]]) -> str:
     """Extract the first model name from frontend steps."""
     for step in steps:
         if step.get("type") == "model":
@@ -1062,7 +1061,7 @@ def _extract_first_model(steps: List[Dict[str, Any]]) -> str:
     return "Unknown"
 
 
-def _extract_preprocessing_names(steps: List[Dict[str, Any]]) -> List[str]:
+def _extract_preprocessing_names(steps: list[dict[str, Any]]) -> list[str]:
     """Extract preprocessing names from frontend steps."""
     names = []
     for step in steps:
@@ -1101,7 +1100,7 @@ def _extract_model_from_config(config) -> str:
     return "Unknown"
 
 
-def _extract_preprocessing_from_config(config) -> List[str]:
+def _extract_preprocessing_from_config(config) -> list[str]:
     """Extract preprocessing names from expanded nirs4all config."""
     names = []
     if isinstance(config, list):
@@ -1128,7 +1127,7 @@ def _extract_preprocessing_from_config(config) -> List[str]:
 
 
 def export_pipeline_to_python(
-    steps: List[Dict[str, Any]],
+    steps: list[dict[str, Any]],
     pipeline_name: str = "my_pipeline",
     dataset_path: str = "path/to/dataset",
 ) -> str:
@@ -1202,7 +1201,7 @@ def export_pipeline_to_python(
     return '\n'.join(lines)
 
 
-def _step_to_python_code(step: Dict[str, Any]) -> Optional[str]:
+def _step_to_python_code(step: dict[str, Any]) -> str | None:
     """Convert a single step to Python code representation."""
     step_type = step.get("type", "")
     step_name = step.get("name", "")
@@ -1269,7 +1268,7 @@ def _step_to_python_code(step: Dict[str, Any]) -> Optional[str]:
     return base_code
 
 
-def _finetune_to_python_code(finetune: Dict[str, Any]) -> str:
+def _finetune_to_python_code(finetune: dict[str, Any]) -> str:
     """Convert finetuning config to Python dict string."""
     params = finetune.get("params", [])
     model_params = {}
@@ -1288,7 +1287,7 @@ def _finetune_to_python_code(finetune: Dict[str, Any]) -> str:
     return f'{{"n_trials": {finetune.get("n_trials", 50)}, "model_params": {{{mp_str}}}}}'
 
 
-def export_pipeline_to_yaml(steps: List[Dict[str, Any]], config: Dict[str, Any] = None) -> str:
+def export_pipeline_to_yaml(steps: list[dict[str, Any]], config: dict[str, Any] = None) -> str:
     """
     Export pipeline to YAML format.
 
@@ -1334,7 +1333,7 @@ def export_pipeline_to_yaml(steps: List[Dict[str, Any]], config: Dict[str, Any] 
     return yaml.dump(yaml_data, default_flow_style=False, sort_keys=False)
 
 
-def import_pipeline_from_yaml(yaml_content: str) -> Dict[str, Any]:
+def import_pipeline_from_yaml(yaml_content: str) -> dict[str, Any]:
     """
     Import pipeline from YAML format.
 
@@ -1454,14 +1453,14 @@ def _instantiate_native(ref: Any) -> Any:
     )
 
 
-def _instantiate_native_list(refs: Any) -> List[Any]:
+def _instantiate_native_list(refs: Any) -> list[Any]:
     """Instantiate a list of operator references, or a single reference as a list."""
     if isinstance(refs, list):
         return [_instantiate_native(ref) for ref in refs]
     return [_instantiate_native(refs)]
 
 
-def build_native_pipeline(native_steps: List[Any]) -> List[Any]:
+def build_native_pipeline(native_steps: list[Any]) -> list[Any]:
     """Convert nirs4all-native JSON format to Python pipeline objects.
 
     This accepts the native pipeline format that maps directly to what
@@ -1631,7 +1630,7 @@ def _build_native_step(step: Any) -> Any:
     return step
 
 
-def _build_native_finetune_params(finetune_config: Dict[str, Any]) -> Dict[str, Any]:
+def _build_native_finetune_params(finetune_config: dict[str, Any]) -> dict[str, Any]:
     """Convert native finetune_params to nirs4all format.
 
     The native format already closely matches what nirs4all expects, but

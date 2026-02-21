@@ -1,0 +1,23 @@
+# Ruff configuration for nirs4all webapp backend
+# Mirrors nirs4all library settings for consistency
+line-length = 220
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E402", "F841", "F401", "E302", "E305", "W293", "E501",
+    "SIM108",  # ternary operator
+    "SIM105",  # contextlib.suppress (noisy, low-value)
+    "SIM102",  # collapsible-if (readability preference)
+    "SIM115",  # open without context manager (intentional for file locks)
+    "B904",    # raise from (noisy in HTTP handlers)
+    "B905",    # zip strict (not needed in this codebase)
+    "B008",    # function call in default arg (FastAPI Query/Depends)
+    "UP035",   # deprecated typing imports (bulk migration, low priority)
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401", "F403", "F405"]
+"tests/*" = ["B", "SIM"]
+"scripts/*" = ["B", "SIM"]

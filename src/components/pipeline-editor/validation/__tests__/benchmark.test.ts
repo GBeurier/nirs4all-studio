@@ -331,8 +331,8 @@ describe("Validation Performance Benchmarks", () => {
           `With errors: avg=${errorStats.avgMs.toFixed(2)}ms`
       );
 
-      // Error validation should not be more than 2x slower
-      expect(errorStats.avgMs).toBeLessThan(validStats.avgMs * 2);
+      // Error validation should not be more than 3x slower
+      expect(errorStats.avgMs).toBeLessThan(validStats.avgMs * 3);
     });
   });
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +62,7 @@ class StoreAdapter:
             raise RuntimeError("nirs4all library is required for StoreAdapter")
         self._store = WorkspaceStore(workspace_path)
 
-    def __enter__(self) -> "StoreAdapter":
+    def __enter__(self) -> StoreAdapter:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -271,7 +271,7 @@ class StoreAdapter:
             "total_predictions": total,
             "top_predictions": top_predictions,
             "models": models_list,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
     def get_predictions_page(
@@ -709,11 +709,7 @@ class StoreAdapter:
                         final_scores = json.loads(rp_scores_raw) if isinstance(rp_scores_raw, str) else (rp_scores_raw or {})
 
                     if final_ts is not None:
-                        if best_final_score is None:
-                            best_final_score = final_ts
-                        elif higher_is_better and final_ts > best_final_score:
-                            best_final_score = final_ts
-                        elif not higher_is_better and final_ts < best_final_score:
+                        if best_final_score is None or higher_is_better and final_ts > best_final_score or not higher_is_better and final_ts < best_final_score:
                             best_final_score = final_ts
 
                     top_5.append(_sanitize_dict({
@@ -741,11 +737,7 @@ class StoreAdapter:
                     rfinal_scores = json.loads(rfinal_scores_raw) if isinstance(rfinal_scores_raw, str) else (rfinal_scores_raw or {})
 
                     if rts is not None:
-                        if best_final_score is None:
-                            best_final_score = rts
-                        elif higher_is_better and rts > best_final_score:
-                            best_final_score = rts
-                        elif not higher_is_better and rts < best_final_score:
+                        if best_final_score is None or higher_is_better and rts > best_final_score or not higher_is_better and rts < best_final_score:
                             best_final_score = rts
 
                     top_5.append(_sanitize_dict({
@@ -789,7 +781,7 @@ class StoreAdapter:
                     "metric": metric,
                     "task_type": task_type,
                     "gain_from_previous_best": gain,
-                    "pipeline_count": len(set(a.get("pipeline_id") for a in agg_list)),
+                    "pipeline_count": len({a.get("pipeline_id") for a in agg_list}),
                     "top_5": top_5,
                     "n_samples": n_samples,
                     "n_features": n_features,

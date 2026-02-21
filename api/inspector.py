@@ -24,7 +24,7 @@ All data is read from the workspace's DuckDB store via WorkspaceStore.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -59,40 +59,40 @@ class InspectorChainSummary(BaseModel):
     run_id: str
     pipeline_id: str
     model_class: str
-    model_name: Optional[str] = None
-    preprocessings: Optional[str] = None
-    branch_path: Optional[Any] = None
-    source_index: Optional[int] = None
-    metric: Optional[str] = None
-    task_type: Optional[str] = None
-    dataset_name: Optional[str] = None
-    best_params: Optional[Any] = None
-    cv_val_score: Optional[float] = None
-    cv_test_score: Optional[float] = None
-    cv_train_score: Optional[float] = None
+    model_name: str | None = None
+    preprocessings: str | None = None
+    branch_path: Any | None = None
+    source_index: int | None = None
+    metric: str | None = None
+    task_type: str | None = None
+    dataset_name: str | None = None
+    best_params: Any | None = None
+    cv_val_score: float | None = None
+    cv_test_score: float | None = None
+    cv_train_score: float | None = None
     cv_fold_count: int = 0
-    final_test_score: Optional[float] = None
-    final_train_score: Optional[float] = None
-    pipeline_status: Optional[str] = None
+    final_test_score: float | None = None
+    final_train_score: float | None = None
+    pipeline_status: str | None = None
 
 
 class InspectorDataResponse(BaseModel):
     """Response for /inspector/data."""
 
-    chains: List[Dict[str, Any]]
+    chains: list[dict[str, Any]]
     total: int
-    available_metrics: List[str]
-    available_models: List[str]
-    available_datasets: List[str]
-    available_runs: List[str]
-    available_preprocessings: List[str]
+    available_metrics: list[str]
+    available_models: list[str]
+    available_datasets: list[str]
+    available_runs: list[str]
+    available_preprocessings: list[str]
     generated_at: str
 
 
 class ScatterRequest(BaseModel):
     """Request body for /inspector/scatter."""
 
-    chain_ids: List[str]
+    chain_ids: list[str]
     partition: str = "val"
 
 
@@ -101,19 +101,19 @@ class ScatterPoint(BaseModel):
 
     chain_id: str
     model_class: str
-    model_name: Optional[str] = None
-    preprocessings: Optional[str] = None
-    y_true: List[float]
-    y_pred: List[float]
-    sample_indices: Optional[List[int]] = None
-    fold_id: Optional[str] = None
-    score: Optional[float] = None
+    model_name: str | None = None
+    preprocessings: str | None = None
+    y_true: list[float]
+    y_pred: list[float]
+    sample_indices: list[int] | None = None
+    fold_id: str | None = None
+    score: float | None = None
 
 
 class ScatterResponse(BaseModel):
     """Response for /inspector/scatter."""
 
-    points: List[ScatterPoint]
+    points: list[ScatterPoint]
     partition: str
     total_samples: int
 
@@ -124,18 +124,18 @@ class HistogramBin(BaseModel):
     bin_start: float
     bin_end: float
     count: int
-    chain_ids: List[str]
+    chain_ids: list[str]
 
 
 class HistogramResponse(BaseModel):
     """Response for /inspector/histogram."""
 
-    bins: List[HistogramBin]
+    bins: list[HistogramBin]
     score_column: str
     total_chains: int
-    min_score: Optional[float] = None
-    max_score: Optional[float] = None
-    mean_score: Optional[float] = None
+    min_score: float | None = None
+    max_score: float | None = None
+    mean_score: float | None = None
 
 
 class RankingRow(BaseModel):
@@ -144,22 +144,22 @@ class RankingRow(BaseModel):
     rank: int
     chain_id: str
     model_class: str
-    model_name: Optional[str] = None
-    preprocessings: Optional[str] = None
-    cv_val_score: Optional[float] = None
-    cv_test_score: Optional[float] = None
-    cv_train_score: Optional[float] = None
-    final_test_score: Optional[float] = None
-    final_train_score: Optional[float] = None
+    model_name: str | None = None
+    preprocessings: str | None = None
+    cv_val_score: float | None = None
+    cv_test_score: float | None = None
+    cv_train_score: float | None = None
+    final_test_score: float | None = None
+    final_train_score: float | None = None
     cv_fold_count: int = 0
-    dataset_name: Optional[str] = None
-    best_params: Optional[Any] = None
+    dataset_name: str | None = None
+    best_params: Any | None = None
 
 
 class RankingsResponse(BaseModel):
     """Response for /inspector/rankings."""
 
-    rankings: List[Dict[str, Any]]
+    rankings: list[dict[str, Any]]
     total: int
     score_column: str
     sort_ascending: bool
@@ -173,8 +173,8 @@ class RankingsResponse(BaseModel):
 class HeatmapRequest(BaseModel):
     """Request body for /inspector/heatmap."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
     x_variable: str = "model_class"
     y_variable: str = "preprocessings"
     score_column: str = "cv_val_score"
@@ -186,22 +186,22 @@ class HeatmapCell(BaseModel):
 
     x_label: str
     y_label: str
-    value: Optional[float] = None
+    value: float | None = None
     count: int
-    chain_ids: List[str]
+    chain_ids: list[str]
 
 
 class HeatmapResponse(BaseModel):
     """Response for /inspector/heatmap."""
 
-    cells: List[Dict[str, Any]]
-    x_labels: List[str]
-    y_labels: List[str]
+    cells: list[dict[str, Any]]
+    x_labels: list[str]
+    y_labels: list[str]
     x_variable: str
     y_variable: str
     score_column: str
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
+    min_value: float | None = None
+    max_value: float | None = None
 
 
 # ============================================================================
@@ -212,8 +212,8 @@ class HeatmapResponse(BaseModel):
 class CandlestickRequest(BaseModel):
     """Request body for /inspector/candlestick."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
     category_variable: str = "model_class"
     score_column: str = "cv_val_score"
 
@@ -229,14 +229,14 @@ class CandlestickCategory(BaseModel):
     max: float
     mean: float
     count: int
-    outlier_values: List[float]
-    chain_ids: List[str]
+    outlier_values: list[float]
+    chain_ids: list[str]
 
 
 class CandlestickResponse(BaseModel):
     """Response for /inspector/candlestick."""
 
-    categories: List[Dict[str, Any]]
+    categories: list[dict[str, Any]]
     category_variable: str
     score_column: str
 
@@ -275,7 +275,7 @@ def _sanitize_dict(d: dict) -> dict:
     return out
 
 
-def _get_store() -> "WorkspaceStore":
+def _get_store() -> WorkspaceStore:
     """Get a WorkspaceStore for the current workspace."""
     if not STORE_AVAILABLE:
         raise HTTPException(
@@ -301,7 +301,7 @@ def _get_store() -> "WorkspaceStore":
 _LOWER_BETTER_METRICS = {"rmse", "mse", "mae", "rmsecv", "rmsep", "secv", "sep", "bias"}
 
 
-def _is_lower_better(metric: Optional[str]) -> bool:
+def _is_lower_better(metric: str | None) -> bool:
     """Auto-detect if lower score is better for this metric."""
     if not metric:
         return True
@@ -315,12 +315,12 @@ def _is_lower_better(metric: Optional[str]) -> bool:
 
 @router.get("/data")
 async def get_inspector_data(
-    run_id: Optional[List[str]] = Query(None, description="Filter by run ID(s)"),
-    dataset_name: Optional[List[str]] = Query(None, description="Filter by dataset name(s)"),
-    model_class: Optional[List[str]] = Query(None, description="Filter by model class(es)"),
-    preprocessings: Optional[List[str]] = Query(None, description="Filter by preprocessing step(s)"),
-    task_type: Optional[str] = Query(None, description="Filter by task type"),
-    metric: Optional[str] = Query(None, description="Filter by metric"),
+    run_id: list[str] | None = Query(None, description="Filter by run ID(s)"),
+    dataset_name: list[str] | None = Query(None, description="Filter by dataset name(s)"),
+    model_class: list[str] | None = Query(None, description="Filter by model class(es)"),
+    preprocessings: list[str] | None = Query(None, description="Filter by preprocessing step(s)"),
+    task_type: str | None = Query(None, description="Filter by task type"),
+    metric: str | None = Query(None, description="Filter by metric"),
 ):
     """Load chain summaries and metadata for the Inspector.
 
@@ -377,7 +377,7 @@ async def get_inspector_data(
             available_datasets=datasets,
             available_runs=runs,
             available_preprocessings=sorted(prep_steps),
-            generated_at=datetime.now(timezone.utc).isoformat(),
+            generated_at=datetime.now(UTC).isoformat(),
         )
     finally:
         store.close()
@@ -461,8 +461,8 @@ async def get_scatter_data(request: ScatterRequest):
 
 @router.get("/histogram")
 async def get_histogram_data(
-    run_id: Optional[List[str]] = Query(None),
-    dataset_name: Optional[List[str]] = Query(None),
+    run_id: list[str] | None = Query(None),
+    dataset_name: list[str] | None = Query(None),
     score_column: str = Query("cv_val_score", description="Score column for histogram"),
     n_bins: int = Query(20, ge=5, le=100, description="Number of bins"),
 ):
@@ -530,10 +530,10 @@ async def get_histogram_data(
 
 @router.get("/rankings")
 async def get_rankings_data(
-    run_id: Optional[List[str]] = Query(None),
-    dataset_name: Optional[List[str]] = Query(None),
+    run_id: list[str] | None = Query(None),
+    dataset_name: list[str] | None = Query(None),
     score_column: str = Query("cv_val_score", description="Score column to sort by"),
-    sort_ascending: Optional[bool] = Query(None, description="Sort direction (auto-detected if None)"),
+    sort_ascending: bool | None = Query(None, description="Sort direction (auto-detected if None)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -761,8 +761,8 @@ async def get_candlestick_data(request: CandlestickRequest):
 class BranchComparisonRequest(BaseModel):
     """Request body for /inspector/branch-comparison."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
     score_column: str = "cv_val_score"
 
 
@@ -778,13 +778,13 @@ class BranchComparisonEntry(BaseModel):
     ci_lower: float
     ci_upper: float
     count: int
-    chain_ids: List[str]
+    chain_ids: list[str]
 
 
 class BranchComparisonResponse(BaseModel):
     """Response for /inspector/branch-comparison."""
 
-    branches: List[Dict[str, Any]]
+    branches: list[dict[str, Any]]
     score_column: str
     total_chains: int
 
@@ -796,16 +796,16 @@ class TopologyNode(BaseModel):
     label: str
     type: str
     depth: int
-    branch_path: List[int]
-    metrics: Optional[Dict[str, Any]] = None
-    children: Optional[List[Dict[str, Any]]] = None
-    chain_ids: Optional[List[str]] = None
+    branch_path: list[int]
+    metrics: dict[str, Any] | None = None
+    children: list[dict[str, Any]] | None = None
+    chain_ids: list[str] | None = None
 
 
 class BranchTopologyResponse(BaseModel):
     """Response for /inspector/branch-topology."""
 
-    nodes: List[Dict[str, Any]]
+    nodes: list[dict[str, Any]]
     pipeline_id: str
     pipeline_name: str
     has_stacking: bool
@@ -818,7 +818,7 @@ class FoldScoreEntry(BaseModel):
 
     chain_id: str
     model_class: str
-    preprocessings: Optional[str] = None
+    preprocessings: str | None = None
     fold_id: str
     fold_index: int
     score: float
@@ -827,7 +827,7 @@ class FoldScoreEntry(BaseModel):
 class FoldStabilityRequest(BaseModel):
     """Request body for /inspector/fold-stability."""
 
-    chain_ids: List[str]
+    chain_ids: list[str]
     score_column: str = "cv_val_score"
     partition: str = "val"
 
@@ -835,8 +835,8 @@ class FoldStabilityRequest(BaseModel):
 class FoldStabilityResponse(BaseModel):
     """Response for /inspector/fold-stability."""
 
-    entries: List[Dict[str, Any]]
-    fold_ids: List[str]
+    entries: list[dict[str, Any]]
+    fold_ids: list[str]
     score_column: str
     total_chains: int
 
@@ -1111,7 +1111,7 @@ async def get_fold_stability(request: FoldStabilityRequest):
             entries=entries,
             fold_ids=sorted(all_fold_ids),
             score_column=request.score_column,
-            total_chains=len(set(e.get("chain_id") for e in entries)),
+            total_chains=len({e.get("chain_id") for e in entries}),
         )
     finally:
         store.close()
@@ -1125,7 +1125,7 @@ async def get_fold_stability(request: FoldStabilityRequest):
 class ConfusionMatrixRequest(BaseModel):
     """Request body for /inspector/confusion."""
 
-    chain_ids: List[str]
+    chain_ids: list[str]
     partition: str = "val"
     normalize: str = "none"  # none, row, column, all
 
@@ -1136,14 +1136,14 @@ class ConfusionMatrixCell(BaseModel):
     true_label: str
     pred_label: str
     count: int
-    normalized: Optional[float] = None
+    normalized: float | None = None
 
 
 class ConfusionMatrixResponse(BaseModel):
     """Response for /inspector/confusion."""
 
-    cells: List[Dict[str, Any]]
-    labels: List[str]
+    cells: list[dict[str, Any]]
+    labels: list[str]
     total_samples: int
     partition: str
     normalize: str
@@ -1152,7 +1152,7 @@ class ConfusionMatrixResponse(BaseModel):
 class RobustnessRequest(BaseModel):
     """Request body for /inspector/robustness."""
 
-    chain_ids: List[str]
+    chain_ids: list[str]
     score_column: str = "cv_val_score"
     partition: str = "val"
 
@@ -1172,24 +1172,24 @@ class RobustnessEntry(BaseModel):
 
     chain_id: str
     model_class: str
-    preprocessings: Optional[str] = None
-    axes: List[Dict[str, Any]]
+    preprocessings: str | None = None
+    axes: list[dict[str, Any]]
 
 
 class RobustnessResponse(BaseModel):
     """Response for /inspector/robustness."""
 
-    entries: List[Dict[str, Any]]
-    axis_names: List[str]
+    entries: list[dict[str, Any]]
+    axis_names: list[str]
     score_column: str
 
 
 class MetricCorrelationRequest(BaseModel):
     """Request body for /inspector/correlation."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
-    metrics: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
+    metrics: list[str] | None = None
     method: str = "spearman"  # pearson, spearman
 
 
@@ -1198,15 +1198,15 @@ class CorrelationCell(BaseModel):
 
     metric_x: str
     metric_y: str
-    coefficient: Optional[float] = None
+    coefficient: float | None = None
     count: int
 
 
 class MetricCorrelationResponse(BaseModel):
     """Response for /inspector/correlation."""
 
-    cells: List[Dict[str, Any]]
-    metrics: List[str]
+    cells: list[dict[str, Any]]
+    metrics: list[str]
     method: str
     total_chains: int
 
@@ -1580,8 +1580,8 @@ async def get_metric_correlation(request: MetricCorrelationRequest):
 class PreprocessingImpactRequest(BaseModel):
     """Request body for /inspector/preprocessing-impact."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
     score_column: str = "cv_val_score"
 
 
@@ -1589,9 +1589,9 @@ class PreprocessingImpactEntry(BaseModel):
     """One preprocessing step's impact on score."""
 
     step_name: str
-    impact: Optional[float] = None
-    mean_with: Optional[float] = None
-    mean_without: Optional[float] = None
+    impact: float | None = None
+    mean_with: float | None = None
+    mean_without: float | None = None
     count_with: int = 0
     count_without: int = 0
 
@@ -1599,7 +1599,7 @@ class PreprocessingImpactEntry(BaseModel):
 class PreprocessingImpactResponse(BaseModel):
     """Response for /inspector/preprocessing-impact."""
 
-    entries: List[Dict[str, Any]]
+    entries: list[dict[str, Any]]
     score_column: str
     total_chains: int
 
@@ -1607,8 +1607,8 @@ class PreprocessingImpactResponse(BaseModel):
 class HyperparameterRequest(BaseModel):
     """Request body for /inspector/hyperparameter."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
     param_name: str
     score_column: str = "cv_val_score"
 
@@ -1625,16 +1625,16 @@ class HyperparameterPoint(BaseModel):
 class HyperparameterResponse(BaseModel):
     """Response for /inspector/hyperparameter."""
 
-    points: List[Dict[str, Any]]
+    points: list[dict[str, Any]]
     param_name: str
     score_column: str
-    available_params: List[str]
+    available_params: list[str]
 
 
 class BiasVarianceRequest(BaseModel):
     """Request body for /inspector/bias-variance."""
 
-    chain_ids: List[str]
+    chain_ids: list[str]
     score_column: str = "cv_val_score"
     group_by: str = "model_class"
 
@@ -1643,19 +1643,19 @@ class BiasVarianceEntry(BaseModel):
     """One group's bias-variance decomposition."""
 
     group_label: str
-    bias_squared: Optional[float] = None
-    variance: Optional[float] = None
-    total_error: Optional[float] = None
+    bias_squared: float | None = None
+    variance: float | None = None
+    total_error: float | None = None
     n_chains: int = 0
     n_folds: int = 0
     n_samples: int = 0
-    chain_ids: List[str] = []
+    chain_ids: list[str] = []
 
 
 class BiasVarianceResponse(BaseModel):
     """Response for /inspector/bias-variance."""
 
-    entries: List[Dict[str, Any]]
+    entries: list[dict[str, Any]]
     score_column: str
     group_by: str
 
@@ -1663,27 +1663,27 @@ class BiasVarianceResponse(BaseModel):
 class LearningCurveRequest(BaseModel):
     """Request body for /inspector/learning-curve."""
 
-    run_id: Optional[List[str]] = None
-    dataset_name: Optional[List[str]] = None
+    run_id: list[str] | None = None
+    dataset_name: list[str] | None = None
     score_column: str = "cv_val_score"
-    model_class: Optional[str] = None
+    model_class: str | None = None
 
 
 class LearningCurvePoint(BaseModel):
     """One training-size data point."""
 
     train_size: int
-    train_mean: Optional[float] = None
-    train_std: Optional[float] = None
-    val_mean: Optional[float] = None
-    val_std: Optional[float] = None
+    train_mean: float | None = None
+    train_std: float | None = None
+    val_mean: float | None = None
+    val_std: float | None = None
     count: int = 0
 
 
 class LearningCurveResponse(BaseModel):
     """Response for /inspector/learning-curve."""
 
-    points: List[Dict[str, Any]]
+    points: list[dict[str, Any]]
     score_column: str
     has_multiple_sizes: bool
 
@@ -1921,7 +1921,7 @@ async def get_bias_variance(request: BiasVarianceRequest):
             # Compute bias² and variance per sample with 2+ predictions
             biases_sq: list[float] = []
             variances: list[float] = []
-            for idx, pairs in sample_preds.items():
+            for _idx, pairs in sample_preds.items():
                 if len(pairs) < 2:
                     continue
                 y_true_val = pairs[0][0]  # All should be the same y_true

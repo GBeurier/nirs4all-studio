@@ -55,7 +55,7 @@ class PCARequest(BaseModel):
     dataset_id: str = Field(..., description="ID of the dataset to analyze")
     n_components: int = Field(10, ge=1, le=100, description="Number of PCA components")
     partition: str = Field("train", description="Dataset partition to use")
-    preprocessing_chain: List[Dict[str, Any]] = Field(
+    preprocessing_chain: list[dict[str, Any]] = Field(
         default=[], description="Preprocessing steps to apply"
     )
     center: bool = Field(True, description="Center data before PCA")
@@ -69,13 +69,13 @@ class PCAResult(BaseModel):
     n_components: int
     n_samples: int
     n_features: int
-    scores: List[List[float]]  # (n_samples, n_components)
-    loadings: List[List[float]]  # (n_components, n_features)
-    explained_variance: List[float]  # (n_components,)
-    explained_variance_ratio: List[float]  # (n_components,)
-    cumulative_variance_ratio: List[float]  # (n_components,)
-    wavelengths: Optional[List[float]] = None
-    mean: Optional[List[float]] = None
+    scores: list[list[float]]  # (n_samples, n_components)
+    loadings: list[list[float]]  # (n_components, n_features)
+    explained_variance: list[float]  # (n_components,)
+    explained_variance_ratio: list[float]  # (n_components,)
+    cumulative_variance_ratio: list[float]  # (n_components,)
+    wavelengths: list[float] | None = None
+    mean: list[float] | None = None
 
 
 class TSNERequest(BaseModel):
@@ -87,8 +87,8 @@ class TSNERequest(BaseModel):
     learning_rate: float = Field(200.0, ge=10.0, le=1000.0, description="Learning rate")
     n_iter: int = Field(1000, ge=250, le=5000, description="Number of iterations")
     partition: str = Field("train", description="Dataset partition to use")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
-    random_state: Optional[int] = Field(42, description="Random seed")
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
+    random_state: int | None = Field(42, description="Random seed")
     init: str = Field("pca", description="Initialization method: random, pca")
 
 
@@ -98,8 +98,8 @@ class TSNEResult(BaseModel):
     dataset_id: str
     n_components: int
     n_samples: int
-    embedding: List[List[float]]  # (n_samples, n_components)
-    kl_divergence: Optional[float] = None
+    embedding: list[list[float]]  # (n_samples, n_components)
+    kl_divergence: float | None = None
     n_iter: int
 
 
@@ -112,8 +112,8 @@ class UMAPRequest(BaseModel):
     min_dist: float = Field(0.1, ge=0.0, le=1.0, description="Minimum distance")
     metric: str = Field("euclidean", description="Distance metric")
     partition: str = Field("train", description="Dataset partition to use")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
-    random_state: Optional[int] = Field(42, description="Random seed")
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
+    random_state: int | None = Field(42, description="Random seed")
 
 
 class UMAPResult(BaseModel):
@@ -122,7 +122,7 @@ class UMAPResult(BaseModel):
     dataset_id: str
     n_components: int
     n_samples: int
-    embedding: List[List[float]]  # (n_samples, n_components)
+    embedding: list[list[float]]  # (n_samples, n_components)
 
 
 class ImportanceRequest(BaseModel):
@@ -135,7 +135,7 @@ class ImportanceRequest(BaseModel):
     )
     partition: str = Field("test", description="Dataset partition to use")
     n_repeats: int = Field(10, ge=1, le=100, description="Number of repeats for permutation method")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
 
 
 class ImportanceResult(BaseModel):
@@ -144,10 +144,10 @@ class ImportanceResult(BaseModel):
     model_id: str
     dataset_id: str
     method: str
-    wavelengths: List[float]
-    importance: List[float]  # (n_features,)
-    importance_std: Optional[List[float]] = None  # (n_features,) for permutation
-    top_wavelengths: List[Dict[str, Any]]  # Top k most important features
+    wavelengths: list[float]
+    importance: list[float]  # (n_features,)
+    importance_std: list[float] | None = None  # (n_features,) for permutation
+    top_wavelengths: list[dict[str, Any]]  # Top k most important features
 
 
 class CorrelationRequest(BaseModel):
@@ -156,10 +156,10 @@ class CorrelationRequest(BaseModel):
     dataset_id: str = Field(..., description="ID of the dataset to analyze")
     partition: str = Field("train", description="Dataset partition to use")
     method: str = Field("pearson", description="Correlation method: pearson, spearman, kendall")
-    sample_features: Optional[int] = Field(
+    sample_features: int | None = Field(
         None, description="Sample features if too many (for performance)"
     )
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
 
 
 class CorrelationResult(BaseModel):
@@ -168,8 +168,8 @@ class CorrelationResult(BaseModel):
     dataset_id: str
     method: str
     n_features: int
-    wavelengths: List[float]
-    correlation: List[List[float]]  # (n_features, n_features)
+    wavelengths: list[float]
+    correlation: list[list[float]]  # (n_features, n_features)
     sampled: bool = False
 
 
@@ -180,7 +180,7 @@ class FeatureSelectionRequest(BaseModel):
     method: str = Field("variance", description="Selection method: variance, mutual_info, f_score")
     k: int = Field(100, ge=1, description="Number of features to select")
     partition: str = Field("train", description="Dataset partition to use")
-    preprocessing_chain: List[Dict[str, Any]] = Field(default=[])
+    preprocessing_chain: list[dict[str, Any]] = Field(default=[])
 
 
 class FeatureSelectionResult(BaseModel):
@@ -189,26 +189,26 @@ class FeatureSelectionResult(BaseModel):
     dataset_id: str
     method: str
     k: int
-    selected_indices: List[int]
-    selected_wavelengths: List[float]
-    scores: List[float]
+    selected_indices: list[int]
+    selected_wavelengths: list[float]
+    scores: list[float]
 
 
 class WavelengthsRequest(BaseModel):
     """Request model for important wavelengths extraction."""
 
-    importance: List[float] = Field(..., description="Feature importance values")
-    wavelengths: List[float] = Field(..., description="Wavelength values")
+    importance: list[float] = Field(..., description="Feature importance values")
+    wavelengths: list[float] = Field(..., description="Wavelength values")
     threshold: float = Field(0.0, ge=0.0, description="Importance threshold")
-    top_k: Optional[int] = Field(None, ge=1, description="Return top k wavelengths")
+    top_k: int | None = Field(None, ge=1, description="Return top k wavelengths")
 
 
 class WavelengthsResult(BaseModel):
     """Result of important wavelengths extraction."""
 
-    wavelengths: List[float]
-    importance: List[float]
-    indices: List[int]
+    wavelengths: list[float]
+    importance: list[float]
+    indices: list[int]
     threshold_used: float
 
 
@@ -468,6 +468,7 @@ async def feature_importance(request: ImportanceRequest):
 
     # Get targets (needed for permutation importance)
     from contextlib import suppress
+
     from .spectra import _load_dataset
 
     ds = _load_dataset(request.dataset_id)
@@ -909,7 +910,7 @@ async def list_analysis_methods():
 def _load_analysis_data(
     dataset_id: str,
     partition: str,
-    preprocessing_chain: List[Dict[str, Any]],
+    preprocessing_chain: list[dict[str, Any]],
 ) -> tuple:
     """Load dataset and prepare data for analysis.
 
@@ -921,7 +922,7 @@ def _load_analysis_data(
     Returns:
         Tuple of (dataset, X, wavelengths)
     """
-    from .spectra import _load_dataset, _apply_preprocessing_chain
+    from .spectra import _apply_preprocessing_chain, _load_dataset
 
     dataset = _load_dataset(dataset_id)
     if not dataset:

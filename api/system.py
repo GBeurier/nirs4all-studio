@@ -11,9 +11,10 @@ import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -27,8 +28,8 @@ class ErrorLogEntry(BaseModel):
     level: str  # "error", "warning", "critical"
     endpoint: str
     message: str
-    details: Optional[str] = None
-    traceback: Optional[str] = None
+    details: str | None = None
+    traceback: str | None = None
 
 
 # In-memory storage for error logs (thread-safe deque)
@@ -39,8 +40,8 @@ def log_error(
     endpoint: str,
     message: str,
     level: str = "error",
-    details: Optional[str] = None,
-    exc: Optional[Exception] = None,
+    details: str | None = None,
+    exc: Exception | None = None,
 ) -> None:
     """Log an error to the in-memory store."""
     entry = {
@@ -55,7 +56,7 @@ def log_error(
     _error_log.appendleft(entry)
 
 
-def get_error_log_entries(limit: int = 50) -> List[dict]:
+def get_error_log_entries(limit: int = 50) -> list[dict]:
     """Get recent error log entries."""
     return list(_error_log)[:limit]
 
@@ -78,7 +79,7 @@ def _get_nirs4all_version() -> str:
         return "unknown"
 
 
-def _get_package_versions() -> Dict[str, str]:
+def _get_package_versions() -> dict[str, str]:
     """Get versions of key packages."""
     packages = {}
 
@@ -166,7 +167,7 @@ async def system_status():
     return {"status": status}
 
 
-def _get_build_info() -> Dict[str, Any]:
+def _get_build_info() -> dict[str, Any]:
     """Get build flavor information from bundled build_info.json."""
     import json
 
@@ -182,7 +183,7 @@ def _get_build_info() -> Dict[str, Any]:
         if hasattr(sys, "_MEIPASS"):
             build_info_path = Path(sys._MEIPASS) / "build_info.json"
             if build_info_path.exists():
-                with open(build_info_path, "r") as f:
+                with open(build_info_path) as f:
                     build_info = json.load(f)
     except Exception:
         pass
@@ -190,11 +191,11 @@ def _get_build_info() -> Dict[str, Any]:
     return build_info
 
 
-def _get_gpu_info() -> Dict[str, Any]:
+def _get_gpu_info() -> dict[str, Any]:
     """Get detailed GPU information."""
     is_macos = platform.system() == "Darwin"
 
-    gpu_info: Dict[str, Any] = {
+    gpu_info: dict[str, Any] = {
         "cuda_available": False,
         "mps_available": False,
         "metal_available": False,

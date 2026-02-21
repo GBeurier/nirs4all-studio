@@ -16,15 +16,16 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from pathlib import Path
 from datetime import datetime
+from enum import Enum, StrEnum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Type, get_type_hints
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional, Type, get_type_hints
-from enum import Enum
 
-from .workspace_manager import workspace_manager
 from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -35,12 +36,12 @@ if str(nirs4all_path) not in sys.path:
 
 try:
     from nirs4all.controllers import CONTROLLER_REGISTRY
+    from nirs4all.pipeline.config import PipelineConfigs
     from nirs4all.pipeline.config.generator import (
+        ValidationResult,
         count_combinations,
         validate_spec,
-        ValidationResult,
     )
-    from nirs4all.pipeline.config import PipelineConfigs
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
@@ -53,7 +54,7 @@ except ImportError as e:
     PipelineConfigs = None
 
 
-class OperatorCategory(str, Enum):
+class OperatorCategory(StrEnum):
     """Categories for pipeline operators."""
     PREPROCESSING = "preprocessing"
     SPLITTING = "splitting"
@@ -68,29 +69,29 @@ class OperatorCategory(str, Enum):
 
 class PipelineCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    steps: List[Dict[str, Any]] = []
-    category: Optional[str] = "user"
-    task_type: Optional[str] = None  # regression, classification
+    description: str | None = None
+    steps: list[dict[str, Any]] = []
+    category: str | None = "user"
+    task_type: str | None = None  # regression, classification
 
 
 class PipelineUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    steps: Optional[List[Dict[str, Any]]] = None
-    is_favorite: Optional[bool] = None
-    task_type: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    steps: list[dict[str, Any]] | None = None
+    is_favorite: bool | None = None
+    task_type: str | None = None
 
 
 class PipelineValidateRequest(BaseModel):
     """Request model for validating a pipeline configuration."""
 
-    steps: List[Dict[str, Any]]
+    steps: list[dict[str, Any]]
 
 
 class PipelineCountRequest(BaseModel):
     """Request model for counting pipeline variants."""
-    steps: List[Dict[str, Any]]
+    steps: list[dict[str, Any]]
 
 
 class PipelineExecuteRequest(BaseModel):
@@ -114,7 +115,7 @@ def _get_pipelines_dir() -> Path:
     return path
 
 
-def _load_pipeline(pipeline_id: str) -> Dict[str, Any]:
+def _load_pipeline(pipeline_id: str) -> dict[str, Any]:
     """Load a pipeline from file."""
     pipelines_dir = _get_pipelines_dir()
     pipeline_file = pipelines_dir / f"{pipeline_id}.json"
@@ -123,7 +124,7 @@ def _load_pipeline(pipeline_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
     try:
-        with open(pipeline_file, "r", encoding="utf-8") as f:
+        with open(pipeline_file, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         raise HTTPException(
@@ -131,7 +132,7 @@ def _load_pipeline(pipeline_id: str) -> Dict[str, Any]:
         )
 
 
-def _save_pipeline(pipeline: Dict[str, Any]) -> None:
+def _save_pipeline(pipeline: dict[str, Any]) -> None:
     """Save a pipeline to file."""
     pipelines_dir = _get_pipelines_dir()
     pipeline_file = pipelines_dir / f"{pipeline['id']}.json"
@@ -154,7 +155,7 @@ async def list_pipelines():
 
         for pipeline_file in pipelines_dir.glob("*.json"):
             try:
-                with open(pipeline_file, "r", encoding="utf-8") as f:
+                with open(pipeline_file, encoding="utf-8") as f:
                     pipeline = json.load(f)
                     pipelines.append(pipeline)
             except Exception:
@@ -360,7 +361,7 @@ async def delete_pipeline(pipeline_id: str):
 
 
 @router.post("/pipelines/{pipeline_id}/clone")
-async def clone_pipeline(pipeline_id: str, new_name: Optional[str] = None):
+async def clone_pipeline(pipeline_id: str, new_name: str | None = None):
     """Clone an existing pipeline."""
     try:
         original = _load_pipeline(pipeline_id)
@@ -486,7 +487,7 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
 # ============= Phase 2: Dynamic Operator Discovery =============
 
 
-def _extract_params_from_class(cls: Type) -> Dict[str, Any]:
+def _extract_params_from_class(cls: type) -> dict[str, Any]:
     """
     Extract parameter schema from a class's __init__ signature.
 
@@ -560,7 +561,7 @@ def _annotation_to_type_string(annotation) -> str:
     return "any"
 
 
-def _discover_transform_operators() -> List[Dict[str, Any]]:
+def _discover_transform_operators() -> list[dict[str, Any]]:
     """
     Dynamically discover preprocessing transforms from nirs4all.
 
@@ -639,7 +640,7 @@ def _discover_transform_operators() -> List[Dict[str, Any]]:
     return operators
 
 
-def _discover_splitter_operators() -> List[Dict[str, Any]]:
+def _discover_splitter_operators() -> list[dict[str, Any]]:
     """Dynamically discover splitter operators from nirs4all."""
     operators = []
 
@@ -682,7 +683,7 @@ def _discover_splitter_operators() -> List[Dict[str, Any]]:
     return operators
 
 
-def _discover_model_operators() -> List[Dict[str, Any]]:
+def _discover_model_operators() -> list[dict[str, Any]]:
     """Dynamically discover model operators from nirs4all."""
     operators = []
 
@@ -737,7 +738,7 @@ def _discover_model_operators() -> List[Dict[str, Any]]:
     return operators
 
 
-def _discover_augmentation_operators() -> List[Dict[str, Any]]:
+def _discover_augmentation_operators() -> list[dict[str, Any]]:
     """Dynamically discover data augmentation operators from nirs4all."""
     operators = []
 
@@ -795,7 +796,7 @@ def _discover_augmentation_operators() -> List[Dict[str, Any]]:
     return operators
 
 
-def _discover_metric_operators() -> List[Dict[str, Any]]:
+def _discover_metric_operators() -> list[dict[str, Any]]:
     """Dynamically discover metric operators from nirs4all."""
     operators = []
 
@@ -841,7 +842,7 @@ def _discover_metric_operators() -> List[Dict[str, Any]]:
     return operators
 
 
-def _discover_feature_selection_operators() -> List[Dict[str, Any]]:
+def _discover_feature_selection_operators() -> list[dict[str, Any]]:
     """Dynamically discover feature selection operators from nirs4all."""
     operators = []
 
@@ -884,7 +885,7 @@ def _discover_feature_selection_operators() -> List[Dict[str, Any]]:
     return operators
 
 
-def _discover_filter_operators() -> List[Dict[str, Any]]:
+def _discover_filter_operators() -> list[dict[str, Any]]:
     """Dynamically discover filter operators from nirs4all."""
     operators = []
 
@@ -974,7 +975,7 @@ def _categorize_transform(name: str) -> str:
     return "other"
 
 
-def _discover_sklearn_operators() -> Dict[str, List[Dict[str, Any]]]:
+def _discover_sklearn_operators() -> dict[str, list[dict[str, Any]]]:
     """
     Dynamically discover sklearn operators via introspection.
 
@@ -985,9 +986,9 @@ def _discover_sklearn_operators() -> Dict[str, List[Dict[str, Any]]]:
     try:
         # Models - common sklearn regressors
         from sklearn.cross_decomposition import PLSRegression
-        from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+        from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+        from sklearn.linear_model import ElasticNet, Lasso, Ridge
         from sklearn.svm import SVR
-        from sklearn.linear_model import Ridge, Lasso, ElasticNet
 
         model_classes = [
             (PLSRegression, "PLS Regression"),
@@ -1011,7 +1012,7 @@ def _discover_sklearn_operators() -> Dict[str, List[Dict[str, Any]]]:
             })
 
         # Preprocessing - sklearn scalers
-        from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+        from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
 
         scaler_classes = [
             (StandardScaler, "Standard Scaler"),
@@ -1032,7 +1033,7 @@ def _discover_sklearn_operators() -> Dict[str, List[Dict[str, Any]]]:
             })
 
         # Splitting - sklearn CV splitters
-        from sklearn.model_selection import KFold, StratifiedKFold, ShuffleSplit
+        from sklearn.model_selection import KFold, ShuffleSplit, StratifiedKFold
 
         splitter_classes = [
             (KFold, "K-Fold CV"),
@@ -1246,7 +1247,7 @@ async def prepare_pipeline_execution(
 
 
 @router.post("/pipelines/from-preset/{preset_id}")
-async def create_pipeline_from_preset(preset_id: str, name: Optional[str] = None):
+async def create_pipeline_from_preset(preset_id: str, name: str | None = None):
     """
     Create a new pipeline from a preset template.
     """
@@ -1277,7 +1278,7 @@ async def create_pipeline_from_preset(preset_id: str, name: Optional[str] = None
 # ============= Pipeline Variant Counting =============
 
 
-def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any]:
+def _convert_frontend_steps_to_nirs4all(steps: list[dict[str, Any]]) -> list[Any]:
     """
     Convert frontend pipeline step format to nirs4all generator format.
 
@@ -1356,7 +1357,7 @@ def _convert_frontend_steps_to_nirs4all(steps: List[Dict[str, Any]]) -> List[Any
                 if generator_kind == "cartesian":
                     result.append({"_cartesian_": alternatives})
                 else:
-                    gen_step: Dict[str, Any] = {"_or_": alternatives}
+                    gen_step: dict[str, Any] = {"_or_": alternatives}
                     if generator_options.get("pick"):
                         gen_step["pick"] = generator_options["pick"]
                     if generator_options.get("arrange"):
@@ -1496,15 +1497,15 @@ class PipelineRunRequest(BaseModel):
     dataset_id: str
     verbose: int = 1
     export_model: bool = True
-    model_name: Optional[str] = None
-    refit: Optional[Any] = True
-    refit_params: Optional[Dict[str, Any]] = None
+    model_name: str | None = None
+    refit: Any | None = True
+    refit_params: dict[str, Any] | None = None
 
 
 class PipelineExportRequest(BaseModel):
     """Request model for exporting pipeline."""
     format: str = "python"  # python, yaml, json
-    dataset_path: Optional[str] = None
+    dataset_path: str | None = None
 
 
 @router.post("/pipelines/{pipeline_id}/execute")
@@ -1521,8 +1522,8 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
             detail="nirs4all library not available for pipeline execution",
         )
 
+    from .jobs import JobType, job_manager
     from .workspace_manager import workspace_manager
-    from .jobs import job_manager, JobType
 
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
@@ -1730,7 +1731,7 @@ async def export_pipeline(pipeline_id: str, request: PipelineExportRequest):
 
 
 @router.post("/pipelines/import")
-async def import_pipeline(content: str, format: str = "yaml", name: Optional[str] = None):
+async def import_pipeline(content: str, format: str = "yaml", name: str | None = None):
     """
     Import pipeline from YAML or JSON format.
     """
@@ -1778,13 +1779,13 @@ def _get_samples_dir() -> Path:
     raise HTTPException(status_code=404, detail="Pipeline samples directory not found")
 
 
-def _load_sample_file(filepath: Path) -> Dict[str, Any]:
+def _load_sample_file(filepath: Path) -> dict[str, Any]:
     """Load a pipeline sample file (JSON or YAML)."""
     import yaml
 
     suffix = filepath.suffix.lower()
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, encoding='utf-8') as f:
             if suffix == '.json':
                 return json.load(f)
             elif suffix in ('.yaml', '.yml'):
@@ -1795,7 +1796,7 @@ def _load_sample_file(filepath: Path) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to load sample: {e}")
 
 
-def _filter_comments(steps: List[Any]) -> List[Any]:
+def _filter_comments(steps: list[Any]) -> list[Any]:
     """Remove _comment steps from pipeline."""
     filtered = []
     for step in steps:
@@ -1808,7 +1809,7 @@ def _filter_comments(steps: List[Any]) -> List[Any]:
     return filtered
 
 
-def _get_canonical_pipeline(filepath: Path) -> Dict[str, Any]:
+def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
     """
     Load a pipeline file and return its canonical serialized form.
 
@@ -1946,7 +1947,7 @@ async def get_pipeline_sample(sample_id: str, canonical: bool = True):
 
 
 @router.post("/pipelines/samples/{sample_id}/validate-roundtrip")
-async def validate_sample_roundtrip(sample_id: str, editor_steps: List[Dict[str, Any]]):
+async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str, Any]]):
     """
     Validate that editor steps produce identical output to the sample.
 
@@ -2021,24 +2022,24 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: List[Dict[str,
 
 class ShapePropagationRequest(BaseModel):
     """Request model for shape propagation calculation."""
-    steps: List[Dict[str, Any]]
-    input_shape: Dict[str, int]  # {samples: N, features: M}
+    steps: list[dict[str, Any]]
+    input_shape: dict[str, int]  # {samples: N, features: M}
 
 
 class ShapeAtStep(BaseModel):
     """Shape at a specific pipeline step."""
     step_id: str
     step_name: str
-    input_shape: Dict[str, int]
-    output_shape: Dict[str, int]
-    warnings: List[Dict[str, Any]] = []
+    input_shape: dict[str, int]
+    output_shape: dict[str, int]
+    warnings: list[dict[str, Any]] = []
 
 
 class ShapePropagationResponse(BaseModel):
     """Response model for shape propagation calculation."""
-    shapes: List[ShapeAtStep]
-    warnings: List[Dict[str, Any]]
-    output_shape: Dict[str, int]
+    shapes: list[ShapeAtStep]
+    warnings: list[dict[str, Any]]
+    output_shape: dict[str, int]
     is_valid: bool
 
 
@@ -2123,7 +2124,7 @@ DIMENSION_PARAMS = {
 }
 
 
-def _propagate_shape(step: Dict[str, Any], input_shape: Dict[str, int]) -> tuple:
+def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple:
     """Calculate output shape for a single step."""
     step_name = step.get("name", "")
     params = step.get("params", {})

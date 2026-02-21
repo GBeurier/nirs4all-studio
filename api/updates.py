@@ -17,18 +17,19 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, asdict, field
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiofiles
 import platformdirs
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-from .venv_manager import venv_manager, VenvInfo
 from .shared.logger import get_logger
+from .venv_manager import VenvInfo, venv_manager
 
 logger = get_logger(__name__)
 
@@ -38,8 +39,8 @@ try:
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
-    import urllib.request
     import urllib.error
+    import urllib.request
 
 
 router = APIRouter(prefix="/updates", tags=["updates"])
@@ -126,8 +127,8 @@ class DependencyInfo(BaseModel):
     category_name: str
     description: str
     min_version: str
-    installed_version: Optional[str] = None
-    latest_version: Optional[str] = None
+    installed_version: str | None = None
+    latest_version: str | None = None
     is_installed: bool = False
     is_outdated: bool = False
     can_update: bool = False
@@ -138,28 +139,28 @@ class DependencyCategory(BaseModel):
     id: str
     name: str
     description: str
-    packages: List[DependencyInfo]
+    packages: list[DependencyInfo]
     installed_count: int = 0
     total_count: int = 0
 
 
 class DependenciesResponse(BaseModel):
     """Response with all dependencies information."""
-    categories: List[DependencyCategory]
+    categories: list[DependencyCategory]
     venv_valid: bool
     venv_path: str
     venv_is_custom: bool
     nirs4all_installed: bool
-    nirs4all_version: Optional[str] = None
+    nirs4all_version: str | None = None
     total_installed: int = 0
     total_packages: int = 0
-    cached_at: Optional[str] = None
+    cached_at: str | None = None
 
 
 class PackageInstallRequest(BaseModel):
     """Request to install a package."""
     package: str
-    version: Optional[str] = None
+    version: str | None = None
     upgrade: bool = False
 
 
@@ -170,7 +171,7 @@ class PackageUninstallRequest(BaseModel):
 
 class SetVenvPathRequest(BaseModel):
     """Request to set custom venv path."""
-    path: Optional[str] = None  # None to reset to default
+    path: str | None = None  # None to reset to default
 
 
 # App identification
@@ -193,14 +194,14 @@ class DependenciesCache:
     def __init__(self):
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         self._cache_path = self._app_data_dir / self.CACHE_FILE
-        self._cache: Optional[Dict[str, Any]] = None
+        self._cache: dict[str, Any] | None = None
         self._load_cache()
 
     def _load_cache(self) -> None:
         """Load cache from file."""
         if self._cache_path.exists():
             try:
-                with open(self._cache_path, "r", encoding="utf-8") as f:
+                with open(self._cache_path, encoding="utf-8") as f:
                     self._cache = json.load(f)
             except Exception:
                 self._cache = None
@@ -214,7 +215,7 @@ class DependenciesCache:
         except Exception as e:
             logger.warning("Could not save dependencies cache: %s", e)
 
-    def get(self, venv_path: str) -> Optional[Dict[str, Any]]:
+    def get(self, venv_path: str) -> dict[str, Any] | None:
         """Get cached dependencies for a venv path."""
         if not self._cache:
             return None
@@ -222,7 +223,7 @@ class DependenciesCache:
             return None
         return self._cache
 
-    def set(self, venv_path: str, data: Dict[str, Any]) -> None:
+    def set(self, venv_path: str, data: dict[str, Any]) -> None:
         """Cache dependencies data for a venv path."""
         self._cache = {
             "venv_path": venv_path,
@@ -255,31 +256,31 @@ class UpdateSettings(BaseModel):
     prerelease_channel: bool = False
     github_repo: str = DEFAULT_GITHUB_REPO
     pypi_package: str = DEFAULT_PYPI_PACKAGE
-    dismissed_versions: List[str] = []
+    dismissed_versions: list[str] = []
 
 
 class WebappUpdateInfo(BaseModel):
     """Information about a webapp update."""
     current_version: str
-    latest_version: Optional[str] = None
+    latest_version: str | None = None
     update_available: bool = False
-    release_url: Optional[str] = None
-    release_notes: Optional[str] = None
-    published_at: Optional[str] = None
-    download_size_bytes: Optional[int] = None
-    download_url: Optional[str] = None
-    asset_name: Optional[str] = None
-    checksum_sha256: Optional[str] = None
+    release_url: str | None = None
+    release_notes: str | None = None
+    published_at: str | None = None
+    download_size_bytes: int | None = None
+    download_url: str | None = None
+    asset_name: str | None = None
+    checksum_sha256: str | None = None
     is_prerelease: bool = False
 
 
 class Nirs4allUpdateInfo(BaseModel):
     """Information about a nirs4all library update."""
-    current_version: Optional[str] = None
-    latest_version: Optional[str] = None
+    current_version: str | None = None
+    latest_version: str | None = None
     update_available: bool = False
-    pypi_url: Optional[str] = None
-    release_notes: Optional[str] = None
+    pypi_url: str | None = None
+    release_notes: str | None = None
     requires_restart: bool = False
 
 
@@ -287,22 +288,22 @@ class UpdateStatus(BaseModel):
     """Combined update status for webapp and nirs4all."""
     webapp: WebappUpdateInfo
     nirs4all: Nirs4allUpdateInfo
-    venv: Dict[str, Any]
-    last_check: Optional[str] = None
+    venv: dict[str, Any]
+    last_check: str | None = None
     check_interval_hours: int = DEFAULT_CHECK_INTERVAL_HOURS
 
 
 class InstallRequest(BaseModel):
     """Request to install/upgrade a package."""
-    version: Optional[str] = None
-    extras: Optional[List[str]] = None
+    version: str | None = None
+    extras: list[str] | None = None
 
 
 class VenvCreateRequest(BaseModel):
     """Request to create managed venv."""
     force: bool = False
     install_nirs4all: bool = True
-    extras: Optional[List[str]] = None
+    extras: list[str] | None = None
 
 
 # ============= Update Manager =============
@@ -328,8 +329,8 @@ class UpdateManager:
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         self._cache_path = self._app_data_dir / self.CACHE_FILE
-        self._settings: Optional[UpdateSettings] = None
-        self._cache: Optional[Dict[str, Any]] = None
+        self._settings: UpdateSettings | None = None
+        self._cache: dict[str, Any] | None = None
         # Defer disk I/O until first access for faster startup
 
     def _load_settings(self) -> None:
@@ -337,7 +338,7 @@ class UpdateManager:
         if self._settings_path.exists():
             try:
                 import yaml
-                with open(self._settings_path, "r", encoding="utf-8") as f:
+                with open(self._settings_path, encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
                 self._settings = UpdateSettings(**data)
             except Exception as e:
@@ -360,14 +361,14 @@ class UpdateManager:
         """Load cache from file."""
         if self._cache_path.exists():
             try:
-                with open(self._cache_path, "r", encoding="utf-8") as f:
+                with open(self._cache_path, encoding="utf-8") as f:
                     self._cache = json.load(f)
             except Exception:
                 self._cache = {}
         else:
             self._cache = {}
 
-    def _ensure_cache_loaded(self) -> Dict[str, Any]:
+    def _ensure_cache_loaded(self) -> dict[str, Any]:
         """Ensure cache is loaded and return it."""
         if self._cache is None:
             self._load_cache()
@@ -412,7 +413,7 @@ class UpdateManager:
         for path in version_paths:
             if path.exists():
                 try:
-                    with open(path, "r", encoding="utf-8") as f:
+                    with open(path, encoding="utf-8") as f:
                         data = json.load(f)
                         return data.get("version", "unknown")
                 except Exception:
@@ -422,7 +423,7 @@ class UpdateManager:
         package_json = Path(__file__).parent.parent / "package.json"
         if package_json.exists():
             try:
-                with open(package_json, "r", encoding="utf-8") as f:
+                with open(package_json, encoding="utf-8") as f:
                     data = json.load(f)
                     return data.get("version", "unknown")
             except Exception:
@@ -430,11 +431,11 @@ class UpdateManager:
 
         return "unknown"
 
-    def get_nirs4all_version(self) -> Optional[str]:
+    def get_nirs4all_version(self) -> str | None:
         """Get the installed nirs4all version from managed venv."""
         return venv_manager.get_nirs4all_version()
 
-    async def _fetch_url(self, url: str, headers: Optional[Dict[str, str]] = None) -> Tuple[int, str]:
+    async def _fetch_url(self, url: str, headers: dict[str, str] | None = None) -> tuple[int, str]:
         """Fetch a URL and return (status_code, content)."""
         if HTTPX_AVAILABLE:
             async with httpx.AsyncClient() as client:
@@ -565,8 +566,8 @@ class UpdateManager:
         return info
 
     async def _fetch_sidecar_checksum(
-        self, assets: List[Dict[str, Any]], asset_name: Optional[str]
-    ) -> Optional[str]:
+        self, assets: list[dict[str, Any]], asset_name: str | None
+    ) -> str | None:
         """
         Look for a .sha256 sidecar file in the release assets and extract the checksum.
 
@@ -603,7 +604,7 @@ class UpdateManager:
 
         return None
 
-    def _find_platform_asset(self, assets: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _find_platform_asset(self, assets: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Find the release asset matching the current platform."""
         system = platform.system().lower()
         machine = platform.machine().lower()
@@ -713,7 +714,7 @@ class UpdateManager:
 
         return info
 
-    def _compare_versions(self, current: str, latest: Optional[str]) -> bool:
+    def _compare_versions(self, current: str, latest: str | None) -> bool:
         """
         Compare version strings to determine if an update is available.
 
@@ -759,7 +760,7 @@ class UpdateManager:
 
 
 # Lazy-initialized global update manager instance
-_update_manager: Optional[UpdateManager] = None
+_update_manager: UpdateManager | None = None
 
 
 def get_update_manager() -> UpdateManager:
@@ -805,7 +806,7 @@ async def check_for_updates() -> UpdateStatus:
 
 
 @router.get("/webapp/changelog")
-async def get_webapp_changelog(current_version: Optional[str] = None) -> Dict[str, Any]:
+async def get_webapp_changelog(current_version: str | None = None) -> dict[str, Any]:
     """
     Get changelog entries between the current and latest webapp version.
 
@@ -883,7 +884,7 @@ async def update_settings(settings: UpdateSettings) -> UpdateSettings:
 
 
 @router.get("/venv/status")
-async def get_venv_status() -> Dict[str, Any]:
+async def get_venv_status() -> dict[str, Any]:
     """
     Get managed venv status and installed packages.
     """
@@ -901,7 +902,7 @@ async def get_venv_status() -> Dict[str, Any]:
 async def create_venv(
     request: VenvCreateRequest,
     background_tasks: BackgroundTasks,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create the managed virtual environment.
 
@@ -940,7 +941,7 @@ async def create_venv(
 
 
 @router.post("/nirs4all/install")
-async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
+async def install_nirs4all(request: InstallRequest) -> dict[str, Any]:
     """
     Install or upgrade nirs4all in the managed venv.
 
@@ -981,7 +982,7 @@ async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
 
 
 @router.get("/webapp/download-info")
-async def get_webapp_download_info() -> Dict[str, Any]:
+async def get_webapp_download_info() -> dict[str, Any]:
     """
     Get information needed to download a webapp update.
     """
@@ -1007,13 +1008,13 @@ async def get_webapp_download_info() -> Dict[str, Any]:
 
 
 @router.post("/webapp/download-start")
-async def start_webapp_download() -> Dict[str, Any]:
+async def start_webapp_download() -> dict[str, Any]:
     """
     Start downloading the webapp update in the background.
 
     Returns a job ID for tracking progress via WebSocket or polling.
     """
-    from api.jobs.manager import job_manager, JobType
+    from api.jobs.manager import JobType, job_manager
 
     webapp_info = await update_manager.check_github_release()
 
@@ -1047,7 +1048,7 @@ async def start_webapp_download() -> Dict[str, Any]:
     }
 
 
-def _execute_download_job(job_id: str, progress_callback: Callable[[float, str], None]) -> Dict[str, Any]:
+def _execute_download_job(job_id: str, progress_callback: Callable[[float, str], None]) -> dict[str, Any]:
     """Execute the download job (runs in thread pool)."""
     from api.jobs.manager import job_manager
     from api.update_downloader import download_and_stage_update
@@ -1089,7 +1090,7 @@ def _execute_download_job(job_id: str, progress_callback: Callable[[float, str],
 
 
 @router.get("/webapp/download-status/{job_id}")
-async def get_download_status(job_id: str) -> Dict[str, Any]:
+async def get_download_status(job_id: str) -> dict[str, Any]:
     """Get the status of an update download job."""
     from api.jobs.manager import job_manager
 
@@ -1109,7 +1110,7 @@ async def get_download_status(job_id: str) -> Dict[str, Any]:
 
 
 @router.post("/webapp/download-cancel/{job_id}")
-async def cancel_download(job_id: str) -> Dict[str, Any]:
+async def cancel_download(job_id: str) -> dict[str, Any]:
     """Cancel an in-progress download."""
     from api.jobs.manager import job_manager
 
@@ -1132,7 +1133,7 @@ class ApplyUpdateRequest(BaseModel):
 
 
 @router.post("/webapp/apply")
-async def apply_webapp_update(request: ApplyUpdateRequest) -> Dict[str, Any]:
+async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
     """
     Apply the staged webapp update.
 
@@ -1147,7 +1148,7 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> Dict[str, Any]:
     3. Copy new files from staging
     4. Launch the new version
     """
-    from updater import create_updater_script, launch_updater, get_staging_dir
+    from updater import create_updater_script, get_staging_dir, launch_updater
 
     if not request.confirm:
         raise HTTPException(status_code=400, detail="Update not confirmed")
@@ -1188,7 +1189,7 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> Dict[str, Any]:
 
 
 @router.get("/webapp/staged-update")
-async def get_staged_update_info() -> Dict[str, Any]:
+async def get_staged_update_info() -> dict[str, Any]:
     """Get information about any staged update."""
     from updater import get_staging_dir
 
@@ -1214,7 +1215,7 @@ async def get_staged_update_info() -> Dict[str, Any]:
     version = None
     if version_file and version_file.exists():
         try:
-            with open(version_file, "r", encoding="utf-8") as f:
+            with open(version_file, encoding="utf-8") as f:
                 data = json.load(f)
                 version = data.get("version")
         except Exception:
@@ -1228,7 +1229,7 @@ async def get_staged_update_info() -> Dict[str, Any]:
 
 
 @router.delete("/webapp/staged-update")
-async def cancel_staged_update() -> Dict[str, Any]:
+async def cancel_staged_update() -> dict[str, Any]:
     """Cancel/remove a staged update."""
     from updater import get_staging_dir
 
@@ -1242,7 +1243,7 @@ async def cancel_staged_update() -> Dict[str, Any]:
 
 
 @router.post("/webapp/cleanup")
-async def cleanup_updates() -> Dict[str, Any]:
+async def cleanup_updates() -> dict[str, Any]:
     """Clean up old update artifacts."""
     from updater import cleanup_old_updates
 
@@ -1251,7 +1252,7 @@ async def cleanup_updates() -> Dict[str, Any]:
 
 
 @router.post("/webapp/download")
-async def download_webapp_update(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+async def download_webapp_update(background_tasks: BackgroundTasks) -> dict[str, Any]:
     """
     Download the latest webapp update (legacy endpoint).
 
@@ -1275,7 +1276,7 @@ async def download_webapp_update(background_tasks: BackgroundTasks) -> Dict[str,
 
 
 @router.post("/webapp/restart")
-async def restart_webapp() -> Dict[str, Any]:
+async def restart_webapp() -> dict[str, Any]:
     """
     Request webapp restart.
 
@@ -1304,7 +1305,7 @@ async def restart_webapp() -> Dict[str, Any]:
 
 
 @router.get("/version")
-async def get_versions() -> Dict[str, Any]:
+async def get_versions() -> dict[str, Any]:
     """
     Get current version information.
     """
@@ -1320,7 +1321,7 @@ async def get_versions() -> Dict[str, Any]:
 # ============= Dependency Management Endpoints =============
 
 
-async def _get_pypi_version(package: str) -> Optional[str]:
+async def _get_pypi_version(package: str) -> str | None:
     """Get the latest version of a package from PyPI."""
     # Normalize package name for PyPI
     pypi_name = package.replace("_", "-")
@@ -1478,7 +1479,7 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
 
 
 @router.post("/dependencies/install")
-async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
+async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     """
     Install a package in the managed virtual environment.
 
@@ -1524,7 +1525,7 @@ async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
 
 
 @router.post("/dependencies/uninstall")
-async def uninstall_dependency(request: PackageUninstallRequest) -> Dict[str, Any]:
+async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
     """
     Uninstall a package from the managed virtual environment.
 
@@ -1557,7 +1558,7 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> Dict[str, An
 
 
 @router.post("/dependencies/update")
-async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
+async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     """
     Update a package to the latest version.
 
@@ -1600,7 +1601,7 @@ async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
 
 
 @router.post("/dependencies/refresh")
-async def refresh_dependencies() -> Dict[str, Any]:
+async def refresh_dependencies() -> dict[str, Any]:
     """
     Force refresh the dependencies cache.
 
@@ -1620,7 +1621,7 @@ async def refresh_dependencies() -> Dict[str, Any]:
 
 
 @router.get("/venv/path")
-async def get_venv_path() -> Dict[str, Any]:
+async def get_venv_path() -> dict[str, Any]:
     """
     Get the current virtual environment path configuration.
     """
@@ -1636,7 +1637,7 @@ async def get_venv_path() -> Dict[str, Any]:
 
 
 @router.post("/venv/path")
-async def set_venv_path(request: SetVenvPathRequest) -> Dict[str, Any]:
+async def set_venv_path(request: SetVenvPathRequest) -> dict[str, Any]:
     """
     Set a custom virtual environment path.
 
@@ -1675,7 +1676,7 @@ def _get_snapshots_dir() -> Path:
 
 
 @router.get("/venv/snapshots")
-async def list_snapshots() -> Dict[str, Any]:
+async def list_snapshots() -> dict[str, Any]:
     """List all saved config snapshots."""
     snapshots_dir = _get_snapshots_dir()
     snapshots = []
@@ -1703,11 +1704,11 @@ async def list_snapshots() -> Dict[str, Any]:
 
 class SnapshotCreateRequest(BaseModel):
     """Request to create a config snapshot."""
-    label: Optional[str] = None
+    label: str | None = None
 
 
 @router.post("/venv/snapshots")
-async def create_snapshot(request: SnapshotCreateRequest) -> Dict[str, Any]:
+async def create_snapshot(request: SnapshotCreateRequest) -> dict[str, Any]:
     """
     Save the current pip freeze output as a config snapshot.
 
@@ -1740,7 +1741,7 @@ async def create_snapshot(request: SnapshotCreateRequest) -> Dict[str, Any]:
 
 
 @router.post("/venv/snapshots/{name}/restore")
-async def restore_snapshot(name: str) -> Dict[str, Any]:
+async def restore_snapshot(name: str) -> dict[str, Any]:
     """
     Restore a config snapshot by running pip install -r on the snapshot file.
 
@@ -1782,7 +1783,7 @@ async def restore_snapshot(name: str) -> Dict[str, Any]:
 
 
 @router.delete("/venv/snapshots/{name}")
-async def delete_snapshot(name: str) -> Dict[str, Any]:
+async def delete_snapshot(name: str) -> dict[str, Any]:
     """Delete a config snapshot."""
     snapshots_dir = _get_snapshots_dir()
     snapshot_path = snapshots_dir / f"{name}.txt"

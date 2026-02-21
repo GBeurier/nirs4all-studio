@@ -16,9 +16,10 @@ import shutil
 import sys
 import time
 import uuid
+from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,17 +30,33 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from main import app
 
-
 # ============================================================================
 # Core Fixtures
 # ============================================================================
 
 
 @pytest.fixture
-def client() -> Generator[TestClient, None, None]:
-    """Create a test client for the FastAPI app."""
-    with TestClient(app) as c:
-        yield c
+def client(tmp_path: Path) -> Generator[TestClient, None, None]:
+    """Create a test client for the FastAPI app with isolated config."""
+    import os
+    config_dir = tmp_path / "app_config"
+    config_dir.mkdir()
+    old_env = os.environ.get("NIRS4ALL_CONFIG")
+    os.environ["NIRS4ALL_CONFIG"] = str(config_dir)
+    try:
+        # Re-initialize singletons with temporary config dir
+        from api.app_config import AppConfigManager, app_config
+        app_config.__init__()
+        from api.workspace_manager import workspace_manager
+        workspace_manager.app_config = app_config
+        workspace_manager.app_data_dir = app_config.config_dir
+        with TestClient(app) as c:
+            yield c
+    finally:
+        if old_env is None:
+            os.environ.pop("NIRS4ALL_CONFIG", None)
+        else:
+            os.environ["NIRS4ALL_CONFIG"] = old_env
 
 
 @pytest.fixture
@@ -232,7 +249,7 @@ def workspace_client(workspace_with_data: Path, client: TestClient) -> TestClien
 
 
 @pytest.fixture
-def simple_pipeline_config() -> Dict[str, Any]:
+def simple_pipeline_config() -> dict[str, Any]:
     """Return a simple PLS pipeline configuration."""
     return {
         "name": "Simple PLS",
@@ -255,7 +272,7 @@ def simple_pipeline_config() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sweep_pipeline_config() -> Dict[str, Any]:
+def sweep_pipeline_config() -> dict[str, Any]:
     """Return a pipeline with parameter sweeps (multiple variants)."""
     return {
         "name": "PLS Sweep",
@@ -287,7 +304,7 @@ def sweep_pipeline_config() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def branch_pipeline_config() -> Dict[str, Any]:
+def branch_pipeline_config() -> dict[str, Any]:
     """Return a pipeline with branches (parallel paths)."""
     return {
         "name": "Branching Pipeline",
@@ -414,13 +431,13 @@ class WebSocketMessageCollector:
     def __init__(self, websocket, timeout: float = 30.0):
         self.websocket = websocket
         self.timeout = timeout
-        self.messages: List[Dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
 
     def collect_until(
         self,
-        terminal_types: List[str] = None,
+        terminal_types: list[str] = None,
         max_messages: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Collect messages until a terminal type is received or timeout.
 
@@ -457,16 +474,16 @@ class WebSocketMessageCollector:
 
         return self.messages
 
-    def get_messages_of_type(self, msg_type: str) -> List[Dict[str, Any]]:
+    def get_messages_of_type(self, msg_type: str) -> list[dict[str, Any]]:
         """Filter messages by type."""
         return [m for m in self.messages if m.get("type") == msg_type]
 
-    def get_progress_values(self) -> List[float]:
+    def get_progress_values(self) -> list[float]:
         """Extract progress values from job_progress messages."""
         progress_msgs = self.get_messages_of_type("job_progress")
         return [m.get("data", {}).get("progress", 0) for m in progress_msgs]
 
-    def assert_message_sequence(self, expected_types: List[str]) -> bool:
+    def assert_message_sequence(self, expected_types: list[str]) -> bool:
         """
         Verify that messages appear in expected order.
 

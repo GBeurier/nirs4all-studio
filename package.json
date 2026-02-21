@@ -165,6 +165,7 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "eslint-plugin-storybook": "^10.1.11",
     "globals": "^15.15.0",
+    "jsdom": "^28.1.0",
     "playwright": "^1.57.0",
     "postcss": "^8.5.6",
     "storybook": "^10.1.11",

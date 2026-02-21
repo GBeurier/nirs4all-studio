@@ -7,12 +7,13 @@ using the nirs4all SyntheticDatasetBuilder API.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional, Tuple
+import time
 from datetime import datetime
 from pathlib import Path
-import time
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/synthesis", tags=["synthesis"])
 
@@ -60,7 +61,7 @@ class SynthesisStep(BaseModel):
     id: str
     type: str  # features, targets, classification, etc.
     method: str  # with_features, with_targets, etc.
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
 
 
@@ -68,8 +69,8 @@ class SynthesisConfig(BaseModel):
     """Complete synthesis configuration."""
     name: str = "synthetic_nirs"
     n_samples: int = Field(default=1000, ge=10, le=100000)
-    random_state: Optional[int] = None
-    steps: List[SynthesisStep] = Field(default_factory=list)
+    random_state: int | None = None
+    steps: list[SynthesisStep] = Field(default_factory=list)
 
 
 class PreviewRequest(BaseModel):
@@ -90,41 +91,41 @@ class PreviewStatistics(BaseModel):
     targets_min: float
     targets_max: float
     n_wavelengths: int
-    n_components: Optional[int] = None
-    class_distribution: Optional[Dict[str, int]] = None
+    n_components: int | None = None
+    class_distribution: dict[str, int] | None = None
 
 
 class PreviewResponse(BaseModel):
     """Preview generation response."""
     success: bool
-    spectra: List[List[float]]  # Shape: (n_preview_samples, n_wavelengths)
-    wavelengths: List[float]
-    targets: List[float]
+    spectra: list[list[float]]  # Shape: (n_preview_samples, n_wavelengths)
+    wavelengths: list[float]
+    targets: list[float]
     target_type: str  # "regression" or "classification"
-    statistics: Optional[PreviewStatistics] = None
+    statistics: PreviewStatistics | None = None
     execution_time_ms: float
     actual_samples: int  # Full dataset would have this many
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class GenerateRequest(BaseModel):
     """Request for full dataset generation."""
     config: SynthesisConfig
     export_to_workspace: bool = False  # Save to workspace and link
-    export_to_csv: Optional[str] = None  # Custom CSV export path
-    dataset_name: Optional[str] = None  # Override dataset name
+    export_to_csv: str | None = None  # Custom CSV export path
+    dataset_name: str | None = None  # Override dataset name
 
 
 class GenerateResponse(BaseModel):
     """Full generation response."""
     success: bool
-    dataset_id: Optional[str] = None
-    dataset_name: Optional[str] = None
-    export_path: Optional[str] = None
-    shape: Tuple[int, int]
+    dataset_id: str | None = None
+    dataset_name: str | None = None
+    export_path: str | None = None
+    shape: tuple[int, int]
     execution_time_ms: float
     linked_to_workspace: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class ComponentInfo(BaseModel):
@@ -138,8 +139,8 @@ class ComponentInfo(BaseModel):
 class ValidationResult(BaseModel):
     """Validation result."""
     valid: bool
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ============= Helper Functions =============
@@ -412,7 +413,7 @@ async def generate_dataset(request: GenerateRequest):
         )
 
 
-@router.get("/components", response_model=List[ComponentInfo])
+@router.get("/components", response_model=list[ComponentInfo])
 async def list_components():
     """List all available predefined components from nirs4all."""
     require_nirs4all()

@@ -18,29 +18,29 @@ import shutil
 import time
 import zipfile
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
 from .shared.logger import get_logger
+from .workspace_manager import WorkspaceScanner, workspace_manager
 
 logger = get_logger(__name__)
-from .jobs import job_manager, JobType, JobStatus
+from .jobs import JobStatus, JobType, job_manager
 from .store_adapter import StoreAdapter
 
 # WebSocket notifications (optional)
 try:
     from websocket import (
-        notify_maintenance_started,
-        notify_maintenance_progress,
         notify_maintenance_completed,
         notify_maintenance_failed,
+        notify_maintenance_progress,
+        notify_maintenance_started,
     )
     WS_AVAILABLE = True
 except Exception:
@@ -75,11 +75,11 @@ except ImportError:
 
 # Simple TTL cache for workspace discovery operations
 # Key: (workspace_path, source) -> (timestamp, result)
-_workspace_runs_cache: Dict[Tuple[str, str], Tuple[float, Any]] = {}
+_workspace_runs_cache: dict[tuple[str, str], tuple[float, Any]] = {}
 _CACHE_TTL_SECONDS = 5  # Cache results for 5 seconds
 
 
-def _get_cached_runs(workspace_path: str, source: str) -> Optional[Any]:
+def _get_cached_runs(workspace_path: str, source: str) -> Any | None:
     """Get cached runs if still valid."""
     key = (workspace_path, source)
     if key in _workspace_runs_cache:
@@ -114,7 +114,7 @@ class CreateWorkspaceRequest(BaseModel):
     """Request model for creating a new workspace."""
     path: str = Field(..., description="Path to the workspace directory")
     name: str = Field(..., description="Display name for the workspace")
-    description: Optional[str] = Field(None, description="Workspace description")
+    description: str | None = Field(None, description="Workspace description")
     create_dir: bool = Field(True, description="Create directory if it doesn't exist")
 
 
@@ -127,7 +127,7 @@ class SetWorkspaceRequest(BaseModel):
 class LinkDatasetRequest(BaseModel):
     """Request model for linking a dataset."""
     path: str
-    config: Optional[Dict[str, Any]] = None
+    config: dict[str, Any] | None = None
 
 
 class ExportWorkspaceRequest(BaseModel):
@@ -140,8 +140,8 @@ class ExportWorkspaceRequest(BaseModel):
 
 class WorkspaceResponse(BaseModel):
     """Response model for workspace details."""
-    workspace: Optional[Dict[str, Any]]
-    datasets: List[Dict[str, Any]]
+    workspace: dict[str, Any] | None
+    datasets: list[dict[str, Any]]
 
 
 class WorkspaceInfo(BaseModel):
@@ -152,12 +152,12 @@ class WorkspaceInfo(BaseModel):
     last_accessed: str
     num_datasets: int = 0
     num_pipelines: int = 0
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class WorkspaceListResponse(BaseModel):
     """Response model for listing workspaces."""
-    workspaces: List[WorkspaceInfo]
+    workspaces: list[WorkspaceInfo]
     total: int
 
 
@@ -452,7 +452,7 @@ async def delete_group(group_id: str):
 
 
 @router.post("/workspace/groups/{group_id}/datasets")
-async def add_dataset_to_group(group_id: str, body: Dict[str, Any]):
+async def add_dataset_to_group(group_id: str, body: dict[str, Any]):
     try:
         dataset_id = body.get("dataset_id")
         if not dataset_id:
@@ -761,7 +761,7 @@ class ImportWorkspaceRequest(BaseModel):
     """Request model for importing a workspace from archive."""
     archive_path: str = Field(..., description="Path to the archive file")
     destination_path: str = Field(..., description="Path where workspace will be extracted")
-    workspace_name: Optional[str] = Field(None, description="Name for the imported workspace")
+    workspace_name: str | None = Field(None, description="Name for the imported workspace")
 
 
 @router.post("/workspace/import")
@@ -802,7 +802,7 @@ async def import_workspace(request: ImportWorkspaceRequest):
         now = datetime.now().isoformat()
 
         if config_file.exists():
-            with open(config_file, "r", encoding="utf-8") as f:
+            with open(config_file, encoding="utf-8") as f:
                 config = json.load(f)
                 workspace_name = config.get("name", workspace_name)
                 # Update path to new location
@@ -851,24 +851,24 @@ class CustomNodeDefinition(BaseModel):
     id: str = Field(..., description="Unique identifier (e.g., 'custom.my_transform')")
     label: str = Field(..., description="Display name for the node")
     category: str = Field("custom", description="Category in the palette")
-    description: Optional[str] = Field(None, description="Node description")
+    description: str | None = Field(None, description="Node description")
     classPath: str = Field(..., description="Python class path (e.g., 'mypackage.MyTransform')")
     stepType: str = Field("processing", description="Step type: preprocessing, processing, model, etc.")
-    parameters: List[Dict[str, Any]] = Field(default_factory=list, description="Parameter definitions")
-    icon: Optional[str] = Field(None, description="Icon name for the node")
-    color: Optional[str] = Field(None, description="Node color")
+    parameters: list[dict[str, Any]] = Field(default_factory=list, description="Parameter definitions")
+    icon: str | None = Field(None, description="Icon name for the node")
+    color: str | None = Field(None, description="Node color")
 
 
 class ImportCustomNodesRequest(BaseModel):
     """Request to import custom nodes."""
-    nodes: List[Dict[str, Any]] = Field(..., description="Nodes to import")
+    nodes: list[dict[str, Any]] = Field(..., description="Nodes to import")
     overwrite: bool = Field(False, description="Overwrite existing nodes with same ID")
 
 
 class CustomNodeSettingsRequest(BaseModel):
     """Request to update custom node settings."""
     enabled: bool = Field(True, description="Whether custom nodes are enabled")
-    allowedPackages: List[str] = Field(
+    allowedPackages: list[str] = Field(
         default_factory=lambda: ["nirs4all", "sklearn", "scipy", "numpy", "pandas"],
         description="Allowed Python packages for classPath"
     )
@@ -1051,7 +1051,7 @@ class WorkspaceStatsResponse(BaseModel):
     path: str = Field(..., description="Workspace path")
     name: str = Field(..., description="Workspace name")
     total_size_bytes: int = Field(0, description="Total workspace size in bytes")
-    space_usage: List[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
+    space_usage: list[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
     linked_datasets_count: int = Field(0, description="Number of linked datasets")
     linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
     duckdb_size_bytes: int = Field(0, description="DuckDB metadata store size")
@@ -1072,7 +1072,7 @@ class StorageStatusResponse(BaseModel):
 class MigrationRequest(BaseModel):
     """Request to migrate prediction arrays to Parquet."""
     dry_run: bool = Field(False, description="Run migration in dry-run mode")
-    batch_size: Optional[int] = Field(None, description="Batch size for migration")
+    batch_size: int | None = Field(None, description="Batch size for migration")
 
 
 class MigrationJobResponse(BaseModel):
@@ -1084,15 +1084,15 @@ class MigrationStatusResponse(BaseModel):
     """Response for migration status."""
     migration_needed: bool
     storage_mode: str
-    legacy_row_count: Optional[int] = None
-    estimated_duration_seconds: Optional[int] = None
+    legacy_row_count: int | None = None
+    estimated_duration_seconds: int | None = None
 
 
 class MigrationReportResponse(BaseModel):
     """Migration report (dry run or completed)."""
     total_rows: int = 0
     rows_migrated: int = 0
-    datasets_migrated: List[str] = Field(default_factory=list)
+    datasets_migrated: list[str] = Field(default_factory=list)
     verification_passed: bool = False
     verification_sample_size: int = 0
     verification_mismatches: int = 0
@@ -1100,11 +1100,11 @@ class MigrationReportResponse(BaseModel):
     duckdb_size_after: int = 0
     parquet_total_size: int = 0
     duration_seconds: float = 0.0
-    errors: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class CompactRequest(BaseModel):
-    dataset_name: Optional[str] = Field(None, description="Dataset name to compact (all if omitted)")
+    dataset_name: str | None = Field(None, description="Dataset name to compact (all if omitted)")
 
 
 class CompactDatasetStats(BaseModel):
@@ -1116,7 +1116,7 @@ class CompactDatasetStats(BaseModel):
 
 
 class CompactReport(BaseModel):
-    datasets: Dict[str, CompactDatasetStats] = Field(default_factory=dict)
+    datasets: dict[str, CompactDatasetStats] = Field(default_factory=dict)
 
 
 class CleanDeadLinksRequest(BaseModel):
@@ -1130,9 +1130,9 @@ class CleanDeadLinksReport(BaseModel):
 
 class RemoveBottomRequest(BaseModel):
     fraction: float = Field(..., ge=0.0, le=1.0)
-    metric: Optional[str] = None
-    partition: Optional[str] = None
-    dataset_name: Optional[str] = None
+    metric: str | None = None
+    partition: str | None = None
+    dataset_name: str | None = None
     dry_run: bool = Field(False, description="Preview removal without deleting")
 
 
@@ -1155,10 +1155,10 @@ class StorageHealthResponse(BaseModel):
     parquet_total_size_bytes: int = 0
     total_predictions: int = 0
     total_datasets: int = 0
-    datasets: List[DatasetStorageInfo] = Field(default_factory=list)
+    datasets: list[DatasetStorageInfo] = Field(default_factory=list)
     orphan_metadata_count: int = 0
     orphan_array_count: int = 0
-    corrupt_files: List[str] = Field(default_factory=list)
+    corrupt_files: list[str] = Field(default_factory=list)
 
 
 class CleanCacheRequest(BaseModel):
@@ -1174,7 +1174,7 @@ class CleanCacheResponse(BaseModel):
     success: bool
     files_removed: int = Field(0, description="Number of files removed")
     bytes_freed: int = Field(0, description="Bytes freed")
-    categories_cleaned: List[str] = Field(default_factory=list, description="Categories that were cleaned")
+    categories_cleaned: list[str] = Field(default_factory=list, description="Categories that were cleaned")
 
 
 class DataLoadingDefaults(BaseModel):
@@ -1202,7 +1202,7 @@ class WorkspaceSettingsResponse(BaseModel):
     data_loading_defaults: DataLoadingDefaults
     developer_mode: bool = Field(False, description="Developer mode enabled")
     cache_enabled: bool = Field(True, description="Cache enabled")
-    general: Optional[GeneralSettings] = Field(None, description="General UI settings")
+    general: GeneralSettings | None = Field(None, description="General UI settings")
 
 
 def _compute_directory_size(directory: Path) -> tuple[int, int]:
@@ -1263,7 +1263,7 @@ def _get_storage_status_for_workspace(workspace_path: Path) -> dict[str, Any]:
         return status
 
 
-def _get_legacy_arrays_row_count(workspace_path: Path) -> Optional[int]:
+def _get_legacy_arrays_row_count(workspace_path: Path) -> int | None:
     """Count legacy rows in prediction_arrays if the table exists."""
     if not STORE_AVAILABLE:
         return None
@@ -1302,7 +1302,7 @@ def _get_legacy_arrays_row_count(workspace_path: Path) -> Optional[int]:
             pass
 
 
-def _estimate_migration_duration_seconds(legacy_row_count: Optional[int]) -> Optional[int]:
+def _estimate_migration_duration_seconds(legacy_row_count: int | None) -> int | None:
     """Estimate migration time from row count using a conservative throughput heuristic."""
     if legacy_row_count is None:
         return None
@@ -1444,7 +1444,7 @@ def _call_migrate_arrays_to_parquet(
     workspace_path: Path,
     *,
     dry_run: bool,
-    batch_size: Optional[int] = None,
+    batch_size: int | None = None,
 ) -> dict[str, Any]:
     """Call migration function with backward-compatible signature handling."""
     if not MIGRATION_AVAILABLE or migrate_arrays_to_parquet is None:
@@ -1519,7 +1519,7 @@ async def get_workspace_stats():
             ("temp", workspace_path / ".tmp"),
         ]
 
-        space_usage: List[SpaceUsageItem] = []
+        space_usage: list[SpaceUsageItem] = []
         total_workspace_size = 0
         duckdb_size_bytes = 0
         parquet_arrays_size_bytes = 0
@@ -1631,7 +1631,7 @@ async def get_workspace_migration_status():
 
 @router.post(
     "/workspace/migrate",
-    response_model=Union[MigrationJobResponse, MigrationReportResponse],
+    response_model=MigrationJobResponse | MigrationReportResponse,
 )
 async def migrate_workspace_arrays(request: MigrationRequest):
     """Migrate legacy prediction arrays to Parquet sidecar files."""
@@ -1938,7 +1938,7 @@ async def clean_cache(request: CleanCacheRequest):
         workspace_path = Path(workspace.path)
         files_removed = 0
         bytes_freed = 0
-        categories_cleaned: List[str] = []
+        categories_cleaned: list[str] = []
 
         # Clean temporary files
         if request.clean_temp:
@@ -1981,7 +1981,7 @@ async def clean_cache(request: CleanCacheRequest):
                 runs_file = workspace_path / "runs.json"
                 if runs_file.exists():
                     try:
-                        with open(runs_file, "r", encoding="utf-8") as f:
+                        with open(runs_file, encoding="utf-8") as f:
                             runs_data = json.load(f)
                             for run in runs_data.get("runs", []):
                                 known_runs.add(run.get("id"))
@@ -2037,7 +2037,7 @@ async def get_workspace_settings():
 
 
 @router.put("/workspace/settings")
-async def update_workspace_settings(settings: Dict[str, Any]):
+async def update_workspace_settings(settings: dict[str, Any]):
     """Update workspace settings."""
     try:
         workspace = workspace_manager.get_current_workspace()
@@ -2155,7 +2155,7 @@ async def get_workspace_info(workspace_id: str):
 
 
 @router.put("/workspace/{workspace_id}")
-async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
+async def update_workspace(workspace_id: str, updates: dict[str, Any]):
     """
     Update workspace configuration.
 
@@ -2197,7 +2197,7 @@ async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
 class LinkWorkspaceRequest(BaseModel):
     """Request model for linking a nirs4all workspace."""
     path: str = Field(..., description="Path to the nirs4all workspace")
-    name: Optional[str] = Field(None, description="Display name (defaults to directory name)")
+    name: str | None = Field(None, description="Display name (defaults to directory name)")
 
 
 class LinkedWorkspaceResponse(BaseModel):
@@ -2207,39 +2207,39 @@ class LinkedWorkspaceResponse(BaseModel):
     name: str
     is_active: bool
     linked_at: str
-    last_scanned: Optional[str]
-    discovered: Dict[str, Any]
+    last_scanned: str | None
+    discovered: dict[str, Any]
 
 
 class LinkedWorkspacesListResponse(BaseModel):
     """Response model for listing linked workspaces."""
-    workspaces: List[LinkedWorkspaceResponse]
-    active_workspace_id: Optional[str]
+    workspaces: list[LinkedWorkspaceResponse]
+    active_workspace_id: str | None
     total: int
 
 
 class WorkspaceScanResponse(BaseModel):
     """Response model for workspace scan results."""
     scanned_at: str
-    summary: Dict[str, int]
-    runs: List[Dict[str, Any]]
-    predictions: List[Dict[str, Any]]
-    exports: List[Dict[str, Any]]
-    templates: List[Dict[str, Any]]
-    datasets: List[Dict[str, Any]]
+    summary: dict[str, int]
+    runs: list[dict[str, Any]]
+    predictions: list[dict[str, Any]]
+    exports: list[dict[str, Any]]
+    templates: list[dict[str, Any]]
+    datasets: list[dict[str, Any]]
 
 
 class AppSettingsResponse(BaseModel):
     """Response model for app settings."""
     version: str
     linked_workspaces_count: int
-    favorite_pipelines: List[str]
-    ui_preferences: Dict[str, Any]
+    favorite_pipelines: list[str]
+    ui_preferences: dict[str, Any]
 
 
 class UpdateAppSettingsRequest(BaseModel):
     """Request model for updating app settings."""
-    ui_preferences: Optional[Dict[str, Any]] = None
+    ui_preferences: dict[str, Any] | None = None
 
 
 class FavoritePipelineRequest(BaseModel):
@@ -2513,14 +2513,14 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
 
 @router.get("/workspaces/{workspace_id}/runs/enriched")
-async def get_enriched_workspace_runs(workspace_id: str, project_id: Optional[str] = None, limit: int = 50, offset: int = 0):
+async def get_enriched_workspace_runs(workspace_id: str, project_id: str | None = None, limit: int = 50, offset: int = 0):
     """Get enriched runs with per-dataset scores, top chains, and stats."""
     try:
         ws = workspace_manager._find_linked_workspace(workspace_id)
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
         if not STORE_AVAILABLE:
             return {"runs": [], "total": 0}
 
@@ -2624,7 +2624,7 @@ async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: s
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
         if not STORE_AVAILABLE:
             return {"dataset_name": dataset_name, "metric": None, "partitions": {}}
 
@@ -2710,7 +2710,7 @@ async def get_workspace_results_summary(workspace_id: str):
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        from api.store_adapter import StoreAdapter, STORE_AVAILABLE
+        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
         if not STORE_AVAILABLE:
             return {"workspace_id": workspace_id, "datasets": []}
 
@@ -2740,9 +2740,9 @@ async def get_workspace_results_summary(workspace_id: str):
 @router.get("/workspaces/{workspace_id}/results")
 async def get_workspace_results(
     workspace_id: str,
-    run_id: Optional[str] = None,
-    dataset: Optional[str] = None,
-    template_id: Optional[str] = None,
+    run_id: str | None = None,
+    dataset: str | None = None,
+    template_id: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ):
@@ -2848,9 +2848,9 @@ async def get_workspace_predictions_data(
     workspace_id: str,
     limit: int = 500,
     offset: int = 0,
-    dataset: Optional[str] = None,
-    model_class: Optional[str] = None,
-    partition: Optional[str] = None,
+    dataset: str | None = None,
+    model_class: str | None = None,
+    partition: str | None = None,
 ):
     """Get prediction records with metadata.
 
@@ -2911,6 +2911,7 @@ async def get_workspace_predictions_data(
                 def clean_nan(obj):
                     """Recursively clean NaN/Inf values from an object for JSON serialization."""
                     import math
+
                     import numpy as np
                     if isinstance(obj, dict):
                         return {k: clean_nan(v) for k, v in obj.items()}
@@ -2956,6 +2957,7 @@ async def get_workspace_predictions_data(
         paginated = all_records[offset:offset + limit]
 
         import math
+
         import numpy as np
 
         class NaNSafeEncoder(json.JSONEncoder):
@@ -3124,8 +3126,9 @@ async def get_workspace_predictions_summary(workspace_id: str):
             return summary
 
         # ---- Legacy filesystem path (parquet footers) ----
-        import pyarrow.parquet as pq
         from concurrent.futures import ThreadPoolExecutor
+
+        import pyarrow.parquet as pq
 
         parquet_files = list(workspace_path.glob("*.meta.parquet"))
 
@@ -3136,10 +3139,10 @@ async def get_workspace_predictions_summary(workspace_id: str):
                 "datasets": [],
                 "models": [],
                 "runs": [],
-                "generated_at": datetime.now(_tz.utc).isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
             }
 
-        def read_summary(parquet_file: Path) -> Optional[Dict[str, Any]]:
+        def read_summary(parquet_file: Path) -> dict[str, Any] | None:
             """Read summary from a single parquet file."""
             try:
                 pf = pq.ParquetFile(str(parquet_file))
@@ -3167,7 +3170,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
 
         total_predictions = sum(s.get("total_predictions", 0) for s in summaries)
 
-        all_models: Dict[str, Dict] = {}
+        all_models: dict[str, dict] = {}
         for s in summaries:
             for model in s.get("facets", {}).get("models", []):
                 name = model["name"]
@@ -3227,7 +3230,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
             "runs": all_runs,
             "top_predictions": top_predictions,
             "stats": aggregated_stats,
-            "generated_at": datetime.now(_tz.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
     except HTTPException:

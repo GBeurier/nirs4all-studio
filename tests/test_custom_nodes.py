@@ -9,14 +9,17 @@ Verifies:
 - Settings management
 """
 
-import pytest
-from pathlib import Path
 import json
-import tempfile
 import shutil
 
 # Add parent path for imports
 import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.workspace_manager import WorkspaceManager
@@ -279,8 +282,6 @@ class TestNoWorkspaceSelected:
     def test_add_node_requires_workspace(self):
         """Adding node without workspace raises error."""
         manager = WorkspaceManager()
-        manager._workspace_config = None
-        manager._current_workspace_path = None
 
         node = {
             "id": "custom.test",
@@ -291,7 +292,8 @@ class TestNoWorkspaceSelected:
             "parameters": [],
         }
 
-        with pytest.raises(RuntimeError, match="No workspace selected"):
+        with patch.object(manager, "get_active_workspace_path", return_value=None), \
+             pytest.raises(RuntimeError, match="No active workspace"):
             manager.add_custom_node(node)
 
 

@@ -18,6 +18,7 @@ Note: Chemometric metrics are delegated to nirs4all.operators.filters for comput
 """
 
 from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 
 from .logger import get_logger
@@ -34,9 +35,9 @@ except ImportError:
 # Import nirs4all filters for chemometric metrics
 try:
     from nirs4all.operators.filters import (
-        XOutlierFilter,
-        SpectralQualityFilter,
         HighLeverageFilter,
+        SpectralQualityFilter,
+        XOutlierFilter,
     )
     NIRS4ALL_FILTERS_AVAILABLE = True
 except ImportError:
@@ -111,7 +112,7 @@ class MetricsComputer:
 
     def __init__(
         self,
-        saturation_threshold: Optional[float] = None,
+        saturation_threshold: float | None = None,
         n_pca_components: int = 5,
         lof_n_neighbors: int = 20,
         lof_contamination: float = 0.1,
@@ -133,10 +134,10 @@ class MetricsComputer:
     def compute(
         self,
         X: np.ndarray,
-        metrics: Optional[List[str]] = None,
-        pca_result: Optional[Dict[str, Any]] = None,
-        wavelengths: Optional[np.ndarray] = None,
-    ) -> Dict[str, np.ndarray]:
+        metrics: list[str] | None = None,
+        pca_result: dict[str, Any] | None = None,
+        wavelengths: np.ndarray | None = None,
+    ) -> dict[str, np.ndarray]:
         """Compute specified metrics for the data.
 
         Args:
@@ -151,7 +152,7 @@ class MetricsComputer:
         if metrics is None:
             metrics = FAST_METRICS
 
-        results: Dict[str, np.ndarray] = {}
+        results: dict[str, np.ndarray] = {}
 
         for metric in metrics:
             try:
@@ -169,8 +170,8 @@ class MetricsComputer:
         self,
         X: np.ndarray,
         metric: str,
-        wavelengths: Optional[np.ndarray] = None,
-    ) -> Optional[np.ndarray]:
+        wavelengths: np.ndarray | None = None,
+    ) -> np.ndarray | None:
         """Compute a single metric.
 
         Args:
@@ -296,7 +297,7 @@ class MetricsComputer:
             threshold = self.saturation_threshold
             if threshold is None:
                 threshold = np.nanmax(X) * 0.99  # Default to 99% of max
-            return np.sum(X >= threshold, axis=1).astype(float)
+            return np.sum(threshold <= X, axis=1).astype(float)
 
         elif metric == 'zero_count':
             return np.sum(X == 0, axis=1).astype(float)
@@ -324,7 +325,7 @@ class MetricsComputer:
         self,
         X: np.ndarray,
         method: str,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         """Compute chemometric metric using nirs4all XOutlierFilter.
 
         Args:
@@ -359,7 +360,7 @@ class MetricsComputer:
         except Exception:
             return None
 
-    def _compute_leverage_via_filter(self, X: np.ndarray) -> Optional[np.ndarray]:
+    def _compute_leverage_via_filter(self, X: np.ndarray) -> np.ndarray | None:
         """Compute leverage using nirs4all HighLeverageFilter.
 
         Args:
@@ -392,7 +393,7 @@ class MetricsComputer:
     def get_metric_stats(
         self,
         metric_values: np.ndarray,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Compute statistics for a metric array.
 
         Args:
@@ -426,9 +427,9 @@ class MetricsComputer:
         X: np.ndarray,
         reference_idx: int,
         metric: str = 'euclidean',
-        threshold: Optional[float] = None,
-        top_k: Optional[int] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        threshold: float | None = None,
+        top_k: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Find samples similar to a reference sample.
 
         This is a UI-specific feature for interactive sample exploration.
@@ -599,7 +600,7 @@ class MetricsComputer:
         group_ids: np.ndarray,
         reference: str = 'group_mean',
         metric: str = 'euclidean',
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compute variance within repetition groups.
 
         This is a UI-specific feature for analyzing measurement repeatability.
@@ -739,7 +740,7 @@ class MetricsComputer:
         }
 
 
-def get_available_metrics() -> Dict[str, List[Dict[str, Any]]]:
+def get_available_metrics() -> dict[str, list[dict[str, Any]]]:
     """Get list of available metrics organized by category.
 
     Returns:

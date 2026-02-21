@@ -24,13 +24,12 @@ if str(webapp_root) not in sys.path:
 from websocket.manager import (
     MessageType,
     WebSocketMessage,
-    notify_refit_started,
-    notify_refit_progress,
-    notify_refit_step,
     notify_refit_completed,
     notify_refit_failed,
+    notify_refit_progress,
+    notify_refit_started,
+    notify_refit_step,
 )
-
 
 # ============================================================================
 # MessageType Enum Tests

@@ -12,8 +12,9 @@ import json
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from starlette.testclient import TestClient
 
@@ -32,9 +33,9 @@ class WebSocketTestSession:
 
     client: TestClient
     endpoint: str
-    messages: List[Dict[str, Any]] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=list)
     _ws: Any = None
-    _collector_thread: Optional[threading.Thread] = None
+    _collector_thread: threading.Thread | None = None
     _stop_event: threading.Event = field(default_factory=threading.Event)
     _message_queue: queue.Queue = field(default_factory=queue.Queue)
 
@@ -83,7 +84,7 @@ class WebSocketTestSession:
         self,
         msg_type: str,
         timeout: float = 30.0,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Wait for a specific message type.
 
@@ -133,11 +134,11 @@ class WebSocketTestSession:
 
         return "timeout"
 
-    def get_messages_by_type(self, msg_type: str) -> List[Dict[str, Any]]:
+    def get_messages_by_type(self, msg_type: str) -> list[dict[str, Any]]:
         """Get all messages of a specific type."""
         return [m for m in self.messages if m.get("type") == msg_type]
 
-    def get_progress_sequence(self) -> List[float]:
+    def get_progress_sequence(self) -> list[float]:
         """Extract progress values from progress messages."""
         progress_msgs = self.get_messages_by_type("job_progress")
         return [
@@ -146,7 +147,7 @@ class WebSocketTestSession:
             if "progress" in m.get("data", {})
         ]
 
-    def get_final_metrics(self) -> Optional[Dict[str, Any]]:
+    def get_final_metrics(self) -> dict[str, Any] | None:
         """Get metrics from the completion message."""
         completed_msgs = self.get_messages_by_type("job_completed")
         if completed_msgs:
@@ -163,8 +164,8 @@ class WebSocketTestSession:
 
 
 def assert_message_sequence(
-    messages: List[Dict[str, Any]],
-    expected_sequence: List[str],
+    messages: list[dict[str, Any]],
+    expected_sequence: list[str],
     strict: bool = False,
 ) -> bool:
     """
@@ -214,7 +215,7 @@ def assert_message_sequence(
     return True
 
 
-def assert_progress_increases(progress_values: List[float]) -> bool:
+def assert_progress_increases(progress_values: list[float]) -> bool:
     """
     Assert that progress values generally increase.
 
@@ -235,8 +236,8 @@ def assert_progress_increases(progress_values: List[float]) -> bool:
 
 
 def assert_metrics_present(
-    result: Dict[str, Any],
-    expected_keys: List[str] = None,
+    result: dict[str, Any],
+    expected_keys: list[str] = None,
 ) -> bool:
     """
     Assert that expected metrics are present in result.
@@ -277,14 +278,14 @@ class RunProgressTracker:
         self,
         client: TestClient,
         run_id: str,
-        ws_endpoint: Optional[str] = None,
+        ws_endpoint: str | None = None,
     ):
         self.client = client
         self.run_id = run_id
         self.ws_endpoint = ws_endpoint or f"/ws/job/{run_id}"
-        self.progress_history: List[float] = []
-        self.status_history: List[str] = []
-        self.final_result: Optional[Dict[str, Any]] = None
+        self.progress_history: list[float] = []
+        self.status_history: list[str] = []
+        self.final_result: dict[str, Any] | None = None
 
     def poll_until_complete(
         self,
@@ -315,7 +316,7 @@ class RunProgressTracker:
 
         return "timeout"
 
-    def get_run_details(self) -> Optional[Dict[str, Any]]:
+    def get_run_details(self) -> dict[str, Any] | None:
         """Get current run details via HTTP."""
         response = self.client.get(f"/api/runs/{self.run_id}")
         if response.status_code == 200:

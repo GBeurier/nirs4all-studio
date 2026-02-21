@@ -27,8 +27,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
 from .shared.logger import get_logger
+from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
@@ -54,7 +54,7 @@ CONFIG_PATTERN = re.compile(r"[Cc]onfig(?:uration)?\s*(\d+)\s*[/of]+\s*(\d+)", r
 STEP_PATTERN = re.compile(r"[Ss]tep\s*(\d+)\s*[/of]+\s*(\d+)", re.IGNORECASE)
 
 
-def parse_log_for_progress(log_entry: str) -> Dict[str, Any]:
+def parse_log_for_progress(log_entry: str) -> dict[str, Any]:
     """
     Parse a log entry for granular progress information.
 
@@ -114,7 +114,7 @@ def parse_log_for_progress(log_entry: str) -> Dict[str, Any]:
     return result
 
 
-def _sanitize_float(value: Union[float, int, None]) -> Optional[float]:
+def _sanitize_float(value: float | int | None) -> float | None:
     """Sanitize float values for JSON serialization (NaN/Inf -> None)."""
     if value is None:
         return None
@@ -141,11 +141,11 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 class RunMetrics(BaseModel):
     """Metrics for a completed pipeline run."""
-    r2: Optional[float] = None
-    rmse: Optional[float] = None
-    mae: Optional[float] = None
-    rpd: Optional[float] = None
-    nrmse: Optional[float] = None
+    r2: float | None = None
+    rmse: float | None = None
+    mae: float | None = None
+    rpd: float | None = None
+    nrmse: float | None = None
 
 
 class PipelineRun(BaseModel):
@@ -158,89 +158,89 @@ class PipelineRun(BaseModel):
     split_strategy: str
     status: Literal["queued", "running", "completed", "failed", "paused"]
     progress: int = 0
-    metrics: Optional[RunMetrics] = None
-    config: Optional[dict] = None
-    logs: Optional[List[str]] = None
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    error_message: Optional[str] = None
-    model_path: Optional[str] = None  # Path to saved model
+    metrics: RunMetrics | None = None
+    config: dict | None = None
+    logs: list[str] | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    error_message: str | None = None
+    model_path: str | None = None  # Path to saved model
     # Variant tracking for sweeps/branches
-    variant_index: Optional[int] = None  # Index of this variant (0-based)
-    variant_description: Optional[str] = None  # Human-readable description (e.g., "n_components=10 | StandardScaler")
-    variant_choices: Optional[dict] = None  # Raw choices for this variant
-    estimated_variants: Optional[int] = 1  # Number of pipeline variants to test
-    tested_variants: Optional[int] = None  # Actual variants tested after completion
-    has_generators: Optional[bool] = False  # Whether pipeline has sweeps/branches
-    is_expanded_variant: Optional[bool] = False  # True if this is an expanded variant
+    variant_index: int | None = None  # Index of this variant (0-based)
+    variant_description: str | None = None  # Human-readable description (e.g., "n_components=10 | StandardScaler")
+    variant_choices: dict | None = None  # Raw choices for this variant
+    estimated_variants: int | None = 1  # Number of pipeline variants to test
+    tested_variants: int | None = None  # Actual variants tested after completion
+    has_generators: bool | None = False  # Whether pipeline has sweeps/branches
+    is_expanded_variant: bool | None = False  # True if this is an expanded variant
     # Model count breakdown (folds × branches × variants)
-    fold_count: Optional[int] = None  # Number of CV folds
-    branch_count: Optional[int] = None  # Number of pipeline branches
-    total_model_count: Optional[int] = None  # Total models: folds × branches × variants
-    model_count_breakdown: Optional[str] = None  # Human-readable: "5 folds × 3 branches = 15 models"
+    fold_count: int | None = None  # Number of CV folds
+    branch_count: int | None = None  # Number of pipeline branches
+    total_model_count: int | None = None  # Total models: folds × branches × variants
+    model_count_breakdown: str | None = None  # Human-readable: "5 folds × 3 branches = 15 models"
     # Granular progress tracking
-    current_fold: Optional[int] = None  # Current fold being trained (1-based)
-    current_branch: Optional[str] = None  # Current branch name
-    current_variant: Optional[int] = None  # Current variant index (1-based)
-    fold_metrics: Optional[Dict[int, RunMetrics]] = None  # Per-fold metrics
+    current_fold: int | None = None  # Current fold being trained (1-based)
+    current_branch: str | None = None  # Current branch name
+    current_variant: int | None = None  # Current variant index (1-based)
+    fold_metrics: dict[int, RunMetrics] | None = None  # Per-fold metrics
 
 
 class DatasetRun(BaseModel):
     """Status of all pipelines for a single dataset."""
     dataset_id: str
     dataset_name: str
-    pipelines: List[PipelineRun]
+    pipelines: list[PipelineRun]
 
 
 class Run(BaseModel):
     """Complete run (experiment) information."""
     id: str
     name: str
-    description: Optional[str] = None
-    datasets: List[DatasetRun]
+    description: str | None = None
+    datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed", "paused"]
     created_at: str
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    duration: Optional[str] = None
-    created_by: Optional[str] = None
-    cv_folds: Optional[int] = None
-    total_pipelines: Optional[int] = None
-    completed_pipelines: Optional[int] = None
-    workspace_path: Optional[str] = None  # For persistence
-    store_run_id: Optional[str] = None  # DuckDB WorkspaceStore run UUID
-    project_id: Optional[str] = None  # Project grouping
+    started_at: str | None = None
+    completed_at: str | None = None
+    duration: str | None = None
+    created_by: str | None = None
+    cv_folds: int | None = None
+    total_pipelines: int | None = None
+    completed_pipelines: int | None = None
+    workspace_path: str | None = None  # For persistence
+    store_run_id: str | None = None  # DuckDB WorkspaceStore run UUID
+    project_id: str | None = None  # Project grouping
 
 
 class InlinePipeline(BaseModel):
     """Inline pipeline definition for unsaved pipelines from editor."""
     name: str
-    steps: List[Dict[str, Any]]
+    steps: list[dict[str, Any]]
 
 
 class ExperimentConfig(BaseModel):
     """Configuration for creating a new experiment."""
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-    dataset_ids: List[str] = Field(..., min_length=1)
-    pipeline_ids: List[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
+    description: str | None = None
+    dataset_ids: list[str] = Field(..., min_length=1)
+    pipeline_ids: list[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
     cv_folds: int = Field(default=5, ge=2, le=50)
     cv_strategy: Literal["kfold", "stratified", "loo", "holdout"] = "kfold"
-    test_size: Optional[float] = Field(default=0.2, ge=0.1, le=0.5)
+    test_size: float | None = Field(default=0.2, ge=0.1, le=0.5)
     shuffle: bool = True
-    random_state: Optional[int] = None
-    inline_pipeline: Optional[InlinePipeline] = None  # Unsaved pipeline from editor
-    project_id: Optional[str] = None  # Project grouping
+    random_state: int | None = None
+    inline_pipeline: InlinePipeline | None = None  # Unsaved pipeline from editor
+    project_id: str | None = None  # Project grouping
 
 
 class QuickRunRequest(BaseModel):
     """Request for quick single-pipeline run (Run A)."""
     pipeline_id: str = Field(..., description="ID of the pipeline to run")
     dataset_id: str = Field(..., description="ID of the dataset to train on")
-    name: Optional[str] = Field(None, description="Optional run name")
+    name: str | None = Field(None, description="Optional run name")
     export_model: bool = Field(True, description="Save trained model")
     cv_folds: int = Field(default=5, ge=2, le=50)
-    random_state: Optional[int] = Field(42, description="Random seed")
+    random_state: int | None = Field(42, description="Random seed")
 
 
 class CreateRunRequest(BaseModel):
@@ -252,12 +252,12 @@ class RunActionResponse(BaseModel):
     """Response for run actions (stop, pause, retry)."""
     success: bool
     message: str
-    run_id: Optional[str] = None
+    run_id: str | None = None
 
 
 class RunListResponse(BaseModel):
     """Response for listing runs."""
-    runs: List[Run]
+    runs: list[Run]
     total: int
 
 
@@ -274,10 +274,10 @@ class RunStatsResponse(BaseModel):
 # In-memory storage + File Persistence for runs
 # ============================================================================
 
-_runs: Dict[str, Run] = {}
-_run_cancellation_flags: Dict[str, bool] = {}  # Track cancellation requests
+_runs: dict[str, Run] = {}
+_run_cancellation_flags: dict[str, bool] = {}  # Track cancellation requests
 _runs_loaded: bool = False  # Track if runs have been loaded from disk
-_current_workspace_path: Optional[str] = None  # Track which workspace runs were loaded for
+_current_workspace_path: str | None = None  # Track which workspace runs were loaded for
 
 
 def reset_runs_cache():
@@ -323,7 +323,7 @@ def _ensure_runs_loaded():
     _runs_loaded = True
 
 
-def _get_runs_dir() -> Optional[Path]:
+def _get_runs_dir() -> Path | None:
     """Get the runs directory for the current workspace."""
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
@@ -385,7 +385,7 @@ def _sanitize_run_metrics(data: dict) -> dict:
     return data
 
 
-def _load_persisted_runs() -> List[Run]:
+def _load_persisted_runs() -> list[Run]:
     """Load persisted runs from workspace.
 
     Checks both the correct location (workspace/runs) and legacy location
@@ -403,7 +403,7 @@ def _load_persisted_runs() -> List[Run]:
             manifest_path = run_dir / "manifest.json"
             if manifest_path.exists():
                 try:
-                    with open(manifest_path, "r", encoding="utf-8") as f:
+                    with open(manifest_path, encoding="utf-8") as f:
                         data = json.load(f)
                         data = _sanitize_run_metrics(data)
                         run = Run(**data)
@@ -424,7 +424,7 @@ def _load_persisted_runs() -> List[Run]:
                 manifest_path = run_dir / "manifest.json"
                 if manifest_path.exists():
                     try:
-                        with open(manifest_path, "r", encoding="utf-8") as f:
+                        with open(manifest_path, encoding="utf-8") as f:
                             data = json.load(f)
                             data = _sanitize_run_metrics(data)
                             run = Run(**data)
@@ -685,11 +685,11 @@ async def _execute_run(run_id: str):
     # Import WebSocket notification functions
     try:
         from websocket.manager import (
-            notify_job_started,
-            notify_job_progress,
             notify_job_completed,
             notify_job_failed,
             notify_job_log,
+            notify_job_progress,
+            notify_job_started,
         )
         ws_available = True
     except ImportError:
@@ -720,7 +720,7 @@ async def _execute_run(run_id: str):
         total_pipelines = run.total_pipelines or 1
 
         # Pre-create a single store run so all pipelines are grouped together
-        shared_store_run_id: Optional[str] = None
+        shared_store_run_id: str | None = None
         if total_pipelines > 1 and run.workspace_path:
             try:
                 from nirs4all.pipeline.storage import WorkspaceStore
@@ -769,7 +769,7 @@ async def _execute_run(run_id: str):
                     async def pipeline_progress_callback(step_progress: float, step_message: str):
                         """Callback to update progress during pipeline execution."""
                         # step_progress is 0-100 within this pipeline
-                        overall = base_progress + (step_progress / 100) * (100 / total_pipelines)
+                        overall = base_progress + (step_progress / 100) * (100 / total_pipelines)  # noqa: B023
                         await send_progress(overall, step_message)
 
                     result = await _execute_pipeline_training(
@@ -899,11 +899,11 @@ async def _execute_pipeline_training(
     pipeline: PipelineRun,
     dataset_id: str,
     cv_folds: int,
-    workspace_path: Optional[str],
+    workspace_path: str | None,
     run_id: str,
-    progress_callback: Optional[Any] = None,
-    store_run_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    progress_callback: Any | None = None,
+    store_run_id: str | None = None,
+) -> dict[str, Any]:
     """
     Execute pipeline training using nirs4all.run().
 
@@ -928,9 +928,9 @@ async def _execute_pipeline_training(
     # Import WebSocket notification for streaming logs
     try:
         from websocket.manager import (
-            notify_job_log,
-            notify_fold_progress,
             notify_branch_progress,
+            notify_fold_progress,
+            notify_job_log,
             notify_variant_progress,
         )
         ws_available = True
@@ -1167,15 +1167,15 @@ async def _execute_pipeline_training(
             log("[INFO] Executing nirs4all.run() with dataset config...")
             log(f"[INFO] Training {model_name}...")
 
-            run_kwargs = dict(
-                pipeline=nirs4all_steps,
-                dataset=dataset_config,
-                verbose=1,
-                save_artifacts=True,
-                save_charts=False,
-                plots_visible=False,
-                workspace_path=workspace_path,
-            )
+            run_kwargs = {
+                "pipeline": nirs4all_steps,
+                "dataset": dataset_config,
+                "verbose": 1,
+                "save_artifacts": True,
+                "save_charts": False,
+                "plots_visible": False,
+                "workspace_path": workspace_path,
+            }
             if store_run_id:
                 run_kwargs["store_run_id"] = store_run_id
             result = nirs4all.run(**run_kwargs)
@@ -1396,7 +1396,7 @@ async def list_runs(status: str = None):
 
     # Filter by status if provided
     if status:
-        allowed_statuses = set(s.strip() for s in status.split(","))
+        allowed_statuses = {s.strip() for s in status.split(",")}
         runs = [r for r in runs if r.status in allowed_statuses]
 
     # Sort by created_at descending (newest first)
@@ -1503,10 +1503,10 @@ async def create_run(request: CreateRunRequest):
 
 def _create_run_from_config(
     config: ExperimentConfig,
-    dataset_infos: Dict[str, Dict[str, str]],
-    pipeline_configs: Dict[str, dict],
+    dataset_infos: dict[str, dict[str, str]],
+    pipeline_configs: dict[str, dict],
     workspace_path: str,
-    pipeline_ids: Optional[List[str]] = None,
+    pipeline_ids: list[str] | None = None,
     expand_variants: bool = True,
 ) -> Run:
     """Create a run from validated experiment config.
@@ -1635,7 +1635,7 @@ class PipelineEstimate:
     model_count_breakdown: str = ""
 
 
-def _estimate_pipeline_variants(pipeline_config: dict, cv_folds: Optional[int] = None) -> PipelineEstimate:
+def _estimate_pipeline_variants(pipeline_config: dict, cv_folds: int | None = None) -> PipelineEstimate:
     """
     Estimate the number of pipeline variants and model count from a configuration.
 
