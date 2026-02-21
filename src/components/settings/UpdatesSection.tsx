@@ -413,7 +413,7 @@ export function UpdatesSection() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => createSnapshotMutation.mutate()}
+                onClick={() => createSnapshotMutation.mutate(undefined)}
                 disabled={createSnapshotMutation.isPending || !venvStatus?.venv?.is_valid}
               >
                 {createSnapshotMutation.isPending ? (

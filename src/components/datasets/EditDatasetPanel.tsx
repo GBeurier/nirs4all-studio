@@ -167,7 +167,7 @@ export function EditDatasetPanel({
       setDefaultTarget(dataset.default_target || "");
 
       // Load parsing config
-      const config = dataset.config || {};
+      const config = (dataset.config || {}) as Partial<DatasetConfig>;
       setDelimiter(config.delimiter || DEFAULT_PARSING.delimiter);
       setDecimalSeparator(config.decimal_separator || DEFAULT_PARSING.decimal_separator);
       setHasHeader(config.has_header ?? DEFAULT_PARSING.has_header);
@@ -247,7 +247,7 @@ export function EditDatasetPanel({
       };
 
       // Check if parsing config changed
-      const oldConfig = dataset.config || {};
+      const oldConfig = (dataset.config || {}) as Partial<DatasetConfig>;
       const parsingChanged =
         delimiter !== (oldConfig.delimiter || DEFAULT_PARSING.delimiter) ||
         decimalSeparator !== (oldConfig.decimal_separator || DEFAULT_PARSING.decimal_separator) ||

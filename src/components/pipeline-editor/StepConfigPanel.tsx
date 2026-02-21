@@ -98,7 +98,71 @@ export function StepConfigPanel({
   onAddChild,
   onRemoveChild,
 }: StepConfigPanelProps) {
-  // Empty state when no step selected
+  // All hooks must be called before any conditional early return (Rules of Hooks).
+  // Use optional chaining / fallback values so hooks are safe when step is null.
+
+  // Get the appropriate renderer for this step type (with subType override)
+  const { Renderer, usesParameterProps } = useStepRenderer(step?.type ?? 'preprocessing', step?.subType);
+
+  const currentOption = step ? stepOptions[step.type]?.find((o) => o.name === step.name) : undefined;
+
+  // Handlers for parameter operations
+  const handleNameChange = useCallback(
+    (name: string) => {
+      if (!step) return;
+      const option = stepOptions[step.type]?.find((o) => o.name === name);
+      if (option) {
+        onUpdate(step.id, {
+          name,
+          params: { ...option.defaultParams },
+        });
+      }
+    },
+    [step, onUpdate]
+  );
+
+  const handleParamChange = useCallback(
+    (key: string, value: string | number | boolean) => {
+      if (!step) return;
+      onUpdate(step.id, {
+        params: { ...step.params, [key]: value },
+      });
+    },
+    [step, onUpdate]
+  );
+
+  const handleResetParams = useCallback(() => {
+    if (!step || !currentOption) return;
+    onUpdate(step.id, {
+      params: { ...currentOption.defaultParams },
+      paramSweeps: undefined,
+    });
+  }, [currentOption, step, onUpdate]);
+
+  const handleSweepChange = useCallback(
+    (key: string, sweep: ParameterSweep | undefined) => {
+      if (!step) return;
+      const newSweeps = { ...(step.paramSweeps || {}) };
+      if (sweep) {
+        newSweeps[key] = sweep;
+      } else {
+        delete newSweeps[key];
+      }
+      onUpdate(step.id, {
+        paramSweeps: Object.keys(newSweeps).length > 0 ? newSweeps : undefined,
+      });
+    },
+    [step, onUpdate]
+  );
+
+  // Use the extracted param input hook
+  const { renderParamInput } = useParamInput({
+    paramSweeps: step?.paramSweeps,
+    onParamChange: handleParamChange,
+    onSweepChange: handleSweepChange,
+  });
+
+  // Empty state when no step selected (after all hooks)
   if (!step) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-6 text-center bg-card">
@@ -114,69 +178,9 @@ export function StepConfigPanel({
     );
   }
 
-  // Get the appropriate renderer for this step type (with subType override)
-  const { Renderer, usesParameterProps } = useStepRenderer(step.type, step.subType);
-
-  // Use subType-aware icon and color resolution
-  const Icon = (step.subType && step.subType in stepSubTypeIcons)
-    ? stepSubTypeIcons[step.subType]
-    : stepIcons[step.type];
+  // Compute icon and color for header (step is guaranteed non-null here)
   const colors = getStepColor(step);
-  const currentOption = stepOptions[step.type]?.find((o) => o.name === step.name);
-
-  // Handlers for parameter operations
-  const handleNameChange = useCallback(
-    (name: string) => {
-      const option = stepOptions[step.type]?.find((o) => o.name === name);
-      if (option) {
-        onUpdate(step.id, {
-          name,
-          params: { ...option.defaultParams },
-        });
-      }
-    },
-    [step.type, step.id, onUpdate]
-  );
-
-  const handleParamChange = useCallback(
-    (key: string, value: string | number | boolean) => {
-      onUpdate(step.id, {
-        params: { ...step.params, [key]: value },
-      });
-    },
-    [step.id, step.params, onUpdate]
-  );
-
-  const handleResetParams = useCallback(() => {
-    if (currentOption) {
-      onUpdate(step.id, {
-        params: { ...currentOption.defaultParams },
-        paramSweeps: undefined,
-      });
-    }
-  }, [currentOption, step.id, onUpdate]);
-
-  const handleSweepChange = useCallback(
-    (key: string, sweep: ParameterSweep | undefined) => {
-      const newSweeps = { ...(step.paramSweeps || {}) };
-      if (sweep) {
-        newSweeps[key] = sweep;
-      } else {
-        delete newSweeps[key];
-      }
-      onUpdate(step.id, {
-        paramSweeps: Object.keys(newSweeps).length > 0 ? newSweeps : undefined,
-      });
-    },
-    [step.paramSweeps, step.id, onUpdate]
-  );
-
-  // Use the extracted param input hook
-  const { renderParamInput } = useParamInput({
-    paramSweeps: step.paramSweeps,
-    onParamChange: handleParamChange,
-    onSweepChange: handleSweepChange,
-  });
+  const Icon = (step.subType && stepSubTypeIcons[step.subType as StepSubType]) ?? stepIcons[step.type] ?? Waves;
 
   // Calculate variant info for header
   const totalVariants = calculateStepVariants(step);

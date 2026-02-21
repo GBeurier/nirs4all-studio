@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/rules-of-hooks */
+// Playwright fixture `use` callbacks are not React hooks; disable the rule for this file.
 import { test as base, expect } from '@playwright/test';
 import { SidebarPage } from '../pages/sidebar.page';
 import { DatasetsPage } from '../pages/datasets.page';

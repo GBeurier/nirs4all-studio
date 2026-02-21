@@ -27,12 +27,15 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 from .jobs import job_manager, Job, JobStatus, JobType
+from .shared.logger import get_logger
 from .nirs4all_adapter import (
     require_nirs4all,
     build_dataset_spec,
     extract_metrics_from_prediction,
     ensure_models_dir,
 )
+
+logger = get_logger(__name__)
 
 
 router = APIRouter()
@@ -527,7 +530,7 @@ def _run_training_task(
             result.export(model_path)
         except Exception as e:
             _send_refit_failed(job.id, str(e))
-            print(f"Warning: Failed to export model: {e}")
+            logger.warning("Failed to export model: %s", e)
 
     _send_refit_step(job.id, 3, refit_steps, "Evaluation", "evaluation")
 
@@ -591,12 +594,12 @@ def _send_training_completion_notification(
             try:
                 asyncio.run(send_notification())
             except Exception as e:
-                print(f"Error running completion notification: {e}")
+                logger.error("Error running completion notification: %s", e)
 
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending completion notification: {e}")
+        logger.error("Error sending completion notification: %s", e)
 
 
 def _dispatch_refit_notification(coro) -> None:
@@ -617,7 +620,7 @@ def _dispatch_refit_notification(coro) -> None:
         try:
             asyncio.run(coro)
         except Exception as e:
-            print(f"Error dispatching refit notification: {e}")
+            logger.error("Error dispatching refit notification: %s", e)
 
 
 def _send_refit_started(job_id: str, total_steps: int = 0, description: str = "") -> None:
@@ -638,7 +641,7 @@ def _send_refit_started(job_id: str, total_steps: int = 0, description: str = ""
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending refit started notification: {e}")
+        logger.error("Error sending refit started notification: %s", e)
 
 
 def _send_refit_step(
@@ -667,7 +670,7 @@ def _send_refit_step(
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending refit step notification: {e}")
+        logger.error("Error sending refit step notification: %s", e)
 
 
 def _send_refit_progress(job_id: str, progress: float, message: str = "") -> None:
@@ -688,7 +691,7 @@ def _send_refit_progress(job_id: str, progress: float, message: str = "") -> Non
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending refit progress notification: {e}")
+        logger.error("Error sending refit progress notification: %s", e)
 
 
 def _send_refit_completed(
@@ -713,7 +716,7 @@ def _send_refit_completed(
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending refit completed notification: {e}")
+        logger.error("Error sending refit completed notification: %s", e)
 
 
 def _send_refit_failed(job_id: str, error: str, tb: Optional[str] = None) -> None:
@@ -734,4 +737,4 @@ def _send_refit_failed(job_id: str, error: str, tb: Optional[str] = None) -> Non
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending refit failed notification: {e}")
+        logger.error("Error sending refit failed notification: %s", e)

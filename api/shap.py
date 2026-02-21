@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import sys
 import time
-import traceback
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
@@ -23,6 +22,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -33,7 +35,7 @@ try:
     from nirs4all.visualization.analysis.shap import ShapAnalyzer, SHAP_AVAILABLE
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for SHAP: {e}")
+    logger.info("nirs4all not available for SHAP: %s", e)
     NIRS4ALL_AVAILABLE = False
     SHAP_AVAILABLE = False
 
@@ -267,12 +269,12 @@ async def get_available_models():
     try:
         datasets = _get_available_chains()
     except Exception as e:
-        print(f"Error getting available chains: {e}")
+        logger.error("Error getting available chains: %s", e)
 
     try:
         bundles = _get_available_bundles()
     except Exception as e:
-        print(f"Error getting bundles: {e}")
+        logger.error("Error getting bundles: %s", e)
 
     return AvailableModelsResponse(datasets=datasets, bundles=bundles)
 
@@ -298,7 +300,7 @@ async def compute_shap_explanation(request: ShapComputeRequest):
         job_manager.submit_job(job, _run_shap_task)
         return ShapComputeResponse(job_id=job.id, status="running", message="SHAP analysis started")
     except Exception as e:
-        traceback.print_exc()
+        logger.error("Failed to start SHAP analysis: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start SHAP analysis: {str(e)}")
 
 
@@ -630,7 +632,7 @@ def _get_available_chains() -> List[DatasetChains]:
         with StoreAdapter(Path(workspace.path)) as adapter:
             summaries = adapter.get_chain_summaries()
     except Exception as e:
-        print(f"Error querying chain summaries: {e}")
+        logger.error("Error querying chain summaries: %s", e)
         return []
 
     # Group by dataset_name
@@ -658,7 +660,7 @@ def _get_available_chains() -> List[DatasetChains]:
                     if fa.get("fold_final") or fa.get("final"):
                         refit_chains.add(chain_id)
     except Exception as e:
-        print(f"Error checking refit chains: {e}")
+        logger.error("Error checking refit chains: %s", e)
     finally:
         if store:
             store.close()

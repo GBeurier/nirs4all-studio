@@ -181,7 +181,7 @@ export function MergeRenderer({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-popover max-h-[300px]">
-                    {stepOptions.merge.map((opt) => (
+                    {stepOptions.flow.filter(opt => opt.category === 'Merging').map((opt) => (
                       <SelectItem key={opt.name} value={opt.name}>
                         <div className="flex flex-col">
                           <span className="font-medium">{opt.name}</span>

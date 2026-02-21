@@ -72,6 +72,31 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
   const [datasetsLoading, setDatasetsLoading] = useState(false);
   const [datasetsError, setDatasetsError] = useState<string | null>(null);
 
+  // Hooks must be called before early return (Rules of Hooks).
+
+  // Load datasets when picker opens
+  useEffect(() => {
+    if (!referenceCtx) return;
+    if (pickerOpen && datasets.length === 0 && !datasetsLoading) {
+      setDatasetsLoading(true);
+      getWorkspace()
+        .then(response => {
+          setDatasets(response.datasets || []);
+          setDatasetsLoading(false);
+        })
+        .catch(err => {
+          setDatasetsError(err.message || 'Failed to load datasets');
+          setDatasetsLoading(false);
+        });
+    }
+  }, [referenceCtx, pickerOpen, datasets.length, datasetsLoading]);
+
+  // Filter out current dataset from picker
+  const availableDatasets = useMemo(() => {
+    if (!currentDatasetId) return datasets;
+    return datasets.filter(d => d.id !== currentDatasetId);
+  }, [datasets, currentDatasetId]);
+
   // Don't render if context not available
   if (!referenceCtx) {
     return null;
@@ -91,28 +116,6 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
     clearReferenceDataset,
     isReferenceActive,
   } = referenceCtx;
-
-  // Load datasets when picker opens
-  useEffect(() => {
-    if (pickerOpen && datasets.length === 0 && !datasetsLoading) {
-      setDatasetsLoading(true);
-      getWorkspace()
-        .then(response => {
-          setDatasets(response.datasets || []);
-          setDatasetsLoading(false);
-        })
-        .catch(err => {
-          setDatasetsError(err.message || 'Failed to load datasets');
-          setDatasetsLoading(false);
-        });
-    }
-  }, [pickerOpen, datasets.length, datasetsLoading]);
-
-  // Filter out current dataset from picker
-  const availableDatasets = useMemo(() => {
-    if (!currentDatasetId) return datasets;
-    return datasets.filter(d => d.id !== currentDatasetId);
-  }, [datasets, currentDatasetId]);
 
   // Handle mode change
   const handleModeChange = (newMode: ReferenceMode) => {

@@ -111,15 +111,9 @@ interface DistributionPreviewProps {
 }
 
 function DistributionPreview({ values, threshold, invert, height = 48 }: DistributionPreviewProps) {
-  if (!values || values.length === 0) {
-    return (
-      <div className="flex items-center justify-center text-xs text-muted-foreground" style={{ height }}>
-        No data available
-      </div>
-    );
-  }
-
+  // All hooks before early return (Rules of Hooks).
   const stats = useMemo(() => {
+    if (!values || values.length === 0) return { min: 0, max: 1, p95: 1 };
     const sorted = [...values].sort((a, b) => a - b);
     return {
       min: sorted[0],
@@ -130,6 +124,7 @@ function DistributionPreview({ values, threshold, invert, height = 48 }: Distrib
 
   // Compute histogram bins
   const bins = useMemo(() => {
+    if (!values || values.length === 0) return [];
     const nBins = 30;
     const binWidth = (stats.max - stats.min) / nBins;
     const counts = new Array(nBins).fill(0);
@@ -156,6 +151,14 @@ function DistributionPreview({ values, threshold, invert, height = 48 }: Distrib
     const thresholdValue = stats.p95; // Approximation
     return Math.min(100, Math.max(0, ((thresholdValue - stats.min) / (stats.max - stats.min)) * 100));
   }, [stats, threshold]);
+
+  if (!values || values.length === 0) {
+    return (
+      <div className="flex items-center justify-center text-xs text-muted-foreground" style={{ height }}>
+        No data available
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full" style={{ height }}>

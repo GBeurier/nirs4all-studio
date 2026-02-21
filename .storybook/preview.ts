@@ -1,4 +1,5 @@
 import type { Preview } from '@storybook/react-vite';
+import React from 'react';
 import '../src/index.css';
 
 const preview: Preview = {
@@ -18,11 +19,7 @@ const preview: Preview = {
     },
   },
   decorators: [
-    (Story) => (
-      <div className="p-4">
-        <Story />
-      </div>
-    ),
+    (Story) => React.createElement('div', { className: 'p-4' }, React.createElement(Story)),
   ],
 };
 

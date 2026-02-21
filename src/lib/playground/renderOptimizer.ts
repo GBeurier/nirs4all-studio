@@ -9,6 +9,10 @@
  * Phase 6: Performance & Polish
  */
 
+import { createLogger } from "@/lib/logger";
+
+const logger = createLogger("RenderOptimizer");
+
 // ============= Types =============
 
 export type RenderMode = 'auto' | 'canvas' | 'webgl' | 'webgl_aggregated';
@@ -166,7 +170,7 @@ export function detectDeviceCapabilities(): DeviceCapabilities {
     }
   } catch {
     // WebGL not available
-    console.warn('WebGL detection failed');
+    logger.warn('WebGL detection failed');
   }
 
   cachedCapabilities = capabilities;
@@ -302,7 +306,7 @@ export function loadRenderPreferences(): RenderPreferences | null {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.warn('Failed to load render preferences:', e);
+    logger.warn('Failed to load render preferences:', e);
   }
   return null;
 }
@@ -323,7 +327,7 @@ export function saveRenderPreferences(prefs: Partial<RenderPreferences>): void {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch (e) {
-    console.warn('Failed to save render preferences:', e);
+    logger.warn('Failed to save render preferences:', e);
   }
 }
 
@@ -334,7 +338,7 @@ export function clearRenderPreferences(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
-    console.warn('Failed to clear render preferences:', e);
+    logger.warn('Failed to clear render preferences:', e);
   }
 }
 
@@ -490,8 +494,8 @@ export function useRenderOptimizer(options: UseRenderOptimizerOptions): UseRende
       if (monitor.isBelowBudget()) {
         const prefs = loadRenderPreferences();
         if (prefs?.showPerformanceWarnings !== false) {
-          console.warn(
-            '[RenderOptimizer] Performance below budget:',
+          logger.warn(
+            'Performance below budget:',
             monitor.getMetrics()
           );
         }

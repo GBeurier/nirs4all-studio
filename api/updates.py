@@ -28,6 +28,9 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from .venv_manager import venv_manager, VenvInfo
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Try to import httpx for async HTTP requests, fall back to urllib
 try:
@@ -203,7 +206,7 @@ class DependenciesCache:
             with open(self._cache_path, "w", encoding="utf-8") as f:
                 json.dump(self._cache, f, indent=2)
         except Exception as e:
-            print(f"Warning: Could not save dependencies cache: {e}")
+            logger.warning("Could not save dependencies cache: %s", e)
 
     def get(self, venv_path: str) -> Optional[Dict[str, Any]]:
         """Get cached dependencies for a venv path."""
@@ -331,7 +334,7 @@ class UpdateManager:
                     data = yaml.safe_load(f) or {}
                 self._settings = UpdateSettings(**data)
             except Exception as e:
-                print(f"Warning: Could not load update settings: {e}")
+                logger.warning("Could not load update settings: %s", e)
                 self._settings = UpdateSettings()
         else:
             self._settings = UpdateSettings()
@@ -344,7 +347,7 @@ class UpdateManager:
             with open(self._settings_path, "w", encoding="utf-8") as f:
                 yaml.dump(self._settings.model_dump(), f)
         except Exception as e:
-            print(f"Warning: Could not save update settings: {e}")
+            logger.warning("Could not save update settings: %s", e)
 
     def _load_cache(self) -> None:
         """Load cache from file."""
@@ -370,7 +373,7 @@ class UpdateManager:
             with open(self._cache_path, "w", encoding="utf-8") as f:
                 json.dump(self._cache, f, indent=2)
         except Exception as e:
-            print(f"Warning: Could not save update cache: {e}")
+            logger.warning("Could not save update cache: %s", e)
 
     @property
     def settings(self) -> UpdateSettings:
@@ -484,7 +487,7 @@ class UpdateManager:
                 return info
 
             if status != 200:
-                print(f"GitHub API returned status {status}")
+                logger.warning("GitHub API returned status %s", status)
                 return info
 
             data = json.loads(content)
@@ -528,7 +531,7 @@ class UpdateManager:
             self._save_cache()
 
         except Exception as e:
-            print(f"Error checking GitHub releases: {e}")
+            logger.error("Error checking GitHub releases: %s", e)
 
         return info
 
@@ -567,7 +570,7 @@ class UpdateManager:
                 if len(checksum) == 64 and all(c in "0123456789abcdefABCDEF" for c in checksum):
                     return checksum
         except Exception as e:
-            print(f"Warning: Could not fetch checksum sidecar: {e}")
+            logger.warning("Could not fetch checksum sidecar: %s", e)
 
         return None
 
@@ -652,7 +655,7 @@ class UpdateManager:
                 return info
 
             if status != 200:
-                print(f"PyPI API returned status {status}")
+                logger.warning("PyPI API returned status %s", status)
                 return info
 
             data = json.loads(content)
@@ -677,7 +680,7 @@ class UpdateManager:
             self._save_cache()
 
         except Exception as e:
-            print(f"Error checking PyPI releases: {e}")
+            logger.error("Error checking PyPI releases: %s", e)
 
         return info
 

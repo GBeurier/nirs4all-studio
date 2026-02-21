@@ -24,6 +24,9 @@ from typing import Dict, List, Any, Optional, Type, get_type_hints
 from enum import Enum
 
 from .workspace_manager import workspace_manager
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -41,7 +44,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for pipelines API: {e}")
+    logger.info("nirs4all not available for pipelines API: %s", e)
     CONTROLLER_REGISTRY = []
     NIRS4ALL_AVAILABLE = False
     count_combinations = None
@@ -631,7 +634,7 @@ def _discover_transform_operators() -> List[Dict[str, Any]]:
             })
 
     except Exception as e:
-        print(f"Error discovering transforms: {e}")
+        logger.error("Error discovering transforms: %s", e)
 
     return operators
 
@@ -674,7 +677,7 @@ def _discover_splitter_operators() -> List[Dict[str, Any]]:
             })
 
     except Exception as e:
-        print(f"Error discovering splitters: {e}")
+        logger.error("Error discovering splitters: %s", e)
 
     return operators
 
@@ -729,7 +732,7 @@ def _discover_model_operators() -> List[Dict[str, Any]]:
             })
 
     except Exception as e:
-        print(f"Error discovering models: {e}")
+        logger.error("Error discovering models: %s", e)
 
     return operators
 
@@ -787,7 +790,7 @@ def _discover_augmentation_operators() -> List[Dict[str, Any]]:
             })
 
     except Exception as e:
-        print(f"Error discovering augmenters: {e}")
+        logger.error("Error discovering augmenters: %s", e)
 
     return operators
 
@@ -833,7 +836,7 @@ def _discover_metric_operators() -> List[Dict[str, Any]]:
                     "source": "nirs4all",
                 })
     except Exception as e:
-        print(f"Error discovering metrics: {e}")
+        logger.error("Error discovering metrics: %s", e)
 
     return operators
 
@@ -876,7 +879,7 @@ def _discover_feature_selection_operators() -> List[Dict[str, Any]]:
                 "source": "nirs4all",
             })
     except Exception as e:
-        print(f"Error discovering feature selection: {e}")
+        logger.error("Error discovering feature selection: %s", e)
 
     return operators
 
@@ -917,7 +920,7 @@ def _discover_filter_operators() -> List[Dict[str, Any]]:
                 "source": "nirs4all",
             })
     except Exception as e:
-        print(f"Error discovering filters: {e}")
+        logger.error("Error discovering filters: %s", e)
 
     return operators
 
@@ -1049,7 +1052,7 @@ def _discover_sklearn_operators() -> Dict[str, List[Dict[str, Any]]]:
             })
 
     except ImportError as e:
-        print(f"Error discovering sklearn operators: {e}")
+        logger.error("Error discovering sklearn operators: %s", e)
 
     return result
 
@@ -1649,7 +1652,7 @@ def _run_pipeline_task(job, progress_callback):
                 model_path = str(models_dir / f"{model_name}.n4a")
                 result.export(model_path)
             except Exception as e:
-                print(f"Error exporting model: {e}")
+                logger.error("Error exporting model: %s", e)
 
         progress_callback(100, "Complete!")
 

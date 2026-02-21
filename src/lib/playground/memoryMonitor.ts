@@ -10,6 +10,10 @@
  * - Three.js resource cleanup verification
  */
 
+import { createLogger } from "@/lib/logger";
+
+const logger = createLogger("MemoryMonitor");
+
 // ============= Types =============
 
 export interface MemorySnapshot {
@@ -41,7 +45,7 @@ export interface MemoryReport {
  */
 export function takeMemorySnapshot(): MemorySnapshot | null {
   if (!('memory' in performance)) {
-    console.warn('[MemoryMonitor] Memory API not available (Chrome only)');
+    logger.warn('Memory API not available (Chrome only)');
     return null;
   }
 
@@ -158,7 +162,7 @@ export function startEventListenerTracking(): void {
   };
 
   isTrackingListeners = true;
-  console.log('[MemoryMonitor] Event listener tracking started');
+  logger.info('Event listener tracking started');
 }
 
 /**
@@ -171,7 +175,7 @@ export function stopEventListenerTracking(): void {
   EventTarget.prototype.removeEventListener = originalRemoveEventListener;
 
   isTrackingListeners = false;
-  console.log('[MemoryMonitor] Event listener tracking stopped');
+  logger.info('Event listener tracking stopped');
 }
 
 /**
@@ -225,19 +229,19 @@ class MemoryMonitor {
         // Check for memory warning
         const usedMB = snapshot.usedJSHeapSize / (1024 * 1024);
         if (usedMB > this.warningThresholdMB) {
-          console.warn(`[MemoryMonitor] High memory usage: ${formatBytes(snapshot.usedJSHeapSize)}`);
+          logger.warn(`High memory usage: ${formatBytes(snapshot.usedJSHeapSize)}`);
         }
       }
     }, intervalMs);
 
-    console.log('[MemoryMonitor] Started monitoring');
+    logger.info('Started monitoring');
   }
 
   stop(): void {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log('[MemoryMonitor] Stopped monitoring');
+      logger.info('Stopped monitoring');
     }
   }
 
@@ -254,45 +258,45 @@ class MemoryMonitor {
   printReport(): void {
     const report = this.getReport();
 
-    console.log('='.repeat(60));
-    console.log('Memory Monitor Report');
-    console.log('='.repeat(60));
+    logger.info('='.repeat(60));
+    logger.info('Memory Monitor Report');
+    logger.info('='.repeat(60));
 
     if (report.snapshots.length > 0) {
       const latest = report.snapshots[report.snapshots.length - 1];
       const first = report.snapshots[0];
       const growth = latest.usedJSHeapSize - first.usedJSHeapSize;
 
-      console.log(`Current heap: ${formatBytes(latest.usedJSHeapSize)}`);
-      console.log(`Total heap: ${formatBytes(latest.totalJSHeapSize)}`);
-      console.log(`Heap limit: ${formatBytes(latest.jsHeapSizeLimit)}`);
-      console.log(`Growth since start: ${formatBytes(growth)} (${growth > 0 ? '+' : ''}${((growth / first.usedJSHeapSize) * 100).toFixed(1)}%)`);
+      logger.info(`Current heap: ${formatBytes(latest.usedJSHeapSize)}`);
+      logger.info(`Total heap: ${formatBytes(latest.totalJSHeapSize)}`);
+      logger.info(`Heap limit: ${formatBytes(latest.jsHeapSizeLimit)}`);
+      logger.info(`Growth since start: ${formatBytes(growth)} (${growth > 0 ? '+' : ''}${((growth / first.usedJSHeapSize) * 100).toFixed(1)}%)`);
     } else {
-      console.log('No memory snapshots available');
+      logger.info('No memory snapshots available');
     }
 
-    console.log('-'.repeat(60));
-    console.log(`Tracked components: ${report.mountedComponents.length}`);
-    console.log(`Potential leaks: ${report.potentialLeaks.length}`);
+    logger.info('-'.repeat(60));
+    logger.info(`Tracked components: ${report.mountedComponents.length}`);
+    logger.info(`Potential leaks: ${report.potentialLeaks.length}`);
 
     if (report.potentialLeaks.length > 0) {
-      console.log('Leaked components:');
+      logger.info('Leaked components:');
       report.potentialLeaks.forEach(leak => {
         const ageMs = Date.now() - leak.mountedAt;
-        console.log(`  - ${leak.name} (mounted ${Math.round(ageMs / 1000)}s ago)`);
+        logger.info(`  - ${leak.name} (mounted ${Math.round(ageMs / 1000)}s ago)`);
       });
     }
 
-    console.log('-'.repeat(60));
-    console.log(`Event listeners (tracked): ${report.eventListenerCount}`);
-    console.log(`WebGL canvases: ${report.threeJsObjectCount}`);
-    console.log('='.repeat(60));
+    logger.info('-'.repeat(60));
+    logger.info(`Event listeners (tracked): ${report.eventListenerCount}`);
+    logger.info(`WebGL canvases: ${report.threeJsObjectCount}`);
+    logger.info('='.repeat(60));
   }
 
   clear(): void {
     this.snapshots = [];
     clearComponentTracking();
-    console.log('[MemoryMonitor] Cleared all data');
+    logger.info('Cleared all data');
   }
 }
 

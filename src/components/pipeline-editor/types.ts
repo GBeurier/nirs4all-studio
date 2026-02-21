@@ -1131,7 +1131,7 @@ function inferSubType(type: StepType, optionName: string): StepSubType | undefin
     return flowNameMap[optionName];
   }
   if (type === "utility") {
-    const utilityNameMap: Record<string, UtilityStepSubType> = {
+    const utilityNameMap: Record<string, StepSubType> = {
       "Choose": "generator",
       "Cartesian": "generator",
       "Grid": "generator",

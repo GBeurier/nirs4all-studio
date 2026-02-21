@@ -943,7 +943,7 @@ export default function RunProgress() {
                   rpd: acc.rpd + (metric.rpd ?? 0),
                 };
               },
-              { r2: 0, rmse: 0, mae: 0, rpd: 0 }
+              { r2: 0, rmse: 0, mae: 0, rpd: 0 } as { r2: number; rmse: number; mae: number; rpd: number }
             );
 
             const foldCount = folds.length;

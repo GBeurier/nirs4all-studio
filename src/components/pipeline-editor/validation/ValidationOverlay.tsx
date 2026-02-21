@@ -276,13 +276,13 @@ export function ValidationBadge({
   className,
 }: ValidationBadgeProps): React.ReactElement | null {
   const validationContext = useOptionalValidationContext();
+  // Call useStepValidation before the early return so hooks are always called in the same order.
+  const { issues, hasError, hasWarning, errorCount, warningCount } =
+    useStepValidation(stepId, validationContext?.result ?? null);
 
   if (!validationContext) {
     return null;
   }
-
-  const { issues, hasError, hasWarning, errorCount, warningCount } =
-    useStepValidation(stepId, validationContext.result);
 
   if (!hasError && !hasWarning) {
     return null;
@@ -387,13 +387,13 @@ export function ValidationDot({
   className,
 }: ValidationDotProps): React.ReactElement | null {
   const validationContext = useOptionalValidationContext();
+  // Call useStepValidation before the early return so hooks are always called in the same order.
+  const { hasError, hasWarning } =
+    useStepValidation(stepId, validationContext?.result ?? null);
 
   if (!validationContext) {
     return null;
   }
-
-  const { hasError, hasWarning } =
-    useStepValidation(stepId, validationContext.result);
 
   if (!hasError && !hasWarning) {
     return null;

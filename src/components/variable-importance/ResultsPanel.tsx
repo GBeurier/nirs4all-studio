@@ -51,14 +51,12 @@ export function ResultsPanel({
   // Stable toggle callback for beeswarm
   const handleBeeswarmSelect = useCallback(
     (sampleIdx: number) => {
-      onSamplesChange((prev: number[]) => {
-        const set = new Set(prev);
-        if (set.has(sampleIdx)) set.delete(sampleIdx);
-        else set.add(sampleIdx);
-        return Array.from(set).sort((a, b) => a - b);
-      });
+      const set = new Set(selectedSamples);
+      if (set.has(sampleIdx)) set.delete(sampleIdx);
+      else set.add(sampleIdx);
+      onSamplesChange(Array.from(set).sort((a, b) => a - b));
     },
-    [onSamplesChange],
+    [onSamplesChange, selectedSamples],
   );
 
   // Memoize initial binning params to avoid re-init on re-render

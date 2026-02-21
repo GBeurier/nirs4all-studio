@@ -21,6 +21,10 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 # Default config directory name
 _CONFIG_DIR_NAME = "nirs4all"
@@ -224,7 +228,7 @@ class AppConfigManager:
 
             return True
         except Exception as e:
-            print(f"Failed to set config path: {e}")
+            logger.error("Failed to set config path: %s", e)
             return False
 
     def reset_config_path(self) -> bool:
@@ -250,7 +254,7 @@ class AppConfigManager:
 
             return True
         except Exception as e:
-            print(f"Failed to reset config path: {e}")
+            logger.error("Failed to reset config path: %s", e)
             return False
 
     # ============================================================================
@@ -278,7 +282,7 @@ class AppConfigManager:
                 with open(self._app_settings_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Failed to load app settings: {e}")
+                logger.error("Failed to load app settings: %s", e)
         return self._default_app_settings()
 
     def save_app_settings(self, settings: Dict[str, Any]) -> bool:
@@ -289,7 +293,7 @@ class AppConfigManager:
                 json.dump(settings, f, indent=2)
             return True
         except Exception as e:
-            print(f"Failed to save app settings: {e}")
+            logger.error("Failed to save app settings: %s", e)
             return False
 
     def update_app_settings(self, updates: Dict[str, Any]) -> bool:
@@ -372,7 +376,7 @@ class AppConfigManager:
                 with open(self._dataset_links_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Failed to load dataset links: {e}")
+                logger.error("Failed to load dataset links: %s", e)
         return self._default_dataset_links()
 
     def _save_dataset_links(self, data: Dict[str, Any]) -> bool:
@@ -383,7 +387,7 @@ class AppConfigManager:
                 json.dump(data, f, indent=2)
             return True
         except Exception as e:
-            print(f"Failed to save dataset links: {e}")
+            logger.error("Failed to save dataset links: %s", e)
             return False
 
     def get_datasets(self) -> List[DatasetLink]:

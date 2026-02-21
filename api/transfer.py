@@ -17,6 +17,10 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
+
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
@@ -29,7 +33,7 @@ try:
 
     TRANSFER_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: Transfer analysis not available: {e}")
+    logger.info("Transfer analysis not available: %s", e)
     TRANSFER_AVAILABLE = False
 
 router = APIRouter()
@@ -227,7 +231,7 @@ async def compute_transfer_analysis(request: TransferAnalysisRequest):
                 X_pp = pp_func(X.copy())
                 pp_data[pp_name][dataset_id] = X_pp
             except Exception as e:
-                print(f"Warning: Preprocessing '{pp_name}' failed for '{dataset_id}': {e}")
+                logger.warning("Preprocessing '%s' failed for '%s': %s", pp_name, dataset_id, e)
                 # Skip failed preprocessing for this dataset
                 continue
 
@@ -409,7 +413,7 @@ def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> Dict[str, 
             if pp_func:
                 pipelines[pp_name] = pp_func
         except Exception as e:
-            print(f"Warning: Could not build preprocessing '{pp_name}': {e}")
+            logger.warning("Could not build preprocessing '%s': %s", pp_name, e)
 
     return pipelines
 
@@ -475,7 +479,7 @@ def _build_preprocessing_function(name: str) -> Callable[[np.ndarray], np.ndarra
 
     else:
         # Unknown preprocessing - return identity
-        print(f"Warning: Unknown preprocessing '{name}', using identity")
+        logger.warning("Unknown preprocessing '%s', using identity", name)
         return lambda X: X
 
 
@@ -636,7 +640,7 @@ def _extract_metric_convergence(evaluator: PreprocPCAEvaluator) -> List[MetricCo
                         )
                     )
     except Exception as e:
-        print(f"Warning: Could not extract metric convergence: {e}")
+        logger.warning("Could not extract metric convergence: %s", e)
 
     return result
 

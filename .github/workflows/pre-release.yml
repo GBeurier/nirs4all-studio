@@ -75,7 +75,6 @@ jobs:
 
       - name: Run tests
         run: npm run test -- --run
-        continue-on-error: true
 
       - name: Build frontend
         run: npm run build
@@ -137,7 +136,6 @@ jobs:
       - name: Check for syntax errors
         run: |
           python -m py_compile main.py
-          python -m py_compile launcher.py
           for f in api/*.py; do python -m py_compile "$f"; done
           echo "No syntax errors found"
 

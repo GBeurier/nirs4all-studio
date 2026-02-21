@@ -8,7 +8,7 @@
 
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { ConfusionMatrixResponse } from '@/types/inspector';
+import type { ConfusionMatrixResponse, ConfusionMatrixCell } from '@/types/inspector';
 
 interface ConfusionMatrixChartProps {
   data: ConfusionMatrixResponse | null | undefined;
@@ -60,8 +60,8 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
 
   // Build cell lookup and compute max
   const { cellMap, maxCount, displayValues } = useMemo(() => {
-    if (!data?.cells) return { cellMap: new Map<string, typeof data.cells[0]>(), maxCount: 0, displayValues: false };
-    const map = new Map<string, typeof data.cells[0]>();
+    if (!data?.cells) return { cellMap: new Map<string, ConfusionMatrixCell>(), maxCount: 0, displayValues: false };
+    const map = new Map<string, ConfusionMatrixCell>();
     let max = 0;
     const hasNormalized = data.normalize !== 'none';
     for (const cell of data.cells) {

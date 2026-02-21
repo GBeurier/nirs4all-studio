@@ -28,6 +28,9 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 from .jobs import job_manager, Job, JobStatus, JobType
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -40,7 +43,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for AutoML API: {e}")
+    logger.info("nirs4all not available for AutoML API: %s", e)
     NIRS4ALL_AVAILABLE = False
 
 
@@ -652,7 +655,7 @@ def _get_model_class(model_name: str):
             module = importlib.import_module(module_name)
             return getattr(module, class_name)
         except Exception as e:
-            print(f"Error loading model {model_name}: {e}")
+            logger.error("Error loading model %s: %s", model_name, e)
             return None
 
     return None
@@ -792,7 +795,7 @@ def _run_automl_task(
             result.export(str(export_path))
             model_path = str(export_path)
         except Exception as e:
-            print(f"Error exporting AutoML model: {e}")
+            logger.error("Error exporting AutoML model: %s", e)
 
     progress_callback(100.0, "AutoML search complete")
 
@@ -879,9 +882,9 @@ def _send_trial_notification(
             try:
                 asyncio.run(send_notification())
             except Exception as e:
-                print(f"Error running trial notification: {e}")
+                logger.error("Error running trial notification: %s", e)
 
     except ImportError:
         pass
     except Exception as e:
-        print(f"Error sending trial notification: {e}")
+        logger.error("Error sending trial notification: %s", e)

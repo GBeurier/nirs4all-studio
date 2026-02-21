@@ -14,6 +14,9 @@
 
 import type { NodeDefinition, NodeType, ParameterDefinition, ParameterType, CustomNodesFile } from '../types';
 import * as api from '@/api/client';
+import { createLogger } from "@/lib/logger";
+
+const logger = createLogger("CustomNodeStorage");
 
 // Re-export CustomNodesFile for consumers
 export type { CustomNodesFile } from '../types';
@@ -664,7 +667,7 @@ export class CustomNodeStorage {
         localCount: this.nodes.size,
       };
     } catch (err) {
-      console.error('Failed to sync with workspace:', err);
+      logger.error('Failed to sync with workspace:', err);
       return {
         success: false,
         workspaceCount: this.workspaceNodes.size,
@@ -789,7 +792,7 @@ export class CustomNodeStorage {
       this.emit({ type: 'sync', timestamp: Date.now() });
       return true;
     } catch (err) {
-      console.error('Failed to save node to workspace:', err);
+      logger.error('Failed to save node to workspace:', err);
       return false;
     }
   }
@@ -804,7 +807,7 @@ export class CustomNodeStorage {
       this.emit({ type: 'sync', timestamp: Date.now() });
       return true;
     } catch (err) {
-      console.error('Failed to delete node from workspace:', err);
+      logger.error('Failed to delete node from workspace:', err);
       return false;
     }
   }
@@ -856,7 +859,7 @@ export class CustomNodeStorage {
       try {
         listener(event);
       } catch (err) {
-        console.error('CustomNodeStorage listener error:', err);
+        logger.error('Listener error:', err);
       }
     }
   }
@@ -878,7 +881,7 @@ export class CustomNodeStorage {
         }
       }
     } catch (err) {
-      console.error('Failed to load custom nodes from storage:', err);
+      logger.error('Failed to load custom nodes from storage:', err);
     }
   }
 
@@ -891,7 +894,7 @@ export class CustomNodeStorage {
       localStorage.setItem(STORAGE_KEYS.CUSTOM_NODES, JSON.stringify(data));
       localStorage.setItem(STORAGE_KEYS.VERSION, CURRENT_VERSION);
     } catch (err) {
-      console.error('Failed to save custom nodes to storage:', err);
+      logger.error('Failed to save custom nodes to storage:', err);
     }
   }
 
@@ -920,7 +923,7 @@ export class CustomNodeStorage {
         JSON.stringify(this.securityConfig)
       );
     } catch (err) {
-      console.error('Failed to save security config:', err);
+      logger.error('Failed to save security config:', err);
     }
   }
 
@@ -940,7 +943,7 @@ export class CustomNodeStorage {
     try {
       localStorage.setItem(STORAGE_KEYS.USER_PACKAGES, JSON.stringify(packages));
     } catch (err) {
-      console.error('Failed to save user packages:', err);
+      logger.error('Failed to save user packages:', err);
     }
   }
 
@@ -948,7 +951,7 @@ export class CustomNodeStorage {
     const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
     if (storedVersion !== CURRENT_VERSION) {
       // Future: Add migration logic here
-      console.log(`Migrating custom nodes from ${storedVersion} to ${CURRENT_VERSION}`);
+      logger.info(`Migrating custom nodes from ${storedVersion} to ${CURRENT_VERSION}`);
     }
   }
 }

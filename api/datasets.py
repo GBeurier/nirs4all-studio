@@ -23,6 +23,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -40,7 +43,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for datasets API: {e}")
+    logger.info("nirs4all not available for datasets API: %s", e)
     NIRS4ALL_AVAILABLE = False
 
 

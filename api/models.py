@@ -20,6 +20,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -33,7 +36,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for models API: {e}")
+    logger.info("nirs4all not available for models API: %s", e)
     NIRS4ALL_AVAILABLE = False
     BundleLoader = None
     nirs4all = None
@@ -453,7 +456,7 @@ async def list_trained_models():
             )
 
         except Exception as e:
-            print(f"Error reading bundle {n4a_file}: {e}")
+            logger.error("Error reading bundle %s: %s", n4a_file, e)
             continue
 
     # Sort by creation date

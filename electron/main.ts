@@ -4,6 +4,7 @@ const electron = require("electron") as typeof import("electron");
 const { app, BrowserWindow, ipcMain, dialog, shell } = electron;
 
 import path from "node:path";
+import fs from "node:fs";
 import { BackendManager } from "./backend-manager";
 
 // WSL2/WSLg fixes - must be set before app is ready
@@ -33,7 +34,13 @@ async function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false, // Required for file.path on dropped files
+      // Sandbox enabled: the preload exposes webUtils.getPathForFile() via
+      // contextBridge, which is the Electron-recommended API for resolving
+      // drag-and-drop file paths and works correctly with sandbox enabled.
+      // contextIsolation + nodeIntegration:false remain enabled so the
+      // renderer has no direct Node access; all privileged operations go
+      // through the validated IPC handlers below.
+      sandbox: true,
     },
     icon: path.join(__dirname, "../public/icon.png"),
     show: false, // Show after ready-to-show
@@ -134,11 +141,26 @@ ipcMain.handle(
 );
 
 // IPC Handlers for system operations
+const ALLOWED_EXTERNAL_PROTOCOLS = ["https:", "http:", "mailto:"];
+
 ipcMain.handle("system:revealInExplorer", async (_, filePath: string) => {
-  shell.showItemInFolder(filePath);
+  if (typeof filePath !== "string" || filePath.trim() === "") return;
+  // Normalize and resolve to an absolute path to prevent traversal attacks
+  const resolved = path.resolve(filePath);
+  // Verify the path actually exists on disk before revealing
+  if (!fs.existsSync(resolved)) return;
+  shell.showItemInFolder(resolved);
 });
 
 ipcMain.handle("system:openExternal", async (_, url: string) => {
+  if (typeof url !== "string") return;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return; // Reject malformed URLs
+  }
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.includes(parsed.protocol)) return;
   await shell.openExternal(url);
 });
 

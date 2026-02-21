@@ -1,0 +1,13 @@
+This repository (project **nirs4all-webapp**) is distributed under a **DUAL LICENSE**.
+
+1) **Open-source (default)**: **AGPL-3.0-or-later**
+   - See the full text in `../nirs4all/LICENSES/AGPL-3.0-or-later.txt`.
+   - Default SPDX: **AGPL-3.0-or-later** (add it to file headers).
+   - Optional variants: **GPL-3.0-or-later** or **CeCILL-2.1**.
+
+2) **Commercial**:
+   - A proprietary license allowing closed-source use, including SaaS, without the obligation to publish your code.
+   - See `../nirs4all/LICENSES/COMMERCIAL-LICENSE.md` for terms and how to obtain it.
+   - Contact: <denis.cornet@cirad.fr>.
+
+Unless a commercial agreement is explicitly in place, this code is governed by **AGPL-3.0-or-later**.

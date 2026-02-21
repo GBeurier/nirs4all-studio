@@ -28,6 +28,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # ============================================================================
@@ -369,7 +372,7 @@ def _save_run_manifest(run: Run) -> bool:
             json.dump(run.model_dump(), f, indent=2, cls=_NaNSafeJSONEncoder)
         return True
     except Exception as e:
-        print(f"Error saving run manifest: {e}")
+        logger.error("Error saving run manifest: %s", e)
         return False
 
 
@@ -407,7 +410,7 @@ def _load_persisted_runs() -> List[Run]:
                         runs.append(run)
                         seen_run_ids.add(run.id)
                 except Exception as e:
-                    print(f"Error loading run {run_dir.name}: {e}")
+                    logger.error("Error loading run %s: %s", run_dir.name, e)
 
     # Legacy location: workspace.path / "workspace" / "runs"
     # (for runs created before the path fix)
@@ -430,7 +433,7 @@ def _load_persisted_runs() -> List[Run]:
                                 runs.append(run)
                                 seen_run_ids.add(run.id)
                     except Exception as e:
-                        print(f"Error loading legacy run {run_dir.name}: {e}")
+                        logger.error("Error loading legacy run %s: %s", run_dir.name, e)
 
     return runs
 
@@ -691,7 +694,7 @@ async def _execute_run(run_id: str):
         ws_available = True
     except ImportError:
         ws_available = False
-        print("WebSocket notifications not available")
+        logger.info("WebSocket notifications not available")
 
     async def send_log(message: str, level: str = "info"):
         """Helper to send log via WebSocket."""
@@ -736,7 +739,7 @@ async def _execute_run(run_id: str):
                     )
                 _pre_store.close()
             except Exception as e:
-                print(f"[WARN] Failed to pre-create store run: {e}")
+                logger.warning("Failed to pre-create store run: %s", e)
                 shared_store_run_id = None
 
         for dataset in run.datasets:
@@ -814,9 +817,7 @@ async def _execute_run(run_id: str):
                     pipeline.error_message = str(e)
                     pipeline.logs = pipeline.logs or []
                     pipeline.logs.append(f"[ERROR] {str(e)}")
-                    print(f"Pipeline execution error: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.error("Pipeline execution error: %s", e, exc_info=True)
                     await send_log(f"[ERROR] {pipeline.pipeline_name} failed: {str(e)}", "error")
 
                 _save_run_manifest(run)
@@ -861,7 +862,7 @@ async def _execute_run(run_id: str):
                 _post_store.complete_run(shared_store_run_id, summary)
                 _post_store.close()
             except Exception as e:
-                print(f"[WARN] Failed to complete store run: {e}")
+                logger.warning("Failed to complete store run: %s", e)
 
         if ws_available:
             await notify_job_completed(run_id, {

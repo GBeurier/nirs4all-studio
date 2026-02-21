@@ -253,7 +253,9 @@ export function RepetitionsChart({
   // Renderer type (Recharts/WebGL)
   const [rendererType, setRendererType] = useState<'recharts' | 'webgl'>('webgl');
 
-  // SelectionContext integration
+  // SelectionContext integration — useSelection is conditional on the prop intentionally:
+  // the hook is guarded by a boolean that is stable across renders, not a runtime value.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const selectionCtx = useSelectionContext ? useSelection() : null;
   const selectedSamples = selectionCtx?.selectedSamples ?? new Set<number>();
 
@@ -939,6 +941,26 @@ export function RepetitionsChart({
     return { level: zoomPercent, visible: visibleSamples, total: numSamples };
   }, [xDomain, bioSampleOrder.length]);
 
+  // Get quantile values for reference lines (must be before early returns — React Hook)
+  const quantileValues = useMemo(() => {
+    const values: { quantile: DiffQuantile; value: number }[] = [];
+    const source = computedDistances?.quantiles ?? {
+      50: statistics?.mean_distance ?? 0,
+      75: (statistics?.mean_distance ?? 0) * 1.5,
+      90: (statistics?.p95_distance ?? 0) * 0.9,
+      95: statistics?.p95_distance ?? 0,
+    };
+
+    for (const q of quantiles) {
+      let value = source[q] ?? 0;
+      if (scaleType === 'log') {
+        value = Math.log1p(value);
+      }
+      values.push({ quantile: q, value });
+    }
+    return values;
+  }, [quantiles, computedDistances, statistics, scaleType]);
+
   // Empty states
   if (!repetitionData) {
     return (
@@ -989,28 +1011,8 @@ export function RepetitionsChart({
   // Compute X domain
   const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
 
-  // Get quantile values for reference lines
-  const quantileValues = useMemo(() => {
-    const values: { quantile: DiffQuantile; value: number }[] = [];
-    const source = computedDistances?.quantiles ?? {
-      50: statistics?.mean_distance ?? 0,
-      75: (statistics?.mean_distance ?? 0) * 1.5,
-      90: (statistics?.p95_distance ?? 0) * 0.9,
-      95: statistics?.p95_distance ?? 0,
-    };
-
-    for (const q of quantiles) {
-      let value = source[q] ?? 0;
-      if (scaleType === 'log') {
-        value = Math.log1p(value);
-      }
-      values.push({ quantile: q, value });
-    }
-    return values;
-  }, [quantiles, computedDistances, statistics, scaleType]);
-
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: PlotDataPoint }> }) => {
     if (!enableHover) return null;
     if (!active || !payload || payload.length === 0) return null;
     const point: PlotDataPoint | undefined = payload[0]?.payload;
@@ -1478,7 +1480,7 @@ export function RepetitionsChart({
                 <Scatter
                   data={plotData}
                   cursor="pointer"
-                  onClick={(data: any, index: number, event: React.MouseEvent) => {
+                  onClick={(_data: unknown, index: number, event: React.MouseEvent) => {
                     handlePointClick(plotData[index], event);
                   }}
                   isAnimationActive={false}

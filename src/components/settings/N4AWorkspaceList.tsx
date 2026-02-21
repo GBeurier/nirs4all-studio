@@ -290,7 +290,7 @@ export function N4AWorkspaceList({
       <div className={"flex items-center gap-2 p-4 text-destructive " + className}>
         <AlertCircle className="h-5 w-5" />
         <span>{error}</span>
-        <Button variant="ghost" size="sm" onClick={loadWorkspaces}>
+        <Button variant="ghost" size="sm" onClick={() => void loadWorkspaces()}>
           <RefreshCw className="h-4 w-4 mr-1" />
           Retry
         </Button>
@@ -319,7 +319,7 @@ export function N4AWorkspaceList({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={loadWorkspaces}
+                onClick={() => void loadWorkspaces()}
                 disabled={isLoading}
               >
                 <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />

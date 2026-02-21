@@ -266,17 +266,17 @@ function InstancedPoints({
   // Normalize data
   const { normalized } = useMemo(() => normalizeData(data), [data]);
 
-  if (normalized.length === 0) return null;
-
-  // Limit to 500 points for performance with individual meshes
-  const maxPoints = Math.min(normalized.length, 500);
-
-  // Create a lookup map from index to original data point
+  // Create a lookup map from index to original data point (must be before early return — React Hook)
   const dataByIndex = useMemo(() => {
     const map = new Map<number, DataPoint>();
     data.forEach(d => map.set(d.index, d));
     return map;
   }, [data]);
+
+  if (normalized.length === 0) return null;
+
+  // Limit to 500 points for performance with individual meshes
+  const maxPoints = Math.min(normalized.length, 500);
 
   return (
     <group>
@@ -457,6 +457,7 @@ interface CameraControllerProps {
 
 function CameraController({ onReset }: CameraControllerProps) {
   const { camera } = useThree();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
 
   const handleReset = useCallback(() => {
@@ -468,10 +469,12 @@ function CameraController({ onReset }: CameraControllerProps) {
     onReset?.();
   }, [camera, onReset]);
 
-  // Expose reset method
+  // Expose reset method via window for cross-component communication
   React.useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__scatter3d_reset = handleReset;
     return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__scatter3d_reset;
     };
   }, [handleReset]);
@@ -635,7 +638,9 @@ export function ScatterPlot3D({
 
   // Handle reset camera
   const handleReset = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).__scatter3d_reset) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__scatter3d_reset();
     }
   }, []);

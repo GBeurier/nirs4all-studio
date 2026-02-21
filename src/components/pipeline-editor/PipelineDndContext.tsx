@@ -34,15 +34,17 @@ import {
   MessageSquare,
   Zap,
 } from "lucide-react";
-import type { PipelineStep, StepType, StepOption, DragData, DropIndicator } from "./types";
+import type { PipelineStep, StepType, LegacyStepType, StepOption, DragData, DropIndicator } from "./types";
 import { stepColors, getStepColor } from "./types";
 
 // Icons for step types
-const stepIcons: Record<StepType, typeof Waves> = {
+const stepIcons: Record<LegacyStepType, typeof Waves> = {
   preprocessing: Waves,
   y_processing: SlidersHorizontal,
   splitting: Shuffle,
   model: Target,
+  flow: GitBranch,
+  utility: Sparkles,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,

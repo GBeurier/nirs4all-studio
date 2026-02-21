@@ -300,7 +300,7 @@ function TrainingTab({ step, onUpdate }: TrainingTabProps) {
     batch_size: 32,
     learning_rate: 0.001,
     patience: 20,
-    optimizer: "adam" as const,
+    optimizer: "adam",
   };
 
   const handleUpdate = (updates: Partial<typeof config>) => {
@@ -310,13 +310,13 @@ function TrainingTab({ step, onUpdate }: TrainingTabProps) {
   };
 
   const optimizerOptions = [
-    { value: "adam" }, { value: "sgd" }, { value: "rmsprop" }, { value: "adamw" }
+    { value: "adam" as const }, { value: "sgd" as const }, { value: "rmsprop" as const }, { value: "adamw" as const }
   ];
 
   const handleOptimizerWheel = useSelectWheel(
     config.optimizer ?? "adam",
-    (v) => handleUpdate({ optimizer: v as any }),
-    optimizerOptions as any,
+    (v) => handleUpdate({ optimizer: v }),
+    optimizerOptions,
     true
   );
 

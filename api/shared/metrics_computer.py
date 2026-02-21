@@ -20,6 +20,10 @@ Note: Chemometric metrics are delegated to nirs4all.operators.filters for comput
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
 try:
     from scipy import stats
     from scipy.signal import find_peaks
@@ -156,7 +160,7 @@ class MetricsComputer:
                     results[metric] = value
             except Exception as e:
                 # Log error but continue with other metrics
-                print(f"Warning: Failed to compute metric '{metric}': {e}")
+                logger.warning("Failed to compute metric '%s': %s", metric, e)
                 continue
 
         return results

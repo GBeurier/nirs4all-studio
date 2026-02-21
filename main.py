@@ -20,6 +20,11 @@ import uvicorn
 from pathlib import Path
 import os
 
+from api.shared.logger import setup_logging, get_logger
+
+setup_logging()
+logger = get_logger(__name__)
+
 # Desktop mode detection - skip unnecessary middleware when running in pywebview
 DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
 
@@ -140,8 +145,8 @@ async def startup_event():
     from api.workspace_manager import workspace_manager
 
     # Log startup
-    print("nirs4all webapp starting...")
-    print(f"Webapp version: {update_manager.get_webapp_version()}")
+    logger.info("nirs4all webapp starting...")
+    logger.info("Webapp version: %s", update_manager.get_webapp_version())
 
     # Restore active workspace from persisted settings
     # This ensures nirs4all library uses the correct workspace path after restart
@@ -151,14 +156,14 @@ async def startup_event():
             try:
                 import nirs4all.workspace as nirs4all_workspace
                 nirs4all_workspace.set_active_workspace(active_ws.path)
-                print(f"Restored active workspace: {active_ws.path}")
+                logger.info("Restored active workspace: %s", active_ws.path)
             except ImportError:
                 os.environ["NIRS4ALL_WORKSPACE"] = active_ws.path
-                print(f"Set NIRS4ALL_WORKSPACE env var: {active_ws.path}")
+                logger.info("Set NIRS4ALL_WORKSPACE env var: %s", active_ws.path)
         else:
-            print("No active workspace found in settings")
+            logger.info("No active workspace found in settings")
     except Exception as e:
-        print(f"Failed to restore active workspace: {e}")
+        logger.error("Failed to restore active workspace: %s", e)
 
     # Check for updates in background if auto-check is enabled
     if update_manager.settings.auto_check:
@@ -172,11 +177,11 @@ async def check_updates_background():
         from api.updates import update_manager
         status = await update_manager.get_update_status()
         if status.webapp.update_available:
-            print(f"Webapp update available: {status.webapp.latest_version}")
+            logger.info("Webapp update available: %s", status.webapp.latest_version)
         if status.nirs4all.update_available:
-            print(f"nirs4all update available: {status.nirs4all.latest_version}")
+            logger.info("nirs4all update available: %s", status.nirs4all.latest_version)
     except Exception as e:
-        print(f"Background update check failed: {e}")
+        logger.error("Background update check failed: %s", e)
 
 
 # ============= WebSocket Endpoints =============
@@ -212,7 +217,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = None):
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error("WebSocket error: %s", e)
         await ws_manager.disconnect(websocket)
 
 
@@ -238,7 +243,7 @@ async def job_websocket_endpoint(websocket: WebSocket, job_id: str):
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
     except Exception as e:
-        print(f"Job WebSocket error: {e}")
+        logger.error("Job WebSocket error: %s", e)
         await ws_manager.disconnect(websocket)
 
 
@@ -263,7 +268,7 @@ async def training_websocket_endpoint(websocket: WebSocket, job_id: str):
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
     except Exception as e:
-        print(f"Training WebSocket error: {e}")
+        logger.error("Training WebSocket error: %s", e)
         await ws_manager.disconnect(websocket)
 
 

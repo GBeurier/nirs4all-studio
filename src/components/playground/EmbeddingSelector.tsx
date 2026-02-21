@@ -298,10 +298,10 @@ export function EmbeddingSelector({
 
   // Handle click on point
   const handlePointClick = useCallback(
-    (data: any) => {
+    (data: { idx?: number } | null | undefined) => {
       if (data && data.idx !== undefined) {
         if (useSelectionContext) {
-          toggle(data.idx);
+          toggle([data.idx]);
         } else if (onSelect) {
           onSelect([data.idx]);
         }

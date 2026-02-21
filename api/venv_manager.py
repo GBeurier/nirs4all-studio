@@ -18,6 +18,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import platformdirs
 
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 # App identification for platformdirs
 APP_NAME = "nirs4all-webapp"
@@ -92,7 +96,7 @@ class VenvManager:
                     if custom_path:
                         self._custom_venv_path = Path(custom_path)
             except Exception as e:
-                print(f"Warning: Could not load venv settings: {e}")
+                logger.warning("Could not load venv settings: %s", e)
 
     def _save_settings(self) -> None:
         """Save venv settings to file."""
@@ -104,7 +108,7 @@ class VenvManager:
             with open(self._settings_path, "w", encoding="utf-8") as f:
                 json.dump(settings, f, indent=2)
         except Exception as e:
-            print(f"Warning: Could not save venv settings: {e}")
+            logger.warning("Could not save venv settings: %s", e)
 
     @property
     def _venv_path(self) -> Path:
@@ -289,7 +293,7 @@ class VenvManager:
             with open(self._metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
         except Exception as e:
-            print(f"Warning: Could not save venv metadata: {e}")
+            logger.warning("Could not save venv metadata: %s", e)
 
     def _get_directory_size(self, path: Path) -> int:
         """Calculate total size of a directory in bytes."""
@@ -369,9 +373,9 @@ class VenvManager:
                 timeout=120,
             )
             if result.returncode != 0:
-                print(f"Warning: pip upgrade failed: {result.stderr}")
+                logger.warning("pip upgrade failed: %s", result.stderr)
         except Exception as e:
-            print(f"Warning: pip upgrade failed: {e}")
+            logger.warning("pip upgrade failed: %s", e)
 
         if progress_callback:
             progress_callback(40, "Environment created successfully")
@@ -491,7 +495,7 @@ class VenvManager:
                         version=pkg.get("version", ""),
                     ))
         except Exception as e:
-            print(f"Error getting installed packages: {e}")
+            logger.error("Error getting installed packages: %s", e)
 
         return packages
 
@@ -517,10 +521,10 @@ class VenvManager:
             )
             if result.returncode == 0:
                 return result.stdout
-            print(f"pip command failed: {result.stderr}")
+            logger.error("pip command failed: %s", result.stderr)
             return None
         except Exception as e:
-            print(f"Error running pip command: {e}")
+            logger.error("Error running pip command: %s", e)
             return None
 
     def get_package_version(self, package: str) -> Optional[str]:
@@ -595,7 +599,7 @@ class VenvManager:
                         "latest_version": pkg.get("latest_version", ""),
                     })
         except Exception as e:
-            print(f"Error checking outdated packages: {e}")
+            logger.error("Error checking outdated packages: %s", e)
 
         return outdated
 

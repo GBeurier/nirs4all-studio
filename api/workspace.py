@@ -28,6 +28,9 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 from .jobs import job_manager, JobType, JobStatus
 from .store_adapter import StoreAdapter
 
@@ -2489,7 +2492,7 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
                             "manifest_path": "",
                         })
                 except Exception as e:
-                    print(f"Failed to read {parquet_file}: {e}")
+                    logger.error("Failed to read %s: %s", parquet_file, e)
                     continue
 
         # Sort by created_at (newest first) for runs that have timestamps
@@ -2946,7 +2949,7 @@ async def get_workspace_predictions_data(
 
                 all_records.extend(records)
             except Exception as e:
-                print(f"Error reading {parquet_file}: {e}")
+                logger.error("Error reading %s: %s", parquet_file, e)
                 continue
 
         total = len(all_records)
@@ -3077,7 +3080,7 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
                         "dataset_name": prediction.get('dataset_name', 'unknown'),
                     }
             except Exception as e:
-                print(f"Error reading {meta_file}: {e}")
+                logger.error("Error reading %s: %s", meta_file, e)
                 continue
 
         raise HTTPException(
@@ -3154,7 +3157,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
                         "has_summary": False,
                     }
             except Exception as e:
-                print(f"Error reading {parquet_file}: {e}")
+                logger.error("Error reading %s: %s", parquet_file, e)
                 return None
 
         summaries = []

@@ -15,6 +15,10 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
+
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
@@ -25,7 +29,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for preprocessing API: {e}")
+    logger.info("nirs4all not available for preprocessing API: %s", e)
     NIRS4ALL_AVAILABLE = False
 
 
@@ -544,7 +548,7 @@ async def discover_preprocessing_methods():
             })
 
     except Exception as e:
-        print(f"Error discovering preprocessing methods: {e}")
+        logger.error("Error discovering preprocessing methods: %s", e)
 
     # Merge with static definitions for complete info
     merged = {}
@@ -700,7 +704,7 @@ async def get_method_schema(name: str):
                 params[param_name] = param_info
 
         except Exception as e:
-            print(f"Error extracting params for {name}: {e}")
+            logger.error("Error extracting params for %s: %s", name, e)
 
         # Get docstring
         docstring = cls.__doc__ or ""

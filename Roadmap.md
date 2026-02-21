@@ -1,4 +1,15 @@
 ## NEXT
+- Add docs link and update warning.
+
+> verify run pipeline
+> clean results display
+> verify update
+> electron builder + bundling de fastapi
+> electron-builder !! release exe, sh, conda, docker, pip??
+> signing pour les stores
+
+
+
 
 - Stop refresh dataset on delete
 

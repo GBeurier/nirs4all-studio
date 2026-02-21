@@ -120,7 +120,7 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
       }
 
       // Process nested branches (non-generator)
-      if (step.branches && step.type !== "generator") {
+      if (step.branches && step.subType !== "generator") {
         for (const branch of step.branches) {
           processSteps(branch);
         }

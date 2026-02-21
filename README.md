@@ -67,21 +67,18 @@ This project supports development on:
 
 3. **Start development servers:**
 
-   Option A - Use the convenience scripts:
    ```cmd
-   scripts\dev-full.cmd      REM Start frontend + backend together
-   scripts\dev-start.cmd     REM Start frontend only
-   scripts\dev-backend.cmd   REM Start backend only
-   scripts\dev-electron.cmd  REM Start Electron desktop app
+   npm start             REM Frontend + backend together (web dev)
+   npm run start:desktop REM Electron desktop mode
+   npm run stop          REM Stop all servers
    ```
 
-   Option B - Use npm scripts:
+   Or run frontend and backend separately:
    ```cmd
    npm run dev          REM Frontend (Vite) at http://localhost:5173
-   npm run dev:electron REM Electron desktop mode
    ```
 
-   Terminal 2 (if running separately):
+   Terminal 2:
    ```cmd
    .venv\Scripts\activate
    python -m uvicorn main:app --reload --port 8000
@@ -105,18 +102,21 @@ This project supports development on:
 
 3. **Start development servers:**
 
-   Option A - Use the convenience scripts:
    ```bash
-   ./scripts/dev-full.sh      # Start frontend + backend together
-   ./scripts/dev-start.sh     # Start frontend only
-   ./scripts/dev-backend.sh   # Start backend only
-   ./scripts/dev-electron.sh  # Start Electron desktop app
+   npm start             # Frontend + backend together (web dev)
+   npm run start:desktop # Electron desktop mode
+   npm run stop          # Stop all servers
    ```
 
-   Option B - Use npm scripts:
+   Or run frontend and backend separately:
    ```bash
    npm run dev          # Frontend (Vite) at http://localhost:5173
-   npm run dev:electron # Electron desktop mode
+   ```
+
+   Terminal 2:
+   ```bash
+   source .venv/bin/activate
+   python -m uvicorn main:app --reload --port 8000
    ```
 
 ---
@@ -196,18 +196,15 @@ nirs4all_webapp/
 │   └── system.py           # Health, system info, and GPU detection
 ├── scripts/                # Build and utility scripts
 │   ├── build-backend.cjs   # Python backend packaging (cross-platform)
-│   ├── build-release.cjs   # Full release build (cross-platform)
-│   ├── dev-start.cmd/.sh   # Start frontend dev server
-│   ├── dev-backend.cmd/.sh # Start Python backend
-│   ├── dev-electron.cmd/.sh# Start Electron desktop mode
-│   └── dev-full.cmd/.sh    # Start frontend + backend together
+│   └── build-release.cjs   # Full release build (cross-platform)
 ├── build/                  # Build configuration
 │   └── entitlements.mac.plist  # macOS code signing entitlements
 ├── docs/                   # Documentation
 │   └── _internals/         # Developer guides
 ├── public/                 # Static assets
 ├── main.py                 # FastAPI application entry
-├── backend.spec            # PyInstaller spec file
+├── launcher.py             # PyInstaller entry point (production builds)
+├── nirs4all-webapp.spec    # PyInstaller spec file
 ├── electron-builder.yml    # Electron packaging config
 └── package.json            # Node dependencies
 ```
@@ -323,9 +320,9 @@ See [developer_guide_custom_nodes.md](docs/_internals/developer_guide_custom_nod
 
 Run tests:
 ```bash
-npm run test               # All tests
-npm run test:coverage      # With coverage report
-npm run test:ui            # Interactive UI
+npm run test               # All tests (single run)
+npm run test:watch         # Watch mode
+npm run e2e                # Playwright end-to-end tests
 ```
 
 ### Storybook
@@ -341,16 +338,18 @@ Stories are located in `__stories__/` directories next to components.
 
 ## Scripts
 
-### Convenience Scripts (Cross-Platform)
+### Launcher (Cross-Platform)
 
-These scripts work on both Windows (.cmd) and Linux/macOS (.sh):
+Use the unified launcher for all modes:
 
 | Windows | Linux/macOS | Description |
 |---------|-------------|-------------|
-| `scripts\dev-start.cmd` | `./scripts/dev-start.sh` | Start frontend dev server |
-| `scripts\dev-backend.cmd` | `./scripts/dev-backend.sh` | Start Python backend |
-| `scripts\dev-electron.cmd` | `./scripts/dev-electron.sh` | Start Electron desktop mode |
-| `scripts\dev-full.cmd` | `./scripts/dev-full.sh` | Start frontend + backend together |
+| `scripts\launcher.cmd start web:dev` | `./scripts/launcher.sh start web:dev` | Start frontend + backend (web dev) |
+| `scripts\launcher.cmd start desktop:dev` | `./scripts/launcher.sh start desktop:dev` | Start Electron desktop (dev) |
+| `scripts\launcher.cmd stop` | `./scripts/launcher.sh stop` | Stop all servers |
+| `scripts\launcher.cmd status` | `./scripts/launcher.sh status` | Show server status |
+
+Or use `npm run start` / `npm run start:desktop` / `npm run stop` directly.
 
 ### npm Scripts - Development
 

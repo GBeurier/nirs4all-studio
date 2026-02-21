@@ -64,7 +64,7 @@ export interface ChartDefinition {
   /** Icon component (Lucide icon) */
   icon: LucideIcon;
   /** Chart component to render */
-  component: ComponentType<any>; // Will be passed BaseChartProps + specific props
+  component: ComponentType<Record<string, unknown>>; // Will be passed BaseChartProps + specific props
   /** Check if this chart should be available given the data */
   requiresData: (result: PlaygroundResult | null, rawData: SpectralData | null) => boolean;
   /** Check if this chart is disabled (available but not functional) */

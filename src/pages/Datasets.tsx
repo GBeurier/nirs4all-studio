@@ -156,7 +156,7 @@ export default function Datasets() {
       if (content.paths.length > 1) {
         const sep = content.paths[0].includes("\\") ? "\\" : "/";
         const parts = content.paths.map((p) => p.split(/[/\\]/));
-        let commonParts: string[] = [];
+        const commonParts: string[] = [];
         for (let i = 0; i < parts[0].length; i++) {
           if (parts.every((p) => p[i] === parts[0][i])) {
             commonParts.push(parts[0][i]);

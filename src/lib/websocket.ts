@@ -7,6 +7,10 @@
  * Phase 5 Implementation.
  */
 
+import { createLogger } from "@/lib/logger";
+
+const logger = createLogger("WebSocket");
+
 export type MessageType =
   | 'job_started'
   | 'job_progress'
@@ -119,7 +123,7 @@ export async function getWebSocketBaseUrl(): Promise<string> {
         return toWebSocketBaseUrl(backendUrl);
       }
     } catch (error) {
-      console.error('Failed to resolve Electron backend WebSocket URL:', error);
+      logger.error('Failed to resolve Electron backend WebSocket URL:', error);
     }
   }
 
@@ -182,7 +186,7 @@ export class WebSocketClient {
       this.socket = new WebSocket(this.url);
       this.setupEventListeners();
     } catch (error) {
-      console.error('WebSocket connection error:', error);
+      logger.error('Connection error:', error);
       this.handleReconnect();
     }
   }
@@ -303,7 +307,7 @@ export class WebSocketClient {
     if (!this.socket) return;
 
     this.socket.onopen = () => {
-      console.log('WebSocket connected');
+      logger.info('Connected');
       this.reconnectAttempts = 0;
       this.startHeartbeat();
 
@@ -319,7 +323,7 @@ export class WebSocketClient {
     };
 
     this.socket.onclose = () => {
-      console.log('WebSocket disconnected');
+      logger.info('Disconnected');
       this.stopHeartbeat();
 
       // Notify handlers
@@ -334,7 +338,7 @@ export class WebSocketClient {
     };
 
     this.socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      logger.error('Error:', error);
 
       for (const handler of this.errorHandlers) {
         handler(error);
@@ -346,7 +350,7 @@ export class WebSocketClient {
         const message: WebSocketMessage = JSON.parse(event.data);
         this.handleMessage(message);
       } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+        logger.error('Error parsing message:', error);
       }
     };
   }
@@ -391,14 +395,14 @@ export class WebSocketClient {
 
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      console.log('Max reconnect attempts reached');
+      logger.warn('Max reconnect attempts reached');
       return;
     }
 
     this.stopReconnect();
     this.reconnectAttempts++;
 
-    console.log(
+    logger.info(
       `Reconnecting in ${this.options.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.options.maxReconnectAttempts})`
     );
 

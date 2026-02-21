@@ -20,6 +20,10 @@ from typing import Any, Dict, Optional, Set
 
 from fastapi import WebSocket
 
+from api.shared.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class MessageType(str, Enum):
     """Types of WebSocket messages."""
@@ -244,7 +248,7 @@ class WebSocketManager:
             await websocket.send_text(message.to_json())
             return True
         except Exception as e:
-            print(f"Error sending WebSocket message: {e}")
+            logger.error("Error sending WebSocket message: %s", e)
             await self.disconnect(websocket)
             return False
 

@@ -14,6 +14,10 @@ import importlib
 import inspect
 import re
 
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
@@ -28,7 +32,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for pipeline service: {e}")
+    logger.info("nirs4all not available for pipeline service: %s", e)
     NIRS4ALL_AVAILABLE = False
     transforms = None
     nirs_splitters = None

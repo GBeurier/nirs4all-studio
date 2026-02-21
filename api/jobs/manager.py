@@ -17,6 +17,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+from ..shared.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class JobStatus(str, Enum):
     """Status of a background job."""
@@ -353,7 +357,7 @@ class JobManager:
             try:
                 callback(job)
             except Exception as e:
-                print(f"Error in job callback: {e}")
+                logger.error("Error in job callback: %s", e)
 
         # Dispatch WebSocket notification asynchronously
         self._dispatch_websocket_notification(job)
@@ -405,13 +409,13 @@ class JobManager:
                 try:
                     asyncio.run(send_notification())
                 except Exception as e:
-                    print(f"Error running WebSocket notification: {e}")
+                    logger.error("Error running WebSocket notification: %s", e)
 
         except ImportError:
             # WebSocket module not available, skip notification
             pass
         except Exception as e:
-            print(f"Error dispatching WebSocket notification: {e}")
+            logger.error("Error dispatching WebSocket notification: %s", e)
 
     def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
         """Remove old completed/failed jobs.

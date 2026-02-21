@@ -7,7 +7,7 @@
  * @see docs/_internals/implementation_roadmap.md Task 4.3
  */
 
-import type { PipelineStep, StepType, StepSubType } from "../types";
+import type { PipelineStep, StepType, StepSubType, FlowStepSubType } from "../types";
 import { CONTAINER_CHILDREN_SUBTYPES, CONTAINER_BRANCH_SUBTYPES } from "../types";
 import type {
   ValidationIssue,
@@ -91,11 +91,11 @@ export function validateStep(
   }
 
   // Validate container steps have content (using subType)
-  if (step.subType && CONTAINER_CHILDREN_SUBTYPES.includes(step.subType as any)) {
+  if (step.subType && CONTAINER_CHILDREN_SUBTYPES.includes(step.subType as FlowStepSubType)) {
     issues.push(...validateContainerWithChildren(step, location));
   }
 
-  if (step.subType && CONTAINER_BRANCH_SUBTYPES.includes(step.subType as any)) {
+  if (step.subType && CONTAINER_BRANCH_SUBTYPES.includes(step.subType as FlowStepSubType)) {
     issues.push(...validateContainerWithBranches(step, location, context));
   }
 

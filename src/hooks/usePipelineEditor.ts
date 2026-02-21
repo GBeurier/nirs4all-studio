@@ -3,6 +3,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type {
   PipelineStep,
   StepType,
+  LegacyStepType,
   StepOption,
   DragData,
   DropIndicator
@@ -89,7 +90,7 @@ interface UsePipelineEditorReturn {
   canRedo: boolean;
 
   // Step counts
-  stepCounts: Record<StepType, number>;
+  stepCounts: Record<LegacyStepType, number>;
   totalSteps: number;
 
   // Actions
@@ -163,7 +164,7 @@ function getStepsAtPath(steps: PipelineStep[], path: string[]): PipelineStep[] {
 }
 
 // Container step types that use children (not branches)
-const CHILDREN_CONTAINER_TYPES: StepType[] = [
+const CHILDREN_CONTAINER_TYPES: LegacyStepType[] = [
   "sample_augmentation",
   "feature_augmentation",
   "sample_filter",
@@ -215,12 +216,14 @@ function updateStepsAtPath(
 }
 
 // Count steps recursively
-function countStepsRecursive(steps: PipelineStep[]): Record<StepType, number> {
-  const counts: Record<StepType, number> = {
+function countStepsRecursive(steps: PipelineStep[]): Record<LegacyStepType, number> {
+  const counts: Record<LegacyStepType, number> = {
     preprocessing: 0,
     y_processing: 0,
     splitting: 0,
     model: 0,
+    flow: 0,
+    utility: 0,
     generator: 0,
     branch: 0,
     merge: 0,

@@ -16,7 +16,10 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .workspace_manager import workspace_manager
+from .shared.logger import get_logger
 from .shared.pipeline_service import instantiate_operator
+
+logger = get_logger(__name__)
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -28,7 +31,7 @@ try:
 
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available for spectra API: {e}")
+    logger.info("nirs4all not available for spectra API: %s", e)
     NIRS4ALL_AVAILABLE = False
 
 
@@ -259,7 +262,7 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
 
         # Check if we have valid config
         if "train_x" not in config:
-            print(f"No train_x found in config for dataset {dataset_id}")
+            logger.warning("No train_x found in config for dataset %s", dataset_id)
             return None
 
         # Load using DatasetConfigs (same as working preview endpoints)
@@ -269,7 +272,7 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
         datasets = dataset_configs.get_datasets()
 
         if not datasets:
-            print(f"No datasets loaded for {dataset_id}")
+            logger.warning("No datasets loaded for %s", dataset_id)
             return None
 
         dataset = datasets[0]
@@ -280,9 +283,7 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
         return dataset
 
     except Exception as e:
-        print(f"Error loading dataset {dataset_id}: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Error loading dataset %s: %s", dataset_id, e, exc_info=True)
         return None
 
 
@@ -394,7 +395,7 @@ async def get_spectra(
                 else:
                     response["y"] = None
             except Exception as e:
-                print(f"Warning: Could not get y values: {e}")
+                logger.warning("Could not get y values: %s", e)
                 response["y"] = None
 
         return response
@@ -644,8 +645,8 @@ def _apply_preprocessing_chain(X: np.ndarray, chain: List[Dict[str, Any]]) -> np
             if transformer is not None:
                 X = transformer.fit_transform(X)
             else:
-                print(f"Warning: Unknown preprocessing step '{name}', skipping")
+                logger.warning("Unknown preprocessing step '%s', skipping", name)
         except Exception as e:
-            print(f"Warning: Failed to apply preprocessing step '{name}': {e}")
+            logger.warning("Failed to apply preprocessing step '%s': %s", name, e)
 
     return X

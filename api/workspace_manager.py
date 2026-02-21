@@ -24,6 +24,9 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime
 
 from .app_config import app_config
+from .shared.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Try to import nirs4all components (optional)
 try:
@@ -36,7 +39,7 @@ try:
     from nirs4all import workspace as nirs4all_workspace
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
-    print(f"Note: nirs4all not available, using stub functionality: {e}")
+    logger.info("nirs4all not available, using stub functionality: %s", e)
     DatasetConfigs = None
     parse_config = None
     handle_data = None
@@ -138,7 +141,7 @@ class WorkspaceScanner:
                 from .store_adapter import StoreAdapter
                 self._store_adapter = StoreAdapter(store_db.parent)
             except Exception as exc:
-                print(f"Note: Could not open WorkspaceStore: {exc}")
+                logger.info("Could not open WorkspaceStore: %s", exc)
         return self._store_adapter
 
     def _has_store(self) -> bool:
@@ -347,7 +350,7 @@ class WorkspaceScanner:
                 if run_info:
                     runs.append(run_info)
             except Exception as e:
-                print(f"Failed to parse run manifest {run_manifest}: {e}")
+                logger.error("Failed to parse run manifest %s: %s", run_manifest, e)
 
         return runs
 
@@ -471,7 +474,7 @@ class WorkspaceScanner:
                         run_info["format"] = "v1"
                         runs.append(run_info)
                 except Exception as e:
-                    print(f"Failed to parse manifest {manifest_file}: {e}")
+                    logger.error("Failed to parse manifest %s: %s", manifest_file, e)
 
         return runs
 
@@ -668,7 +671,7 @@ class WorkspaceScanner:
                     export_info["nirs4all_version"] = manifest_data.get("nirs4all_version")
                     export_info["pipeline_uid"] = manifest_data.get("pipeline_uid")
         except Exception as e:
-            print(f"Failed to read n4a bundle {bundle_path}: {e}")
+            logger.error("Failed to read n4a bundle %s: %s", bundle_path, e)
 
         return export_info
 
@@ -1158,7 +1161,7 @@ class DatasetRegistry:
             Dict of datasets keyed by hash or name
         """
         if not self._acquire_lock():
-            print("Warning: Could not acquire lock for dataset registry")
+            logger.warning("Could not acquire lock for dataset registry")
 
         try:
             if self.registry_path.exists():
@@ -1182,7 +1185,7 @@ class DatasetRegistry:
             True if saved successfully
         """
         if not self._acquire_lock():
-            print("Warning: Could not acquire lock for saving dataset registry")
+            logger.warning("Could not acquire lock for saving dataset registry")
             return False
 
         try:
@@ -1195,7 +1198,7 @@ class DatasetRegistry:
                 yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
             return True
         except Exception as e:
-            print(f"Error saving dataset registry: {e}")
+            logger.error("Error saving dataset registry: %s", e)
             return False
         finally:
             self._release_lock()
@@ -1625,7 +1628,7 @@ class RunManager:
                 with open(manifest_path, "w") as f:
                     yaml.dump(manifest, f, default_flow_style=False)
             except Exception as e:
-                print(f"Failed to save checkpoint: {e}")
+                logger.error("Failed to save checkpoint: %s", e)
 
         return checkpoint
 
@@ -1738,7 +1741,7 @@ class RunManager:
             return False
 
         if not self.acquire_run_lock(run_id):
-            print(f"Could not acquire lock for run {run_id}")
+            logger.warning("Could not acquire lock for run %s", run_id)
             return False
 
         try:
@@ -1749,7 +1752,7 @@ class RunManager:
 
             # Validate transition
             if current_status != "unknown" and not self.is_valid_transition(current_status, new_status):
-                print(f"Invalid transition: {current_status} → {new_status}")
+                logger.warning("Invalid transition: %s -> %s", current_status, new_status)
                 return False
 
             # Update status
@@ -1766,7 +1769,7 @@ class RunManager:
 
             return True
         except Exception as e:
-            print(f"Failed to update run status: {e}")
+            logger.error("Failed to update run status: %s", e)
             return False
         finally:
             self.release_run_lock(run_id)
@@ -1919,7 +1922,7 @@ class WorkspaceManager:
             return self.link_workspace_internal(str(default_path), "Default Workspace", is_new=True)
 
         except Exception as e:
-            print(f"Failed to create default workspace: {e}")
+            logger.error("Failed to create default workspace: %s", e)
             return None
 
     def link_workspace_internal(
@@ -2209,7 +2212,7 @@ class WorkspaceManager:
             with open(config_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            print(f"Failed to load workspace config: {e}")
+            logger.error("Failed to load workspace config: %s", e)
             return None
 
     def update_workspace_config(self, workspace_path: str, updates: Dict[str, Any]) -> bool:
@@ -2236,7 +2239,7 @@ class WorkspaceManager:
             return True
 
         except Exception as e:
-            print(f"Failed to update workspace config: {e}")
+            logger.error("Failed to update workspace config: %s", e)
             return False
 
     # ----------------------- Custom Nodes Management -----------------------
@@ -2262,7 +2265,7 @@ class WorkspaceManager:
                 data = json.load(f)
                 return data.get("nodes", [])
         except Exception as e:
-            print(f"Failed to load custom nodes: {e}")
+            logger.error("Failed to load custom nodes: %s", e)
             return []
 
     def save_custom_nodes(self, nodes: List[Dict[str, Any]]) -> bool:
@@ -2281,7 +2284,7 @@ class WorkspaceManager:
                 json.dump(data, f, indent=2)
             return True
         except Exception as e:
-            print(f"Failed to save custom nodes: {e}")
+            logger.error("Failed to save custom nodes: %s", e)
             return False
 
     def add_custom_node(self, node: Dict[str, Any]) -> Dict[str, Any]:
@@ -2409,7 +2412,7 @@ class WorkspaceManager:
                 defaults = self._default_workspace_settings()
                 return self._deep_merge(defaults, data)
         except Exception as e:
-            print(f"Failed to load workspace settings: {e}")
+            logger.error("Failed to load workspace settings: %s", e)
             return self._default_workspace_settings()
 
     @staticmethod
@@ -2438,7 +2441,7 @@ class WorkspaceManager:
                 json.dump(merged, f, indent=2)
             return True
         except Exception as e:
-            print(f"Failed to save workspace settings: {e}")
+            logger.error("Failed to save workspace settings: %s", e)
             return False
 
     def _default_workspace_settings(self) -> Dict[str, Any]:

@@ -18,7 +18,10 @@ import {
   type ReactNode,
 } from "react";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
+import { createLogger } from "@/lib/logger";
 import type { UIDensity, UIZoomLevel, GeneralSettings } from "@/types/settings";
+
+const logger = createLogger("UISettings");
 import { DEFAULT_GENERAL_SETTINGS } from "@/types/settings";
 
 interface UISettingsContextType {
@@ -183,7 +186,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
           general: { ...currentGeneral, ui_density: newDensity },
         });
       } catch (error) {
-        console.debug("Failed to sync density to workspace:", error);
+        logger.debug("Failed to sync density to workspace:", error);
       }
     }
   }, [hasWorkspace, getCurrentGeneral]);
@@ -200,7 +203,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
           general: { ...currentGeneral, reduce_animations: reduce },
         });
       } catch (error) {
-        console.debug("Failed to sync animations setting to workspace:", error);
+        logger.debug("Failed to sync animations setting to workspace:", error);
       }
     }
   }, [hasWorkspace, getCurrentGeneral]);
@@ -217,7 +220,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
           general: { ...currentGeneral, zoom_level: level },
         });
       } catch (error) {
-        console.debug("Failed to sync zoom level to workspace:", error);
+        logger.debug("Failed to sync zoom level to workspace:", error);
       }
     }
   }, [hasWorkspace, getCurrentGeneral]);

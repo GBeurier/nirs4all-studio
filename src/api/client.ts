@@ -2,6 +2,10 @@
  * API client for nirs4all backend communication
  */
 
+import { createLogger } from "@/lib/logger";
+
+const logger = createLogger("API");
+
 // Default API base URL for web mode (uses Vite proxy)
 const DEFAULT_API_BASE_URL = "/api";
 
@@ -66,17 +70,17 @@ async function getApiBaseUrl(): Promise<string> {
         // Wait for electronApi to be available
         const apiAvailable = await waitForElectronApi();
         if (!apiAvailable) {
-          console.error("electronApi not available after waiting");
+          logger.error("electronApi not available after waiting");
           throw new Error("electronApi not available");
         }
 
         const electronApi = (window as unknown as { electronApi: { getBackendUrl: () => Promise<string> } }).electronApi;
         const backendUrl = await electronApi.getBackendUrl();
         resolvedBackendUrl = `${backendUrl}/api`;
-        console.log(`[API Client] Using Electron backend URL: ${resolvedBackendUrl}`);
+        logger.info(`Using Electron backend URL: ${resolvedBackendUrl}`);
         return resolvedBackendUrl;
       } catch (error) {
-        console.error("Failed to get backend URL from Electron:", error);
+        logger.error("Failed to get backend URL from Electron:", error);
         // Fallback to default - may not work but provides better error messages
         resolvedBackendUrl = DEFAULT_API_BASE_URL;
         return resolvedBackendUrl;

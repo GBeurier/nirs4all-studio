@@ -8,7 +8,7 @@
 
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { MetricCorrelationResponse } from '@/types/inspector';
+import type { MetricCorrelationResponse, CorrelationCell } from '@/types/inspector';
 
 interface MetricCorrelationProps {
   data: MetricCorrelationResponse | null | undefined;
@@ -81,8 +81,8 @@ export function MetricCorrelation({ data, isLoading }: MetricCorrelationProps) {
 
   // Build cell lookup
   const cellMap = useMemo(() => {
-    if (!data?.cells) return new Map<string, typeof data.cells[0]>();
-    const map = new Map<string, typeof data.cells[0]>();
+    if (!data?.cells) return new Map<string, CorrelationCell>();
+    const map = new Map<string, CorrelationCell>();
     for (const cell of data.cells) {
       map.set(`${cell.metric_x}|${cell.metric_y}`, cell);
     }

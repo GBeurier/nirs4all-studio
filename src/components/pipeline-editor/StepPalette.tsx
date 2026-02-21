@@ -62,7 +62,7 @@ function nodeDefToStepOption(node: NodeDefinition): StepOption {
   if (node.defaultBranches !== undefined && node.defaultBranches > 0) {
     // Create empty branches based on the count
     defaultBranches = Array.from({ length: node.defaultBranches }, () => []);
-  } else if (node.isContainer && (node.type === 'branch' || node.type === 'generator')) {
+  } else if (node.isContainer || node.isGenerator) {
     // Default to 2 branches for container types if not specified
     defaultBranches = [[], []];
   }

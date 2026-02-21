@@ -11,6 +11,7 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts';
+import type { TooltipProps } from 'recharts';
 import { getScatterData } from '@/api/shap';
 import type { ScatterData } from '@/types/shap';
 
@@ -81,16 +82,16 @@ export const PredictionScatter = memo(function PredictionScatter({
     [maxAbsRes],
   );
 
-  // Stable click handler using ref to avoid re-renders
+  // Click handler: toggle the clicked sample in the selection
+  const selectedSamplesRef = useRef(selectedSamples);
+  selectedSamplesRef.current = selectedSamples;
   const handlePointClick = useCallback(
     (point: { sampleIdx: number }) => {
       const idx = point.sampleIdx;
-      onSamplesChangeRef.current((prev: number[]) => {
-        const set = new Set(prev);
-        if (set.has(idx)) set.delete(idx);
-        else set.add(idx);
-        return Array.from(set).sort((a, b) => a - b);
-      });
+      const set = new Set(selectedSamplesRef.current);
+      if (set.has(idx)) set.delete(idx);
+      else set.add(idx);
+      onSamplesChangeRef.current(Array.from(set).sort((a, b) => a - b));
     },
     [],
   );
@@ -101,9 +102,9 @@ export const PredictionScatter = memo(function PredictionScatter({
 
   // Memoize tooltip to avoid re-creating on every render
   const tooltipContent = useCallback(
-    ({ active, payload }: { active?: boolean; payload?: Array<{ payload: typeof chartPoints[0] }> }) => {
+    ({ active, payload }: TooltipProps<number, string>) => {
       if (!active || !payload || !payload.length) return null;
-      const p = payload[0].payload;
+      const p = payload[0].payload as typeof chartPoints[0];
       return (
         <div className="bg-popover border rounded-lg shadow-lg p-2 text-xs">
           <p className="font-medium">Sample #{p.sampleIdx}</p>

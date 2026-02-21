@@ -58,16 +58,19 @@ import { Badge } from "@/components/ui/badge";
 import {
   stepOptions,
   type StepType,
+  type LegacyStepType,
   type StepOption,
   type PipelineStep,
 } from "./types";
 
 // Icon mapping for step types
-const stepTypeIcons: Record<StepType, LucideIcon> = {
+const stepTypeIcons: Record<LegacyStepType, LucideIcon> = {
   preprocessing: Waves,
   y_processing: BarChart3,
   splitting: Shuffle,
   model: Target,
+  flow: GitBranch,
+  utility: Sparkles,
   generator: Sparkles,
   branch: GitBranch,
   merge: GitMerge,
@@ -83,11 +86,13 @@ const stepTypeIcons: Record<StepType, LucideIcon> = {
 };
 
 // Color classes for step types
-const stepTypeColors: Record<StepType, string> = {
+const stepTypeColors: Record<LegacyStepType, string> = {
   preprocessing: "text-blue-500",
   y_processing: "text-amber-500",
   splitting: "text-purple-500",
   model: "text-emerald-500",
+  flow: "text-cyan-500",
+  utility: "text-orange-500",
   generator: "text-orange-500",
   branch: "text-cyan-500",
   merge: "text-pink-500",
