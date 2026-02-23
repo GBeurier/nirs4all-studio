@@ -32,7 +32,7 @@ on:
 env:
   APP_NAME: nirs4all Studio
   APP_ID: com.nirs4all.webapp
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
 
 jobs:

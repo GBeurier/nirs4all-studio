@@ -9,7 +9,7 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
 
 jobs:
