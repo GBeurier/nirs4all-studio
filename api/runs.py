@@ -1337,7 +1337,7 @@ async def _execute_pipeline_training(
         current_msg = "Starting..."
 
         while not future.done():
-            await asyncio.sleep(0.2)  # Faster polling for log streaming
+            await asyncio.sleep(0.05)  # Fast polling for local execution
             elapsed_ticks += 1
 
             # Drain log queue and stream logs via WebSocket

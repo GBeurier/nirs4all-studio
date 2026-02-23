@@ -11,7 +11,6 @@ export class SidebarPage extends BasePage {
   readonly logo: Locator;
 
   // Main navigation links
-  readonly dashboardLink: Locator;
   readonly datasetsLink: Locator;
   readonly playgroundLink: Locator;
   readonly inspectorLink: Locator;
@@ -34,13 +33,12 @@ export class SidebarPage extends BasePage {
 
     // The sidebar container - the div with bg-sidebar class containing the logo
     this.sidebar = page.locator('div.bg-sidebar').first();
-    this.logo = page.locator('img[alt="nirs4all"]');
+    this.logo = page.locator('img[alt="nirs4all Studio"]');
     // Collapse button is the rounded button at the edge of the sidebar
     this.collapseButton = page.locator('button.rounded-full:has(svg)');
 
     // Navigation links - use href-based selectors scoped to sidebar
     // This works whether sidebar is collapsed (no text visible) or expanded
-    this.dashboardLink = this.sidebar.locator('a[href="/"]');
     this.datasetsLink = this.sidebar.locator('a[href="/datasets"]');
     this.playgroundLink = this.sidebar.locator('a[href="/playground"]');
     this.inspectorLink = this.sidebar.locator('a[href="/inspector"]');
@@ -59,9 +57,8 @@ export class SidebarPage extends BasePage {
   /**
    * Navigate to a specific section via sidebar
    */
-  async navigateTo(section: 'dashboard' | 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runEditor' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
+  async navigateTo(section: 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runEditor' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
     const linkMap: Record<string, Locator> = {
-      dashboard: this.dashboardLink,
       datasets: this.datasetsLink,
       playground: this.playgroundLink,
       inspector: this.inspectorLink,
@@ -97,9 +94,8 @@ export class SidebarPage extends BasePage {
   /**
    * Assert that a specific link is marked as active
    */
-  async expectActiveLink(section: 'dashboard' | 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
+  async expectActiveLink(section: 'datasets' | 'playground' | 'inspector' | 'pipelines' | 'runs' | 'results' | 'predictions' | 'lab' | 'settings'): Promise<void> {
     const linkMap: Record<string, Locator> = {
-      dashboard: this.dashboardLink,
       datasets: this.datasetsLink,
       playground: this.playgroundLink,
       inspector: this.inspectorLink,

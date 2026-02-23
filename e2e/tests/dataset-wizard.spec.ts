@@ -93,8 +93,8 @@ test.describe('Dataset Import Wizard', () => {
       await datasetsPage.openAddDatasetWizard();
 
       // Look for folder option
-      const folderOption = page.getByText(/from folder/i);
-      const filesOption = page.getByText(/from files/i);
+      const folderOption = page.getByText(/select folder/i);
+      const filesOption = page.getByText(/select files/i);
 
       // At least one source option should be visible
       const hasFolderOption = await folderOption.isVisible().catch(() => false);
@@ -107,7 +107,7 @@ test.describe('Dataset Import Wizard', () => {
       await datasetsPage.openAddDatasetWizard();
 
       // Look for browse/select button or folder input
-      const browseButton = page.getByRole('button', { name: /browse|select|choose/i });
+      const browseButton = page.getByRole('button', { name: /browse|select|choose/i }).first();
       const pathInput = page.getByPlaceholder(/path|folder/i);
 
       const hasBrowse = await browseButton.isVisible().catch(() => false);
@@ -160,6 +160,9 @@ test.describe('Dataset Wizard - Regression Prevention', () => {
   /**
    * These tests ensure removed features stay removed
    */
+  test.beforeEach(async ({ datasetsPage }) => {
+    await datasetsPage.goto();
+  });
 
   test('partition configuration should be completely removed', async ({ datasetsPage, page }) => {
     await datasetsPage.openAddDatasetWizard();

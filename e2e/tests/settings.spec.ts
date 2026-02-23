@@ -29,7 +29,7 @@ test.describe('Settings - UI Customization', () => {
     await settingsPage.goto();
     // Reload to ensure reset settings are applied in the browser
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     // Wait for settings to be fully loaded after reload
     await settingsPage.waitForSettingsReady();
   });
@@ -64,7 +64,7 @@ test.describe('Settings - UI Customization', () => {
 
     // Reload page and wait for settings to be ready
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await settingsPage.waitForSettingsReady();
 
     // Verify zoom is still applied
@@ -97,7 +97,7 @@ test.describe('Settings - UI Customization', () => {
 
     // Reload page and wait for settings to be ready
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await settingsPage.waitForSettingsReady();
 
     // Verify density persisted with actual values
@@ -142,7 +142,7 @@ test.describe('Settings - UI Customization', () => {
 
     // Reload page and wait for settings to be ready
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await settingsPage.waitForSettingsReady();
 
     // Verify theme is still applied
@@ -179,7 +179,7 @@ test.describe('Settings - UI Customization', () => {
 
     // Reload and verify persistence
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await settingsPage.waitForSettingsReady();
 
     await settingsPage.expectZoomClass(90);

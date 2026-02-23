@@ -221,9 +221,48 @@ def workspace_client(workspace_with_data: Path, client: TestClient) -> TestClien
 
     This fixture:
     1. Creates a temporary workspace with sample data
-    2. Selects the workspace via the API
-    3. Returns the client ready for testing
+    2. Links datasets globally (via dataset_links.json)
+    3. Selects the workspace via the API
+    4. Returns the client ready for testing
     """
+    # Link datasets globally so the API can discover them.
+    # Datasets are stored in dataset_links.json under the app config dir,
+    # NOT in workspace.json. The workspace_manager reads them from app_config.
+    from api.app_config import app_config
+
+    dataset_path = workspace_with_data / "datasets" / "test_dataset.csv"
+    dataset_config = {
+        "delimiter": ",",
+        "decimal_separator": ".",
+        "has_header": True,
+        "header_unit": "index",
+        "signal_type": "auto",
+        "files": [{"path": str(dataset_path), "type": "X", "split": "train"}],
+        "train_x": str(dataset_path),
+        "y_columns": [0],
+    }
+    now = datetime.now().isoformat()
+    dataset_links = {
+        "version": "1.0",
+        "datasets": [
+            {
+                "id": "test_dataset",
+                "name": "Test Dataset",
+                "path": str(dataset_path),
+                "linked_at": now,
+                "hash": "",
+                "version": 1,
+                "version_status": "current",
+                "last_verified": now,
+                "config": dataset_config,
+                "stats": {},
+            }
+        ],
+        "groups": [],
+        "last_updated": now,
+    }
+    app_config._save_dataset_links(dataset_links)
+
     # Select the workspace
     response = client.post(
         "/api/workspace/select",

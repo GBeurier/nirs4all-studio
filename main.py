@@ -16,9 +16,8 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, ORJSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.gzip import GZipMiddleware
 
 from api.shared.logger import get_logger, setup_logging
 
@@ -58,6 +57,7 @@ app = FastAPI(
     title="nirs4all API",
     description="API for nirs4all unified NIRS analysis desktop application",
     version="1.0.0",
+    default_response_class=ORJSONResponse,
 )
 
 # Startup readiness flag — set to True once the startup event has completed.
@@ -113,8 +113,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GZip compression for responses >= 1KB (OPT-9a)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Include API routes
 app.include_router(workspace_router, prefix="/api", tags=["workspace"])
@@ -385,9 +383,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--reload",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=not DESKTOP_MODE,
-        help="Enable auto-reload (disabled in desktop mode)",
+        help="Enable auto-reload (default: on unless desktop mode)",
     )
     args = parser.parse_args()
 
@@ -395,6 +393,6 @@ if __name__ == "__main__":
         "main:app",
         host=args.host,
         port=args.port,
-        reload=args.reload and not DESKTOP_MODE,
+        reload=args.reload,
         log_level="info",
     )

@@ -18,6 +18,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Dict, Optional, Set
 
+import orjson
 from fastapi import WebSocket
 
 from api.shared.logger import get_logger
@@ -87,17 +88,17 @@ class WebSocketMessage:
 
     def to_json(self) -> str:
         """Convert message to JSON string."""
-        return json.dumps({
+        return orjson.dumps({
             "type": self.type.value,
             "channel": self.channel,
             "data": self.data,
             "timestamp": self.timestamp,
-        })
+        }).decode()
 
     @classmethod
     def from_json(cls, json_str: str) -> "WebSocketMessage":
         """Create message from JSON string."""
-        data = json.loads(json_str)
+        data = orjson.loads(json_str)
         return cls(
             type=MessageType(data.get("type", "error")),
             channel=data.get("channel", ""),

@@ -76,9 +76,15 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-test.txt
 
-      - name: Install nirs4all
+      - name: Checkout nirs4all library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          path: nirs4all-lib
+
+      - name: Install nirs4all from source
         continue-on-error: true
-        run: pip install nirs4all
+        run: pip install ./nirs4all-lib
 
       - name: Lint Python (ruff)
         run: |

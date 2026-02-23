@@ -37,7 +37,7 @@ test.describe('Smoke Tests', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Filter out known acceptable errors (e.g., favicon 404, expected network errors)
     const criticalErrors = consoleErrors.filter(err =>

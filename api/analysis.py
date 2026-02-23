@@ -434,6 +434,7 @@ async def compute_umap_endpoint(request: UMAPRequest):
             min_dist=request.min_dist,
             metric=request.metric,
             random_state=request.random_state,
+            n_jobs=-1,
         )
         embedding = reducer.fit_transform(X)
     except Exception as e:

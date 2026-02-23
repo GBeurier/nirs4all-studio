@@ -9,11 +9,7 @@ test.describe('Navigation', () => {
   });
 
   test('should navigate to all main sections via sidebar', async ({ sidebar, page }) => {
-    // Dashboard (home)
-    await sidebar.navigateTo('dashboard');
-    await expect(page).toHaveURL('/');
-
-    // Datasets
+    // Datasets (root redirects to /datasets)
     await sidebar.navigateTo('datasets');
     await expect(page).toHaveURL('/datasets');
     await expect(page.getByRole('heading', { name: /datasets/i })).toBeVisible();

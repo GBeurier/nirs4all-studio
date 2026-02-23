@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import ORJSONResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 # Check availability via direct imports
@@ -591,12 +591,12 @@ class PlaygroundExecutor:
         Returns:
             Array of selected sample indices
         """
-        from nirs4all.data.selection.sampling import kmeans_sample, random_sample, stratified_sample
-
         n_samples = X.shape[0]
 
         if sampling is None or sampling.method == "all":
             return np.arange(n_samples)
+
+        from nirs4all.data.selection.sampling import kmeans_sample, random_sample, stratified_sample
 
         n_select = min(sampling.n_samples, n_samples)
 
@@ -881,6 +881,7 @@ class PlaygroundExecutor:
                 n_neighbors=n_neighbors,
                 min_dist=min_dist,
                 random_state=42,
+                n_jobs=-1,
             )
             X_umap = reducer.fit_transform(X)
         except Exception as e:
@@ -1441,7 +1442,7 @@ MAX_FEATURES = 10000
 MAX_STEPS = 50
 
 
-@router.post("/execute", response_model=ExecuteResponse, response_class=ORJSONResponse)
+@router.post("/execute", response_model=ExecuteResponse)
 async def execute_pipeline(request: ExecuteRequest, http_request: Request):
     """Execute a playground pipeline on spectral data.
 
@@ -1539,7 +1540,7 @@ async def execute_pipeline(request: ExecuteRequest, http_request: Request):
     return _negotiate_response(result, http_request)
 
 
-@router.post("/execute-dataset", response_model=ExecuteResponse, response_class=ORJSONResponse)
+@router.post("/execute-dataset", response_model=ExecuteResponse)
 async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request: Request):
     """Execute a playground pipeline on a workspace dataset by reference.
 
@@ -1717,7 +1718,7 @@ def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
     return _step_cache.get(prefix_key)
 
 
-@router.post("/pca", response_class=ORJSONResponse)
+@router.post("/pca")
 async def compute_pca_chart(request: ChartComputeRequest, http_request: Request):
     """Compute PCA projection independently from the main execute response.
 
@@ -1762,7 +1763,7 @@ async def compute_pca_chart(request: ChartComputeRequest, http_request: Request)
     return {"success": False, "error": "No cached pipeline data available. Execute the pipeline first."}
 
 
-@router.post("/repetitions", response_class=ORJSONResponse)
+@router.post("/repetitions")
 async def compute_repetitions_chart(request: ChartComputeRequest, http_request: Request):
     """Compute repetition analysis independently from the main execute response.
 

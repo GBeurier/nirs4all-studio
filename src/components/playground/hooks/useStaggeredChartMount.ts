@@ -20,10 +20,10 @@ import type { ChartType } from '@/context/PlaygroundViewContext';
 /** Mount schedule: chart type → delay in ms */
 const MOUNT_SCHEDULE: readonly { chart: ChartType; delay: number }[] = [
   { chart: 'spectra', delay: 0 },
-  { chart: 'histogram', delay: 50 },
-  { chart: 'pca', delay: 100 },
-  { chart: 'folds', delay: 200 },
-  { chart: 'repetitions', delay: 200 },
+  { chart: 'histogram', delay: 0 },
+  { chart: 'pca', delay: 0 },
+  { chart: 'folds', delay: 0 },
+  { chart: 'repetitions', delay: 0 },
 ];
 
 interface UseStaggeredChartMountOptions {

@@ -1,0 +1,18 @@
+# CI-specific dockerignore — keeps tests and e2e in the image
+node_modules/
+.venv/
+__pycache__/
+dist/
+dist-electron/
+release/
+backend-dist/
+.git/
+playwright-report/
+test-results/
+build/
+installer/
+.env
+.env.*
+*.swp
+*.swo
+.idea/

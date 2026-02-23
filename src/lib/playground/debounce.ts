@@ -12,13 +12,13 @@ import { useState, useRef, useCallback, useEffect } from 'react';
  */
 export const DEBOUNCE_DELAYS = {
   /** Default debounce for pipeline structure changes (add/remove/reorder) */
-  STRUCTURE_CHANGE: 150,
-  /** Debounce for slider changes (longer to avoid API spam) */
-  SLIDER_CHANGE: 300,
+  STRUCTURE_CHANGE: 80,
+  /** Debounce for slider changes */
+  SLIDER_CHANGE: 120,
   /** Debounce for text input changes */
-  TEXT_CHANGE: 300,
+  TEXT_CHANGE: 150,
   /** Minimum delay before showing loading state */
-  LOADING_DELAY: 100,
+  LOADING_DELAY: 50,
 } as const;
 
 /**

@@ -20,12 +20,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
+from fastapi.exceptions import HTTPException
 
 from api.pipelines import (
     _get_canonical_pipeline,
     _get_samples_dir,
     get_pipeline_sample,
     list_pipeline_samples,
+)
+
+# Skip entire module if pipeline samples are not available (e.g. CI without sibling nirs4all repo)
+try:
+    _get_samples_dir()
+    _SAMPLES_AVAILABLE = True
+except HTTPException:
+    _SAMPLES_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _SAMPLES_AVAILABLE,
+    reason="Pipeline samples directory not available (nirs4all sibling repo required)"
 )
 
 # Sample IDs to test

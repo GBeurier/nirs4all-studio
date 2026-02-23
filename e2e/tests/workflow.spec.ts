@@ -13,7 +13,7 @@ test.describe('Complete Workflow', () => {
   }) => {
     // Start from dashboard to ensure clean state
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Step 1: Navigate to Pipelines
     await sidebar.navigateTo('pipelines');
@@ -60,7 +60,7 @@ test.describe('Complete Workflow', () => {
 
     // Step 5: Navigate to Results
     await sidebar.navigateTo('results');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL('/results');
   });
 
@@ -127,7 +127,7 @@ test.describe('Complete Workflow', () => {
     for (const { section, url } of workflowPages) {
       await sidebar.navigateTo(section);
       await expect(page).toHaveURL(url);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
     }
   });
 });

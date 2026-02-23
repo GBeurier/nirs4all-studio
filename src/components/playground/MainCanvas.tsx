@@ -427,7 +427,7 @@ export function MainCanvas({
       clearTimeout(interactionTimeoutRef.current);
     }
     setInteractionPending(true);
-    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 1200);
+    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 400);
   }, []);
 
   useEffect(() => () => {

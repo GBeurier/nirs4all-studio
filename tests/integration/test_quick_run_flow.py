@@ -436,7 +436,7 @@ class TestQuickRunPersistence:
 
         # Check manifest exists
         workspace_path = workspace_client._test_workspace_path
-        manifest_path = workspace_path / "workspace" / "runs" / run_id / "manifest.json"
+        manifest_path = workspace_path / "runs" / run_id / "manifest.json"
 
         assert manifest_path.exists(), f"Manifest not found at {manifest_path}"
 

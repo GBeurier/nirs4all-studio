@@ -105,11 +105,11 @@ class JobManager:
     Uses a thread pool for executing long-running tasks.
     """
 
-    def __init__(self, max_workers: int = 4):
+    def __init__(self, max_workers: int | None = None):
         """Initialize the job manager.
 
         Args:
-            max_workers: Maximum number of concurrent jobs
+            max_workers: Maximum number of concurrent jobs (defaults to CPU count)
         """
         self._jobs: dict[str, Job] = {}
         self._executor = ThreadPoolExecutor(max_workers=max_workers)

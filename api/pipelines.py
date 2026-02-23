@@ -1772,10 +1772,14 @@ def _get_samples_dir() -> Path:
     samples_path = Path(__file__).parent.parent.parent / "nirs4all" / "examples" / "pipeline_samples"
     if samples_path.exists():
         return samples_path
-    # Try absolute path for development
-    samples_path = Path("/home/delete/nirs4all/examples/pipeline_samples")
-    if samples_path.exists():
-        return samples_path
+    # Try via installed nirs4all package
+    try:
+        import nirs4all
+        pkg_path = Path(nirs4all.__file__).parent.parent / "examples" / "pipeline_samples"
+        if pkg_path.exists():
+            return pkg_path
+    except ImportError:
+        pass
     raise HTTPException(status_code=404, detail="Pipeline samples directory not found")
 
 

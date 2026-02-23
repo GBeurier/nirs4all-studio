@@ -82,11 +82,11 @@ export default defineConfig({
   webServer: [
     // Backend API server (always needed)
     {
-      command: process.env.CI ? 'python main.py' : '.venv/bin/python main.py',
+      command: process.env.CI ? 'python main.py --no-reload' : '.venv/bin/python main.py',
       url: 'http://localhost:8000/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
-      stdout: 'pipe',
+      stdout: process.env.CI ? 'ignore' : 'pipe',
       stderr: 'pipe',
     },
     // Frontend dev server (for web mode projects)
@@ -95,7 +95,7 @@ export default defineConfig({
       url: 'http://localhost:5173',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
-      stdout: 'pipe',
+      stdout: process.env.CI ? 'ignore' : 'pipe',
       stderr: 'pipe',
     },
   ],
