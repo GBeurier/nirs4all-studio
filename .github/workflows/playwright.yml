@@ -32,24 +32,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgirepository1.0-dev \
-            libcairo2-dev \
-            gir1.2-gtk-3.0 \
-            gir1.2-webkit2-4.1
-
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Setup Python venv for backend
+      - name: Install Python dependencies
         run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
-          .venv/bin/pip install nirs4all
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nirs4all
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
