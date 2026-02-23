@@ -103,7 +103,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
     return 100;
   });
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [hasWorkspace, setHasWorkspace] = useState(false);
 
   // Apply density class to document
@@ -134,10 +134,9 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
     root.classList.add(`zoom-${zoomLevel}`);
   }, [zoomLevel]);
 
-  // Load settings from workspace
+  // Load settings from workspace (non-blocking: localStorage defaults are already active)
   const loadFromWorkspace = useCallback(async () => {
     try {
-      setIsLoading(true);
       const settings = await getWorkspaceSettings();
       if (settings.general) {
         if (settings.general.ui_density) {
