@@ -1,5 +1,9 @@
 ## NEXT
 - Add docs link and update warning.
+- Version is 0.1.0 not 1.0.0
+- launching is too slow. Seperate fully front and back and lib. Load only when necessary
+- Redo completely playground
+
 
 > verify run pipeline
 > clean results display
