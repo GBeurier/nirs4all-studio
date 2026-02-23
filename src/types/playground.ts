@@ -102,6 +102,8 @@ export interface ExecuteOptions {
   subset_mode?: 'all' | 'visible';
   /** Max samples to display in 'visible' subset mode (default 200) */
   max_samples_displayed?: number;
+  /** Whether to compute repetition analysis (default true) */
+  compute_repetitions?: boolean;
 }
 
 /**

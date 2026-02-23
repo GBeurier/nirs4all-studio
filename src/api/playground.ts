@@ -71,7 +71,7 @@ export async function executePlayground(
   request: ExecuteRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  return api.post<ExecuteResponse>('/playground/execute', request, { signal });
+  return api.postMsgpack<ExecuteResponse>('/playground/execute', request, { signal });
 }
 
 /**
@@ -100,7 +100,7 @@ export async function executeDatasetPlayground(
   request: ExecuteDatasetRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  return api.post<ExecuteResponse>('/playground/execute-dataset', request, { signal });
+  return api.postMsgpack<ExecuteResponse>('/playground/execute-dataset', request, { signal });
 }
 
 /**
@@ -180,6 +180,7 @@ export function buildExecuteRequest(params: {
     n_components?: number;
   };
   computeStatistics?: boolean;
+  computeRepetitions?: boolean;
   maxWavelengths?: number;
   splitIndex?: number;
   useCache?: boolean;
@@ -206,6 +207,7 @@ export function buildExecuteRequest(params: {
       compute_umap: params.computeUmap ?? false,
       umap_params: params.umapParams,
       compute_statistics: params.computeStatistics ?? true,
+      compute_repetitions: params.computeRepetitions ?? true,
       max_wavelengths_returned: params.maxWavelengths,
       split_index: params.splitIndex,
       use_cache: params.useCache ?? true,
@@ -214,6 +216,40 @@ export function buildExecuteRequest(params: {
       max_samples_displayed: params.maxSamplesDisplayed,
     },
   };
+}
+
+// ============= Parallel Chart Endpoints =============
+
+/**
+ * Request model for computing individual chart data independently.
+ */
+export interface ChartComputeRequest {
+  dataset_id?: string;
+  steps: PlaygroundStep[];
+  sampling?: { method: string; n_samples: number; seed: number };
+  options?: Record<string, unknown>;
+}
+
+/**
+ * Compute PCA chart independently from the main execute response.
+ * Uses step cache for efficient retrieval of processed data.
+ */
+export async function computePcaChart(
+  request: ChartComputeRequest,
+  signal?: AbortSignal
+): Promise<{ success: boolean; pca?: Record<string, unknown>; error?: string }> {
+  return api.postMsgpack('/playground/pca', request, { signal });
+}
+
+/**
+ * Compute repetitions chart independently from the main execute response.
+ * Uses step cache for efficient retrieval of processed data.
+ */
+export async function computeRepetitionsChart(
+  request: ChartComputeRequest,
+  signal?: AbortSignal
+): Promise<{ success: boolean; repetitions?: Record<string, unknown>; error?: string }> {
+  return api.postMsgpack('/playground/repetitions', request, { signal });
 }
 
 /**

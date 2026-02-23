@@ -45,7 +45,7 @@ const electronApi = {
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke("backend:getUrl"),
 
   getBackendInfo: (): Promise<{
-    status: "stopped" | "starting" | "running" | "error" | "restarting";
+    status: "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
     port: number;
     url: string;
     error?: string;
@@ -57,7 +57,7 @@ const electronApi = {
 
   onBackendStatusChanged: (
     callback: (info: {
-      status: "stopped" | "starting" | "running" | "error" | "restarting";
+      status: "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
       port: number;
       url: string;
       error?: string;
@@ -69,6 +69,49 @@ const electronApi = {
     ipcRenderer.on("backend:statusChanged", handler);
     // Return cleanup function
     return () => ipcRenderer.removeListener("backend:statusChanged", handler);
+  },
+
+  /**
+   * Python environment management
+   */
+  getEnvStatus: (): Promise<string> =>
+    ipcRenderer.invoke("env:getStatus"),
+
+  isEnvReady: (): Promise<boolean> =>
+    ipcRenderer.invoke("env:isReady"),
+
+  getEnvInfo: (): Promise<{
+    status: string;
+    envDir: string;
+    pythonPath: string | null;
+    sitePackages: string | null;
+    pythonVersion: string | null;
+    isCustom: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("env:getInfo"),
+
+  detectExistingEnvs: (): Promise<Array<{
+    path: string;
+    pythonVersion: string;
+    hasNirs4all: boolean;
+  }>> => ipcRenderer.invoke("env:detectExisting"),
+
+  useExistingEnv: (envPath: string): Promise<{
+    success: boolean;
+    message: string;
+    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
+  }> => ipcRenderer.invoke("env:useExisting", envPath),
+
+  startEnvSetup: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("env:startSetup"),
+
+  onEnvSetupProgress: (
+    callback: (progress: { percent: number; step: string; detail: string }) => void
+  ) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as Parameters<typeof callback>[0]);
+    ipcRenderer.on("env:setupProgress", handler);
+    return () => ipcRenderer.removeListener("env:setupProgress", handler);
   },
 
   /**

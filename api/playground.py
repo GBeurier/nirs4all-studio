@@ -22,10 +22,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import ORJSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import ORJSONResponse, Response
 from pydantic import BaseModel, Field
-from sklearn.decomposition import PCA
 
 # Check availability via direct imports
 try:
@@ -39,6 +38,12 @@ try:
     NIRS4ALL_AVAILABLE = True
 except ImportError:
     NIRS4ALL_AVAILABLE = False
+
+try:
+    import msgpack
+    MSGPACK_AVAILABLE = True
+except ImportError:
+    MSGPACK_AVAILABLE = False
 
 from .shared.decimation import decimate_wavelengths
 from .shared.filter_operators import (
@@ -122,6 +127,19 @@ class ExecuteDatasetRequest(BaseModel):
         default_factory=dict,
         description="Additional options: compute_pca, compute_statistics, max_wavelengths_returned, split_index"
     )
+
+
+class ChartComputeRequest(BaseModel):
+    """Request for computing a specific chart from cached pipeline data.
+
+    Used by parallel chart endpoints (/playground/pca, /playground/repetitions)
+    to compute individual chart data independently of the main execute response.
+    """
+
+    dataset_id: str | None = Field(None, description="Workspace dataset identifier (for server-side data loading)")
+    steps: list[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps (used for step cache lookup)")
+    sampling: SamplingOptions | None = Field(None, description="Sampling options")
+    options: dict[str, Any] = Field(default_factory=dict, description="Execution options")
 
 
 class StepTrace(BaseModel):
@@ -260,31 +278,20 @@ class PlaygroundExecutor:
         total_samples = X_original.shape[0]
 
         if subset_mode == "visible":
+            from nirs4all.data.selection.sampling import random_sample, stratified_sample
+
             max_displayed = options.get("max_samples_displayed", 200)
             n_select = min(max_displayed, total_samples)
 
             if n_select < total_samples:
                 # Use stratified sampling if Y is available for representative subset
-                rng = np.random.RandomState(42)
                 if y is not None:
                     try:
-                        from sklearn.model_selection import StratifiedShuffleSplit
-                        n_unique = len(np.unique(y))
-                        max_bins = min(5, n_unique, n_select // 2)
-                        if max_bins >= 2:
-                            y_binned = np.digitize(y, np.percentile(y, np.linspace(0, 100, max_bins + 1)[1:-1]))
-                            bin_counts = np.bincount(y_binned)
-                            if np.all(bin_counts >= 2):
-                                sss = StratifiedShuffleSplit(n_splits=1, test_size=n_select / total_samples, random_state=42)
-                                _, subset_indices = next(sss.split(X_original, y_binned))
-                            else:
-                                subset_indices = rng.choice(total_samples, size=n_select, replace=False)
-                        else:
-                            subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+                        subset_indices = stratified_sample(X_original, y, n_select, seed=42)
                     except Exception:
-                        subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+                        subset_indices = random_sample(total_samples, n_select, seed=42)
                 else:
-                    subset_indices = rng.choice(total_samples, size=n_select, replace=False)
+                    subset_indices = random_sample(total_samples, n_select, seed=42)
 
                 # Apply subset to the original data before any processing
                 X_original = X_original[subset_indices]
@@ -325,7 +332,7 @@ class PlaygroundExecutor:
         enabled_steps = [s for s in steps if s.enabled]
         is_raw_data = len(enabled_steps) == 0
 
-        # Execute pipeline steps
+        # Execute pipeline steps with step-level prefix caching
         X_processed = X_sampled.copy()
         execution_trace: list[StepTrace] = []
         step_errors: list[dict[str, Any]] = []
@@ -335,8 +342,33 @@ class PlaygroundExecutor:
         total_filtered = 0
         filter_mask = np.ones(X_sampled.shape[0], dtype=bool)
 
+        # Step-level prefix cache: find longest cached prefix to skip steps
+        data_fp = _compute_data_fingerprint(X_sampled)
+        skip_count = 0
+        if enabled_steps:
+            for i in range(len(enabled_steps), 0, -1):
+                prefix_key = _compute_prefix_key(data_fp, enabled_steps[:i])
+                cached_state = _step_cache.get(prefix_key)
+                if cached_state is not None:
+                    X_processed = cached_state["X"].copy()
+                    fold_info = cached_state.get("fold_info")
+                    filter_info = cached_state.get("filter_info")
+                    filter_mask = cached_state.get("filter_mask", np.ones(X_sampled.shape[0], dtype=bool)).copy()
+                    execution_trace = list(cached_state.get("trace", []))
+                    step_errors = list(cached_state.get("errors", []))
+                    splitter_applied = cached_state.get("splitter_applied", False)
+                    total_filtered = cached_state.get("total_filtered", 0)
+                    skip_count = i
+                    break
+
+        executed_step_idx = 0
         for step in steps:
             if not step.enabled:
+                continue
+
+            executed_step_idx += 1
+            # Skip steps already restored from cache
+            if executed_step_idx <= skip_count:
                 continue
 
             step_start = time.perf_counter()
@@ -395,6 +427,19 @@ class PlaygroundExecutor:
                     )
 
                 execution_trace.append(trace)
+
+                # Cache the intermediate state after each step
+                prefix_key = _compute_prefix_key(data_fp, enabled_steps[:executed_step_idx])
+                _step_cache.put(prefix_key, {
+                    "X": X_processed.copy(),
+                    "fold_info": fold_info,
+                    "filter_info": filter_info,
+                    "filter_mask": filter_mask.copy(),
+                    "trace": list(execution_trace),
+                    "errors": list(step_errors),
+                    "splitter_applied": splitter_applied,
+                    "total_filtered": total_filtered,
+                })
 
             except Exception as e:
                 trace = StepTrace(
@@ -535,6 +580,9 @@ class PlaygroundExecutor:
     ) -> np.ndarray:
         """Apply sampling to select subset of samples.
 
+        Delegates to nirs4all.data.selection.sampling for the actual
+        sampling strategies (random, stratified, kmeans).
+
         Args:
             X: Full data array
             y: Target values (for stratified sampling)
@@ -543,82 +591,26 @@ class PlaygroundExecutor:
         Returns:
             Array of selected sample indices
         """
+        from nirs4all.data.selection.sampling import kmeans_sample, random_sample, stratified_sample
+
         n_samples = X.shape[0]
 
         if sampling is None or sampling.method == "all":
             return np.arange(n_samples)
 
         n_select = min(sampling.n_samples, n_samples)
-        rng = np.random.RandomState(sampling.seed)
 
         if sampling.method == "random":
-            return rng.choice(n_samples, size=n_select, replace=False)
+            return random_sample(n_samples, n_select, seed=sampling.seed)
 
         elif sampling.method == "stratified" and y is not None:
-            # Stratified sampling based on y quantiles
-            from sklearn.model_selection import StratifiedShuffleSplit
-
-            # Bin y into groups for stratification
-            # Ensure at least 2 samples per bin for StratifiedShuffleSplit
-            n_unique = len(np.unique(y))
-            max_bins = min(5, n_unique, n_select // 2)
-
-            # Need at least 2 bins for stratification to make sense
-            if max_bins < 2:
-                # Fall back to random sampling
-                return rng.choice(n_samples, size=n_select, replace=False)
-
-            y_binned = np.digitize(y, np.percentile(y, np.linspace(0, 100, max_bins + 1)[1:-1]))
-
-            # Check that each bin has at least 2 samples
-            bin_counts = np.bincount(y_binned)
-            if np.any(bin_counts < 2):
-                # Fall back to random sampling if stratification isn't possible
-                return rng.choice(n_samples, size=n_select, replace=False)
-
-            try:
-                sss = StratifiedShuffleSplit(
-                    n_splits=1,
-                    test_size=n_select / n_samples,
-                    random_state=sampling.seed
-                )
-                _, indices = next(sss.split(X, y_binned))
-                return indices
-            except ValueError:
-                # Fall back to random if stratification fails
-                return rng.choice(n_samples, size=n_select, replace=False)
+            return stratified_sample(X, y, n_select, seed=sampling.seed)
 
         elif sampling.method == "kmeans":
-            # K-means based sampling for representative selection
-            from sklearn.cluster import MiniBatchKMeans
-
-            # Use exactly the number of clusters we want
-            n_clusters = n_select
-            kmeans = MiniBatchKMeans(
-                n_clusters=n_clusters,
-                random_state=sampling.seed,
-                n_init=3
-            )
-            kmeans.fit(X)
-
-            # Select sample closest to each cluster center (avoiding duplicates)
-            selected = []
-            used_indices = set()
-
-            for center in kmeans.cluster_centers_:
-                distances = np.linalg.norm(X - center, axis=1)
-                # Sort by distance and find closest not yet selected
-                sorted_indices = np.argsort(distances)
-                for idx in sorted_indices:
-                    if idx not in used_indices:
-                        selected.append(idx)
-                        used_indices.add(idx)
-                        break
-
-            return np.array(selected[:n_select])
+            return kmeans_sample(X, n_select, seed=sampling.seed)
 
         else:
-            return rng.choice(n_samples, size=n_select, replace=False)
+            return random_sample(n_samples, n_select, seed=sampling.seed)
 
     def _execute_preprocessing(
         self,
@@ -804,7 +796,8 @@ class PlaygroundExecutor:
     ) -> dict[str, Any]:
         """Compute PCA projection for visualization.
 
-        Computes enough components to explain 99.9% variance (up to 10 max).
+        Delegates to nirs4all.analysis.compute_pca_projection for the actual
+        computation, then adds UI-specific coloring data (y values, fold labels).
 
         Args:
             X: Processed data
@@ -814,27 +807,18 @@ class PlaygroundExecutor:
         Returns:
             PCA result dict
         """
-        # First, compute with enough components to reach 99.9% variance
-        # Use min(10, n_samples, n_features) as upper limit for efficiency
-        max_components = min(10, X.shape[0], X.shape[1])
-        pca = PCA(n_components=max_components)
-
         try:
-            X_pca = pca.fit_transform(X)
+            from nirs4all.analysis import compute_pca_projection
+            pca_data = compute_pca_projection(X, max_components=10, variance_threshold=0.999)
         except Exception as e:
             return {"error": str(e)}
 
-        # Determine how many components are needed for 99.9% variance
-        cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
-        n_components_999 = np.searchsorted(cumulative_variance, 0.999) + 1
-        n_components_used = min(max(n_components_999, 3), max_components)  # At least 3, at most max_components
-
         result = {
-            "coordinates": X_pca.tolist(),  # Return all computed components
-            "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
-            "explained_variance": pca.explained_variance_.tolist(),
-            "n_components": max_components,  # Actual number of components computed
-            "n_components_999": int(n_components_used),  # Components needed for 99.9% variance
+            "coordinates": pca_data["coordinates"],
+            "explained_variance_ratio": pca_data["explained_variance_ratio"],
+            "explained_variance": pca_data["explained_variance"],
+            "n_components": pca_data["n_components"],
+            "n_components_999": pca_data["n_components_threshold"],
         }
 
         # Add target values for coloring
@@ -1224,6 +1208,38 @@ _cache_ttl_seconds = 300  # 5 minutes
 _cache_max_entries = 100
 
 
+def _negotiate_response(data: dict, http_request: Request) -> Response | dict:
+    """Return MessagePack or JSON response based on Accept header.
+
+    When the client sends ``Accept: application/x-msgpack``, the response is
+    serialized with MessagePack (binary, ~40-50 % smaller than JSON for numeric
+    arrays, and significantly faster to parse on the frontend).  Falls back to
+    the normal FastAPI response_model + ORJSONResponse flow otherwise.
+    """
+    accept = http_request.headers.get("accept", "")
+    if MSGPACK_AVAILABLE and "application/x-msgpack" in accept:
+        # Convert Pydantic models to plain dicts for msgpack
+        if isinstance(data, BaseModel):
+            data = data.model_dump(mode="python")
+        packed = msgpack.packb(data, default=_msgpack_default, use_bin_type=True)
+        return Response(content=packed, media_type="application/x-msgpack")
+    # Return the dict unchanged — FastAPI handles response_model + ORJSONResponse.
+    return data
+
+
+def _msgpack_default(obj: Any) -> Any:
+    """Fallback serializer for msgpack — handles numpy types."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    raise TypeError(f"Unknown type for msgpack: {type(obj)}")
+
+
 def _compute_cache_key(data: PlaygroundData, steps: list[PlaygroundStep], options: dict[str, Any]) -> str:
     """Compute cache key for a request.
 
@@ -1316,17 +1332,117 @@ def _set_cached(cache_key: str, result: ExecuteResponse):
     _cache[cache_key] = (current_time, result)
 
 
+# ============= Step-Level Prefix Cache =============
+
+
+class _StepCache:
+    """LRU step-level cache for intermediate pipeline results.
+
+    Stores the output of each pipeline prefix so subsequent requests
+    that share the same prefix can skip already-computed steps.
+    Memory-bounded with approximate byte-size tracking and TTL expiry.
+    """
+
+    def __init__(self, max_bytes: int = 200 * 1024 * 1024, ttl_seconds: int = 300):
+        self._entries: dict[str, tuple[float, dict]] = {}
+        self._sizes: dict[str, int] = {}
+        self._total_bytes: int = 0
+        self._max_bytes = max_bytes
+        self._ttl_seconds = ttl_seconds
+
+    def _estimate_size(self, state: dict) -> int:
+        """Estimate byte size of cached state."""
+        size = 0
+        for v in state.values():
+            if isinstance(v, np.ndarray):
+                size += v.nbytes
+            elif isinstance(v, (list, dict)):
+                size += sys.getsizeof(v)
+        return max(size, 64)  # minimum 64 bytes per entry
+
+    def get(self, key: str) -> dict | None:
+        """Get cached state if valid (not expired)."""
+        if key in self._entries:
+            ts, state = self._entries[key]
+            if time.time() - ts < self._ttl_seconds:
+                # Touch timestamp for LRU
+                self._entries[key] = (time.time(), state)
+                return state
+            else:
+                self._evict(key)
+        return None
+
+    def put(self, key: str, state: dict) -> None:
+        """Store a state, evicting LRU entries if over memory budget."""
+        if key in self._entries:
+            self._evict(key)
+
+        size = self._estimate_size(state)
+
+        # Evict oldest until under budget
+        while self._total_bytes + size > self._max_bytes and self._entries:
+            oldest_key = min(self._entries, key=lambda k: self._entries[k][0])
+            self._evict(oldest_key)
+
+        self._entries[key] = (time.time(), state)
+        self._sizes[key] = size
+        self._total_bytes += size
+
+    def _evict(self, key: str) -> None:
+        if key in self._entries:
+            del self._entries[key]
+            self._total_bytes -= self._sizes.pop(key, 0)
+
+    def clear(self) -> None:
+        self._entries.clear()
+        self._sizes.clear()
+        self._total_bytes = 0
+
+
+# Module-level singleton
+_step_cache = _StepCache()
+
+
+def _compute_prefix_key(data_fingerprint: str, steps: list) -> str:
+    """Compute cache key for a pipeline prefix.
+
+    Args:
+        data_fingerprint: Hash identifying the input data.
+        steps: Pipeline steps up to and including the target step.
+
+    Returns:
+        MD5 hex digest as cache key.
+    """
+    step_data = [(s.id, s.name, json.dumps(s.params, sort_keys=True)) for s in steps]
+    raw = f"{data_fingerprint}:{json.dumps(step_data, sort_keys=True)}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _compute_data_fingerprint(X: np.ndarray) -> str:
+    """Compute a lightweight fingerprint of a numpy data array.
+
+    Uses shape + first/last row bytes for fast identification without
+    hashing the entire array.
+    """
+    parts = [f"{X.shape[0]}x{X.shape[1]}"]
+    if X.shape[0] > 0:
+        parts.append(X[0, :min(10, X.shape[1])].tobytes().hex()[:32])
+    if X.shape[0] > 1:
+        parts.append(X[-1, :min(10, X.shape[1])].tobytes().hex()[:32])
+    return hashlib.md5(":".join(parts).encode()).hexdigest()
+
+
 # ============= API Endpoints =============
 
 
 # Input size limits for security
 MAX_SAMPLES = 10000
-MAX_FEATURES = 4000
+MAX_FEATURES = 10000
 MAX_STEPS = 50
 
 
 @router.post("/execute", response_model=ExecuteResponse, response_class=ORJSONResponse)
-async def execute_pipeline(request: ExecuteRequest):
+async def execute_pipeline(request: ExecuteRequest, http_request: Request):
     """Execute a playground pipeline on spectral data.
 
     This endpoint processes spectral data through a series of preprocessing
@@ -1398,7 +1514,7 @@ async def execute_pipeline(request: ExecuteRequest):
         cache_key = _compute_cache_key(request.data, request.steps, request.options)
         cached = _get_cached(cache_key)
         if cached:
-            return cached
+            return _negotiate_response(cached, http_request)
 
     # Execute pipeline
     executor = PlaygroundExecutor(verbose=0)
@@ -1420,11 +1536,11 @@ async def execute_pipeline(request: ExecuteRequest):
     if use_cache and cache_key:
         _set_cached(cache_key, result)
 
-    return result
+    return _negotiate_response(result, http_request)
 
 
 @router.post("/execute-dataset", response_model=ExecuteResponse, response_class=ORJSONResponse)
-async def execute_dataset_pipeline(request: ExecuteDatasetRequest):
+async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request: Request):
     """Execute a playground pipeline on a workspace dataset by reference.
 
     Instead of receiving the full spectral data matrix from the client,
@@ -1495,7 +1611,13 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest):
     # Validate size limits
     n_samples, n_features = X.shape
 
-    if n_samples > MAX_SAMPLES:
+    # When sampling is active, the executor will reduce to at most n_samples
+    # samples, so validate against the effective (post-sampling) count.
+    effective_samples = n_samples
+    if request.sampling and request.sampling.method != "all":
+        effective_samples = min(request.sampling.n_samples, n_samples)
+
+    if effective_samples > MAX_SAMPLES:
         raise HTTPException(
             status_code=400,
             detail=f"Too many samples: {n_samples}. Maximum allowed: {MAX_SAMPLES}. "
@@ -1526,7 +1648,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest):
         cache_key = _compute_dataset_cache_key(request.dataset_id, request.steps, request.options)
         cached = _get_cached(cache_key)
         if cached:
-            return cached
+            return _negotiate_response(cached, http_request)
 
     # Execute pipeline — pass numpy arrays directly (no list conversion)
     executor = PlaygroundExecutor(verbose=0)
@@ -1551,7 +1673,143 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest):
     if use_cache and cache_key:
         _set_cached(cache_key, result)
 
-    return result
+    return _negotiate_response(result, http_request)
+
+
+# ============= Parallel Chart Endpoints =============
+
+
+def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
+    """Look up the step cache for already-processed data.
+
+    Attempts to find the full pipeline result in the step cache.
+    Returns the cached state dict or None if not found.
+    """
+    if not request.steps:
+        return None
+
+    enabled_steps = [s for s in request.steps if s.enabled]
+    if not enabled_steps:
+        return None
+
+    # We need the data fingerprint to look up the step cache.
+    # For dataset-ref requests, load the dataset to compute the fingerprint.
+    if request.dataset_id and NIRS4ALL_AVAILABLE:
+        from .spectra import _load_dataset
+
+        dataset = _load_dataset(request.dataset_id)
+        if not dataset:
+            return None
+
+        try:
+            X = dataset.x({"partition": "train"}, layout="2d")
+            if isinstance(X, list):
+                X = X[0]
+        except Exception:
+            return None
+
+        data_fp = _compute_data_fingerprint(X)
+    else:
+        return None
+
+    # Look up the full pipeline prefix
+    prefix_key = _compute_prefix_key(data_fp, enabled_steps)
+    return _step_cache.get(prefix_key)
+
+
+@router.post("/pca", response_class=ORJSONResponse)
+async def compute_pca_chart(request: ChartComputeRequest, http_request: Request):
+    """Compute PCA projection independently from the main execute response.
+
+    Looks up the step cache for already-processed data. If the pipeline has been
+    executed recently (via /execute or /execute-dataset), the processed data is
+    retrieved from cache and only PCA is computed, avoiding redundant pipeline
+    re-execution.
+
+    Returns only the PCA result dict (not the full ExecuteResponse).
+    """
+    cached_state = _get_processed_data_from_cache(request)
+
+    if cached_state is not None:
+        X_processed = cached_state["X"]
+        executor = PlaygroundExecutor()
+
+        # Extract y for coloring (need to load from dataset)
+        y_sampled = None
+        fold_info = cached_state.get("fold_info")
+
+        if request.dataset_id and NIRS4ALL_AVAILABLE:
+            try:
+                from .spectra import _load_dataset
+                dataset = _load_dataset(request.dataset_id)
+                if dataset:
+                    y_raw = dataset.y({"partition": "train"})
+                    if y_raw is not None and len(y_raw) > 0:
+                        y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                        # If the cached data was sampled, we need the matching y subset
+                        if len(y_sampled) != X_processed.shape[0]:
+                            y_sampled = None
+            except Exception:
+                pass
+
+        try:
+            pca_result = executor._compute_pca(X_processed, y_sampled, fold_info)
+            return _negotiate_response({"success": True, "pca": pca_result}, http_request)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # Fallback: no cached data available
+    return {"success": False, "error": "No cached pipeline data available. Execute the pipeline first."}
+
+
+@router.post("/repetitions", response_class=ORJSONResponse)
+async def compute_repetitions_chart(request: ChartComputeRequest, http_request: Request):
+    """Compute repetition analysis independently from the main execute response.
+
+    Similar to /pca — looks up the step cache for processed data and computes
+    only the repetition analysis.
+
+    Returns only the repetitions result dict.
+    """
+    cached_state = _get_processed_data_from_cache(request)
+
+    if cached_state is not None:
+        X_processed = cached_state["X"]
+        executor = PlaygroundExecutor()
+
+        # Load additional data needed for repetition analysis
+        sample_ids = None
+        metadata_sampled = None
+        y_sampled = None
+
+        if request.dataset_id and NIRS4ALL_AVAILABLE:
+            try:
+                from .spectra import _load_dataset
+                dataset = _load_dataset(request.dataset_id)
+                if dataset:
+                    y_raw = dataset.y({"partition": "train"})
+                    if y_raw is not None and len(y_raw) > 0:
+                        y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                        if len(y_sampled) != X_processed.shape[0]:
+                            y_sampled = None
+            except Exception:
+                pass
+
+        try:
+            repetitions_result = executor._compute_repetition_analysis(
+                X=X_processed,
+                sample_ids=sample_ids,
+                metadata=metadata_sampled,
+                pca_result=None,
+                umap_result=None,
+                y=y_sampled,
+                options=request.options,
+            )
+            return _negotiate_response({"success": True, "repetitions": repetitions_result}, http_request)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    return {"success": False, "error": "No cached pipeline data available. Execute the pipeline first."}
 
 
 @router.get("/operators")

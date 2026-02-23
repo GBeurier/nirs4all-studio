@@ -7,7 +7,13 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useEffect, useMemo, useCallback } from 'react';
-import { executePlayground, executeDatasetPlayground, buildExecuteRequest } from '@/api/playground';
+import {
+  executePlayground,
+  executeDatasetPlayground,
+  buildExecuteRequest,
+  computePcaChart,
+  computeRepetitionsChart,
+} from '@/api/playground';
 import {
   useDebouncedValue,
   DEBOUNCE_DELAYS,
@@ -196,6 +202,9 @@ export function usePlaygroundQuery(
       // Use dataset-ref endpoint when a workspace datasetId is available.
       // This avoids uploading the full spectra matrix back to the server.
       if (datasetId) {
+        // In dataset-ref mode, parallel chart queries handle PCA/repetitions
+        // independently, so the main query skips them for faster core response.
+        const skipForParallel = true;
         response = await executeDatasetPlayground(
           {
             dataset_id: datasetId,
@@ -204,10 +213,11 @@ export function usePlaygroundQuery(
               ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
               : undefined,
             options: {
-              compute_pca: executeOptions?.compute_pca ?? true,
+              compute_pca: skipForParallel ? false : (executeOptions?.compute_pca ?? true),
               compute_umap: executeOptions?.compute_umap ?? false,
               umap_params: executeOptions?.umap_params,
               compute_statistics: executeOptions?.compute_statistics ?? true,
+              compute_repetitions: skipForParallel ? false : (executeOptions?.compute_repetitions ?? true),
               max_wavelengths_returned: executeOptions?.max_wavelengths_returned,
               split_index: executeOptions?.split_index,
               use_cache: executeOptions?.use_cache ?? true,
@@ -243,6 +253,7 @@ export function usePlaygroundQuery(
           computeUmap: executeOptions?.compute_umap ?? false,
           umapParams: executeOptions?.umap_params,
           computeStatistics: executeOptions?.compute_statistics ?? true,
+          computeRepetitions: executeOptions?.compute_repetitions ?? true,
           maxWavelengths: executeOptions?.max_wavelengths_returned,
           splitIndex: executeOptions?.split_index,
           useCache: executeOptions?.use_cache ?? true,
@@ -274,6 +285,13 @@ export function usePlaygroundQuery(
     }
   }, [data, datasetId, debouncedPipelineHash, sampling, executeOptions]);
 
+  // Determine if parallel chart queries are available.
+  // Parallel endpoints (/playground/pca, /playground/repetitions) require dataset_id
+  // for step cache lookup. Raw data mode uses the monolithic query for everything.
+  const useParallelCharts = Boolean(datasetId);
+  const wantPca = executeOptions?.compute_pca ?? true;
+  const wantRepetitions = executeOptions?.compute_repetitions ?? true;
+
   // Main query
   const query = useQuery({
     queryKey,
@@ -292,12 +310,69 @@ export function usePlaygroundQuery(
     placeholderData: (previousData) => previousData, // Keep previous data while loading
   });
 
+  // Parallel PCA query — fires after the main query populates the step cache.
+  // Only used when datasetId is available (step cache requires it for lookup).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- debouncedPipelineHash triggers recompute when ref updates
+  const steps = useMemo(() => unifiedToPlaygroundSteps(stableOperatorsRef.current), [debouncedPipelineHash]);
+  const chartRequest = useMemo(() => ({
+    dataset_id: datasetId || undefined,
+    steps,
+    sampling: sampling.method !== 'all'
+      ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
+      : undefined,
+    options: {},
+  }), [datasetId, steps, sampling]);
+
+  const pcaQuery = useQuery({
+    queryKey: [...queryKey, 'pca-parallel'],
+    queryFn: async () => {
+      const result = await computePcaChart(chartRequest);
+      if (result.success && result.pca) {
+        return result.pca;
+      }
+      return null;
+    },
+    enabled: useParallelCharts && wantPca && query.isSuccess && !query.isFetching,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const repetitionsQuery = useQuery({
+    queryKey: [...queryKey, 'repetitions-parallel'],
+    queryFn: async () => {
+      const result = await computeRepetitionsChart(chartRequest);
+      if (result.success && result.repetitions) {
+        return result.repetitions;
+      }
+      return null;
+    },
+    enabled: useParallelCharts && wantRepetitions && query.isSuccess && !query.isFetching,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Merge results: main query + parallel chart results
+  const mergedResult = useMemo(() => {
+    if (!query.data) return null;
+
+    // If not using parallel charts, main query already has everything
+    if (!useParallelCharts) return query.data;
+
+    return {
+      ...query.data,
+      pca: (pcaQuery.data as PlaygroundResult['pca']) ?? query.data.pca,
+      repetitions: (repetitionsQuery.data as PlaygroundResult['repetitions']) ?? query.data.repetitions,
+    };
+  }, [query.data, useParallelCharts, pcaQuery.data, repetitionsQuery.data]);
+
   // Handle success callback
   useEffect(() => {
-    if (query.isSuccess && query.data && onSuccess) {
-      onSuccess(query.data);
+    if (query.isSuccess && mergedResult && onSuccess) {
+      onSuccess(mergedResult);
     }
-  }, [query.isSuccess, query.data, onSuccess]);
+  }, [query.isSuccess, mergedResult, onSuccess]);
 
   // Handle error callback
   useEffect(() => {
@@ -324,9 +399,9 @@ export function usePlaygroundQuery(
   }, [queryClient, queryKey]);
 
   return {
-    result: query.data ?? null,
+    result: mergedResult,
     isLoading: query.isLoading,
-    isFetching: query.isFetching,
+    isFetching: query.isFetching || (useParallelCharts && (pcaQuery.isFetching || repetitionsQuery.isFetching)),
     isError: query.isError,
     error: query.error as Error | null,
     isDebouncing,

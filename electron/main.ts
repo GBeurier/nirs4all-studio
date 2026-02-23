@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Use require for electron to avoid Rollup ESM/CJS interop issues
 const electron = require("electron") as typeof import("electron");
-const { app, BrowserWindow, ipcMain, dialog, shell } = electron;
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 
 import path from "node:path";
 import fs from "node:fs";
 import { BackendManager } from "./backend-manager";
+import { EnvManager } from "./env-manager";
 
 // WSL2/WSLg fixes - must be set before app is ready
 if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
@@ -16,13 +17,50 @@ if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
 // Disable Autofill CDP domain (not supported in Electron, causes DevTools errors)
 app.commandLine.appendSwitch("disable-features", "Autofill,AutofillServerCommunication");
 
+const envManager = new EnvManager();
 const backendManager = new BackendManager();
+backendManager.setEnvManager(envManager);
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
 
 // VITE_DEV_SERVER_URL is set by vite-plugin-electron in dev mode
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const DIST_PATH = path.join(__dirname, "../dist");
+
+// Dev mode: Vite dev server OR --dev command-line flag
+const isDev = VITE_DEV_SERVER_URL !== undefined;
+const devMode = isDev || app.commandLine.hasSwitch("dev");
+
+function createSplashWindow(): BrowserWindow {
+  const splash = new BrowserWindow({
+    width: 400,
+    height: 320,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    center: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  // In dev, logo is at ../public/; in prod build, copied to dist-electron/
+  const logoFile = isDev
+    ? path.join(__dirname, "..", "public", "nirs4all_logo.png")
+    : path.join(__dirname, "nirs4all_logo.png");
+  const logoUrl = `file://${logoFile.replace(/\\/g, "/")}`;
+  splash.loadFile(path.join(__dirname, "splash.html"), {
+    query: { logo: logoUrl },
+  });
+  return splash;
+}
+
+function closeSplash(): void {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+  splashWindow = null;
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -46,8 +84,9 @@ async function createWindow() {
     show: false, // Show after ready-to-show
   });
 
-  // Show window when ready
+  // Show main window and close splash when ready
   mainWindow.once("ready-to-show", () => {
+    closeSplash();
     mainWindow?.show();
   });
 
@@ -55,10 +94,11 @@ async function createWindow() {
   if (VITE_DEV_SERVER_URL) {
     // Development mode: load from Vite dev server
     await mainWindow.loadURL(VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
+    if (devMode) mainWindow.webContents.openDevTools();
   } else {
     // Production mode: load built files
     await mainWindow.loadFile(path.join(DIST_PATH, "index.html"));
+    if (devMode) mainWindow.webContents.openDevTools();
   }
 
   mainWindow.on("closed", () => {
@@ -220,37 +260,103 @@ ipcMain.handle("backend:restart", async () => {
   }
 });
 
-// App lifecycle
-app.whenReady().then(async () => {
-  // Start backend first
+// IPC Handlers for Python environment management
+ipcMain.handle("env:getStatus", () => {
+  return envManager.getStatus();
+});
+
+ipcMain.handle("env:isReady", () => {
+  return envManager.isReady();
+});
+
+ipcMain.handle("env:getInfo", () => {
+  return envManager.getInfo();
+});
+
+ipcMain.handle("env:detectExisting", async () => {
+  return envManager.detectExistingEnvs();
+});
+
+ipcMain.handle("env:useExisting", async (_, envPath: string) => {
+  return envManager.useExistingEnv(envPath);
+});
+
+ipcMain.handle("env:startSetup", async () => {
   try {
-    const port = await backendManager.start();
-    console.log(`Backend started on port ${port}`);
-  } catch (error) {
-    console.error("Failed to start backend:", error);
-
-    // Show error dialog to user
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-
-    const result = await dialog.showMessageBox({
-      type: "error",
-      title: "Backend Error",
-      message: "Failed to start the backend server",
-      detail: `${errorMessage}\n\nWould you like to continue without the backend? (limited functionality)`,
-      buttons: ["Continue Anyway", "Quit"],
-      defaultId: 1,
-      cancelId: 1,
+    await envManager.setup((percent, step, detail) => {
+      // Broadcast progress to all renderer windows
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        win.webContents.send("env:setupProgress", { percent, step, detail });
+      }
     });
 
-    if (result.response === 1) {
-      app.quit();
-      return;
-    }
+    // Python env is ready — start the backend
+    console.log("Python environment ready, starting backend...");
+    const port = await backendManager.start();
+    console.log(`Backend started on port ${port}`);
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+});
+
+// App lifecycle
+app.whenReady().then(async () => {
+  // Remove application menu in production mode (keep it for dev/debug)
+  if (!devMode) {
+    Menu.setApplicationMenu(null);
   }
 
-  // Create window regardless of backend status
-  await createWindow();
+  // Show splash screen immediately (gives visual feedback during startup)
+  splashWindow = createSplashWindow();
+
+  if (isDev) {
+    // Dev mode: start backend directly (uses .venv)
+    try {
+      const port = await backendManager.start();
+      console.log(`Backend started on port ${port}`);
+    } catch (error) {
+      console.error("Failed to start backend:", error);
+    }
+    await createWindow();
+  } else if (envManager.isReady()) {
+    // Python env exists: start backend, then show window
+    try {
+      const port = await backendManager.start();
+      console.log(`Backend started on port ${port}`);
+    } catch (error) {
+      console.error("Failed to start backend:", error);
+
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
+
+      closeSplash();
+      const result = await dialog.showMessageBox({
+        type: "error",
+        title: "Backend Error",
+        message: "Failed to start the backend server",
+        detail: `${errorMessage}\n\nWould you like to continue without the backend? (limited functionality)`,
+        buttons: ["Continue Anyway", "Quit"],
+        defaultId: 1,
+        cancelId: 1,
+      });
+
+      if (result.response === 1) {
+        app.quit();
+        return;
+      }
+    }
+    await createWindow();
+  } else {
+    // No Python env: show window immediately (it will display the setup screen)
+    console.log("Python environment not found, showing setup screen...");
+    await createWindow();
+  }
 
   app.on("activate", () => {
     // macOS: re-create window when dock icon is clicked

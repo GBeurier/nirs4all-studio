@@ -176,6 +176,58 @@ class ApiClient {
   async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE", ...options });
   }
+
+  // POST with MessagePack content negotiation (binary response when backend supports it)
+  async postMsgpack<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
+    const baseUrl = await getApiBaseUrl();
+    const url = `${baseUrl}${endpoint}`;
+    const { body: _ignored, ...restOptions } = options || {};
+
+    const config: RequestInit = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/x-msgpack, application/json;q=0.9",
+        ...options?.headers,
+      },
+      ...restOptions,
+      body: data ? JSON.stringify(data) : undefined,
+    };
+
+    try {
+      const response = await fetch(url, config);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error: ApiError = {
+          detail: errorData.detail || `HTTP error ${response.status}`,
+          status: response.status,
+        };
+        logger.error(`[postMsgpack] ${response.status} ${endpoint}:`, errorData.detail || errorData);
+        throw error;
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/x-msgpack")) {
+        const { decode } = await import("@msgpack/msgpack");
+        const buffer = await response.arrayBuffer();
+        return decode(new Uint8Array(buffer)) as T;
+      }
+
+      return await response.json();
+    } catch (error) {
+      if ((error as ApiError).status) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === "AbortError") {
+        throw error;
+      }
+      throw {
+        detail: error instanceof Error ? error.message : "Network error",
+        status: 0,
+      } as ApiError;
+    }
+  }
 }
 
 export const api = new ApiClient();

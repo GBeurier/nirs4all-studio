@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Datasets from "@/pages/Datasets";
@@ -19,8 +20,44 @@ import VariableImportance from "@/pages/VariableImportance";
 import Settings from "@/pages/Settings";
 import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
+import EnvSetup from "@/components/setup/EnvSetup";
+
+const electronApi = (window as unknown as {
+  electronApi?: {
+    isElectron: boolean;
+    isEnvReady: () => Promise<boolean>;
+  };
+}).electronApi;
 
 function App() {
+  // In Electron mode, check if the Python environment is ready.
+  // If not, show the env setup screen before loading the app.
+  const [envReady, setEnvReady] = useState<boolean | null>(null);
+  const isElectron = !!electronApi?.isElectron;
+
+  useEffect(() => {
+    if (!isElectron || !electronApi) {
+      // Web mode: no env check needed, backend managed externally
+      setEnvReady(true);
+      return;
+    }
+    electronApi.isEnvReady().then(setEnvReady);
+  }, [isElectron]);
+
+  // Loading state while checking env
+  if (envReady === null) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  // Env not ready in Electron mode: show setup screen (no backend available yet)
+  if (!envReady) {
+    return <EnvSetup onComplete={() => setEnvReady(true)} />;
+  }
+
   return (
     <Routes>
       <Route element={<AppLayout />}>

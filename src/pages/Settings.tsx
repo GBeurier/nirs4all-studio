@@ -116,11 +116,22 @@ export default function Settings() {
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [activeN4AWorkspaceId, setActiveN4AWorkspaceId] = useState<string | null>(null);
+  const [backendUrl, setBackendUrl] = useState<string>("...");
 
   // Load workspace info on mount
   useEffect(() => {
     loadWorkspace();
     loadN4AWorkspaces();
+  }, []);
+
+  // Resolve actual backend URL (dynamic port in Electron mode)
+  useEffect(() => {
+    const electronApi = (window as unknown as { electronApi?: { getBackendUrl?: () => Promise<string> } }).electronApi;
+    if (electronApi?.getBackendUrl) {
+      electronApi.getBackendUrl().then((url) => setBackendUrl(url)).catch(() => setBackendUrl(window.location.origin));
+    } else {
+      setBackendUrl(window.location.origin);
+    }
   }, []);
 
   const loadN4AWorkspaces = async () => {
@@ -500,9 +511,9 @@ export default function Settings() {
                     </p>
                   </div>
                   <Input
-                    defaultValue="http://127.0.0.1:8000"
+                    value={backendUrl}
                     className="w-64"
-                    disabled
+                    readOnly
                   />
                 </div>
               </CardContent>

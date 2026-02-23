@@ -117,11 +117,13 @@ async function main() {
       console.log("");
     }
 
-    // Step 1: Build Python backend
+    // Step 1: Prepare Python backend
     if (!skipBackend) {
       if (mode === "installer") {
-        console.log(`=== Step 1: Setting up embedded Python environment (${flavor.toUpperCase()}) ===`);
-        await runCommand("node", ["scripts/setup-python-env.cjs", "--flavor", flavor]);
+        // Lightweight build: only copy backend source files.
+        // Python runtime is downloaded at first launch by env-manager.
+        console.log("=== Step 1: Copying backend source files (lightweight) ===");
+        await runCommand("node", ["scripts/copy-backend-source.cjs", "--clean"]);
       } else {
         console.log(`=== Step 1: Building Python backend with PyInstaller (${flavor.toUpperCase()}) ===`);
         await runCommand("node", ["scripts/build-backend.cjs", "--flavor", flavor]);

@@ -4,7 +4,7 @@
  */
 
 /** Backend status types */
-type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting";
+type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
 
 interface BackendInfo {
   status: BackendStatus;
@@ -118,6 +118,37 @@ interface ElectronApi {
    * @returns Cleanup function to unsubscribe
    */
   onBackendStatusChanged(callback: (info: BackendInfo) => void): () => void;
+
+  /**
+   * Python environment management
+   */
+  getEnvStatus(): Promise<string>;
+  isEnvReady(): Promise<boolean>;
+  getEnvInfo(): Promise<{
+    status: string;
+    envDir: string;
+    pythonPath: string | null;
+    sitePackages: string | null;
+    pythonVersion: string | null;
+    isCustom: boolean;
+    error?: string;
+  }>;
+  detectExistingEnvs(): Promise<Array<{
+    path: string;
+    pythonVersion: string;
+    hasNirs4all: boolean;
+  }>>;
+  useExistingEnv(envPath: string): Promise<{
+    success: boolean;
+    message: string;
+    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
+  }>;
+  startEnvSetup(): Promise<{ success: boolean; error?: string }>;
+  onEnvSetupProgress(callback: (progress: {
+    percent: number;
+    step: string;
+    detail: string;
+  }) => void): () => void;
 
   /**
    * The current platform (darwin, win32, linux)

@@ -266,7 +266,7 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
 def _get_installed_packages() -> dict[str, str]:
     """Get dict of installed package names → versions from the venv."""
     try:
-        packages = venv_manager.list_packages()
+        packages = venv_manager.get_installed_packages()
         return {pkg.name.lower().replace("-", "_"): pkg.version for pkg in packages}
     except Exception as e:
         logger.warning("Could not list installed packages: %s", e)

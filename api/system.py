@@ -110,9 +110,16 @@ def _get_package_versions() -> dict[str, str]:
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    Returns ``ready: true`` once the startup event has fully completed
+    (workspace restoration, background tasks scheduled, etc.).
+    Electron uses this to know when the backend is safe to query.
+    """
+    import main as _main_module
     return {
         "status": "healthy",
+        "ready": _main_module.startup_complete,
         "message": "nirs4all webapp is running",
     }
 

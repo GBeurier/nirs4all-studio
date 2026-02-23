@@ -1,11 +1,33 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import electron from "vite-plugin-electron";
 import renderer from "vite-plugin-electron-renderer";
+import fs from "fs";
 import path from "path";
 
 const isElectron = process.env.ELECTRON === "true";
 const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
+
+/** Copy static electron assets (splash.html, logo) to dist-electron during build */
+function copyElectronAssets(): Plugin {
+  return {
+    name: "copy-electron-assets",
+    closeBundle() {
+      const outDir = path.resolve(__dirname, "dist-electron");
+      fs.mkdirSync(outDir, { recursive: true });
+      const assets = [
+        { src: "electron/splash.html", dest: "splash.html" },
+        { src: "public/nirs4all_logo.png", dest: "nirs4all_logo.png" },
+      ];
+      for (const { src, dest } of assets) {
+        const srcPath = path.resolve(__dirname, src);
+        if (fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, path.join(outDir, dest));
+        }
+      }
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -82,6 +104,7 @@ export default defineConfig(({ mode }) => ({
             },
           ]),
           renderer(),
+          copyElectronAssets(),
         ]
       : []),
   ],

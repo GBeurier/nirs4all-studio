@@ -5,17 +5,22 @@
 #   ./scripts/build-release.sh [options]
 #
 # Options:
-#   --flavor cpu|gpu   Build flavor (default: cpu)
-#   --clean            Clean all build artifacts before building
-#   --skip-backend     Skip building the Python backend (use existing)
-#   --skip-frontend    Skip building the frontend (use existing)
-#   --platform         Target platform: win, mac, linux, or all (default: current)
+#   --flavor cpu|gpu                Build flavor (default: cpu)
+#   --mode installer|standalone     Build mode (default: installer)
+#                                   installer: lightweight — Python downloaded at first launch
+#                                   standalone: PyInstaller frozen executable
+#   --standalone                    Shorthand for --mode standalone
+#   --clean                         Clean all build artifacts before building
+#   --skip-backend                  Skip building the Python backend (use existing)
+#   --skip-frontend                 Skip building the frontend (use existing)
+#   --platform                      Target platform: win, mac, linux, or all (default: current)
 #
 # Examples:
-#   ./scripts/build-release.sh                         # CPU build for current platform
-#   ./scripts/build-release.sh --flavor gpu            # GPU build
-#   ./scripts/build-release.sh --platform all          # Build for all platforms
-#   ./scripts/build-release.sh --flavor cpu --clean    # Clean CPU build
+#   ./scripts/build-release.sh                         # Lightweight installer for current platform
+#   ./scripts/build-release.sh --standalone             # PyInstaller standalone build
+#   ./scripts/build-release.sh --flavor gpu             # GPU build
+#   ./scripts/build-release.sh --platform all           # Build for all platforms
+#   ./scripts/build-release.sh --flavor cpu --clean     # Clean CPU build
 
 set -e
 
@@ -31,6 +36,7 @@ echo ""
 
 # Default values
 FLAVOR="cpu"
+MODE="installer"
 CLEAN=false
 SKIP_BACKEND=false
 SKIP_FRONTEND=false
@@ -42,6 +48,14 @@ while [[ $# -gt 0 ]]; do
         --flavor)
             FLAVOR="$2"
             shift 2
+            ;;
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
+        --standalone)
+            MODE="standalone"
+            shift
             ;;
         --clean)
             CLEAN=true
@@ -72,7 +86,14 @@ if [[ "$FLAVOR" != "cpu" && "$FLAVOR" != "gpu" ]]; then
     exit 1
 fi
 
+# Validate mode
+if [[ "$MODE" != "installer" && "$MODE" != "standalone" ]]; then
+    echo "Error: Invalid mode '$MODE'. Must be 'installer' or 'standalone'."
+    exit 1
+fi
+
 echo "Build configuration:"
+echo "  Mode: $MODE"
 echo "  Flavor: ${FLAVOR^^}"
 echo "  Platform: ${PLATFORM:-current}"
 echo ""
@@ -85,10 +106,17 @@ if [ "$CLEAN" = true ]; then
     echo ""
 fi
 
-# Step 1: Build Python backend
+# Step 1: Prepare Python backend
 if [ "$SKIP_BACKEND" = false ]; then
-    echo "=== Step 1: Building Python backend (${FLAVOR^^}) ==="
-    bash "$SCRIPT_DIR/build-backend.sh" --flavor "$FLAVOR"
+    if [ "$MODE" = "installer" ]; then
+        # Lightweight build: only copy backend source files.
+        # Python runtime is downloaded at first launch by env-manager.
+        echo "=== Step 1: Copying backend source files (lightweight) ==="
+        node "$SCRIPT_DIR/copy-backend-source.cjs" --clean
+    else
+        echo "=== Step 1: Building Python backend with PyInstaller (${FLAVOR^^}) ==="
+        bash "$SCRIPT_DIR/build-backend.sh" --flavor "$FLAVOR"
+    fi
     echo ""
 else
     echo "=== Step 1: Skipping backend build ==="

@@ -116,8 +116,8 @@ jobs:
       - name: Build frontend (Electron mode)
         run: npm run build:electron
 
-      - name: Setup embedded Python environment
-        run: node scripts/setup-python-env.cjs --flavor cpu --cache-dir ${{ runner.temp }}/python-cache
+      - name: Copy backend source files
+        run: node scripts/copy-backend-source.cjs --clean
 
       - name: Package with electron-builder
         run: npx electron-builder --linux --publish never
@@ -167,8 +167,8 @@ jobs:
       - name: Build frontend (Electron mode)
         run: npm run build:electron
 
-      - name: Setup embedded Python environment
-        run: node scripts/setup-python-env.cjs --flavor cpu --cache-dir ${{ runner.temp }}/python-cache
+      - name: Copy backend source files
+        run: node scripts/copy-backend-source.cjs --clean
 
       # ── Windows Code Signing (Phase 4 — P4-3) ──
       - name: Import code signing certificate
@@ -236,8 +236,8 @@ jobs:
       - name: Build frontend (Electron mode)
         run: npm run build:electron
 
-      - name: Setup embedded Python environment
-        run: node scripts/setup-python-env.cjs --flavor cpu --cache-dir ${{ runner.temp }}/python-cache
+      - name: Copy backend source files
+        run: node scripts/copy-backend-source.cjs --clean
 
       # ── macOS Code Signing (Phase 4 — P4-1) ──
       - name: Import Apple Developer certificate
@@ -346,8 +346,8 @@ jobs:
       - name: Build frontend (Electron mode)
         run: npm run build:electron
 
-      - name: Setup embedded Python environment
-        run: node scripts/setup-python-env.cjs --flavor cpu --cache-dir ${{ runner.temp }}/python-cache
+      - name: Copy backend source files
+        run: node scripts/copy-backend-source.cjs --clean
 
       # ── macOS Code Signing (Phase 4 — P4-1) ──
       - name: Import Apple Developer certificate

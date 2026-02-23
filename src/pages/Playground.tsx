@@ -12,7 +12,7 @@
  * - Phase 6: Keyboard shortcuts, saved selections, render optimization
  */
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
@@ -60,6 +60,26 @@ export default function Playground() {
     clearData,
   } = useSpectralData();
 
+  // Chart visibility toggles — declared before usePlaygroundPipeline so we can
+  // derive executeOptions that skip hidden-chart computations on the backend.
+  const [chartVisibility, setChartVisibility] = useState({
+    spectra: true,
+    histogram: true,
+    pca: true,
+    folds: true,
+    repetitions: false,
+  });
+
+  const toggleChartVisibility = useCallback((chart: keyof typeof chartVisibility) => {
+    setChartVisibility(prev => ({ ...prev, [chart]: !prev[chart] }));
+  }, []);
+
+  // Derive execute options from chart visibility — skip PCA/repetitions when hidden
+  const visibilityExecuteOptions = useMemo(() => ({
+    compute_pca: chartVisibility.pca,
+    compute_repetitions: chartVisibility.repetitions,
+  }), [chartVisibility.pca, chartVisibility.repetitions]);
+
   // Pipeline with backend integration
   const {
     operators,
@@ -100,6 +120,7 @@ export default function Playground() {
       method: 'all',
     },
     datasetId: currentDatasetInfo?.datasetId,
+    executeOptions: visibilityExecuteOptions,
   });
 
   // Handle add operator from definition
@@ -273,18 +294,8 @@ export default function Playground() {
   // Render mode state (Phase 6)
   const [renderMode, setRenderMode] = useState<RenderMode>('auto');
 
-  // Chart visibility toggles for keyboard shortcuts
-  const [chartVisibility, setChartVisibility] = useState({
-    spectra: true,
-    histogram: true,
-    pca: true,
-    folds: true,
-    repetitions: false,
-  });
-
-  const toggleChartVisibility = useCallback((chart: keyof typeof chartVisibility) => {
-    setChartVisibility(prev => ({ ...prev, [chart]: !prev[chart] }));
-  }, []);
+  // chartVisibility and toggleChartVisibility are declared above usePlaygroundPipeline
+  // so visibility flags can be passed as executeOptions to skip hidden-chart computations.
 
   // Sample selection state for cross-chart highlighting (legacy - kept for backward compatibility)
   const [selectedSample, setSelectedSample] = useState<number | null>(null);

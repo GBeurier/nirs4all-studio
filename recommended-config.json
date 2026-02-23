@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "app_version": "1.0.0",
   "nirs4all": "0.7.1",
   "profiles": {
@@ -39,35 +39,139 @@
       }
     }
   },
+  "categories": {
+    "deep_learning": {
+      "name": "Deep Learning",
+      "description": "Deep learning frameworks for neural network models"
+    },
+    "pls_variants": {
+      "name": "PLS Variants",
+      "description": "Advanced Partial Least Squares implementations"
+    },
+    "automl": {
+      "name": "AutoML",
+      "description": "Automated machine learning frameworks"
+    },
+    "explainability": {
+      "name": "Explainability",
+      "description": "Model interpretability and explanation tools"
+    },
+    "visualization": {
+      "name": "Visualization",
+      "description": "Plotting and visualization libraries"
+    },
+    "dimensionality": {
+      "name": "Dimensionality Reduction",
+      "description": "Advanced dimensionality reduction methods"
+    },
+    "reports": {
+      "name": "Reports",
+      "description": "Document and report generation"
+    },
+    "export": {
+      "name": "Export",
+      "description": "Data export capabilities"
+    }
+  },
   "optional": {
+    "tensorflow": {
+      "version": ">=2.14.0",
+      "description": "TensorFlow deep learning framework",
+      "category": "deep_learning"
+    },
+    "torch": {
+      "version": ">=2.1.0",
+      "description": "PyTorch deep learning framework",
+      "category": "deep_learning"
+    },
+    "keras": {
+      "version": ">=3.0.0",
+      "description": "High-level neural networks API",
+      "category": "deep_learning"
+    },
+    "jax": {
+      "version": ">=0.4.20",
+      "description": "JAX numerical computing library",
+      "category": "deep_learning"
+    },
+    "jaxlib": {
+      "version": ">=0.4.20",
+      "description": "JAX backend library",
+      "category": "deep_learning"
+    },
+    "flax": {
+      "version": ">=0.8.0",
+      "description": "Flax neural network library for JAX",
+      "category": "deep_learning"
+    },
+    "tabpfn": {
+      "version": ">=2.0.0",
+      "description": "TabPFN tabular data model",
+      "category": "deep_learning"
+    },
+    "ikpls": {
+      "version": ">=1.1.0",
+      "description": "Improved kernel PLS algorithms",
+      "category": "pls_variants"
+    },
+    "pyopls": {
+      "version": ">=20.0",
+      "description": "Orthogonal PLS (OPLS)",
+      "category": "pls_variants"
+    },
+    "trendfitter": {
+      "version": ">=0.0.6",
+      "description": "PLS with trend analysis",
+      "category": "pls_variants"
+    },
+    "autogluon": {
+      "version": ">=1.0.0",
+      "description": "AutoGluon AutoML toolkit",
+      "category": "automl"
+    },
     "shap": {
       "version": ">=0.44",
       "description": "SHAP explanations for model interpretability",
       "category": "explainability"
     },
-    "umap-learn": {
-      "version": ">=0.5",
-      "description": "UMAP dimensionality reduction for data exploration",
-      "category": "dimensionality"
-    },
-    "autogluon": {
-      "version": ">=1.0",
-      "description": "AutoML framework for automated model selection",
-      "category": "automl"
-    },
-    "jax": {
-      "version": ">=0.4.20",
-      "description": "JAX numerical computing for advanced models",
-      "category": "deep_learning"
-    },
     "matplotlib": {
       "version": ">=3.7.0",
-      "description": "Plotting library for visualization",
+      "description": "Core plotting library",
       "category": "visualization"
+    },
+    "seaborn": {
+      "version": ">=0.12.0",
+      "description": "Statistical data visualization",
+      "category": "visualization"
+    },
+    "plotly": {
+      "version": ">=5.0.0",
+      "description": "Interactive plotting library",
+      "category": "visualization"
+    },
+    "umap-learn": {
+      "version": ">=0.5.0",
+      "description": "UMAP dimensionality reduction",
+      "category": "dimensionality"
+    },
+    "pypandoc": {
+      "version": ">=1.12",
+      "description": "Pandoc document conversion",
+      "category": "reports"
+    },
+    "PyPDF2": {
+      "version": ">=3.0.0",
+      "description": "PDF manipulation",
+      "category": "reports"
+    },
+    "pdf2image": {
+      "version": ">=1.16.0",
+      "description": "PDF to image conversion",
+      "category": "reports"
     },
     "openpyxl": {
       "version": ">=3.1.0",
-      "description": "Excel file export support",
+      "description": "Excel file support",
       "category": "export"
     }
   }

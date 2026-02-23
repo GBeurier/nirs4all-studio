@@ -16,7 +16,7 @@
  *   --local-nirs4all             Install nirs4all from local ../nirs4all instead of PyPI
  */
 
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
@@ -109,6 +109,14 @@ function copyDirSync(src, dest, excludePatterns = ["__pycache__"]) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
+}
+
+function isGnuTar() {
+  return new Promise((resolve) => {
+    execFile("tar", ["--version"], { shell: isWindows }, (err, stdout) => {
+      resolve(!err && stdout.includes("GNU tar"));
+    });
+  });
 }
 
 function runCommand(command, args, options = {}) {
@@ -253,7 +261,13 @@ async function main() {
   }
 
   console.log(`  Extracting to backend-dist/python/...`);
-  await runCommand("tar", ["-xzf", cachedTarball, "-C", backendDist]);
+  const tarArchive = isWindows ? cachedTarball.replace(/\\/g, "/") : cachedTarball;
+  const tarDest = isWindows ? backendDist.replace(/\\/g, "/") : backendDist;
+  const tarArgs = ["-xzf", tarArchive, "-C", tarDest];
+  // GNU tar (from Git) interprets drive letters as remote hosts and needs --force-local.
+  // Windows built-in bsdtar doesn't support --force-local but handles paths natively.
+  if (isWindows && await isGnuTar()) tarArgs.push("--force-local");
+  await runCommand("tar", tarArgs);
 
   // Verify extraction
   const embeddedPython = isWindows
@@ -280,13 +294,10 @@ async function main() {
   console.log("  Creating venv (without pip)...");
   await runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"]);
 
-  // Determine venv python and pip paths
+  // Determine venv python path (use python -m pip instead of pip.exe for reliability)
   const venvPython = isWindows
     ? path.join(venvDir, "Scripts", "python.exe")
     : path.join(venvDir, "bin", "python");
-  const venvPip = isWindows
-    ? path.join(venvDir, "Scripts", "pip.exe")
-    : path.join(venvDir, "bin", "pip");
 
   if (!fs.existsSync(venvPython)) {
     console.error(`Error: Venv Python not found at ${venvPython}`);
@@ -296,10 +307,8 @@ async function main() {
   console.log("  Bootstrapping pip via ensurepip...");
   await runCommand(venvPython, ["-m", "ensurepip", "--upgrade"]);
 
-  if (!fs.existsSync(venvPip)) {
-    console.error(`Error: pip not found at ${venvPip} after ensurepip`);
-    process.exit(1);
-  }
+  // Verify pip is usable
+  await runCommand(venvPython, ["-m", "pip", "--version"]);
 
   // Upgrade pip to latest
   console.log("  Upgrading pip...");
@@ -339,7 +348,7 @@ async function main() {
   fs.writeFileSync(filteredReqsPath, filteredReqs);
 
   console.log(`  Installing from ${requirementsFile} (excluding pyinstaller)...`);
-  await runCommand(venvPip, ["install", "-r", filteredReqsPath]);
+  await runCommand(venvPython, ["-m", "pip", "install", "-r", filteredReqsPath]);
 
   // Clean up filtered requirements
   fs.unlinkSync(filteredReqsPath);
@@ -351,14 +360,14 @@ async function main() {
   const localNirs4allPath = path.join(projectRoot, "..", "nirs4all");
   if (localNirs4all && fs.existsSync(localNirs4allPath)) {
     console.log("  Installing nirs4all from local source (editable)...");
-    await runCommand(venvPip, ["install", "-e", localNirs4allPath]);
+    await runCommand(venvPython, ["-m", "pip", "install", "-e", localNirs4allPath]);
   } else if (localNirs4all) {
     console.log("  Warning: --local-nirs4all specified but ../nirs4all not found");
     console.log("  Installing nirs4all from PyPI...");
-    await runCommand(venvPip, ["install", "nirs4all"]);
+    await runCommand(venvPython, ["-m", "pip", "install", "nirs4all"]);
   } else {
     console.log("  Installing nirs4all from PyPI...");
-    await runCommand(venvPip, ["install", "nirs4all"]);
+    await runCommand(venvPython, ["-m", "pip", "install", "nirs4all"]);
   }
   console.log("");
 
@@ -394,8 +403,22 @@ async function main() {
   }
   console.log("");
 
-  // 9. Write build metadata
-  console.log("=== Step 7: Write build metadata ===");
+  // 9. Pre-compile .pyc bytecode (speeds up first launch significantly)
+  console.log("=== Step 7: Pre-compile Python bytecode ===");
+  const compileTargets = [
+    path.join(venvDir, isWindows ? "Lib" : "lib"),
+    path.join(backendDist, "api"),
+    path.join(backendDist, "websocket"),
+    path.join(backendDist, "main.py"),
+  ].filter((p) => fs.existsSync(p));
+
+  console.log("  Compiling .py -> .pyc for all packages and backend source...");
+  await runCommand(venvPython, ["-m", "compileall", "-q", ...compileTargets]);
+  console.log("  Bytecode pre-compilation complete");
+  console.log("");
+
+  // 10. Write build metadata
+  console.log("=== Step 8: Write build metadata ===");
   const buildInfo = {
     mode: "installer",
     flavor: flavor,
@@ -409,7 +432,7 @@ async function main() {
   console.log(`  Written: build_info.json`);
   console.log("");
 
-  // 10. Print summary
+  // 11. Print summary
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const pythonSize = getDirSize(pythonDir);
   const venvSize = getDirSize(venvDir);

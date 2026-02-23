@@ -11,13 +11,17 @@ files:
   - dist-electron/**/*
   - "!**/*.map"
 
-# Backend (embedded Python + venv for installer mode, PyInstaller exe for standalone mode)
-# The build scripts populate backend-dist/ before electron-builder runs
+# Backend source files only (Python runtime is downloaded at first launch).
+# The build scripts populate backend-dist/ with api/, websocket/, main.py, public/.
 extraResources:
   - from: backend-dist/
     to: backend/
     filter:
-      - "**/*"
+      - "api/**/*"
+      - "websocket/**/*"
+      - "main.py"
+      - "public/**/*"
+      - "recommended-config.json"
 
 asar: true
 
@@ -32,10 +36,15 @@ win:
   icon: public/nirs4all.ico
   artifactName: "${productName}-${version}-win-${arch}.${ext}"
 
+portable:
+  artifactName: "${productName}-${version}-win-${arch}-portable.${ext}"
+
 nsis:
   oneClick: false
   perMachine: true
+  allowElevation: true
   allowToChangeInstallationDirectory: true
+  include: build/installer.nsh
   installerIcon: public/nirs4all.ico
   uninstallerIcon: public/nirs4all.ico
   installerHeaderIcon: public/nirs4all.ico

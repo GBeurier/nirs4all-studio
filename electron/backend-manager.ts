@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { createServer, AddressInfo } from "node:net";
 import path from "node:path";
+import type { EnvManager } from "./env-manager";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Use require for electron to avoid Rollup ESM/CJS interop issues
@@ -13,7 +14,7 @@ const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health che
 const MAX_RESTART_ATTEMPTS = 3;
 const RESTART_DELAY = 2000; // 2 seconds before restart attempt
 
-export type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting";
+export type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
 
 export interface BackendInfo {
   status: BackendStatus;
@@ -31,6 +32,12 @@ export class BackendManager {
   private healthMonitorInterval: NodeJS.Timeout | null = null;
   private isShuttingDown: boolean = false;
   private lastError: string | null = null;
+  private envManager: EnvManager | null = null;
+
+  /** Set the env manager for Python path resolution */
+  setEnvManager(envManager: EnvManager): void {
+    this.envManager = envManager;
+  }
 
   /**
    * Find an available port dynamically
@@ -54,11 +61,11 @@ export class BackendManager {
    * Get the path to the Python backend.
    * Priority order:
    *   1. Dev mode / forced venv: use ../.venv + uvicorn
-   *   2. Installer mode: embedded Python venv in resources/backend/venv/
+   *   2. EnvManager: Python env downloaded/configured at runtime (user data dir)
    *   3. Standalone mode: PyInstaller executable in resources/backend/
    *   4. Fallback: dev venv (for local prod testing)
    */
-  private getBackendPath(): { command: string; args: string[]; cwd?: string } {
+  private getBackendPath(): { command: string; args: string[]; cwd?: string; env?: Record<string, string> } {
     const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
     const forceVenv = process.env.NIRS4ALL_USE_VENV === "true";
 
@@ -71,27 +78,30 @@ export class BackendManager {
     const resourcesPath = process.resourcesPath;
     const backendDir = path.join(resourcesPath, "backend");
 
-    // 2. Installer mode: embedded Python + venv
-    const venvPythonPath =
-      process.platform === "win32"
-        ? path.join(backendDir, "venv", "Scripts", "python.exe")
-        : path.join(backendDir, "venv", "bin", "python");
+    // 2. EnvManager: Python runtime in user data directory
+    //    The Python env is downloaded on first launch and stored in AppData.
+    //    Uses the venv's Python directly (not base Python + PYTHONPATH) so that
+    //    sys.prefix points to the venv and VenvManager's pip/install works correctly.
+    if (this.envManager && this.envManager.isReady()) {
+      const pythonPath = this.envManager.getPythonPath();
 
-    if (fs.existsSync(venvPythonPath)) {
-      console.log("Using embedded Python venv backend");
-      return {
-        command: venvPythonPath,
-        args: [
-          "-m",
-          "uvicorn",
-          "main:app",
-          "--host",
-          "127.0.0.1",
-          "--port",
-          this.port.toString(),
-        ],
-        cwd: backendDir,
-      };
+      if (pythonPath) {
+        console.log("Using EnvManager Python backend (venv Python)");
+        console.log(`  Python: ${pythonPath}`);
+        return {
+          command: pythonPath,
+          args: [
+            "-m",
+            "uvicorn",
+            "main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            this.port.toString(),
+          ],
+          cwd: backendDir,
+        };
+      }
     }
 
     // 3. Standalone mode: PyInstaller executable
@@ -118,7 +128,7 @@ export class BackendManager {
    * Get backend path for development mode.
    * Uses the .venv relative to the webapp's parent directory.
    */
-  private getDevBackendPath(): { command: string; args: string[]; cwd?: string } {
+  private getDevBackendPath(): { command: string; args: string[]; cwd?: string; env?: Record<string, string> } {
     const venvPath = path.join(process.cwd(), "..", ".venv");
     const pythonPath =
       process.platform === "win32"
@@ -141,7 +151,9 @@ export class BackendManager {
   }
 
   /**
-   * Wait for the backend to respond to health checks
+   * Wait for the backend to respond to health checks.
+   * Waits for both HTTP readiness and the startup_complete flag (ready: true)
+   * to ensure workspace initialization has finished before the UI loads.
    */
   private async waitForHealthCheck(): Promise<void> {
     const startTime = Date.now();
@@ -151,8 +163,13 @@ export class BackendManager {
       try {
         const response = await fetch(url, { method: "GET" });
         if (response.ok) {
-          console.log("Backend health check passed");
-          return;
+          const data = await response.json() as { ready?: boolean };
+          if (data.ready) {
+            console.log("Backend health check passed (ready)");
+            return;
+          }
+          // Server is up but startup event hasn't finished — keep polling
+          console.log("Backend responding but not yet ready, waiting...");
         }
       } catch {
         // Ignore connection errors during startup
@@ -202,7 +219,7 @@ export class BackendManager {
   private async startInternal(): Promise<void> {
     console.log(`Starting backend on port ${this.port}...`);
 
-    const { command, args, cwd } = this.getBackendPath();
+    const { command, args, cwd, env: extraEnv } = this.getBackendPath();
 
     console.log(`Executing: ${command} ${args.join(" ")}`);
     if (cwd) console.log(`Working directory: ${cwd}`);
@@ -213,6 +230,7 @@ export class BackendManager {
       NIRS4ALL_PORT: this.port.toString(),
       NIRS4ALL_DESKTOP: "true",
       NIRS4ALL_ELECTRON: "true",
+      ...extraEnv,
     };
 
     // Spawn the backend process

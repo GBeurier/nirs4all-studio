@@ -60,6 +60,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Startup readiness flag — set to True once the startup event has completed.
+# Used by /api/health so Electron waits for full initialization before loading the UI.
+startup_complete = False
+
 
 # ============= Exception Handlers for Error Logging =============
 
@@ -176,6 +180,11 @@ async def startup_event():
 
     # Pre-cache recommended config in background
     asyncio.create_task(cache_recommended_config_background())
+
+    # Mark startup as complete so /api/health reports ready=true
+    global startup_complete
+    startup_complete = True
+    logger.info("Startup complete — backend ready")
 
 
 async def check_updates_background():

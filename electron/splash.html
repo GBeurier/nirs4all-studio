@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nirs4all Studio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0b;
+    color: #e4e4e7;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .logo {
+    width: 120px;
+    height: auto;
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out 0.1s forwards;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out 0.3s forwards;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: #71717a;
+    margin-bottom: 32px;
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out 0.4s forwards;
+  }
+  .loader {
+    width: 160px;
+    height: 2px;
+    background: #27272a;
+    border-radius: 1px;
+    overflow: hidden;
+    opacity: 0;
+    animation: fadeIn 0.5s ease-out 0.6s forwards;
+  }
+  .loader-bar {
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(90deg, #14b8a6, #06b6d4);
+    border-radius: 1px;
+    animation: loading 1.5s ease-in-out infinite;
+  }
+  @keyframes loading {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(200%); }
+    100% { transform: translateX(-100%); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <img class="logo" id="logo" alt="nirs4all Studio" />
+  <script>
+    // Logo path passed as query param by Electron main process
+    const logo = new URLSearchParams(window.location.search).get("logo");
+    if (logo) document.getElementById("logo").src = logo;
+  </script>
+  <h1>nirs4all Studio</h1>
+  <p class="subtitle">Near-Infrared Spectroscopy Analysis</p>
+  <div class="loader"><div class="loader-bar"></div></div>
+</body>
+</html>

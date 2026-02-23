@@ -161,25 +161,17 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Install Python dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
       - name: Build Electron frontend
         run: npm run build:electron
 
-      - name: Build Python backend
-        run: |
-          pyinstaller backend.spec --clean --noconfirm
-          mkdir -p backend-dist
-          cp dist/nirs4all-backend backend-dist/
-          chmod +x backend-dist/nirs4all-backend
+      - name: Copy backend source files
+        run: node scripts/copy-backend-source.cjs --clean
 
-      - name: Verify backend executable
+      - name: Verify backend source
         run: |
-          test -f backend-dist/nirs4all-backend || { echo "::error::Backend not built"; exit 1; }
-          echo "Backend executable size: $(du -h backend-dist/nirs4all-backend | cut -f1)"
+          test -f backend-dist/main.py || { echo "::error::Backend source not copied"; exit 1; }
+          test -d backend-dist/api || { echo "::error::Backend api/ not copied"; exit 1; }
+          echo "Backend source ready"
 
       - name: Test electron-builder (dry-run)
         run: |

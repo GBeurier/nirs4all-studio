@@ -54,8 +54,60 @@ RESTART_REQUIRED_PACKAGES = {
 
 # ============= nirs4all Optional Dependencies Definition =============
 
-# Define nirs4all optional dependencies organized by category
-NIRS4ALL_OPTIONAL_DEPS = {
+
+def _load_optional_deps_from_config() -> dict[str, Any]:
+    """Load optional dependencies from recommended-config.json.
+
+    This keeps the hardcoded definition in sync with the online manifest
+    that the setup wizard and config-alignment system use.
+    """
+    candidates = [
+        Path(__file__).parent.parent / "recommended-config.json",
+        Path(__file__).parent / "recommended-config.json",
+    ]
+    for config_path in candidates:
+        if not config_path.exists():
+            continue
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            continue
+
+        categories_meta = config.get("categories", {})
+        optional = config.get("optional", {})
+        if not optional:
+            continue
+
+        # Group packages by category
+        groups: dict[str, Any] = {}
+        for pkg_name, pkg_data in optional.items():
+            cat_id = pkg_data.get("category", "other")
+            if cat_id not in groups:
+                cat_meta = categories_meta.get(cat_id, {})
+                groups[cat_id] = {
+                    "name": cat_meta.get("name", cat_id.replace("_", " ").title()),
+                    "description": cat_meta.get("description", ""),
+                    "packages": [],
+                }
+            version_spec = pkg_data.get("version", "")
+            # Strip leading >= for min_version field
+            min_version = version_spec.lstrip(">= ") if version_spec else ""
+            groups[cat_id]["packages"].append({
+                "name": pkg_name,
+                "min_version": min_version,
+                "description": pkg_data.get("description", ""),
+            })
+
+        return groups
+
+    return {}
+
+
+# Load from recommended-config.json; this is the single source of truth
+# shared with the setup wizard and config-alignment endpoints.
+NIRS4ALL_OPTIONAL_DEPS: dict[str, Any] = _load_optional_deps_from_config() or {
+    # Fallback if recommended-config.json is missing (shouldn't happen in practice)
     "deep_learning": {
         "name": "Deep Learning",
         "description": "Deep learning frameworks for neural network models",
@@ -83,6 +135,13 @@ NIRS4ALL_OPTIONAL_DEPS = {
         "description": "Automated machine learning frameworks",
         "packages": [
             {"name": "autogluon", "min_version": "1.0.0", "description": "AutoGluon AutoML toolkit"},
+        ],
+    },
+    "explainability": {
+        "name": "Explainability",
+        "description": "Model interpretability and explanation tools",
+        "packages": [
+            {"name": "shap", "min_version": "0.44", "description": "SHAP explanations for model interpretability"},
         ],
     },
     "visualization": {
