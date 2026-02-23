@@ -1831,6 +1831,17 @@ async def retry_run(run_id: str):
                 split_strategy=pipeline.split_strategy,
                 status="queued",
                 progress=0,
+                config=pipeline.config,
+                variant_index=pipeline.variant_index,
+                variant_description=pipeline.variant_description,
+                variant_choices=pipeline.variant_choices,
+                is_expanded_variant=pipeline.is_expanded_variant,
+                estimated_variants=pipeline.estimated_variants,
+                has_generators=pipeline.has_generators,
+                fold_count=pipeline.fold_count,
+                branch_count=pipeline.branch_count,
+                total_model_count=pipeline.total_model_count,
+                model_count_breakdown=pipeline.model_count_breakdown,
             )
             new_pipelines.append(new_pipeline)
 
@@ -1869,7 +1880,7 @@ async def delete_run(run_id: str):
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
     run = _runs[run_id]
-    if run.status == "running":
+    if run.status in ("running", "queued"):
         raise HTTPException(
             status_code=400,
             detail="Cannot delete a running experiment. Stop it first."

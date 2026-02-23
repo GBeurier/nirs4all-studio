@@ -57,35 +57,10 @@ export class SettingsPage extends BasePage {
   }
 
   async goto(): Promise<void> {
-    // Track settings GET requests - both ThemeContext and UISettingsContext make separate calls
-    let settingsResponseCount = 0;
-    const settingsLoadPromise = new Promise<void>((resolve) => {
-      const handler = (response: import('@playwright/test').Response) => {
-        if (
-          response.url().includes('/api/workspace/settings') &&
-          response.request().method() === 'GET' &&
-          response.status() === 200
-        ) {
-          settingsResponseCount++;
-          // Wait for both context requests to complete
-          if (settingsResponseCount >= 2) {
-            this.page.off('response', handler);
-            resolve();
-          }
-        }
-      };
-      this.page.on('response', handler);
-      // Timeout fallback after 10 seconds
-      setTimeout(() => {
-        this.page.off('response', handler);
-        resolve();
-      }, 10000);
-    });
     await super.goto('/settings');
-    // Wait for both settings GET requests to complete
-    // This ensures both ThemeContext and UISettingsContext have loaded
-    await settingsLoadPromise;
-    // Also wait for the UI to finish loading (controls become enabled)
+    // Wait for the UI to finish loading (controls become enabled)
+    // This directly checks the React state rather than tracking HTTP responses,
+    // which avoids race conditions between API responses and React state updates.
     await this.waitForSettingsReady();
   }
 
@@ -94,9 +69,10 @@ export class SettingsPage extends BasePage {
    * Call this after page reloads to ensure settings are ready for interaction.
    */
   async waitForSettingsReady(): Promise<void> {
-    // Wait for the density controls to be enabled (indicates settings have loaded)
+    // Wait for the density controls to be enabled (indicates settings have loaded).
+    // Use a longer timeout for CI environments where backend + React hydration is slower.
     const compactButton = this.page.getByRole('radio', { name: 'Compact' });
-    await expect(compactButton).toBeEnabled({ timeout: 5000 });
+    await expect(compactButton).toBeEnabled({ timeout: 15000 });
   }
 
   /**
