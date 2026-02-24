@@ -303,8 +303,14 @@ export class EnvManager {
           const [major, minor] = version.split(".").map(Number);
           if (major < 3 || (major === 3 && minor < 11)) { resolve(null); return; }
           const hasNirs4all = lines[1].trim() === "True";
-          // Determine the env root (parent of bin/ or Scripts/)
-          const envRoot = path.dirname(path.dirname(pythonPath));
+          // Determine the env root:
+          // - Venvs: python is in Scripts/ (Windows) or bin/ (Unix) → go up 2 levels
+          // - Base Python (Windows/conda): python.exe is in root → go up 1 level
+          const dir = path.dirname(pythonPath);
+          const dirName = path.basename(dir).toLowerCase();
+          const envRoot = (dirName === "scripts" || dirName === "bin")
+            ? path.dirname(dir)
+            : dir;
           resolve({ path: envRoot, pythonVersion: version, hasNirs4all });
         },
       );
@@ -409,10 +415,12 @@ export class EnvManager {
 
       await this.extractTarball(cachedTarball, this.envDir);
 
-      // Verify extraction
-      const embeddedPython = this.getPythonPath();
-      if (!embeddedPython || !fs.existsSync(embeddedPython)) {
-        throw new Error(`Python executable not found after extraction`);
+      // Verify extraction — the tarball extracts a top-level `python/` directory
+      const embeddedPython = isWindows
+        ? path.join(pythonDir, "python.exe")
+        : path.join(pythonDir, "bin", "python3");
+      if (!fs.existsSync(embeddedPython)) {
+        throw new Error(`Python executable not found after extraction at ${embeddedPython}`);
       }
       report(25, "extracting", "Python runtime extracted");
 

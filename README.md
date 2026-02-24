@@ -1,17 +1,66 @@
+<div align="center">
+
+<img src="public/nirs4all_logo.png" width="300" alt="NIRS4ALL Logo">
+<img src="public/logo-cirad-en.jpg" width="300" alt="CIRAD Logo">
+
 # nirs4all Webapp
 
 **Unified NIRS Analysis Desktop Application**
 
-A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, combining the power of the nirs4all Python library with a sleek React-based user interface.
+A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, combining the power of the [nirs4all](https://github.com/GBeurier/nirs4all) Python library with a sleek React-based user interface.
+
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+</div>
+
+---
+
+<div align="center">
+<img src="docs/user-guide/source/_images/explore/pg-overview.png" width="900" alt="Playground — Interactive spectral exploration">
+<br><em>Playground — Interactive spectral exploration with PCA, distributions, and preprocessing preview</em>
+</div>
+
+---
 
 ## Features
 
-- 📊 **Spectral Data Visualization** - Interactive charts for exploring NIRS spectra
-- 🔬 **Pipeline Builder** - Visual drag-and-drop pipeline construction
-- 🎯 **Prediction Engine** - Run trained models on new samples
-- 📁 **Workspace Management** - Organize datasets, pipelines, and results
-- 🖥️ **Native Desktop Experience** - Runs as a standalone desktop app via Electron
-- ⚡ **GPU Acceleration** - CUDA (Linux/Windows) and Metal (macOS) support
+- **Spectral Data Visualization** - Interactive charts for exploring NIRS spectra
+- **Pipeline Builder** - Visual drag-and-drop pipeline construction
+- **Prediction Engine** - Run trained models on new samples
+- **Workspace Management** - Organize datasets, pipelines, and results
+- **Native Desktop Experience** - Runs as a standalone desktop app via Electron
+- **GPU Acceleration** - CUDA (Linux/Windows) and Metal (macOS) support
+
+<div align="center">
+<img src="docs/user-guide/source/_images/pipelines/pe-overview.png" width="900" alt="Pipeline Editor">
+<br><em>Pipeline Editor — Drag-and-drop builder with component library, validation, and hyperparameter tuning</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/user-guide/source/_images/datasets/ds-page-overview.png" width="440" alt="Dataset Management">
+<img src="docs/user-guide/source/_images/results/res-scores-overview.png" width="440" alt="Results & Model Comparison">
+<br><em>Left: Dataset management — Right: Results with model ranking and CV scores</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/user-guide/source/_images/explore/ins-overview.png" width="440" alt="Inspector">
+<img src="docs/user-guide/source/_images/lab/lab-shap-overview.png" width="440" alt="SHAP Analysis">
+<br><em>Left: Inspector — prediction analysis and model diagnostics — Right: Lab — SHAP variable importance</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/user-guide/source/_images/lab/lab-synthesis-overview.png" width="440" alt="Spectra Synthesis">
+<img src="docs/user-guide/source/_images/experiments/exp-wizard-overview.png" width="440" alt="Experiment Wizard">
+<br><em>Left: Spectra Synthesis — realistic NIR data generation — Right: Experiment wizard</em>
+</div>
 
 ## Tech Stack
 
@@ -441,3 +490,16 @@ When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero o
 
 This project is licensed under **AGPL-3.0-or-later** with an optional commercial license.
 See [LICENSE](LICENSE) for details.
+
+---
+
+## Acknowledgments
+
+- [CIRAD](https://www.cirad.fr/) for supporting this research
+- The [nirs4all](https://github.com/GBeurier/nirs4all) library for the NIRS analysis engine
+- The open-source scientific Python and React communities
+
+<div align="center">
+<br>
+<strong>Made for the spectroscopy community</strong>
+</div>

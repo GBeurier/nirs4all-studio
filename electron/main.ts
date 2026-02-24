@@ -348,6 +348,7 @@ ipcMain.handle("env:startSetup", async () => {
 
     return { success: true };
   } catch (error) {
+    SentryMain?.captureException(error, { tags: { component: "env-setup" } });
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
