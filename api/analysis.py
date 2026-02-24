@@ -22,25 +22,27 @@ directly via nirs4all pipelines.
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-try:
-    from sklearn.decomposition import PCA
-    from sklearn.manifold import TSNE
+import importlib.util
 
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready
+SKLEARN_AVAILABLE = True
 
-try:
-    import umap
-    UMAP_AVAILABLE = True
-except ImportError:
-    UMAP_AVAILABLE = False
+# Check umap availability without importing it (import takes 6+ seconds)
+UMAP_AVAILABLE = importlib.util.find_spec("umap") is not None
+
+
+def _get_umap():
+    """Lazy-load umap (6+ second import) — only when actually used."""
+    try:
+        import umap
+        return umap
+    except ImportError:
+        return None
 
 
 router = APIRouter()
@@ -223,6 +225,7 @@ async def compute_pca(request: PCARequest):
     Returns scores (sample projections), loadings (feature contributions),
     and explained variance information.
     """
+    import numpy as np
     if not SKLEARN_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="sklearn not available for PCA computation"
@@ -250,7 +253,7 @@ async def compute_pca(request: PCARequest):
         X_processed = X_processed / std
 
     # Compute PCA
-    pca = PCA(n_components=n_components)
+    pca = get_cached("PCA")(n_components=n_components)
     scores = pca.fit_transform(X_processed)
 
     # Compute cumulative variance
@@ -301,7 +304,7 @@ async def get_pca_loadings(
         )
 
     # Compute PCA
-    pca = PCA(n_components=n_components)
+    pca = get_cached("PCA")(n_components=n_components)
     pca.fit(X)
 
     # Get loadings for requested component
@@ -328,6 +331,7 @@ async def get_scree_data(
 
     Returns explained variance for each component for scree plot visualization.
     """
+    import numpy as np
     if not SKLEARN_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="sklearn not available for PCA computation"
@@ -340,7 +344,7 @@ async def get_scree_data(
     n_components = min(max_components, n_samples, n_features)
 
     # Compute PCA
-    pca = PCA(n_components=n_components)
+    pca = get_cached("PCA")(n_components=n_components)
     pca.fit(X)
 
     # Build scree data
@@ -382,7 +386,7 @@ async def compute_tsne(request: TSNERequest):
     perplexity = min(request.perplexity, (n_samples - 1) / 3)
 
     # Compute t-SNE
-    tsne = TSNE(
+    tsne = get_cached("TSNE")(
         n_components=request.n_components,
         perplexity=perplexity,
         learning_rate=request.learning_rate,
@@ -410,11 +414,14 @@ async def compute_umap_endpoint(request: UMAPRequest):
 
     UMAP preserves both local and global structure better than t-SNE.
     """
-    if not UMAP_AVAILABLE:
+    umap_mod = _get_umap()
+    if umap_mod is None:
         raise HTTPException(
             status_code=501,
             detail="UMAP not available. Install umap-learn in Settings > Dependencies.",
         )
+
+    import numpy as np
 
     # Load dataset
     dataset, X, wavelengths = _load_analysis_data(
@@ -428,7 +435,7 @@ async def compute_umap_endpoint(request: UMAPRequest):
 
     # Compute UMAP
     try:
-        reducer = umap.UMAP(
+        reducer = umap_mod.UMAP(
             n_components=request.n_components,
             n_neighbors=n_neighbors,
             min_dist=request.min_dist,
@@ -458,6 +465,7 @@ async def feature_importance(request: ImportanceRequest):
     - 'permutation': sklearn permutation importance (works with any model)
     - 'model': Model's built-in feature importance (if available)
     """
+    import numpy as np
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
@@ -634,6 +642,7 @@ async def correlation_matrix(request: CorrelationRequest):
 
     Useful for understanding feature relationships and multicollinearity.
     """
+    import numpy as np
     # Load dataset
     dataset, X, wavelengths = _load_analysis_data(
         request.dataset_id, request.partition, request.preprocessing_chain
@@ -705,6 +714,7 @@ async def select_features(request: FeatureSelectionRequest):
     use those operators directly in nirs4all pipelines. They provide
     chemometrics-specific selection based on PLS regression coefficients.
     """
+    import numpy as np
     # Load dataset
     dataset, X, wavelengths = _load_analysis_data(
         request.dataset_id, request.partition, request.preprocessing_chain
@@ -782,6 +792,7 @@ async def important_wavelengths(request: WavelengthsRequest):
 
     Filters wavelengths by threshold or returns top-k most important.
     """
+    import numpy as np
     importance = np.array(request.importance)
     wavelengths = np.array(request.wavelengths)
 

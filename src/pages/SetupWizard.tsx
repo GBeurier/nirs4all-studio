@@ -46,6 +46,8 @@ import {
 import { alignConfig } from "@/api/client";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/client";
 
+const electronApi = (window as unknown as { electronApi?: { platform: string } }).electronApi;
+
 const STEPS = ["detect", "profile", "extras", "install", "ready"] as const;
 type Step = (typeof STEPS)[number];
 
@@ -285,7 +287,13 @@ export default function SetupWizard() {
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
                   ) : (
-                    config?.profiles.map((profile: ProfileInfo) => {
+                    config?.profiles
+                    .filter((profile: ProfileInfo) => {
+                      const platform = electronApi?.platform;
+                      if (!platform) return true;
+                      return profile.platforms.length === 0 || profile.platforms.includes(platform);
+                    })
+                    .map((profile: ProfileInfo) => {
                       const isRecommended =
                         gpuInfo?.recommended_profiles[0] === profile.id;
                       return (

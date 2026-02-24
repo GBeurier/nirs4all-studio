@@ -11,14 +11,12 @@ for chain-based model retrieval.
 
 from __future__ import annotations
 
-import sys
 import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -27,18 +25,8 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
-try:
-    from nirs4all.visualization.analysis.shap import SHAP_AVAILABLE, ShapAnalyzer
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for SHAP: %s", e)
-    NIRS4ALL_AVAILABLE = False
-    SHAP_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+NIRS4ALL_AVAILABLE = True
 
 try:
     from .store_adapter import STORE_AVAILABLE, StoreAdapter
@@ -254,7 +242,7 @@ async def get_shap_config():
         default_bin_size=20,
         default_bin_stride=10,
         aggregation_methods=["sum", "sum_abs", "mean", "mean_abs"],
-        shap_available=SHAP_AVAILABLE if NIRS4ALL_AVAILABLE else False
+        shap_available=get_cached("SHAP_AVAILABLE") or False
     )
 
 
@@ -289,7 +277,7 @@ async def compute_shap_explanation(request: ShapComputeRequest):
     """
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all not available. SHAP analysis requires nirs4all.")
-    if not SHAP_AVAILABLE:
+    if not get_cached("SHAP_AVAILABLE"):
         raise HTTPException(status_code=501, detail="SHAP not installed. Install with: pip install shap")
     if not request.chain_id and not request.bundle_path:
         raise HTTPException(status_code=400, detail="Either chain_id or bundle_path is required")
@@ -362,6 +350,7 @@ async def get_spectral_detail(job_id: str, sample_indices: str | None = Query(No
     When sample_indices is provided (comma-separated), returns SHAP
     importance and mean spectrum for only those samples.
     """
+    import numpy as np
     if job_id not in _shap_results_cache:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
@@ -432,6 +421,7 @@ async def rebin_shap_results(job_id: str, request: RebinRequest):
 @router.get("/analysis/shap/results/{job_id}/beeswarm", response_model=BeeswarmDataResponse)
 async def get_beeswarm_data(job_id: str, max_samples: int = 200):
     """Get beeswarm plot data."""
+    import numpy as np
     if job_id not in _shap_results_cache:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
@@ -489,6 +479,7 @@ async def get_beeswarm_data(job_id: str, max_samples: int = 200):
 @router.get("/analysis/shap/results/{job_id}/sample/{sample_idx}", response_model=SampleExplanationResponse)
 async def get_sample_explanation(job_id: str, sample_idx: int, top_n: int = 15):
     """Get single sample explanation for waterfall plot."""
+    import numpy as np
     if job_id not in _shap_results_cache:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
@@ -576,7 +567,7 @@ def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) ->
     )
 
     progress_callback(25, "Computing SHAP values...")
-    analyzer = ShapAnalyzer()
+    analyzer = get_cached("ShapAnalyzer")()
     results = analyzer.explain_model(
         model=model, X=X, feature_names=feature_names,
         explainer_type=config.get("explainer_type", "auto"),
@@ -790,12 +781,13 @@ def _resolve_dataset_id_by_name(name: str) -> str | None:
 
 def _load_dataset_for_shap(
     dataset_id: str, partition: str, n_samples: int | None
-) -> tuple[np.ndarray, np.ndarray | None, list[float], list[str], list[int]]:
+) -> tuple[Any, Any, list[float], list[str], list[int]]:
     """Load dataset for SHAP analysis. Returns (X, y, wavelengths, feature_names, sample_indices).
 
     The dataset_id may be a dataset link ID (e.g. "dataset_17378_3") or a dataset name
     (e.g. "corn") as stored in chain summaries. We try both lookups.
     """
+    import numpy as np
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)
@@ -847,7 +839,7 @@ def _load_dataset_for_shap(
 
 
 def _compute_binned_importance(
-    shap_values: np.ndarray, wavelengths: list[float],
+    shap_values, wavelengths: list[float],
     bin_size: int, bin_stride: int, bin_aggregation: str
 ) -> BinnedImportanceData:
     """Compute binned importance from raw SHAP values.
@@ -858,6 +850,7 @@ def _compute_binned_importance(
     - mean:     mean of raw SHAP per sample, then mean across samples (signed, normalized by bin size)
     - mean_abs: mean of |SHAP| per sample, then mean across samples (unsigned, normalized by bin size)
     """
+    import numpy as np
     n_features = len(wavelengths)
     bin_centers = []
     bin_values = []
@@ -899,10 +892,11 @@ def _compute_binned_importance(
 
 def _process_shap_results(
     results: dict[str, Any], job_id: str, model_id: str, dataset_id: str,
-    wavelengths: list[float], sample_indices: list[int], X: np.ndarray,
+    wavelengths: list[float], sample_indices: list[int], X,
     bin_size: int, bin_stride: int, bin_aggregation: str, execution_time_ms: float
 ) -> dict[str, Any]:
     """Process raw SHAP results into webapp-friendly format."""
+    import numpy as np
     shap_values = results["shap_values"]
     base_value = results["base_value"]
     n_samples, n_features = shap_values.shape

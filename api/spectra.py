@@ -7,11 +7,9 @@ including raw spectra, processed spectra, and statistics.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -21,18 +19,8 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
-try:
-    from nirs4all.data.dataset import SpectroDataset
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for spectra API: %s", e)
-    NIRS4ALL_AVAILABLE = False
+from .lazy_imports import get_cached, require_ml_ready
+NIRS4ALL_AVAILABLE = True
 
 
 router = APIRouter()
@@ -237,7 +225,7 @@ def _build_nirs4all_config_from_stored(dataset_config: dict[str, Any]) -> dict[s
     return config
 
 
-def _load_dataset(dataset_id: str) -> SpectroDataset | None:
+def _load_dataset(dataset_id: str) -> Any:
     """Load a dataset by ID, with caching."""
     global _dataset_cache
 
@@ -311,6 +299,7 @@ async def get_spectra(
     Returns spectral data as a 2D array with wavelength headers.
     Optionally includes target (y) values when include_y=True.
     """
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="nirs4all library not available for spectra access"
@@ -551,6 +540,7 @@ async def get_spectra_statistics(
 
     Returns mean, std, min, max, and percentiles for the spectral data.
     """
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="nirs4all library not available for spectra access"
@@ -623,7 +613,7 @@ async def get_spectra_statistics(
         )
 
 
-def _apply_preprocessing_chain(X: np.ndarray, chain: list[dict[str, Any]]) -> np.ndarray:
+def _apply_preprocessing_chain(X, chain: list[dict[str, Any]]):
     """Apply a chain of preprocessing steps to spectral data.
 
     Uses shared pipeline_service for operator resolution to avoid duplicating

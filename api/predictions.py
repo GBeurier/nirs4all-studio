@@ -15,26 +15,14 @@ endpoints in aggregated_predictions.py.
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-# Optional imports
-try:
-    import nirs4all
-    NIRS4ALL_AVAILABLE = True
-except ImportError:
-    nirs4all = None
-    NIRS4ALL_AVAILABLE = False
-
-try:
-    import joblib
-    JOBLIB_AVAILABLE = True
-except ImportError:
-    joblib = None
-    JOBLIB_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+NIRS4ALL_AVAILABLE = True
+JOBLIB_AVAILABLE = True
 
 
 # ============= Request/Response Models =============
@@ -203,6 +191,7 @@ async def predict_single(request: PredictSingleRequest):
     Note: preprocessing_chain in request is ignored - the model bundle
     contains all preprocessing steps that will be applied automatically.
     """
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -221,7 +210,7 @@ async def predict_single(request: PredictSingleRequest):
 
     try:
         # Use nirs4all.predict() directly
-        pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
+        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
         predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
 
         # Format result
@@ -264,6 +253,7 @@ async def predict_batch(request: PredictBatchRequest):
     Note: preprocessing_chain in request is ignored - the model bundle
     contains all preprocessing steps that will be applied automatically.
     """
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -282,7 +272,7 @@ async def predict_batch(request: PredictBatchRequest):
 
     try:
         # Use nirs4all.predict() directly
-        pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
+        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
         predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
         results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
 
@@ -319,6 +309,7 @@ async def predict_dataset(request: PredictDatasetRequest):
     Note: preprocessing_chain in request is ignored - the model bundle
     contains all preprocessing steps that will be applied automatically.
     """
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -356,7 +347,7 @@ async def predict_dataset(request: PredictDatasetRequest):
 
     try:
         # Use nirs4all.predict() directly
-        pred_result = nirs4all.predict(model=model_path, data=X, verbose=0)
+        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
         predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
         results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
 
@@ -412,6 +403,7 @@ async def predict_with_confidence(request: PredictConfidenceRequest):
     Uses bootstrap, ensemble, or jackknife methods to estimate
     prediction uncertainty.
     """
+    import numpy as np
     if not JOBLIB_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -472,6 +464,7 @@ async def explain_prediction(request: ExplainPredictionRequest):
 
     Supports permutation importance and SHAP-like explanations.
     """
+    import numpy as np
     if not JOBLIB_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -570,7 +563,7 @@ def _load_model(model_id: str, workspace_path: str) -> Any:
         )
 
     try:
-        return joblib.load(model_path)
+        return get_cached("joblib").load(model_path)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -580,7 +573,7 @@ def _load_model(model_id: str, workspace_path: str) -> Any:
 
 def _bootstrap_confidence(
     model: Any,
-    X: np.ndarray,
+    X,
     n_iterations: int,
     confidence_level: float,
 ) -> tuple:
@@ -595,6 +588,7 @@ def _bootstrap_confidence(
     Returns:
         Tuple of (predictions, lower_bounds, upper_bounds, std_devs)
     """
+    import numpy as np
     n_samples = X.shape[0]
     n_features = X.shape[1]
 
@@ -623,7 +617,7 @@ def _bootstrap_confidence(
 
 def _jackknife_confidence(
     model: Any,
-    X: np.ndarray,
+    X,
     confidence_level: float,
 ) -> tuple:
     """Compute confidence intervals using jackknife.
@@ -636,6 +630,7 @@ def _jackknife_confidence(
     Returns:
         Tuple of (predictions, lower_bounds, upper_bounds, std_devs)
     """
+    import numpy as np
     from scipy import stats
 
     n_samples = X.shape[0]
@@ -666,7 +661,7 @@ def _jackknife_confidence(
 
 def _ensemble_confidence(
     model: Any,
-    X: np.ndarray,
+    X,
     confidence_level: float,
 ) -> tuple:
     """Compute confidence intervals from ensemble predictions.
@@ -679,6 +674,7 @@ def _ensemble_confidence(
     Returns:
         Tuple of (predictions, lower_bounds, upper_bounds, std_devs)
     """
+    import numpy as np
     from scipy import stats
 
     predictions = model.predict(X)
@@ -701,7 +697,7 @@ def _ensemble_confidence(
     return predictions, lower, upper, std
 
 
-def _permutation_importance_single(model: Any, X: np.ndarray) -> np.ndarray:
+def _permutation_importance_single(model: Any, X):
     """Compute permutation importance for a single sample.
 
     Args:
@@ -711,6 +707,7 @@ def _permutation_importance_single(model: Any, X: np.ndarray) -> np.ndarray:
     Returns:
         Feature importance array
     """
+    import numpy as np
     n_features = X.shape[1]
     baseline_pred = model.predict(X)[0]
 
@@ -730,7 +727,7 @@ def _permutation_importance_single(model: Any, X: np.ndarray) -> np.ndarray:
     return importance
 
 
-def _gradient_importance(model: Any, X: np.ndarray) -> np.ndarray:
+def _gradient_importance(model: Any, X):
     """Compute gradient-based feature importance.
 
     For models that support gradient computation.

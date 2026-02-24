@@ -25,16 +25,9 @@ from fastapi import HTTPException
 
 from .workspace_manager import workspace_manager
 
-# Try direct import
-try:
-    import nirs4all
-    from nirs4all.data import DatasetConfigs
-    NIRS4ALL_AVAILABLE = True
-except ImportError as exc:
-    nirs4all = None
-    DatasetConfigs = None
-    NIRS4ALL_AVAILABLE = False
-    _NIRS4ALL_IMPORT_ERROR = exc
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+
+NIRS4ALL_AVAILABLE = True
 
 
 PREPROCESSING_ALIASES = {
@@ -92,9 +85,7 @@ class PipelineBuildResult:
 
 def require_nirs4all() -> None:
     """Require nirs4all to be available."""
-    if not NIRS4ALL_AVAILABLE:
-        detail = "nirs4all library not available. Install it in Settings > Dependencies."
-        raise HTTPException(status_code=501, detail=detail)
+    require_ml_ready()
 
 
 def get_dataset_record(dataset_id: str) -> dict[str, Any]:

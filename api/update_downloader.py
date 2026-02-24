@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 import aiofiles
 import httpx
 
-from updater import calculate_sha256, get_staging_dir, get_update_cache_dir
+from updater import calculate_sha256, get_executable_name, get_staging_dir, get_update_cache_dir
 
 
 class UpdateDownloader:
@@ -206,6 +206,11 @@ class UpdateDownloader:
                 await self._extract_tarball(archive_path, staging_dir)
             elif archive_name.endswith(".zip"):
                 await self._extract_zip(archive_path, staging_dir)
+            elif archive_name.endswith(".exe"):
+                # Portable executable — no extraction needed, stage with the expected name
+                self._report_progress(70, "Staging executable...")
+                dest = staging_dir / get_executable_name()
+                shutil.copy2(archive_path, dest)
             else:
                 return (
                     False,

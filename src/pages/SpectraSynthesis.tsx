@@ -10,6 +10,7 @@
  */
 
 import { useCallback } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { motion } from "@/lib/motion";
 import {
   Sparkles,
@@ -69,11 +70,13 @@ const itemVariants = {
 
 export default function SpectraSynthesis() {
   return (
+    <MlLoadingOverlay>
     <SynthesisBuilderProvider>
       <SynthesisPreviewProvider>
         <SpectraSynthesisContent />
       </SynthesisPreviewProvider>
     </SynthesisBuilderProvider>
+    </MlLoadingOverlay>
   );
 }
 

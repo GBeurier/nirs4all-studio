@@ -17,7 +17,6 @@ RunResult.export() for model saving.
 
 from __future__ import annotations
 
-import sys
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -33,19 +32,8 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
-try:
-    import nirs4all
-    from nirs4all.data.dataset import SpectroDataset
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for AutoML API: %s", e)
-    NIRS4ALL_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+NIRS4ALL_AVAILABLE = True
 
 
 router = APIRouter()
@@ -726,7 +714,7 @@ def _run_automl_task(
 
     # Run pipeline using nirs4all.run()
     try:
-        result = nirs4all.run(
+        result = get_cached("nirs4all").run(
             pipeline=pipeline_steps,
             dataset=dataset,
             verbose=0,

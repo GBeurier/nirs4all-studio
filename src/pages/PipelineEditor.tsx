@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -541,6 +542,7 @@ export default function PipelineEditor() {
   const variantSeverity = getVariantCountSeverity(variantCount);
 
   return (
+    <MlLoadingOverlay>
     <TooltipProvider>
       <PipelineDndProvider onDrop={onDrop} onReorder={onReorder}>
         <motion.div
@@ -1159,5 +1161,6 @@ export default function PipelineEditor() {
         className="hidden"
       />
     </TooltipProvider>
+    </MlLoadingOverlay>
   );
 }

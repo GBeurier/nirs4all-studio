@@ -13,16 +13,8 @@ from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
-# WorkspaceStore is optional (nirs4all may not be installed)
-try:
-    from nirs4all.pipeline.storage import WorkspaceStore
-
-    STORE_AVAILABLE = True
-except ImportError:
-    WorkspaceStore = None  # type: ignore[assignment, misc]
-    STORE_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready
+STORE_AVAILABLE = True
 
 
 def _sanitize_float(value: Any) -> Any:
@@ -60,7 +52,7 @@ class StoreAdapter:
     def __init__(self, workspace_path: Path) -> None:
         if not STORE_AVAILABLE:
             raise RuntimeError("nirs4all library is required for StoreAdapter")
-        self._store = WorkspaceStore(workspace_path)
+        self._store = get_cached("WorkspaceStore")(workspace_path)
 
     def __enter__(self) -> StoreAdapter:
         return self
@@ -69,7 +61,7 @@ class StoreAdapter:
         self.close()
 
     @property
-    def store(self) -> WorkspaceStore:
+    def store(self) -> Any:
         """Return the underlying ``WorkspaceStore``."""
         return self._store
 
@@ -356,6 +348,7 @@ class StoreAdapter:
             Dict with y_true, y_pred, n_samples, partition, model_name,
             dataset_name; or ``None`` if not found.
         """
+        import numpy as np
         pred = self._store.get_prediction(prediction_id, load_arrays=True)
         if pred is None:
             return None
@@ -484,6 +477,7 @@ class StoreAdapter:
         Returns:
             Dict with y_true, y_pred, etc. as lists, or ``None``.
         """
+        import numpy as np
         arrays = self._store.get_prediction_arrays(prediction_id)
         if arrays is None:
             return None
@@ -1075,6 +1069,7 @@ class StoreAdapter:
 
     def get_score_distribution(self, run_id: str, dataset_name: str, n_bins: int = 20) -> dict[str, Any]:
         """Get score distribution histogram data for a run+dataset, per partition."""
+        import numpy as np
         result: dict[str, Any] = {"dataset_name": dataset_name, "metric": None, "partitions": {}}
         try:
             df = self._store._fetch_pl(

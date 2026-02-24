@@ -407,6 +407,25 @@ const fr = {
       },
     },
 
+    // Python Environment Picker
+    pythonEnv: {
+      title: "Environnement Python",
+      description: "Interpréteur Python utilisé par le backend d'analyse",
+      ready: "Prêt",
+      notReady: "Non prêt",
+      managed: "Géré",
+      change: "Changer...",
+      restartNeeded: "Environnement modifié. Redémarrez le backend pour appliquer.",
+      restartBackend: "Redémarrer le backend",
+      selectInterpreter: "Sélectionner l'interpréteur Python",
+      selectInterpreterDesc: "Choisissez un environnement Python pour nirs4all Studio. Python 3.11+ est requis.",
+      scanning: "Recherche des environnements Python...",
+      detected: "Environnements détectés",
+      current: "Actuel",
+      noEnvsFound: "Aucun environnement Python compatible trouvé sur ce système.",
+      browseForPython: "Parcourir pour un exécutable Python...",
+    },
+
     // Config Alignment
     configAlignment: {
       title: "Configuration recommandée",
@@ -437,6 +456,32 @@ const fr = {
     title: "Bienvenue dans nirs4all Studio",
     subtitle: "Configurons votre environnement pour la meilleure expérience",
     skip: "Passer la configuration",
+    env: {
+      title: "Configuration de l'environnement Python",
+      description: "nirs4all Studio a besoin d'un environnement Python pour exécuter son backend d'analyse. Configuration unique.",
+      autoSetup: "Configurer automatiquement",
+      autoSetupDetail: "Télécharge Python 3.11 et installe nirs4all + dépendances",
+      recommended: "Recommandé",
+      or: "ou",
+      detectedEnvs: "Environnements Python détectés :",
+      scanning: "Recherche d'environnements Python existants...",
+      browsePython: "Parcourir pour un exécutable Python",
+      nirs4allInstalled: "nirs4all installé",
+    },
+    envProgress: {
+      title: "Configuration de l'environnement Python",
+      downloading: "Téléchargement de Python",
+      extracting: "Extraction du runtime",
+      creatingVenv: "Création de l'environnement",
+      installing: "Installation des packages",
+      validating: "Validation de l'environnement",
+      startingBackend: "Démarrage du backend d'analyse...",
+      ready: "Prêt",
+      settingUp: "Configuration en cours",
+      timeNote: "Cela peut prendre quelques minutes lors de la première configuration",
+      failed: "La configuration a échoué",
+      tryAgain: "Réessayer",
+    },
     detect: {
       title: "Détection du matériel",
       description: "Recherche des capacités GPU pour recommander la meilleure configuration",

@@ -19,9 +19,11 @@ extraResources:
     filter:
       - "api/**/*"
       - "websocket/**/*"
+      - "updater/**/*"
       - "main.py"
       - "public/**/*"
       - "recommended-config.json"
+      - "version.json"
 
 asar: true
 

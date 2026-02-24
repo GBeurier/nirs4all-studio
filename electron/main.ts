@@ -59,14 +59,14 @@ const devMode = isDev || app.commandLine.hasSwitch("dev");
 
 function createSplashWindow(): BrowserWindow {
   const splash = new BrowserWindow({
-    width: 400,
-    height: 320,
+    width: 460,
+    height: 420,
     frame: false,
-    transparent: true,
     resizable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     center: true,
+    backgroundColor: "#ffffff",
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   // In dev, logo is at ../public/; in prod build, copied to dist-electron/
@@ -293,6 +293,21 @@ ipcMain.handle("backend:restart", async () => {
   }
 });
 
+ipcMain.handle("backend:getMlStatus", async () => {
+  try {
+    const response = await fetch(
+      `${backendManager.getUrl()}/api/system/readiness`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    if (response.ok) {
+      return response.json();
+    }
+    return { ml_ready: false, ml_loading: true };
+  } catch {
+    return { ml_ready: false, ml_loading: false, ml_error: "Backend not reachable" };
+  }
+});
+
 // IPC Handlers for Python environment management
 ipcMain.handle("env:getStatus", () => {
   return envManager.getStatus();
@@ -367,40 +382,22 @@ app.whenReady().then(async () => {
   splashWindow = createSplashWindow();
 
   if (isDev) {
-    // Dev mode: start backend directly (uses .venv)
+    // Dev mode: start backend non-blocking, show window immediately
     try {
-      const port = await backendManager.start();
-      console.log(`Backend started on port ${port}`);
+      const port = await backendManager.startNonBlocking();
+      console.log(`Backend spawned on port ${port} (health check in background)`);
     } catch (error) {
-      console.error("Failed to start backend:", error);
+      console.error("Failed to spawn backend:", error);
     }
     await createWindow();
   } else if (envManager.isReady()) {
-    // Python env exists: start backend, then show window
+    // Python env exists: spawn backend non-blocking, show window immediately.
+    // The React app handles "connecting to backend" state via MlReadinessContext.
     try {
-      const port = await backendManager.start();
-      console.log(`Backend started on port ${port}`);
+      const port = await backendManager.startNonBlocking();
+      console.log(`Backend spawned on port ${port} (health check in background)`);
     } catch (error) {
-      console.error("Failed to start backend:", error);
-
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error occurred";
-
-      closeSplash();
-      const result = await dialog.showMessageBox({
-        type: "error",
-        title: "Backend Error",
-        message: "Failed to start the backend server",
-        detail: `${errorMessage}\n\nWould you like to continue without the backend? (limited functionality)`,
-        buttons: ["Continue Anyway", "Quit"],
-        defaultId: 1,
-        cancelId: 1,
-      });
-
-      if (result.response === 1) {
-        app.quit();
-        return;
-      }
+      console.error("Failed to spawn backend:", error);
     }
     await createWindow();
   } else {

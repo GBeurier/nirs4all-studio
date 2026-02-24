@@ -22,30 +22,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import yaml
-
 from .app_config import app_config
 from .shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Try to import nirs4all components (optional)
 try:
-    nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-    if str(nirs4all_path) not in sys.path:
-        sys.path.insert(0, str(nirs4all_path))
-    from nirs4all import workspace as nirs4all_workspace
-    from nirs4all.data import DatasetConfigs
-    from nirs4all.data.config_parser import parse_config
-    from nirs4all.data.loaders.loader import handle_data
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available, using stub functionality: %s", e)
-    DatasetConfigs = None
-    parse_config = None
-    handle_data = None
-    nirs4all_workspace = None
-    NIRS4ALL_AVAILABLE = False
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    yaml = None  # type: ignore[assignment]
+    YAML_AVAILABLE = False
+    logger.info("PyYAML not available for workspace manager")
+
+# nirs4all imports are lazy-loaded via api/lazy_imports.py to speed up backend startup.
+# Access via _get_nirs4all_workspace() at call sites.
+NIRS4ALL_AVAILABLE = True
 
 
 # ============================================================================
@@ -1969,8 +1961,10 @@ class WorkspaceManager:
 
         # Set nirs4all workspace if this is the active one
         if is_first:
-            if nirs4all_workspace is not None:
-                nirs4all_workspace.set_active_workspace(str(workspace_path))
+            from .lazy_imports import get_cached
+            _nirs4all_ws = get_cached("nirs4all_workspace")
+            if _nirs4all_ws is not None:
+                _nirs4all_ws.set_active_workspace(str(workspace_path))
             else:
                 os.environ["NIRS4ALL_WORKSPACE"] = str(workspace_path)
 
@@ -2654,10 +2648,12 @@ class WorkspaceManager:
             self.app_config.save_app_settings(settings)
 
             # Set workspace in nirs4all library (handles environment variable internally)
-            if nirs4all_workspace is not None:
-                nirs4all_workspace.set_active_workspace(found.path)
+            from .lazy_imports import get_cached
+            _nirs4all_ws = get_cached("nirs4all_workspace")
+            if _nirs4all_ws is not None:
+                _nirs4all_ws.set_active_workspace(found.path)
             else:
-                # Fallback if nirs4all not available
+                # Fallback if nirs4all not loaded yet
                 os.environ["NIRS4ALL_WORKSPACE"] = found.path
 
         return found

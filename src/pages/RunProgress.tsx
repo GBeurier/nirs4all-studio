@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1058,6 +1059,7 @@ export default function RunProgress() {
     : null;
 
   return (
+    <MlLoadingOverlay>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1280,5 +1282,6 @@ export default function RunProgress() {
         </div>
       </div>
     </div>
+    </MlLoadingOverlay>
   );
 }

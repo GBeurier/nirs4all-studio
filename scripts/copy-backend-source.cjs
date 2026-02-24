@@ -67,9 +67,11 @@ fs.mkdirSync(backendDist, { recursive: true });
 const items = [
   { src: "api", type: "dir" },
   { src: "websocket", type: "dir" },
+  { src: "updater", type: "dir" },
   { src: "main.py", type: "file" },
   { src: "public", type: "dir" },
   { src: "recommended-config.json", type: "file" },
+  { src: "version.json", type: "file" },
 ];
 
 for (const item of items) {

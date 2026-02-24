@@ -94,6 +94,15 @@ async function getApiBaseUrl(): Promise<string> {
   return resolvedBackendUrl;
 }
 
+/**
+ * Reset the cached backend URL so the next API call re-resolves it.
+ * Must be called after backend restart (port may change).
+ */
+export function resetBackendUrl(): void {
+  resolvedBackendUrl = null;
+  backendUrlPromise = null;
+}
+
 interface ApiError {
   detail: string;
   status: number;
@@ -2419,6 +2428,7 @@ export interface ProfileInfo {
   label: string;
   description: string;
   packages: Record<string, string>;
+  platforms: string[];
 }
 
 export interface OptionalPackageInfo {

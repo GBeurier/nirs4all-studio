@@ -28,20 +28,13 @@ from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .workspace_manager import workspace_manager
 
-# WorkspaceStore is optional (nirs4all may not be installed)
-try:
-    from nirs4all.pipeline.storage import WorkspaceStore
-
-    STORE_AVAILABLE = True
-except ImportError:
-    WorkspaceStore = None  # type: ignore[assignment, misc]
-    STORE_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready
+STORE_AVAILABLE = True
 
 
 router = APIRouter(prefix="/inspector", tags=["inspector"])
@@ -275,7 +268,7 @@ def _sanitize_dict(d: dict) -> dict:
     return out
 
 
-def _get_store() -> WorkspaceStore:
+def _get_store():
     """Get a WorkspaceStore for the current workspace."""
     if not STORE_AVAILABLE:
         raise HTTPException(
@@ -295,7 +288,7 @@ def _get_store() -> WorkspaceStore:
             detail="No DuckDB store found in workspace. Run a pipeline first.",
         )
 
-    return WorkspaceStore(workspace_path)
+    return get_cached("WorkspaceStore")(workspace_path)
 
 
 _LOWER_BETTER_METRICS = {"rmse", "mse", "mae", "rmsecv", "rmsep", "secv", "sep", "bias"}
@@ -390,6 +383,7 @@ async def get_scatter_data(request: ScatterRequest):
     For each chain_id, loads the fold-level predictions matching the
     requested partition and concatenates the arrays.
     """
+    import numpy as np
     if not request.chain_ids:
         return ScatterResponse(points=[], partition=request.partition, total_samples=0)
 
@@ -471,6 +465,7 @@ async def get_histogram_data(
     Computes histogram bins from chain summary scores and includes
     chain_ids per bin for click-to-select functionality.
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -609,6 +604,7 @@ async def get_heatmap_data(request: HeatmapRequest):
     Groups chains by (x_variable, y_variable) and aggregates score_column
     using the requested aggregation method (best/mean/median/worst).
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -691,6 +687,7 @@ async def get_candlestick_data(request: CandlestickRequest):
     Groups chains by category_variable and computes min, Q25, median,
     Q75, max, mean, and IQR-based outliers for the chosen score column.
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -859,6 +856,7 @@ async def get_branch_comparison(request: BranchComparisonRequest):
     Groups chains by branch_path and computes descriptive statistics
     including 95% confidence intervals for each branch.
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -936,6 +934,7 @@ async def get_branch_topology(
     Uses nirs4all.pipeline.analysis.topology.analyze_topology() to parse
     the expanded pipeline config into a tree of nodes.
     """
+    import numpy as np
     store = _get_store()
     try:
         pipeline = store.get_pipeline(pipeline_id)
@@ -1050,6 +1049,7 @@ async def get_fold_stability(request: FoldStabilityRequest):
     For each chain, retrieves fold-level predictions and extracts
     the score for the requested partition.
     """
+    import numpy as np
     if not request.chain_ids:
         return FoldStabilityResponse(
             entries=[], fold_ids=[], score_column=request.score_column, total_chains=0
@@ -1219,6 +1219,7 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
     selected chains and computes the confusion matrix with optional
     normalization (by row=recall, column=precision, or all).
     """
+    import numpy as np
     if not request.chain_ids:
         return ConfusionMatrixResponse(
             cells=[], labels=[], total_samples=0,
@@ -1326,6 +1327,7 @@ async def get_robustness_data(request: RobustnessRequest):
 
     Each axis is normalized 0–1 across all requested chains (higher = more robust).
     """
+    import numpy as np
     if not request.chain_ids:
         return RobustnessResponse(
             entries=[], axis_names=[], score_column=request.score_column,
@@ -1484,6 +1486,7 @@ async def get_metric_correlation(request: MetricCorrelationRequest):
     score columns (cv_val, cv_test, cv_train, final_test, final_train)
     across chains.
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -1701,6 +1704,7 @@ async def get_preprocessing_impact(request: PreprocessingImpactRequest):
     the mean score of chains with vs without that step, and the impact
     (difference). Sign is flipped for lower-is-better metrics.
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -1852,6 +1856,7 @@ async def get_bias_variance(request: BiasVarianceRequest):
       variance = Var(y_pred across folds)
     Aggregated per group: mean_bias², mean_variance, total_error.
     """
+    import numpy as np
     if not request.chain_ids:
         return BiasVarianceResponse(
             entries=[], score_column=request.score_column, group_by=request.group_by,
@@ -1965,6 +1970,7 @@ async def get_learning_curve(request: LearningCurveRequest):
     Groups chains by the number of training samples (inferred from
     prediction array lengths), computing mean/std of train and val scores.
     """
+    import numpy as np
     store = _get_store()
     try:
         df = store.query_chain_summaries(

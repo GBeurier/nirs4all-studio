@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Sparkles, ArrowLeftRight, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ export default function Lab() {
   const location = useLocation();
 
   return (
+    <MlLoadingOverlay>
     <div className="h-full flex flex-col">
       {/* Tab navigation */}
       <div className="shrink-0 flex items-center gap-1 border-b border-border/50">
@@ -43,5 +45,6 @@ export default function Lab() {
         <Outlet />
       </div>
     </div>
+    </MlLoadingOverlay>
   );
 }

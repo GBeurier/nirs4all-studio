@@ -1,0 +1,414 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  viewBox="0 0 360 120"
+  role="img"
+  aria-label="NIRS loading animation"
+>
+  <style>
+    svg {
+      --nirs-red: rgb(255, 0, 0);
+      --nirs-blue: rgb(37, 119, 187);
+    }
+
+    .frame-grid line {
+      stroke: rgba(37, 119, 187, 0.48);
+      stroke-width: 0.75;
+      animation: gridPulse 3.2s ease-in-out infinite;
+    }
+
+    .instrument-text {
+      fill: #94a3b8;
+      font-family: Consolas, Menlo, monospace;
+      font-size: 6.6px;
+      letter-spacing: 0.7px;
+    }
+
+    .scan-beam {
+      fill: url(#scanBeam);
+      opacity: 0.72;
+      filter: url(#beamBlur);
+      mix-blend-mode: screen;
+    }
+
+    .spectrum-glow {
+      fill: none;
+      stroke: rgba(255, 0, 0, 0.3);
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: url(#softBlur);
+      opacity: 0.5;
+      animation: spectrumPulse 2.8s ease-in-out infinite;
+    }
+
+    .spectrum-main {
+      fill: none;
+      stroke: var(--nirs-red);
+      stroke-width: 2.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 820;
+      stroke-dashoffset: 820;
+      animation: spectrumTrace 6.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .spectrum-core {
+      fill: none;
+      stroke: rgba(255, 0, 0, 0.72);
+      stroke-width: 1.1;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.9;
+    }
+
+    .network-layer {
+      opacity: 0;
+      animation: networkBuild 6.8s linear infinite;
+    }
+
+    .network-edge {
+      fill: none;
+      stroke: var(--nirs-blue);
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      animation: edgeBuild 6.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    }
+
+    .network-edge.secondary {
+      stroke: var(--nirs-blue);
+      stroke-width: 1.1;
+      opacity: 0.55;
+    }
+
+    .network-node {
+      fill: var(--nirs-red);
+      stroke: var(--nirs-red);
+      stroke-width: 1.4;
+      filter: url(#nodeGlow);
+      opacity: 0;
+      animation: nodeBuild 6.8s linear infinite;
+      animation-delay: calc(var(--delay) * 85ms);
+    }
+
+    .signal-particle {
+      fill: var(--nirs-blue);
+      stroke: var(--nirs-blue);
+      stroke-width: 1.2;
+      filter: url(#nodeGlow);
+      animation: particleBlink 1.1s ease-in-out infinite;
+    }
+
+    .signal-particle.secondary {
+      opacity: 0.55;
+    }
+
+    @keyframes spectrumTrace {
+      0% {
+        stroke-dashoffset: 820;
+        opacity: 0.1;
+      }
+
+      16% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+
+      84% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+
+      100% {
+        stroke-dashoffset: 820;
+        opacity: 0.12;
+      }
+    }
+
+    @keyframes spectrumPulse {
+      0%,
+      100% {
+        opacity: 0.34;
+      }
+
+      50% {
+        opacity: 0.74;
+      }
+    }
+
+    @keyframes networkBuild {
+      0%,
+      16% {
+        opacity: 0;
+      }
+
+      26%,
+      82% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+      }
+    }
+
+    @keyframes edgeBuild {
+      0%,
+      16% {
+        stroke-dashoffset: 1;
+        opacity: 0;
+      }
+
+      32%,
+      82% {
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+
+      100% {
+        stroke-dashoffset: 1;
+        opacity: 0;
+      }
+    }
+
+    @keyframes nodeBuild {
+      0%,
+      18% {
+        opacity: 0;
+      }
+
+      28%,
+      84% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+      }
+    }
+
+    @keyframes particleBlink {
+      0%,
+      100% {
+        opacity: 0.56;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+
+    @keyframes gridPulse {
+      0%,
+      100% {
+        opacity: 0.42;
+      }
+
+      50% {
+        opacity: 0.9;
+      }
+    }
+  </style>
+
+  <defs>
+    <linearGradient id="scanBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgb(37, 119, 187)" stop-opacity="0" />
+      <stop offset="50%" stop-color="rgb(37, 119, 187)" stop-opacity="0.68" />
+      <stop offset="100%" stop-color="rgb(37, 119, 187)" stop-opacity="0" />
+    </linearGradient>
+    <filter id="softBlur">
+      <feGaussianBlur stdDeviation="4" />
+    </filter>
+    <filter id="beamBlur">
+      <feGaussianBlur stdDeviation="5.4" />
+    </filter>
+    <filter id="nodeGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.05" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <clipPath id="panelClip">
+      <rect x="52" y="10" width="264" height="92" rx="2" />
+    </clipPath>
+  </defs>
+
+  <g class="frame-grid">
+    <line x1="52" y1="18" x2="316" y2="18" />
+    <line x1="52" y1="30" x2="316" y2="30" />
+    <line x1="52" y1="42" x2="316" y2="42" />
+    <line x1="52" y1="54" x2="316" y2="54" />
+    <line x1="52" y1="66" x2="316" y2="66" />
+    <line x1="52" y1="78" x2="316" y2="78" />
+    <line x1="52" y1="90" x2="316" y2="90" />
+    <line x1="64" y1="10" x2="64" y2="102" />
+    <line x1="88" y1="10" x2="88" y2="102" />
+    <line x1="112" y1="10" x2="112" y2="102" />
+    <line x1="136" y1="10" x2="136" y2="102" />
+    <line x1="160" y1="10" x2="160" y2="102" />
+    <line x1="184" y1="10" x2="184" y2="102" />
+    <line x1="208" y1="10" x2="208" y2="102" />
+    <line x1="232" y1="10" x2="232" y2="102" />
+    <line x1="256" y1="10" x2="256" y2="102" />
+    <line x1="280" y1="10" x2="280" y2="102" />
+    <line x1="304" y1="10" x2="304" y2="102" />
+  </g>
+
+  <text class="instrument-text" x="56" y="18.5">NIRS OSC / CH-1</text>
+  <text class="instrument-text" x="252" y="18.5">760nm 850nm</text>
+
+  <g clip-path="url(#panelClip)">
+    <rect class="scan-beam" x="-86" y="8" width="110" height="96" rx="4">
+      <animate
+        attributeName="x"
+        dur="3.8s"
+        repeatCount="indefinite"
+        values="-86;336;-86"
+        keyTimes="0;0.5;1"
+        calcMode="spline"
+        keySplines="0.4 0 0.2 1;0.4 0 0.2 1"
+      />
+    </rect>
+
+    <path
+      id="spectrumPathMotion"
+      class="spectrum-glow"
+      d="M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40"
+    >
+      <animate
+        attributeName="d"
+        dur="6.8s"
+        repeatCount="indefinite"
+        values="M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40;M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40;M62 68 C68 73 72 83 78 85 C84 87 90 78 96 64 C102 50 108 31 114 24 C120 17 126 19 132 31 C138 43 144 64 150 71 C156 78 162 77 168 65 C174 53 180 34 186 29 C192 24 198 26 204 39 C210 52 216 72 222 79 C228 86 234 84 240 70 C246 56 252 36 258 30 C264 24 270 26 276 40 C282 54 288 74 294 82 C300 90 304 84 308 68;M62 68 C68 73 72 83 78 85 C84 87 90 78 96 64 C102 50 108 31 114 24 C120 17 126 19 132 31 C138 43 144 64 150 71 C156 78 162 77 168 65 C174 53 180 34 186 29 C192 24 198 26 204 39 C210 52 216 72 222 79 C228 86 234 84 240 70 C246 56 252 36 258 30 C264 24 270 26 276 40 C282 54 288 74 294 82 C300 90 304 84 308 68;M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40"
+        keyTimes="0;0.3;0.58;0.85;1"
+        calcMode="spline"
+        keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1"
+      />
+    </path>
+
+    <path
+      class="spectrum-main"
+      d="M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40"
+    >
+      <animate
+        attributeName="d"
+        dur="6.8s"
+        repeatCount="indefinite"
+        values="M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40;M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40;M62 68 C68 73 72 83 78 85 C84 87 90 78 96 64 C102 50 108 31 114 24 C120 17 126 19 132 31 C138 43 144 64 150 71 C156 78 162 77 168 65 C174 53 180 34 186 29 C192 24 198 26 204 39 C210 52 216 72 222 79 C228 86 234 84 240 70 C246 56 252 36 258 30 C264 24 270 26 276 40 C282 54 288 74 294 82 C300 90 304 84 308 68;M62 68 C68 73 72 83 78 85 C84 87 90 78 96 64 C102 50 108 31 114 24 C120 17 126 19 132 31 C138 43 144 64 150 71 C156 78 162 77 168 65 C174 53 180 34 186 29 C192 24 198 26 204 39 C210 52 216 72 222 79 C228 86 234 84 240 70 C246 56 252 36 258 30 C264 24 270 26 276 40 C282 54 288 74 294 82 C300 90 304 84 308 68;M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40"
+        keyTimes="0;0.3;0.58;0.85;1"
+        calcMode="spline"
+        keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1"
+      />
+    </path>
+
+    <path
+      class="spectrum-core"
+      d="M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40"
+    >
+      <animate
+        attributeName="d"
+        dur="6.8s"
+        repeatCount="indefinite"
+        values="M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40;M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40;M62 68 C68 73 72 83 78 85 C84 87 90 78 96 64 C102 50 108 31 114 24 C120 17 126 19 132 31 C138 43 144 64 150 71 C156 78 162 77 168 65 C174 53 180 34 186 29 C192 24 198 26 204 39 C210 52 216 72 222 79 C228 86 234 84 240 70 C246 56 252 36 258 30 C264 24 270 26 276 40 C282 54 288 74 294 82 C300 90 304 84 308 68;M62 68 C68 73 72 83 78 85 C84 87 90 78 96 64 C102 50 108 31 114 24 C120 17 126 19 132 31 C138 43 144 64 150 71 C156 78 162 77 168 65 C174 53 180 34 186 29 C192 24 198 26 204 39 C210 52 216 72 222 79 C228 86 234 84 240 70 C246 56 252 36 258 30 C264 24 270 26 276 40 C282 54 288 74 294 82 C300 90 304 84 308 68;M62 68 C68 60 72 45 78 37 C84 29 90 30 96 41 C102 52 108 69 114 74 C120 79 126 75 132 62 C138 49 144 32 150 27 C156 22 162 24 168 36 C174 48 180 67 186 73 C192 79 198 78 204 65 C210 52 216 34 222 28 C228 22 234 23 240 34 C246 45 252 64 258 71 C264 78 270 77 276 65 C282 53 288 36 294 31 C300 26 304 31 308 40"
+        keyTimes="0;0.3;0.58;0.85;1"
+        calcMode="spline"
+        keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1"
+      />
+    </path>
+
+    <g class="network-layer">
+      <polyline
+        class="network-edge"
+        pathLength="1"
+        points="78,37 96,41 114,74 132,62 150,27 168,36 186,73 204,65 222,28 240,34 258,71 276,65 294,31"
+      >
+        <animate
+          attributeName="points"
+          dur="6.8s"
+          repeatCount="indefinite"
+          values="78,37 96,41 114,74 132,62 150,27 168,36 186,73 204,65 222,28 240,34 258,71 276,65 294,31;78,37 96,41 114,74 132,62 150,27 168,36 186,73 204,65 222,28 240,34 258,71 276,65 294,31;78,85 96,64 114,24 132,31 150,71 168,65 186,29 204,39 222,79 240,70 258,30 276,40 294,82;78,85 96,64 114,24 132,31 150,71 168,65 186,29 204,39 222,79 240,70 258,30 276,40 294,82;78,37 96,41 114,74 132,62 150,27 168,36 186,73 204,65 222,28 240,34 258,71 276,65 294,31"
+          keyTimes="0;0.3;0.58;0.85;1"
+          calcMode="spline"
+          keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1"
+        />
+      </polyline>
+      <polyline class="network-edge secondary" pathLength="1" points="78,37 114,74 150,27 186,73 222,28 258,71 294,31">
+        <animate
+          attributeName="points"
+          dur="6.8s"
+          repeatCount="indefinite"
+          values="78,37 114,74 150,27 186,73 222,28 258,71 294,31;78,37 114,74 150,27 186,73 222,28 258,71 294,31;78,85 114,24 150,71 186,29 222,79 258,30 294,82;78,85 114,24 150,71 186,29 222,79 258,30 294,82;78,37 114,74 150,27 186,73 222,28 258,71 294,31"
+          keyTimes="0;0.3;0.58;0.85;1"
+          calcMode="spline"
+          keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1"
+        />
+      </polyline>
+      <polyline class="network-edge secondary" pathLength="1" points="96,41 132,62 168,36 204,65 240,34 276,65">
+        <animate
+          attributeName="points"
+          dur="6.8s"
+          repeatCount="indefinite"
+          values="96,41 132,62 168,36 204,65 240,34 276,65;96,41 132,62 168,36 204,65 240,34 276,65;96,64 132,31 168,65 204,39 240,70 276,40;96,64 132,31 168,65 204,39 240,70 276,40;96,41 132,62 168,36 204,65 240,34 276,65"
+          keyTimes="0;0.3;0.58;0.85;1"
+          calcMode="spline"
+          keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1"
+        />
+      </polyline>
+
+      <circle class="network-node" style="--delay:0" cx="78" cy="37" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="37;37;85;85;37" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:1" cx="96" cy="41" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="41;41;64;64;41" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:2" cx="114" cy="74" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="74;74;24;24;74" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:3" cx="132" cy="62" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="62;62;31;31;62" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:4" cx="150" cy="27" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="27;27;71;71;27" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:5" cx="168" cy="36" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="36;36;65;65;36" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:6" cx="186" cy="73" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="73;73;29;29;73" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:7" cx="204" cy="65" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="65;65;39;39;65" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:8" cx="222" cy="28" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="28;28;79;79;28" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:9" cx="240" cy="34" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="34;34;70;70;34" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:10" cx="258" cy="71" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="71;71;30;30;71" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:11" cx="276" cy="65" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="65;65;40;40;65" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+      <circle class="network-node" style="--delay:12" cx="294" cy="31" r="2.7">
+        <animate attributeName="cy" dur="6.8s" repeatCount="indefinite" values="31;31;82;82;31" keyTimes="0;0.3;0.58;0.85;1" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1;0.4 0 0.2 1" />
+      </circle>
+    </g>
+
+    <circle class="signal-particle" r="4.2">
+      <animateMotion dur="2.3s" repeatCount="indefinite" rotate="auto">
+        <mpath href="#spectrumPathMotion" xlink:href="#spectrumPathMotion" />
+      </animateMotion>
+    </circle>
+    <circle class="signal-particle secondary" r="3.4">
+      <animateMotion begin="-1.15s" dur="2.3s" repeatCount="indefinite" rotate="auto">
+        <mpath href="#spectrumPathMotion" xlink:href="#spectrumPathMotion" />
+      </animateMotion>
+    </circle>
+  </g>
+</svg>

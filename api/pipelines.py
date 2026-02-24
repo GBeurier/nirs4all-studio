@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import sys
 from datetime import datetime
 from enum import Enum, StrEnum
 from pathlib import Path
@@ -29,29 +28,10 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
+# nirs4all imports are lazy-loaded via api/lazy_imports.py to speed up backend startup.
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 
-try:
-    from nirs4all.controllers import CONTROLLER_REGISTRY
-    from nirs4all.pipeline.config import PipelineConfigs
-    from nirs4all.pipeline.config.generator import (
-        ValidationResult,
-        count_combinations,
-        validate_spec,
-    )
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for pipelines API: %s", e)
-    CONTROLLER_REGISTRY = []
-    NIRS4ALL_AVAILABLE = False
-    count_combinations = None
-    validate_spec = None
-    ValidationResult = None
-    PipelineConfigs = None
+NIRS4ALL_AVAILABLE = True  # Assume available, endpoints guard via require_ml_ready()
 
 
 class OperatorCategory(StrEnum):
@@ -441,7 +421,8 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
     Checks that all operators exist and parameters are valid.
     Returns validation results with any errors or warnings.
     """
-    if not NIRS4ALL_AVAILABLE or validate_spec is None:
+    _validate_spec = get_cached("validate_spec")
+    if not is_ml_ready() or _validate_spec is None:
         # Fallback: basic validation
         return {
             "valid": True,
@@ -454,7 +435,7 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
     nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
 
     # Use nirs4all's validate_spec
-    validation_result: ValidationResult = validate_spec(nirs4all_steps)
+    validation_result = _validate_spec(nirs4all_steps)
 
     # Convert ValidationResult to API response format
     errors = [str(e) for e in validation_result.errors]
@@ -1449,7 +1430,8 @@ async def _count_variants_impl(request: PipelineCountRequest):
     Uses nirs4all's count_combinations function to efficiently calculate
     the total number of variants a pipeline specification would generate.
     """
-    if not NIRS4ALL_AVAILABLE or count_combinations is None:
+    _count_combinations = get_cached("count_combinations")
+    if not is_ml_ready() or _count_combinations is None:
         return {
             "count": 1,
             "warning": "nirs4all not available, using simple count",
@@ -1461,7 +1443,7 @@ async def _count_variants_impl(request: PipelineCountRequest):
         nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
 
         # Count combinations using nirs4all
-        total_count = count_combinations(nirs4all_steps)
+        total_count = _count_combinations(nirs4all_steps)
 
         # Calculate per-step breakdown
         breakdown = {}
@@ -1469,7 +1451,7 @@ async def _count_variants_impl(request: PipelineCountRequest):
             step_name = step.get("name", f"step_{i}")
             step_id = step.get("id", str(i))
             single_step = _convert_frontend_steps_to_nirs4all([step])
-            step_count = count_combinations(single_step) if single_step else 1
+            step_count = _count_combinations(single_step) if single_step else 1
             breakdown[step_id] = {"name": step_name, "count": step_count}
 
         # Warning for large search spaces

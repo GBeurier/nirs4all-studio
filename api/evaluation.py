@@ -7,35 +7,25 @@ including confusion matrices, residual analysis, and report generation.
 Routes delegate metrics computation to nirs4all.core.metrics.
 """
 
+from __future__ import annotations
+
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
-
-# Import nirs4all metrics and task detection
-from nirs4all.core.metrics import eval_multi, get_available_metrics
-from nirs4all.core.task_detection import detect_task_type
-from nirs4all.core.task_type import TaskType
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-try:
-    from sklearn.metrics import confusion_matrix as sklearn_confusion_matrix
-    from sklearn.model_selection import KFold, cross_val_predict, cross_val_score
+logger = logging.getLogger(__name__)
 
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 
-try:
-    import joblib
-
-    JOBLIB_AVAILABLE = True
-except ImportError:
-    JOBLIB_AVAILABLE = False
+NIRS4ALL_AVAILABLE = True
+SKLEARN_AVAILABLE = True
+JOBLIB_AVAILABLE = True
 
 
 router = APIRouter()
@@ -162,6 +152,11 @@ async def evaluate_model(request: EvaluateRequest):
     Computes all relevant metrics based on task type (regression/classification).
     Returns predictions, actual values, and residuals.
     """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all required for evaluation",
+        )
     if not SKLEARN_AVAILABLE or not JOBLIB_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -180,6 +175,7 @@ async def evaluate_model(request: EvaluateRequest):
         )
 
     try:
+        joblib = get_cached("joblib")
         model = joblib.load(model_path)
     except Exception as e:
         raise HTTPException(
@@ -225,10 +221,12 @@ async def evaluate_model(request: EvaluateRequest):
     y_pred = y_pred.ravel() if y_pred.ndim > 1 else y_pred
 
     # Detect task type using nirs4all
+    detect_task_type = get_cached("detect_task_type")
     task_type_enum = detect_task_type(y_true)
     task_type_str = task_type_enum.value  # "regression", "binary_classification", or "multiclass_classification"
 
     # Compute metrics using nirs4all eval_multi
+    eval_multi = get_cached("eval_multi")
     metrics = eval_multi(y_true, y_pred, task_type_str)
 
     # Compute residuals for regression
@@ -257,6 +255,7 @@ async def confusion_matrix(request: ConfusionMatrixRequest):
 
     Optionally normalize by true labels, predicted labels, or all samples.
     """
+    import numpy as np
     if not SKLEARN_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="sklearn required for confusion matrix"
@@ -278,6 +277,7 @@ async def confusion_matrix(request: ConfusionMatrixRequest):
         labels = sorted(set(y_true.tolist()) | set(y_pred.tolist()))
 
     # Compute confusion matrix
+    sklearn_confusion_matrix = get_cached("sklearn_confusion_matrix")
     cm = sklearn_confusion_matrix(y_true, y_pred, labels=labels)
 
     # Normalize if requested
@@ -309,6 +309,7 @@ async def residual_analysis(request: ResidualRequest):
 
     Returns residuals, standardized residuals, statistics, and normality test.
     """
+    import numpy as np
     y_true = np.array(request.y_true)
     y_pred = np.array(request.y_pred)
 
@@ -361,6 +362,7 @@ async def cross_validate(request: CrossValRequest):
 
     Returns per-fold scores and optionally cross-validated predictions.
     """
+    import numpy as np
     if not SKLEARN_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="sklearn required for cross-validation"
@@ -421,15 +423,18 @@ async def cross_validate(request: CrossValRequest):
 
     # Prepare CV
     y_flat = y.ravel() if y.ndim > 1 else y
+    KFold = get_cached("KFold")
     cv = KFold(n_splits=request.cv, shuffle=True, random_state=42)
 
     # Run cross-validation
+    cross_val_score = get_cached("cross_val_score")
     scores = cross_val_score(model, X, y_flat, cv=cv, scoring=request.scoring)
 
     # Optionally get predictions
     predictions = None
     actual = None
     if request.return_predictions:
+        cross_val_predict = get_cached("cross_val_predict")
         pred = cross_val_predict(model, X, y_flat, cv=cv)
         predictions = pred.tolist()
         actual = y_flat.tolist()
@@ -538,6 +543,12 @@ async def list_available_metrics():
     Returns supported metrics for regression and classification tasks.
     Delegates to nirs4all.core.metrics.get_available_metrics().
     """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all required for metrics listing",
+        )
+    get_available_metrics = get_cached("get_available_metrics")
     return {
         "metrics": {
             "regression": get_available_metrics("regression"),
@@ -570,7 +581,7 @@ async def list_available_scoring():
 # ============= Helper Functions =============
 
 
-def _compute_skewness(data: np.ndarray) -> float:
+def _compute_skewness(data) -> float:
     """Compute skewness of data.
 
     Args:
@@ -579,6 +590,7 @@ def _compute_skewness(data: np.ndarray) -> float:
     Returns:
         Skewness value
     """
+    import numpy as np
     n = len(data)
     if n < 3:
         return 0.0
@@ -592,7 +604,7 @@ def _compute_skewness(data: np.ndarray) -> float:
     return float(np.mean(((data - mean) / std) ** 3))
 
 
-def _compute_kurtosis(data: np.ndarray) -> float:
+def _compute_kurtosis(data) -> float:
     """Compute excess kurtosis of data.
 
     Args:
@@ -601,6 +613,7 @@ def _compute_kurtosis(data: np.ndarray) -> float:
     Returns:
         Excess kurtosis value
     """
+    import numpy as np
     n = len(data)
     if n < 4:
         return 0.0
@@ -614,7 +627,7 @@ def _compute_kurtosis(data: np.ndarray) -> float:
     return float(np.mean(((data - mean) / std) ** 4) - 3)
 
 
-def _normality_test(data: np.ndarray) -> dict[str, float]:
+def _normality_test(data) -> dict[str, float]:
     """Perform normality test on data.
 
     Args:

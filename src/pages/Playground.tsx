@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
@@ -427,6 +428,7 @@ export default function Playground() {
   }, [addOperatorByName]);
 
   return (
+    <MlLoadingOverlay>
     <PipelineEditorPreferencesProvider>
       <NodeRegistryProvider useJsonRegistry>
         <PlaygroundViewProvider>
@@ -504,6 +506,7 @@ export default function Playground() {
         </PlaygroundViewProvider>
       </NodeRegistryProvider>
     </PipelineEditorPreferencesProvider>
+    </MlLoadingOverlay>
   );
 }
 

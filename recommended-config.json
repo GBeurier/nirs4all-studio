@@ -6,6 +6,7 @@
     "cpu": {
       "label": "CPU Only",
       "description": "Core NIRS analysis with scikit-learn models. No GPU required.",
+      "platforms": ["win32", "linux", "darwin"],
       "packages": {
         "nirs4all": ">=0.7.1"
       }
@@ -13,6 +14,7 @@
     "gpu-cuda-torch": {
       "label": "GPU — CUDA + PyTorch",
       "description": "Deep learning with PyTorch on NVIDIA GPUs.",
+      "platforms": ["win32", "linux"],
       "packages": {
         "nirs4all": ">=0.7.1",
         "torch": ">=2.1.0",
@@ -22,6 +24,7 @@
     "gpu-cuda-tf": {
       "label": "GPU — CUDA + TensorFlow",
       "description": "Deep learning with TensorFlow on NVIDIA GPUs.",
+      "platforms": ["win32", "linux"],
       "packages": {
         "nirs4all": ">=0.7.1",
         "tensorflow": ">=2.14.0",
@@ -31,6 +34,7 @@
     "gpu-metal": {
       "label": "GPU — Apple Metal",
       "description": "Deep learning with TensorFlow on Apple Silicon.",
+      "platforms": ["darwin"],
       "packages": {
         "nirs4all": ">=0.7.1",
         "tensorflow-macos": ">=2.14.0",

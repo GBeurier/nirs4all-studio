@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -274,6 +275,7 @@ export default function AggregatedResults() {
   }
 
   return (
+    <MlLoadingOverlay>
     <motion.div
       className="flex flex-col gap-6 p-6"
       variants={containerVariants}
@@ -627,5 +629,6 @@ export default function AggregatedResults() {
         onOpenChange={setSheetOpen}
       />
     </motion.div>
+    </MlLoadingOverlay>
   );
 }

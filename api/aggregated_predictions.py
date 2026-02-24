@@ -21,21 +21,14 @@ from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 
-# WorkspaceStore is optional (nirs4all may not be installed)
-try:
-    from nirs4all.pipeline.storage import WorkspaceStore
-
-    STORE_AVAILABLE = True
-except ImportError:
-    WorkspaceStore = None  # type: ignore[assignment, misc]
-    STORE_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready
+STORE_AVAILABLE = True
 
 try:
     import polars as pl
@@ -196,7 +189,7 @@ def _sanitize_dict(d: dict) -> dict:
     return out
 
 
-def _get_store() -> WorkspaceStore:
+def _get_store() -> Any:
     """Get a WorkspaceStore for the current workspace (read-only queries).
 
     Raises HTTPException if no workspace is selected or store is unavailable.
@@ -219,7 +212,7 @@ def _get_store() -> WorkspaceStore:
             detail="No DuckDB store found in workspace. Run a pipeline first.",
         )
 
-    return WorkspaceStore(workspace_path)
+    return get_cached("WorkspaceStore")(workspace_path)
 
 
 def _get_workspace_path() -> Path:
@@ -232,6 +225,7 @@ def _get_workspace_path() -> Path:
 
 def _sanitize_cell(value: Any) -> Any:
     """Sanitize scalar values for JSON serialization."""
+    import numpy as np
     if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
         return None
     if isinstance(value, datetime):
@@ -437,6 +431,7 @@ async def get_prediction_arrays(prediction_id: str):
 
     Arrays are loaded on demand and returned as JSON lists.
     """
+    import numpy as np
     store = _get_store()
     try:
         arrays = store.get_prediction_arrays(prediction_id)

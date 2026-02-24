@@ -85,6 +85,7 @@ import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { DependenciesManager } from "@/components/settings/DependenciesManager";
 import { ConfigPathSettings } from "@/components/settings/ConfigPathSettings";
 import { ConfigAlignment } from "@/components/settings/ConfigAlignment";
+import { PythonEnvPicker } from "@/components/settings/PythonEnvPicker";
 import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
 import {
   getWorkspace,
@@ -446,6 +447,9 @@ export default function Settings() {
 
           {/* Advanced Tab */}
           <TabsContent value="advanced" className="space-y-6">
+            {/* Python Environment Picker (Electron only) */}
+            <PythonEnvPicker />
+
             {/* Developer Mode */}
             <Card>
               <CardHeader>

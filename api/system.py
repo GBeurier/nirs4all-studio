@@ -110,17 +110,34 @@ def _get_package_versions() -> dict[str, str]:
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint.
+    """Health check endpoint with two-phase readiness reporting.
 
-    Returns ``ready: true`` once the startup event has fully completed
-    (workspace restoration, background tasks scheduled, etc.).
-    Electron uses this to know when the backend is safe to query.
+    Phase 1 (core_ready / ready): FastAPI running, basic endpoints work.
+    Phase 2 (ml_ready): nirs4all/sklearn loaded, heavy pages functional.
+    Electron waits for core_ready to show the window.
     """
     import main as _main_module
+    from .lazy_imports import get_ml_status
+    ml = get_ml_status()
     return {
         "status": "healthy",
         "ready": _main_module.startup_complete,
+        "core_ready": _main_module.startup_complete,
+        "ml_ready": ml["ml_ready"],
+        "ml_loading": ml["ml_loading"],
         "message": "nirs4all webapp is running",
+    }
+
+
+@router.get("/system/readiness")
+async def system_readiness():
+    """Detailed readiness status for frontend polling."""
+    import main as _main_module
+    from .lazy_imports import get_ml_status
+    ml = get_ml_status()
+    return {
+        "core_ready": _main_module.startup_complete,
+        **ml,
     }
 
 

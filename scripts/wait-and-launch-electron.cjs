@@ -6,14 +6,33 @@
 const http = require("http");
 const { spawn } = require("child_process");
 const path = require("path");
+const fs = require("fs");
 
 const VITE_URL = "http://localhost:5173";
 const MAX_RETRIES = 30;
 const RETRY_INTERVAL = 500; // ms
 
+function syncElectronAssets(projectRoot) {
+  const outDir = path.join(projectRoot, "dist-electron");
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const assets = [
+    { src: "electron/splash.html", dest: "splash.html" },
+    { src: "public/nirs4all_logo.png", dest: "nirs4all_logo.png" },
+  ];
+
+  for (const { src, dest } of assets) {
+    const srcPath = path.join(projectRoot, src);
+    const destPath = path.join(outDir, dest);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 function checkServer(url) {
   return new Promise((resolve) => {
-    const req = http.get(url, (res) => {
+    const req = http.get(new URL(url), (res) => {
       resolve(res.statusCode >= 200 && res.statusCode < 400);
     });
     req.on("error", () => resolve(false));
@@ -50,6 +69,9 @@ async function main() {
   const electronPath = require.resolve("electron");
   const electronBin = path.join(path.dirname(electronPath), "cli.js");
   const projectRoot = path.join(__dirname, "..");
+
+  // Keep splash/logo in sync for dev relaunches using dist-electron/main.cjs.
+  syncElectronAssets(projectRoot);
 
   const args = [electronBin, projectRoot];
 

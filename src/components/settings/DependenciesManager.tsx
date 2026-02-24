@@ -68,6 +68,7 @@ import {
   getVenvPath,
   setVenvPath,
   requestRestart,
+  resetBackendUrl,
 } from "@/api/client";
 import { selectFolder } from "@/utils/fileDialogs";
 import type {
@@ -719,7 +720,10 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
                   const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
                   if (electronApi?.restartBackend) {
                     const result = await electronApi.restartBackend();
-                    if (result.success) setNeedsRestart(false);
+                    if (result.success) {
+                      resetBackendUrl();
+                      setNeedsRestart(false);
+                    }
                   } else {
                     await requestRestart();
                     setNeedsRestart(false);

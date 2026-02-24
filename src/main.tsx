@@ -15,6 +15,7 @@ import { DeveloperModeProvider } from "@/context/DeveloperModeContext";
 import { UISettingsProvider } from "@/context/UISettingsContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ActiveRunProvider } from "@/context/ActiveRunContext";
+import { MlReadinessProvider } from "@/context/MlReadinessContext";
 import { Toaster } from "@/components/ui/sonner";
 import App from "./App";
 import "./index.css";
@@ -26,7 +27,17 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
-      retry: 1,
+      retry: (failureCount, error) => {
+        const status = error && typeof error === "object" && "status" in error
+          ? (error as { status: number }).status
+          : 0;
+        // Retry 503 (ML loading) and network errors (no status) during startup
+        if (status === 503 || status === 0) {
+          return failureCount < 8;
+        }
+        return failureCount < 1;
+      },
+      retryDelay: (attemptIndex) => Math.min(1500 * 2 ** attemptIndex, 15000),
     },
   },
 });
@@ -41,8 +52,10 @@ const appTree = (
               <UISettingsProvider>
                 <DeveloperModeProvider>
                   <ActiveRunProvider>
-                    <App />
-                    <Toaster position="bottom-right" />
+                    <MlReadinessProvider>
+                      <App />
+                      <Toaster position="bottom-right" />
+                    </MlReadinessProvider>
                   </ActiveRunProvider>
                 </DeveloperModeProvider>
               </UISettingsProvider>

@@ -202,9 +202,6 @@ export function usePlaygroundQuery(
       // Use dataset-ref endpoint when a workspace datasetId is available.
       // This avoids uploading the full spectra matrix back to the server.
       if (datasetId) {
-        // In dataset-ref mode, parallel chart queries handle PCA/repetitions
-        // independently, so the main query skips them for faster core response.
-        const skipForParallel = true;
         response = await executeDatasetPlayground(
           {
             dataset_id: datasetId,
@@ -213,11 +210,11 @@ export function usePlaygroundQuery(
               ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
               : undefined,
             options: {
-              compute_pca: skipForParallel ? false : (executeOptions?.compute_pca ?? true),
+              compute_pca: executeOptions?.compute_pca ?? true,
               compute_umap: executeOptions?.compute_umap ?? false,
               umap_params: executeOptions?.umap_params,
               compute_statistics: executeOptions?.compute_statistics ?? true,
-              compute_repetitions: skipForParallel ? false : (executeOptions?.compute_repetitions ?? true),
+              compute_repetitions: executeOptions?.compute_repetitions ?? true,
               max_wavelengths_returned: executeOptions?.max_wavelengths_returned,
               split_index: executeOptions?.split_index,
               use_cache: executeOptions?.use_cache ?? true,
@@ -285,10 +282,11 @@ export function usePlaygroundQuery(
     }
   }, [data, datasetId, debouncedPipelineHash, sampling, executeOptions]);
 
-  // Determine if parallel chart queries are available.
-  // Parallel endpoints (/playground/pca, /playground/repetitions) require dataset_id
-  // for step cache lookup. Raw data mode uses the monolithic query for everything.
-  const useParallelCharts = Boolean(datasetId);
+  // Parallel chart queries are disabled — PCA and repetitions are computed
+  // in the main query for reliability. The parallel endpoints relied on a
+  // server-side step cache that was fragile (fingerprint mismatches when
+  // sampling was applied, no cache entries in raw-data mode).
+  const useParallelCharts = false;
   const wantPca = executeOptions?.compute_pca ?? true;
   const wantRepetitions = executeOptions?.compute_repetitions ?? true;
 

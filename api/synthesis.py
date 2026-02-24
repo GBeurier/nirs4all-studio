@@ -17,24 +17,9 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/synthesis", tags=["synthesis"])
 
-# ============= Check nirs4all availability =============
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 
-try:
-    import nirs4all
-    from nirs4all.synthesis import (
-        SyntheticDatasetBuilder,
-        available_components,
-        get_component,
-        list_categories,
-    )
-    NIRS4ALL_AVAILABLE = True
-except ImportError:
-    NIRS4ALL_AVAILABLE = False
-    nirs4all = None
-    SyntheticDatasetBuilder = None
-    available_components = None
-    get_component = None
-    list_categories = None
+NIRS4ALL_AVAILABLE = True
 
 # Import workspace manager for linking datasets
 try:
@@ -47,11 +32,7 @@ except ImportError:
 
 def require_nirs4all():
     """Raise error if nirs4all is not available."""
-    if not NIRS4ALL_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="nirs4all library is not installed. Synthesis features require nirs4all."
-        )
+    require_ml_ready()
 
 
 # ============= Request/Response Models =============
@@ -149,6 +130,7 @@ def build_from_config(config: SynthesisConfig):
     """Build a SyntheticDatasetBuilder from config."""
     require_nirs4all()
 
+    SyntheticDatasetBuilder = get_cached("SyntheticDatasetBuilder")
     builder = SyntheticDatasetBuilder(
         n_samples=config.n_samples,
         random_state=config.random_state,
@@ -418,6 +400,8 @@ async def list_components():
     """List all available predefined components from nirs4all."""
     require_nirs4all()
 
+    available_components = get_cached("available_components")
+    get_component = get_cached("get_component")
     components = []
     for name in available_components():
         comp = get_component(name)

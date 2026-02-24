@@ -13,29 +13,8 @@ Phase 1 Implementation - Foundation & Selection System
 
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-
-# Import nirs4all filters
-try:
-    from nirs4all.operators.filters import (
-        HighLeverageFilter,
-        SampleFilter,
-        SpectralQualityFilter,
-        XOutlierFilter,
-        YOutlierFilter,
-    )
-    from nirs4all.operators.filters import (
-        MetadataFilter as N4AMetadataFilter,
-    )
-    NIRS4ALL_FILTERS_AVAILABLE = True
-except ImportError:
-    NIRS4ALL_FILTERS_AVAILABLE = False
-    SampleFilter = None
-    XOutlierFilter = None
-    YOutlierFilter = None
-    SpectralQualityFilter = None
-    HighLeverageFilter = None
-    N4AMetadataFilter = None
+from ..lazy_imports import get_cached, is_ml_ready
+NIRS4ALL_FILTERS_AVAILABLE = True
 
 
 class SampleIndexFilter:
@@ -63,10 +42,10 @@ class SampleIndexFilter:
 
     def fit_predict(
         self,
-        X: np.ndarray,
-        y: np.ndarray | None = None,
-        metadata: dict[str, np.ndarray] | None = None,
-    ) -> np.ndarray:
+        X,
+        y=None,
+        metadata=None,
+    ):
         """Fit the filter and return a boolean mask.
 
         Args:
@@ -77,6 +56,7 @@ class SampleIndexFilter:
         Returns:
             Boolean mask array where True = keep sample
         """
+        import numpy as np
         n_samples = X.shape[0]
 
         if self.mode == "keep":
@@ -103,16 +83,16 @@ class _Nirs4AllFilterAdapter:
     This adapter bridges that gap.
     """
 
-    def __init__(self, filter_instance: "SampleFilter"):
+    def __init__(self, filter_instance: Any):
         self._filter = filter_instance
         self._removal_reason = filter_instance.exclusion_reason
 
     def fit_predict(
         self,
-        X: np.ndarray,
-        y: np.ndarray | None = None,
-        metadata: dict[str, np.ndarray] | None = None,
-    ) -> np.ndarray:
+        X,
+        y=None,
+        metadata=None,
+    ):
         """Fit the filter and return a boolean mask.
 
         Args:
@@ -123,6 +103,7 @@ class _Nirs4AllFilterAdapter:
         Returns:
             Boolean mask array where True = keep sample
         """
+        import numpy as np
         self._filter.fit(X, y)
 
         # Handle MetadataFilter specially since it needs metadata passed to get_mask
@@ -419,16 +400,16 @@ def instantiate_filter(name: str, params: dict[str, Any]) -> SampleIndexFilter |
 
     # Map filter names to nirs4all classes
     filter_map = {
-        "XOutlierFilter": XOutlierFilter,
-        "YOutlierFilter": YOutlierFilter,
-        "SpectralQualityFilter": SpectralQualityFilter,
-        "HighLeverageFilter": HighLeverageFilter,
-        "MetadataFilter": N4AMetadataFilter,
+        "XOutlierFilter": get_cached("XOutlierFilter"),
+        "YOutlierFilter": get_cached("YOutlierFilter"),
+        "SpectralQualityFilter": get_cached("SpectralQualityFilter"),
+        "HighLeverageFilter": get_cached("HighLeverageFilter"),
+        "MetadataFilter": get_cached("N4AMetadataFilter"),
         # Legacy name mappings for backward compatibility
-        "OutlierFilter": XOutlierFilter,  # Map old OutlierFilter to XOutlierFilter
-        "RangeFilter": YOutlierFilter,    # Map old RangeFilter to YOutlierFilter (percentile method)
-        "QCFilter": SpectralQualityFilter,  # Map old QCFilter to SpectralQualityFilter
-        "DistanceFilter": XOutlierFilter,  # Map old DistanceFilter to XOutlierFilter (mahalanobis)
+        "OutlierFilter": get_cached("XOutlierFilter"),  # Map old OutlierFilter to XOutlierFilter
+        "RangeFilter": get_cached("YOutlierFilter"),    # Map old RangeFilter to YOutlierFilter (percentile method)
+        "QCFilter": get_cached("SpectralQualityFilter"),  # Map old QCFilter to SpectralQualityFilter
+        "DistanceFilter": get_cached("XOutlierFilter"),  # Map old DistanceFilter to XOutlierFilter (mahalanobis)
     }
 
     filter_cls = filter_map.get(name)

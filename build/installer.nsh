@@ -15,11 +15,16 @@
 !macroend
 
 !macro customUnInstall
+  ; Check if a custom/external Python env was configured (lives outside app data)
+  StrCpy $0 ""
+  IfFileExists "$APPDATA\nirs4all Studio\env-settings.json" 0 +2
+    StrCpy $0 "$\n$\nNote: Your external Python environment will NOT be affected."
+
   ; Ask the user if they want to remove all app data
   MessageBox MB_YESNO|MB_ICONQUESTION \
     "Do you want to remove all nirs4all Studio configuration and data?$\n$\n\
 This includes settings, logs, and the managed Python environment.$\n\
-Your workspaces and datasets will NOT be affected." \
+Your workspaces and datasets will NOT be affected.$0" \
     IDYES removeData IDNO skipRemove
 
   removeData:

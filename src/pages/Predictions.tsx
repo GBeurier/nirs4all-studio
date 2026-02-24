@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Link } from "react-router-dom";
@@ -554,6 +555,7 @@ export default function Predictions() {
   }
 
   return (
+    <MlLoadingOverlay>
     <motion.div
       className="space-y-6"
       initial={{ opacity: 0 }}
@@ -1099,5 +1101,6 @@ export default function Predictions() {
         workspaceId={activeWorkspace?.id}
       />
     </motion.div>
+    </MlLoadingOverlay>
   );
 }

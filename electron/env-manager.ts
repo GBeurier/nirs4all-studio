@@ -319,7 +319,7 @@ export class EnvManager {
 
   /**
    * Configure an existing Python environment.
-   * Validates it has Python 3.11+ and optionally nirs4all.
+   * Validates it has Python 3.11+ and installs missing core packages.
    */
   async useExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
     // Find python executable
@@ -343,6 +343,17 @@ export class EnvManager {
     this.customEnvPath = envPath;
     this.customPythonPath = null;
     this.saveSettings();
+
+    // Install missing core packages (nirs4all, fastapi, etc.)
+    if (!info.hasNirs4all) {
+      try {
+        await this.installCorePackages(pythonPath);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
+      }
+    }
+
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${envPath}`, info };
   }
@@ -369,8 +380,35 @@ export class EnvManager {
     this.customPythonPath = pythonPath;
     this.customEnvPath = envRoot;
     this.saveSettings();
+
+    // Install missing core packages (nirs4all, fastapi, etc.)
+    if (!info.hasNirs4all) {
+      try {
+        await this.installCorePackages(pythonPath);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
+      }
+    }
+
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${pythonPath}`, info };
+  }
+
+  /**
+   * Install core packages into a Python environment using `python -m pip`.
+   * Used when user selects an existing Python that's missing nirs4all.
+   */
+  private async installCorePackages(pythonPath: string): Promise<void> {
+    // Ensure pip is available
+    try {
+      await this.runCommand(pythonPath, ["-m", "ensurepip", "--upgrade"], { retries: 1 });
+    } catch {
+      // ensurepip may fail if pip is already installed — non-fatal
+    }
+
+    // Install all core packages in a single pip call
+    await this.runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...CORE_PACKAGES], { retries: 2 });
   }
 
   /**
@@ -446,11 +484,13 @@ export class EnvManager {
       }
 
       report(35, "creating_venv", "Bootstrapping pip...");
-      await this.runCommand(venvPython, ["-m", "ensurepip", "--upgrade"]);
-      await this.runCommand(venvPython, ["-m", "pip", "install", "--upgrade", "pip"]);
+      await this.runCommand(venvPython, ["-m", "ensurepip", "--upgrade"], { retries: 2 });
+      await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", "--upgrade", "pip"], { retries: 2 });
       report(40, "creating_venv", "Virtual environment ready");
 
       // 5. Install core packages
+      // On Windows, antivirus (Defender) may still be scanning venv files. Retries
+      // with exponential backoff give it time to release file locks.
       this.status = "installing";
       report(40, "installing", "Installing core packages...");
 
@@ -460,7 +500,7 @@ export class EnvManager {
         const pkgName = pkg.split(">=")[0].split("[")[0];
         const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
         report(progressPercent, "installing", `Installing ${pkgName}...`);
-        await this.runCommand(venvPython, ["-m", "pip", "install", pkg]);
+        await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", pkg], { retries: 2 });
       }
 
       report(90, "installing", "All packages installed");
@@ -471,9 +511,20 @@ export class EnvManager {
         isWindows ? path.join(venvDir, "Lib") : path.join(venvDir, "lib"),
       ].filter((p) => fs.existsSync(p));
 
+      // Also compile nirs4all source directory (dev/portable builds)
+      const backendDir = path.join(process.resourcesPath, "backend");
+      const nirs4allSrcDir = path.join(backendDir, "..", "..", "nirs4all", "nirs4all");
+      if (fs.existsSync(nirs4allSrcDir)) {
+        compileTargets.push(nirs4allSrcDir);
+      }
+      // Compile backend API source
+      if (fs.existsSync(path.join(backendDir, "api"))) {
+        compileTargets.push(backendDir);
+      }
+
       if (compileTargets.length > 0) {
         try {
-          await this.runCommand(venvPython, ["-m", "compileall", "-q", ...compileTargets]);
+          await this.runCommand(venvPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets]);
         } catch {
           // Non-fatal: bytecode compilation failure doesn't prevent running
         }
@@ -570,8 +621,10 @@ export class EnvManager {
   }
 
   /** Run a command and wait for it to complete */
-  private runCommand(command: string, args: string[]): Promise<void> {
-    return new Promise((resolve, reject) => {
+  private runCommand(command: string, args: string[], options?: { retries?: number }): Promise<void> {
+    const maxRetries = options?.retries ?? 0;
+
+    const exec = (): Promise<void> => new Promise((resolve, reject) => {
       const proc = spawn(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
         shell: isWindows,
@@ -587,5 +640,24 @@ export class EnvManager {
 
       proc.on("error", reject);
     });
+
+    if (maxRetries <= 0) return exec();
+
+    return (async () => {
+      let lastError: Error | undefined;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            // Exponential backoff: 2s, 4s, 8s — gives antivirus time to release file locks
+            await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+          }
+          await exec();
+          return;
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+        }
+      }
+      throw lastError;
+    })();
   }
 }

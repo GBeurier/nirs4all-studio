@@ -10,19 +10,33 @@ Phase 6: Workspace management and AutoML search.
 """
 
 import os
+import time
 import traceback
 from pathlib import Path
+
+_t0 = time.perf_counter()
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, ORJSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+
+try:
+    import orjson  # noqa: F401
+    from fastapi.responses import ORJSONResponse
+except ImportError:
+    ORJSONResponse = JSONResponse  # type: ignore[misc,assignment]
 from fastapi.staticfiles import StaticFiles
+
+_t1 = time.perf_counter()
 
 from api.shared.logger import get_logger, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)
+
+_t2 = time.perf_counter()
+logger.info("STARTUP TIMING: FastAPI/uvicorn imports: %.2fs, logger setup: %.2fs", _t1 - _t0, _t2 - _t1)
 
 # Initialize Sentry crash reporting (uses env var or hardcoded default DSN)
 _sentry_dsn = os.environ.get("SENTRY_DSN", "") or "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960"
@@ -38,6 +52,9 @@ if _sentry_dsn:
         logger.info("Sentry crash reporting enabled (backend)")
     except ImportError:
         logger.debug("sentry-sdk not installed, crash reporting disabled")
+
+_t3 = time.perf_counter()
+logger.info("STARTUP TIMING: Sentry init: %.2fs", _t3 - _t2)
 
 # Desktop mode detection - skip unnecessary middleware when running in pywebview
 DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
@@ -66,6 +83,9 @@ from api.transfer import router as transfer_router
 from api.updates import router as updates_router
 from api.workspace import router as workspace_router
 from websocket import ws_manager
+
+_t4 = time.perf_counter()
+logger.info("STARTUP TIMING: All router imports: %.2fs (total so far: %.2fs)", _t4 - _t3, _t4 - _t0)
 
 # Create FastAPI app
 app = FastAPI(
@@ -159,49 +179,85 @@ app.include_router(config_router, prefix="/api", tags=["config"])
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on application startup."""
-    # Import here to avoid circular imports
+    """Initialize services on application startup (two-phase).
+
+    Phase 1 (core_ready): FastAPI running, workspace config read, basic endpoints work.
+    Phase 2 (ml_ready): nirs4all/sklearn loaded in background thread, heavy pages functional.
+    """
+    import asyncio
+
+    _ts = time.perf_counter()
+
+    from api.lazy_imports import start_ml_loading
     from api.updates import update_manager
     from api.workspace_manager import workspace_manager
 
     # Log startup
+    logger.info("STARTUP TIMING: startup_event entered at %.2fs since module load", _ts - _t0)
     logger.info("nirs4all webapp starting...")
     logger.info("Webapp version: %s", update_manager.get_webapp_version())
 
-    # Restore active workspace from persisted settings
-    # This ensures nirs4all library uses the correct workspace path after restart
+    # Set workspace env var (lightweight — no nirs4all import needed)
     try:
         active_ws = workspace_manager.get_active_workspace()
         if active_ws:
-            try:
-                import nirs4all.workspace as nirs4all_workspace
-                nirs4all_workspace.set_active_workspace(active_ws.path)
-                logger.info("Restored active workspace: %s", active_ws.path)
-            except ImportError:
-                os.environ["NIRS4ALL_WORKSPACE"] = active_ws.path
-                logger.info("Set NIRS4ALL_WORKSPACE env var: %s", active_ws.path)
+            os.environ["NIRS4ALL_WORKSPACE"] = active_ws.path
+            logger.info("Set NIRS4ALL_WORKSPACE env var: %s", active_ws.path)
         else:
             logger.info("No active workspace found in settings")
     except Exception as e:
-        logger.error("Failed to restore active workspace: %s", e)
+        logger.error("Failed to read active workspace: %s", e)
 
-    import asyncio
-
-    # Clean up old update artifacts (backup, cache, staging) now that
-    # the app has started successfully — previous update was applied OK.
-    asyncio.create_task(cleanup_old_updates_background())
-
-    # Check for updates in background if auto-check is enabled
-    if update_manager.settings.auto_check:
-        asyncio.create_task(check_updates_background())
-
-    # Pre-cache recommended config in background
-    asyncio.create_task(cache_recommended_config_background())
-
-    # Mark startup as complete so /api/health reports ready=true
+    # Phase 1 complete — core is ready, Electron can show the window
     global startup_complete
     startup_complete = True
-    logger.info("Startup complete — backend ready")
+    _te = time.perf_counter()
+    logger.info("STARTUP TIMING: Phase 1 complete at %.2fs since module load (startup_event took %.2fs)", _te - _t0, _te - _ts)
+
+    # Start ML dependency loading in background thread
+    start_ml_loading()
+
+    # Monitor ML loading and restore workspace with nirs4all when ready
+    asyncio.create_task(_wait_for_ml_ready())
+
+    # Other background tasks
+    asyncio.create_task(cleanup_old_updates_background())
+    if update_manager.settings.auto_check:
+        asyncio.create_task(check_updates_background())
+    asyncio.create_task(cache_recommended_config_background())
+
+
+async def _wait_for_ml_ready():
+    """Poll until ML deps are loaded, then restore workspace with nirs4all."""
+    import asyncio
+
+    from api.lazy_imports import get_cached, is_ml_ready
+
+    while not is_ml_ready():
+        await asyncio.sleep(0.5)
+
+    # Now that nirs4all is loaded, restore workspace properly
+    try:
+        from api.workspace_manager import workspace_manager
+        active_ws = workspace_manager.get_active_workspace()
+        if active_ws:
+            nirs4all_workspace = get_cached("nirs4all_workspace")
+            if nirs4all_workspace:
+                nirs4all_workspace.set_active_workspace(active_ws.path)
+                logger.info("Workspace restored with nirs4all: %s", active_ws.path)
+    except Exception as e:
+        logger.error("Failed to restore workspace post-ML-load: %s", e)
+
+    logger.info("Phase 2 startup complete — ML ready")
+
+    # Notify via WebSocket
+    try:
+        await ws_manager.broadcast("system", {
+            "type": "ML_READY",
+            "data": {"ml_ready": True},
+        })
+    except Exception:
+        pass
 
 
 async def cleanup_old_updates_background():

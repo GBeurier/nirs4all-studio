@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { motion } from '@/lib/motion';
 import { useTranslation } from 'react-i18next';
 import { TrendingUp, Loader2, PlayCircle, AlertCircle } from 'lucide-react';
@@ -128,6 +129,7 @@ export default function VariableImportance() {
   const canRun = chainId && datasetName && !isRunning;
 
   return (
+    <MlLoadingOverlay>
     <motion.div
       className="h-full flex flex-col lg:flex-row gap-4"
       variants={containerVariants}
@@ -248,5 +250,6 @@ export default function VariableImportance() {
         )}
       </motion.main>
     </motion.div>
+    </MlLoadingOverlay>
   );
 }

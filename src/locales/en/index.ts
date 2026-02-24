@@ -405,6 +405,25 @@ const en = {
       },
     },
 
+    // Python Environment Picker
+    pythonEnv: {
+      title: "Python Environment",
+      description: "Python interpreter used by the analysis backend",
+      ready: "Ready",
+      notReady: "Not Ready",
+      managed: "Managed",
+      change: "Change...",
+      restartNeeded: "Environment changed. Restart the backend to apply.",
+      restartBackend: "Restart Backend",
+      selectInterpreter: "Select Python Interpreter",
+      selectInterpreterDesc: "Choose a Python environment for nirs4all Studio. Python 3.11+ is required.",
+      scanning: "Scanning for Python environments...",
+      detected: "Detected environments",
+      current: "Current",
+      noEnvsFound: "No compatible Python environments found on this system.",
+      browseForPython: "Browse for Python executable...",
+    },
+
     // Config Alignment
     configAlignment: {
       title: "Recommended Configuration",
@@ -991,6 +1010,32 @@ const en = {
     title: "Welcome to nirs4all Studio",
     subtitle: "Let's configure your environment for the best experience",
     skip: "Skip Setup",
+    env: {
+      title: "Python Environment Setup",
+      description: "nirs4all Studio needs a Python environment to run its analysis backend. This is a one-time setup.",
+      autoSetup: "Set up automatically",
+      autoSetupDetail: "Downloads Python 3.11 and installs nirs4all + dependencies",
+      recommended: "Recommended",
+      or: "or",
+      detectedEnvs: "Detected Python environments:",
+      scanning: "Scanning for existing Python environments...",
+      browsePython: "Browse for Python executable",
+      nirs4allInstalled: "nirs4all installed",
+    },
+    envProgress: {
+      title: "Setting up Python environment",
+      downloading: "Downloading Python",
+      extracting: "Extracting runtime",
+      creatingVenv: "Creating environment",
+      installing: "Installing packages",
+      validating: "Validating environment",
+      startingBackend: "Starting analysis backend...",
+      ready: "Ready",
+      settingUp: "Setting up",
+      timeNote: "This may take a few minutes on first setup",
+      failed: "Setup failed",
+      tryAgain: "Try again",
+    },
     detect: {
       title: "Detecting Hardware",
       description: "Scanning for GPU capabilities to recommend the best configuration",

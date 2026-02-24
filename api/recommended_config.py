@@ -17,12 +17,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import platformdirs
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .shared.logger import get_logger
-from .venv_manager import venv_manager
+from .venv_manager import _user_data_dir, venv_manager
 
 logger = get_logger(__name__)
 
@@ -51,6 +50,7 @@ class ProfileInfo(BaseModel):
     label: str
     description: str
     packages: dict[str, str]
+    platforms: list[str] = []
 
 
 class OptionalPackageInfo(BaseModel):
@@ -143,7 +143,7 @@ class RecommendedConfigCache:
     CACHE_TTL_HOURS = 24
 
     def __init__(self):
-        self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        self._app_data_dir = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._setup_path = self._app_data_dir / self.SETUP_FILE
 
@@ -241,6 +241,7 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
             label=pdata.get("label", pid),
             description=pdata.get("description", ""),
             packages=pdata.get("packages", {}),
+            platforms=pdata.get("platforms", []),
         ))
 
     optional = []

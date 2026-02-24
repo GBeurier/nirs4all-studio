@@ -8,13 +8,10 @@ transfer potential using PCA-based metrics (Grassmann, CKA, RV, etc.).
 
 from __future__ import annotations
 
-import sys
 import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -22,20 +19,8 @@ from .shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
-try:
-    from nirs4all.analysis.presets import PRESETS, list_presets
-    from nirs4all.analysis.transfer_utils import get_base_preprocessings
-    from nirs4all.visualization.analysis.transfer import PreprocPCAEvaluator
-
-    TRANSFER_AVAILABLE = True
-except ImportError as e:
-    logger.info("Transfer analysis not available: %s", e)
-    TRANSFER_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+TRANSFER_AVAILABLE = True
 
 router = APIRouter()
 
@@ -237,7 +222,7 @@ async def compute_transfer_analysis(request: TransferAnalysisRequest):
                 continue
 
     # Run transfer analysis
-    evaluator = PreprocPCAEvaluator(r_components=request.n_components, knn=request.knn)
+    evaluator = get_cached("PreprocPCAEvaluator")(r_components=request.n_components, knn=request.knn)
     evaluator.fit(raw_data, pp_data)
 
     # Extract results
@@ -279,9 +264,9 @@ async def get_transfer_presets():
             status_code=501, detail="Transfer analysis not available."
         )
 
-    presets_desc = list_presets()
+    presets_desc = get_cached("list_presets")()
     return [
-        TransferPresetInfo(name=name, description=desc, config=PRESETS.get(name, {}))
+        TransferPresetInfo(name=name, description=desc, config=get_cached("PRESETS").get(name, {}))
         for name, desc in presets_desc.items()
     ]
 
@@ -295,7 +280,7 @@ async def get_preprocessing_options():
         )
 
     # Get base preprocessings from nirs4all
-    base_preprocessings = get_base_preprocessings()
+    base_preprocessings = get_cached("get_base_preprocessings")()
 
     # Metadata for display - maps short names to display info
     # Category assignments based on nirs4all operator types
@@ -356,6 +341,7 @@ async def get_preprocessing_options():
 
 def _load_dataset_data(dataset_id: str) -> tuple:
     """Load dataset and return (dataset, X, wavelengths)."""
+    import numpy as np
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)
@@ -386,7 +372,7 @@ def _load_dataset_data(dataset_id: str) -> tuple:
     return dataset, X, wavelengths
 
 
-def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> dict[str, Callable[[np.ndarray], np.ndarray]]:
+def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> dict[str, Any]:
     """Generate preprocessing functions based on configuration."""
     pipelines = {}
 
@@ -419,7 +405,7 @@ def _generate_preprocessing_pipelines(config: PreprocessingConfig) -> dict[str, 
     return pipelines
 
 
-def _build_preprocessing_function(name: str) -> Callable[[np.ndarray], np.ndarray]:
+def _build_preprocessing_function(name: str):
     """Build a preprocessing function from a name using nirs4all operators."""
     from nirs4all.operators.transforms.nirs import (
         AreaNormalization,
@@ -484,8 +470,9 @@ def _build_preprocessing_function(name: str) -> Callable[[np.ndarray], np.ndarra
         return lambda X: X
 
 
-def _extract_distance_matrices(evaluator: PreprocPCAEvaluator) -> dict[str, list[DatasetPairDistance]]:
+def _extract_distance_matrices(evaluator: Any) -> dict[str, list[DatasetPairDistance]]:
     """Extract distance matrices from evaluator results."""
+    import numpy as np
     if evaluator.cross_dataset_df_ is None or evaluator.cross_dataset_df_.empty:
         return {}
 
@@ -517,7 +504,7 @@ def _extract_distance_matrices(evaluator: PreprocPCAEvaluator) -> dict[str, list
     return result
 
 
-def _extract_preprocessing_ranking(evaluator: PreprocPCAEvaluator) -> dict[str, list[PreprocessingRankingItem]]:
+def _extract_preprocessing_ranking(evaluator: Any) -> dict[str, list[PreprocessingRankingItem]]:
     """Extract preprocessing ranking from evaluator results."""
     result = {}
 
@@ -562,7 +549,7 @@ def _extract_preprocessing_ranking(evaluator: PreprocPCAEvaluator) -> dict[str, 
 
 
 def _extract_pca_coordinates(
-    evaluator: PreprocPCAEvaluator, raw_data: dict[str, np.ndarray]
+    evaluator: Any, raw_data: dict[str, Any]
 ) -> dict[str, list[PCACoordinate]]:
     """Extract PCA coordinates for visualization."""
     result = {}
@@ -607,8 +594,9 @@ def _extract_pca_coordinates(
     return result
 
 
-def _extract_metric_convergence(evaluator: PreprocPCAEvaluator) -> list[MetricConvergenceItem]:
+def _extract_metric_convergence(evaluator: Any) -> list[MetricConvergenceItem]:
     """Extract metric convergence data from evaluator."""
+    import numpy as np
     result = []
 
     try:

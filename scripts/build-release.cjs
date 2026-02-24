@@ -17,7 +17,7 @@
  *   --platform            Target platform: win, mac, linux, or all (default: current)
  */
 
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -64,6 +64,29 @@ if (!["installer", "standalone"].includes(mode)) {
   console.error(`Error: Invalid mode '${mode}'. Must be 'installer' or 'standalone'.`);
   process.exit(1);
 }
+
+// Sync version from latest git tag into package.json
+function syncVersionFromGitTag() {
+  try {
+    const tag = execSync("git describe --tags --abbrev=0", { cwd: projectRoot, encoding: "utf-8" }).trim();
+    const version = tag.replace(/^v/, "");
+    if (!/^\d+\.\d+\.\d+/.test(version)) {
+      console.warn(`Warning: git tag '${tag}' is not a valid semver version, skipping version sync.`);
+      return;
+    }
+    const pkgPath = path.join(projectRoot, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    if (pkg.version !== version) {
+      console.log(`Syncing version from git tag: ${pkg.version} -> ${version}`);
+      pkg.version = version;
+      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+    }
+  } catch {
+    console.warn("Warning: Could not read git tags, using package.json version as-is.");
+  }
+}
+
+syncVersionFromGitTag();
 
 console.log("========================================");
 console.log("  nirs4all Release Build");

@@ -23,13 +23,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import aiofiles
-import platformdirs
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from .shared.logger import get_logger
-from .venv_manager import VenvInfo, venv_manager
+from .venv_manager import VenvInfo, _user_data_dir, venv_manager
 
 logger = get_logger(__name__)
 
@@ -251,7 +249,7 @@ class DependenciesCache:
     CACHE_FILE = "dependencies_cache.json"
 
     def __init__(self):
-        self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        self._app_data_dir = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._cache: dict[str, Any] | None = None
         self._load_cache()
@@ -385,7 +383,7 @@ class UpdateManager:
 
     def __init__(self):
         """Initialize the update manager with lazy loading."""
-        self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        self._app_data_dir = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._settings: UpdateSettings | None = None
@@ -1096,7 +1094,7 @@ async def start_webapp_download() -> dict[str, Any]:
     )
 
     # Submit job for execution
-    job_manager.submit_job(job.id, _execute_download_job)
+    job_manager.submit_job(job, _execute_download_job)
 
     return {
         "job_id": job.id,
@@ -1107,14 +1105,9 @@ async def start_webapp_download() -> dict[str, Any]:
     }
 
 
-def _execute_download_job(job_id: str, progress_callback: Callable[[float, str], None]) -> dict[str, Any]:
+def _execute_download_job(job: "Job", progress_callback: Callable[[float, str], None]) -> dict[str, Any]:
     """Execute the download job (runs in thread pool)."""
-    from api.jobs.manager import job_manager
     from api.update_downloader import download_and_stage_update
-
-    job = job_manager.get_job(job_id)
-    if not job:
-        raise Exception("Job not found")
 
     def _progress_wrapper(progress: float, message: str) -> bool:
         """Wrap progress callback to check for cancellation."""
@@ -1728,7 +1721,7 @@ SNAPSHOTS_DIR_NAME = "config_snapshots"
 
 def _get_snapshots_dir() -> Path:
     """Get the directory for storing config snapshots."""
-    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    app_data = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
     snapshots_dir = app_data / SNAPSHOTS_DIR_NAME
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     return snapshots_dir

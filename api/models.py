@@ -10,12 +10,10 @@ Uses nirs4all BundleLoader for .n4a bundle operations.
 from __future__ import annotations
 
 import inspect
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, get_type_hints
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -24,22 +22,9 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
+from .lazy_imports import get_cached, require_ml_ready
 
-try:
-    import nirs4all
-    from nirs4all.operators import models as nirs4all_models
-    from nirs4all.pipeline.bundle import BundleLoader
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for models API: %s", e)
-    NIRS4ALL_AVAILABLE = False
-    BundleLoader = None
-    nirs4all = None
+NIRS4ALL_AVAILABLE = True
 
 
 router = APIRouter()
@@ -263,11 +248,22 @@ SKLEARN_MODELS = {
     },
 }
 
-# nirs4all model definitions (dynamically discovered)
+# nirs4all model definitions (dynamically discovered, populated lazily)
 NIRS4ALL_MODELS = {}
+_nirs4all_models_populated = False
 
-if NIRS4ALL_AVAILABLE:
-    # PLS variants
+
+def _populate_nirs4all_models():
+    """Populate NIRS4ALL_MODELS from nirs4all operators (called lazily)."""
+    global _nirs4all_models_populated
+    if _nirs4all_models_populated:
+        return
+    _nirs4all_models_populated = True
+
+    nirs4all_models = get_cached("nirs4all_models")
+    if nirs4all_models is None:
+        return
+
     pls_models = [
         ("IKPLS", "Improved Kernel PLS", "Fast PLS using IKPLS algorithm"),
         ("OPLS", "Orthogonal PLS", "Orthogonal Partial Least Squares"),
@@ -310,6 +306,7 @@ async def list_models(
 
     Returns models from sklearn and nirs4all that can be used in pipelines.
     """
+    _populate_nirs4all_models()
     models = []
 
     # Add sklearn models
@@ -356,6 +353,7 @@ async def get_model_params(model_name: str):
 
     Returns detailed parameter information including types, defaults, and constraints.
     """
+    _populate_nirs4all_models()
     # Check sklearn models
     if model_name in SKLEARN_MODELS:
         info = SKLEARN_MODELS[model_name]
@@ -380,7 +378,8 @@ async def get_model_params(model_name: str):
 
     # Try to introspect from nirs4all
     if NIRS4ALL_AVAILABLE:
-        model_class = getattr(nirs4all_models, model_name, None)
+        nirs4all_models = get_cached("nirs4all_models")
+        model_class = getattr(nirs4all_models, model_name, None) if nirs4all_models else None
         if model_class:
             params = _extract_params_from_class(model_class)
             doc = model_class.__doc__ or ""
@@ -430,6 +429,7 @@ async def list_trained_models():
             nirs4all_version = None
             preprocessing_chain = None
 
+            BundleLoader = get_cached("BundleLoader")
             if BundleLoader is not None:
                 try:
                     loader = BundleLoader(str(n4a_file))
@@ -474,6 +474,7 @@ async def get_bundle_summary(model_id: str):
     - A bundle filename (will search in exports)
     - An absolute path to a .n4a file
     """
+    BundleLoader = get_cached("BundleLoader")
     if not NIRS4ALL_AVAILABLE or BundleLoader is None:
         raise HTTPException(status_code=503, detail="nirs4all not available")
 
@@ -527,6 +528,7 @@ async def compare_models(request: CompareModelsRequest):
 
     Uses nirs4all.predict() to evaluate each bundle on the dataset.
     """
+    nirs4all = get_cached("nirs4all")
     if not NIRS4ALL_AVAILABLE or nirs4all is None:
         raise HTTPException(status_code=503, detail="nirs4all not available")
 

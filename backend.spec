@@ -61,6 +61,8 @@ datas = [
     (str(project_root / 'public'), 'public'),
     # Include build info
     (str(build_info_path), '.'),
+    # Version information (for update detection)
+    (str(project_root / 'version.json'), '.'),
 ]
 
 # Filter out non-existent paths

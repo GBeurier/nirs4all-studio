@@ -77,6 +77,22 @@ const electronApi = {
     return () => ipcRenderer.removeListener("backend:statusChanged", handler);
   },
 
+  /** Check ML readiness status */
+  getMlStatus: (): Promise<{
+    ml_ready: boolean;
+    ml_loading: boolean;
+    ml_error: string | null;
+    core_ready: boolean;
+  }> => ipcRenderer.invoke("backend:getMlStatus"),
+
+  /** Listen for ML ready notification */
+  onMlReady: (callback: (info: { ready: boolean; error?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
+      callback(info as Parameters<typeof callback>[0]);
+    ipcRenderer.on("backend:mlReady", handler);
+    return () => ipcRenderer.removeListener("backend:mlReady", handler);
+  },
+
   /**
    * Python environment management
    */

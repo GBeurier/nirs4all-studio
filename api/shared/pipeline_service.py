@@ -10,35 +10,14 @@ Uses dynamic introspection of nirs4all operators instead of hardcoded mappings.
 import importlib
 import inspect
 import re
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
-
-try:
-    from nirs4all.operators import splitters as nirs_splitters
-    from nirs4all.operators import transforms
-    from nirs4all.operators.augmentation import random as augmentation_random
-    from nirs4all.operators.augmentation import spectral as augmentation_spectral
-    from sklearn.base import TransformerMixin
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for pipeline service: %s", e)
-    NIRS4ALL_AVAILABLE = False
-    transforms = None
-    nirs_splitters = None
-    augmentation_spectral = None
-    augmentation_random = None
-    TransformerMixin = None
+from ..lazy_imports import get_cached, is_ml_ready
+NIRS4ALL_AVAILABLE = True
 
 
 # Cache for dynamically discovered operators
@@ -57,6 +36,7 @@ def _build_preprocessing_cache() -> dict[str, type]:
     """
     cache = {}
 
+    transforms = get_cached("transforms")
     if not NIRS4ALL_AVAILABLE or transforms is None:
         return cache
 
@@ -133,6 +113,7 @@ def _build_splitter_cache() -> dict[str, tuple[str, str]]:
         cache[key] = ("sklearn.model_selection", name)
 
     # nirs4all splitters - use module's __all__ exports
+    nirs_splitters = get_cached("nirs_splitters")
     if nirs_splitters is not None:
         exported_names = getattr(nirs_splitters, "__all__", [])
         for name in exported_names:
@@ -204,6 +185,7 @@ def resolve_operator(
             pass
 
         # Try nirs4all splitters direct lookup
+        nirs_splitters = get_cached("nirs_splitters")
         if nirs_splitters:
             splitter_cls = getattr(nirs_splitters, name, None)
             if splitter_cls:
@@ -223,6 +205,7 @@ def resolve_operator(
             return cache[name.lower()]
 
         # Try direct lookup from transforms module
+        transforms = get_cached("transforms")
         if transforms:
             transformer_cls = getattr(transforms, name, None)
             if transformer_cls:
@@ -392,6 +375,7 @@ def get_preprocessing_methods() -> list[dict[str, Any]]:
     Returns:
         List of method info dicts with name, display_name, category, params
     """
+    transforms = get_cached("transforms")
     if not NIRS4ALL_AVAILABLE or transforms is None:
         return []
 
@@ -476,6 +460,7 @@ def get_splitter_methods() -> list[dict[str, Any]]:
         pass
 
     # nirs4all splitters - use __all__ exports for dynamic discovery
+    nirs_splitters = get_cached("nirs_splitters")
     if nirs_splitters:
         exported_names = getattr(nirs_splitters, "__all__", [])
 
@@ -511,8 +496,8 @@ def get_augmentation_methods() -> list[dict[str, Any]]:
 
     # Scan augmentation modules
     augmentation_modules = [
-        (augmentation_spectral, "spectral"),
-        (augmentation_random, "random"),
+        (get_cached("augmentation_spectral"), "spectral"),
+        (get_cached("augmentation_random"), "random"),
     ]
 
     for module, source in augmentation_modules:

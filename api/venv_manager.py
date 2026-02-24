@@ -17,16 +17,34 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import platformdirs
-
 from .shared.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    import platformdirs
+except ImportError:
+    platformdirs = None  # type: ignore[assignment]
+    logger.info("platformdirs not available, using fallback paths")
 
 
 # App identification for platformdirs
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
+
+
+def _user_data_dir(app_name: str, app_author: str | None = None) -> str:
+    """Get user data directory, with fallback if platformdirs is missing."""
+    if platformdirs is not None:
+        return platformdirs.user_data_dir(app_name, app_author)
+    # Minimal fallback
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))
+    elif sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+    return os.path.join(base, app_name)
 
 
 @dataclass
@@ -74,7 +92,7 @@ class VenvManager:
 
     def __init__(self):
         """Initialize the venv manager."""
-        self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        self._app_data_dir = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         # Default: use the current Python environment
         self._default_venv_path = Path(sys.prefix)
@@ -204,7 +222,12 @@ class VenvManager:
         if not self._custom_venv_path:
             python_dir = Path(sys.executable).parent
             if sys.platform == "win32":
-                return python_dir / "pip.exe"
+                # In a venv, pip.exe is next to python.exe in Scripts/
+                # In a base Python install, pip.exe is in Scripts/ subfolder
+                direct = python_dir / "pip.exe"
+                if direct.exists():
+                    return direct
+                return python_dir / "Scripts" / "pip.exe"
             return python_dir / "pip"
         # Custom venv path
         if sys.platform == "win32":

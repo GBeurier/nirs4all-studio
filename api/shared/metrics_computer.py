@@ -19,29 +19,13 @@ Note: Chemometric metrics are delegated to nirs4all.operators.filters for comput
 
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-try:
-    from scipy import stats
-    from scipy.signal import find_peaks
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-
-# Import nirs4all filters for chemometric metrics
-try:
-    from nirs4all.operators.filters import (
-        HighLeverageFilter,
-        SpectralQualityFilter,
-        XOutlierFilter,
-    )
-    NIRS4ALL_FILTERS_AVAILABLE = True
-except ImportError:
-    NIRS4ALL_FILTERS_AVAILABLE = False
+from ..lazy_imports import get_cached, is_ml_ready
+SCIPY_AVAILABLE = True
+NIRS4ALL_FILTERS_AVAILABLE = True
 
 
 # ============= Metric Categories =============
@@ -133,11 +117,11 @@ class MetricsComputer:
 
     def compute(
         self,
-        X: np.ndarray,
+        X,
         metrics: list[str] | None = None,
         pca_result: dict[str, Any] | None = None,
-        wavelengths: np.ndarray | None = None,
-    ) -> dict[str, np.ndarray]:
+        wavelengths=None,
+    ) -> dict[str, Any]:
         """Compute specified metrics for the data.
 
         Args:
@@ -152,7 +136,7 @@ class MetricsComputer:
         if metrics is None:
             metrics = FAST_METRICS
 
-        results: dict[str, np.ndarray] = {}
+        results: dict[str, any] = {}
 
         for metric in metrics:
             try:
@@ -168,10 +152,10 @@ class MetricsComputer:
 
     def _compute_metric(
         self,
-        X: np.ndarray,
+        X,
         metric: str,
-        wavelengths: np.ndarray | None = None,
-    ) -> np.ndarray | None:
+        wavelengths=None,
+    ):
         """Compute a single metric.
 
         Args:
@@ -182,6 +166,7 @@ class MetricsComputer:
         Returns:
             Array of metric values, or None if computation failed
         """
+        import numpy as np
         n_samples, n_features = X.shape
 
         # ======== Amplitude Metrics ========
@@ -222,7 +207,7 @@ class MetricsComputer:
             for i in range(n_samples):
                 valid_mask = ~np.isnan(X[i])
                 if valid_mask.sum() > 1:
-                    slope, _, _, _, _ = stats.linregress(x[valid_mask], X[i, valid_mask]) if SCIPY_AVAILABLE else (np.polyfit(x[valid_mask], X[i, valid_mask], 1)[0], 0, 0, 0, 0)
+                    slope, _, _, _, _ = get_cached("scipy_stats").linregress(x[valid_mask], X[i, valid_mask]) if SCIPY_AVAILABLE else (np.polyfit(x[valid_mask], X[i, valid_mask], 1)[0], 0, 0, 0, 0)
                     slopes[i] = slope
             return slopes
 
@@ -234,7 +219,7 @@ class MetricsComputer:
                 valid_mask = ~np.isnan(X[i])
                 if valid_mask.sum() > 1:
                     if SCIPY_AVAILABLE:
-                        _, intercept, _, _, _ = stats.linregress(x[valid_mask], X[i, valid_mask])
+                        _, intercept, _, _, _ = get_cached("scipy_stats").linregress(x[valid_mask], X[i, valid_mask])
                     else:
                         coeffs = np.polyfit(x[valid_mask], X[i, valid_mask], 1)
                         intercept = coeffs[1]
@@ -248,7 +233,7 @@ class MetricsComputer:
             for i in range(n_samples):
                 spectrum = X[i]
                 valid_spectrum = np.nan_to_num(spectrum, nan=0)
-                peaks, _ = find_peaks(valid_spectrum, prominence=np.std(valid_spectrum) * 0.5)
+                peaks, _ = get_cached("scipy_find_peaks")(valid_spectrum, prominence=np.std(valid_spectrum) * 0.5)
                 counts[i] = len(peaks)
             return counts
 
@@ -260,7 +245,7 @@ class MetricsComputer:
             for i in range(n_samples):
                 spectrum = X[i]
                 valid_spectrum = np.nan_to_num(spectrum, nan=0)
-                peaks, _ = find_peaks(valid_spectrum)
+                peaks, _ = get_cached("scipy_find_peaks")(valid_spectrum)
                 if len(peaks) > 0:
                     proms, _, _ = peak_prominences(valid_spectrum, peaks)
                     prominences[i] = np.max(proms) if len(proms) > 0 else 0
@@ -323,9 +308,9 @@ class MetricsComputer:
 
     def _compute_chemometric_via_filter(
         self,
-        X: np.ndarray,
+        X,
         method: str,
-    ) -> np.ndarray | None:
+    ):
         """Compute chemometric metric using nirs4all XOutlierFilter.
 
         Args:
@@ -335,6 +320,7 @@ class MetricsComputer:
         Returns:
             Array of metric values, or None if computation failed
         """
+        import numpy as np
         if not NIRS4ALL_FILTERS_AVAILABLE:
             return None
 
@@ -345,7 +331,7 @@ class MetricsComputer:
         try:
             X_clean = np.nan_to_num(X, nan=0)
 
-            filter_obj = XOutlierFilter(
+            filter_obj = get_cached("XOutlierFilter")(
                 method=method,
                 n_components=min(self.n_pca_components, n_samples - 1, X.shape[1]),
                 contamination=self.lof_contamination,
@@ -360,7 +346,7 @@ class MetricsComputer:
         except Exception:
             return None
 
-    def _compute_leverage_via_filter(self, X: np.ndarray) -> np.ndarray | None:
+    def _compute_leverage_via_filter(self, X):
         """Compute leverage using nirs4all HighLeverageFilter.
 
         Args:
@@ -369,6 +355,7 @@ class MetricsComputer:
         Returns:
             Array of leverage values, or None if computation failed
         """
+        import numpy as np
         if not NIRS4ALL_FILTERS_AVAILABLE:
             return None
 
@@ -379,7 +366,7 @@ class MetricsComputer:
         try:
             X_clean = np.nan_to_num(X, nan=0)
 
-            filter_obj = HighLeverageFilter(
+            filter_obj = get_cached("HighLeverageFilter")(
                 method="pca" if X.shape[1] > n_samples else "hat",
                 n_components=min(self.n_pca_components, n_samples - 1, X.shape[1], 50),
             )
@@ -392,7 +379,7 @@ class MetricsComputer:
 
     def get_metric_stats(
         self,
-        metric_values: np.ndarray,
+        metric_values,
     ) -> dict[str, float]:
         """Compute statistics for a metric array.
 
@@ -402,6 +389,7 @@ class MetricsComputer:
         Returns:
             Dict with min, max, mean, std, p5, p25, p50, p75, p95 percentiles
         """
+        import numpy as np
         valid_values = metric_values[~np.isnan(metric_values)]
 
         if len(valid_values) == 0:
@@ -424,12 +412,12 @@ class MetricsComputer:
 
     def get_similar_samples(
         self,
-        X: np.ndarray,
+        X,
         reference_idx: int,
         metric: str = 'euclidean',
         threshold: float | None = None,
         top_k: int | None = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ):
         """Find samples similar to a reference sample.
 
         This is a UI-specific feature for interactive sample exploration.
@@ -444,6 +432,7 @@ class MetricsComputer:
         Returns:
             Tuple of (indices of similar samples, distances)
         """
+        import numpy as np
         reference = X[reference_idx]
         n_samples = X.shape[0]
 
@@ -489,10 +478,10 @@ class MetricsComputer:
 
     def compute_pairwise_distances(
         self,
-        X_ref: np.ndarray,
-        X_final: np.ndarray,
+        X_ref,
+        X_final,
         metric: str = 'euclidean',
-    ) -> np.ndarray:
+    ):
         """Compute per-sample distance between reference and final spectra.
 
         This is a UI-specific feature for preprocessing difference visualization.
@@ -512,6 +501,7 @@ class MetricsComputer:
         Returns:
             Array of per-sample distances (n_samples,)
         """
+        import numpy as np
         n_samples = X_ref.shape[0]
 
         if metric == 'euclidean':
@@ -596,8 +586,8 @@ class MetricsComputer:
 
     def compute_repetition_variance(
         self,
-        X: np.ndarray,
-        group_ids: np.ndarray,
+        X,
+        group_ids,
         reference: str = 'group_mean',
         metric: str = 'euclidean',
     ) -> dict[str, Any]:
@@ -622,6 +612,7 @@ class MetricsComputer:
                 - quantiles: Dict of quantile values
                 - per_group: Dict of per-group statistics
         """
+        import numpy as np
         unique_groups = np.unique(group_ids)
         distances = []
         sample_indices = []

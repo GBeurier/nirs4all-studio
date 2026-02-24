@@ -403,6 +403,25 @@ const de = {
       },
     },
 
+    // Python Environment Picker
+    pythonEnv: {
+      title: "Python-Umgebung",
+      description: "Python-Interpreter für das Analyse-Backend",
+      ready: "Bereit",
+      notReady: "Nicht bereit",
+      managed: "Verwaltet",
+      change: "Ändern...",
+      restartNeeded: "Umgebung geändert. Starten Sie das Backend neu, um die Änderungen anzuwenden.",
+      restartBackend: "Backend neu starten",
+      selectInterpreter: "Python-Interpreter auswählen",
+      selectInterpreterDesc: "Wählen Sie eine Python-Umgebung für nirs4all Studio. Python 3.11+ ist erforderlich.",
+      scanning: "Suche nach Python-Umgebungen...",
+      detected: "Erkannte Umgebungen",
+      current: "Aktuell",
+      noEnvsFound: "Keine kompatiblen Python-Umgebungen auf diesem System gefunden.",
+      browseForPython: "Nach Python-Datei suchen...",
+    },
+
     // Config Alignment
     configAlignment: {
       title: "Empfohlene Konfiguration",
@@ -433,6 +452,32 @@ const de = {
     title: "Willkommen bei nirs4all Studio",
     subtitle: "Konfigurieren wir Ihre Umgebung für das beste Erlebnis",
     skip: "Einrichtung überspringen",
+    env: {
+      title: "Python-Umgebung einrichten",
+      description: "nirs4all Studio benötigt eine Python-Umgebung für das Analyse-Backend. Einmalige Einrichtung.",
+      autoSetup: "Automatisch einrichten",
+      autoSetupDetail: "Lädt Python 3.11 herunter und installiert nirs4all + Abhängigkeiten",
+      recommended: "Empfohlen",
+      or: "oder",
+      detectedEnvs: "Erkannte Python-Umgebungen:",
+      scanning: "Suche nach vorhandenen Python-Umgebungen...",
+      browsePython: "Python-Datei auswählen",
+      nirs4allInstalled: "nirs4all installiert",
+    },
+    envProgress: {
+      title: "Python-Umgebung wird eingerichtet",
+      downloading: "Python wird heruntergeladen",
+      extracting: "Laufzeitumgebung wird extrahiert",
+      creatingVenv: "Umgebung wird erstellt",
+      installing: "Pakete werden installiert",
+      validating: "Umgebung wird überprüft",
+      startingBackend: "Analyse-Backend wird gestartet...",
+      ready: "Bereit",
+      settingUp: "Einrichtung",
+      timeNote: "Dies kann bei der Ersteinrichtung einige Minuten dauern",
+      failed: "Einrichtung fehlgeschlagen",
+      tryAgain: "Erneut versuchen",
+    },
     detect: {
       title: "Hardware-Erkennung",
       description: "GPU-Fähigkeiten werden erkannt, um die beste Konfiguration zu empfehlen",

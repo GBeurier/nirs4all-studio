@@ -5,6 +5,7 @@
  * Session wraps everything so inner contexts can save/restore state.
  */
 
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { InspectorSessionProvider } from '@/context/InspectorSessionContext';
 import { InspectorDataProvider } from '@/context/InspectorDataContext';
 import { InspectorSelectionProvider } from '@/context/InspectorSelectionContext';
@@ -17,6 +18,7 @@ import { SourceFilterBar } from '@/components/inspector/SourceFilterBar';
 
 export default function Inspector() {
   return (
+    <MlLoadingOverlay>
     <InspectorSessionProvider>
       <InspectorDataProvider>
         <InspectorSelectionProvider>
@@ -30,6 +32,7 @@ export default function Inspector() {
         </InspectorSelectionProvider>
       </InspectorDataProvider>
     </InspectorSessionProvider>
+    </MlLoadingOverlay>
   );
 }
 

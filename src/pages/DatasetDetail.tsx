@@ -8,6 +8,7 @@
  * - Raw Data: Paginated data table
  */
 import { useState, useEffect, useCallback } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
@@ -162,6 +163,7 @@ export default function DatasetDetail() {
   }
 
   return (
+    <MlLoadingOverlay>
     <motion.div
       className="space-y-6"
       variants={containerVariants}
@@ -313,5 +315,6 @@ export default function DatasetDetail() {
         </Tabs>
       </motion.div>
     </motion.div>
+    </MlLoadingOverlay>
   );
 }

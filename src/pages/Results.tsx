@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
@@ -181,6 +182,7 @@ export default function Results() {
   }
 
   return (
+    <MlLoadingOverlay>
     <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
       {/* Header */}
       <motion.div variants={itemVariants} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -365,5 +367,6 @@ export default function Results() {
         </div>
       )}
     </motion.div>
+    </MlLoadingOverlay>
   );
 }

@@ -7,11 +7,8 @@ getting their parameters, and applying preprocessing to spectral data.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any, Dict, List
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -19,18 +16,9 @@ from .shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
+from .lazy_imports import get_cached, require_ml_ready
 
-try:
-    from nirs4all.operators import transforms
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for preprocessing API: %s", e)
-    NIRS4ALL_AVAILABLE = False
+NIRS4ALL_AVAILABLE = True
 
 
 # Static fallback registry (empty - methods are discovered dynamically from nirs4all)
@@ -82,7 +70,8 @@ def _get_transformer_class(name: str):
         return None
 
     # Check nirs4all transforms
-    transformer_cls = getattr(transforms, name, None)
+    transforms = get_cached("transforms")
+    transformer_cls = getattr(transforms, name, None) if transforms else None
     if transformer_cls:
         return transformer_cls
 
@@ -159,6 +148,7 @@ async def apply_preprocessing(request: ApplyPreprocessingRequest):
         )
 
     try:
+        import numpy as np
         X = np.array(request.data, dtype=np.float32)
 
         if X.ndim != 2:
@@ -216,6 +206,7 @@ async def preview_preprocessing(request: PreviewPreprocessingRequest):
             detail="nirs4all library not available for preprocessing preview",
         )
 
+    import numpy as np
     # Import here to avoid circular dependency
     from .spectra import _load_dataset
 
@@ -753,6 +744,7 @@ async def suggest_preprocessing_chain(
             detail="nirs4all library not available",
         )
 
+    import numpy as np
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)

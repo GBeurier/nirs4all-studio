@@ -13,12 +13,10 @@ The webapp is responsible only for:
 from __future__ import annotations
 
 import hashlib
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -27,24 +25,9 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-# Add nirs4all to path if needed
-nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 
-try:
-    from nirs4all.core.task_detection import detect_task_type
-    from nirs4all.core.task_type import TaskType
-    from nirs4all.data import DatasetConfigs
-    from nirs4all.data.dataset import SpectroDataset
-    from nirs4all.data.detection import detect_file_parameters
-    from nirs4all.data.loaders import load_file
-    from nirs4all.data.parsers.folder_parser import FolderParser
-
-    NIRS4ALL_AVAILABLE = True
-except ImportError as e:
-    logger.info("nirs4all not available for datasets API: %s", e)
-    NIRS4ALL_AVAILABLE = False
+NIRS4ALL_AVAILABLE = True
 
 
 router = APIRouter()
@@ -294,8 +277,9 @@ def _build_nirs4all_config(
     return config
 
 
-def _compute_spectra_preview(X: np.ndarray, wavelengths: np.ndarray) -> dict[str, Any]:
+def _compute_spectra_preview(X, wavelengths) -> dict[str, Any]:
     """Compute spectra statistics for preview."""
+    import numpy as np
     return {
         "wavelengths": wavelengths.tolist(),
         "mean_spectrum": np.mean(X, axis=0).tolist(),
@@ -306,8 +290,9 @@ def _compute_spectra_preview(X: np.ndarray, wavelengths: np.ndarray) -> dict[str
     }
 
 
-def _compute_target_distribution(y: np.ndarray, is_regression: bool) -> dict[str, Any]:
+def _compute_target_distribution(y, is_regression: bool) -> dict[str, Any]:
     """Compute target distribution for preview."""
+    import numpy as np
     if is_regression:
         hist, bin_edges = np.histogram(y, bins=20)
         return {
@@ -352,6 +337,7 @@ async def detect_unified(request: DetectFilesRequest):
     metadata_columns: list[str] = []
 
     try:
+        FolderParser = get_cached("FolderParser")
         parser = FolderParser()
         result = parser.parse(str(folder_path))
 
@@ -404,7 +390,7 @@ async def detect_unified(request: DetectFilesRequest):
                 first_x_path = Path(x_files[0].path)
                 if _is_detectable_format(first_x_path):
                     try:
-                        detection_result = detect_file_parameters(str(first_x_path))
+                        detection_result = get_cached("detect_file_parameters")(str(first_x_path))
                         parsing_options = {
                             "delimiter": detection_result.delimiter,
                             "decimal_separator": detection_result.decimal_separator,
@@ -422,7 +408,7 @@ async def detect_unified(request: DetectFilesRequest):
             metadata_files = [f for f in files if f.type == "metadata"]
             if metadata_files:
                 try:
-                    data, _, _, headers, _ = load_file(
+                    data, _, _, headers, _ = get_cached("load_file")(
                         str(metadata_files[0].path),
                         delimiter=parsing_options.get("delimiter", ";"),
                         decimal_separator=parsing_options.get("decimal_separator", "."),
@@ -443,7 +429,7 @@ async def detect_unified(request: DetectFilesRequest):
         if not _is_detectable_format(Path(f.path)):
             continue
         try:
-            file_detection = detect_file_parameters(
+            file_detection = get_cached("detect_file_parameters")(
                 f.path,
                 known_params={
                     "delimiter": parsing_options.get("delimiter"),
@@ -496,6 +482,7 @@ async def detect_files_list(request: DetectFilesListRequest):
     fold_file_path: str | None = None
     metadata_columns: list[str] = []
 
+    FolderParser = get_cached("FolderParser")
     parser = FolderParser()
 
     # Map FILE_PATTERNS keys to (type, split)
@@ -568,7 +555,7 @@ async def detect_files_list(request: DetectFilesListRequest):
         num_columns = None
         if _is_detectable_format(file_path):
             try:
-                det = detect_file_parameters(str(file_path))
+                det = get_cached("detect_file_parameters")(str(file_path))
                 num_rows = det.n_rows
                 num_columns = det.n_columns
             except Exception:
@@ -593,7 +580,7 @@ async def detect_files_list(request: DetectFilesListRequest):
         first_x_path = Path(x_files[0].path)
         if _is_detectable_format(first_x_path):
             try:
-                detection_result = detect_file_parameters(str(first_x_path))
+                detection_result = get_cached("detect_file_parameters")(str(first_x_path))
                 parsing_options = {
                     "delimiter": detection_result.delimiter,
                     "decimal_separator": detection_result.decimal_separator,
@@ -612,7 +599,7 @@ async def detect_files_list(request: DetectFilesListRequest):
     metadata_files = [f for f in files if f.type == "metadata"]
     if metadata_files:
         try:
-            data, _, _, headers, _ = load_file(
+            data, _, _, headers, _ = get_cached("load_file")(
                 str(metadata_files[0].path),
                 delimiter=parsing_options.get("delimiter", ";"),
                 decimal_separator=parsing_options.get("decimal_separator", "."),
@@ -660,7 +647,7 @@ async def auto_detect_file(request: AutoDetectRequest):
         raise HTTPException(status_code=400, detail="Path is not a file")
 
     try:
-        detection_result = detect_file_parameters(str(file_path))
+        detection_result = get_cached("detect_file_parameters")(str(file_path))
         return {
             "success": True,
             "delimiter": detection_result.delimiter,
@@ -681,6 +668,7 @@ async def auto_detect_file(request: AutoDetectRequest):
 @router.post("/datasets/detect-format")
 async def detect_format(request: DetectFormatRequest):
     """Detect file format and parameters using nirs4all's detector."""
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all library not available")
 
@@ -692,7 +680,7 @@ async def detect_format(request: DetectFormatRequest):
 
     try:
         file_format = _get_file_format(file_path)
-        detection_result = detect_file_parameters(str(file_path))
+        detection_result = get_cached("detect_file_parameters")(str(file_path))
 
         response = {
             "format": file_format,
@@ -710,7 +698,7 @@ async def detect_format(request: DetectFormatRequest):
         # Load sample data for CSV files
         if file_format == "csv" and request.sample_rows > 0:
             try:
-                data, _, _, headers, _ = load_file(
+                data, _, _, headers, _ = get_cached("load_file")(
                     str(file_path),
                     delimiter=detection_result.delimiter,
                     decimal_separator=detection_result.decimal_separator,
@@ -739,7 +727,7 @@ async def detect_format(request: DetectFormatRequest):
 
                         # Use nirs4all's detect_task_type
                         try:
-                            task_type = detect_task_type(col_data)
+                            task_type = get_cached("detect_task_type")(col_data)
                             task_type_str = task_type.value
                         except (ValueError, TypeError):
                             task_type_str = "regression"
@@ -833,7 +821,7 @@ async def validate_files(request: ValidateFilesRequest):
             continue
 
         try:
-            data, _, _, _, _ = load_file(
+            data, _, _, _, _ = get_cached("load_file")(
                 str(file_path),
                 delimiter=parsing.get("delimiter", ";"),
                 decimal_separator=parsing.get("decimal_separator", "."),
@@ -866,6 +854,7 @@ async def validate_files(request: ValidateFilesRequest):
 @router.post("/datasets/preview", response_model=PreviewDataResponse)
 async def preview_dataset(request: PreviewDataRequest):
     """Preview a dataset with current configuration using nirs4all."""
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         return PreviewDataResponse(success=False, error="nirs4all library not available")
 
@@ -890,7 +879,7 @@ async def preview_dataset(request: PreviewDataRequest):
         config = _build_nirs4all_config(request.files, request.parsing, base_path)
 
         try:
-            dataset_configs = DatasetConfigs(config)
+            dataset_configs = get_cached("DatasetConfigs")(config)
             datasets = dataset_configs.get_datasets()
 
             if not datasets:
@@ -1030,6 +1019,7 @@ async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
 
     if not files and Path(dataset_path).is_dir():
         try:
+            FolderParser = get_cached("FolderParser")
             parser = FolderParser()
             result = parser.parse(dataset_path)
             if result.success and result.config:
@@ -1152,7 +1142,7 @@ async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
         try:
             x_train_file = output_path / "Xcal.csv"
             if x_train_file.exists():
-                detection = detect_file_parameters(str(x_train_file))
+                detection = get_cached("detect_file_parameters")(str(x_train_file))
                 summary["num_features"] = detection.n_columns
                 summary["train_samples"] = detection.n_rows
         except Exception:
@@ -1339,6 +1329,7 @@ async def load_dataset(dataset_id: str):
 @router.get("/datasets/{dataset_id}/stats")
 async def get_dataset_stats(dataset_id: str, partition: str = "train"):
     """Get statistics for a dataset."""
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all library not available")
 
@@ -1541,6 +1532,7 @@ async def scan_folder(request: ScanFolderRequest):
     if not root.exists() or not root.is_dir():
         raise HTTPException(status_code=400, detail=f"Not a valid directory: {request.path}")
 
+    FolderParser = get_cached("FolderParser")
     parser = FolderParser()
     datasets: list[ScannedDataset] = []
     scanned_count = 0
@@ -1585,7 +1577,7 @@ async def scan_folder(request: ScanFolderRequest):
                 num_rows = None
                 num_columns = None
                 try:
-                    det = detect_file_parameters(str(fp))
+                    det = get_cached("detect_file_parameters")(str(fp))
                     num_rows = det.n_rows
                     num_columns = det.n_columns
                 except Exception:
@@ -1610,7 +1602,7 @@ async def scan_folder(request: ScanFolderRequest):
             first_x = Path(x_files[0].path)
             if first_x.suffix.lower() in (".csv", ".gz", ".zip"):
                 try:
-                    det_result = detect_file_parameters(str(first_x))
+                    det_result = get_cached("detect_file_parameters")(str(first_x))
                     parsing_opts = {
                         "delimiter": det_result.delimiter,
                         "decimal_separator": det_result.decimal_separator,
@@ -1629,7 +1621,7 @@ async def scan_folder(request: ScanFolderRequest):
         meta_files = [f for f in files if f.type == "metadata"]
         if meta_files:
             try:
-                data, _, _, headers, _ = load_file(
+                data, _, _, headers, _ = get_cached("load_file")(
                     str(meta_files[0].path),
                     delimiter=parsing_opts.get("delimiter", ";"),
                     decimal_separator=parsing_opts.get("decimal_separator", "."),

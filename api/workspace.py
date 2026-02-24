@@ -50,27 +50,10 @@ except Exception:
     notify_maintenance_failed = None  # type: ignore[assignment]
     WS_AVAILABLE = False
 
-# Optional nirs4all storage integrations
-try:
-    from nirs4all.pipeline.storage import WorkspaceStore
-    STORE_AVAILABLE = True
-except ImportError:
-    WorkspaceStore = None  # type: ignore[assignment, misc]
-    STORE_AVAILABLE = False
-
-try:
-    from nirs4all.data.predictions import Predictions
-    PREDICTIONS_AVAILABLE = True
-except ImportError:
-    Predictions = None  # type: ignore[assignment, misc]
-    PREDICTIONS_AVAILABLE = False
-
-try:
-    from nirs4all.pipeline.storage.migration import migrate_arrays_to_parquet
-    MIGRATION_AVAILABLE = True
-except ImportError:
-    migrate_arrays_to_parquet = None  # type: ignore[assignment, misc]
-    MIGRATION_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready
+STORE_AVAILABLE = True
+PREDICTIONS_AVAILABLE = True
+MIGRATION_AVAILABLE = True
 
 
 # Simple TTL cache for workspace discovery operations
@@ -1271,7 +1254,7 @@ def _get_legacy_arrays_row_count(workspace_path: Path) -> int | None:
         return None
 
     try:
-        store = WorkspaceStore(workspace_path)
+        store = get_cached("WorkspaceStore")(workspace_path)
     except Exception:
         return None
 
@@ -1372,6 +1355,7 @@ def _prepare_predictions_instance(workspace_path: Path) -> tuple[Any, Any]:
     predictions_obj = None
     errors: list[str] = []
 
+    Predictions = get_cached("Predictions")
     if hasattr(Predictions, "from_workspace"):
         try:
             predictions_obj = Predictions.from_workspace(workspace_path)  # type: ignore[attr-defined]
@@ -1381,8 +1365,8 @@ def _prepare_predictions_instance(workspace_path: Path) -> tuple[Any, Any]:
 
     if STORE_AVAILABLE:
         try:
-            store = WorkspaceStore(workspace_path)
-            predictions_obj = Predictions(store=store)
+            store = get_cached("WorkspaceStore")(workspace_path)
+            predictions_obj = get_cached("Predictions")(store=store)
             return predictions_obj, store
         except Exception as exc:
             errors.append(str(exc))
@@ -1447,6 +1431,7 @@ def _call_migrate_arrays_to_parquet(
     batch_size: int | None = None,
 ) -> dict[str, Any]:
     """Call migration function with backward-compatible signature handling."""
+    migrate_arrays_to_parquet = get_cached("migrate_arrays_to_parquet")
     if not MIGRATION_AVAILABLE or migrate_arrays_to_parquet is None:
         raise HTTPException(status_code=501, detail="Migration API is not available in current nirs4all version")
 
@@ -1823,7 +1808,7 @@ async def get_workspace_storage_health():
         dataset_rows: list[dict[str, Any]] = []
         if STORE_AVAILABLE and duckdb_path.exists():
             try:
-                store = WorkspaceStore(workspace_path)
+                store = get_cached("WorkspaceStore")(workspace_path)
                 try:
                     total_df = store._fetch_pl("SELECT COUNT(*) AS cnt FROM predictions")
                     if len(total_df) > 0:

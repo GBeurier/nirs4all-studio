@@ -116,6 +116,16 @@ jobs:
       - name: Build frontend (Electron mode)
         run: npm run build:electron
 
+      - name: Write version.json
+        run: |
+          cat > version.json << EOF
+          {
+            "version": "${{ needs.prepare.outputs.version }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
+
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
 
@@ -166,6 +176,15 @@ jobs:
 
       - name: Build frontend (Electron mode)
         run: npm run build:electron
+
+      - name: Write version.json
+        shell: pwsh
+        run: |
+          @{
+            version = "${{ needs.prepare.outputs.version }}"
+            build_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            commit = "${{ github.sha }}"
+          } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
@@ -235,6 +254,16 @@ jobs:
 
       - name: Build frontend (Electron mode)
         run: npm run build:electron
+
+      - name: Write version.json
+        run: |
+          cat > version.json << EOF
+          {
+            "version": "${{ needs.prepare.outputs.version }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
 
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
@@ -345,6 +374,16 @@ jobs:
 
       - name: Build frontend (Electron mode)
         run: npm run build:electron
+
+      - name: Write version.json
+        run: |
+          cat > version.json << EOF
+          {
+            "version": "${{ needs.prepare.outputs.version }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
 
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean

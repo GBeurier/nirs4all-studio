@@ -21,23 +21,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-# Check availability via direct imports
-try:
-    import umap
-    UMAP_AVAILABLE = True
-except ImportError:
-    UMAP_AVAILABLE = False
+import importlib.util
+UMAP_AVAILABLE = importlib.util.find_spec("umap") is not None
 
-try:
-    import nirs4all
-    NIRS4ALL_AVAILABLE = True
-except ImportError:
-    NIRS4ALL_AVAILABLE = False
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+NIRS4ALL_AVAILABLE = True
 
 try:
     import msgpack
@@ -235,8 +227,8 @@ class PlaygroundExecutor:
         sampling: SamplingOptions | None = None,
         options: dict[str, Any] | None = None,
         *,
-        X_np: np.ndarray | None = None,
-        y_np: np.ndarray | None = None,
+        X_np=None,
+        y_np=None,
         wavelengths_np: list[float] | None = None,
     ) -> ExecuteResponse:
         """Execute pipeline on data.
@@ -253,6 +245,7 @@ class PlaygroundExecutor:
         Returns:
             ExecuteResponse with results and traces
         """
+        import numpy as np
         start_time = time.perf_counter()
         options = options or {}
 
@@ -574,10 +567,10 @@ class PlaygroundExecutor:
 
     def _apply_sampling(
         self,
-        X: np.ndarray,
-        y: np.ndarray | None,
+        X,
+        y,
         sampling: SamplingOptions | None
-    ) -> np.ndarray:
+    ):
         """Apply sampling to select subset of samples.
 
         Delegates to nirs4all.data.selection.sampling for the actual
@@ -591,6 +584,7 @@ class PlaygroundExecutor:
         Returns:
             Array of selected sample indices
         """
+        import numpy as np
         n_samples = X.shape[0]
 
         if sampling is None or sampling.method == "all":
@@ -615,8 +609,8 @@ class PlaygroundExecutor:
     def _execute_preprocessing(
         self,
         step: PlaygroundStep,
-        X: np.ndarray
-    ) -> np.ndarray:
+        X,
+    ):
         """Execute a preprocessing step.
 
         Args:
@@ -635,10 +629,10 @@ class PlaygroundExecutor:
     def _execute_filter(
         self,
         step: PlaygroundStep,
-        X: np.ndarray,
-        y: np.ndarray | None,
-        metadata: dict[str, np.ndarray] | None
-    ) -> tuple[np.ndarray, dict[str, Any]]:
+        X,
+        y,
+        metadata,
+    ) -> tuple:
         """Execute a filter step.
 
         Args:
@@ -650,6 +644,7 @@ class PlaygroundExecutor:
         Returns:
             Tuple of (boolean mask, filter result info)
         """
+        import numpy as np
         filter_op = instantiate_filter(step.name, step.params)
         if filter_op is None:
             raise ValueError(f"Unknown filter operator: {step.name}")
@@ -662,8 +657,8 @@ class PlaygroundExecutor:
     def _execute_splitter(
         self,
         step: PlaygroundStep,
-        X: np.ndarray,
-        y: np.ndarray | None,
+        X,
+        y,
         options: dict[str, Any]
     ) -> dict[str, Any]:
         """Execute a splitter step.
@@ -677,6 +672,7 @@ class PlaygroundExecutor:
         Returns:
             Fold information dict
         """
+        import numpy as np
         operator = instantiate_operator(step.name, step.params, "splitting")
         if operator is None:
             raise ValueError(f"Unknown splitter: {step.name}")
@@ -762,7 +758,7 @@ class PlaygroundExecutor:
             "split_index": split_index,
         }
 
-    def _compute_statistics(self, X: np.ndarray) -> dict[str, Any]:
+    def _compute_statistics(self, X) -> dict[str, Any]:
         """Compute per-wavelength statistics.
 
         Args:
@@ -771,6 +767,7 @@ class PlaygroundExecutor:
         Returns:
             Statistics dict
         """
+        import numpy as np
         return {
             "mean": np.mean(X, axis=0).tolist(),
             "std": np.std(X, axis=0).tolist(),
@@ -790,8 +787,8 @@ class PlaygroundExecutor:
 
     def _compute_pca(
         self,
-        X: np.ndarray,
-        y: np.ndarray | None,
+        X,
+        y,
         fold_info: dict[str, Any] | None
     ) -> dict[str, Any]:
         """Compute PCA projection for visualization.
@@ -833,8 +830,8 @@ class PlaygroundExecutor:
 
     def _compute_umap(
         self,
-        X: np.ndarray,
-        y: np.ndarray | None,
+        X,
+        y,
         fold_info: dict[str, Any] | None,
         n_neighbors: int = 15,
         min_dist: float = 0.1,
@@ -876,7 +873,8 @@ class PlaygroundExecutor:
         n_components = min(max(2, n_components), 3)
 
         try:
-            reducer = umap.UMAP(
+            import umap as _umap
+            reducer = _umap.UMAP(
                 n_components=n_components,
                 n_neighbors=n_neighbors,
                 min_dist=min_dist,
@@ -912,12 +910,12 @@ class PlaygroundExecutor:
 
     def _compute_repetition_analysis(
         self,
-        X: np.ndarray,
+        X,
         sample_ids: list[str] | None,
-        metadata: dict[str, np.ndarray] | None,
+        metadata,
         pca_result: dict[str, Any] | None,
         umap_result: dict[str, Any] | None,
-        y: np.ndarray | None,
+        y,
         options: dict[str, Any]
     ) -> dict[str, Any] | None:
         """Compute repetition variability metrics for biological sample repeats.
@@ -944,6 +942,7 @@ class PlaygroundExecutor:
         """
         import re
         from collections import defaultdict
+        import numpy as np
 
         # Get configuration
         bio_sample_column = options.get("bio_sample_column")
@@ -1137,9 +1136,9 @@ class PlaygroundExecutor:
 
     def _compute_metrics(
         self,
-        X: np.ndarray,
+        X,
         pca_result: dict[str, Any] | None = None,
-        wavelengths: np.ndarray | None = None,
+        wavelengths=None,
         requested_metrics: list[str] | None = None,
     ) -> dict[str, Any]:
         """Compute spectral metrics for each sample.
@@ -1230,6 +1229,7 @@ def _negotiate_response(data: dict, http_request: Request) -> Response | dict:
 
 def _msgpack_default(obj: Any) -> Any:
     """Fallback serializer for msgpack — handles numpy types."""
+    import numpy as np
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, np.integer):
@@ -1353,6 +1353,7 @@ class _StepCache:
 
     def _estimate_size(self, state: dict) -> int:
         """Estimate byte size of cached state."""
+        import numpy as np
         size = 0
         for v in state.values():
             if isinstance(v, np.ndarray):
@@ -1419,7 +1420,7 @@ def _compute_prefix_key(data_fingerprint: str, steps: list) -> str:
     return hashlib.md5(raw.encode()).hexdigest()
 
 
-def _compute_data_fingerprint(X: np.ndarray) -> str:
+def _compute_data_fingerprint(X) -> str:
     """Compute a lightweight fingerprint of a numpy data array.
 
     Uses shape + first/last row bytes for fast identification without
@@ -1557,6 +1558,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
     Returns:
         ExecuteResponse with processed data and visualization info
     """
+    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -1696,6 +1698,7 @@ def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
     # We need the data fingerprint to look up the step cache.
     # For dataset-ref requests, load the dataset to compute the fingerprint.
     if request.dataset_id and NIRS4ALL_AVAILABLE:
+        import numpy as np
         from .spectra import _load_dataset
 
         dataset = _load_dataset(request.dataset_id)
@@ -1706,8 +1709,27 @@ def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
             X = dataset.x({"partition": "train"}, layout="2d")
             if isinstance(X, list):
                 X = X[0]
+            if X.dtype != np.float64:
+                X = X.astype(np.float64)
         except Exception:
             return None
+
+        # Apply the same sampling that the main execute used so the
+        # data fingerprint matches the one stored in the step cache.
+        if request.sampling and request.sampling.method != "all":
+            try:
+                executor = PlaygroundExecutor(verbose=0)
+                y_np = None
+                try:
+                    y_raw = dataset.y({"partition": "train"})
+                    if y_raw is not None and len(y_raw) > 0:
+                        y_np = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                except Exception:
+                    pass
+                sample_indices = executor._apply_sampling(X, y_np, request.sampling)
+                X = X[sample_indices]
+            except Exception:
+                pass
 
         data_fp = _compute_data_fingerprint(X)
     else:
@@ -1747,8 +1769,17 @@ async def compute_pca_chart(request: ChartComputeRequest, http_request: Request)
                     y_raw = dataset.y({"partition": "train"})
                     if y_raw is not None and len(y_raw) > 0:
                         y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
-                        # If the cached data was sampled, we need the matching y subset
-                        if len(y_sampled) != X_processed.shape[0]:
+                        # Apply the same sampling to y so it matches X_processed
+                        if len(y_sampled) != X_processed.shape[0] and request.sampling and request.sampling.method != "all":
+                            try:
+                                X_full = dataset.x({"partition": "train"}, layout="2d")
+                                if isinstance(X_full, list):
+                                    X_full = X_full[0]
+                                sample_indices = executor._apply_sampling(X_full, y_sampled, request.sampling)
+                                y_sampled = y_sampled[sample_indices]
+                            except Exception:
+                                y_sampled = None
+                        elif len(y_sampled) != X_processed.shape[0]:
                             y_sampled = None
             except Exception:
                 pass
@@ -1791,7 +1822,17 @@ async def compute_repetitions_chart(request: ChartComputeRequest, http_request: 
                     y_raw = dataset.y({"partition": "train"})
                     if y_raw is not None and len(y_raw) > 0:
                         y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
-                        if len(y_sampled) != X_processed.shape[0]:
+                        # Apply the same sampling to y so it matches X_processed
+                        if len(y_sampled) != X_processed.shape[0] and request.sampling and request.sampling.method != "all":
+                            try:
+                                X_full = dataset.x({"partition": "train"}, layout="2d")
+                                if isinstance(X_full, list):
+                                    X_full = X_full[0]
+                                sample_indices = executor._apply_sampling(X_full, y_sampled, request.sampling)
+                                y_sampled = y_sampled[sample_indices]
+                            except Exception:
+                                y_sampled = None
+                        elif len(y_sampled) != X_processed.shape[0]:
                             y_sampled = None
             except Exception:
                 pass
@@ -2078,6 +2119,7 @@ async def compute_metrics(request: MetricsRequest):
     Phase 5 Implementation: Allows computing any subset of metrics
     without re-running the full pipeline.
     """
+    import numpy as np
     # Convert data to numpy
     X = np.array(request.data.x, dtype=np.float64)
     wavelengths = np.array(request.data.wavelengths) if request.data.wavelengths else None
@@ -2120,6 +2162,7 @@ async def detect_outliers(request: OutlierRequest):
     Phase 5 Implementation: Returns a mask indicating which samples
     are outliers based on the selected detection method.
     """
+    import numpy as np
     # Convert data to numpy
     X = np.array(request.data.x, dtype=np.float64)
     n_samples = X.shape[0]
@@ -2157,6 +2200,7 @@ async def find_similar_samples(request: SimilarityRequest):
     Phase 5 Implementation: Returns indices and distances of samples
     similar to the reference based on the specified metric.
     """
+    import numpy as np
     # Convert data to numpy
     X = np.array(request.data.x, dtype=np.float64)
     n_samples = X.shape[0]
@@ -2222,6 +2266,7 @@ async def compute_diff(request: DiffComputeRequest):
     Phase 7 Implementation: Computes distance metrics between paired samples
     from reference and final datasets for difference visualization.
     """
+    import numpy as np
     try:
         X_ref = np.array(request.X_ref, dtype=np.float64)
         X_final = np.array(request.X_final, dtype=np.float64)
@@ -2274,6 +2319,7 @@ async def compute_repetition_variance(request: RepetitionVarianceRequest):
     (e.g., repetitions of the same biological sample) to identify inconsistent
     measurements or problematic samples.
     """
+    import numpy as np
     try:
         X = np.array(request.X, dtype=np.float64)
         group_ids = np.array(request.group_ids)

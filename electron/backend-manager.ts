@@ -8,7 +8,7 @@ import type { EnvManager } from "./env-manager";
 const electron = require("electron") as typeof import("electron");
 const { BrowserWindow } = electron;
 
-const HEALTH_CHECK_TIMEOUT = 60000; // 60 seconds (backend imports are heavy)
+const HEALTH_CHECK_TIMEOUT = 30000; // 30 seconds (only waits for core_ready now, not ML)
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
 const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health checks
 const MAX_RESTART_ATTEMPTS = 3;
@@ -152,8 +152,8 @@ export class BackendManager {
 
   /**
    * Wait for the backend to respond to health checks.
-   * Waits for both HTTP readiness and the startup_complete flag (ready: true)
-   * to ensure workspace initialization has finished before the UI loads.
+   * Waits for core_ready (Phase 1) — FastAPI running, basic endpoints work.
+   * ML dependencies load in the background (Phase 2) and are tracked separately.
    */
   private async waitForHealthCheck(): Promise<void> {
     const startTime = Date.now();
@@ -163,9 +163,14 @@ export class BackendManager {
       try {
         const response = await fetch(url, { method: "GET" });
         if (response.ok) {
-          const data = await response.json() as { ready?: boolean };
-          if (data.ready) {
-            console.log("Backend health check passed (ready)");
+          const data = await response.json() as {
+            ready?: boolean;
+            core_ready?: boolean;
+            ml_ready?: boolean;
+          };
+          // Phase 1: show window as soon as core is ready
+          if (data.core_ready || data.ready) {
+            console.log(`Backend core ready (ml_ready: ${data.ml_ready ?? "unknown"})`);
             return;
           }
           // Server is up but startup event hasn't finished — keep polling
@@ -183,7 +188,53 @@ export class BackendManager {
   }
 
   /**
-   * Start the Python backend
+   * Poll for ML readiness and notify renderer when ready.
+   * Called non-blocking after startInternal() succeeds.
+   */
+  private async pollMlReadiness(): Promise<void> {
+    const url = `http://127.0.0.1:${this.port}/api/system/readiness`;
+    const pollInterval = 1000;
+    const maxWait = 120000; // 2 minutes
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWait) {
+      if (this.isShuttingDown) return;
+
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          signal: AbortSignal.timeout(5000),
+        });
+        if (response.ok) {
+          const data = await response.json() as { ml_ready?: boolean };
+          if (data.ml_ready) {
+            console.log("ML dependencies loaded, notifying renderer");
+            this.notifyMlReady(true);
+            return;
+          }
+        }
+      } catch {
+        // Ignore errors, keep polling
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    console.warn("ML readiness polling timed out after 2 minutes");
+    this.notifyMlReady(false, "ML loading timed out");
+  }
+
+  /**
+   * Notify renderer windows of ML readiness state change
+   */
+  private notifyMlReady(ready: boolean, error?: string): void {
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      win.webContents.send("backend:mlReady", { ready, error });
+    }
+  }
+
+  /**
+   * Start the Python backend (blocking — waits for health check).
    * @returns The port number the backend is running on
    */
   async start(): Promise<number> {
@@ -210,6 +261,104 @@ export class BackendManager {
       this.notifyRenderer();
       throw error;
     }
+  }
+
+  /**
+   * Start the Python backend non-blocking — spawns the process and returns
+   * immediately. The health check runs in the background and updates status
+   * via IPC when ready.
+   * @returns The port number allocated for the backend
+   */
+  async startNonBlocking(): Promise<number> {
+    if (this.process) {
+      console.warn("Backend already running");
+      return this.port;
+    }
+
+    this.isShuttingDown = false;
+    this.restartCount = 0;
+    this.lastError = null;
+    this.status = "starting";
+    this.notifyRenderer();
+
+    // Find a free port (fast, ~10ms)
+    this.port = await this.findFreePort();
+
+    // Spawn the process and run health check in background
+    this.startInternalNonBlocking();
+
+    return this.port;
+  }
+
+  /**
+   * Spawn the backend process and monitor health in background.
+   * Does not block — health check completion is signaled via IPC.
+   */
+  private startInternalNonBlocking(): void {
+    console.log(`Starting backend on port ${this.port} (non-blocking)...`);
+
+    const { command, args, cwd, env: extraEnv } = this.getBackendPath();
+
+    console.log(`Executing: ${command} ${args.join(" ")}`);
+    if (cwd) console.log(`Working directory: ${cwd}`);
+
+    const env = {
+      ...process.env,
+      NIRS4ALL_PORT: this.port.toString(),
+      NIRS4ALL_DESKTOP: "true",
+      NIRS4ALL_ELECTRON: "true",
+      ...extraEnv,
+    };
+
+    this.process = spawn(command, args, {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
+
+    this.process.stdout?.on("data", (data: Buffer) => {
+      console.log(`[Backend] ${data.toString().trim()}`);
+    });
+
+    this.process.stderr?.on("data", (data: Buffer) => {
+      console.error(`[Backend Error] ${data.toString().trim()}`);
+    });
+
+    this.process.on("exit", (code, signal) => {
+      console.log(`Backend exited with code ${code}, signal ${signal}`);
+      const wasRunning = this.status === "running";
+      this.process = null;
+
+      if (wasRunning && !this.isShuttingDown) {
+        this.status = "error";
+        this.notifyRenderer();
+      }
+    });
+
+    this.process.on("error", (error) => {
+      console.error("Backend process error:", error);
+      this.lastError = error.message;
+      this.process = null;
+      this.status = "error";
+      this.notifyRenderer();
+    });
+
+    // Run health check in background — don't block
+    this.waitForHealthCheck()
+      .then(() => {
+        this.status = "running";
+        this.notifyRenderer();
+        this.startHealthMonitor();
+        this.pollMlReadiness();
+        console.log("Backend is ready (health check passed)");
+      })
+      .catch((error) => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        this.status = "error";
+        this.notifyRenderer();
+        console.error("Backend health check failed:", error);
+      });
   }
 
   /**
@@ -282,6 +431,9 @@ export class BackendManager {
 
     // Start health monitoring
     this.startHealthMonitor();
+
+    // Start polling for ML readiness in background (non-blocking)
+    this.pollMlReadiness();
   }
 
   /**

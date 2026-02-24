@@ -7,10 +7,7 @@ spectral features (peaks, valleys) better than uniform subsampling.
 
 from __future__ import annotations
 
-import numpy as np
-
-
-def lttb_decimate(x: np.ndarray, y: np.ndarray, target_points: int) -> np.ndarray:
+def lttb_decimate(x, y, target_points: int):
     """Downsample using Largest-Triangle-Three-Buckets (LTTB) algorithm.
 
     LTTB preserves visual features (peaks, valleys, inflection points) by
@@ -25,6 +22,7 @@ def lttb_decimate(x: np.ndarray, y: np.ndarray, target_points: int) -> np.ndarra
     Returns:
         Array of selected indices, sorted in ascending order. Shape (target_points,).
     """
+    import numpy as np
     n = len(x)
     if n <= target_points or target_points < 3:
         return np.arange(n)
@@ -80,10 +78,10 @@ def lttb_decimate(x: np.ndarray, y: np.ndarray, target_points: int) -> np.ndarra
 
 
 def decimate_wavelengths(
-    wavelengths: list | np.ndarray,
-    spectra: np.ndarray,
+    wavelengths,
+    spectra,
     target_points: int,
-) -> np.ndarray:
+):
     """Select wavelength indices using LTTB on the mean spectrum.
 
     Computes the mean spectrum across all samples, then applies LTTB to
@@ -98,6 +96,7 @@ def decimate_wavelengths(
     Returns:
         Sorted array of selected wavelength indices.
     """
+    import numpy as np
     wl = np.asarray(wavelengths, dtype=np.float64)
     mean_spectrum = np.mean(spectra, axis=0)
     return lttb_decimate(wl, mean_spectrum, target_points)
