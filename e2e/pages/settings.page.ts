@@ -70,10 +70,9 @@ export class SettingsPage extends BasePage {
    * hasWorkspace=true, otherwise clicking settings won't trigger API calls.
    */
   async waitForSettingsReady(): Promise<void> {
-    // Wait for the settings page to have the General tab panel visible
-    await expect(this.page.getByRole('tabpanel')).toBeVisible({ timeout: 15000 });
-    // Wait for a workspace settings response to confirm backend sync completed.
-    // Use a network idle heuristic: wait for the settings GET that fires on mount.
+    // Wait for network idle to ensure the UISettingsContext's loadFromWorkspace() has
+    // completed its GET /api/workspace/settings call and set hasWorkspace=true.
+    // Without this, clicking settings controls won't trigger backend API calls.
     await this.page.waitForLoadState('networkidle');
   }
 
