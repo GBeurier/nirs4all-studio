@@ -25,7 +25,7 @@ setup_logging()
 logger = get_logger(__name__)
 
 # Initialize Sentry crash reporting (uses env var or hardcoded default DSN)
-_sentry_dsn = os.environ.get("SENTRY_DSN", "") or "https://f63f3b1973e50419edf75148d7a0439b@o4510941267951616.ingest.de.sentry.io/4510941276405840"
+_sentry_dsn = os.environ.get("SENTRY_DSN", "") or "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960"
 if _sentry_dsn:
     try:
         import sentry_sdk

@@ -9,7 +9,7 @@
 import * as Sentry from "@sentry/react";
 
 const SENTRY_DSN = (import.meta.env.VITE_SENTRY_DSN as string | undefined)
-  || "https://f63f3b1973e50419edf75148d7a0439b@o4510941267951616.ingest.de.sentry.io/4510941276405840";
+  || "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
 
 /** True when Sentry is initialized and capturing events. */
 export let sentryEnabled = false;
