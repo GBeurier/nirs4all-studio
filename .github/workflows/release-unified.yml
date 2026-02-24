@@ -265,7 +265,7 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Package with electron-builder
-        run: npx electron-builder --mac --arch x64 --publish never
+        run: npx electron-builder --mac --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # electron-builder reads these for signing
@@ -373,7 +373,7 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Package with electron-builder
-        run: npx electron-builder --mac --arch arm64 --publish never
+        run: npx electron-builder --mac --arm64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
