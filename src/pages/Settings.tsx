@@ -609,7 +609,7 @@ export default function Settings() {
       <motion.div variants={itemVariants}>
         <Card className="border-dashed">
           <CardContent className="p-4 flex items-center justify-between text-sm text-muted-foreground">
-            <span>{t("settings.appInfo.version", { version: "1.0.0" })}</span>
+            <span>{t("settings.appInfo.version", { version: "0.1.0" })}</span>
             <span>{t("settings.appInfo.copyright", { year: "2025-2026" })}</span>
           </CardContent>
         </Card>

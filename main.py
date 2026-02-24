@@ -56,7 +56,7 @@ from websocket import ws_manager
 app = FastAPI(
     title="nirs4all API",
     description="API for nirs4all unified NIRS analysis desktop application",
-    version="1.0.0",
+    version="0.1.0",
     default_response_class=ORJSONResponse,
 )
 

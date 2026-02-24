@@ -289,8 +289,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scripts/build.py --version 1.0.0
-  python scripts/build.py --version 1.0.0 --skip-frontend
+  python scripts/build.py --version 0.1.0
+  python scripts/build.py --version 0.1.0 --skip-frontend
   python scripts/build.py  # Uses version from git tag or default
         """,
     )

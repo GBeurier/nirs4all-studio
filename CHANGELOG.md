@@ -6,7 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## 0.1.0 — Initial Release (2026-02-24)
+## [0.1.0] — 2026-02-24
+
+Initial release.
 
 ### Added
 

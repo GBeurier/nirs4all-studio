@@ -411,4 +411,5 @@ The application uses a teal/cyan scientific theme inspired by spectral-explorer,
 
 ## License
 
-See the nirs4all project for license information.
+This project is licensed under **AGPL-3.0-or-later** with an optional commercial license.
+See [LICENSE](LICENSE) for details.

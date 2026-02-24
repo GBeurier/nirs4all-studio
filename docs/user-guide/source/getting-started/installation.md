@@ -24,14 +24,14 @@ The easiest way to get started is to download the desktop application from the G
 ### Windows
 
 1. Go to the [nirs4all Studio releases page](https://github.com/nirs4all/nirs4all-webapp/releases) on GitHub.
-2. Download the latest `.exe` installer (for example, `nirs4all-studio-setup-1.0.0.exe`).
+2. Download the latest `.exe` installer (for example, `nirs4all-studio-setup-0.1.0.exe`).
 3. Run the installer and follow the on-screen instructions.
 4. Once installed, launch **nirs4all Studio** from your Start menu or desktop shortcut.
 
 ### macOS
 
 1. Go to the [nirs4all Studio releases page](https://github.com/nirs4all/nirs4all-webapp/releases) on GitHub.
-2. Download the latest `.dmg` file (for example, `nirs4all-studio-1.0.0.dmg`).
+2. Download the latest `.dmg` file (for example, `nirs4all-studio-0.1.0.dmg`).
 3. Open the `.dmg` file and drag **nirs4all Studio** into your Applications folder.
 4. Launch the app from your Applications folder or Launchpad.
 
