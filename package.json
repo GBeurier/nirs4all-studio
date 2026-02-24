@@ -70,6 +70,8 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
+    "@sentry/electron": "^7.8.0",
+    "@sentry/react": "^10.39.0",
     "@tanstack/react-query": "^5.83.0",
     "@types/three": "^0.182.0",
     "class-variance-authority": "^0.7.1",

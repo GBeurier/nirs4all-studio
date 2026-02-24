@@ -39,6 +39,7 @@ const CORE_PACKAGES = [
   "pyyaml>=6.0",
   "packaging>=24.0",
   "platformdirs>=4.0.0",
+  "sentry-sdk[fastapi]>=2.0.0",
   "nirs4all",
 ];
 
@@ -68,6 +69,7 @@ const SETTINGS_FILE = "env-settings.json";
 
 interface EnvSettings {
   customEnvPath?: string;
+  customPythonPath?: string;
 }
 
 export class EnvManager {
@@ -76,6 +78,8 @@ export class EnvManager {
   private envDir: string;
   private settingsPath: string;
   private customEnvPath: string | null = null;
+  /** Direct path to the python executable (more reliable than folder-based detection) */
+  private customPythonPath: string | null = null;
 
   constructor() {
     this.envDir = path.join(app.getPath("userData"), "python-env");
@@ -93,6 +97,7 @@ export class EnvManager {
       if (fs.existsSync(this.settingsPath)) {
         const data = JSON.parse(fs.readFileSync(this.settingsPath, "utf-8")) as EnvSettings;
         this.customEnvPath = data.customEnvPath ?? null;
+        this.customPythonPath = data.customPythonPath ?? null;
       }
     } catch {
       // Ignore corrupt settings
@@ -103,6 +108,7 @@ export class EnvManager {
     try {
       const data: EnvSettings = {};
       if (this.customEnvPath) data.customEnvPath = this.customEnvPath;
+      if (this.customPythonPath) data.customPythonPath = this.customPythonPath;
       fs.writeFileSync(this.settingsPath, JSON.stringify(data, null, 2));
     } catch {
       // Best effort
@@ -124,6 +130,9 @@ export class EnvManager {
     const pythonPath = this.getPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
+    // For direct python path selection, trust the executable (validated at selection time)
+    if (this.customPythonPath) return true;
+
     const sitePackages = this.getSitePackages();
     if (!sitePackages || !fs.existsSync(sitePackages)) return false;
 
@@ -132,7 +141,13 @@ export class EnvManager {
 
   /** Get the Python executable path */
   getPythonPath(): string | null {
-    // Custom env
+    // Direct python path (most reliable — user selected the exact executable)
+    if (this.customPythonPath) {
+      if (fs.existsSync(this.customPythonPath)) return this.customPythonPath;
+      return null;
+    }
+
+    // Custom env (folder-based, legacy)
     if (this.customEnvPath) {
       const p = isWindows
         ? path.join(this.customEnvPath, "Scripts", "python.exe")
@@ -320,9 +335,36 @@ export class EnvManager {
     }
 
     this.customEnvPath = envPath;
+    this.customPythonPath = null;
     this.saveSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${envPath}`, info };
+  }
+
+  /**
+   * Configure using a direct path to a Python executable.
+   * More reliable than folder-based detection — no guessing about directory structure.
+   */
+  async useExistingPython(pythonPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
+    if (!fs.existsSync(pythonPath)) {
+      return { success: false, message: "Python executable not found at the selected path" };
+    }
+
+    const info = await this.checkPython(pythonPath);
+    if (!info) {
+      return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
+    }
+
+    // Derive the env root from the python path (parent of Scripts/ or bin/, or the directory itself)
+    const dir = path.dirname(pythonPath);
+    const dirName = path.basename(dir).toLowerCase();
+    const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
+
+    this.customPythonPath = pythonPath;
+    this.customEnvPath = envRoot;
+    this.saveSettings();
+    this.status = "ready";
+    return { success: true, message: `Using Python ${info.pythonVersion} from ${pythonPath}`, info };
   }
 
   /**

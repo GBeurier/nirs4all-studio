@@ -74,7 +74,7 @@ export default defineConfig(({ mode }) => ({
                     fileName: () => "main.cjs",
                   },
                   rollupOptions: {
-                    external: ["electron", /^node:.*/],
+                    external: ["electron", /^node:.*/, /^@sentry\//],
                   },
                 },
               },

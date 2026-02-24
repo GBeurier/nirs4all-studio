@@ -22,3 +22,6 @@ httpx>=0.27.0
 pyyaml>=6.0
 packaging>=24.0
 platformdirs>=4.0.0
+
+# Crash reporting (optional — active only when SENTRY_DSN env var is set)
+sentry-sdk[fastapi]>=2.0.0

@@ -68,6 +68,16 @@ interface ElectronApi {
   openExternal(url: string): Promise<void>;
 
   /**
+   * Get the current log file path
+   */
+  getLogPath(): Promise<string | null>;
+
+  /**
+   * Open the log directory in the system file explorer
+   */
+  openLogDir(): Promise<void>;
+
+  /**
    * Resize the window to specified dimensions
    */
   resizeWindow(width: number, height: number): Promise<boolean>;
@@ -139,6 +149,18 @@ interface ElectronApi {
     hasNirs4all: boolean;
   }>>;
   useExistingEnv(envPath: string): Promise<{
+    success: boolean;
+    message: string;
+    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
+  }>;
+  /**
+   * Open a file dialog to select a Python executable directly
+   */
+  selectPythonExe(): Promise<string | null>;
+  /**
+   * Configure using a direct path to a Python executable
+   */
+  useExistingPython(pythonPath: string): Promise<{
     success: boolean;
     message: string;
     info?: { path: string; pythonVersion: string; hasNirs4all: boolean };

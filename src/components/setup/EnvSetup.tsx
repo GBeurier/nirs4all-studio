@@ -45,6 +45,8 @@ const electronApi = (window as unknown as {
     detectExistingEnvs: () => Promise<DetectedEnv[]>;
     useExistingEnv: (path: string) => Promise<{ success: boolean; message: string }>;
     selectFolder: () => Promise<string | null>;
+    selectPythonExe: () => Promise<string | null>;
+    useExistingPython: (path: string) => Promise<{ success: boolean; message: string }>;
     restartBackend: () => Promise<{ success: boolean; error?: string }>;
   };
 }).electronApi;
@@ -116,13 +118,29 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     }
   }, []);
 
-  const handleBrowse = useCallback(async () => {
+  const handleBrowsePython = useCallback(async () => {
     if (!electronApi) return;
-    const folderPath = await electronApi.selectFolder();
-    if (folderPath) {
-      await handleUseExisting(folderPath);
+    const pythonPath = await electronApi.selectPythonExe();
+    if (!pythonPath) return;
+
+    setPhase("setup");
+    setProgress({ percent: 50, step: "validating", detail: "Validating Python executable..." });
+
+    const result = await electronApi.useExistingPython(pythonPath);
+    if (result.success) {
+      setProgress({ percent: 80, step: "starting", detail: "Starting backend..." });
+      const backendResult = await electronApi.restartBackend();
+      if (backendResult.success) {
+        setPhase("done");
+      } else {
+        setError(backendResult.error || "Failed to start backend");
+        setPhase("error");
+      }
+    } else {
+      setError(result.message);
+      setPhase("error");
     }
-  }, [handleUseExisting]);
+  }, []);
 
   const handleRetry = useCallback(() => {
     setPhase("welcome");
@@ -216,14 +234,14 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                 </div>
               ) : null}
 
-              {/* Browse button */}
+              {/* Browse for python executable */}
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={handleBrowse}
+                onClick={handleBrowsePython}
               >
                 <FolderOpen className="mr-2 h-4 w-4" />
-                Browse for existing Python environment
+                Browse for Python executable
               </Button>
             </CardContent>
           </Card>

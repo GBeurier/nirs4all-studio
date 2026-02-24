@@ -24,6 +24,21 @@ from api.shared.logger import get_logger, setup_logging
 setup_logging()
 logger = get_logger(__name__)
 
+# Initialize Sentry crash reporting (uses env var or hardcoded default DSN)
+_sentry_dsn = os.environ.get("SENTRY_DSN", "") or "https://f63f3b1973e50419edf75148d7a0439b@o4510941267951616.ingest.de.sentry.io/4510941276405840"
+if _sentry_dsn:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+            traces_sample_rate=0.1,
+            send_default_pii=False,
+        )
+        logger.info("Sentry crash reporting enabled (backend)")
+    except ImportError:
+        logger.debug("sentry-sdk not installed, crash reporting disabled")
+
 # Desktop mode detection - skip unnecessary middleware when running in pywebview
 DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
 
@@ -172,6 +187,10 @@ async def startup_event():
 
     import asyncio
 
+    # Clean up old update artifacts (backup, cache, staging) now that
+    # the app has started successfully — previous update was applied OK.
+    asyncio.create_task(cleanup_old_updates_background())
+
     # Check for updates in background if auto-check is enabled
     if update_manager.settings.auto_check:
         asyncio.create_task(check_updates_background())
@@ -183,6 +202,15 @@ async def startup_event():
     global startup_complete
     startup_complete = True
     logger.info("Startup complete — backend ready")
+
+
+async def cleanup_old_updates_background():
+    """Background task to clean up old update artifacts."""
+    try:
+        from updater import cleanup_old_updates
+        cleanup_old_updates()
+    except Exception as e:
+        logger.error("Background update cleanup failed: %s", e)
 
 
 async def check_updates_background():

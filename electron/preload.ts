@@ -37,6 +37,12 @@ const electronApi = {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke("system:openExternal", url),
 
+  getLogPath: (): Promise<string | null> =>
+    ipcRenderer.invoke("system:getLogPath"),
+
+  openLogDir: (): Promise<void> =>
+    ipcRenderer.invoke("system:openLogDir"),
+
   /**
    * Backend management
    */
@@ -101,6 +107,15 @@ const electronApi = {
     message: string;
     info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
   }> => ipcRenderer.invoke("env:useExisting", envPath),
+
+  selectPythonExe: (): Promise<string | null> =>
+    ipcRenderer.invoke("dialog:selectPythonExe"),
+
+  useExistingPython: (pythonPath: string): Promise<{
+    success: boolean;
+    message: string;
+    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
+  }> => ipcRenderer.invoke("env:useExistingPython", pythonPath),
 
   startEnvSetup: (): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("env:startSetup"),

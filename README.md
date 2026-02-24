@@ -187,7 +187,9 @@ nirs4all_webapp/
 ├── electron/               # Electron main process
 │   ├── main.ts             # Main entry point (window management)
 │   ├── preload.ts          # Secure IPC bridge (contextBridge)
-│   └── backend-manager.ts  # Python backend lifecycle management
+│   ├── backend-manager.ts  # Python backend lifecycle management
+│   ├── env-manager.ts      # Python environment detection and setup
+│   └── logger.ts           # Persistent file logging
 ├── api/                    # FastAPI backend
 │   ├── workspace.py        # Workspace management routes
 │   ├── datasets.py         # Dataset operations
@@ -400,11 +402,37 @@ The application uses a teal/cyan scientific theme inspired by spectral-explorer,
 - **Dark/Light mode** with smooth transitions
 - **Inter + JetBrains Mono** typography
 
+## Logging and Crash Reporting
+
+### Persistent Logs
+
+In desktop mode, all main process logs are written to rotating log files:
+
+| OS | Log location |
+|----|-------------|
+| Windows | `%APPDATA%\nirs4all-webapp\logs\` |
+| macOS | `~/Library/Application Support/nirs4all-webapp/logs/` |
+| Linux | `~/.config/nirs4all-webapp/logs/` |
+
+### Sentry Crash Reporting (optional)
+
+Automatic crash reporting via [Sentry](https://sentry.io/) can be enabled by setting the `SENTRY_DSN` environment variable. This captures errors from the Electron main process, the React frontend, and the Python backend.
+
+```bash
+# Set before launching the app
+SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
+
+# For the React frontend (build-time), add to .env.production:
+VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
+```
+
+When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero overhead. See [docs/ELECTRON.md](docs/ELECTRON.md#crash-reporting-sentry) for details.
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [docs/ELECTRON.md](docs/ELECTRON.md) | Electron architecture and development guide |
+| [docs/ELECTRON.md](docs/ELECTRON.md) | Electron architecture, logging, and crash reporting |
 | [docs/PACKAGING.md](docs/PACKAGING.md) | Build system, CI/CD, and release process |
 | [docs/UPDATE_SYSTEM.md](docs/UPDATE_SYSTEM.md) | Auto-updater implementation |
 | [docs/sources/custom-nodes-guide.md](docs/sources/custom-nodes-guide.md) | Custom node development |

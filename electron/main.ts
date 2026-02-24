@@ -3,10 +3,31 @@
 const electron = require("electron") as typeof import("electron");
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 
+// Initialize Sentry crash reporting (must be as early as possible).
+const SENTRY_DSN_DEFAULT = "https://f63f3b1973e50419edf75148d7a0439b@o4510941267951616.ingest.de.sentry.io/4510941276405840";
+const SentryMain = (() => {
+  try {
+    const dsn = process.env.SENTRY_DSN || SENTRY_DSN_DEFAULT;
+    // Propagate DSN to child processes (Python backend) via environment
+    if (!process.env.SENTRY_DSN) process.env.SENTRY_DSN = dsn;
+    const Sentry = require("@sentry/electron/main") as typeof import("@sentry/electron/main");
+    Sentry.init({
+      dsn,
+      release: `nirs4all-studio@${app.getVersion()}`,
+      environment: process.env.NODE_ENV || "production",
+    });
+    return Sentry;
+  } catch {
+    // Sentry not available or failed to init — non-fatal
+    return null;
+  }
+})();
+
 import path from "node:path";
 import fs from "node:fs";
 import { BackendManager } from "./backend-manager";
 import { EnvManager } from "./env-manager";
+import { initLogger, getLogFilePath, getLogDir } from "./logger";
 
 // WSL2/WSLg fixes - must be set before app is ready
 if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
@@ -16,6 +37,10 @@ if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
 
 // Disable Autofill CDP domain (not supported in Electron, causes DevTools errors)
 app.commandLine.appendSwitch("disable-features", "Autofill,AutofillServerCommunication");
+
+// Initialize persistent file logging (writes to {userData}/logs/)
+initLogger();
+if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 
 const envManager = new EnvManager();
 const backendManager = new BackendManager();
@@ -235,6 +260,14 @@ ipcMain.handle("window:getSize", () => {
   return { width, height };
 });
 
+// IPC Handlers for log access
+ipcMain.handle("system:getLogPath", () => getLogFilePath());
+ipcMain.handle("system:getLogDir", () => getLogDir());
+ipcMain.handle("system:openLogDir", () => {
+  const dir = getLogDir();
+  if (dir && fs.existsSync(dir)) shell.openPath(dir);
+});
+
 // IPC Handlers for backend management
 ipcMain.handle("backend:getPort", () => {
   return backendManager.getPort();
@@ -279,6 +312,23 @@ ipcMain.handle("env:detectExisting", async () => {
 
 ipcMain.handle("env:useExisting", async (_, envPath: string) => {
   return envManager.useExistingEnv(envPath);
+});
+
+ipcMain.handle("env:useExistingPython", async (_, pythonPath: string) => {
+  return envManager.useExistingPython(pythonPath);
+});
+
+ipcMain.handle("dialog:selectPythonExe", async () => {
+  if (!mainWindow) return null;
+  const filters = process.platform === "win32"
+    ? [{ name: "Python Executable", extensions: ["exe"] }]
+    : [{ name: "All Files", extensions: ["*"] }];
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Select Python executable",
+    properties: ["openFile"],
+    filters,
+  });
+  return result.canceled ? null : result.filePaths[0];
 });
 
 ipcMain.handle("env:startSetup", async () => {
@@ -378,7 +428,4 @@ app.on("before-quit", async () => {
   await backendManager.stop();
 });
 
-// Handle uncaught exceptions
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error);
-});
+// Note: uncaught exceptions and unhandled rejections are captured by electron/logger.ts

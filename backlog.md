@@ -6,18 +6,14 @@ Development backlog for nirs4all Studio. Items are organized by area.
 
 ## Priority / Next
 
-- Separate frontend, backend, and library startup — load each only when needed (startup is too slow)
-- Redesign the Playground from scratch
+- Add mypy check
 - Add documentation links and update warnings in the UI
 - Stop full dataset list refresh on single dataset delete
 
 ### Packaging & Distribution
 
-- Verify run pipeline end-to-end
 - Clean results display
 - Verify update mechanism
-- Electron builder + FastAPI bundling
-- Release formats: exe, shell, conda, Docker, pip
 - Code signing for app stores
 
 ---

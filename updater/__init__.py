@@ -303,7 +303,12 @@ def launch_updater(script_path: Path) -> bool:
 
 
 def cleanup_old_updates() -> None:
-    """Clean up old update artifacts."""
+    """Clean up old update artifacts.
+
+    Called at startup after a successful launch. If the app started
+    successfully, any previous update was applied correctly so backup,
+    staging, and cached downloads are no longer needed.
+    """
     try:
         cache_dir = get_update_cache_dir()
         staging_dir = get_staging_dir()
@@ -313,17 +318,15 @@ def cleanup_old_updates() -> None:
         if staging_dir.exists():
             shutil.rmtree(staging_dir, ignore_errors=True)
 
-        # Keep backup for recovery, but could add age-based cleanup
-        # For now, just ensure the directory exists
-        backup_dir.mkdir(parents=True, exist_ok=True)
+        # Clean backup directory — only needed during the update process
+        # itself for rollback. A successful app launch means the update
+        # was applied correctly so the backup can be removed.
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
 
-        # Clean old cached downloads (keep last 2)
+        # Clean all cached downloads — archives are extracted to staging
+        # before being applied, so they are not needed after extraction.
         if cache_dir.exists():
-            files = sorted(cache_dir.iterdir(), key=lambda f: f.stat().st_mtime, reverse=True)
-            for f in files[2:]:
-                if f.is_file():
-                    f.unlink()
-                elif f.is_dir():
-                    shutil.rmtree(f, ignore_errors=True)
+            shutil.rmtree(cache_dir, ignore_errors=True)
     except Exception as e:
         print(f"Warning: Cleanup failed: {e}")

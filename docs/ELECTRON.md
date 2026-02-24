@@ -450,6 +450,8 @@ This runs:
 | `electron/main.ts` | Main process entry point |
 | `electron/preload.ts` | IPC bridge |
 | `electron/backend-manager.ts` | Backend lifecycle |
+| `electron/env-manager.ts` | Python environment detection and setup |
+| `electron/logger.ts` | Persistent file logging |
 | `electron-builder.yml` | Packaging configuration |
 | `backend.spec` | PyInstaller configuration |
 | `vite.config.ts` | Vite + Electron plugin |
@@ -460,9 +462,29 @@ This runs:
 
 ## Debugging
 
+### Persistent Log Files
+
+All main process output (including backend stdout/stderr) is written to rotating log files:
+
+| OS | Location |
+|----|----------|
+| Windows | `%APPDATA%\nirs4all-webapp\logs\nirs4all-YYYY-MM-DD.log` |
+| macOS | `~/Library/Application Support/nirs4all-webapp/logs/` |
+| Linux | `~/.config/nirs4all-webapp/logs/` |
+
+Logs include:
+- All `console.log/warn/error` from the main process
+- Backend stdout/stderr (prefixed with `[Backend]`)
+- Uncaught exceptions and unhandled promise rejections with full stack traces
+- App startup information (version, platform, architecture)
+
+Old log files are pruned automatically (last 7 days kept).
+
+The log directory can also be opened from the app via `electronApi.openLogDir()` or the Settings page.
+
 ### Main Process Logs
 
-Electron main process logs appear in the terminal where you launched the app.
+In development, Electron main process logs also appear in the terminal where you launched the app.
 
 ### Renderer DevTools
 
@@ -470,7 +492,7 @@ Press `Cmd+Option+I` (macOS) or `Ctrl+Shift+I` (Windows/Linux) to open DevTools.
 
 ### Backend Logs
 
-Backend stdout/stderr is forwarded to main process logs. Also check:
+Backend stdout/stderr is forwarded to both the main process console and the persistent log files. Also check:
 ```bash
 # If backend fails to start
 ./backend-dist/nirs4all-backend --port 8000
@@ -485,3 +507,58 @@ ipcMain.handle('channel', async (event, ...args) => {
   // ...
 });
 ```
+
+---
+
+## Crash Reporting (Sentry)
+
+nirs4all Studio supports automatic crash reporting via [Sentry](https://sentry.io/). When enabled, errors from all three layers (Electron main, React renderer, Python backend) are reported to your Sentry project.
+
+### Setup
+
+1. Create a free Sentry account at https://sentry.io/
+2. Create a project (select "Electron" as the platform)
+3. Copy the DSN from the project settings
+4. Set the `SENTRY_DSN` environment variable:
+
+```bash
+# Windows (system environment or before launching the app)
+set SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
+
+# Linux/macOS
+export SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
+```
+
+For the React renderer (frontend), set the DSN as a Vite build-time variable:
+
+```bash
+# In your .env or .env.production file:
+VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
+```
+
+### Architecture
+
+| Layer | Package | How it works |
+|-------|---------|-------------|
+| **Electron main** | `@sentry/electron` | Captures uncaught exceptions, unhandled rejections, native crashes |
+| **React renderer** | `@sentry/react` | ErrorBoundary for React errors, browser error tracking, performance |
+| **Python backend** | `sentry-sdk[fastapi]` | FastAPI integration, captures unhandled exceptions |
+
+- All three layers send events to the same Sentry project
+- When `SENTRY_DSN` is not set, Sentry is completely disabled (zero overhead)
+- The Electron main process passes `SENTRY_DSN` to the backend process automatically
+
+### What gets reported
+
+- Uncaught JavaScript exceptions (main + renderer)
+- Unhandled promise rejections
+- React rendering errors (via ErrorBoundary)
+- Python backend unhandled exceptions
+- App version, OS, and platform metadata
+- Performance traces (sampled at 10%)
+
+### Privacy
+
+- No PII (personally identifiable information) is sent by default
+- No spectral data or dataset content is included in crash reports
+- Only error messages, stack traces, and system metadata are reported
