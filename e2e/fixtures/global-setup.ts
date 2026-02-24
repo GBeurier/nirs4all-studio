@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
  * Runs once before all tests to:
  * - Ensure test data directories exist
  * - Verify backend health
+ * - Skip first-launch setup wizard (prevents redirect to /setup)
  */
 async function globalSetup(config: FullConfig) {
   // Ensure test data directory exists
@@ -48,6 +49,24 @@ async function globalSetup(config: FullConfig) {
         } else {
           await page.waitForTimeout(1000);
         }
+      }
+    }
+
+    // Skip first-launch setup wizard to prevent redirect to /setup during tests.
+    // In CI the setup_status.json doesn't exist, so useStartupUpdateCheck would
+    // redirect every page to /setup before tests can interact with it.
+    if (backendReady) {
+      try {
+        const setupResponse = await page.request.get('http://127.0.0.1:8000/api/config/setup-status');
+        if (setupResponse.ok()) {
+          const status = await setupResponse.json();
+          if (!status.setup_completed) {
+            console.log('Skipping first-launch setup for E2E tests...');
+            await page.request.post('http://127.0.0.1:8000/api/config/skip-setup');
+          }
+        }
+      } catch (e) {
+        console.warn('Could not skip setup:', e);
       }
     }
   } finally {
