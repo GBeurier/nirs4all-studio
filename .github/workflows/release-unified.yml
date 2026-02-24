@@ -11,11 +11,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - '[0-9]*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g., v1.2.0)'
+        description: 'Tag to build (e.g., 1.2.0)'
         required: true
         type: string
       skip_standalone:
