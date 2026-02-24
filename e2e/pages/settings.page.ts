@@ -58,38 +58,58 @@ export class SettingsPage extends BasePage {
 
   async goto(): Promise<void> {
     await super.goto('/settings');
-    // Wait for the UI to finish loading (controls become enabled)
-    // This directly checks the React state rather than tracking HTTP responses,
-    // which avoids race conditions between API responses and React state updates.
     await this.waitForSettingsReady();
   }
 
   /**
    * Wait for settings to be fully loaded and controls to be enabled.
    * Call this after page reloads to ensure settings are ready for interaction.
+   *
+   * The UISettingsContext loads from localStorage, then async-syncs from the backend.
+   * We need to wait for the backend sync (loadFromWorkspace) to complete so that
+   * hasWorkspace=true, otherwise clicking settings won't trigger API calls.
    */
   async waitForSettingsReady(): Promise<void> {
-    // Wait for the density controls to be enabled (indicates settings have loaded).
-    // Use a longer timeout for CI environments where backend + React hydration is slower.
-    const compactButton = this.page.getByRole('radio', { name: 'Compact' });
-    await expect(compactButton).toBeEnabled({ timeout: 15000 });
+    // Wait for the settings page to have the General tab panel visible
+    await expect(this.page.getByRole('tabpanel')).toBeVisible({ timeout: 15000 });
+    // Wait for a workspace settings response to confirm backend sync completed.
+    // Use a network idle heuristic: wait for the settings GET that fires on mount.
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
-   * Reset settings to defaults via API to ensure test isolation
+   * Reset settings to defaults via API and clear browser-side caches.
    */
   async resetToDefaults(): Promise<void> {
-    // The backend API always runs on port 8000
-    await this.page.request.put('http://localhost:8000/api/workspace/settings', {
-      data: {
-        general: {
-          theme: 'system',
-          ui_density: 'comfortable',
-          reduce_animations: false,
-          sidebar_collapsed: false,
-          zoom_level: 100,
-        },
+    // Navigate first to establish page context (needed for localStorage and Vite proxy)
+    await this.page.goto('/');
+
+    // Reset backend settings via Vite proxy (more reliable in parallel mode)
+    const data = {
+      general: {
+        theme: 'system',
+        ui_density: 'comfortable',
+        reduce_animations: false,
+        sidebar_collapsed: false,
+        zoom_level: 100,
       },
+    };
+    // Retry up to 3 times to handle transient connection issues under parallel load
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.page.request.put('/api/workspace/settings', { data });
+        break;
+      } catch {
+        if (attempt === 2) throw new Error('Failed to reset settings after 3 attempts');
+        await this.page.waitForTimeout(500);
+      }
+    }
+
+    // Clear localStorage to prevent stale cached values from overriding backend defaults.
+    await this.page.evaluate(() => {
+      localStorage.removeItem('nirs4all-ui-density');
+      localStorage.removeItem('nirs4all-reduce-animations');
+      localStorage.removeItem('nirs4all-ui-zoom');
     });
   }
 
@@ -107,7 +127,21 @@ export class SettingsPage extends BasePage {
   }
 
   /**
-   * Set the theme and wait for the API call to complete
+   * Wait for a settings PUT to complete. Called after clicking a settings control.
+   * The UISettingsContext fires: GET (getCurrentGeneral) → PUT (updateWorkspaceSettings).
+   */
+  private async waitForSettingsPut(): Promise<void> {
+    await this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/workspace/settings') &&
+        response.request().method() === 'PUT' &&
+        response.status() === 200,
+      { timeout: 10000 }
+    );
+  }
+
+  /**
+   * Set the theme
    */
   async setTheme(theme: Theme): Promise<void> {
     const themeMap: Record<Theme, Locator> = {
@@ -115,69 +149,38 @@ export class SettingsPage extends BasePage {
       dark: this.themeDarkButton,
       system: this.themeSystemButton,
     };
-    // Wait for the settings API call to complete after clicking
-    const responsePromise = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/workspace/settings') &&
-        response.request().method() === 'PUT' &&
-        response.status() === 200,
-      { timeout: 5000 }
-    );
+    const responsePromise = this.waitForSettingsPut();
     await themeMap[theme].click();
     await responsePromise;
   }
 
   /**
-   * Set the UI density and wait for the API call to complete
+   * Set the UI density
    */
   async setDensity(density: Density): Promise<void> {
-    // Capitalize the density name to match the radio button label
     const capitalizedDensity = density.charAt(0).toUpperCase() + density.slice(1);
-    // Find the toggle item with the density name
     const densityButton = this.page.getByRole('radio', { name: capitalizedDensity });
-    // Wait for the settings API call to complete after clicking
-    const responsePromise = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/workspace/settings') &&
-        response.request().method() === 'PUT' &&
-        response.status() === 200,
-      { timeout: 5000 }
-    );
+    const responsePromise = this.waitForSettingsPut();
     await densityButton.click();
     await responsePromise;
-    // Wait for the class change
     await expect(this.page.locator('html')).toHaveClass(new RegExp(`density-${density}`), { timeout: 3000 });
   }
 
   /**
-   * Set the zoom level and wait for the API call to complete
+   * Set the zoom level
    */
   async setZoomLevel(level: ZoomLevel): Promise<void> {
     const zoomButton = this.page.getByRole('radio', { name: `${level}%` });
-    // Wait for the settings API call to complete after clicking
-    const responsePromise = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/workspace/settings') &&
-        response.request().method() === 'PUT' &&
-        response.status() === 200,
-      { timeout: 5000 }
-    );
+    const responsePromise = this.waitForSettingsPut();
     await zoomButton.click();
     await responsePromise;
   }
 
   /**
-   * Toggle the reduce animations setting and wait for the API call to complete
+   * Toggle the reduce animations setting
    */
   async toggleReduceAnimations(): Promise<void> {
-    // Wait for the settings API call to complete after clicking
-    const responsePromise = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/workspace/settings') &&
-        response.request().method() === 'PUT' &&
-        response.status() === 200,
-      { timeout: 5000 }
-    );
+    const responsePromise = this.waitForSettingsPut();
     await this.reduceAnimationsSwitch.first().click();
     await responsePromise;
   }

@@ -93,10 +93,11 @@ def workspace_with_data(test_workspace: Path) -> Path:
     - test_dataset.csv: Simple regression dataset
     - test_pls.json: Basic PLS pipeline
     """
-    # Create sample dataset (simple regression data)
+    # Create sample dataset (separate X and Y files)
     datasets_dir = test_workspace / "datasets"
     dataset_path = datasets_dir / "test_dataset.csv"
     _create_sample_dataset(dataset_path, n_samples=50, n_features=100)
+    dataset_y_path = datasets_dir / "test_dataset_y.csv"
 
     # Create workspace.json with dataset configuration
     # This is how datasets are registered in the workspace
@@ -114,18 +115,20 @@ def workspace_with_data(test_workspace: Path) -> Path:
                     "delimiter": ",",
                     "decimal_separator": ".",
                     "has_header": True,
-                    "header_unit": "index",
+                    "header_unit": "nm",
                     "signal_type": "auto",
                     "files": [
                         {
                             "path": str(dataset_path),
                             "type": "X",
                             "split": "train",
-                        }
+                        },
+                        {
+                            "path": str(dataset_y_path),
+                            "type": "Y",
+                            "split": "train",
+                        },
                     ],
-                    # Direct path format for simpler loading
-                    "train_x": str(dataset_path),
-                    "y_columns": [0],  # First column is target
                 },
             }
         ],
@@ -192,7 +195,17 @@ def workspace_with_data(test_workspace: Path) -> Path:
 
 
 def _create_sample_dataset(path: Path, n_samples: int = 50, n_features: int = 100):
-    """Create a simple CSV dataset for testing."""
+    """Create separate X and Y CSV files for testing.
+
+    Creates:
+    - path: X file with numeric wavelength column headers (e.g. 1000.0, 1002.0, ...)
+    - path.parent / "test_dataset_y.csv": Y file with a single "y" column
+
+    Args:
+        path: Path for the X CSV file.
+        n_samples: Number of samples.
+        n_features: Number of spectral features.
+    """
     import numpy as np
 
     np.random.seed(42)
@@ -203,15 +216,21 @@ def _create_sample_dataset(path: Path, n_samples: int = 50, n_features: int = 10
     # Generate target with some correlation to features
     y = X[:, 0] * 2 + X[:, 1] * 0.5 + np.random.randn(n_samples) * 0.1
 
-    # Build CSV content
-    header = ["y"] + [f"wl_{i}" for i in range(n_features)]
-    lines = [",".join(header)]
-
+    # Build X CSV with numeric wavelength headers (simulating nm values)
+    wavelengths = [f"{1000 + i * 2:.1f}" for i in range(n_features)]
+    x_header = ",".join(wavelengths)
+    x_lines = [x_header]
     for i in range(n_samples):
-        row = [f"{y[i]:.6f}"] + [f"{X[i, j]:.6f}" for j in range(n_features)]
-        lines.append(",".join(row))
+        row = ",".join(f"{X[i, j]:.6f}" for j in range(n_features))
+        x_lines.append(row)
+    path.write_text("\n".join(x_lines))
 
-    path.write_text("\n".join(lines))
+    # Build Y CSV
+    y_path = path.parent / "test_dataset_y.csv"
+    y_lines = ["y"]
+    for i in range(n_samples):
+        y_lines.append(f"{y[i]:.6f}")
+    y_path.write_text("\n".join(y_lines))
 
 
 @pytest.fixture
@@ -231,15 +250,17 @@ def workspace_client(workspace_with_data: Path, client: TestClient) -> TestClien
     from api.app_config import app_config
 
     dataset_path = workspace_with_data / "datasets" / "test_dataset.csv"
+    dataset_y_path = workspace_with_data / "datasets" / "test_dataset_y.csv"
     dataset_config = {
         "delimiter": ",",
         "decimal_separator": ".",
         "has_header": True,
-        "header_unit": "index",
+        "header_unit": "nm",
         "signal_type": "auto",
-        "files": [{"path": str(dataset_path), "type": "X", "split": "train"}],
-        "train_x": str(dataset_path),
-        "y_columns": [0],
+        "files": [
+            {"path": str(dataset_path), "type": "X", "split": "train"},
+            {"path": str(dataset_y_path), "type": "Y", "split": "train"},
+        ],
     }
     now = datetime.now().isoformat()
     dataset_links = {

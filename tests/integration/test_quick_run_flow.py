@@ -231,7 +231,7 @@ class TestQuickRunPollingCompletion:
         if status == "failed":
             final_run = tracker.final_result
             pipeline = final_run["datasets"][0]["pipelines"][0]
-            error = pipeline.get("error_message", "")
+            error = pipeline.get("error_message") or ""
             if "nirs4all" in error.lower() or "pipeline build" in error.lower() or "dataset" in error.lower():
                 pytest.skip(f"Run failed due to nirs4all environment issue: {error}")
 

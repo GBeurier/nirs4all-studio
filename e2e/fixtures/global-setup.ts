@@ -36,7 +36,7 @@ async function globalSetup(config: FullConfig) {
 
     while (retries > 0 && !backendReady) {
       try {
-        const response = await page.request.get('http://localhost:8000/api/health');
+        const response = await page.request.get('http://127.0.0.1:8000/api/health');
         if (response.ok()) {
           console.log('Backend is ready');
           backendReady = true;

@@ -12,14 +12,13 @@ test.describe('Smoke Tests', () => {
 
     // Check sidebar navigation is present (scope to sidebar)
     const sidebar = page.locator('div.bg-sidebar').first();
-    await expect(sidebar.locator('a[href="/"]')).toBeVisible();
     await expect(sidebar.locator('a[href="/datasets"]')).toBeVisible();
     await expect(sidebar.locator('a[href="/pipelines"]')).toBeVisible();
   });
 
   test('should respond to API health check', async ({ page }) => {
-    // API runs on port 8000, need to use full URL
-    const response = await page.request.get('http://localhost:8000/api/health');
+    // Use the Vite proxy to check API health (more reliable in parallel mode)
+    const response = await page.request.get('/api/health');
     expect(response.ok()).toBe(true);
 
     const data = await response.json();
@@ -73,19 +72,20 @@ test.describe('Smoke Tests', () => {
     // Scope all checks to the sidebar
     const sidebar = page.locator('div.bg-sidebar').first();
 
-    // Main group
-    await expect(sidebar.locator('a[href="/"]')).toBeVisible();
+    // Prepare group
     await expect(sidebar.locator('a[href="/datasets"]')).toBeVisible();
-    await expect(sidebar.locator('a[href="/playground"]')).toBeVisible();
-
-    // Workflow group
     await expect(sidebar.locator('a[href="/pipelines"]')).toBeVisible();
+    await expect(sidebar.locator('a[href="/editor"]')).toBeVisible();
+
+    // Explore group
+    await expect(sidebar.locator('a[href="/playground"]')).toBeVisible();
+    await expect(sidebar.locator('a[href="/inspector"]')).toBeVisible();
+    await expect(sidebar.locator('a[href="/lab"]')).toBeVisible();
+
+    // Results group
     await expect(sidebar.locator('a[href="/runs"]')).toBeVisible();
     await expect(sidebar.locator('a[href="/results"]')).toBeVisible();
-
-    // Analysis group
     await expect(sidebar.locator('a[href="/predictions"]')).toBeVisible();
-    await expect(sidebar.locator('a[href="/analysis"]')).toBeVisible();
 
     // Settings
     await expect(sidebar.locator('a[href="/settings"]')).toBeVisible();

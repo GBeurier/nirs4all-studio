@@ -66,19 +66,17 @@ test.describe('Navigation', () => {
     // Navigate to datasets
     await sidebar.navigateTo('datasets');
 
-    // The datasets link should have active styling
-    const datasetsLink = page.locator('a[href="/datasets"]');
-    await expect(datasetsLink).toHaveClass(/bg-primary/);
+    // The datasets link should have active styling (use sidebar-scoped locator)
+    await sidebar.expectActiveLink('datasets');
 
     // Navigate to pipelines
     await sidebar.navigateTo('pipelines');
 
     // The pipelines link should now have active styling
-    const pipelinesLink = page.locator('a[href="/pipelines"]');
-    await expect(pipelinesLink).toHaveClass(/bg-primary/);
+    await sidebar.expectActiveLink('pipelines');
 
     // And datasets should no longer be active
-    await expect(datasetsLink).not.toHaveClass(/bg-primary/);
+    await expect(sidebar.datasetsLink).not.toHaveClass(/bg-primary/);
   });
 
   test('should handle browser back/forward navigation', async ({ sidebar, page }) => {

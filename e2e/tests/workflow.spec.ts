@@ -121,7 +121,6 @@ test.describe('Complete Workflow', () => {
       { section: 'runs' as const, url: '/runs' },
       { section: 'results' as const, url: '/results' },
       { section: 'predictions' as const, url: '/predictions' },
-      { section: 'analysis' as const, url: '/analysis' },
     ];
 
     for (const { section, url } of workflowPages) {
@@ -135,9 +134,9 @@ test.describe('Complete Workflow', () => {
 test.describe('Workflow - Pipeline Editor', () => {
   test('should navigate to pipeline editor from new experiment', async ({ sidebar, page }) => {
     await page.goto('/');
-    await sidebar.navigateTo('newExperiment');
+    await sidebar.navigateTo('pipelineEditor');
 
-    await expect(page).toHaveURL('/pipelines/new');
+    await expect(page).toHaveURL(/pipelines\/new/);
 
     // Pipeline editor should be visible - check for various possible elements
     const editorVisible = await page.locator('[data-testid="pipeline-canvas"], [data-testid="step-palette"]').isVisible().catch(() => false);

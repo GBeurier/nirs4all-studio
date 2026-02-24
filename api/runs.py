@@ -1669,6 +1669,7 @@ async def quick_run(request: QuickRunRequest):
     - Navigates to /runs/{id} for progress tracking
     - Auto-saves model and exports to workspace
     """
+    _ensure_runs_loaded()
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
