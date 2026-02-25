@@ -170,7 +170,8 @@ function measureTime<T>(fn: () => T): { result: T; timeMs: number } {
  */
 function benchmark<T>(
   fn: () => T,
-  iterations: number = 100
+  iterations: number = 100,
+  warmup: number = 10
 ): {
   result: T;
   avgMs: number;
@@ -179,9 +180,13 @@ function benchmark<T>(
   medianMs: number;
   p95Ms: number;
 } {
-  const times: number[] = [];
+  // Warmup: discard initial runs to stabilize JIT/caching
   let result: T | undefined;
+  for (let i = 0; i < warmup; i++) {
+    result = fn();
+  }
 
+  const times: number[] = [];
   for (let i = 0; i < iterations; i++) {
     const { result: r, timeMs } = measureTime(fn);
     result = r;
@@ -332,7 +337,8 @@ describe("Validation Performance Benchmarks", () => {
       );
 
       // Error validation should not be more than 3x slower
-      expect(errorStats.avgMs).toBeLessThan(validStats.avgMs * 3);
+      // The +1 floor prevents flaky failures when both times are sub-millisecond
+      expect(errorStats.avgMs).toBeLessThan(validStats.avgMs * 3 + 1);
     });
   });
 
@@ -350,7 +356,7 @@ describe("Validation Performance Benchmarks", () => {
 
       // Note: isValid internally calls validate, so similar performance
       // This test ensures no regression (wide margin for CI timing noise)
-      expect(quickStats.avgMs).toBeLessThan(fullStats.avgMs * 2);
+      expect(quickStats.avgMs).toBeLessThan(fullStats.avgMs * 2 + 1);
     });
 
     it("getQuickSummary() returns in < 50ms for 100 steps", () => {

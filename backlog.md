@@ -3,6 +3,15 @@
 Development backlog for nirs4all Studio. Items are organized by area.
 
 
+## Priority / Next
+
+- Add predict from final prediction (and either dataset, or drag n drop X csv)
+- Add mypy check
+- Add documentation links and update warnings in the UI
+- Stop full dataset list refresh on single dataset delete
+- Convert doc to rtd
+
+
 ### Bugs
 
 - Default dataset name should use folder name
@@ -26,20 +35,9 @@ Development backlog for nirs4all Studio. Items are organized by area.
 
 ---
 
-- version in settings is wrong, even after update
 - optional dependencies should update on "update" or restart
-- add pls dependencies to default setup of packages if not yet added
+- Refactor global python env install/update/reuse management (look audit)
 
--Refactor global python env install/update/reuse management (look audit)
-
-
-## Priority / Next
-
-- Add predict from final prediction (and either dataset, or drag n drop X csv)
-- Add mypy check
-- Add documentation links and update warnings in the UI
-- Stop full dataset list refresh on single dataset delete
-- Convert doc to rtd
 
 ### Packaging & Distribution
 
