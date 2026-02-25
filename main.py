@@ -91,7 +91,7 @@ logger.info("STARTUP TIMING: All router imports: %.2fs (total so far: %.2fs)", _
 app = FastAPI(
     title="nirs4all API",
     description="API for nirs4all unified NIRS analysis desktop application",
-    version="0.1.0",
+    version="0.2.0",
     default_response_class=ORJSONResponse,
 )
 
