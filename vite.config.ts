@@ -7,6 +7,7 @@ import path from "path";
 
 const isElectron = process.env.ELECTRON === "true";
 const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
 
 /** Copy static electron assets (splash.html, logo) to dist-electron during build */
 function copyElectronAssets(): Plugin {
@@ -108,6 +109,9 @@ export default defineConfig(({ mode }) => ({
         ]
       : []),
   ],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

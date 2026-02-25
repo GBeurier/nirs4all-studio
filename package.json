@@ -1,7 +1,7 @@
 {
   "name": "nirs4all-webapp",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
   "main": "dist-electron/main.cjs",

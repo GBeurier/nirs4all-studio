@@ -276,7 +276,7 @@ export function UpdatesSection() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 text-primary" />
-              <span className="font-medium">nirs4all Webapp</span>
+              <span className="font-medium">nirs4all Studio</span>
             </div>
             <div className="text-sm text-muted-foreground">
               Current: <span className="font-mono">{status?.webapp?.current_version || "unknown"}</span>

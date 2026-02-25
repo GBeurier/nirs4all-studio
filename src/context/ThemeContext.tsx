@@ -51,7 +51,7 @@ function getLocalStorage(): Storage | null {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
+  defaultTheme = "light",
   storageKey = "nirs4all-theme",
 }: ThemeProviderProps) {
   // Initialize from localStorage first for fast initial render

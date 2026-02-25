@@ -183,7 +183,7 @@ export interface AppSettings {
 /**
  * Supported language codes
  */
-export type LanguageCode = "en" | "fr" | "de";
+export type LanguageCode = "en" | "fr" | "de" | "zh";
 
 /**
  * General UI settings (stored in workspace settings)

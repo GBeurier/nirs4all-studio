@@ -16,4 +16,7 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
+/** App version injected at build time from package.json */
+declare const __APP_VERSION__: string;
+
 // Electron types are defined in src/types/electron.d.ts

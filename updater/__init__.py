@@ -265,6 +265,8 @@ set "ELEVATE_TEST=%APP_DIR%\\.nirs4all_update_test"
 echo test > "%ELEVATE_TEST%" 2>NUL
 if !ERRORLEVEL! neq 0 (
     echo [%DATE% %TIME%] No write access to %APP_DIR%, requesting elevation... >> "%LOG_FILE%"
+    :: Close progress window before elevation — the elevated script will reopen it
+    taskkill /f /im mshta.exe >NUL 2>NUL
     powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >NUL 2>NUL
     exit /b 0
 )
@@ -328,8 +330,8 @@ echo [%DATE% %TIME%] Update completed successfully >> "%LOG_FILE%"
 :: Clean up staging directory
 rmdir /s /q "%STAGING_DIR%" 2>NUL
 
-:: Close progress window
-taskkill /f /fi "WINDOWTITLE eq nirs4all Studio - Updating" >NUL 2>NUL
+:: Close progress window (kill by image name — WINDOWTITLE filter is unreliable for HTA)
+taskkill /f /im mshta.exe >NUL 2>NUL
 
 :: Launch the updated application
 echo [%DATE% %TIME%] Launching updated application... >> "%LOG_FILE%"
