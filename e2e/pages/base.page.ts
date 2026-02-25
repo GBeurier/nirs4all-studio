@@ -14,7 +14,8 @@ export abstract class BasePage {
    * Navigate to a specific path
    */
   async goto(path: string = ''): Promise<void> {
-    await this.page.goto(path);
+    // Use domcontentloaded — the app has background API polling that delays the load event
+    await this.page.goto(path, { waitUntil: 'domcontentloaded' });
     await this.waitForPageLoad();
   }
 

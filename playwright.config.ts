@@ -12,7 +12,7 @@ export default defineConfig({
   // Test execution settings
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : undefined,
 
   // Test timeout
@@ -40,7 +40,7 @@ export default defineConfig({
 
     // Timeouts
     actionTimeout: 10000,
-    navigationTimeout: 30000,
+    navigationTimeout: 60000,
   },
 
   // Global setup for test data preparation

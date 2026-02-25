@@ -185,6 +185,26 @@ async def startup_event():
     Phase 2 (ml_ready): nirs4all/sklearn loaded in background thread, heavy pages functional.
     """
     import asyncio
+    import sys
+
+    # Suppress Windows ProactorEventLoop ConnectionResetError (WinError 10054).
+    # On Windows + Python 3.13, abrupt client disconnects (e.g. browser tab closed,
+    # Playwright test ended) trigger ConnectionResetError in _call_connection_lost.
+    # This is harmless but can briefly block the event loop from accepting connections.
+    if sys.platform == "win32":
+        loop = asyncio.get_running_loop()
+        _original_handler = loop.get_exception_handler()
+
+        def _suppress_connection_reset(loop, context):
+            exc = context.get("exception")
+            if isinstance(exc, ConnectionResetError):
+                return  # Silently ignore
+            if _original_handler:
+                _original_handler(loop, context)
+            else:
+                loop.default_exception_handler(context)
+
+        loop.set_exception_handler(_suppress_connection_reset)
 
     _ts = time.perf_counter()
 

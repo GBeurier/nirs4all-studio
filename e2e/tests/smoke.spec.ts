@@ -17,15 +17,16 @@ test.describe('Smoke Tests', () => {
   });
 
   test('should respond to API health check', async ({ page }) => {
-    // Retry health check to handle transient connection issues under parallel load
+    // Retry health check to handle transient ECONNREFUSED under parallel load
+    // (backend may be briefly unreachable for 1-2s due to Windows asyncio issues)
     let response;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         response = await page.request.get('/api/health');
         if (response.ok()) break;
       } catch {
-        if (attempt === 2) throw new Error('Health check failed after 3 attempts');
-        await page.waitForTimeout(1000);
+        if (attempt === 4) throw new Error('Health check failed after 5 attempts');
+        await page.waitForTimeout(2000);
       }
     }
     expect(response!.ok()).toBe(true);

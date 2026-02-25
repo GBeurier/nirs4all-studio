@@ -27,14 +27,10 @@ run_step() {
 }
 
 do_lint() {
-    run_step "ESLint" npm run lint
-    run_step "TypeScript" npx tsc --noEmit
-    run_step "Node registry" npm run validate:nodes
-    run_step "Ruff (Python)" ruff check .
-    run_step "Python syntax" bash -c '
-        python -m py_compile main.py
-        for f in api/*.py; do python -m py_compile "$f"; done
-    '
+    run_step "Lint (parallel)" npx concurrently --group \
+        --names "eslint,tsc,nodes,ruff,py-syntax" \
+        --prefix-colors "blue,cyan,magenta,yellow,green" \
+        "npm:lint:eslint" "npm:lint:tsc" "npm:lint:nodes" "npm:lint:ruff" "npm:lint:py-syntax"
 }
 
 do_frontend() {
@@ -55,7 +51,7 @@ print('FastAPI', fastapi.__version__)
 print('Uvicorn', uvicorn.__version__)
 "
     run_step "CLI args" python main.py --help
-    run_step "Pytest" python -m pytest tests/ -v --tb=short --timeout=120 --cov=api --cov-report=term-missing
+    run_step "Pytest (parallel)" python -m pytest tests/ -v --tb=short --timeout=120 -n auto --cov=api --cov-report=term-missing
 }
 
 do_e2e() {

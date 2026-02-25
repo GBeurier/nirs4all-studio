@@ -1,12 +1,12 @@
 @echo off
 setlocal enabledelayedexpansion
 REM =============================================================================
-REM ci-local.cmd - Run all webapp CI checks locally before Docker CI
+REM ci-local.cmd - Run all webapp CI checks locally (parallelized)
 REM =============================================================================
 REM Usage:
 REM   scripts\ci-local.cmd          Run everything (lint + tests + build)
-REM   scripts\ci-local.cmd lint     ESLint + TypeScript + node registry + ruff + syntax
-REM   scripts\ci-local.cmd test     Vitest + pytest backend
+REM   scripts\ci-local.cmd lint     ESLint + TypeScript + node registry + ruff + syntax (parallel)
+REM   scripts\ci-local.cmd test     Vitest + pytest backend (parallel)
 REM   scripts\ci-local.cmd build    Web + Electron builds
 REM   scripts\ci-local.cmd e2e      Playwright E2E
 REM =============================================================================
@@ -41,52 +41,27 @@ if /i "%TARGET%"=="all"   goto :lint
 echo Usage: %~nx0 {all^|lint^|test^|build^|e2e}
 exit /b 1
 
-REM ===== LINT =====
+REM ===== LINT (5 checks in parallel) =====
 :lint
 
 echo.
-echo %E%[36m%E%[1m--- eslint ---%E%[0m
-call npm run lint
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! eslint" & echo %E%[32mOK%E%[0m eslint ) else ( set /a F+=1 & set "FL=!FL! eslint" & echo %E%[31mFAIL%E%[0m eslint )
-
-echo.
-echo %E%[36m%E%[1m--- typescript ---%E%[0m
-call npx tsc --noEmit
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! typescript" & echo %E%[32mOK%E%[0m typescript ) else ( set /a F+=1 & set "FL=!FL! typescript" & echo %E%[31mFAIL%E%[0m typescript )
-
-echo.
-echo %E%[36m%E%[1m--- node-registry ---%E%[0m
-call npm run validate:nodes
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! node-registry" & echo %E%[32mOK%E%[0m node-registry ) else ( set /a F+=1 & set "FL=!FL! node-registry" & echo %E%[31mFAIL%E%[0m node-registry )
-
-echo.
-echo %E%[36m%E%[1m--- ruff ---%E%[0m
-ruff check .
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! ruff" & echo %E%[32mOK%E%[0m ruff ) else ( set /a F+=1 & set "FL=!FL! ruff" & echo %E%[31mFAIL%E%[0m ruff )
-
-echo.
-echo %E%[36m%E%[1m--- py-syntax ---%E%[0m
-python -c "import py_compile, glob; files=['main.py']+glob.glob('api/*.py'); [py_compile.compile(f, doraise=True) for f in files]; print('Syntax OK')"
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! py-syntax" & echo %E%[32mOK%E%[0m py-syntax ) else ( set /a F+=1 & set "FL=!FL! py-syntax" & echo %E%[31mFAIL%E%[0m py-syntax )
+echo %E%[36m%E%[1m=== Lint (5 checks in parallel) ===%E%[0m
+call npx concurrently --group --names "eslint,tsc,nodes,ruff,py-syntax" --prefix-colors "blue,cyan,magenta,yellow,green" "npm:lint:eslint" "npm:lint:tsc" "npm:lint:nodes" "npm:lint:ruff" "npm:lint:py-syntax"
+if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! lint" & echo %E%[32mOK%E%[0m lint ) else ( set /a F+=1 & set "FL=!FL! lint" & echo %E%[31mFAIL%E%[0m lint )
 
 if /i not "%TARGET%"=="all" goto :summary
 
-REM ===== TEST =====
+REM ===== TEST (vitest + pytest in parallel) =====
 :test
 
 echo.
-echo %E%[36m%E%[1m--- vitest ---%E%[0m
-call npm run test -- --run
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! vitest" & echo %E%[32mOK%E%[0m vitest ) else ( set /a F+=1 & set "FL=!FL! vitest" & echo %E%[31mFAIL%E%[0m vitest )
-
-echo.
-echo %E%[36m%E%[1m--- pytest ---%E%[0m
-python -m pytest tests/ -v --tb=short --timeout=120
-if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! pytest" & echo %E%[32mOK%E%[0m pytest ) else ( set /a F+=1 & set "FL=!FL! pytest" & echo %E%[31mFAIL%E%[0m pytest )
+echo %E%[36m%E%[1m=== Tests (vitest + pytest in parallel) ===%E%[0m
+call npx concurrently --group --names "vitest,pytest" --prefix-colors "blue,yellow" "npm:test:frontend" "npm:test:backend"
+if !errorlevel! equ 0 ( set /a P+=1 & set "PL=!PL! test" & echo %E%[32mOK%E%[0m test ) else ( set /a F+=1 & set "FL=!FL! test" & echo %E%[31mFAIL%E%[0m test )
 
 if /i not "%TARGET%"=="all" goto :summary
 
-REM ===== BUILD =====
+REM ===== BUILD (sequential — shared Vite cache) =====
 :build
 
 echo.

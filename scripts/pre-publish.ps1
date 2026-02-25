@@ -28,6 +28,18 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # ──────────────────────────────────────────────────────────────────────────────
+# UTF-8 output — ensures child processes (npm, npx, playwright) render correctly
+# ──────────────────────────────────────────────────────────────────────────────
+
+$prevOutputEncoding = [Console]::OutputEncoding
+$prevPSOutputEncoding = $OutputEncoding
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Also set the console codepage so cmd /c children inherit UTF-8
+$null = cmd /c "chcp 65001 >nul 2>&1"
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -100,12 +112,19 @@ if (-not $Python) {
     }
 }
 
+# Ensure venv tools (ruff, pytest, etc.) are in PATH for npm scripts
+if ($Python -ne "python" -and (Test-Path $Python)) {
+    $VenvBin = Split-Path -Parent $Python
+    $env:PATH = "$VenvBin;$env:PATH"
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 # State tracking
 # ──────────────────────────────────────────────────────────────────────────────
 
 $StepResult = @{}   # "pass" | "fail" | "skip"
 $StepLog    = @{}   # path to log file
+$OrderedSteps = [System.Collections.ArrayList]@()  # populated dynamically for summary
 
 $TmpLogDir = Join-Path $env:TEMP "pre-publish-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 New-Item -ItemType Directory -Path $TmpLogDir -Force | Out-Null
@@ -115,14 +134,63 @@ function Invoke-Step {
         [string]$Name,
         [string]$Command
     )
-    $logFile = Join-Path $TmpLogDir "$Name.log"
+    $safeName = $Name -replace '[^a-zA-Z0-9_-]', '_'
+    $logFile = Join-Path $TmpLogDir "$safeName.log"
     $StepLog[$Name] = $logFile
+    $null = $OrderedSteps.Add($Name)
 
     Write-Header $Name
     try {
-        $output = cmd /c "$Command 2>&1"
-        $exitCode = $LASTEXITCODE
-        $output | Tee-Object -FilePath $logFile
+        # Split command into executable + args and invoke directly (avoids cmd /c codepage issues)
+        $parts = $Command -split '\s+', 2
+        $exe = $parts[0]
+        $cmdArgs = if ($parts.Length -gt 1) { $parts[1] -split '\s+' } else { @() }
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $exe @cmdArgs 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $prevEAP
+        }
+        if ($exitCode -eq 0) {
+            $StepResult[$Name] = "pass"
+            Write-Success "$Name - PASSED"
+        } else {
+            $StepResult[$Name] = "fail"
+            Write-Err "$Name - FAILED  (full log: $logFile)"
+        }
+    } catch {
+        $_ | Out-File -FilePath $logFile -Append
+        $StepResult[$Name] = "fail"
+        Write-Err "$Name - FAILED  (full log: $logFile)"
+    }
+}
+
+function Invoke-ParallelStep {
+    param(
+        [string]$Name,
+        [string[]]$Names,
+        [string[]]$Commands
+    )
+    $safeName = $Name -replace '[^a-zA-Z0-9_-]', '_'
+    $logFile = Join-Path $TmpLogDir "$safeName.log"
+    $StepLog[$Name] = $logFile
+    $null = $OrderedSteps.Add($Name)
+
+    Write-Header $Name
+    try {
+        $namesStr = $Names -join ","
+        $npxArgs = @("concurrently", "--group", "--names", $namesStr) + $Commands
+        # Temporarily allow stderr (npm warnings) without throwing
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & npx @npxArgs 2>&1 | Tee-Object -FilePath $logFile
+            $exitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $prevEAP
+        }
         if ($exitCode -eq 0) {
             $StepResult[$Name] = "pass"
             Write-Success "$Name - PASSED"
@@ -140,12 +208,8 @@ function Invoke-Step {
 function Skip-Step {
     param([string]$Name)
     $StepResult[$Name] = "skip"
+    $null = $OrderedSteps.Add($Name)
     Write-Warn "$Name - SKIPPED"
-}
-
-function Test-ShouldRun {
-    param([string]$Name)
-    return (-not $Only) -or ($Only -eq $Name)
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -155,99 +219,83 @@ function Test-ShouldRun {
 try {
     Push-Location $ProjectRoot
 
-    # ── 1. ESLint ────────────────────────────────────────────────────────────
-    if (Test-ShouldRun "lint") {
-        Invoke-Step "lint" "npm run lint"
-    } else { Skip-Step "lint" }
-
-    # ── 2. Validate nodes ────────────────────────────────────────────────────
-    if (Test-ShouldRun "validate-nodes") {
-        Invoke-Step "validate-nodes" "npm run validate:nodes"
-    } else { Skip-Step "validate-nodes" }
-
-    # ── 3. TypeScript type check ─────────────────────────────────────────────
-    if (Test-ShouldRun "type-check") {
-        Invoke-Step "type-check" "npx tsc --noEmit"
-    } else { Skip-Step "type-check" }
-
-    # ── 4. Frontend tests (vitest) ───────────────────────────────────────────
-    if (Test-ShouldRun "frontend-tests") {
-        Invoke-Step "frontend-tests" "npm run test -- --run"
-    } else { Skip-Step "frontend-tests" }
-
-    # ── 5. Backend lint (ruff) ───────────────────────────────────────────────
-    if (Test-ShouldRun "backend-lint") {
-        if ($SkipBackend) { Skip-Step "backend-lint" }
-        else {
-            Invoke-Step "backend-lint" "$Python -m ruff check ."
+    if ($Only) {
+        # ── Single step mode ────────────────────────────────────────────────
+        switch ($Only) {
+            "lint"            { Invoke-Step "ESLint" "npm run lint" }
+            "validate-nodes"  { Invoke-Step "Node Registry" "npm run validate:nodes" }
+            "type-check"      { Invoke-Step "TypeScript" "npx tsc --noEmit" }
+            "frontend-tests"  { Invoke-Step "Frontend Tests" "npm run test:frontend" }
+            "backend-lint"    { Invoke-Step "Backend Lint" "npm run lint:ruff" }
+            "backend-tests"   { Invoke-Step "Backend Tests" "npm run test:backend" }
+            "e2e"             { Invoke-Step "E2E Tests" "npx playwright test --project=web-chromium --workers=2 --retries=2" }
+            "build"           { Invoke-Step "Web Build" "npm run build" }
+            "electron"        { Invoke-Step "Electron Build" "npm run build:electron" }
+            default {
+                Write-Err "Unknown step: $Only"
+                Write-Err "Valid: lint validate-nodes type-check frontend-tests backend-lint backend-tests e2e build electron"
+                exit 1
+            }
         }
-    } else { Skip-Step "backend-lint" }
+    } else {
+        # ── Parallel mode ───────────────────────────────────────────────────
 
-    # ── 6. Backend tests (pytest) ────────────────────────────────────────────
-    if (Test-ShouldRun "backend-tests") {
-        if ($SkipBackend) { Skip-Step "backend-tests" }
-        else {
-            Invoke-Step "backend-tests" "$Python -m pytest tests/ -v --tb=short --timeout=120"
+        # Phase 1: Lint (all independent checks in parallel)
+        $lintNames = @("eslint", "nodes", "tsc")
+        $lintCmds  = @("npm run lint", "npm run validate:nodes", "npx tsc --noEmit")
+
+        if (-not $SkipBackend) {
+            $lintNames += @("ruff", "py-syntax")
+            $lintCmds  += @("npm run lint:ruff", "npm run lint:py-syntax")
         }
-    } else { Skip-Step "backend-tests" }
 
-    # ── 7. E2E tests (Playwright) ────────────────────────────────────────────
-    if (Test-ShouldRun "e2e") {
-        if ($SkipE2E) { Skip-Step "e2e" }
-        else {
-            Invoke-Step "e2e" "npx playwright test --project=web-chromium --workers=1"
+        Invoke-ParallelStep "Lint ($($lintCmds.Count) checks)" -Names $lintNames -Commands $lintCmds
+
+        # Phase 2: Tests (vitest + pytest in parallel)
+        if ($SkipBackend) {
+            Invoke-Step "Frontend Tests" "npm run test:frontend"
+        } else {
+            Invoke-ParallelStep "Tests (vitest + pytest)" `
+                -Names @("vitest", "pytest") `
+                -Commands @("npm run test:frontend", "npm run test:backend")
         }
-    } else { Skip-Step "e2e" }
 
-    # ── 8. Production build ──────────────────────────────────────────────────
-    if (Test-ShouldRun "build") {
-        if ($SkipBuild) { Skip-Step "build" }
+        # Phase 3: E2E
+        if ($SkipE2E) { Skip-Step "E2E Tests" }
+        else { Invoke-Step "E2E Tests" "npx playwright test --project=web-chromium --workers=2 --retries=2" }
+
+        # Phase 4: Builds
+        if ($SkipBuild) { Skip-Step "Web Build" }
         else {
-            Invoke-Step "build" "npm run build"
-            if ($StepResult["build"] -eq "pass") {
+            Invoke-Step "Web Build" "npm run build"
+            if ($StepResult["Web Build"] -eq "pass") {
                 $indexPath = Join-Path $ProjectRoot "dist\index.html"
                 if (-not (Test-Path $indexPath)) {
-                    $StepResult["build"] = "fail"
-                    Write-Err "build - dist\index.html not found"
-                } else {
-                    Write-Info "Web build OK"
-                }
+                    $StepResult["Web Build"] = "fail"
+                    Write-Err "Web Build - dist\index.html not found"
+                } else { Write-Info "Web build OK" }
             }
         }
-    } else { Skip-Step "build" }
 
-    # ── 9. Electron build ────────────────────────────────────────────────────
-    if (Test-ShouldRun "electron") {
-        if ($SkipElectron) { Skip-Step "electron" }
+        if ($SkipElectron) { Skip-Step "Electron Build" }
         else {
-            Invoke-Step "electron" "npm run build:electron"
-            if ($StepResult["electron"] -eq "pass") {
+            Invoke-Step "Electron Build" "npm run build:electron"
+            if ($StepResult["Electron Build"] -eq "pass") {
                 $distElectron = Join-Path $ProjectRoot "dist-electron"
                 if (-not (Test-Path $distElectron)) {
-                    $StepResult["electron"] = "fail"
-                    Write-Err "electron - dist-electron not found"
-                } else {
-                    Write-Info "Electron build OK"
-                }
+                    $StepResult["Electron Build"] = "fail"
+                    Write-Err "Electron Build - dist-electron not found"
+                } else { Write-Info "Electron build OK" }
             }
         }
-    } else { Skip-Step "electron" }
+    }
 
     # ──────────────────────────────────────────────────────────────────────────
     # Summary
     # ──────────────────────────────────────────────────────────────────────────
 
-    $OrderedSteps = @(
-        @{ Key = "lint";            Label = "ESLint        " }
-        @{ Key = "validate-nodes";  Label = "Node Registry " }
-        @{ Key = "type-check";      Label = "TypeScript    " }
-        @{ Key = "frontend-tests";  Label = "Frontend Tests" }
-        @{ Key = "backend-lint";    Label = "Backend Lint  " }
-        @{ Key = "backend-tests";   Label = "Backend Tests " }
-        @{ Key = "e2e";             Label = "E2E Tests     " }
-        @{ Key = "build";           Label = "Web Build     " }
-        @{ Key = "electron";        Label = "Electron Build" }
-    )
+    # Find max label width for alignment
+    $maxLen = ($OrderedSteps | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
 
     Write-Host ""
     Write-Host "${BOLD}$([char]0x2554)$([string][char]0x2550 * 63)$([char]0x2557)${RESET}"
@@ -256,14 +304,13 @@ try {
 
     $AllPass = $true
     foreach ($step in $OrderedSteps) {
-        $key = $step.Key
-        $label = $step.Label
-        $result = if ($StepResult.ContainsKey($key)) { $StepResult[$key] } else { "skip" }
+        $result = if ($StepResult.ContainsKey($step)) { $StepResult[$step] } else { "skip" }
+        $padded = $step.PadRight($maxLen)
         switch ($result) {
-            "pass" { Write-Host "${BOLD}$([char]0x2551)${RESET}  $label ${GREEN}$([char]0x2705) PASSED${RESET}                                   ${BOLD}$([char]0x2551)${RESET}" }
-            "fail" { Write-Host "${BOLD}$([char]0x2551)${RESET}  $label ${RED}$([char]0x274C) FAILED${RESET}                                   ${BOLD}$([char]0x2551)${RESET}"
+            "pass" { Write-Host "${BOLD}$([char]0x2551)${RESET}  $padded  ${GREEN}$([char]0x2705) PASSED${RESET}" }
+            "fail" { Write-Host "${BOLD}$([char]0x2551)${RESET}  $padded  ${RED}$([char]0x274C) FAILED${RESET}"
                      $AllPass = $false }
-            "skip" { Write-Host "${BOLD}$([char]0x2551)${RESET}  $label ${YELLOW}$([char]0x23ED)  SKIPPED${RESET}                                  ${BOLD}$([char]0x2551)${RESET}" }
+            "skip" { Write-Host "${BOLD}$([char]0x2551)${RESET}  $padded  ${YELLOW}$([char]0x23ED)  SKIPPED${RESET}" }
         }
     }
 
@@ -276,9 +323,8 @@ try {
         Write-Host "${BOLD}$([char]0x2551)  ${RED}$([char]0x26A0)$([char]0xFE0F)  Fix issues above before creating a release.${RESET}${BOLD}              $([char]0x2551)${RESET}"
         Write-Host "${BOLD}$([char]0x255A)$([string][char]0x2550 * 63)$([char]0x255D)${RESET}"
         foreach ($step in $OrderedSteps) {
-            $key = $step.Key
-            if ($StepResult.ContainsKey($key) -and $StepResult[$key] -eq "fail") {
-                Write-Err "Log for ${key}: $($StepLog[$key])"
+            if ($StepResult.ContainsKey($step) -and $StepResult[$step] -eq "fail") {
+                Write-Err "Log for ${step}: $($StepLog[$step])"
             }
         }
         exit 1
@@ -289,4 +335,7 @@ try {
     if (Test-Path $TmpLogDir) {
         Remove-Item -Recurse -Force $TmpLogDir -ErrorAction SilentlyContinue
     }
+    # Restore original encodings
+    [Console]::OutputEncoding = $prevOutputEncoding
+    $OutputEncoding = $prevPSOutputEncoding
 }

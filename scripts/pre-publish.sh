@@ -93,6 +93,12 @@ if [[ -z "$PYTHON" ]]; then
   fi
 fi
 
+# Ensure venv tools (ruff, pytest, etc.) are in PATH for npm scripts
+if [[ -n "$PYTHON" && "$PYTHON" != "python3" && -f "$PYTHON" ]]; then
+  VENV_BIN="$(dirname "$PYTHON")"
+  export PATH="$VENV_BIN:$PATH"
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Docker mode – re-run this script inside a clean ubuntu:24.04 container
 # ──────────────────────────────────────────────────────────────────────────────
@@ -167,14 +173,17 @@ fi
 
 declare -A STEP_RESULT   # "pass" | "fail" | "skip"
 declare -A STEP_LOG      # path to log file
+ORDERED_STEPS=()         # populated dynamically for summary
 
 TMPDIR_LOGS="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_LOGS"' EXIT
 
 run_step() {
   local name="$1"; shift
-  local logfile="$TMPDIR_LOGS/${name}.log"
+  local safe_name="${name//[^a-zA-Z0-9_-]/_}"
+  local logfile="$TMPDIR_LOGS/${safe_name}.log"
   STEP_LOG[$name]="$logfile"
+  ORDERED_STEPS+=("$name")
 
   header "$name"
   if "$@" 2>&1 | tee "$logfile"; then
@@ -189,12 +198,8 @@ run_step() {
 skip_step() {
   local name="$1"
   STEP_RESULT[$name]="skip"
+  ORDERED_STEPS+=("$name")
   warn "$name — SKIPPED"
-}
-
-should_run() {
-  local name="$1"
-  [[ -z "$ONLY_STEP" || "$ONLY_STEP" == "$name" ]]
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -203,100 +208,69 @@ should_run() {
 
 cd "$PROJECT_ROOT"
 
-# ── 1. ESLint ────────────────────────────────────────────────────────────────
-if should_run lint; then
-  run_step lint npm run lint
+if [[ -n "$ONLY_STEP" ]]; then
+  # ── Single step mode ──────────────────────────────────────────────────────
+  case "$ONLY_STEP" in
+    lint)            run_step "ESLint" npm run lint ;;
+    validate-nodes)  run_step "Node Registry" npm run validate:nodes ;;
+    type-check)      run_step "TypeScript" npx tsc --noEmit ;;
+    frontend-tests)  run_step "Frontend Tests" npm run test:frontend ;;
+    backend-lint)    run_step "Backend Lint" npm run lint:ruff ;;
+    backend-tests)   run_step "Backend Tests" npm run test:backend ;;
+    e2e)             run_step "E2E Tests" npx playwright test --project=web-chromium --workers=2 --retries=2 ;;
+    build)           run_step "Web Build" bash -c "npm run build && test -f dist/index.html && echo 'Web build OK'" ;;
+    electron)        run_step "Electron Build" bash -c "npm run build:electron && test -d dist-electron && echo 'Electron build OK'" ;;
+    *) err "Unknown step: $ONLY_STEP"; err "Valid: lint validate-nodes type-check frontend-tests backend-lint backend-tests e2e build electron"; exit 1 ;;
+  esac
 else
-  skip_step lint
-fi
+  # ── Parallel mode ─────────────────────────────────────────────────────────
 
-# ── 2. Validate nodes ────────────────────────────────────────────────────────
-if should_run validate-nodes; then
-  run_step validate-nodes npm run validate:nodes
-else
-  skip_step validate-nodes
-fi
+  # Phase 1: Lint (all independent checks in parallel)
+  LINT_CMDS=()
+  LINT_NAMES=()
 
-# ── 3. TypeScript type check ─────────────────────────────────────────────────
-if should_run type-check; then
-  run_step type-check npx tsc --noEmit
-else
-  skip_step type-check
-fi
+  LINT_CMDS+=("npm run lint");           LINT_NAMES+=("eslint")
+  LINT_CMDS+=("npm run validate:nodes"); LINT_NAMES+=("nodes")
+  LINT_CMDS+=("npx tsc --noEmit");       LINT_NAMES+=("tsc")
 
-# ── 4. Frontend tests (vitest) ───────────────────────────────────────────────
-if should_run frontend-tests; then
-  run_step frontend-tests npm run test -- --run
-else
-  skip_step frontend-tests
-fi
-
-# ── 5. Backend lint (ruff) ───────────────────────────────────────────────────
-if should_run backend-lint; then
-  if $SKIP_BACKEND; then
-    skip_step backend-lint
-  else
-    run_step backend-lint bash -c "
-      $PYTHON -m pip install --quiet ruff 2>/dev/null || pip install --quiet ruff
-      ruff check .
-    "
+  if ! $SKIP_BACKEND; then
+    LINT_CMDS+=("npm run lint:ruff");      LINT_NAMES+=("ruff")
+    LINT_CMDS+=("npm run lint:py-syntax"); LINT_NAMES+=("py-syntax")
   fi
-else
-  skip_step backend-lint
-fi
 
-# ── 6. Backend tests (pytest) ────────────────────────────────────────────────
-if should_run backend-tests; then
+  run_step "Lint (${#LINT_CMDS[@]} checks)" npx concurrently --group \
+    --names "$(IFS=,; echo "${LINT_NAMES[*]}")" \
+    "${LINT_CMDS[@]}"
+
+  # Phase 2: Tests (vitest + pytest in parallel)
   if $SKIP_BACKEND; then
-    skip_step backend-tests
+    run_step "Frontend Tests" npm run test:frontend
   else
-    run_step backend-tests bash -c "
-      $PYTHON -m pytest tests/ -v --tb=short --timeout=120
-    "
+    run_step "Tests (vitest + pytest)" npx concurrently --group \
+      --names "vitest,pytest" \
+      "npm run test:frontend" \
+      "npm run test:backend"
   fi
-else
-  skip_step backend-tests
-fi
 
-# ── 7. E2E tests (Playwright) ───────────────────────────────────────────────
-if should_run e2e; then
+  # Phase 3: E2E
   if $SKIP_E2E; then
-    skip_step e2e
+    skip_step "E2E Tests"
   else
-    run_step e2e npx playwright test --project=web-chromium
+    run_step "E2E Tests" npx playwright test --project=web-chromium --workers=2 --retries=2
   fi
-else
-  skip_step e2e
-fi
 
-# ── 8. Production build ─────────────────────────────────────────────────────
-if should_run build; then
+  # Phase 4: Builds
   if $SKIP_BUILD; then
-    skip_step build
+    skip_step "Web Build"
   else
-    run_step build bash -c "
-      npm run build
-      test -f dist/index.html || { echo 'dist/index.html not found'; exit 1; }
-      echo 'Web build OK'
-    "
+    run_step "Web Build" bash -c "npm run build && test -f dist/index.html && echo 'Web build OK'"
   fi
-else
-  skip_step build
-fi
 
-# ── 9. Electron build ───────────────────────────────────────────────────────
-if should_run electron; then
   if $SKIP_ELECTRON; then
-    skip_step electron
+    skip_step "Electron Build"
   else
-    run_step electron bash -c "
-      npm run build:electron
-      test -d dist-electron || { echo 'dist-electron not found'; exit 1; }
-      echo 'Electron build OK'
-    "
+    run_step "Electron Build" bash -c "npm run build:electron && test -d dist-electron && echo 'Electron build OK'"
   fi
-else
-  skip_step electron
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -309,27 +283,21 @@ echo -e "${BOLD}║           PRE-PUBLISH VALIDATION SUMMARY                    
 echo -e "${BOLD}╠═══════════════════════════════════════════════════════════════╣${RESET}"
 
 ALL_PASS=true
-ORDERED_STEPS=(lint validate-nodes type-check frontend-tests backend-lint backend-tests e2e build electron)
-declare -A STEP_LABELS=(
-  [lint]="ESLint        "
-  [validate-nodes]="Node Registry "
-  [type-check]="TypeScript    "
-  [frontend-tests]="Frontend Tests"
-  [backend-lint]="Backend Lint  "
-  [backend-tests]="Backend Tests "
-  [e2e]="E2E Tests     "
-  [build]="Web Build     "
-  [electron]="Electron Build"
-)
+
+# Find max label width for alignment
+MAX_LEN=0
+for step in "${ORDERED_STEPS[@]}"; do
+  [[ ${#step} -gt $MAX_LEN ]] && MAX_LEN=${#step}
+done
 
 for step in "${ORDERED_STEPS[@]}"; do
   result="${STEP_RESULT[$step]:-skip}"
-  label="${STEP_LABELS[$step]}"
+  padded=$(printf "%-${MAX_LEN}s" "$step")
   case "$result" in
-    pass) echo -e "${BOLD}║${RESET}  ${label} ${GREEN}✅ PASSED${RESET}                                   ${BOLD}║${RESET}" ;;
-    fail) echo -e "${BOLD}║${RESET}  ${label} ${RED}❌ FAILED${RESET}                                   ${BOLD}║${RESET}"
+    pass) echo -e "${BOLD}║${RESET}  ${padded}  ${GREEN}✅ PASSED${RESET}" ;;
+    fail) echo -e "${BOLD}║${RESET}  ${padded}  ${RED}❌ FAILED${RESET}"
           ALL_PASS=false ;;
-    skip) echo -e "${BOLD}║${RESET}  ${label} ${YELLOW}⏭  SKIPPED${RESET}                                  ${BOLD}║${RESET}" ;;
+    skip) echo -e "${BOLD}║${RESET}  ${padded}  ${YELLOW}⏭  SKIPPED${RESET}" ;;
   esac
 done
 
@@ -342,7 +310,6 @@ if $ALL_PASS; then
 else
   echo -e "${BOLD}║  ${RED}⚠️  Fix issues above before creating a release.${RESET}${BOLD}              ║${RESET}"
   echo -e "${BOLD}╚═══════════════════════════════════════════════════════════════╝${RESET}"
-  # Print failed log paths
   for step in "${ORDERED_STEPS[@]}"; do
     if [[ "${STEP_RESULT[$step]:-}" == "fail" ]]; then
       err "Log for $step: ${STEP_LOG[$step]}"

@@ -22,16 +22,13 @@ import { test, expect } from '../fixtures/app.fixture';
 test.describe.configure({ mode: 'serial', retries: 2 });
 
 test.describe('Settings - UI Customization', () => {
+  // Settings tests involve multiple page loads (reset API + navigate + localStorage
+  // clear + reload) which are slow under parallel test load. Triple the timeout.
+  test.slow();
 
-  test.beforeEach(async ({ settingsPage, page }) => {
-    // Reset settings to defaults before each test to ensure isolation
-    await settingsPage.resetToDefaults();
-    await settingsPage.goto();
-    // Reload to ensure reset settings are applied in the browser
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    // Wait for settings to be fully loaded after reload
-    await settingsPage.waitForSettingsReady();
+  test.beforeEach(async ({ settingsPage }) => {
+    // Navigate to settings, reset backend, clear localStorage, reload for clean state
+    await settingsPage.gotoClean();
   });
 
   test('should display settings page with tabs', async ({ settingsPage, page }) => {

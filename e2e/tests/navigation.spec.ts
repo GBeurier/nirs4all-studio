@@ -97,16 +97,20 @@ test.describe('Navigation', () => {
   });
 
   test('should handle direct URL navigation', async ({ page }) => {
+    // Use domcontentloaded instead of load — the app has background API polling
+    // that can delay the load event when the backend is under parallel test load
+    const opts = { waitUntil: 'domcontentloaded' as const };
+
     // Navigate directly to settings
-    await page.goto('/settings');
+    await page.goto('/settings', opts);
     await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible();
 
     // Navigate directly to datasets
-    await page.goto('/datasets');
+    await page.goto('/datasets', opts);
     await expect(page.getByRole('heading', { name: /datasets/i })).toBeVisible();
 
     // Navigate directly to pipelines
-    await page.goto('/pipelines');
+    await page.goto('/pipelines', opts);
     await expect(page.getByRole('heading', { name: 'Pipelines', exact: true })).toBeVisible();
   });
 
