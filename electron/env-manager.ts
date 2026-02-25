@@ -292,7 +292,7 @@ export class EnvManager {
     return new Promise((resolve) => {
       execFile(
         pythonPath,
-        ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}'); import importlib; print(importlib.util.find_spec('nirs4all') is not None)"],
+        ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}'); import importlib; s=importlib.util.find_spec; print(all(s(m) is not None for m in ['nirs4all','uvicorn','fastapi']))"],
         { timeout: 5000 },
         (error, stdout) => {
           if (error) { resolve(null); return; }
