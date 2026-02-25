@@ -27,7 +27,7 @@ import EnvSetup from "@/components/setup/EnvSetup";
 const electronApi = (window as unknown as {
   electronApi?: {
     isElectron: boolean;
-    isEnvReady: () => Promise<boolean>;
+    shouldShowWizard: () => Promise<boolean>;
   };
 }).electronApi;
 
@@ -264,29 +264,29 @@ function BackendConnectingScreen() {
 }
 
 function App() {
-  // In Electron mode, check if the Python environment is ready.
-  // If not, show the env setup screen before loading the app.
-  const [envReady, setEnvReady] = useState<boolean | null>(null);
+  // In Electron mode, decide whether to show the setup wizard.
+  // The wizard is shown when: env not ready, new install/update, or portable mode.
+  const [showWizard, setShowWizard] = useState<boolean | null>(null);
   const { coreReady } = useMlReadiness();
   const isElectron = !!electronApi?.isElectron;
 
   useEffect(() => {
     if (!isElectron || !electronApi) {
       // Web mode: no env check needed, backend managed externally
-      setEnvReady(true);
+      setShowWizard(false);
       return;
     }
-    electronApi.isEnvReady().then(setEnvReady);
+    electronApi.shouldShowWizard().then(setShowWizard);
   }, [isElectron]);
 
-  // Loading state while checking env
-  if (envReady === null) {
+  // Loading state while checking
+  if (showWizard === null) {
     return <BackendConnectingScreen />;
   }
 
-  // Env not ready in Electron mode: show setup screen (no backend available yet)
-  if (!envReady) {
-    return <EnvSetup onComplete={() => setEnvReady(true)} />;
+  // Show setup wizard (env selection + profile configuration)
+  if (showWizard) {
+    return <EnvSetup onComplete={() => setShowWizard(false)} />;
   }
 
   // Backend not yet reachable — show connecting screen

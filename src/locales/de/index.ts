@@ -420,6 +420,10 @@ const de = {
       current: "Aktuell",
       noEnvsFound: "Keine kompatiblen Python-Umgebungen auf diesem System gefunden.",
       browseForPython: "Nach Python-Datei suchen...",
+      createNew: "Neue Umgebung erstellen",
+      autoSetup: "Automatische Einrichtung",
+      createInFolder: "In Ordner erstellen",
+      settingUp: "Python-Umgebung wird eingerichtet...",
     },
 
     // Config Alignment
@@ -461,8 +465,11 @@ const de = {
       or: "oder",
       detectedEnvs: "Erkannte Python-Umgebungen:",
       scanning: "Suche nach vorhandenen Python-Umgebungen...",
-      browsePython: "Python-Datei auswählen",
+      browsePython: "Python auswählen",
+      createInFolder: "In Ordner erstellen",
       nirs4allInstalled: "nirs4all installiert",
+      currentEnv: "Mit aktueller Umgebung fortfahren",
+      changeEnv: "oder Umgebung ändern",
     },
     envProgress: {
       title: "Python-Umgebung wird eingerichtet",
@@ -489,6 +496,7 @@ const de = {
       title: "Rechenprofil auswählen",
       description: "Wählen Sie, wie nirs4all auf Ihrem System laufen soll. Änderbar in den Einstellungen.",
       recommended: "Empfohlen",
+      loadFailed: "Profile konnten nicht geladen werden. Das Backend wird möglicherweise noch gestartet.",
     },
     extras: {
       title: "Optionale Pakete",
@@ -511,6 +519,8 @@ const de = {
       profile: "Rechenprofil",
       extras: "Optionale Pakete",
       launch: "Los geht's",
+      dontAskAgain: "Diesen Assistenten beim nächsten Start nicht mehr anzeigen",
+      reconfigure: "Neu konfigurieren",
     },
   },
 

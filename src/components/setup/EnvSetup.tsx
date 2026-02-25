@@ -42,8 +42,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
+  resetBackendUrl,
   detectGPU,
   getRecommendedConfig,
+  getSetupStatus,
   alignConfig,
   completeSetup,
   skipSetup,
@@ -70,13 +72,19 @@ interface SetupProgress {
   detail: string;
 }
 
+interface EnvSummary {
+  pythonPath: string;
+  envPath: string;
+  version: string;
+}
+
 // --- Electron API ---
 
 const electronApi = (window as unknown as {
   electronApi?: {
     platform: string;
     isEnvReady: () => Promise<boolean>;
-    startEnvSetup: () => Promise<{ success: boolean; error?: string }>;
+    startEnvSetup: (targetDir?: string) => Promise<{ success: boolean; error?: string }>;
     onEnvSetupProgress: (cb: (p: SetupProgress) => void) => () => void;
     detectExistingEnvs: () => Promise<DetectedEnv[]>;
     useExistingEnv: (path: string) => Promise<{ success: boolean; message: string }>;
@@ -84,6 +92,10 @@ const electronApi = (window as unknown as {
     selectPythonExe: () => Promise<string | null>;
     useExistingPython: (path: string) => Promise<{ success: boolean; message: string }>;
     restartBackend: () => Promise<{ success: boolean; error?: string }>;
+    shouldShowWizard: () => Promise<boolean>;
+    markWizardComplete: (skipNextTime: boolean) => Promise<void>;
+    getCurrentEnvSummary: () => Promise<EnvSummary | null>;
+    isPortable: () => Promise<boolean>;
   };
 }).electronApi;
 
@@ -154,6 +166,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   // Pre-backend state (env selection)
   const [detectedEnvs, setDetectedEnvs] = useState<DetectedEnv[]>([]);
   const [detectingEnvs, setDetectingEnvs] = useState(false);
+  const [currentEnv, setCurrentEnv] = useState<EnvSummary | null>(null);
   const [progress, setProgress] = useState<SetupProgress>({ percent: 0, step: "", detail: "" });
 
   // Post-backend state (profile + packages)
@@ -165,15 +178,27 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   const [installMessage, setInstallMessage] = useState("");
   const [installError, setInstallError] = useState<string | null>(null);
 
+  // Portable mode state
+  const [isPortableMode, setIsPortableMode] = useState(false);
+  const [skipNextTime, setSkipNextTime] = useState(false);
+
   // Platform for filtering
   const platform = electronApi?.platform || "win32";
 
-  // Detect existing envs on mount
+  // Detect existing envs and current env on mount
   useEffect(() => {
     if (!electronApi) return;
     setDetectingEnvs(true);
-    electronApi.detectExistingEnvs().then((envs) => {
+
+    // Fetch current env summary and detected envs in parallel
+    Promise.all([
+      electronApi.detectExistingEnvs(),
+      electronApi.getCurrentEnvSummary(),
+      electronApi.isPortable(),
+    ]).then(([envs, summary, portable]) => {
       setDetectedEnvs(envs);
+      setCurrentEnv(summary);
+      setIsPortableMode(portable);
       setDetectingEnvs(false);
     }).catch(() => setDetectingEnvs(false));
   }, []);
@@ -189,31 +214,83 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
 
   // --- Transition to post-backend steps ---
 
+  /** Fetch recommended config with retries + exponential backoff (backend may still be warming up) */
+  const fetchConfig = useCallback(async (retries = 5): Promise<RecommendedConfigResponse | null> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await getRecommendedConfig();
+      } catch {
+        if (i < retries - 1) {
+          // Exponential backoff: 1s, 2s, 4s, 8s
+          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i)));
+        }
+      }
+    }
+    return null;
+  }, []);
+
   const transitionToPostBackend = useCallback(async () => {
     setCurrentStep("detect");
     setError(null);
 
-    try {
-      const [gpuResult, configResult] = await Promise.all([
-        detectGPU(),
-        getRecommendedConfig(),
-      ]);
-      setGpuInfo(gpuResult);
-      setConfig(configResult);
+    // Give the backend a moment to fully initialize its routes after startup
+    await new Promise((r) => setTimeout(r, 500));
 
-      // Auto-select recommended profile
+    // Fetch GPU info and config in parallel — failures are independent
+    const [gpuResult, configResult] = await Promise.all([
+      detectGPU().catch((err) => { console.warn("GPU detection failed:", err); return null; }),
+      fetchConfig(),
+    ]);
+
+    if (gpuResult) {
+      setGpuInfo(gpuResult);
       const recommended = gpuResult.recommended_profiles[0];
       if (recommended) setSelectedProfile(recommended);
-
-      // Auto-advance after showing GPU info briefly
-      setTimeout(() => setCurrentStep("profile"), 1500);
-    } catch {
-      // GPU detection or config fetch failed — advance to profile with defaults
-      setCurrentStep("profile");
     }
-  }, []);
+    if (configResult) {
+      setConfig(configResult);
+    }
+
+    // Brief pause to show GPU info, then advance to profile
+    setTimeout(() => setCurrentStep("profile"), gpuResult ? 1500 : 300);
+  }, [fetchConfig]);
 
   // --- Pre-backend handlers ---
+
+  const handleUseCurrent = useCallback(async () => {
+    if (!electronApi) return;
+    setCurrentStep("env-progress");
+    setError(null);
+    setProgress({ percent: 60, step: "starting", detail: "Starting backend..." });
+
+    // Current env is already configured — just start/restart the backend
+    const backendResult = await electronApi.restartBackend();
+    if (backendResult.success) {
+      // Backend restarted on a new port — clear cached URL so API client re-resolves
+      resetBackendUrl();
+      // Get previous profile, then actually verify packages are installed
+      try {
+        const setupStatus = await getSetupStatus();
+        if (setupStatus.selected_profile) {
+          // Dry-run: check if the env already has the right packages
+          const dryRun = await alignConfig({
+            profile: setupStatus.selected_profile,
+            dry_run: true,
+          });
+          if (dryRun.success && dryRun.installed.length === 0) {
+            // Packages are aligned — skip to done
+            setSelectedProfile(setupStatus.selected_profile);
+            setCurrentStep("done");
+            return;
+          }
+        }
+      } catch { /* fall through to normal flow */ }
+
+      await transitionToPostBackend();
+    } else {
+      setError(backendResult.error || "Failed to start backend");
+    }
+  }, [transitionToPostBackend]);
 
   const handleAutoSetup = useCallback(async () => {
     if (!electronApi) return;
@@ -223,6 +300,25 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
 
     const result = await electronApi.startEnvSetup();
     if (result.success) {
+      resetBackendUrl();
+      await transitionToPostBackend();
+    } else {
+      setError(result.error || "Setup failed");
+    }
+  }, [transitionToPostBackend]);
+
+  const handleCreateInFolder = useCallback(async () => {
+    if (!electronApi) return;
+    const folder = await electronApi.selectFolder();
+    if (!folder) return;
+
+    setCurrentStep("env-progress");
+    setError(null);
+    setProgress({ percent: 0, step: "starting", detail: "Starting setup..." });
+
+    const result = await electronApi.startEnvSetup(folder);
+    if (result.success) {
+      resetBackendUrl();
       await transitionToPostBackend();
     } else {
       setError(result.error || "Setup failed");
@@ -240,6 +336,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       setProgress({ percent: 80, step: "starting", detail: "Starting backend..." });
       const backendResult = await electronApi.restartBackend();
       if (backendResult.success) {
+        resetBackendUrl();
         await transitionToPostBackend();
       } else {
         setError(backendResult.error || "Failed to start backend");
@@ -263,6 +360,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       setProgress({ percent: 80, step: "starting", detail: "Starting backend..." });
       const backendResult = await electronApi.restartBackend();
       if (backendResult.success) {
+        resetBackendUrl();
         await transitionToPostBackend();
       } else {
         setError(backendResult.error || "Failed to start backend");
@@ -318,9 +416,21 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   const handleSkip = useCallback(async () => {
     try {
       await skipSetup();
+      electronApi?.markWizardComplete(false);
     } catch { /* best effort */ }
     onComplete();
   }, [onComplete]);
+
+  const handleReconfigure = useCallback(() => {
+    transitionToPostBackend();
+  }, [transitionToPostBackend]);
+
+  const handleLaunch = useCallback(async () => {
+    try {
+      await electronApi?.markWizardComplete(skipNextTime);
+    } catch { /* best effort */ }
+    onComplete();
+  }, [onComplete, skipNextTime]);
 
   // --- Derived state ---
 
@@ -381,30 +491,66 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                   <CardDescription>{t("setupWizard.env.description")}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Currently configured environment (shown on reinstall/update) */}
+                  {currentEnv && (
+                    <>
+                      <button
+                        className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-primary bg-primary/5 hover:bg-primary/10 transition-colors text-left"
+                        onClick={handleUseCurrent}
+                      >
+                        <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{t("setupWizard.env.currentEnv")}</span>
+                            <Badge variant="default" className="text-xs">{t("setupWizard.env.recommended")}</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate mt-0.5">{currentEnv.envPath}</p>
+                          <p className="text-xs text-muted-foreground">Python {currentEnv.version}</p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+
+                      {/* Divider */}
+                      <div className="relative py-2">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-background px-2 text-muted-foreground">{t("setupWizard.env.changeEnv")}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
                   {/* Auto setup */}
                   <Button
+                    variant={currentEnv ? "outline" : "default"}
                     className="w-full h-auto py-4 flex-col items-start gap-1"
                     onClick={handleAutoSetup}
                   >
                     <div className="flex items-center gap-2 w-full">
                       <Download className="h-5 w-5 shrink-0" />
                       <span className="font-medium">{t("setupWizard.env.autoSetup")}</span>
-                      <Badge variant="secondary" className="ml-auto">{t("setupWizard.env.recommended")}</Badge>
+                      {!currentEnv && (
+                        <Badge variant="secondary" className="ml-auto">{t("setupWizard.env.recommended")}</Badge>
+                      )}
                     </div>
-                    <span className="text-xs text-primary-foreground/70 pl-7">
+                    <span className={`text-xs pl-7 ${currentEnv ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
                       {t("setupWizard.env.autoSetupDetail")}
                     </span>
                   </Button>
 
-                  {/* Divider */}
-                  <div className="relative py-2">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
+                  {!currentEnv && (
+                    /* Divider (only when no current env — otherwise already shown above) */
+                    <div className="relative py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">{t("setupWizard.env.or")}</span>
+                      </div>
                     </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">{t("setupWizard.env.or")}</span>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Detected environments */}
                   {detectingEnvs ? (
@@ -437,11 +583,17 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                     </div>
                   ) : null}
 
-                  {/* Browse for python */}
-                  <Button variant="outline" className="w-full" onClick={handleBrowsePython}>
-                    <FolderOpen className="mr-2 h-4 w-4" />
-                    {t("setupWizard.env.browsePython")}
-                  </Button>
+                  {/* Browse for python / Create in folder */}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={handleBrowsePython}>
+                      <FolderOpen className="mr-2 h-4 w-4" />
+                      {t("setupWizard.env.browsePython")}
+                    </Button>
+                    <Button variant="outline" className="flex-1" onClick={handleCreateInFolder}>
+                      <Download className="mr-2 h-4 w-4" />
+                      {t("setupWizard.env.createInFolder")}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -555,8 +707,16 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {filteredProfiles.length === 0 && !config ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin" />
+                    <div className="flex flex-col items-center justify-center gap-3 py-8">
+                      <AlertCircle className="h-6 w-6 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">{t("setupWizard.profile.loadFailed")}</p>
+                      <Button variant="outline" size="sm" onClick={async () => {
+                        const result = await fetchConfig();
+                        if (result) setConfig(result);
+                      }}>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        {t("common.retry")}
+                      </Button>
                     </div>
                   ) : (
                     filteredProfiles.map((profile: ProfileInfo) => {
@@ -736,8 +896,26 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                     )}
                   </div>
 
-                  <div className="flex justify-center pt-2">
-                    <Button size="lg" onClick={onComplete}>
+                  {/* "Don't ask again" checkbox for portable mode */}
+                  {isPortableMode && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Checkbox
+                        id="skip-wizard"
+                        checked={skipNextTime}
+                        onCheckedChange={(checked) => setSkipNextTime(checked === true)}
+                      />
+                      <Label htmlFor="skip-wizard" className="text-sm text-muted-foreground cursor-pointer">
+                        {t("setupWizard.ready.dontAskAgain")}
+                      </Label>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between pt-2">
+                    <Button variant="ghost" onClick={handleReconfigure}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {t("setupWizard.ready.reconfigure")}
+                    </Button>
+                    <Button size="lg" onClick={handleLaunch}>
                       {t("setupWizard.ready.launch")}
                       <ChevronRight className="ml-2 h-4 w-4" />
                     </Button>

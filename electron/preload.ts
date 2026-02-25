@@ -133,8 +133,23 @@ const electronApi = {
     info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
   }> => ipcRenderer.invoke("env:useExistingPython", pythonPath),
 
-  startEnvSetup: (): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke("env:startSetup"),
+  startEnvSetup: (targetDir?: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("env:startSetup", targetDir),
+
+  shouldShowWizard: (): Promise<boolean> =>
+    ipcRenderer.invoke("env:shouldShowWizard"),
+
+  markWizardComplete: (skipNextTime: boolean): Promise<void> =>
+    ipcRenderer.invoke("env:markWizardComplete", skipNextTime),
+
+  getCurrentEnvSummary: (): Promise<{
+    pythonPath: string;
+    envPath: string;
+    version: string;
+  } | null> => ipcRenderer.invoke("env:getCurrentEnvSummary"),
+
+  isPortable: (): Promise<boolean> =>
+    ipcRenderer.invoke("env:isPortable"),
 
   onEnvSetupProgress: (
     callback: (progress: { percent: number; step: string; detail: string }) => void

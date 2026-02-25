@@ -15,6 +15,11 @@
 !macroend
 
 !macro customUnInstall
+  ; electron-builder sets SetShellVarContext=all for per-machine installs, which
+  ; makes $APPDATA resolve to C:\ProgramData instead of the user's AppData.
+  ; Switch to current-user context so we target the correct directories.
+  SetShellVarContext current
+
   ; Check if a custom/external Python env was configured (lives outside app data)
   StrCpy $0 ""
   IfFileExists "$APPDATA\nirs4all Studio\env-settings.json" 0 +2
@@ -41,4 +46,6 @@ Your workspaces and datasets will NOT be affected.$0" \
     RMDir /r "$APPDATA\nirs4all"
 
   skipRemove:
+  ; Restore all-users context for any remaining electron-builder uninstall steps
+  SetShellVarContext all
 !macroend

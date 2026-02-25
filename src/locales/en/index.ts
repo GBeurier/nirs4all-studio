@@ -422,6 +422,10 @@ const en = {
       current: "Current",
       noEnvsFound: "No compatible Python environments found on this system.",
       browseForPython: "Browse for Python executable...",
+      createNew: "Create new environment",
+      autoSetup: "Auto-setup",
+      createInFolder: "In custom folder",
+      settingUp: "Setting up Python environment...",
     },
 
     // Config Alignment
@@ -1019,8 +1023,11 @@ const en = {
       or: "or",
       detectedEnvs: "Detected Python environments:",
       scanning: "Scanning for existing Python environments...",
-      browsePython: "Browse for Python executable",
+      browsePython: "Browse for Python",
+      createInFolder: "Create in folder",
       nirs4allInstalled: "nirs4all installed",
+      currentEnv: "Continue with current environment",
+      changeEnv: "or change environment",
     },
     envProgress: {
       title: "Setting up Python environment",
@@ -1047,6 +1054,7 @@ const en = {
       title: "Select Compute Profile",
       description: "Choose how nirs4all should run on your system. You can change this later in Settings.",
       recommended: "Recommended",
+      loadFailed: "Failed to load profiles. The backend may still be starting.",
     },
     extras: {
       title: "Optional Packages",
@@ -1069,6 +1077,8 @@ const en = {
       profile: "Compute Profile",
       extras: "Optional Packages",
       launch: "Get Started",
+      dontAskAgain: "Don't show this wizard on next launch",
+      reconfigure: "Reconfigure",
     },
   },
 

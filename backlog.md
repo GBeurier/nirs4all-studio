@@ -2,62 +2,6 @@
 
 Development backlog for nirs4all Studio. Items are organized by area.
 
----
-
-## Priority / Next
-
-- Add mypy check
-- Add documentation links and update warnings in the UI
-- Stop full dataset list refresh on single dataset delete
-
-### Packaging & Distribution
-
-- Clean results display
-- Verify update mechanism
-- Code signing for app stores
-
----
-
-## Global
-
-- Multi-target handling: select target(s) in run/pipeline, Playground sorting, prediction visualization (2D/3D/PCA)
-- Clean remaining `console.log` calls
-- Review runs/predictions/results loading with correct Parquet table (see nirs4all Parquet format extension)
-- Add ability to browse predictions Parquet directly, and workspaces (runs, results, predictions)
-- Auto-detect CUDA/Metal and display GPU status; pre-configure library install per platform (PyTorch GPU on Windows, TF/PyTorch/JAX on Linux, etc.)
-
----
-
-## Desktop
-
-- Mouse wheel zoom or zoom menu
-- Window resize to match screen size (too small on large screens)
-
----
-
-## Dashboard
-
-- Rethink as a settings hub or remove entirely
-
----
-
-## Datasets
-
-### Features
-
-- Multiple target support
-- Drag-and-drop files or folders — directly into dataset creation or the dataset wizard, anywhere in the app
-- Scrollbar in file list within the import wizard
-- Enhance the detailed view
-- Preview should allow viewing all / test / train partitions
-- Managing dataset versioning, hashing, and update history
-
-### Caching
-
-- Initial loading and refresh should store quantiles, min/max, and summary statistics for future data visualization
-- Cache dataset on the page (currently reloads every time)
-- Cache frequently used charts (Y histogram, spectra with quantiles, train/test/folds)
-- Test/train split not preserved after wizard — no test data available in Playground
 
 ### Bugs
 
@@ -78,6 +22,68 @@ Development backlog for nirs4all Studio. Items are organized by area.
 - At preview, validate the dataset and cache the preview as an "ID card" — recalculate only on manual refresh
 
 ---
+
+
+---
+
+- version in settings is wrong, even after update
+- optional dependencies should update on "update" or restart
+- add pls dependencies to default setup of packages if not yet added
+
+-Refactor global python env install/update/reuse management (look audit)
+
+
+## Priority / Next
+
+- Add predict from final prediction (and either dataset, or drag n drop X csv)
+- Add mypy check
+- Add documentation links and update warnings in the UI
+- Stop full dataset list refresh on single dataset delete
+- Convert doc to rtd
+
+### Packaging & Distribution
+
+- Clean results display
+
+- Code signing for app stores
+
+
+- Add pip log in update modal
+---
+
+## Global
+
+- Multi-target handling: select target(s) in run/pipeline, Playground sorting, prediction visualization (2D/3D/PCA)
+- Clean remaining `console.log` calls
+- Review runs/predictions/results loading with correct Parquet table (see nirs4all Parquet format extension)
+- Add ability to browse predictions Parquet directly, and workspaces (runs, results, predictions)
+- Auto-detect CUDA/Metal and display GPU status; pre-configure library install per platform (PyTorch GPU on Windows, TF/PyTorch/JAX on Linux, etc.)
+
+---
+
+## Desktop
+
+- Mouse wheel zoom or zoom menu
+- Window resize to match screen size (too small on large screens)
+
+---
+
+## Datasets
+
+### Features
+
+- Multiple target support
+- Drag-and-drop files or folders — directly into dataset creation or the dataset wizard, anywhere in the app
+- Scrollbar in file list within the import wizard
+- Enhance the detailed view
+- Preview should allow viewing all / test / train partitions
+- Managing dataset versioning, hashing, and update history
+
+### Caching
+
+- Test/train split not preserved after wizard — no test data available in Playground
+
+
 
 ## Runs / Results
 

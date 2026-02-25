@@ -39,7 +39,7 @@ const CORE_PACKAGES = [
   "packaging>=24.0",
   "platformdirs>=4.0.0",
   "sentry-sdk[fastapi]>=2.0.0",
-  "nirs4all",
+  "nirs4all>=0.7.1",
 ];
 
 const isWindows = process.platform === "win32";
@@ -69,6 +69,16 @@ const SETTINGS_FILE = "env-settings.json";
 interface EnvSettings {
   customEnvPath?: string;
   customPythonPath?: string;
+  /** App version when the setup wizard was last completed */
+  appVersion?: string;
+  /** "Don't ask again" flag — skips wizard on subsequent launches (portable mode) */
+  skipWizardOnLaunch?: boolean;
+}
+
+export interface EnvSummary {
+  pythonPath: string;
+  envPath: string;
+  version: string;
 }
 
 export class EnvManager {
@@ -79,6 +89,8 @@ export class EnvManager {
   private customEnvPath: string | null = null;
   /** Direct path to the python executable (more reliable than folder-based detection) */
   private customPythonPath: string | null = null;
+  private savedAppVersion: string | null = null;
+  private savedSkipWizard: boolean = false;
 
   constructor() {
     this.envDir = path.join(app.getPath("userData"), "python-env");
@@ -97,6 +109,8 @@ export class EnvManager {
         const data = JSON.parse(fs.readFileSync(this.settingsPath, "utf-8")) as EnvSettings;
         this.customEnvPath = data.customEnvPath ?? null;
         this.customPythonPath = data.customPythonPath ?? null;
+        this.savedAppVersion = data.appVersion ?? null;
+        this.savedSkipWizard = data.skipWizardOnLaunch ?? false;
       }
     } catch {
       // Ignore corrupt settings
@@ -108,6 +122,8 @@ export class EnvManager {
       const data: EnvSettings = {};
       if (this.customEnvPath) data.customEnvPath = this.customEnvPath;
       if (this.customPythonPath) data.customPythonPath = this.customPythonPath;
+      if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
+      if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
       fs.writeFileSync(this.settingsPath, JSON.stringify(data, null, 2));
     } catch {
       // Best effort
@@ -204,16 +220,115 @@ export class EnvManager {
   }
 
   /** Get full environment info */
-  getInfo(): EnvInfo {
+  async getInfo(): Promise<EnvInfo> {
+    const pythonPath = this.getPythonPath();
+    let pythonVersion: string | null = null;
+    if (pythonPath && fs.existsSync(pythonPath)) {
+      const detected = await this.checkPython(pythonPath);
+      if (detected) pythonVersion = detected.pythonVersion;
+    }
     return {
       status: this.status,
       envDir: this.envDir,
-      pythonPath: this.getPythonPath(),
+      pythonPath,
       sitePackages: this.getSitePackages(),
-      pythonVersion: null, // Filled on demand
+      pythonVersion,
       isCustom: this.customEnvPath !== null,
       error: this.lastError ?? undefined,
     };
+  }
+
+  /** Check if this is a portable (non-installed) build */
+  isPortable(): boolean {
+    return !!process.env.PORTABLE_EXECUTABLE_FILE;
+  }
+
+  /**
+   * Single decision point for whether the setup wizard should be shown.
+   *
+   * - Installed version: shows on first launch after install/update (version mismatch),
+   *   then not again until the next version change.
+   * - Portable version: shows every launch unless "don't ask again" was checked.
+   *   Version change always forces the wizard (even if skipped).
+   */
+  shouldShowWizard(): boolean {
+    const currentVersion = app.getVersion();
+    const versionChanged = this.savedAppVersion !== currentVersion;
+
+    // Env not configured at all → must show wizard
+    if (!this.isReady()) return true;
+
+    // Version changed (new install/update) → always show wizard
+    if (versionChanged) return true;
+
+    // Portable mode: show every time unless user opted out
+    if (this.isPortable() && !this.savedSkipWizard) return true;
+
+    return false;
+  }
+
+  /**
+   * Mark the setup wizard as completed.
+   * Saves the current app version and the "don't ask again" preference.
+   */
+  markWizardComplete(skipNextTime: boolean): void {
+    this.savedAppVersion = app.getVersion();
+    this.savedSkipWizard = skipNextTime;
+    this.saveSettings();
+  }
+
+  /**
+   * Get a summary of the currently configured Python environment.
+   * Returns null if no env is configured or the Python executable doesn't exist.
+   */
+  async getCurrentEnvSummary(): Promise<EnvSummary | null> {
+    const pythonPath = this.getPythonPath();
+    if (!pythonPath || !fs.existsSync(pythonPath)) return null;
+
+    const info = await this.checkPython(pythonPath);
+    if (!info) return null;
+
+    return {
+      pythonPath,
+      envPath: info.path,
+      version: info.pythonVersion,
+    };
+  }
+
+  /**
+   * Verify that critical backend packages (uvicorn, fastapi) are importable.
+   * Returns true if all packages are available, false otherwise.
+   */
+  async verifyBackendPackages(): Promise<boolean> {
+    const pythonPath = this.getPythonPath();
+    if (!pythonPath || !fs.existsSync(pythonPath)) return false;
+
+    return new Promise((resolve) => {
+      execFile(
+        pythonPath,
+        ["-c", "import uvicorn; import fastapi; import nirs4all"],
+        { timeout: 15000 },
+        (error) => resolve(!error),
+      );
+    });
+  }
+
+  /**
+   * Ensure critical backend packages are installed.
+   * If uvicorn/fastapi are missing, installs all CORE_PACKAGES.
+   * Called before starting the backend to fix the portable-mode issue
+   * where the env exists but is missing backend dependencies.
+   */
+  async ensureBackendPackages(): Promise<void> {
+    const pythonPath = this.getPythonPath();
+    if (!pythonPath) return;
+
+    const hasPackages = await this.verifyBackendPackages();
+    if (!hasPackages) {
+      console.log("Backend packages missing, installing core packages...");
+      await this.installCorePackages(pythonPath);
+      console.log("Core packages installed successfully");
+    }
   }
 
   /**
@@ -339,20 +454,28 @@ export class EnvManager {
       return { success: false, message: "Python 3.11 or later is required" };
     }
 
+    // Save old values for rollback if install fails
+    const prevEnvPath = this.customEnvPath;
+    const prevPythonPath = this.customPythonPath;
+
     this.customEnvPath = envPath;
     this.customPythonPath = null;
-    this.saveSettings();
 
     // Install missing core packages (nirs4all, fastapi, etc.)
     if (!info.hasNirs4all) {
       try {
         await this.installCorePackages(pythonPath);
       } catch (e) {
+        // Rollback — don't persist a broken env
+        this.customEnvPath = prevEnvPath;
+        this.customPythonPath = prevPythonPath;
         const msg = e instanceof Error ? e.message : String(e);
         return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
       }
     }
 
+    // Persist only after successful validation/install
+    this.saveSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${envPath}`, info };
   }
@@ -376,20 +499,28 @@ export class EnvManager {
     const dirName = path.basename(dir).toLowerCase();
     const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
 
+    // Save old values for rollback if install fails
+    const prevPythonPath = this.customPythonPath;
+    const prevEnvPath = this.customEnvPath;
+
     this.customPythonPath = pythonPath;
     this.customEnvPath = envRoot;
-    this.saveSettings();
 
     // Install missing core packages (nirs4all, fastapi, etc.)
     if (!info.hasNirs4all) {
       try {
         await this.installCorePackages(pythonPath);
       } catch (e) {
+        // Rollback — don't persist a broken env
+        this.customPythonPath = prevPythonPath;
+        this.customEnvPath = prevEnvPath;
         const msg = e instanceof Error ? e.message : String(e);
         return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
       }
     }
 
+    // Persist only after successful validation/install
+    this.saveSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${pythonPath}`, info };
   }
@@ -413,9 +544,14 @@ export class EnvManager {
   /**
    * Full setup: download Python, create venv, install packages.
    * Reports progress via callback.
+   * @param progress - Optional progress callback
+   * @param targetDir - Optional custom directory. If provided, the env is created there
+   *   instead of the default userData location. The venv python is then saved as
+   *   customPythonPath so getPythonPath() finds it.
    */
-  async setup(progress?: ProgressCallback): Promise<void> {
+  async setup(progress?: ProgressCallback, targetDir?: string): Promise<void> {
     const report = progress ?? (() => {});
+    const baseDir = targetDir || this.envDir;
 
     try {
       this.status = "downloading";
@@ -429,10 +565,10 @@ export class EnvManager {
       }
 
       const downloadUrl = `${PBS_BASE_URL}/${tarballName}`;
-      fs.mkdirSync(this.envDir, { recursive: true });
+      fs.mkdirSync(baseDir, { recursive: true });
 
       // 2. Download Python (if not already cached)
-      const cachedTarball = path.join(this.envDir, tarballName);
+      const cachedTarball = path.join(baseDir, tarballName);
       if (fs.existsSync(cachedTarball) && fs.statSync(cachedTarball).size > 10 * 1024 * 1024) {
         report(15, "downloading", "Using cached Python runtime");
       } else {
@@ -445,12 +581,12 @@ export class EnvManager {
       // 3. Extract
       this.status = "extracting";
       report(15, "extracting", "Extracting Python runtime...");
-      const pythonDir = path.join(this.envDir, "python");
+      const pythonDir = path.join(baseDir, "python");
       if (fs.existsSync(pythonDir)) {
         fs.rmSync(pythonDir, { recursive: true, force: true });
       }
 
-      await this.extractTarball(cachedTarball, this.envDir);
+      await this.extractTarball(cachedTarball, baseDir);
 
       // Verify extraction — the tarball extracts a top-level `python/` directory
       const embeddedPython = isWindows
@@ -467,7 +603,7 @@ export class EnvManager {
       // 4. Create venv
       this.status = "creating_venv";
       report(25, "creating_venv", "Creating virtual environment...");
-      const venvDir = path.join(this.envDir, "venv");
+      const venvDir = path.join(baseDir, "venv");
       if (fs.existsSync(venvDir)) {
         fs.rmSync(venvDir, { recursive: true, force: true });
       }
@@ -537,7 +673,18 @@ export class EnvManager {
         platform: `${process.platform}-${process.arch}`,
         created_at: new Date().toISOString(),
       };
-      fs.writeFileSync(path.join(this.envDir, "build_info.json"), JSON.stringify(buildInfo, null, 2));
+      fs.writeFileSync(path.join(baseDir, "build_info.json"), JSON.stringify(buildInfo, null, 2));
+
+      // 8. If custom directory, save it so getPythonPath() finds the new env.
+      //    Otherwise clear custom paths so getPythonPath() falls through to the managed env.
+      if (targetDir) {
+        this.customPythonPath = venvPython;
+        this.customEnvPath = venvDir;
+      } else {
+        this.customPythonPath = null;
+        this.customEnvPath = null;
+      }
+      this.saveSettings();
 
       this.status = "ready";
       report(100, "ready", "Python environment is ready");

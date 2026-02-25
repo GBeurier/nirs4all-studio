@@ -471,6 +471,16 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     loadDependencies();
   }, []);
 
+  // Reload after backend restart (e.g., env change in PythonEnvPicker)
+  useEffect(() => {
+    const handler = () => {
+      // Backend just restarted — delay to let it warm up, then force refresh
+      setTimeout(() => loadDependencies(true), 2000);
+    };
+    window.addEventListener("backend-restarted", handler);
+    return () => window.removeEventListener("backend-restarted", handler);
+  }, []);
+
   if (isLoading) {
     return (
       <Card>
@@ -723,6 +733,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
                     if (result.success) {
                       resetBackendUrl();
                       setNeedsRestart(false);
+                      window.dispatchEvent(new CustomEvent("backend-restarted"));
                     }
                   } else {
                     await requestRestart();

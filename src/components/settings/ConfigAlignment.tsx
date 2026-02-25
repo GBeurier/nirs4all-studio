@@ -5,7 +5,7 @@
  * Provides "Align" action to install/upgrade packages to match.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CheckCircle2,
@@ -52,6 +52,15 @@ export function ConfigAlignment() {
   const { data: diff, isLoading: diffLoading, refetch: refetchDiff } = useConfigDiff(undefined, true);
   const { data: config } = useRecommendedConfig();
   const alignMutation = useAlignConfig();
+
+  // Reload after backend restart (e.g., env change in PythonEnvPicker)
+  useEffect(() => {
+    const handler = () => {
+      setTimeout(() => refetchDiff(), 2000);
+    };
+    window.addEventListener("backend-restarted", handler);
+    return () => window.removeEventListener("backend-restarted", handler);
+  }, [refetchDiff]);
 
   const handleAlign = async () => {
     if (!diff?.profile) return;

@@ -286,13 +286,18 @@ def _version_satisfies(installed: str, spec: str) -> bool:
         from packaging.version import Version
         return Version(installed) in SpecifierSet(spec)
     except ImportError:
-        # Fallback: simple >= check
+        # Fallback for when packaging is not available
         if spec.startswith(">="):
-            required = spec[2:]
-            return _compare_versions(installed, required) >= 0
-        return True
+            return _compare_versions(installed, spec[2:]) >= 0
+        if spec.startswith("=="):
+            return _compare_versions(installed, spec[2:]) == 0
+        if spec.startswith(">"):
+            return _compare_versions(installed, spec[1:]) > 0
+        # Unknown spec format — consider misaligned (safe default: triggers upgrade)
+        return False
     except Exception:
-        return True
+        # Parse error — consider misaligned (safe default: triggers upgrade check)
+        return False
 
 
 def _compare_versions(v1: str, v2: str) -> int:
@@ -309,14 +314,13 @@ def _compare_versions(v1: str, v2: str) -> int:
 
 
 def _detect_gpu() -> GPUDetectionResponse:
-    """Detect available GPU hardware."""
+    """Detect available GPU hardware and recommend platform-compatible profiles."""
     has_cuda = False
     has_metal = False
     cuda_version = None
     gpu_name = None
-    recommended = ["cpu"]
 
-    # Check CUDA via nvidia-smi
+    # Check CUDA via nvidia-smi (single query for both name and driver version)
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
@@ -326,20 +330,10 @@ def _detect_gpu() -> GPUDetectionResponse:
             parts = result.stdout.strip().split(",")
             gpu_name = parts[0].strip()
             has_cuda = True
+            if len(parts) > 1:
+                cuda_version = parts[1].strip()
     except Exception:
         pass
-
-    # Check CUDA version
-    if has_cuda:
-        try:
-            result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.returncode == 0:
-                cuda_version = result.stdout.strip()
-        except Exception:
-            pass
 
     # Check Metal (macOS)
     if sys.platform == "darwin":
@@ -347,10 +341,30 @@ def _detect_gpu() -> GPUDetectionResponse:
         if plat.machine() == "arm64":
             has_metal = True
 
+    # Build candidate list based on detected hardware
     if has_cuda:
-        recommended = ["gpu-cuda-torch", "gpu-cuda-tf", "cpu"]
+        candidates = ["gpu-cuda-torch", "gpu-cuda-tf", "cpu"]
     elif has_metal:
-        recommended = ["gpu-metal", "cpu"]
+        candidates = ["gpu-metal", "cpu"]
+    else:
+        candidates = ["cpu"]
+
+    # Filter candidates by platform compatibility using the config
+    current_platform = sys.platform
+    try:
+        raw_config = _load_bundled_config()
+        profiles = raw_config.get("profiles", {})
+        recommended = [
+            pid for pid in candidates
+            if pid in profiles and (
+                not profiles[pid].get("platforms")
+                or current_platform in profiles[pid]["platforms"]
+            )
+        ]
+        if not recommended:
+            recommended = ["cpu"]
+    except Exception:
+        recommended = candidates  # Fallback to unfiltered if config unavailable
 
     return GPUDetectionResponse(
         has_cuda=has_cuda,
@@ -559,7 +573,11 @@ async def align_config(request: AlignConfigRequest):
 
     for pkg_spec in to_install:
         try:
-            venv_manager.install_package(pkg_spec, upgrade=True)
+            success, message, output = venv_manager.install_package(pkg_spec, upgrade=True)
+            if not success:
+                logger.error("Failed to install %s: %s", pkg_spec, message)
+                failed_pkgs.append(pkg_spec)
+                continue
             # Determine if it was install or upgrade
             pkg_base = re.split(r"[><=!]", pkg_spec)[0]
             norm_name = _normalize_pkg_name(pkg_base)

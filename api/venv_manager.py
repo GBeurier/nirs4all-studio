@@ -223,11 +223,15 @@ class VenvManager:
             python_dir = Path(sys.executable).parent
             if sys.platform == "win32":
                 # In a venv, pip.exe is next to python.exe in Scripts/
-                # In a base Python install, pip.exe is in Scripts/ subfolder
                 direct = python_dir / "pip.exe"
                 if direct.exists():
                     return direct
-                return python_dir / "Scripts" / "pip.exe"
+                # For base Python installs where pip is in a Scripts subfolder
+                # (python_dir might be the root, not Scripts/)
+                parent_scripts = python_dir.parent / "Scripts" / "pip.exe"
+                if parent_scripts.exists():
+                    return parent_scripts
+                return direct  # Return expected path (better error than wrong path)
             return python_dir / "pip"
         # Custom venv path
         if sys.platform == "win32":
@@ -447,8 +451,8 @@ class VenvManager:
         if progress_callback:
             progress_callback(0, f"Installing {pkg_spec}...")
 
-        # Build pip command
-        cmd = [str(self.pip_executable), "install"]
+        # Build pip command — use python -m pip (more reliable than direct pip path)
+        cmd = [str(self.python_executable), "-m", "pip", "install"]
         if upgrade:
             cmd.append("--upgrade")
         cmd.append(pkg_spec)
@@ -480,11 +484,15 @@ class VenvManager:
                         elif "Successfully" in line:
                             progress_callback(95, line)
 
-            process.wait()
+            process.wait(timeout=600)
 
             if process.returncode != 0:
                 return False, f"pip install failed with code {process.returncode}", output_lines
 
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+            return False, "Installation timed out after 600 seconds", output_lines
         except Exception as e:
             return False, f"Installation failed: {e}", output_lines
 
@@ -506,7 +514,7 @@ class VenvManager:
         packages = []
         try:
             result = subprocess.run(
-                [str(self.pip_executable), "list", "--format=json"],
+                [str(self.python_executable), "-m", "pip", "list", "--format=json"],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -538,7 +546,7 @@ class VenvManager:
             return None
         try:
             result = subprocess.run(
-                [str(self.pip_executable)] + args,
+                [str(self.python_executable), "-m", "pip"] + args,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -586,7 +594,7 @@ class VenvManager:
 
         try:
             result = subprocess.run(
-                [str(self.pip_executable), "uninstall", "-y", package],
+                [str(self.python_executable), "-m", "pip", "uninstall", "-y", package],
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -609,7 +617,7 @@ class VenvManager:
         outdated = []
         try:
             result = subprocess.run(
-                [str(self.pip_executable), "list", "--outdated", "--format=json"],
+                [str(self.python_executable), "-m", "pip", "list", "--outdated", "--format=json"],
                 capture_output=True,
                 text=True,
                 timeout=60,

@@ -46,24 +46,41 @@ export function ConfigPathSettings() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const loadConfigPath = async (retries = 1, delay = 1500) => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const response = await getConfigPath();
+        setConfigPathState(response);
+        setNewPath(response.current_path);
+        return;
+      } catch (err) {
+        if (i < retries) {
+          await new Promise((r) => setTimeout(r, delay));
+        } else {
+          console.error("Failed to load config path:", err);
+          setError("Failed to load config path settings");
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
     loadConfigPath();
   }, []);
 
-  const loadConfigPath = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await getConfigPath();
-      setConfigPathState(response);
-      setNewPath(response.current_path);
-    } catch (err) {
-      console.error("Failed to load config path:", err);
-      setError("Failed to load config path settings");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Reload after backend restart (e.g., env change in PythonEnvPicker)
+  useEffect(() => {
+    const handler = () => {
+      // Backend just restarted — retry with delay so it's fully ready
+      loadConfigPath(2, 2000);
+    };
+    window.addEventListener("backend-restarted", handler);
+    return () => window.removeEventListener("backend-restarted", handler);
+  }, []);
 
   const handleBrowse = async () => {
     try {

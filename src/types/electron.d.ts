@@ -165,12 +165,33 @@ interface ElectronApi {
     message: string;
     info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
   }>;
-  startEnvSetup(): Promise<{ success: boolean; error?: string }>;
+  startEnvSetup(targetDir?: string): Promise<{ success: boolean; error?: string }>;
   onEnvSetupProgress(callback: (progress: {
     percent: number;
     step: string;
     detail: string;
   }) => void): () => void;
+  /**
+   * Check if the setup wizard should be shown (new install, update, or portable mode)
+   */
+  shouldShowWizard(): Promise<boolean>;
+  /**
+   * Mark the setup wizard as completed and save preferences
+   * @param skipNextTime - If true, suppresses wizard on subsequent launches (portable mode)
+   */
+  markWizardComplete(skipNextTime: boolean): Promise<void>;
+  /**
+   * Get summary of the currently configured Python environment (for pre-filling the wizard)
+   */
+  getCurrentEnvSummary(): Promise<{
+    pythonPath: string;
+    envPath: string;
+    version: string;
+  } | null>;
+  /**
+   * Check if the app is running as a portable (non-installed) build
+   */
+  isPortable(): Promise<boolean>;
 
   /**
    * The current platform (darwin, win32, linux)

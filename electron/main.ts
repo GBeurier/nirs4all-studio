@@ -296,6 +296,7 @@ ipcMain.handle("backend:getInfo", () => {
 
 ipcMain.handle("backend:restart", async () => {
   try {
+    await envManager.ensureBackendPackages();
     const port = await backendManager.restart();
     return { success: true, port };
   } catch (error) {
@@ -330,7 +331,7 @@ ipcMain.handle("env:isReady", () => {
   return envManager.isReady();
 });
 
-ipcMain.handle("env:getInfo", () => {
+ipcMain.handle("env:getInfo", async () => {
   return envManager.getInfo();
 });
 
@@ -359,7 +360,23 @@ ipcMain.handle("dialog:selectPythonExe", async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle("env:startSetup", async () => {
+ipcMain.handle("env:shouldShowWizard", () => {
+  return envManager.shouldShowWizard();
+});
+
+ipcMain.handle("env:markWizardComplete", (_, skipNextTime: boolean) => {
+  envManager.markWizardComplete(skipNextTime);
+});
+
+ipcMain.handle("env:getCurrentEnvSummary", async () => {
+  return envManager.getCurrentEnvSummary();
+});
+
+ipcMain.handle("env:isPortable", () => {
+  return envManager.isPortable();
+});
+
+ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
   try {
     await envManager.setup((percent, step, detail) => {
       // Broadcast progress to all renderer windows
@@ -367,11 +384,13 @@ ipcMain.handle("env:startSetup", async () => {
       for (const win of windows) {
         win.webContents.send("env:setupProgress", { percent, step, detail });
       }
-    });
+    }, targetDir);
 
-    // Python env is ready — start the backend
+    // Python env is ready — restart the backend to pick up the new environment.
+    // Always use restart(): stop() is a no-op when no process exists, and it
+    // correctly handles stuck starting/error states that start() would skip.
     console.log("Python environment ready, starting backend...");
-    const port = await backendManager.start();
+    const port = await backendManager.restart();
     console.log(`Backend started on port ${port}`);
 
     return { success: true };
@@ -404,9 +423,12 @@ app.whenReady().then(async () => {
     }
     await createWindow();
   } else if (envManager.isReady()) {
-    // Python env exists: spawn backend non-blocking, show window immediately.
-    // The React app handles "connecting to backend" state via MlReadinessContext.
+    // Python env exists: ensure backend packages are installed (fixes portable
+    // mode where the env may exist but uvicorn/fastapi are missing), then spawn
+    // the backend non-blocking. The React app handles "connecting to backend"
+    // state via MlReadinessContext.
     try {
+      await envManager.ensureBackendPackages();
       const port = await backendManager.startNonBlocking();
       console.log(`Backend spawned on port ${port} (health check in background)`);
     } catch (error) {

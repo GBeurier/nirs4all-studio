@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Download,
   FolderOpen,
   RefreshCw,
   CheckCircle2,
@@ -27,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -53,12 +55,21 @@ interface DetectedEnv {
   hasNirs4all: boolean;
 }
 
+interface SetupProgress {
+  percent: number;
+  step: string;
+  detail: string;
+}
+
 interface ElectronEnvApi {
   getEnvInfo: () => Promise<EnvInfo>;
   detectExistingEnvs: () => Promise<DetectedEnv[]>;
   useExistingEnv: (envPath: string) => Promise<{ success: boolean; message: string; info?: DetectedEnv }>;
   useExistingPython: (pythonPath: string) => Promise<{ success: boolean; message: string; info?: DetectedEnv }>;
   selectPythonExe: () => Promise<string | null>;
+  selectFolder: () => Promise<string | null>;
+  startEnvSetup: (targetDir?: string) => Promise<{ success: boolean; error?: string }>;
+  onEnvSetupProgress: (cb: (p: SetupProgress) => void) => () => void;
   restartBackend: () => Promise<{ success: boolean; port?: number; error?: string }>;
   platform: string;
 }
@@ -103,6 +114,11 @@ export function PythonEnvPicker() {
   const [needsRestart, setNeedsRestart] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
+  // Setup progress state (for auto-setup / create-in-folder)
+  const [isSettingUp, setIsSettingUp] = useState(false);
+  const [setupProgress, setSetupProgress] = useState<SetupProgress>({ percent: 0, step: "", detail: "" });
+  const [setupError, setSetupError] = useState<string | null>(null);
+
   const loadEnvInfo = useCallback(async () => {
     if (!electronApi) return;
     try {
@@ -119,6 +135,12 @@ export function PythonEnvPicker() {
   useEffect(() => {
     loadEnvInfo();
   }, [loadEnvInfo]);
+
+  // Subscribe to setup progress events
+  useEffect(() => {
+    if (!electronApi || !isSettingUp) return;
+    return electronApi.onEnvSetupProgress(setSetupProgress);
+  }, [electronApi, isSettingUp]);
 
   // Not in Electron → don't render
   if (!electronApi) return null;
@@ -183,6 +205,41 @@ export function PythonEnvPicker() {
     }
   };
 
+  /** Run full standalone setup (download Python + create venv + install packages) */
+  const handleSetup = async (targetDir?: string) => {
+    setDialogOpen(false);
+    setIsSettingUp(true);
+    setSetupError(null);
+    setSetupProgress({ percent: 0, step: "starting", detail: "Starting setup..." });
+
+    try {
+      const result = await electronApi.startEnvSetup(targetDir);
+      if (result.success) {
+        // Backend was already started/restarted by env:startSetup on a new port
+        resetBackendUrl();
+        setNeedsRestart(false);
+        await loadEnvInfo();
+        window.dispatchEvent(new CustomEvent("backend-restarted"));
+      } else {
+        setSetupError(result.error || "Setup failed");
+      }
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : "Setup failed");
+    } finally {
+      setIsSettingUp(false);
+    }
+  };
+
+  /** Auto-setup: create env in default location */
+  const handleAutoSetup = () => handleSetup();
+
+  /** Create in folder: pick a folder then run full setup there */
+  const handleCreateInFolder = async () => {
+    const folder = await electronApi.selectFolder();
+    if (!folder) return;
+    await handleSetup(folder);
+  };
+
   const handleRestart = async () => {
     try {
       setIsRestarting(true);
@@ -191,6 +248,8 @@ export function PythonEnvPicker() {
         // Reset cached URL so API client re-resolves the new port
         resetBackendUrl();
         setNeedsRestart(false);
+        // Notify other settings components to refresh their data
+        window.dispatchEvent(new CustomEvent("backend-restarted"));
       }
     } catch {
       // Failed to restart — user can try again
@@ -224,7 +283,7 @@ export function PythonEnvPicker() {
             variant="ghost"
             size="icon"
             onClick={loadEnvInfo}
-            disabled={isLoading}
+            disabled={isLoading || isSettingUp}
             title={t("common.refresh")}
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -271,11 +330,31 @@ export function PythonEnvPicker() {
                   </p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={handleOpenDialog} className="ml-3 flex-shrink-0">
+              <Button variant="outline" size="sm" onClick={handleOpenDialog} className="ml-3 flex-shrink-0" disabled={isSettingUp}>
                 {t("settings.pythonEnv.change")}
                 <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
+
+            {/* Setup progress (shown when auto-setup or create-in-folder is running) */}
+            {isSettingUp && (
+              <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm font-medium">{t("settings.pythonEnv.settingUp")}</span>
+                </div>
+                <Progress value={setupProgress.percent} className="h-2" />
+                <p className="text-xs text-muted-foreground">{setupProgress.detail}</p>
+              </div>
+            )}
+
+            {/* Setup error */}
+            {setupError && !isSettingUp && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{setupError}</AlertDescription>
+              </Alert>
+            )}
 
             {/* Restart banner */}
             {needsRestart && (
@@ -390,6 +469,33 @@ export function PythonEnvPicker() {
                 )}
                 {t("settings.pythonEnv.browseForPython")}
               </Button>
+
+              <Separator />
+
+              {/* Create new environment */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("settings.pythonEnv.createNew")}</label>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleAutoSetup}
+                    disabled={isSwitching}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {t("settings.pythonEnv.autoSetup")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleCreateInFolder}
+                    disabled={isSwitching}
+                  >
+                    <FolderOpen className="mr-2 h-4 w-4" />
+                    {t("settings.pythonEnv.createInFolder")}
+                  </Button>
+                </div>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

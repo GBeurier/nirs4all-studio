@@ -8,7 +8,7 @@
  * - Update settings
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -74,6 +74,7 @@ import {
   deleteSnapshot,
   getWebappChangelog,
   requestRestart,
+  resetBackendUrl,
   type ConfigSnapshot,
   type ChangelogEntry,
 } from "@/api/client";
@@ -131,6 +132,19 @@ export function UpdatesSection() {
   const [webappDialogOpen, setWebappDialogOpen] = useState(false);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
+
+  // Reload after backend restart (e.g., env change in PythonEnvPicker)
+  useEffect(() => {
+    const handler = () => {
+      // Backend just restarted — delay to let it warm up, then invalidate all update queries
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["updates"] });
+        queryClient.invalidateQueries({ queryKey: ["snapshots"] });
+      }, 2000);
+    };
+    window.addEventListener("backend-restarted", handler);
+    return () => window.removeEventListener("backend-restarted", handler);
+  }, [queryClient]);
 
   const isLoading = statusLoading || settingsLoading;
 
@@ -239,7 +253,11 @@ export function UpdatesSection() {
                   const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
                   if (electronApi?.restartBackend) {
                     const result = await electronApi.restartBackend();
-                    if (result.success) setNeedsRestart(false);
+                    if (result.success) {
+                      resetBackendUrl();
+                      setNeedsRestart(false);
+                      window.dispatchEvent(new CustomEvent("backend-restarted"));
+                    }
                   } else {
                     await requestRestart();
                     setNeedsRestart(false);

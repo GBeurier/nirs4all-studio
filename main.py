@@ -230,10 +230,16 @@ async def startup_event():
 async def _wait_for_ml_ready():
     """Poll until ML deps are loaded, then restore workspace with nirs4all."""
     import asyncio
+    import time
 
     from api.lazy_imports import get_cached, is_ml_ready
 
+    max_wait = 120  # 2 minutes
+    start = time.time()
     while not is_ml_ready():
+        if time.time() - start > max_wait:
+            logger.warning("ML loading timed out after %ds — continuing without ML", max_wait)
+            break
         await asyncio.sleep(0.5)
 
     # Now that nirs4all is loaded, restore workspace properly
