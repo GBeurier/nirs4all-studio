@@ -91,6 +91,7 @@ export class SettingsPage extends BasePage {
         reduce_animations: false,
         sidebar_collapsed: false,
         zoom_level: 100,
+        language: 'en',
       },
     };
     // Retry up to 3 times to handle transient connection issues under parallel load
@@ -109,6 +110,7 @@ export class SettingsPage extends BasePage {
       localStorage.removeItem('nirs4all-ui-density');
       localStorage.removeItem('nirs4all-reduce-animations');
       localStorage.removeItem('nirs4all-ui-zoom');
+      localStorage.removeItem('nirs4all-language');
     });
   }
 
@@ -135,7 +137,7 @@ export class SettingsPage extends BasePage {
         response.url().includes('/api/workspace/settings') &&
         response.request().method() === 'PUT' &&
         response.status() === 200,
-      { timeout: 10000 }
+      { timeout: 30000 }
     );
   }
 

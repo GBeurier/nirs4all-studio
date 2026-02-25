@@ -7,6 +7,7 @@ spectral features (peaks, valleys) better than uniform subsampling.
 
 from __future__ import annotations
 
+
 def lttb_decimate(x, y, target_points: int):
     """Downsample using Largest-Triangle-Three-Buckets (LTTB) algorithm.
 

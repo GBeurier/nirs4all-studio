@@ -18,9 +18,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 from .workspace_manager import workspace_manager
 
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 NIRS4ALL_AVAILABLE = True
 JOBLIB_AVAILABLE = True
 

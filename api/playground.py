@@ -14,6 +14,7 @@ Phase 1 Feature: Backend API for Playground V1
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import sys
 import time
@@ -25,10 +26,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-import importlib.util
 UMAP_AVAILABLE = importlib.util.find_spec("umap") is not None
 
 from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+
 NIRS4ALL_AVAILABLE = True
 
 try:
@@ -942,6 +943,7 @@ class PlaygroundExecutor:
         """
         import re
         from collections import defaultdict
+
         import numpy as np
 
         # Get configuration
@@ -1699,6 +1701,7 @@ def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
     # For dataset-ref requests, load the dataset to compute the fingerprint.
     if request.dataset_id and NIRS4ALL_AVAILABLE:
         import numpy as np
+
         from .spectra import _load_dataset
 
         dataset = _load_dataset(request.dataset_id)

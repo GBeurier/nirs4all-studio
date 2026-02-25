@@ -33,10 +33,19 @@ export class BackendManager {
   private isShuttingDown: boolean = false;
   private lastError: string | null = null;
   private envManager: EnvManager | null = null;
+  /** When true, stop() kills only the backend process (no tree kill)
+   *  so that child processes like the updater script survive. */
+  private _quittingForUpdate: boolean = false;
 
   /** Set the env manager for Python path resolution */
   setEnvManager(envManager: EnvManager): void {
     this.envManager = envManager;
+  }
+
+  /** Signal that we're quitting for an update. stop() will kill only
+   *  the backend process (no /t tree kill) so the updater script survives. */
+  setQuittingForUpdate(): void {
+    this._quittingForUpdate = true;
   }
 
   /**
@@ -307,6 +316,12 @@ export class BackendManager {
       NIRS4ALL_PORT: this.port.toString(),
       NIRS4ALL_DESKTOP: "true",
       NIRS4ALL_ELECTRON: "true",
+      NIRS4ALL_APP_DIR: path.dirname(process.execPath),
+      NIRS4ALL_APP_EXE: path.basename(process.execPath),
+      // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
+      ...(process.env.PORTABLE_EXECUTABLE_FILE
+        ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
+        : {}),
       ...extraEnv,
     };
 
@@ -379,6 +394,12 @@ export class BackendManager {
       NIRS4ALL_PORT: this.port.toString(),
       NIRS4ALL_DESKTOP: "true",
       NIRS4ALL_ELECTRON: "true",
+      NIRS4ALL_APP_DIR: path.dirname(process.execPath),
+      NIRS4ALL_APP_EXE: path.basename(process.execPath),
+      // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
+      ...(process.env.PORTABLE_EXECUTABLE_FILE
+        ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
+        : {}),
       ...extraEnv,
     };
 
@@ -470,10 +491,16 @@ export class BackendManager {
         resolve();
       });
 
-      // Send SIGTERM for graceful shutdown
+      // Terminate the backend process
       if (process.platform === "win32") {
-        // Windows doesn't support SIGTERM, use taskkill
-        spawn("taskkill", ["/pid", this.process!.pid!.toString(), "/t"]);
+        // Use /f (force) because console apps don't handle WM_CLOSE from
+        // plain taskkill, causing a 5-second hang until the timeout fires.
+        // When quitting for update, skip /t (tree kill) so the updater
+        // script (a child of the backend) survives to apply the update.
+        const args = this._quittingForUpdate
+          ? ["/pid", this.process!.pid!.toString(), "/f"]
+          : ["/pid", this.process!.pid!.toString(), "/t", "/f"];
+        spawn("taskkill", args);
       } else {
         this.process!.kill("SIGTERM");
       }

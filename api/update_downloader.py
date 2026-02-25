@@ -6,19 +6,20 @@ Provides functionality to:
 - Verify checksums
 - Extract tar.gz (Linux/macOS) or zip (Windows) archives
 - Stage updates for the apply step
+
+Uses only stdlib (urllib) for HTTP — no third-party dependencies — so that
+the update path works in any deployment mode (PyInstaller, Electron, dev).
 """
 
 import asyncio
-import hashlib
 import shutil
+import ssl
 import tarfile
+import urllib.error
+import urllib.request
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Optional, Tuple
-
-import aiofiles
-import httpx
 
 from updater import calculate_sha256, get_executable_name, get_staging_dir, get_update_cache_dir
 
@@ -27,6 +28,7 @@ class UpdateDownloader:
     """Handles downloading and extracting webapp updates."""
 
     CHUNK_SIZE = 65536  # 64 KB chunks for progress updates
+    CONNECT_TIMEOUT = 30  # seconds
 
     def __init__(
         self,
@@ -98,64 +100,70 @@ class UpdateDownloader:
             else:
                 self._report_progress(0, "Connecting to server...")
 
-            headers = {}
+            # Build request with optional Range header for resume
+            req = urllib.request.Request(self.download_url)
             if resume_offset > 0:
-                headers["Range"] = f"bytes={resume_offset}-"
+                req.add_header("Range", f"bytes={resume_offset}-")
 
-            async with httpx.AsyncClient(
-                follow_redirects=True,
-                timeout=httpx.Timeout(30.0, read=300.0),
-            ) as client, client.stream("GET", self.download_url, headers=headers) as response:
-                # 206 = Partial Content (resume worked), 200 = full response
-                if response.status_code == 200:
-                    # Server doesn't support Range — restart from scratch
-                    resume_offset = 0
-                elif response.status_code == 416:
-                    # Range not satisfiable — file might already be complete
-                    self._report_progress(50, "Download complete")
-                    return True, "Download complete", download_path
-                elif response.status_code != 206:
-                    return (
-                        False,
-                        f"Download failed with status {response.status_code}",
-                        None,
-                    )
+            # Allow default SSL context (handles GitHub redirects)
+            ctx = ssl.create_default_context()
+            response = urllib.request.urlopen(req, timeout=self.CONNECT_TIMEOUT, context=ctx)
+            status_code = response.status
 
-                content_length = int(response.headers.get("content-length", 0))
-                total_size = resume_offset + content_length if response.status_code == 206 else content_length
-                if total_size == 0:
-                    total_size = self.expected_size or 1
-                downloaded = resume_offset
+            # 206 = Partial Content (resume worked), 200 = full response
+            if status_code == 200:
+                # Server doesn't support Range — restart from scratch
+                resume_offset = 0
+            elif status_code not in (200, 206):
+                return (
+                    False,
+                    f"Download failed with status {status_code}",
+                    None,
+                )
 
-                file_mode = "ab" if resume_offset > 0 and response.status_code == 206 else "wb"
-                async with aiofiles.open(download_path, file_mode) as f:
-                    async for chunk in response.aiter_bytes(
-                        chunk_size=self.CHUNK_SIZE
-                    ):
-                        if self._cancelled:
-                            # Keep partial file for future resume
-                            return False, "Download cancelled", None
+            content_length = int(response.headers.get("Content-Length", 0))
+            total_size = resume_offset + content_length if status_code == 206 else content_length
+            if total_size == 0:
+                total_size = self.expected_size or 1
+            downloaded = resume_offset
 
-                        await f.write(chunk)
-                        downloaded += len(chunk)
+            file_mode = "ab" if resume_offset > 0 and status_code == 206 else "wb"
+            with open(download_path, file_mode) as f:
+                while True:
+                    if self._cancelled:
+                        # Keep partial file for future resume
+                        return False, "Download cancelled", None
 
-                        # Download is 0-50% of total progress
-                        progress = (downloaded / total_size) * 50
-                        mb_downloaded = downloaded / 1024 / 1024
-                        mb_total = total_size / 1024 / 1024
-                        message = f"Downloading: {mb_downloaded:.1f} MB / {mb_total:.1f} MB"
+                    chunk = response.read(self.CHUNK_SIZE)
+                    if not chunk:
+                        break
 
-                        if not self._report_progress(progress, message):
-                            # Keep partial file for future resume
-                            return False, "Download cancelled", None
+                    f.write(chunk)
+                    downloaded += len(chunk)
+
+                    # Download is 0-50% of total progress
+                    progress = (downloaded / total_size) * 50
+                    mb_downloaded = downloaded / 1024 / 1024
+                    mb_total = total_size / 1024 / 1024
+                    message = f"Downloading: {mb_downloaded:.1f} MB / {mb_total:.1f} MB"
+
+                    if not self._report_progress(progress, message):
+                        # Keep partial file for future resume
+                        return False, "Download cancelled", None
 
             self._report_progress(50, "Download complete")
             return True, "Download complete", download_path
 
-        except (httpx.TimeoutException, httpx.ConnectError) as e:
+        except urllib.error.HTTPError as e:
+            if e.code == 416:
+                # Range not satisfiable — file might already be complete
+                self._report_progress(50, "Download complete")
+                return True, "Download complete", download_path
+            return False, f"Download failed with status {e.code}. Partial download saved for resume.", None
+        except (urllib.error.URLError, TimeoutError) as e:
             # Keep partial file for resume on next attempt
-            error_type = "timed out" if isinstance(e, httpx.TimeoutException) else f"connection error: {e}"
-            return False, f"Download {error_type}. Partial download saved for resume.", None
+            reason = str(e.reason) if hasattr(e, "reason") else str(e)
+            return False, f"Download error: {reason}. Partial download saved for resume.", None
         except Exception as e:
             # Keep partial file for resume on next attempt
             return False, f"Download error: {str(e)}. Partial download saved for resume.", None

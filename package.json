@@ -12,7 +12,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "dev:electron": "concurrently \"cross-env ELECTRON=true vite\" \"node scripts/wait-and-launch-electron.cjs\"",
+    "dev:electron": "npm run build:electron-dev && concurrently \"cross-env ELECTRON=true vite\" \"node scripts/wait-and-launch-electron.cjs\"",
+    "build:electron-dev": "node scripts/build-electron-dev.cjs",
     "build": "vite build",
     "build:electron": "cross-env ELECTRON=true vite build",
     "start:desktop": "npm run dev:electron",

@@ -26,6 +26,7 @@ from .workspace_manager import workspace_manager
 logger = get_logger(__name__)
 
 from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+
 NIRS4ALL_AVAILABLE = True
 
 try:
@@ -788,6 +789,7 @@ def _load_dataset_for_shap(
     (e.g. "corn") as stored in chain summaries. We try both lookups.
     """
     import numpy as np
+
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)

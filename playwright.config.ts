@@ -30,6 +30,9 @@ export default defineConfig({
     // Default base URL (overridden per project)
     baseURL: 'http://localhost:5173',
 
+    // Force English locale for deterministic tests regardless of system language
+    locale: 'en-US',
+
     // Tracing and debugging
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

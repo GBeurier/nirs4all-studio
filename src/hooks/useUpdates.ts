@@ -25,6 +25,7 @@ import {
   getStagedUpdateInfo,
   applyWebappUpdate,
   cancelStagedUpdate,
+  requestRestart,
   type UpdateStatus,
   type UpdateSettings,
   type VenvStatus,
@@ -263,7 +264,21 @@ export function useUpdateDownload() {
   const applyMutation = useMutation({
     mutationFn: () => applyWebappUpdate(true),
     onSuccess: () => {
-      // Show message to close the app
+      // Updater script is now running and waiting for our PID to die.
+      // Quit the app so it can proceed with file copy and relaunch.
+      // Brief delay so the user sees the "restarting" message.
+      setTimeout(() => {
+        const electronApi = (window as Record<string, unknown>).electronApi as
+          | { quitForUpdate?: () => Promise<{ success: boolean }> }
+          | undefined;
+        if (electronApi?.quitForUpdate) {
+          electronApi.quitForUpdate();
+        } else {
+          // Web/browser mode: tell the backend to shut down so the updater
+          // script sees the PID exit and can proceed with the file copy.
+          requestRestart().catch(() => {});
+        }
+      }, 1500);
     },
   });
 
@@ -294,10 +309,10 @@ export function useUpdateDownload() {
     setIsPolling(false);
   }, []);
 
-  // Derived state
-  const isDownloading =
-    startDownloadMutation.isPending ||
-    (isPolling && downloadStatus?.status === "running");
+  // Derived state — isPolling is set immediately on mutation success (before
+  // the first poll returns), so using it alone avoids a brief false gap that
+  // would flash the "Update Available" dialog content.
+  const isDownloading = startDownloadMutation.isPending || isPolling;
   const downloadProgress = downloadStatus?.progress ?? 0;
   const downloadMessage = downloadStatus?.message ?? "";
   const downloadError =

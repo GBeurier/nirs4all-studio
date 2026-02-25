@@ -111,8 +111,7 @@ class TestStoreAdapter:
 
     def _make_adapter(self, mock_store):
         """Create a StoreAdapter with the given mock store."""
-        with patch("api.store_adapter.STORE_AVAILABLE", True), \
-             patch("api.store_adapter.WorkspaceStore", return_value=mock_store):
+        with patch("api.store_adapter.STORE_AVAILABLE", True):
             from api.store_adapter import StoreAdapter
             adapter = StoreAdapter.__new__(StoreAdapter)
             adapter._store = mock_store

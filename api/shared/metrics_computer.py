@@ -24,6 +24,7 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 from ..lazy_imports import get_cached, is_ml_ready
+
 SCIPY_AVAILABLE = True
 NIRS4ALL_FILTERS_AVAILABLE = True
 

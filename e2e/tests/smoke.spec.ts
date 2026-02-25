@@ -17,11 +17,20 @@ test.describe('Smoke Tests', () => {
   });
 
   test('should respond to API health check', async ({ page }) => {
-    // Use the Vite proxy to check API health (more reliable in parallel mode)
-    const response = await page.request.get('/api/health');
-    expect(response.ok()).toBe(true);
+    // Retry health check to handle transient connection issues under parallel load
+    let response;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await page.request.get('/api/health');
+        if (response.ok()) break;
+      } catch {
+        if (attempt === 2) throw new Error('Health check failed after 3 attempts');
+        await page.waitForTimeout(1000);
+      }
+    }
+    expect(response!.ok()).toBe(true);
 
-    const data = await response.json();
+    const data = await response!.json();
     // Backend returns status: "healthy"
     expect(data.status).toBe('healthy');
   });

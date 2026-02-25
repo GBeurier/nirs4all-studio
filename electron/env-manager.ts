@@ -34,7 +34,6 @@ const CORE_PACKAGES = [
   "uvicorn[standard]>=0.34.0",
   "pydantic>=2.10.0",
   "python-multipart>=0.0.20",
-  "aiofiles>=24.0.0",
   "httpx>=0.27.0",
   "pyyaml>=6.0",
   "packaging>=24.0",

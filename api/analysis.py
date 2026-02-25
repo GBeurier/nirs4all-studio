@@ -19,17 +19,16 @@ Note: For NIRS-specific feature selection (CARS, MCUVE), use those operators
 directly via nirs4all pipelines.
 """
 
+import importlib.util
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .lazy_imports import get_cached, is_ml_ready
 from .workspace_manager import workspace_manager
 
-import importlib.util
-
-from .lazy_imports import get_cached, is_ml_ready
 SKLEARN_AVAILABLE = True
 
 # Check umap availability without importing it (import takes 6+ seconds)

@@ -21,7 +21,10 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .jobs.manager import Job
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -495,7 +498,7 @@ class UpdateManager:
     async def _fetch_url(self, url: str, headers: dict[str, str] | None = None) -> tuple[int, str]:
         """Fetch a URL and return (status_code, content)."""
         if HTTPX_AVAILABLE:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(follow_redirects=True) as client:
                 response = await client.get(url, headers=headers, timeout=30.0)
                 return response.status_code, response.text
         else:
@@ -662,42 +665,54 @@ class UpdateManager:
         return None
 
     def _find_platform_asset(self, assets: list[dict[str, Any]]) -> dict[str, Any] | None:
-        """Find the release asset matching the current platform."""
+        """Find the release asset matching the current platform.
+
+        Only matches formats that the downloader can actually extract:
+        .exe (Windows portable), .zip (Windows/macOS), .tar.gz/.tgz (Linux).
+        Installer-only formats (.dmg, .deb, .AppImage, .msi) are excluded
+        because the updater cannot apply them in-place.
+        """
         system = platform.system().lower()
         machine = platform.machine().lower()
 
-        # Platform keywords to match in asset names
-        platform_keywords = {
-            "windows": ["windows", "win64", "win32", ".exe", ".msi"],
-            "darwin": ["macos", "darwin", "osx", ".dmg", ".app"],
-            "linux": ["linux", ".appimage", ".deb", ".tar.gz"],
+        # Supported extensions per platform (ordered by preference).
+        # Only formats that update_downloader can extract.
+        platform_extensions: dict[str, list[str]] = {
+            "windows": [".exe", ".zip"],
+            "darwin": [".zip", ".tar.gz", ".tgz"],
+            "linux": [".tar.gz", ".tgz", ".zip"],
         }
 
-        keywords = platform_keywords.get(system, [])
+        # Platform keywords to identify the OS in asset names
+        platform_keywords: dict[str, list[str]] = {
+            "windows": ["win", "windows"],
+            "darwin": ["mac", "macos", "darwin", "osx"],
+            "linux": ["linux"],
+        }
 
-        # Also consider architecture
+        extensions = platform_extensions.get(system, [])
+        os_keywords = platform_keywords.get(system, [])
+
         arch_keywords = []
         if machine in ("x86_64", "amd64"):
             arch_keywords = ["x64", "x86_64", "amd64"]
         elif machine in ("aarch64", "arm64"):
             arch_keywords = ["arm64", "aarch64"]
 
-        for asset in assets:
-            name = asset.get("name", "").lower()
-            # Check if any platform keyword matches
-            if any(kw in name for kw in keywords):
-                # If architecture keywords exist, prefer matching arch
-                if arch_keywords:
-                    if any(ak in name for ak in arch_keywords):
+        # First pass: match platform + architecture
+        if arch_keywords:
+            for ext in extensions:
+                for asset in assets:
+                    name = asset.get("name", "").lower()
+                    if name.endswith(ext) and any(kw in name for kw in os_keywords) and any(ak in name for ak in arch_keywords):
                         return asset
-                else:
-                    return asset
 
-        # Fallback: return first matching platform keyword without arch check
-        for asset in assets:
-            name = asset.get("name", "").lower()
-            if any(kw in name for kw in keywords):
-                return asset
+        # Second pass: match platform without arch constraint
+        for ext in extensions:
+            for asset in assets:
+                name = asset.get("name", "").lower()
+                if name.endswith(ext) and any(kw in name for kw in os_keywords):
+                    return asset
 
         return None
 
@@ -934,9 +949,12 @@ async def get_update_settings() -> UpdateSettings:
 
 
 @router.put("/settings")
-async def update_settings(settings: UpdateSettings) -> UpdateSettings:
-    """Update settings."""
-    update_manager.update_settings(settings)
+async def update_settings(settings: dict[str, Any]) -> UpdateSettings:
+    """Update settings (PATCH semantics — merge with existing)."""
+    current = update_manager.settings.model_dump()
+    current.update(settings)
+    merged = UpdateSettings(**current)
+    update_manager.update_settings(merged)
     return update_manager.settings
 
 
@@ -1132,6 +1150,11 @@ def _execute_download_job(job: "Job", progress_callback: Callable[[float, str], 
         loop.close()
 
     if not success:
+        # If the job was cancelled, return normally so the job manager
+        # can detect cancellation_requested and set CANCELLED status
+        # instead of the exception path which maps to FAILED.
+        if job.cancellation_requested:
+            return {"cancelled": True, "message": message}
         raise Exception(message)
 
     return {
@@ -1171,7 +1194,13 @@ async def cancel_download(job_id: str) -> dict[str, Any]:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job_manager.cancel_job(job_id)
+    cancelled = job_manager.cancel_job(job_id)
+
+    if not cancelled:
+        return {
+            "success": False,
+            "message": "Job is already completed or cannot be cancelled",
+        }
 
     return {
         "success": True,
@@ -1212,9 +1241,18 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
             detail="No staged update found. Download an update first.",
         )
 
+    # Resolve content directory: archives often have a single root folder
+    # (e.g. staging/nirs4all-Studio-1.0.0-win-x64/) — we need to pass the
+    # inner folder to the updater script, not the wrapper.
+    contents = list(staging_dir.iterdir())
+    if len(contents) == 1 and contents[0].is_dir():
+        content_dir = contents[0]
+    else:
+        content_dir = staging_dir
+
     try:
         # Create the updater script
-        script_path, _ = create_updater_script(staging_dir)
+        script_path, _ = create_updater_script(content_dir)
 
         # Launch the updater (it will wait for us to exit)
         success = launch_updater(script_path)

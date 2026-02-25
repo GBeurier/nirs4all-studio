@@ -25,6 +25,7 @@ const SentryMain = (() => {
 
 import path from "node:path";
 import fs from "node:fs";
+import { pathToFileURL } from "node:url";
 import { BackendManager } from "./backend-manager";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
@@ -73,7 +74,7 @@ function createSplashWindow(): BrowserWindow {
   const logoFile = isDev
     ? path.join(__dirname, "..", "public", "nirs4all_logo.png")
     : path.join(__dirname, "nirs4all_logo.png");
-  const logoUrl = `file://${logoFile.replace(/\\/g, "/")}`;
+  const logoUrl = pathToFileURL(logoFile).href;
   splash.loadFile(path.join(__dirname, "splash.html"), {
     query: { logo: logoUrl },
   });
@@ -130,6 +131,18 @@ async function createWindow() {
     mainWindow = null;
   });
 }
+
+// IPC Handler for update-triggered app quit
+// After apply_webapp_update launches the updater script (which waits for our PID
+// to die), we quit so it can proceed with the file copy and relaunch.
+ipcMain.handle("app:quitForUpdate", () => {
+  console.log("Quitting for update — updater script will relaunch the app");
+  // Tell backend manager to skip tree-kill so the updater script survives
+  backendManager.setQuittingForUpdate();
+  // Small delay so the IPC response reaches the renderer before we exit
+  setTimeout(() => app.quit(), 500);
+  return { success: true };
+});
 
 // IPC Handlers for file dialogs
 ipcMain.handle("dialog:selectFolder", async () => {
@@ -421,9 +434,17 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", async () => {
-  // Gracefully stop the backend
-  await backendManager.stop();
+app.on("before-quit", () => {
+  // Stop the backend — fire-and-forget since Electron doesn't await async handlers.
+  // With taskkill /f this resolves almost immediately.
+  backendManager.stop();
+});
+
+// Safety net: if pending async operations (e.g. ML readiness polling) keep the
+// event loop alive after quit, force-exit after 3 seconds. unref() ensures this
+// timer doesn't itself prevent exit when the event loop is otherwise empty.
+app.on("will-quit", () => {
+  setTimeout(() => process.exit(0), 3000).unref();
 });
 
 // Note: uncaught exceptions and unhandled rejections are captured by electron/logger.ts

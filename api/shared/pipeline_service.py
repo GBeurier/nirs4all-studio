@@ -17,6 +17,7 @@ from .logger import get_logger
 logger = get_logger(__name__)
 
 from ..lazy_imports import get_cached, is_ml_ready
+
 NIRS4ALL_AVAILABLE = True
 
 

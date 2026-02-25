@@ -14,6 +14,7 @@ Phase 1 Implementation - Foundation & Selection System
 from typing import Any, Dict, List, Optional, Union
 
 from ..lazy_imports import get_cached, is_ml_ready
+
 NIRS4ALL_FILTERS_AVAILABLE = True
 
 

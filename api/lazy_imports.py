@@ -25,8 +25,8 @@ if _nirs4all_path.exists() and str(_nirs4all_path) not in sys.path:
 # --- State flags ---
 _ml_ready = False
 _ml_loading = False
-_ml_error: Optional[str] = None
-_ml_load_start_time: Optional[float] = None
+_ml_error: str | None = None
+_ml_load_start_time: float | None = None
 _lock = threading.Lock()
 
 # --- Cached imports (populated by background loader) ---
@@ -243,11 +243,11 @@ def _do_load_ml_deps():
 
         # 17. sklearn imports used directly by routers
         try:
+            from sklearn.base import TransformerMixin
             from sklearn.decomposition import PCA
             from sklearn.manifold import TSNE
             from sklearn.metrics import confusion_matrix as sklearn_confusion_matrix
             from sklearn.model_selection import KFold, cross_val_predict, cross_val_score
-            from sklearn.base import TransformerMixin
             _cache["PCA"] = PCA
             _cache["TSNE"] = TSNE
             _cache["sklearn_confusion_matrix"] = sklearn_confusion_matrix

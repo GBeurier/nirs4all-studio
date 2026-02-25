@@ -45,9 +45,9 @@ function Write-Warn    { param([string]$Msg) Write-Host "${YELLOW}[pre-publish]$
 function Write-Err     { param([string]$Msg) Write-Host "${RED}[pre-publish]${RESET} $Msg" -ForegroundColor Red }
 function Write-Header  { param([string]$Msg)
     Write-Host ""
-    Write-Host "${BOLD}${CYAN}$([char]0x2550 * 54)${RESET}"
+    Write-Host "${BOLD}${CYAN}$([string][char]0x2550 * 54)${RESET}"
     Write-Host "${BOLD}${CYAN}  $Msg${RESET}"
-    Write-Host "${BOLD}${CYAN}$([char]0x2550 * 54)${RESET}"
+    Write-Host "${BOLD}${CYAN}$([string][char]0x2550 * 54)${RESET}"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ try {
     if (Test-ShouldRun "e2e") {
         if ($SkipE2E) { Skip-Step "e2e" }
         else {
-            Invoke-Step "e2e" "npx playwright test --project=web-chromium"
+            Invoke-Step "e2e" "npx playwright test --project=web-chromium --workers=1"
         }
     } else { Skip-Step "e2e" }
 
@@ -250,9 +250,9 @@ try {
     )
 
     Write-Host ""
-    Write-Host "${BOLD}$([char]0x2554)$([char]0x2550 * 63)$([char]0x2557)${RESET}"
+    Write-Host "${BOLD}$([char]0x2554)$([string][char]0x2550 * 63)$([char]0x2557)${RESET}"
     Write-Host "${BOLD}$([char]0x2551)           PRE-PUBLISH VALIDATION SUMMARY                      $([char]0x2551)${RESET}"
-    Write-Host "${BOLD}$([char]0x2560)$([char]0x2550 * 63)$([char]0x2563)${RESET}"
+    Write-Host "${BOLD}$([char]0x2560)$([string][char]0x2550 * 63)$([char]0x2563)${RESET}"
 
     $AllPass = $true
     foreach ($step in $OrderedSteps) {
@@ -267,14 +267,14 @@ try {
         }
     }
 
-    Write-Host "${BOLD}$([char]0x2560)$([char]0x2550 * 63)$([char]0x2563)${RESET}"
+    Write-Host "${BOLD}$([char]0x2560)$([string][char]0x2550 * 63)$([char]0x2563)${RESET}"
 
     if ($AllPass) {
-        Write-Host "${BOLD}$([char]0x2551)  ${GREEN}$([char]0x1F389) Ready to publish! Create your release now.${RESET}${BOLD}              $([char]0x2551)${RESET}"
-        Write-Host "${BOLD}$([char]0x255A)$([char]0x2550 * 63)$([char]0x255D)${RESET}"
+        Write-Host "${BOLD}$([char]0x2551)  ${GREEN}$([char]0x2714) Ready to publish! Create your release now.${RESET}${BOLD}              $([char]0x2551)${RESET}"
+        Write-Host "${BOLD}$([char]0x255A)$([string][char]0x2550 * 63)$([char]0x255D)${RESET}"
     } else {
         Write-Host "${BOLD}$([char]0x2551)  ${RED}$([char]0x26A0)$([char]0xFE0F)  Fix issues above before creating a release.${RESET}${BOLD}              $([char]0x2551)${RESET}"
-        Write-Host "${BOLD}$([char]0x255A)$([char]0x2550 * 63)$([char]0x255D)${RESET}"
+        Write-Host "${BOLD}$([char]0x255A)$([string][char]0x2550 * 63)$([char]0x255D)${RESET}"
         foreach ($step in $OrderedSteps) {
             $key = $step.Key
             if ($StepResult.ContainsKey($key) -and $StepResult[$key] -eq "fail") {

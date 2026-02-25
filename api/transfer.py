@@ -20,6 +20,7 @@ from .shared.logger import get_logger
 logger = get_logger(__name__)
 
 from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+
 TRANSFER_AVAILABLE = True
 
 router = APIRouter()
@@ -342,6 +343,7 @@ async def get_preprocessing_options():
 def _load_dataset_data(dataset_id: str) -> tuple:
     """Load dataset and return (dataset, X, wavelengths)."""
     import numpy as np
+
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)

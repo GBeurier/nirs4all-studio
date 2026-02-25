@@ -68,6 +68,15 @@ async function globalSetup(config: FullConfig) {
       } catch (e) {
         console.warn('Could not skip setup:', e);
       }
+
+      // Force English language in workspace settings for deterministic tests
+      try {
+        await page.request.put('http://127.0.0.1:8000/api/workspace/settings', {
+          data: { general: { language: 'en' } },
+        });
+      } catch (e) {
+        console.warn('Could not reset language to English:', e);
+      }
     }
   } finally {
     await browser.close();

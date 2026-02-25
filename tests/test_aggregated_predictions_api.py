@@ -190,9 +190,18 @@ def patched_endpoints(mock_workspace, mock_store):
     # Ensure the module is imported before patching
     import api.aggregated_predictions  # noqa: F401
 
+    # WorkspaceStore is accessed via get_cached("WorkspaceStore"), so we patch
+    # get_cached to return a factory that yields our mock_store.
+    original_get_cached = api.aggregated_predictions.get_cached
+
+    def _patched_get_cached(name):
+        if name == "WorkspaceStore":
+            return MagicMock(return_value=mock_store)
+        return original_get_cached(name)
+
     with (
         patch.object(api.aggregated_predictions, "workspace_manager") as mock_wm,
-        patch.object(api.aggregated_predictions, "WorkspaceStore", return_value=mock_store),
+        patch.object(api.aggregated_predictions, "get_cached", side_effect=_patched_get_cached),
         patch.object(api.aggregated_predictions, "STORE_AVAILABLE", True),
     ):
         mock_wm.get_current_workspace.return_value = mock_workspace
@@ -219,10 +228,7 @@ class TestStoreAdapterAggregated:
     """Tests for aggregated prediction methods in StoreAdapter."""
 
     def _make_adapter(self, mock_store):
-        with (
-            patch("api.store_adapter.STORE_AVAILABLE", True),
-            patch("api.store_adapter.WorkspaceStore", return_value=mock_store),
-        ):
+        with patch("api.store_adapter.STORE_AVAILABLE", True):
             from api.store_adapter import StoreAdapter
 
             adapter = StoreAdapter.__new__(StoreAdapter)

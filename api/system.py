@@ -117,6 +117,7 @@ async def health_check():
     Electron waits for core_ready to show the window.
     """
     import main as _main_module
+
     from .lazy_imports import get_ml_status
     ml = get_ml_status()
     return {
@@ -133,6 +134,7 @@ async def health_check():
 async def system_readiness():
     """Detailed readiness status for frontend polling."""
     import main as _main_module
+
     from .lazy_imports import get_ml_status
     ml = get_ml_status()
     return {

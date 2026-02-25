@@ -51,6 +51,7 @@ except Exception:
     WS_AVAILABLE = False
 
 from .lazy_imports import get_cached, is_ml_ready
+
 STORE_AVAILABLE = True
 PREDICTIONS_AVAILABLE = True
 MIGRATION_AVAILABLE = True

@@ -161,6 +161,12 @@ const electronApi = {
     ipcRenderer.invoke("window:getSize"),
 
   /**
+   * App lifecycle
+   */
+  quitForUpdate: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke("app:quitForUpdate"),
+
+  /**
    * Platform info
    */
   platform: process.platform,

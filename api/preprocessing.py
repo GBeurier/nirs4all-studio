@@ -207,6 +207,7 @@ async def preview_preprocessing(request: PreviewPreprocessingRequest):
         )
 
     import numpy as np
+
     # Import here to avoid circular dependency
     from .spectra import _load_dataset
 
@@ -745,6 +746,7 @@ async def suggest_preprocessing_chain(
         )
 
     import numpy as np
+
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)

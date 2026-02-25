@@ -632,9 +632,9 @@ export function UpdatesSection() {
             {/* Apply Success */}
             {updateDownload.applySuccess && (
               <Alert>
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 <AlertDescription>
-                  Update applied! Please close and reopen the application.
+                  Update applied! Restarting the application...
                 </AlertDescription>
               </Alert>
             )}

@@ -26,9 +26,9 @@
     user-select: none;
   }
   .logo {
-    width: 150px;
+    width: 200px;
     height: auto;
-    margin-bottom: 16px;
+    margin-bottom: 6px;
     opacity: 0;
     animation: fadeIn 0.5s ease-out 0.1s forwards;
   }
@@ -209,7 +209,13 @@
   <img class="logo" id="logo" alt="nirs4all" />
   <script>
     const logo = new URLSearchParams(window.location.search).get("logo");
-    if (logo) document.getElementById("logo").src = logo;
+    const img = document.getElementById("logo");
+    if (logo) {
+      img.onerror = () => { img.onerror = null; img.src = "nirs4all_logo.png"; };
+      img.src = logo;
+    } else {
+      img.src = "nirs4all_logo.png";
+    }
   </script>
   <h1>Studio</h1>
   <p class="subtitle">Build &middot; Explore &middot; Predict</p>
@@ -392,9 +398,69 @@
       "Indexing overtone harmonics...",
       "Buffering diffuse reflectance...",
       "Establishing Beer-Lambert equilibrium...",
+      "Teaching vectors some manners...",
+      "Reweighing invisible evidence...",
+      "Interpolating between universes...",
+      "Casting spells on residuals...",
+      "Untangling correlated destinies...",
+      "Refining probabilistic intuition...",
+      "Rescuing lost gradients...",
+      "Bending manifolds politely...",
+      "Harmonizing signal and noise...",
+      "Consulting the Fourier elders...",
+      "Breeding well-behaved features...",
+      "Aligning latent chakras...",
+      "Convincing randomness to settle down...",
+      "Extracting meaning from chaos...",
+      "Diagonalizing stubborn matrices...",
+      "Projecting onto questionable subspaces...",
+      "Cholesky-decomposing my feelings...",
+      "Orthogonalizing rebellious vectors...",
+      "Maximizing likelihood with crossed fingers...",
+      "Minimizing convex regret...",
+      "Integrating over forgotten priors...",
+      "Sampling from dubious posteriors...",
+      "Backpropagating through absorbance space...",
+      "Embedding wavelengths into latent dreams...",
+      "Convolving near-infrared whispers...",
+      "Attention-aligning spectral bands...",
+      "Fine-tuning photons end-to-end...",
+      "Batch-normalizing reflectance regrets...",
+      "Clipping gradients at 1100 nm...",
       "Mapping hydrogen bond networks...",
       "Spinning up cross-validation folds...",
+      "Routing spectra through a questionable DAG...",
+      "Hashing preprocessing chains for reproducibility...",
+      "Caching reflectance tensors aggressively...",
+      "Parallelizing Savitzky-Golay across wavelengths...",
+      "Serializing chemometric destinies to Parquet...",
+      "Validating folds against spectral leakage...",
+      "Propagating indices through augmentation branches...",
+      "Vectorizing Beer-Lambert assumptions...",
+      "Resolving pipeline dependencies at 2150 nm...",
+      "Compiling preprocessing graphs just in time...",
+      "Dispatching spectra to GPU workers...",
+      "Balancing CPU threads and photon counts...",
+      "Checkpointing multiblock PLS states...",
+      "Stacking operators in suspicious order...",
+      "Reconciling metadata with latent space...",
+      "Normalizing baselines before orchestration...",
+      "Merging spectral shards from distant nodes...",
+      "Tracking provenance of rogue wavelengths...",
+      "Scheduling hyperparameters across clusters...",
+      "Streaming absorbance batches through Redis...",
+      "Debouncing noisy sensors in the pipeline...",
+      "Versioning stochastic preprocessing steps...",
+      "Mapping covariance across compute nodes...",
+      "Reducing dimensionality without breaking CI...",
+      "Injecting synthetic spectra into production...",
+      "Profiling bottlenecks at 1400 nm...",
+      "Guarding against data drift in reflectance space...",
+      "Replaying experiment manifests deterministically...",
+      "Synchronizing fold splits with metadata partitions...",
+      "Awaiting convergence across distributed photons...",
     ];
+
     const el = document.getElementById("statusText");
     let lastIdx = -1;
     function pickRandom() {
