@@ -883,6 +883,28 @@ export async function deleteRun(runId: string): Promise<RunActionResponse> {
   return api.delete(`/runs/${runId}`);
 }
 
+// Run preflight check
+export interface PreflightIssue {
+  type: string;
+  message: string;
+  details?: Record<string, string>;
+}
+
+export interface PreflightResult {
+  ready: boolean;
+  issues: PreflightIssue[];
+}
+
+export async function runPreflight(
+  pipelineIds: string[],
+  inlinePipeline?: { name: string; steps: unknown[] },
+): Promise<PreflightResult> {
+  return api.post("/runs/preflight", {
+    pipeline_ids: pipelineIds,
+    inline_pipeline: inlinePipeline ?? null,
+  });
+}
+
 export async function getPipelineLogs(
   runId: string,
   pipelineId: string
@@ -1420,6 +1442,43 @@ export async function openFolderInExplorer(path: string): Promise<void> {
   } else {
     await api.post("/system/open-folder", { path });
   }
+}
+
+// Environment coherence check
+export interface EnvCoherence {
+  coherent: boolean;
+  python_match: boolean;
+  prefix_match: boolean;
+  runtime: { python: string; prefix: string; version: string };
+  venv_manager: {
+    python: string;
+    prefix: string;
+    is_custom: boolean;
+    custom_path: string | null;
+    has_pending_change: boolean;
+  };
+}
+
+export async function checkEnvCoherence(): Promise<EnvCoherence> {
+  return api.get("/system/env-coherence");
+}
+
+// Build info (includes standalone/frozen detection)
+export interface BuildInfoResponse {
+  build: { flavor: string; gpu_enabled: boolean };
+  gpu: Record<string, unknown>;
+  is_frozen: boolean;
+  summary: {
+    flavor: string;
+    gpu_build: boolean;
+    gpu_available: boolean;
+    gpu_type: string | null;
+    gpu_device: string | null;
+  };
+}
+
+export async function getBuildInfo(): Promise<BuildInfoResponse> {
+  return api.get("/system/build");
 }
 
 // ============= Phase 7: nirs4all Workspace Management =============
@@ -2195,8 +2254,19 @@ export async function setVenvPath(path: string | null): Promise<{
   current_path: string;
   is_custom: boolean;
   is_valid: boolean;
+  requires_restart: boolean;
 }> {
   return api.post("/updates/venv/path", { path });
+}
+
+/**
+ * Reset venv manager to match the currently running Python environment.
+ */
+export async function resetVenvToRuntime(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return api.post("/updates/venv/reset");
 }
 
 // ============= Working Config Snapshots API =============

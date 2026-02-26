@@ -4,6 +4,7 @@ System API routes for nirs4all webapp.
 This module provides FastAPI routes for system health and information.
 """
 
+import os
 import platform
 import sys
 import traceback
@@ -16,6 +17,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from .venv_manager import venv_manager
+from .workspace_manager import workspace_manager
 
 router = APIRouter()
 
@@ -166,8 +170,6 @@ async def system_info():
 @router.get("/system/status")
 async def system_status():
     """Get current system status including workspace info."""
-    from .workspace_manager import workspace_manager
-
     workspace = workspace_manager.get_current_workspace()
 
     status = {
@@ -284,6 +286,7 @@ async def system_build():
     return {
         "build": build_info,
         "gpu": gpu_info,
+        "is_frozen": hasattr(sys, "_MEIPASS"),
         "summary": {
             "flavor": build_info.get("flavor", "unknown"),
             "gpu_build": build_info.get("gpu_enabled", False),
@@ -356,12 +359,11 @@ async def system_capabilities():
 @router.get("/system/paths")
 async def system_paths():
     """Get important paths in the system."""
-    from .workspace_manager import workspace_manager
-
     paths = {
         "working_directory": str(Path.cwd()),
         "home_directory": str(Path.home()),
         "python_executable": sys.executable,
+        "venv_settings_path": str(venv_manager.settings_path),
     }
 
     workspace = workspace_manager.get_current_workspace()
@@ -371,6 +373,66 @@ async def system_paths():
         paths["predictions"] = workspace_manager.get_predictions_path()
 
     return {"paths": paths}
+
+
+# ============= Environment Coherence =============
+
+
+@router.get("/system/env-coherence")
+async def check_env_coherence() -> dict[str, Any]:
+    """Check if VenvManager target matches the running Python interpreter.
+
+    Returns coherence status so the frontend can warn about mismatches
+    that would cause "installed but can't import" bugs.
+
+    Returns:
+        Dictionary with keys:
+
+        - ``coherent`` (bool): True if VenvManager matches runtime.
+        - ``python_match`` (bool): Python executable paths match after normalization.
+        - ``prefix_match`` (bool): sys.prefix / venv_path match after normalization.
+        - ``runtime`` (dict): ``{python, prefix, version}`` of the running interpreter.
+        - ``venv_manager`` (dict): ``{python, prefix, is_custom, custom_path, has_pending_change}``.
+        - ``electron_expected_python`` (str, optional): From ``NIRS4ALL_EXPECTED_PYTHON`` env var.
+        - ``electron_match`` (bool, optional): Whether Electron's expected Python matches runtime.
+    """
+    vm_python = str(venv_manager.python_executable)
+    runtime_python = sys.executable
+    vm_prefix = str(venv_manager.venv_path)
+    runtime_prefix = sys.prefix
+
+    def norm(p: str) -> str:
+        return os.path.normcase(os.path.normpath(os.path.realpath(p)))
+
+    python_match = norm(vm_python) == norm(runtime_python)
+    prefix_match = norm(vm_prefix) == norm(runtime_prefix)
+    coherent = python_match and prefix_match
+
+    result: dict[str, Any] = {
+        "coherent": coherent,
+        "python_match": python_match,
+        "prefix_match": prefix_match,
+        "runtime": {
+            "python": runtime_python,
+            "prefix": runtime_prefix,
+            "version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        },
+        "venv_manager": {
+            "python": vm_python,
+            "prefix": vm_prefix,
+            "is_custom": venv_manager.is_custom_path,
+            "custom_path": venv_manager.get_custom_path(),
+            "has_pending_change": venv_manager.has_pending_path_change,
+        },
+    }
+
+    # Include expected Python from Electron if available
+    expected = os.environ.get("NIRS4ALL_EXPECTED_PYTHON")
+    if expected:
+        result["electron_expected_python"] = expected
+        result["electron_match"] = norm(expected) == norm(runtime_python)
+
+    return result
 
 
 # ============= Error Log Endpoints =============

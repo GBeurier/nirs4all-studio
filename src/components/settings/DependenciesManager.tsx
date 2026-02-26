@@ -69,12 +69,16 @@ import {
   setVenvPath,
   requestRestart,
   resetBackendUrl,
+  checkEnvCoherence,
+  getBuildInfo,
+  resetVenvToRuntime,
 } from "@/api/client";
 import { selectFolder } from "@/utils/fileDialogs";
 import type {
   DependenciesResponse,
   DependencyCategory,
   DependencyInfo,
+  EnvCoherence,
 } from "@/api/client";
 
 interface PackageRowProps {
@@ -320,6 +324,12 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     message: string;
   } | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
+  const [coherence, setCoherence] = useState<EnvCoherence | null>(null);
+  const [isFrozen, setIsFrozen] = useState(false);
+
+  const loadCoherence = () => {
+    checkEnvCoherence().then(setCoherence).catch(() => {});
+  };
 
   const loadDependencies = async (forceRefresh = false) => {
     try {
@@ -349,6 +359,9 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       try {
         setIsChangingVenv(true);
         const result = await setVenvPath(path);
+        if (result.requires_restart) {
+          setNeedsRestart(true);
+        }
         setLastAction({
           type: "venv",
           package: "venv",
@@ -475,10 +488,21 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
   useEffect(() => {
     const handler = () => {
       // Backend just restarted — delay to let it warm up, then force refresh
-      setTimeout(() => loadDependencies(true), 2000);
+      setTimeout(() => {
+        loadDependencies(true);
+        loadCoherence();
+      }, 2000);
     };
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
+  }, []);
+
+  // Load environment coherence and build info on mount
+  useEffect(() => {
+    loadCoherence();
+    getBuildInfo()
+      .then((info) => setIsFrozen(info.is_frozen))
+      .catch(() => {});
   }, []);
 
   if (isLoading) {
@@ -581,7 +605,72 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Standalone Mode Banner */}
+        {isFrozen && (
+          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
+            <AlertDescription>
+              Package management is not available in standalone mode.
+              The bundled environment is read-only.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Environment Mismatch Warning */}
+        {coherence && !coherence.coherent && !isFrozen && (
+          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription>
+              <div className="space-y-1">
+                <p className="font-medium">Environment mismatch detected</p>
+                <p className="text-sm">
+                  The package manager targets a different environment than the
+                  running backend. Packages shown may not match what&apos;s
+                  available at runtime.
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await resetVenvToRuntime();
+                        loadCoherence();
+                        await loadDependencies(true);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    Reset to Current Environment
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
+                      if (electronApi?.restartBackend) {
+                        const result = await electronApi.restartBackend();
+                        if (result.success) {
+                          resetBackendUrl();
+                          window.dispatchEvent(new CustomEvent("backend-restarted"));
+                        }
+                      } else {
+                        await requestRestart();
+                      }
+                    }}
+                  >
+                    <RotateCcw className="mr-2 h-3 w-3" />
+                    Restart Backend
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Virtual Environment Path */}
+        {!isFrozen && (
         <div className="space-y-2">
           <label className="text-sm font-medium">Python Environment</label>
           <div className="flex gap-2">
@@ -639,7 +728,13 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               <Badge variant="secondary">Custom</Badge>
             )}
           </div>
+          {coherence && (
+            <p className="text-xs text-muted-foreground font-mono">
+              Runtime: {coherence.runtime.python} (Python {coherence.runtime.version})
+            </p>
+          )}
         </div>
+        )}
 
         {/* Summary Bar */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
@@ -703,7 +798,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
             )}
             <span>
               {lastAction.success
-                ? `Successfully ${lastAction.type}ed ${lastAction.package}`
+                ? (lastAction.type === "venv" ? lastAction.message : `Successfully ${lastAction.type}ed ${lastAction.package}`)
                 : lastAction.message}
             </span>
             <Button
@@ -757,7 +852,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               onInstall={handleInstall}
               onUninstall={handleUninstall}
               onUpdate={handleUpdate}
-              isProcessing={processingPackage}
+              isProcessing={isFrozen ? "__frozen__" : processingPackage}
               defaultOpen={index === 0}
             />
           ))}

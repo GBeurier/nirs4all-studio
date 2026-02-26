@@ -263,6 +263,142 @@ interface UpdateSettings {
 
 ---
 
+### Environment Management
+
+#### GET /venv/path
+Get current venv path configuration.
+
+**Response**:
+```json
+{
+  "current_path": "/path/to/venv",
+  "is_custom": false,
+  "is_valid": true
+}
+```
+
+#### POST /venv/path
+Set a custom venv path. Uses **deferred activation** — the new path is saved but
+only takes effect after a backend restart.
+
+**Request Body**:
+```json
+{
+  "path": "/path/to/custom/venv"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Custom path saved. Restart backend to apply.",
+  "current_path": "/current/active/path",
+  "is_custom": false,
+  "is_valid": true,
+  "requires_restart": true
+}
+```
+
+Pass `"path": null` to reset to the default venv path (immediate, no restart needed).
+
+Blocked in standalone mode (returns 400).
+
+#### POST /venv/reset
+Reset VenvManager to target the runtime environment (`sys.prefix`).
+Clears any custom venv path immediately.
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Reset to runtime environment: /path/to/prefix",
+  "current_path": "/path/to/prefix"
+}
+```
+
+Blocked in standalone mode (returns 400).
+
+---
+
+### Environment Coherence
+
+> **Base URL**: `/api/system` (not `/api/updates`)
+
+#### GET /api/system/env-coherence
+Check if the VenvManager target matches the running Python interpreter.
+Used by the frontend to show environment mismatch warnings.
+
+**Response**:
+```json
+{
+  "coherent": true,
+  "python_match": true,
+  "prefix_match": true,
+  "runtime": {
+    "python": "/usr/bin/python3",
+    "prefix": "/usr",
+    "version": "3.11.9"
+  },
+  "venv_manager": {
+    "python": "/usr/bin/python3",
+    "prefix": "/usr",
+    "is_custom": false,
+    "custom_path": null,
+    "has_pending_change": false
+  }
+}
+```
+
+Optional fields (present only when `NIRS4ALL_EXPECTED_PYTHON` env var is set):
+- `electron_expected_python` (string)
+- `electron_match` (boolean)
+
+#### GET /api/system/build
+Get build information including standalone mode detection.
+
+**Response**:
+```json
+{
+  "is_frozen": false,
+  "build_flavor": "cpu"
+}
+```
+
+`is_frozen: true` when running under PyInstaller — package management is disabled.
+
+---
+
+### Run Preflight
+
+> **Base URL**: `/api/runs` (not `/api/updates`)
+
+#### POST /api/runs/preflight
+Pre-run validation: checks environment coherence and pipeline operator imports.
+
+**Request Body**:
+```json
+{
+  "pipeline_ids": ["pipeline_1", "pipeline_2"],
+  "inline_pipeline": null
+}
+```
+
+**Response**:
+```json
+{
+  "ready": true,
+  "issues": []
+}
+```
+
+Issue types when `ready: false`:
+- `env_mismatch` — VenvManager targets a different env than the running backend
+- `not_found` — A referenced `pipeline_id` does not exist
+- `missing_module` — An operator class cannot be imported (includes `details` with `step_name`, `step_type`, `error`)
+
+---
+
 ## Error Responses
 
 All endpoints may return error responses:

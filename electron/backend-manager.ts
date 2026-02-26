@@ -311,6 +311,7 @@ export class BackendManager {
     console.log(`Executing: ${command} ${args.join(" ")}`);
     if (cwd) console.log(`Working directory: ${cwd}`);
 
+    const pythonPath = this.envManager?.getPythonPath() || "";
     const env = {
       ...process.env,
       NIRS4ALL_PORT: this.port.toString(),
@@ -318,6 +319,7 @@ export class BackendManager {
       NIRS4ALL_ELECTRON: "true",
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
+      NIRS4ALL_EXPECTED_PYTHON: pythonPath,
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
       ...(process.env.PORTABLE_EXECUTABLE_FILE
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
@@ -389,6 +391,7 @@ export class BackendManager {
     if (cwd) console.log(`Working directory: ${cwd}`);
 
     // Set environment variables
+    const pythonPathForEnv = this.envManager?.getPythonPath() || "";
     const env = {
       ...process.env,
       NIRS4ALL_PORT: this.port.toString(),
@@ -396,6 +399,7 @@ export class BackendManager {
       NIRS4ALL_ELECTRON: "true",
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
+      NIRS4ALL_EXPECTED_PYTHON: pythonPathForEnv,
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
       ...(process.env.PORTABLE_EXECUTABLE_FILE
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }

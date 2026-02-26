@@ -35,6 +35,10 @@ def pytest_configure(config):
         "markers",
         "slow: mark test as slow running",
     )
+    config.addinivalue_line(
+        "markers",
+        "cross_platform: mark test as cross-platform path handling",
+    )
 
 
 def pytest_collection_modifyitems(config, items):

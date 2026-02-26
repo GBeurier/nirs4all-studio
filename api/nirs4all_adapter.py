@@ -1681,3 +1681,87 @@ def _build_native_finetune_params(finetune_config: dict[str, Any]) -> dict[str, 
 
     return result
 
+
+# ============================================================================
+# Preflight Import Checking
+# ============================================================================
+
+
+def check_pipeline_imports(steps: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Check if all pipeline step operator classes can be resolved (imported).
+
+    Walks the step tree and attempts to resolve each operator class without
+    instantiating it.  This catches missing optional packages (e.g. pyopls,
+    ikpls, tensorflow) before a training run starts.
+
+    Args:
+        steps: Pipeline steps in the editor format (from saved pipeline config).
+
+    Returns:
+        List of issues.  Each issue is a dict with ``step_name``, ``step_type``,
+        and ``error`` keys.  An empty list means all imports succeed.
+    """
+    issues: list[dict[str, str]] = []
+
+    for step in steps:
+        _check_step_imports(step, issues)
+
+    return issues
+
+
+def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str]]) -> None:
+    """Recursively check a single step and its children/branches."""
+    step_type = step.get("type", "")
+    step_name = step.get("name", "")
+    sub_type = step.get("subType", "")
+
+    # Skip non-executing steps (comments, charts, merges, metrics)
+    if step_type == "metrics":
+        return
+    if step_type == "flow" and sub_type == "merge":
+        return
+
+    # Generator/utility nodes don't execute directly, but their branches
+    # contain real operators that need import checking (e.g. _or_, _cartesian_)
+    if step_type == "utility" or (step_type == "flow" and sub_type == "generator"):
+        for branch in step.get("branches", []):
+            for child in branch:
+                _check_step_imports(child, issues)
+        return
+
+    # For branch/container flow types, recurse into children/branches
+    if step_type == "flow":
+        for branch in step.get("branches", []):
+            for child in branch:
+                _check_step_imports(child, issues)
+        for child in step.get("children", []):
+            _check_step_imports(child, issues)
+        return
+
+    # Legacy branch/generator/choice nodes — recurse into branches and children
+    if step_type in ("branch", "generator", "choice"):
+        for branch in step.get("branches", []):
+            for child in branch:
+                _check_step_imports(child, issues)
+        for child in step.get("children", []):
+            _check_step_imports(child, issues)
+        return
+
+    # For actual operator steps, try to resolve the class
+    if step_name and step_type in ("preprocessing", "model", "splitting", "filter", "augmentation", "y_processing"):
+        resolve_type = step_type
+        if resolve_type == "y_processing":
+            resolve_type = "preprocessing"
+        try:
+            _resolve_operator_class(step_name, resolve_type)
+        except HTTPException as exc:
+            issues.append({
+                "step_name": step_name,
+                "step_type": step_type,
+                "error": str(exc.detail),
+            })
+
+    # Recurse into children (for containers like sample_augmentation)
+    for child in step.get("children", []):
+        _check_step_imports(child, issues)
+

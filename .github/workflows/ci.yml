@@ -117,6 +117,23 @@ jobs:
         env:
           PYTHONPATH: .
 
+      - name: Smoke test - environment coherence
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from fastapi.testclient import TestClient
+          from main import app
+          client = TestClient(app)
+          r = client.get('/api/system/env-coherence')
+          assert r.status_code == 200, f'Coherence endpoint failed: {r.status_code}'
+          d = r.json()
+          assert 'coherent' in d, 'Missing coherent field'
+          assert 'runtime' in d, 'Missing runtime field'
+          print(f'Coherence: {d[\"coherent\"]}, Python: {d[\"runtime\"][\"version\"]}')
+          "
+        env:
+          PYTHONPATH: .
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -124,6 +141,7 @@ jobs:
           name: backend-coverage
           path: coverage.xml
           retention-days: 7
+
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Electron: Build validation (Linux only for speed)

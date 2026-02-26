@@ -1468,16 +1468,6 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
         for pkg in venv_manager.get_installed_packages():
             installed_packages[pkg.name.lower()] = pkg.version
 
-    # Also check current Python environment as fallback
-    try:
-        import importlib.metadata
-        for dist in importlib.metadata.distributions():
-            name = dist.metadata["Name"].lower()
-            if name not in installed_packages:
-                installed_packages[name] = dist.version
-    except Exception:
-        pass
-
     # Get outdated packages for update detection
     outdated_packages = {}
     if venv_info.is_valid:
@@ -1535,15 +1525,6 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     nirs4all_version = venv_manager.get_nirs4all_version()
     nirs4all_installed = nirs4all_version is not None
 
-    # Also check in current environment
-    if not nirs4all_installed:
-        try:
-            import nirs4all
-            nirs4all_version = getattr(nirs4all, "__version__", None)
-            nirs4all_installed = nirs4all_version is not None
-        except ImportError:
-            pass
-
     # Cache the results
     cache_data = {
         "categories": [cat.model_dump() for cat in categories],
@@ -1568,6 +1549,15 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     )
 
 
+def _check_not_standalone() -> None:
+    """Raise if running in PyInstaller standalone mode (frozen environment)."""
+    if getattr(sys, "_MEIPASS", None):
+        raise HTTPException(
+            status_code=400,
+            detail="Package management is not available in standalone mode.",
+        )
+
+
 @router.post("/dependencies/install")
 async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     """
@@ -1579,6 +1569,8 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     Returns:
         Installation result with status and output
     """
+    _check_not_standalone()
+
     # Ensure venv exists
     if not venv_manager.get_venv_info().is_valid:
         success, message = venv_manager.create_venv()
@@ -1625,6 +1617,8 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, An
     Returns:
         Uninstallation result
     """
+    _check_not_standalone()
+
     if not venv_manager.get_venv_info().is_valid:
         raise HTTPException(
             status_code=400,
@@ -1658,6 +1652,8 @@ async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     Returns:
         Update result with new version
     """
+    _check_not_standalone()
+
     # Ensure venv exists
     if not venv_manager.get_venv_info().is_valid:
         raise HTTPException(
@@ -1732,7 +1728,10 @@ async def set_venv_path(request: SetVenvPathRequest) -> dict[str, Any]:
     Set a custom virtual environment path.
 
     Pass path=null to reset to default.
+    The custom path takes effect after a backend restart (deferred activation).
     """
+    _check_not_standalone()
+
     success, message = venv_manager.set_custom_venv_path(request.path)
 
     if not success:
@@ -1742,6 +1741,7 @@ async def set_venv_path(request: SetVenvPathRequest) -> dict[str, Any]:
     _dependencies_cache.invalidate()
 
     venv_info = venv_manager.get_venv_info()
+    requires_restart = request.path is not None  # Reset (null) is immediate; set requires restart
 
     return {
         "success": True,
@@ -1749,6 +1749,20 @@ async def set_venv_path(request: SetVenvPathRequest) -> dict[str, Any]:
         "current_path": str(venv_manager.venv_path),
         "is_custom": venv_manager.is_custom_path,
         "is_valid": venv_info.is_valid,
+        "requires_restart": requires_restart,
+    }
+
+
+@router.post("/venv/reset")
+async def reset_venv_to_runtime() -> dict[str, Any]:
+    """Reset the venv target to the running interpreter, clearing any custom path."""
+    _check_not_standalone()
+    success, message = venv_manager.reset_to_runtime()
+    _dependencies_cache.invalidate()
+    return {
+        "success": success,
+        "message": message,
+        "current_path": str(venv_manager.venv_path),
     }
 
 

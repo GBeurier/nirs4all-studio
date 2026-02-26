@@ -68,7 +68,7 @@ import {
   ExecutionResult,
   ExportResult,
 } from "@/hooks/usePipelineExecution";
-import { quickRun } from "@/api/client";
+import { quickRun, runPreflight } from "@/api/client";
 
 // ============================================================================
 // Types
@@ -400,6 +400,18 @@ export function PipelineExecutionDialog({
       return;
     }
 
+    // Preflight check
+    try {
+      const preflight = await runPreflight([pipelineId]);
+      if (!preflight.ready) {
+        const messages = preflight.issues.map((i: { message: string }) => i.message).join("\n");
+        toast.error("Cannot start execution", { description: messages });
+        return;
+      }
+    } catch {
+      toast.warning("Preflight check unavailable — dependency verification was skipped");
+    }
+
     await execute({
       pipelineId,
       datasetId: selectedDataset,
@@ -416,6 +428,19 @@ export function PipelineExecutionDialog({
 
     setIsQuickRunning(true);
     try {
+      // Preflight check
+      try {
+        const preflight = await runPreflight([pipelineId]);
+        if (!preflight.ready) {
+          const messages = preflight.issues.map((i) => i.message).join("\n");
+          toast.error("Cannot start run", { description: messages });
+          setIsQuickRunning(false);
+          return;
+        }
+      } catch {
+        toast.warning("Preflight check unavailable — dependency verification was skipped");
+      }
+
       const run = await quickRun({
         pipeline_id: pipelineId,
         dataset_id: selectedDataset,
@@ -446,6 +471,19 @@ export function PipelineExecutionDialog({
 
     setIsQuickRunning(true);
     try {
+      // Preflight check
+      try {
+        const preflight = await runPreflight([pipelineId]);
+        if (!preflight.ready) {
+          const messages = preflight.issues.map((i) => i.message).join("\n");
+          toast.error("Cannot start run", { description: messages });
+          setIsQuickRunning(false);
+          return;
+        }
+      } catch {
+        toast.warning("Preflight check unavailable — dependency verification was skipped");
+      }
+
       const run = await quickRun({
         pipeline_id: pipelineId,
         dataset_id: selectedDataset,

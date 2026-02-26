@@ -243,6 +243,12 @@ class QuickRunRequest(BaseModel):
     random_state: int | None = Field(42, description="Random seed")
 
 
+class PreflightRequest(BaseModel):
+    """Request body for pre-run import/environment check."""
+    pipeline_ids: list[str] = Field(default_factory=list)
+    inline_pipeline: InlinePipeline | None = None
+
+
 class CreateRunRequest(BaseModel):
     """Request body for creating a new run."""
     config: ExperimentConfig
@@ -1158,6 +1164,13 @@ async def _execute_pipeline_training(
                         if build_result.finetuning_config:
                             log(f"[INFO] Finetuning enabled: {build_result.finetuning_config.get('n_trials', 50)} trials")
 
+                except HTTPException as e:
+                    # HTTPException from _resolve_operator_class means a missing optional package
+                    detail = str(e.detail) if hasattr(e, "detail") else str(e)
+                    raise ValueError(
+                        f"Missing package for pipeline '{pipeline.pipeline_name}': {detail}. "
+                        f"Install it via Settings > Advanced > Dependencies."
+                    )
                 except Exception as e:
                     raise ValueError(f"Pipeline build failed: {e}")
             else:
@@ -1435,6 +1448,88 @@ async def get_run(run_id: str):
     if run_id not in _runs:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return _runs[run_id]
+
+
+@router.post("/preflight")
+async def run_preflight(request: PreflightRequest) -> dict[str, Any]:
+    """Check if all requirements are met before starting a run.
+
+    Verifies that:
+    - All pipeline operator classes can be imported (no missing packages)
+    - The environment is coherent (VenvManager matches runtime)
+
+    Returns:
+        ``ready: true`` if all checks pass, otherwise ``ready: false`` with a
+        list of issues describing what is missing.
+
+    Issue types:
+        - ``env_mismatch``: VenvManager targets a different env than the running
+          backend.  User should restart the backend.
+        - ``not_found``: A referenced ``pipeline_id`` does not exist in the
+          workspace.
+        - ``missing_module``: An operator class cannot be imported because a
+          required package is not installed.  Issue ``details`` contains
+          ``step_name``, ``step_type``, and ``error``.
+    """
+    from .nirs4all_adapter import check_pipeline_imports
+    from .pipelines import _load_pipeline
+    from .system import check_env_coherence
+
+    issues: list[dict[str, Any]] = []
+
+    # Check environment coherence
+    try:
+        coherence = await check_env_coherence()
+        if not coherence["coherent"]:
+            issues.append({
+                "type": "env_mismatch",
+                "message": "Package environment does not match the running backend. Restart the backend to resolve this.",
+            })
+    except Exception:
+        pass  # Non-fatal — coherence check failure shouldn't block preflight
+
+    # Collect all pipeline steps to check
+    pipeline_steps: list[tuple[str, list[dict[str, Any]]]] = []
+
+    for pipeline_id in request.pipeline_ids:
+        try:
+            pipeline_config = _load_pipeline(pipeline_id)
+            steps = pipeline_config.get("steps", [])
+            pipeline_steps.append((pipeline_config.get("name", pipeline_id), steps))
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                issues.append({
+                    "type": "not_found",
+                    "message": f"Pipeline '{pipeline_id}' not found.",
+                })
+            elif exc.status_code == 409:
+                issues.append({
+                    "type": "no_workspace",
+                    "message": "No workspace selected. Open a workspace before running.",
+                })
+            else:
+                issues.append({
+                    "type": "load_error",
+                    "message": f"Failed to load pipeline '{pipeline_id}': {exc.detail}",
+                })
+
+    if request.inline_pipeline:
+        pipeline_steps.append((request.inline_pipeline.name, request.inline_pipeline.steps))
+
+    # Check imports for each pipeline
+    for pipeline_name, steps in pipeline_steps:
+        import_issues = check_pipeline_imports(steps)
+        for issue in import_issues:
+            issues.append({
+                "type": "missing_module",
+                "message": f"Pipeline '{pipeline_name}': {issue['error']}. Install it via Settings > Advanced > Dependencies.",
+                "details": issue,
+            })
+
+    return {
+        "ready": len(issues) == 0,
+        "issues": issues,
+    }
 
 
 @router.post("", response_model=Run)

@@ -13,7 +13,7 @@ import sys
 import venv
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -97,6 +97,7 @@ class VenvManager:
         # Default: use the current Python environment
         self._default_venv_path = Path(sys.prefix)
         self._custom_venv_path: Path | None = None
+        self._pending_custom_path: str | None = None
         self._settings_loaded = False
 
     def _ensure_settings_loaded(self) -> None:
@@ -106,14 +107,23 @@ class VenvManager:
             self._settings_loaded = True
 
     def _load_settings(self) -> None:
-        """Load venv settings from file."""
+        """Load venv settings from file, validating custom path is still usable."""
         if self._settings_path.exists():
             try:
                 with open(self._settings_path, encoding="utf-8") as f:
                     settings = json.load(f)
                     custom_path = settings.get("custom_venv_path")
                     if custom_path:
-                        self._custom_venv_path = Path(custom_path)
+                        p = Path(custom_path)
+                        if p.exists() and self._check_valid_python(p):
+                            self._custom_venv_path = p
+                        else:
+                            logger.warning(
+                                "Stale custom venv path %s (missing or invalid). Ignoring.",
+                                custom_path,
+                            )
+                            self._custom_venv_path = None
+                            self._save_settings()
             except Exception as e:
                 logger.warning("Could not load venv settings: %s", e)
 
@@ -121,13 +131,32 @@ class VenvManager:
         """Save venv settings to file."""
         self._app_data_dir.mkdir(parents=True, exist_ok=True)
         try:
+            custom = self._pending_custom_path if self._pending_custom_path is not None else (str(self._custom_venv_path) if self._custom_venv_path else None)
             settings = {
-                "custom_venv_path": str(self._custom_venv_path) if self._custom_venv_path else None,
+                "custom_venv_path": custom,
+                "updated_at": datetime.now(UTC).isoformat(),
             }
             with open(self._settings_path, "w", encoding="utf-8") as f:
                 json.dump(settings, f, indent=2)
         except Exception as e:
             logger.warning("Could not save venv settings: %s", e)
+
+    def _check_valid_python(self, env_path: Path) -> bool:
+        """Quick check if an environment path has a working Python executable."""
+        if sys.platform == "win32":
+            python_exec = env_path / "Scripts" / "python.exe"
+        else:
+            python_exec = env_path / "bin" / "python"
+        if not python_exec.exists():
+            return False
+        try:
+            result = subprocess.run(
+                [str(python_exec), "-c", "print('ok')"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return result.returncode == 0 and "ok" in result.stdout
+        except Exception:
+            return False
 
     @property
     def _venv_path(self) -> Path:
@@ -158,6 +187,11 @@ class VenvManager:
         """
         Set a custom virtual environment path.
 
+        The new path is saved to settings but does NOT take effect in the running
+        process.  A backend restart is required to activate it.  This prevents
+        the "installed in wrong env" mismatch where pip targets one environment
+        but the running process imports from another.
+
         Args:
             path: The custom path, or None to reset to default
 
@@ -165,8 +199,9 @@ class VenvManager:
             Tuple of (success, message)
         """
         if path is None:
-            # Reset to default
+            # Reset to default — takes effect immediately
             self._custom_venv_path = None
+            self._pending_custom_path = None
             self._save_settings()
             return True, "Reset to default virtual environment path"
 
@@ -195,9 +230,27 @@ class VenvManager:
         except Exception as e:
             return False, f"Failed to verify Python executable: {e}"
 
-        self._custom_venv_path = custom_path
+        # Save for next startup — do NOT activate in this process
+        self._pending_custom_path = str(custom_path)
         self._save_settings()
-        return True, f"Custom virtual environment path set to: {path}"
+        return True, f"Custom path saved. Restart backend to apply: {path}"
+
+    def reset_to_runtime(self) -> tuple[bool, str]:
+        """Reset to the runtime interpreter environment, clearing any custom path."""
+        self._custom_venv_path = None
+        self._pending_custom_path = None
+        self._save_settings()
+        return True, f"Reset to runtime environment: {sys.prefix}"
+
+    @property
+    def has_pending_path_change(self) -> bool:
+        """Check if there's a pending custom path change requiring restart."""
+        return self._pending_custom_path is not None
+
+    @property
+    def settings_path(self) -> Path:
+        """Get the path to the venv settings file."""
+        return self._settings_path
 
     @property
     def venv_path(self) -> Path:

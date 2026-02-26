@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { listDatasets, listPipelines, createRun } from "@/api/client";
+import { listDatasets, listPipelines, createRun, runPreflight } from "@/api/client";
 import type { Dataset } from "@/types/datasets";
 import type { PipelineInfo } from "@/api/client";
 import type { ExperimentConfig } from "@/types/runs";
@@ -274,21 +274,39 @@ export default function NewExperiment() {
     },
   });
 
-  const handleLaunch = () => {
+  const [isPreflighting, setIsPreflighting] = useState(false);
+
+  const handleLaunch = async () => {
     // Filter out the current edited pipeline and handle it separately
     const regularPipelineIds = selectedPipelines.filter(id => id !== "__current_edited__");
     const hasCurrentEdited = selectedPipelines.includes("__current_edited__");
+
+    const inlinePipeline = hasCurrentEdited && currentEditedPipeline
+      ? { name: currentEditedPipeline.name, steps: currentEditedPipeline.steps }
+      : undefined;
+
+    // Preflight check — verify all pipeline imports resolve
+    try {
+      setIsPreflighting(true);
+      const preflight = await runPreflight(regularPipelineIds, inlinePipeline);
+      if (!preflight.ready) {
+        const messages = preflight.issues.map((i) => i.message).join("\n");
+        toast.error("Cannot start experiment", { description: messages });
+        return;
+      }
+    } catch {
+      // Preflight endpoint failed (network error, backend not ready, etc.)
+      toast.warning("Preflight check unavailable — dependency verification was skipped");
+    } finally {
+      setIsPreflighting(false);
+    }
 
     const config: ExperimentConfig = {
       name: experimentName,
       description: experimentDescription || undefined,
       dataset_ids: selectedDatasets,
       pipeline_ids: regularPipelineIds,
-      // Include inline pipeline if current edited pipeline is selected
-      inline_pipeline: hasCurrentEdited && currentEditedPipeline ? {
-        name: currentEditedPipeline.name,
-        steps: currentEditedPipeline.steps,
-      } : undefined,
+      inline_pipeline: inlinePipeline,
     };
     console.log("[NewExperiment] Launch config:", JSON.stringify({ config }, null, 2));
     createRunMutation.mutate(config);
@@ -647,9 +665,14 @@ export default function NewExperiment() {
                 <Button
                   size="lg"
                   onClick={handleLaunch}
-                  disabled={createRunMutation.isPending}
+                  disabled={createRunMutation.isPending || isPreflighting}
                 >
-                  {createRunMutation.isPending ? (
+                  {isPreflighting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Checking...
+                    </>
+                  ) : createRunMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Starting...

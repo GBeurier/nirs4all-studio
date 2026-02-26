@@ -268,6 +268,40 @@ export class EnvManager {
   }
 
   /**
+   * Validate that a portable build's environment paths are still reachable.
+   *
+   * Portable builds store absolute paths in env-settings.json.  If the user
+   * moves the .exe to a new folder, those paths break.  This method checks
+   * whether the configured Python executable still exists, and if not, clears
+   * the settings so the setup wizard re-runs.
+   *
+   * Call once at startup, before {@link isReady} / {@link shouldShowWizard}.
+   * Only runs in portable mode ({@link isPortable}).
+   *
+   * @returns `true` if state is valid (or non-portable), `false` if settings were cleared.
+   */
+  validatePortableState(): boolean {
+    if (!this.isPortable()) return true;
+
+    const pythonPath = this.getPythonPath();
+    if (!pythonPath) return true; // No settings to validate
+
+    if (fs.existsSync(pythonPath)) return true; // Still valid
+
+    // Path drift detected — clear stale settings
+    console.warn(
+      `[EnvManager] Portable path drift detected: Python not found at ${pythonPath}`,
+    );
+    this.customEnvPath = null;
+    this.customPythonPath = null;
+    this.savedAppVersion = null;
+    this.saveSettings();
+    this.clearBackendVenvSettings();
+    this.status = "none";
+    return false;
+  }
+
+  /**
    * Mark the setup wizard as completed.
    * Saves the current app version and the "don't ask again" preference.
    */
@@ -384,6 +418,18 @@ export class EnvManager {
       }
     }
 
+    // macOS: Check Homebrew Python locations (not always in PATH when
+    // launched from Electron since shell profiles aren't sourced)
+    if (process.platform === "darwin") {
+      const brewPaths = [
+        "/opt/homebrew/bin/python3",   // Apple Silicon Homebrew
+        "/usr/local/bin/python3",       // Intel Homebrew
+      ];
+      for (const p of brewPaths) {
+        if (fs.existsSync(p)) candidates.push(p);
+      }
+    }
+
     // Deduplicate by resolving paths
     const seen = new Set<string>();
     for (const candidate of candidates) {
@@ -476,6 +522,7 @@ export class EnvManager {
 
     // Persist only after successful validation/install
     this.saveSettings();
+    this.clearBackendVenvSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${envPath}`, info };
   }
@@ -521,6 +568,7 @@ export class EnvManager {
 
     // Persist only after successful validation/install
     this.saveSettings();
+    this.clearBackendVenvSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${pythonPath}`, info };
   }
@@ -596,6 +644,9 @@ export class EnvManager {
         throw new Error(`Python executable not found after extraction at ${embeddedPython}`);
       }
       report(25, "extracting", "Python runtime extracted");
+
+      // Remove macOS Gatekeeper quarantine attribute from downloaded Python
+      await this.removeQuarantine(pythonDir);
 
       // Clean up tarball to save space
       try { fs.unlinkSync(cachedTarball); } catch { /* ignore */ }
@@ -685,6 +736,7 @@ export class EnvManager {
         this.customEnvPath = null;
       }
       this.saveSettings();
+      this.clearBackendVenvSettings();
 
       this.status = "ready";
       report(100, "ready", "Python environment is ready");
@@ -693,6 +745,60 @@ export class EnvManager {
       this.lastError = error instanceof Error ? error.message : String(error);
       throw error;
     }
+  }
+
+  /**
+   * Clear stale backend venv_settings.json on environment change.
+   * This prevents the backend VenvManager from loading a custom path
+   * that no longer matches the Electron-selected environment.
+   *
+   * The path mirrors `platformdirs.user_data_dir("nirs4all-webapp")` on each platform.
+   */
+  clearBackendVenvSettings(): void {
+    try {
+      const appName = "nirs4all-webapp";
+      let settingsDir: string;
+      switch (process.platform) {
+        case "win32":
+          settingsDir = path.join(process.env.LOCALAPPDATA || "", appName);
+          break;
+        case "darwin":
+          settingsDir = path.join(app.getPath("home"), "Library", "Application Support", appName);
+          break;
+        default: // linux, freebsd, etc.
+          settingsDir = path.join(
+            process.env.XDG_DATA_HOME || path.join(app.getPath("home"), ".local", "share"),
+            appName,
+          );
+          break;
+      }
+      const settingsPath = path.join(settingsDir, "venv_settings.json");
+      if (fs.existsSync(settingsPath)) {
+        fs.unlinkSync(settingsPath);
+        console.log(`[EnvManager] Cleared stale backend venv settings: ${settingsPath}`);
+      }
+    } catch (e) {
+      console.warn(`[EnvManager] Could not clear backend venv settings: ${e}`);
+    }
+  }
+
+  /**
+   * Remove macOS Gatekeeper quarantine attribute from downloaded Python.
+   * python-build-standalone binaries downloaded from GitHub are marked with
+   * com.apple.quarantine which can block execution. Non-fatal if removal fails.
+   */
+  private removeQuarantine(dirPath: string): Promise<void> {
+    if (process.platform !== "darwin") return Promise.resolve();
+    return new Promise((resolve) => {
+      execFile("xattr", ["-dr", "com.apple.quarantine", dirPath], (error) => {
+        if (error) {
+          console.warn(`[EnvManager] Could not remove quarantine attribute: ${error.message}`);
+        } else {
+          console.log(`[EnvManager] Removed quarantine attribute from ${dirPath}`);
+        }
+        resolve();
+      });
+    });
   }
 
   /** Download a file with redirect support and progress reporting */

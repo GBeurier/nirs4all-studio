@@ -413,6 +413,9 @@ app.whenReady().then(async () => {
   // Show splash screen immediately (gives visual feedback during startup)
   splashWindow = createSplashWindow();
 
+  // Validate portable mode state (clears stale paths if .exe was relocated)
+  envManager.validatePortableState();
+
   if (isDev) {
     // Dev mode: start backend non-blocking, show window immediately
     try {

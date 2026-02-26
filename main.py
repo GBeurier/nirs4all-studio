@@ -231,6 +231,28 @@ async def startup_event():
     except Exception as e:
         logger.error("Failed to read active workspace: %s", e)
 
+    # Check environment coherence — detect stale VenvManager custom paths
+    try:
+        from api.venv_manager import venv_manager as _vm
+        vm_path = str(_vm.venv_path)
+        runtime_path = sys.prefix
+        if os.path.normcase(os.path.normpath(vm_path)) != os.path.normcase(os.path.normpath(runtime_path)):
+            logger.warning(
+                "ENV MISMATCH: VenvManager targets %s but running in %s. "
+                "Custom venv path may be stale.",
+                vm_path, runtime_path,
+            )
+        else:
+            logger.info("Environment coherence OK: VenvManager and runtime both target %s", runtime_path)
+        expected_python = os.environ.get("NIRS4ALL_EXPECTED_PYTHON")
+        if expected_python and os.path.normcase(os.path.normpath(expected_python)) != os.path.normcase(os.path.normpath(sys.executable)):
+            logger.warning(
+                "PYTHON MISMATCH: Electron expected %s but running as %s",
+                expected_python, sys.executable,
+            )
+    except Exception as e:
+        logger.warning("Could not check environment coherence: %s", e)
+
     # Phase 1 complete — core is ready, Electron can show the window
     global startup_complete
     startup_complete = True
