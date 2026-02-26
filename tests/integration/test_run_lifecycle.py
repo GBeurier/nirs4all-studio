@@ -24,36 +24,6 @@ from fastapi.testclient import TestClient
 from .websocket_utils import RunProgressTracker
 
 # ============================================================================
-# Helper Fixtures
-# ============================================================================
-
-
-@pytest.fixture
-def slow_mock_nirs4all(monkeypatch):
-    """Mock nirs4all.run() with a slow execution for testing stop/pause."""
-    class SlowResult:
-        best_rmse = 0.5
-        best_r2 = 0.9
-        num_predictions = 1
-        predictions = []
-
-        def top(self, n):
-            return []
-
-        def export(self, path):
-            Path(path).touch()
-
-    def slow_run(**kwargs):
-        # Sleep in small increments to allow cancellation
-        for _ in range(50):
-            time.sleep(0.1)
-        return SlowResult()
-
-    monkeypatch.setattr("nirs4all.run", slow_run, raising=False)
-    return SlowResult
-
-
-# ============================================================================
 # Stop/Cancel Tests
 # ============================================================================
 

@@ -9,11 +9,11 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e/tests',
 
-  // Test execution settings
-  fullyParallel: true,
+  // Test execution settings — sequential to avoid shared backend state conflicts
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 1,
-  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 2 : 0,
+  workers: 1,
 
   // Test timeout
   timeout: 60000,
@@ -38,8 +38,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
 
-    // Timeouts
-    actionTimeout: 10000,
+    // Timeouts — Vite proxy to FastAPI can be slow on Windows
+    actionTimeout: 15000,
     navigationTimeout: 60000,
   },
 
@@ -48,9 +48,46 @@ export default defineConfig({
 
   // Projects for different browsers and modes
   projects: [
+    // Run settings mutations in isolation first to avoid cross-file backend contention.
+    {
+      name: 'web-chromium-settings',
+      testMatch: ['**/settings.spec.ts'],
+      workers: 1,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:5173',
+      },
+    },
+
+    // Run navigation tests in isolation to avoid route-transition flakes under heavy parallel load.
+    {
+      name: 'web-chromium-navigation',
+      testMatch: ['**/navigation.spec.ts'],
+      workers: 1,
+      dependencies: ['web-chromium-settings'],
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:5173',
+      },
+    },
+
+    // Run smoke tests in isolation to avoid backend readiness checks racing against heavy parallel suites.
+    {
+      name: 'web-chromium-smoke',
+      testMatch: ['**/smoke.spec.ts'],
+      workers: 1,
+      dependencies: ['web-chromium-navigation'],
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:5173',
+      },
+    },
+
     // Web mode tests (Vite dev server + FastAPI backend)
     {
       name: 'web-chromium',
+      dependencies: ['web-chromium-smoke'],
+      testIgnore: ['**/settings.spec.ts', '**/navigation.spec.ts', '**/smoke.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         baseURL: 'http://localhost:5173',

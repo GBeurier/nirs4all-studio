@@ -38,8 +38,11 @@ logger = get_logger(__name__)
 _t2 = time.perf_counter()
 logger.info("STARTUP TIMING: FastAPI/uvicorn imports: %.2fs, logger setup: %.2fs", _t1 - _t0, _t2 - _t1)
 
-# Initialize Sentry crash reporting (uses env var or hardcoded default DSN)
-_sentry_dsn = os.environ.get("SENTRY_DSN", "") or "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960"
+# Initialize Sentry crash reporting (uses env var or hardcoded default DSN).
+# Set SENTRY_DSN="" to explicitly disable (used by tests).
+_sentry_dsn = os.environ.get("SENTRY_DSN")
+if _sentry_dsn is None:
+    _sentry_dsn = "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960"
 if _sentry_dsn:
     try:
         import sentry_sdk

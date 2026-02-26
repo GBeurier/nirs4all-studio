@@ -12,8 +12,10 @@ Provides fixtures for:
 
 import asyncio
 import json
+import os
 import shutil
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Generator
@@ -27,6 +29,9 @@ from fastapi.testclient import TestClient
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Disable Sentry during tests — must be set before importing main
+os.environ.setdefault("SENTRY_DSN", "")
 
 from main import app
 
@@ -448,6 +453,43 @@ def mock_nirs4all(monkeypatch):
     monkeypatch.setattr("nirs4all.run", mock_run, raising=False)
 
     return mock_result
+
+
+@pytest.fixture
+def slow_mock_nirs4all(monkeypatch):
+    """Mock nirs4all.run() with a slow execution for testing stop/pause.
+
+    Uses a threading.Event so the mock can exit quickly during fixture cleanup,
+    preventing orphaned threads from crashing xdist workers on teardown.
+    """
+    stop_event = threading.Event()
+
+    class SlowResult:
+        best_rmse = 0.5
+        best_r2 = 0.9
+        num_predictions = 1
+        predictions = []
+
+        def top(self, n):
+            return []
+
+        def export(self, path):
+            Path(path).touch()
+
+    def slow_run(**kwargs):
+        # Sleep in small increments; exit early when stop_event is set
+        for _ in range(50):
+            if stop_event.is_set():
+                return SlowResult()
+            time.sleep(0.1)
+        return SlowResult()
+
+    monkeypatch.setattr("nirs4all.run", slow_run, raising=False)
+    yield SlowResult
+
+    # Signal the mock to stop and give the background async task time to notice
+    stop_event.set()
+    time.sleep(0.5)
 
 
 @pytest.fixture

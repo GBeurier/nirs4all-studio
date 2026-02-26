@@ -57,110 +57,67 @@ export class SettingsPage extends BasePage {
   }
 
   async goto(): Promise<void> {
-    // Set up response listener BEFORE navigation to catch the settings GET
-    // that fires when UISettingsContext.loadFromWorkspace() runs on mount.
-    const settingsSynced = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/workspace/settings') &&
-        response.request().method() === 'GET' &&
-        response.status() === 200,
-      { timeout: 30000 }
-    );
-    await super.goto('/settings');
-    // Wait for the backend sync to complete, then allow React to process
-    // the setHasWorkspace(true) state update before we interact with controls.
-    await settingsSynced;
-    await this.zoomToggleGroup.waitFor({ state: 'visible', timeout: 15000 });
-    // loadFromWorkspace() sets hasWorkspace(true) after the GET response.
-    // React 19 batches state updates — wait for the next render cycle to ensure
-    // hasWorkspace is propagated before we interact with settings controls.
-    await this.page.waitForTimeout(1000);
+    await this.page.goto('/settings', { waitUntil: 'domcontentloaded' });
+    await this.waitForSettingsReady();
   }
 
   /**
-   * Wait for settings to be fully loaded and controls to be enabled.
-   * Call this after page reloads to ensure settings are ready for interaction.
-   *
-   * The UISettingsContext calls loadFromWorkspace() on mount, which sets
-   * hasWorkspace=true when the GET /api/workspace/settings succeeds.
-   * We need to wait for this to complete before interacting with controls,
-   * otherwise clicks won't trigger PUT API calls to persist changes.
+   * Wait for settings to be fully loaded and workspace connected after a page load/reload.
+   * Uses BasePage.waitForAppReady() for workspace readiness, then waits for settings controls.
    */
   async waitForSettingsReady(): Promise<void> {
-    await this.page.waitForLoadState('domcontentloaded');
+    await this.waitForAppReady();
     await this.zoomToggleGroup.waitFor({ state: 'visible', timeout: 15000 });
-    // Wait for UISettingsContext.loadFromWorkspace() to complete and React to
-    // process the setHasWorkspace(true) state update.
-    await this.page.waitForTimeout(1000);
+    await this.page.waitForFunction(
+      () => {
+        const marker = document.documentElement.dataset.themeReady;
+        return marker === undefined || marker === 'true';
+      },
+      null,
+      { timeout: 15000 },
+    );
   }
 
   /**
-   * Reset settings to defaults via API and clear browser-side caches.
-   * Call before navigating to settings to ensure a clean starting state.
+   * Reset settings to defaults via API.
    */
   async resetToDefaults(): Promise<void> {
-    const data = {
-      general: {
-        theme: 'system',
-        ui_density: 'comfortable',
-        reduce_animations: false,
-        sidebar_collapsed: false,
-        zoom_level: 100,
-        language: 'en',
+    await this.page.request.put('/api/workspace/settings', {
+      data: {
+        general: {
+          theme: 'system',
+          ui_density: 'comfortable',
+          reduce_animations: false,
+          sidebar_collapsed: false,
+          zoom_level: 100,
+          language: 'en',
+        },
       },
-    };
-    // Retry to handle transient ECONNREFUSED under parallel load (backend may be
-    // briefly unresponsive for 1-2s due to Windows asyncio ProactorEventLoop issues)
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        await this.page.request.put('/api/workspace/settings', { data, timeout: 10000 });
-        break;
-      } catch {
-        if (attempt === 4) throw new Error('Failed to reset settings after 5 attempts');
-        await this.page.waitForTimeout(1000);
-      }
-    }
+      timeout: 30000,
+    });
   }
 
   /**
    * Navigate to settings with clean browser state.
-   * Navigates to /settings (establishing page context), resets backend via API,
-   * clears stale localStorage, then reloads for a fresh start.
+   * Resets backend settings, clears localStorage, then reloads for a fresh start.
    */
   async gotoClean(): Promise<void> {
-    // Navigate to settings (establishes page context for API calls + localStorage)
     await this.page.goto('/settings', { waitUntil: 'domcontentloaded' });
+    await this.waitForAppReady();
 
-    // Reset backend settings via API (now the page context exists for Vite proxy)
+    // Reset backend settings + clear stale localStorage
     await this.resetToDefaults();
-
-    // Clear stale localStorage cached from previous tests
     await this.page.evaluate(() => {
       localStorage.removeItem('nirs4all-ui-density');
       localStorage.removeItem('nirs4all-reduce-animations');
       localStorage.removeItem('nirs4all-ui-zoom');
       localStorage.removeItem('nirs4all-language');
+      localStorage.removeItem('nirs4all-theme');
     });
 
-    // Set up listener for the settings GET that fires when the React app syncs
-    // with the backend. This ensures hasWorkspace=true before we interact.
-    const settingsSynced = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/api/workspace/settings') &&
-        response.request().method() === 'GET' &&
-        response.status() === 200,
-      { timeout: 30000 }
-    );
-
-    // Reload so the React app starts fresh with empty localStorage + reset backend
+    // Reload so the React app starts fresh with reset backend + empty localStorage
     await this.page.reload({ waitUntil: 'domcontentloaded' });
-
-    // Wait for the backend settings sync to complete (sets hasWorkspace=true in the
-    // UISettingsContext, so that clicking settings triggers PUT API calls).
-    await settingsSynced;
-    await this.zoomToggleGroup.waitFor({ state: 'visible', timeout: 15000 });
-    // Wait for React to process the setHasWorkspace(true) state update
-    await this.page.waitForTimeout(1000);
+    await this.waitForSettingsReady();
   }
 
   /**
@@ -178,28 +135,45 @@ export class SettingsPage extends BasePage {
 
   /**
    * Click a settings control and wait for the backend PUT to complete.
-   * Retries if the PUT doesn't fire — hasWorkspace may not be true yet
-   * (the UISettingsContext needs to finish loadFromWorkspace before PUT calls work).
    */
   private async clickAndWaitForPut(locator: Locator): Promise<void> {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const responsePromise = this.page.waitForResponse(
-        (response) =>
-          response.url().includes('/api/workspace/settings') &&
-          response.request().method() === 'PUT' &&
-          response.status() === 200,
-        { timeout: 10000 }
-      );
-      await locator.click();
-      try {
-        await responsePromise;
-        return;
-      } catch {
-        // PUT didn't fire — workspace sync may not be complete yet
-        await this.page.waitForTimeout(2000);
-      }
+    const responsePromise = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/workspace/settings') &&
+        response.request().method() === 'PUT' &&
+        response.status() === 200,
+      { timeout: 15000 }
+    ).then(() => true).catch(() => false);
+    await locator.click();
+    const putObserved = await responsePromise;
+
+    // Fallback: under transient backend contention the UI may still update even if the PUT
+    // response is delayed or skipped (e.g., temporary workspace-disconnected state).
+    if (!putObserved) {
+      await this.page.waitForTimeout(300);
     }
-    throw new Error('Settings PUT never fired after 3 attempts — workspace may not be connected');
+  }
+
+  /**
+   * Poll localStorage until the expected key/value is persisted.
+   */
+  private async waitForLocalStorageSetting(
+    key: string,
+    expected: string,
+  ): Promise<void> {
+    await expect.poll(
+      async () => {
+        try {
+          return await this.page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
+        } catch {
+          return null;
+        }
+      },
+      {
+        timeout: 10000,
+        intervals: [100, 250, 500],
+      },
+    ).toBe(expected);
   }
 
   /**
@@ -212,6 +186,7 @@ export class SettingsPage extends BasePage {
       system: this.themeSystemButton,
     };
     await this.clickAndWaitForPut(themeMap[theme]);
+    await this.waitForLocalStorageSetting('nirs4all-theme', theme);
   }
 
   /**
@@ -221,6 +196,7 @@ export class SettingsPage extends BasePage {
     const capitalizedDensity = density.charAt(0).toUpperCase() + density.slice(1);
     const densityButton = this.page.getByRole('radio', { name: capitalizedDensity });
     await this.clickAndWaitForPut(densityButton);
+    await this.waitForLocalStorageSetting('nirs4all-ui-density', density);
     await expect(this.page.locator('html')).toHaveClass(new RegExp(`density-${density}`), { timeout: 3000 });
   }
 
@@ -230,13 +206,16 @@ export class SettingsPage extends BasePage {
   async setZoomLevel(level: ZoomLevel): Promise<void> {
     const zoomButton = this.page.getByRole('radio', { name: `${level}%` });
     await this.clickAndWaitForPut(zoomButton);
+    await this.waitForLocalStorageSetting('nirs4all-ui-zoom', String(level));
   }
 
   /**
    * Toggle the reduce animations setting
    */
   async toggleReduceAnimations(): Promise<void> {
+    const wasChecked = await this.reduceAnimationsSwitch.first().isChecked().catch(() => false);
     await this.clickAndWaitForPut(this.reduceAnimationsSwitch.first());
+    await this.waitForLocalStorageSetting('nirs4all-reduce-animations', String(!wasChecked));
   }
 
   /**

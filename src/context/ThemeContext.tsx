@@ -67,6 +67,11 @@ export function ThemeProvider({
   const [isLoading, setIsLoading] = useState(true);
   const [hasWorkspace, setHasWorkspace] = useState(false);
 
+  // Expose theme initialization lifecycle for E2E synchronization.
+  useEffect(() => {
+    window.document.documentElement.dataset.themeReady = String(!isLoading);
+  }, [isLoading]);
+
   // Load theme from workspace settings (runs after mount)
   useEffect(() => {
     const loadFromWorkspace = async () => {

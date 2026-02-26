@@ -535,29 +535,10 @@ class TestRunStateErrors:
     def test_cannot_delete_running_run(
         self,
         workspace_client: TestClient,
-        monkeypatch,
+        slow_mock_nirs4all,
     ):
         """Cannot delete a run while it's running."""
-        # Mock nirs4all to run slowly
         import time
-
-        class SlowResult:
-            best_rmse = 0.5
-            best_r2 = 0.9
-            num_predictions = 1
-            predictions = []
-
-            def top(self, n):
-                return []
-
-            def export(self, path):
-                pass
-
-        def slow_run(**kwargs):
-            time.sleep(10)  # Slow enough to catch during running
-            return SlowResult()
-
-        monkeypatch.setattr("nirs4all.run", slow_run, raising=False)
 
         response = workspace_client.post("/api/runs/quick", json={
             "pipeline_id": "test_pls",

@@ -3,28 +3,11 @@ import { test, expect } from '../fixtures/app.fixture';
 /**
  * Settings tests for UI zoom, theme, and density
  *
- * IMPORTANT: These tests modify shared backend workspace settings.
- *
- * The backend workspace is shared across all browser projects (chromium, firefox, webkit).
- * When running in parallel, different browsers may interfere with each other's settings.
- *
- * For deterministic, 100% reliable execution:
- *   npx playwright test settings.spec.ts --workers=1
- *
- * Note: CI environment already uses --workers=1 (configured in playwright.config.ts)
- *
- * In parallel mode (default for local development), tests have retries to handle
- * occasional race conditions. Some flakiness is expected due to the shared backend state.
+ * These tests modify shared backend workspace settings and run sequentially.
  */
-
-// Run all settings tests sequentially within each browser project, with retries
-// to handle race conditions when multiple browser projects run in parallel
-test.describe.configure({ mode: 'serial', retries: 2 });
+test.describe.configure({ mode: 'serial' });
 
 test.describe('Settings - UI Customization', () => {
-  // Settings tests involve multiple page loads (reset API + navigate + localStorage
-  // clear + reload) which are slow under parallel test load. Triple the timeout.
-  test.slow();
 
   test.beforeEach(async ({ settingsPage }) => {
     // Navigate to settings, reset backend, clear localStorage, reload for clean state
@@ -188,10 +171,9 @@ test.describe('Settings - UI Customization', () => {
 });
 
 test.describe('Settings - Navigation Integration', () => {
-  test.describe.configure({ mode: 'serial' });
 
   test('should maintain settings when navigating away and back', async ({ settingsPage, sidebar, page }) => {
-    await settingsPage.goto();
+    await settingsPage.gotoClean();
 
     // Set zoom level
     await settingsPage.setZoomLevel(125);

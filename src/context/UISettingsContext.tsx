@@ -105,6 +105,13 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [hasWorkspace, setHasWorkspace] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Expose UI settings lifecycle markers on the root element for E2E synchronization.
+  useEffect(() => {
+    window.document.documentElement.dataset.workspaceReady = String(hasWorkspace);
+    window.document.documentElement.dataset.uiSettingsReady = String(isInitialized);
+  }, [hasWorkspace, isInitialized]);
 
   // Apply density class to document
   useEffect(() => {
@@ -136,6 +143,8 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
 
   // Load settings from workspace (non-blocking: localStorage defaults are already active)
   const loadFromWorkspace = useCallback(async () => {
+    setIsLoading(true);
+    setIsInitialized(false);
     try {
       const settings = await getWorkspaceSettings();
       if (settings.general) {
@@ -155,6 +164,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
       setHasWorkspace(false);
     } finally {
       setIsLoading(false);
+      setIsInitialized(true);
     }
   }, []);
 

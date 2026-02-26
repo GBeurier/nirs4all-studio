@@ -31,7 +31,7 @@ export class PipelinesPage extends BasePage {
     super(page);
 
     this.pageTitle = page.getByRole('heading', { name: /pipelines/i }).first();
-    this.newPipelineButton = page.getByRole('link', { name: /new pipeline/i });
+    this.newPipelineButton = page.locator('a[href="/pipelines/new"]').first();
     this.importButton = page.getByRole('button', { name: /import/i });
     this.searchInput = page.getByPlaceholder(/search/i);
 

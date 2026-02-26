@@ -4,8 +4,8 @@ import { test, expect } from '../fixtures/app.fixture';
  * Navigation tests for sidebar and routing
  */
 test.describe('Navigation', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+  test.beforeEach(async ({ sidebar }) => {
+    await sidebar.goto('/');
   });
 
   test('should navigate to all main sections via sidebar', async ({ sidebar, page }) => {
@@ -96,22 +96,15 @@ test.describe('Navigation', () => {
     await expect(page).toHaveURL('/pipelines');
   });
 
-  test('should handle direct URL navigation', async ({ page }) => {
-    // Use domcontentloaded instead of load — the app has background API polling
-    // that can delay the load event when the backend is under parallel test load
-    const opts = { waitUntil: 'domcontentloaded' as const };
+  test('should handle direct URL navigation', async ({ sidebar, page }) => {
+    await page.goto('/settings', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible({ timeout: 30000 });
 
-    // Navigate directly to settings
-    await page.goto('/settings', opts);
-    await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible();
+    await page.goto('/datasets', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: /datasets/i })).toBeVisible({ timeout: 30000 });
 
-    // Navigate directly to datasets
-    await page.goto('/datasets', opts);
-    await expect(page.getByRole('heading', { name: /datasets/i })).toBeVisible();
-
-    // Navigate directly to pipelines
-    await page.goto('/pipelines', opts);
-    await expect(page.getByRole('heading', { name: 'Pipelines', exact: true })).toBeVisible();
+    await page.goto('/pipelines', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: 'Pipelines', exact: true })).toBeVisible({ timeout: 30000 });
   });
 
   test('should maintain sidebar state during navigation', async ({ sidebar, page }) => {

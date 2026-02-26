@@ -17,22 +17,22 @@ test.describe('Smoke Tests', () => {
   });
 
   test('should respond to API health check', async ({ page }) => {
-    // Retry health check to handle transient ECONNREFUSED under parallel load
-    // (backend may be briefly unreachable for 1-2s due to Windows asyncio issues)
-    let response;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        response = await page.request.get('/api/health');
-        if (response.ok()) break;
-      } catch {
-        if (attempt === 4) throw new Error('Health check failed after 5 attempts');
-        await page.waitForTimeout(2000);
-      }
-    }
-    expect(response!.ok()).toBe(true);
+    // Hit the backend directly with polling to tolerate transient backend saturation under parallel runs.
+    await expect.poll(
+      async () => {
+        try {
+          const response = await page.request.get('http://127.0.0.1:8000/api/health', { timeout: 5000 });
+          return response.ok();
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 60000, intervals: [1000, 2000, 5000] }
+    ).toBe(true);
 
-    const data = await response!.json();
-    // Backend returns status: "healthy"
+    const response = await page.request.get('http://127.0.0.1:8000/api/health', { timeout: 10000 });
+    expect(response.ok()).toBe(true);
+    const data = await response.json();
     expect(data.status).toBe('healthy');
   });
 

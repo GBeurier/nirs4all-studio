@@ -1293,10 +1293,14 @@ async def _execute_pipeline_training(
             "store_run_id": result_store_run_id,
         }
 
-    # Run the pipeline in a thread pool
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(run_pipeline_in_thread)
+    # Run the pipeline in a thread pool.
+    # Don't use `with` — on cancellation we need shutdown(wait=False) to avoid
+    # blocking the event loop while the thread finishes.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(run_pipeline_in_thread)
+    cancelled = False
 
+    try:
         # Poll for completion with progress updates
         # Progress phases based on pipeline execution stages
         progress_step = 5
@@ -1337,6 +1341,12 @@ async def _execute_pipeline_training(
         current_msg = "Starting..."
 
         while not future.done():
+            # Check for cancellation — exit the polling loop immediately so the
+            # asyncio task finishes before TestClient / event-loop teardown.
+            if _run_cancellation_flags.get(run_id, False):
+                cancelled = True
+                break
+
             await asyncio.sleep(0.05)  # Fast polling for local execution
             elapsed_ticks += 1
 
@@ -1361,6 +1371,9 @@ async def _execute_pipeline_training(
 
             await report_progress(progress_step, current_msg)
 
+        if cancelled:
+            raise ValueError("Cancelled by user")
+
         # Drain any remaining logs after thread completes
         while True:
             try:
@@ -1378,6 +1391,10 @@ async def _execute_pipeline_training(
         await report_progress(100, "Complete!")
         await stream_log("[INFO] Pipeline execution complete!")
         return result
+    finally:
+        # On cancellation: don't block waiting for the thread (it will finish on its own).
+        # On normal completion: thread is already done, shutdown is instant.
+        executor.shutdown(wait=not cancelled)
 
 
 # ============================================================================

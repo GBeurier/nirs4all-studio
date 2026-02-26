@@ -32,20 +32,38 @@ async function globalSetup(config: FullConfig) {
   const page = await browser.newPage();
 
   try {
-    let retries = 30; // 30 seconds max wait
+    // Wait for backend to start (up to 15 seconds)
     let backendReady = false;
-
-    while (retries > 0 && !backendReady) {
+    for (let attempt = 0; attempt < 15; attempt++) {
       try {
         const response = await page.request.get('http://127.0.0.1:8000/api/health');
         if (response.ok()) {
           console.log('Backend is ready');
           backendReady = true;
+          break;
         }
       } catch {
-        retries--;
-        if (retries === 0) {
+        if (attempt === 14) {
           console.warn('Backend health check timed out - tests may fail if backend is not running');
+        } else {
+          await page.waitForTimeout(1000);
+        }
+      }
+    }
+
+    // Wait for Vite dev server to be ready (proxies API requests to backend)
+    let frontendReady = false;
+    for (let attempt = 0; attempt < 15; attempt++) {
+      try {
+        const response = await page.request.get('http://localhost:5173/');
+        if (response.ok()) {
+          console.log('Frontend dev server is ready');
+          frontendReady = true;
+          break;
+        }
+      } catch {
+        if (attempt === 14) {
+          console.warn('Frontend dev server not responding — tests may fail');
         } else {
           await page.waitForTimeout(1000);
         }
