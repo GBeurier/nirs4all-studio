@@ -1,0 +1,215 @@
+[
+  {
+    "id": "model.classifier_chain",
+    "name": "ClassifierChain",
+    "type": "model",
+    "classPath": "sklearn.multioutput.ClassifierChain",
+    "description": "A multi-label model that arranges binary classifiers into a chain.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "multioutput"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "order",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "chain_method",
+        "type": "string",
+        "default": "predict",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "base_estimator",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.multi_output_classifier",
+    "name": "MultiOutputClassifier",
+    "type": "model",
+    "classPath": "sklearn.multioutput.MultiOutputClassifier",
+    "description": "Multi target classification.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "multioutput"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.multi_output_regressor",
+    "name": "MultiOutputRegressor",
+    "type": "model",
+    "classPath": "sklearn.multioutput.MultiOutputRegressor",
+    "description": "Multi target regression.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "multioutput"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.one_vs_one_classifier",
+    "name": "OneVsOneClassifier",
+    "type": "model",
+    "classPath": "sklearn.multiclass.OneVsOneClassifier",
+    "description": "One-vs-one multiclass strategy.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "multiclass"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.one_vs_rest_classifier",
+    "name": "OneVsRestClassifier",
+    "type": "model",
+    "classPath": "sklearn.multiclass.OneVsRestClassifier",
+    "description": "One-vs-the-rest (OvR) multiclass strategy.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "multiclass"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.output_code_classifier",
+    "name": "OutputCodeClassifier",
+    "type": "model",
+    "classPath": "sklearn.multiclass.OutputCodeClassifier",
+    "description": "(Error-Correcting) Output-Code multiclass strategy.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "multiclass"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "code_size",
+        "type": "float",
+        "default": 1.5,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.regressor_chain",
+    "name": "RegressorChain",
+    "type": "model",
+    "classPath": "sklearn.multioutput.RegressorChain",
+    "description": "A multi-label model that arranges regressions into a chain.",
+    "category": "sklearn-meta",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "multioutput"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "order",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "base_estimator",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      }
+    ]
+  }
+]

@@ -13,7 +13,31 @@
       "correction"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "with_mean",
+        "type": "bool",
+        "default": true,
+        "description": "Center spectra by subtracting the mean",
+        "isAdvanced": true
+      },
+      {
+        "name": "with_std",
+        "type": "bool",
+        "default": true,
+        "description": "Scale spectra by dividing by the standard deviation",
+        "isAdvanced": true
+      },
+      {
+        "name": "ddof",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 1,
+        "description": "Delta degrees of freedom for std calculation (0=population, 1=sample)",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
@@ -26,7 +50,7 @@
     "id": "preprocessing.robust_snv",
     "name": "RobustSNV",
     "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.RobustSNV",
+    "classPath": "nirs4all.operators.transforms.RobustStandardNormalVariate",
     "description": "Outlier-resistant SNV (RNV)",
     "longDescription": "Robust Normal Variate - uses robust statistics (median/MAD) instead of mean/std for outlier resistance.",
     "category": "NIRS Core",
@@ -37,7 +61,32 @@
       "outlier"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "with_center",
+        "type": "bool",
+        "default": true,
+        "description": "Center spectra using median",
+        "isAdvanced": true
+      },
+      {
+        "name": "with_scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale spectra using MAD",
+        "isAdvanced": true
+      },
+      {
+        "name": "k",
+        "type": "float",
+        "default": 1.4826,
+        "min": 0.5,
+        "max": 3.0,
+        "step": 0.0001,
+        "description": "Consistency constant for MAD (1.4826 for normal distribution)",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
@@ -46,7 +95,7 @@
     "id": "preprocessing.local_snv",
     "name": "LocalSNV",
     "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.LocalSNV",
+    "classPath": "nirs4all.operators.transforms.LocalStandardNormalVariate",
     "description": "Local Standard Normal Variate (LSNV)",
     "longDescription": "Applies SNV in a sliding window for local scatter correction.",
     "category": "NIRS Core",
@@ -57,8 +106,52 @@
       "window"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "window",
+        "type": "int",
+        "default": 11,
+        "min": 3,
+        "max": 101,
+        "step": 2,
+        "description": "Sliding window size (must be odd)",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Small (3-11)",
+            "type": "range",
+            "values": { "from": 3, "to": 11, "step": 2 }
+          },
+          {
+            "label": "Medium (11-31)",
+            "type": "range",
+            "values": { "from": 11, "to": 31, "step": 4 }
+          },
+          {
+            "label": "Large (21-51)",
+            "type": "range",
+            "values": { "from": 21, "to": 51, "step": 10 }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [5, 51]
+      },
+      {
+        "name": "pad_mode",
+        "type": "select",
+        "default": "reflect",
+        "options": [
+          { "value": "reflect", "label": "Reflect" },
+          { "value": "edge", "label": "Edge" },
+          { "value": "constant", "label": "Constant" }
+        ],
+        "description": "Padding mode for window edges",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
     "supportsStepGenerator": true,
     "tier": "standard"
   },
@@ -79,20 +172,11 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "reference",
-        "type": "select",
-        "default": "mean",
-        "options": [
-          {
-            "value": "mean",
-            "label": "Mean spectrum"
-          },
-          {
-            "value": "median",
-            "label": "Median spectrum"
-          }
-        ],
-        "description": "Reference spectrum for correction"
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data before correction",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -106,7 +190,7 @@
     "id": "preprocessing.emsc",
     "name": "EMSC",
     "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.EMSC",
+    "classPath": "nirs4all.operators.transforms.ExtendedMultiplicativeScatterCorrection",
     "description": "Extended Multiplicative Scatter Correction",
     "longDescription": "Extended MSC with polynomial baseline correction and optional interference components.",
     "category": "NIRS Core",
@@ -119,23 +203,172 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "reference",
-        "type": "select",
-        "default": "mean",
-        "options": [
-          {
-            "value": "mean",
-            "label": "Mean spectrum"
-          },
-          {
-            "value": "median",
-            "label": "Median spectrum"
-          }
-        ],
-        "description": "Reference spectrum for correction"
+        "name": "degree",
+        "type": "int",
+        "default": 2,
+        "min": 0,
+        "max": 6,
+        "description": "Polynomial degree for baseline correction",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [0, 4]
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data before correction",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "tier": "standard"
+  },
+  {
+    "id": "preprocessing.epo",
+    "name": "EPO",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.EPO",
+    "description": "External Parameter Orthogonalization",
+    "longDescription": "Removes variation in X correlated with external parameters (temperature, humidity, batch effects) without using target Y.",
+    "category": "NIRS Core",
+    "tags": [
+      "orthogonalization",
+      "scatter",
+      "correction",
+      "external",
+      "transfer"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data before orthogonalization",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": false,
+    "supportsStepGenerator": true,
+    "tier": "standard"
+  },
+  {
+    "id": "preprocessing.osc",
+    "name": "OSC",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.OSC",
+    "description": "Orthogonal Signal Correction (DOSC)",
+    "longDescription": "Removes systematic variation in X that is orthogonal to Y, improving model interpretability and prediction performance.",
+    "category": "NIRS Core",
+    "tags": [
+      "orthogonal",
+      "signal",
+      "correction",
+      "osc"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 20,
+        "description": "Number of orthogonal components to remove",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 10]
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "dosc",
+        "options": [
+          { "value": "dosc", "label": "Direct OSC" },
+          { "value": "osc", "label": "Classic OSC" }
+        ],
+        "description": "OSC algorithm variant",
+        "isAdvanced": true
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data before correction",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "tier": "standard"
+  },
+  {
+    "id": "preprocessing.norris_williams",
+    "name": "NorrisWilliams",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.NorrisWilliams",
+    "description": "Norris-Williams gap derivative",
+    "longDescription": "Applies segment smoothing followed by gap differentiation for computing smooth derivatives in NIR spectroscopy.",
+    "category": "NIRS Core",
+    "tags": [
+      "derivative",
+      "smoothing",
+      "gap",
+      "nir"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "gap",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 50,
+        "description": "Gap size for differentiation",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      },
+      {
+        "name": "segment",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 50,
+        "description": "Segment size for smoothing",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 20]
+      },
+      {
+        "name": "deriv",
+        "type": "int",
+        "default": 1,
+        "min": 0,
+        "max": 3,
+        "description": "Derivative order (0=smoothing only)",
+        "sweepable": true
+      },
+      {
+        "name": "delta",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.1,
+        "max": 10.0,
+        "description": "Spacing between points",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
     "supportsStepGenerator": true,
     "tier": "standard"
   }

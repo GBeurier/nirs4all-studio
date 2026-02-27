@@ -1,0 +1,206 @@
+[
+  {
+    "id": "preprocessing.bernoulli_rbm",
+    "name": "BernoulliRBM",
+    "type": "preprocessing",
+    "classPath": "sklearn.neural_network._rbm.BernoulliRBM",
+    "description": "Bernoulli Restricted Boltzmann Machine (RBM).",
+    "category": "scikit-misc-transformers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "neural_network",
+      "_rbm"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 256,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.column_transformer",
+    "name": "ColumnTransformer",
+    "type": "preprocessing",
+    "classPath": "sklearn.compose._column_transformer.ColumnTransformer",
+    "description": "Applies transformers to columns of an array or pandas DataFrame.",
+    "category": "scikit-meta-transformers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "compose",
+      "_column_transformer"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "transformers",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "remainder",
+        "type": "string",
+        "default": "drop",
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse_threshold",
+        "type": "float",
+        "default": 0.3,
+        "isAdvanced": true
+      },
+      {
+        "name": "transformer_weights",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "verbose_feature_names_out",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "force_int_remainder_cols",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.feature_union",
+    "name": "FeatureUnion",
+    "type": "preprocessing",
+    "classPath": "sklearn.pipeline.FeatureUnion",
+    "description": "Concatenates results of multiple transformer objects.",
+    "category": "scikit-meta-transformers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "pipeline"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "transformer_list",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transformer_weights",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "verbose_feature_names_out",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.random_trees_embedding",
+    "name": "RandomTreesEmbedding",
+    "type": "preprocessing",
+    "classPath": "sklearn.ensemble._forest.RandomTreesEmbedding",
+    "description": "An ensemble of totally random trees.",
+    "category": "scikit-misc-transformers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "ensemble",
+      "_forest"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse_output",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  }
+]

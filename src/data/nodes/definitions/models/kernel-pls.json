@@ -93,7 +93,13 @@
         "min": 1,
         "max": 50,
         "description": "Number of components",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ]
       },
       {
         "name": "kernel",
@@ -114,6 +120,30 @@
           }
         ],
         "description": "Kernel type"
+      },
+      {
+        "name": "gamma",
+        "type": "float",
+        "default": null,
+        "min": 0.001,
+        "max": 100,
+        "description": "Kernel coefficient (null for auto)",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.001,
+          10
+        ]
+      },
+      {
+        "name": "n_ortho_components",
+        "type": "int",
+        "default": 1,
+        "min": 0,
+        "max": 10,
+        "description": "Number of orthogonal components",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -141,7 +171,48 @@
         "min": 1,
         "max": 50,
         "description": "Number of components",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ]
+      },
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF (Gaussian)"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          }
+        ],
+        "description": "Kernel type"
+      },
+      {
+        "name": "gamma",
+        "type": "float",
+        "default": null,
+        "min": 0.001,
+        "max": 100,
+        "description": "Kernel coefficient (null for auto)",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.001,
+          10
+        ]
       }
     ],
     "supportsParameterSweeps": true,
@@ -171,7 +242,23 @@
         "min": 1,
         "max": 50,
         "description": "Number of components",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ]
+      },
+      {
+        "name": "kernel_size",
+        "type": "int",
+        "default": 15,
+        "min": 3,
+        "max": 51,
+        "step": 2,
+        "description": "Convolution kernel size",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,

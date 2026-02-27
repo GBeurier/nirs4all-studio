@@ -1,0 +1,334 @@
+[
+  {
+    "id": "model.k_neighbors_classifier",
+    "name": "KNeighborsClassifier",
+    "type": "model",
+    "classPath": "sklearn.neighbors._classification.KNeighborsClassifier",
+    "description": "Classifier implementing the k-nearest neighbors vote.",
+    "category": "sklearn-neighbors",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "neighbors",
+      "_classification"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "default": "uniform",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "leaf_size",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.k_neighbors_regressor",
+    "name": "KNeighborsRegressor",
+    "type": "model",
+    "classPath": "sklearn.neighbors._regression.KNeighborsRegressor",
+    "description": "Regression based on k-nearest neighbors.",
+    "category": "sklearn-neighbors",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "neighbors",
+      "_regression"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "default": "uniform",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "leaf_size",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.nearest_centroid",
+    "name": "NearestCentroid",
+    "type": "model",
+    "classPath": "sklearn.neighbors._nearest_centroid.NearestCentroid",
+    "description": "Nearest centroid classifier.",
+    "category": "sklearn-neighbors",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "neighbors",
+      "_nearest_centroid"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "euclidean",
+        "isAdvanced": true
+      },
+      {
+        "name": "shrink_threshold",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "priors",
+        "type": "string",
+        "default": "uniform",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.radius_neighbors_classifier",
+    "name": "RadiusNeighborsClassifier",
+    "type": "model",
+    "classPath": "sklearn.neighbors._classification.RadiusNeighborsClassifier",
+    "description": "Classifier implementing a vote among neighbors within a given radius.",
+    "category": "sklearn-neighbors",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "neighbors",
+      "_classification"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "radius",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "default": "uniform",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "leaf_size",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "outlier_label",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.radius_neighbors_regressor",
+    "name": "RadiusNeighborsRegressor",
+    "type": "model",
+    "classPath": "sklearn.neighbors._regression.RadiusNeighborsRegressor",
+    "description": "Regression based on neighbors within a fixed radius.",
+    "category": "sklearn-neighbors",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "neighbors",
+      "_regression"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "radius",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "default": "uniform",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "leaf_size",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  }
+]

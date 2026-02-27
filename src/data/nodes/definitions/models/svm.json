@@ -47,6 +47,13 @@
         "max": 1000,
         "description": "Regularization parameter",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [0.1, 1, 10, 100]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "log_float",
         "finetuneRange": [
@@ -63,12 +70,47 @@
         "step": 0.01,
         "description": "Epsilon in the epsilon-SVR model",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [0.01, 0.05, 0.1, 0.2]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [
           0.01,
           0.5
         ]
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "min": 2,
+        "max": 5,
+        "description": "Polynomial kernel degree",
+        "isAdvanced": true,
+        "dependsOn": "kernel",
+        "dependsOnValue": "poly"
+      },
+      {
+        "name": "gamma",
+        "type": "select",
+        "default": "scale",
+        "options": [
+          {
+            "value": "scale",
+            "label": "Scale (1/(n_features*var))"
+          },
+          {
+            "value": "auto",
+            "label": "Auto (1/n_features)"
+          }
+        ],
+        "description": "Kernel coefficient",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -127,12 +169,52 @@
         "max": 1000,
         "description": "Regularization parameter",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [0.1, 1, 10, 100]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "log_float",
         "finetuneRange": [
-          0.01,
+          0.1,
           100
         ]
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "min": 2,
+        "max": 5,
+        "description": "Polynomial kernel degree",
+        "isAdvanced": true
+      },
+      {
+        "name": "gamma",
+        "type": "select",
+        "default": "scale",
+        "options": [
+          {
+            "value": "scale",
+            "label": "Scale (1/(n_features*var))"
+          },
+          {
+            "value": "auto",
+            "label": "Auto (1/n_features)"
+          }
+        ],
+        "description": "Kernel coefficient",
+        "isAdvanced": true
+      },
+      {
+        "name": "probability",
+        "type": "bool",
+        "default": false,
+        "description": "Enable probability estimates",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,

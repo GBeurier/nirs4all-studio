@@ -59,6 +59,26 @@
         "max": 6,
         "description": "Polynomial order for fitting (must be less than window_length)",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Low (1-3)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 3,
+              "step": 1
+            }
+          },
+          {
+            "label": "Full (0-5)",
+            "type": "range",
+            "values": {
+              "from": 0,
+              "to": 5,
+              "step": 1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -89,10 +109,20 @@
         ],
         "description": "Derivative order (0=smoothing, 1=first, 2=second)",
         "sweepable": true
+      },
+      {
+        "name": "delta",
+        "type": "float",
+        "default": 1,
+        "min": 0.1,
+        "max": 10,
+        "description": "Spacing of the samples to which the filter is applied",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.nirs.SavitzkyGolay"
     ],
@@ -112,7 +142,26 @@
       "baseline"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "delta",
+        "type": "float",
+        "default": 1,
+        "min": 0.1,
+        "max": 10,
+        "description": "Sample spacing",
+        "isAdvanced": true
+      },
+      {
+        "name": "edge_order",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 2,
+        "description": "Gradient edge order",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
@@ -134,12 +183,60 @@
       "peaks"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "delta",
+        "type": "float",
+        "default": 1,
+        "min": 0.1,
+        "max": 10,
+        "description": "Sample spacing",
+        "isAdvanced": true
+      },
+      {
+        "name": "edge_order",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 2,
+        "description": "Gradient edge order",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.nirs.SecondDerivative"
     ],
     "tier": "core"
+  },
+  {
+    "id": "preprocessing.derivate",
+    "name": "Derivate",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.scalers.Derivate",
+    "description": "nirs4all preprocessing Derivate",
+    "category": "derivatives",
+    "tags": [
+      "derivative",
+      "gradient",
+      "spectral-math"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "order",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "delta",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      }
+    ]
   }
 ]

@@ -51,6 +51,13 @@
         ]
       },
       {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Whether to scale X and Y",
+        "isAdvanced": true
+      },
+      {
         "name": "max_iter",
         "type": "int",
         "default": 500,
@@ -91,6 +98,26 @@
         "max": 100,
         "description": "Number of PLS components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -103,5 +130,258 @@
     "supportsFinetuning": true,
     "supportsStepGenerator": true,
     "tier": "standard"
+  },
+  {
+    "id": "model.kpls",
+    "name": "KPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.sklearn.nlpls.KernelPLS",
+    "description": "Nonlinear PLS using Kernel Methods (Kernel PLS / NL-PLS).",
+    "category": "pls",
+    "tags": [
+      "pls",
+      "kernel",
+      "nonlinear",
+      "rbf",
+      "regression"
+    ],
+    "source": "nirs4all",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "gamma",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          10
+        ]
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "coef0",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "center_kernel",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "scale_y",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "backend",
+        "type": "string",
+        "default": "numpy",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.mbpls",
+    "name": "MBPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.sklearn.mbpls.MBPLS",
+    "description": "Multiblock PLS (MB-PLS) regressor.",
+    "category": "pls",
+    "tags": [
+      "pls",
+      "multiblock",
+      "fusion",
+      "regression"
+    ],
+    "source": "nirs4all",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "NIPALS",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "standardize",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_tol",
+        "type": "float",
+        "default": 1e-14,
+        "isAdvanced": true
+      },
+      {
+        "name": "backend",
+        "type": "string",
+        "default": "numpy",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.oklmpls",
+    "name": "OKLMPLS",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.sklearn.oklmpls.OKLMPLS",
+    "description": "Online Koopman Latent-Mode Partial Least Squares (OKLM-PLS).",
+    "category": "pls",
+    "tags": [
+      "pls",
+      "koopman",
+      "dynamic",
+      "time-series",
+      "regression"
+    ],
+    "source": "nirs4all",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "featurizer",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_dyn",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_reg_y",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "warm_start_pls",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "standardize",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "backend",
+        "type": "string",
+        "default": "numpy",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
   }
 ]

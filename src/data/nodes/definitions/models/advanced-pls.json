@@ -23,12 +23,42 @@
         "max": 50,
         "description": "Number of predictive components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           20
         ]
+      },
+      {
+        "name": "pls_components",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 20,
+        "description": "Number of PLS components",
+        "isAdvanced": true,
+        "sweepable": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -63,12 +93,41 @@
         "max": 50,
         "description": "Number of components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           20
         ]
+      },
+      {
+        "name": "pls_components",
+        "type": "int",
+        "default": 5,
+        "min": 1,
+        "max": 20,
+        "description": "Number of PLS components",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -99,6 +158,26 @@
         "max": 100,
         "description": "Number of components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -140,6 +219,26 @@
         "max": 50,
         "description": "Number of components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -192,6 +291,26 @@
         "max": 50,
         "description": "Number of components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -245,7 +364,33 @@
         "min": 1,
         "max": 50,
         "description": "Number of components",
-        "sweepable": true
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ]
       },
       {
         "name": "n_intervals",
@@ -254,7 +399,43 @@
         "min": 5,
         "max": 100,
         "description": "Number of spectral intervals",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          5,
+          40
+        ]
+      },
+      {
+        "name": "mode",
+        "type": "select",
+        "default": "forward",
+        "options": [
+          {
+            "value": "forward",
+            "label": "Forward"
+          },
+          {
+            "value": "backward",
+            "label": "Backward"
+          },
+          {
+            "value": "both",
+            "label": "Both"
+          }
+        ],
+        "description": "Interval selection mode",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of cross-validation folds",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -284,12 +465,49 @@
         "max": 50,
         "description": "Number of components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           20
         ]
+      },
+      {
+        "name": "weighting",
+        "type": "select",
+        "default": "huber",
+        "options": [
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "fair",
+            "label": "Fair"
+          }
+        ],
+        "description": "Robust weighting function",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -319,6 +537,26 @@
         "max": 50,
         "description": "Number of components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -353,7 +591,42 @@
         "min": 1,
         "max": 50,
         "description": "Number of components",
-        "sweepable": true
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ]
+      },
+      {
+        "name": "lags",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 10,
+        "description": "Number of lags for domain invariance",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -383,7 +656,267 @@
         "min": 1,
         "max": 50,
         "description": "Number of components",
-        "sweepable": true
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ]
+      },
+      {
+        "name": "forgetting_factor",
+        "type": "float",
+        "default": 0.99,
+        "min": 0.8,
+        "max": 1.0,
+        "step": 0.01,
+        "description": "Forgetting factor for recursive updates",
+        "isAdvanced": true,
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.9,
+          1.0
+        ]
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
+    "id": "model.aompls_regressor",
+    "name": "AOMPLSRegressor",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.AOMPLSRegressor",
+    "description": "Adaptive Operator-Mixture PLS regressor",
+    "longDescription": "Automatically selects the best preprocessing operator from a bank and applies PLS regression.",
+    "category": "Advanced PLS",
+    "tags": [
+      "pls",
+      "adaptive",
+      "operator",
+      "mixture",
+      "regression"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": { "from": 1, "to": 10, "step": 1 }
+          },
+          {
+            "label": "Extended (1-20)",
+            "type": "range",
+            "values": { "from": 1, "to": 20, "step": 2 }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      },
+      {
+        "name": "n_orth",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 10,
+        "description": "Number of orthogonal components to remove",
+        "isAdvanced": true
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data before fitting",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
+    "id": "model.aompls_classifier",
+    "name": "AOMPLSClassifier",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.AOMPLSClassifier",
+    "description": "AOM-PLS Discriminant Analysis classifier",
+    "longDescription": "Combines automatic preprocessing selection with PLS-DA for classification.",
+    "category": "Advanced PLS",
+    "tags": [
+      "pls",
+      "adaptive",
+      "operator",
+      "mixture",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      },
+      {
+        "name": "n_orth",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 10,
+        "description": "Number of orthogonal components to remove",
+        "isAdvanced": true
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data before fitting",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
+    "id": "model.poppls_regressor",
+    "name": "POPPLSRegressor",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.POPPLSRegressor",
+    "description": "Per-Operator-Per-component PLS regressor",
+    "longDescription": "Selects a different preprocessing operator for each PLS component, optimizing preprocessing per latent variable.",
+    "category": "Advanced PLS",
+    "tags": [
+      "pls",
+      "per-component",
+      "operator",
+      "regression"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": { "from": 1, "to": 10, "step": 1 }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      },
+      {
+        "name": "n_orth",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 10,
+        "description": "Number of orthogonal components",
+        "isAdvanced": true
+      },
+      {
+        "name": "auto_select",
+        "type": "bool",
+        "default": true,
+        "description": "Automatically select best operator per component",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
+    "id": "model.poppls_classifier",
+    "name": "POPPLSClassifier",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.POPPLSClassifier",
+    "description": "POP-PLS Discriminant Analysis classifier",
+    "longDescription": "Per-component operator selection with PLS-DA for classification.",
+    "category": "Advanced PLS",
+    "tags": [
+      "pls",
+      "per-component",
+      "operator",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PLS components",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 30]
+      },
+      {
+        "name": "n_orth",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 10,
+        "description": "Number of orthogonal components",
+        "isAdvanced": true
+      },
+      {
+        "name": "auto_select",
+        "type": "bool",
+        "default": true,
+        "description": "Automatically select best operator per component",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,

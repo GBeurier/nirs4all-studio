@@ -68,6 +68,26 @@
         "max": 100,
         "description": "Number of principal components",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-30)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 30,
+              "step": 5
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [

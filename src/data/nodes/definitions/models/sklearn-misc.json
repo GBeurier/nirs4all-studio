@@ -1,0 +1,802 @@
+[
+  {
+    "id": "model.calibrated_classifier_cv",
+    "name": "CalibratedClassifierCV",
+    "type": "model",
+    "classPath": "sklearn.calibration.CalibratedClassifierCV",
+    "description": "Calibrate probabilities using isotonic, sigmoid, or temperature scaling.",
+    "category": "sklearn-probabilistic",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "calibration"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "sigmoid",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "ensemble",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.cca",
+    "name": "CCA",
+    "type": "model",
+    "classPath": "sklearn.cross_decomposition._pls.CCA",
+    "description": "Canonical Correlation Analysis, also known as \"Mode B\" PLS.",
+    "category": "sklearn-cross-decomposition",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "cross_decomposition",
+      "_pls"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.dummy_classifier",
+    "name": "DummyClassifier",
+    "type": "model",
+    "classPath": "sklearn.dummy.DummyClassifier",
+    "description": "DummyClassifier makes predictions that ignore the input features.",
+    "category": "sklearn-baseline",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "dummy"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "strategy",
+        "type": "select",
+        "default": "prior",
+        "options": [
+          {
+            "value": "mean",
+            "label": "Mean"
+          },
+          {
+            "value": "median",
+            "label": "Median"
+          },
+          {
+            "value": "most_frequent",
+            "label": "Most Frequent"
+          },
+          {
+            "value": "constant",
+            "label": "Constant"
+          },
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "kmeans",
+            "label": "KMeans"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "constant",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.dummy_regressor",
+    "name": "DummyRegressor",
+    "type": "model",
+    "classPath": "sklearn.dummy.DummyRegressor",
+    "description": "Regressor that makes predictions using simple rules.",
+    "category": "sklearn-baseline",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "dummy"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "strategy",
+        "type": "select",
+        "default": "mean",
+        "options": [
+          {
+            "value": "mean",
+            "label": "Mean"
+          },
+          {
+            "value": "median",
+            "label": "Median"
+          },
+          {
+            "value": "most_frequent",
+            "label": "Most Frequent"
+          },
+          {
+            "value": "constant",
+            "label": "Constant"
+          },
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "kmeans",
+            "label": "KMeans"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "constant",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "quantile",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.fixed_threshold_classifier",
+    "name": "FixedThresholdClassifier",
+    "type": "model",
+    "classPath": "sklearn.model_selection._classification_threshold.FixedThresholdClassifier",
+    "description": "Binary classifier that manually sets the decision threshold.",
+    "category": "sklearn-probabilistic",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "model_selection",
+      "_classification_threshold"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "threshold",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "pos_label",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "response_method",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.isotonic_regression",
+    "name": "IsotonicRegression",
+    "type": "model",
+    "classPath": "sklearn.isotonic.IsotonicRegression",
+    "description": "Isotonic regression model.",
+    "category": "sklearn-probabilistic",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "isotonic"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "y_min",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "y_max",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "increasing",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "out_of_bounds",
+        "type": "string",
+        "default": "nan",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.kernel_ridge",
+    "name": "KernelRidge",
+    "type": "model",
+    "classPath": "sklearn.kernel_ridge.KernelRidge",
+    "description": "Kernel ridge regression.",
+    "category": "sklearn-kernel",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "kernel_ridge"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "linear",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "gamma",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          10
+        ]
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "coef0",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "kernel_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.label_propagation",
+    "name": "LabelPropagation",
+    "type": "model",
+    "classPath": "sklearn.semi_supervised._label_propagation.LabelPropagation",
+    "description": "Label Propagation classifier.",
+    "category": "sklearn-semi-supervised",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "semi_supervised",
+      "_label_propagation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "gamma",
+        "type": "int",
+        "default": 20,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 7,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.label_spreading",
+    "name": "LabelSpreading",
+    "type": "model",
+    "classPath": "sklearn.semi_supervised._label_propagation.LabelSpreading",
+    "description": "LabelSpreading model for semi-supervised learning.",
+    "category": "sklearn-semi-supervised",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "semi_supervised",
+      "_label_propagation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "gamma",
+        "type": "int",
+        "default": 20,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 7,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.2,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.pls_canonical",
+    "name": "PLSCanonical",
+    "type": "model",
+    "classPath": "sklearn.cross_decomposition._pls.PLSCanonical",
+    "description": "Partial Least Squares transformer and regressor.",
+    "category": "sklearn-cross-decomposition",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "cross_decomposition",
+      "_pls"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "nipals",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.self_training_classifier",
+    "name": "SelfTrainingClassifier",
+    "type": "model",
+    "classPath": "sklearn.semi_supervised._self_training.SelfTrainingClassifier",
+    "description": "Self-training classifier.",
+    "category": "sklearn-semi-supervised",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "semi_supervised",
+      "_self_training"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 0.75,
+        "isAdvanced": true
+      },
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "threshold",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "k_best",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.transformed_target_regressor",
+    "name": "TransformedTargetRegressor",
+    "type": "model",
+    "classPath": "sklearn.compose._target.TransformedTargetRegressor",
+    "description": "Meta-estimator to regress on a transformed target.",
+    "category": "sklearn-misc-models",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "compose",
+      "_target"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "regressor",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transformer",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "inverse_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "check_inverse",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.tuned_threshold_classifier_cv",
+    "name": "TunedThresholdClassifierCV",
+    "type": "model",
+    "classPath": "sklearn.model_selection._classification_threshold.TunedThresholdClassifierCV",
+    "description": "Classifier that post-tunes the decision threshold using cross-validation.",
+    "category": "sklearn-probabilistic",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "model_selection",
+      "_classification_threshold"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "default": "balanced_accuracy",
+        "isAdvanced": true
+      },
+      {
+        "name": "response_method",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "thresholds",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "refit",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "store_cv_results",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  }
+]

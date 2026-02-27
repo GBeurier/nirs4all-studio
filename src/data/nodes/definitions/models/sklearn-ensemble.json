@@ -1,0 +1,1453 @@
+[
+  {
+    "id": "model.ada_boost_classifier",
+    "name": "AdaBoostClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._weight_boosting.AdaBoostClassifier",
+    "description": "An AdaBoost classifier.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_weight_boosting"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 50,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.ada_boost_regressor",
+    "name": "AdaBoostRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._weight_boosting.AdaBoostRegressor",
+    "description": "An AdaBoost regressor.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_weight_boosting"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 50,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "linear",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.bagging_classifier",
+    "name": "BaggingClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._bagging.BaggingClassifier",
+    "description": "A Bagging classifier.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_bagging"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 10,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "float",
+        "default": 1,
+        "sweepable": true
+      },
+      {
+        "name": "bootstrap",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "bootstrap_features",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.bagging_regressor",
+    "name": "BaggingRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._bagging.BaggingRegressor",
+    "description": "A Bagging regressor.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_bagging"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 10,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "float",
+        "default": 1,
+        "sweepable": true
+      },
+      {
+        "name": "bootstrap",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "bootstrap_features",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.extra_trees_classifier",
+    "name": "ExtraTreesClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._forest.ExtraTreesClassifier",
+    "description": "An extra-trees classifier.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_forest"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "gini",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "string",
+        "default": "sqrt"
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "bootstrap",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.extra_trees_regressor",
+    "name": "ExtraTreesRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._forest.ExtraTreesRegressor",
+    "description": "An extra-trees regressor.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_forest"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "squared_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "float",
+        "default": 1,
+        "sweepable": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "bootstrap",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.gradient_boosting_classifier",
+    "name": "GradientBoostingClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._gb.GradientBoostingClassifier",
+    "description": "Gradient Boosting for classification.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_gb"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "log_loss",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "subsample",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.5,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "friedman_mse",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_depth",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_features",
+        "type": "string"
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.gradient_boosting_regressor",
+    "name": "GradientBoostingRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._gb.GradientBoostingRegressor",
+    "description": "Gradient Boosting for regression.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_gb"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "squared_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          500
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "subsample",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.5,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "friedman_mse",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_depth",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_features",
+        "type": "string"
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.9,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.hist_gradient_boosting_classifier",
+    "name": "HistGradientBoostingClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingClassifier",
+    "description": "Histogram-based Gradient Boosting Classification Tree.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_hist_gradient_boosting"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "log_loss",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "int",
+        "default": 31,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 20,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l2_regularization",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_features",
+        "type": "float",
+        "default": 1,
+        "sweepable": true
+      },
+      {
+        "name": "max_bins",
+        "type": "int",
+        "default": 255,
+        "isAdvanced": true
+      },
+      {
+        "name": "categorical_features",
+        "type": "string",
+        "default": "from_dtype",
+        "isAdvanced": true
+      },
+      {
+        "name": "interaction_cst",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "default": "loss",
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 1e-7,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.hist_gradient_boosting_regressor",
+    "name": "HistGradientBoostingRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingRegressor",
+    "description": "Histogram-based Gradient Boosting Regression Tree.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_hist_gradient_boosting"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "squared_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "quantile",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "int",
+        "default": 31,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 20,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l2_regularization",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_features",
+        "type": "float",
+        "default": 1,
+        "sweepable": true
+      },
+      {
+        "name": "max_bins",
+        "type": "int",
+        "default": 255,
+        "isAdvanced": true
+      },
+      {
+        "name": "categorical_features",
+        "type": "string",
+        "default": "from_dtype",
+        "isAdvanced": true
+      },
+      {
+        "name": "interaction_cst",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "default": "loss",
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 1e-7,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.stacking_classifier",
+    "name": "StackingClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._stacking.StackingClassifier",
+    "description": "Stack of estimators with a final classifier.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_stacking"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimators",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "final_estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "stack_method",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "passthrough",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.stacking_regressor",
+    "name": "StackingRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._stacking.StackingRegressor",
+    "description": "Stack of estimators with a final regressor.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_stacking"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimators",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "final_estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "passthrough",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.voting_classifier",
+    "name": "VotingClassifier",
+    "type": "model",
+    "classPath": "sklearn.ensemble._voting.VotingClassifier",
+    "description": "Soft Voting/Majority Rule classifier for unfitted estimators.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "ensemble",
+      "_voting"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimators",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "voting",
+        "type": "string",
+        "default": "hard",
+        "isAdvanced": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "flatten_transform",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.voting_regressor",
+    "name": "VotingRegressor",
+    "type": "model",
+    "classPath": "sklearn.ensemble._voting.VotingRegressor",
+    "description": "Prediction voting regressor for unfitted estimators.",
+    "category": "sklearn-ensemble",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "ensemble",
+      "_voting"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimators",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      }
+    ]
+  }
+]

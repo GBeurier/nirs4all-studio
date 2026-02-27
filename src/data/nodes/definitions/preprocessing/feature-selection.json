@@ -24,6 +24,17 @@
         "max": 50,
         "description": "Number of PLS components for variable importance",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard (5-20)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 20,
+              "step": 5
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -39,10 +50,29 @@
         "max": 200,
         "description": "Number of sampling iterations",
         "sweepable": true
+      },
+      {
+        "name": "cv_folds",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 10,
+        "description": "Number of cross-validation folds",
+        "isAdvanced": true
+      },
+      {
+        "name": "subset_ratio",
+        "type": "float",
+        "default": 0.8,
+        "min": 0.5,
+        "max": 1,
+        "description": "Ratio of samples used in each iteration",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "advanced"
   },
   {
@@ -68,7 +98,24 @@
         "min": 1,
         "max": 50,
         "description": "Number of PLS components",
-        "sweepable": true
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard (5-20)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 20,
+              "step": 5
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          5,
+          30
+        ]
       },
       {
         "name": "n_iterations",
@@ -78,10 +125,20 @@
         "max": 500,
         "description": "Number of Monte Carlo iterations",
         "sweepable": true
+      },
+      {
+        "name": "subset_ratio",
+        "type": "float",
+        "default": 0.8,
+        "min": 0.5,
+        "max": 1,
+        "description": "Ratio of samples used in each iteration",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "advanced"
   },
   {
@@ -108,7 +165,13 @@
         "min": 1,
         "max": 50,
         "description": "Number of PLS components",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          5,
+          30
+        ]
       },
       {
         "name": "threshold",
@@ -119,6 +182,17 @@
         "step": 0.1,
         "description": "VIP score threshold for variable selection",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Strict (0.8-1.5)",
+            "type": "range",
+            "values": {
+              "from": 0.8,
+              "to": 1.5,
+              "step": 0.1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [
@@ -129,6 +203,132 @@
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
+  },
+  {
+    "id": "preprocessing.flexible_pca",
+    "name": "FlexiblePCA",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.feature_selection.FlexiblePCA",
+    "description": "PCA with flexible component specification.",
+    "category": "feature-selection",
+    "tags": [
+      "dimensionality-reduction",
+      "pca",
+      "variance",
+      "feature-extraction"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "float",
+        "default": 0.95,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "whiten",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "name": "svd_solver",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          {
+            "value": "auto",
+            "label": "auto"
+          },
+          {
+            "value": "full",
+            "label": "full"
+          },
+          {
+            "value": "arpack",
+            "label": "arpack"
+          },
+          {
+            "value": "randomized",
+            "label": "randomized"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.flexible_svd",
+    "name": "FlexibleSVD",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.feature_selection.FlexibleSVD",
+    "description": "Truncated SVD with flexible component specification.",
+    "category": "feature-selection",
+    "tags": [
+      "dimensionality-reduction",
+      "svd",
+      "variance",
+      "feature-extraction"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "float",
+        "default": 0.95,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "algorithm",
+        "type": "select",
+        "default": "randomized",
+        "options": [
+          {
+            "value": "arpack",
+            "label": "arpack"
+          },
+          {
+            "value": "randomized",
+            "label": "randomized"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
   }
 ]

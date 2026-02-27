@@ -14,7 +14,20 @@
       "variance"
     ],
     "source": "sklearn",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "with_mean",
+        "type": "bool",
+        "default": true,
+        "description": "Center data by subtracting the mean"
+      },
+      {
+        "name": "with_std",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data by dividing by the standard deviation"
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
@@ -55,7 +68,6 @@
         "description": "Maximum of the output range"
       }
     ],
-    "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
       "sklearn.preprocessing._data.MinMaxScaler"
@@ -78,7 +90,45 @@
       "outlier"
     ],
     "source": "sklearn",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "with_centering",
+        "type": "bool",
+        "default": true,
+        "description": "Center data by subtracting the median"
+      },
+      {
+        "name": "with_scaling",
+        "type": "bool",
+        "default": true,
+        "description": "Scale data by the interquartile range"
+      },
+      {
+        "name": "quantile_range_min",
+        "type": "float",
+        "default": 25,
+        "min": 0,
+        "max": 50,
+        "description": "Lower quantile percentile",
+        "isAdvanced": true
+      },
+      {
+        "name": "quantile_range_max",
+        "type": "float",
+        "default": 75,
+        "min": 50,
+        "max": 100,
+        "description": "Upper quantile percentile",
+        "isAdvanced": true
+      },
+      {
+        "name": "unit_variance",
+        "type": "bool",
+        "default": false,
+        "description": "Scale to unit variance after IQR scaling",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "legacyClassPaths": [
@@ -107,5 +157,54 @@
       "sklearn.preprocessing._data.MaxAbsScaler"
     ],
     "tier": "standard"
+  },
+  {
+    "id": "preprocessing.area_normalization",
+    "name": "AreaNormalization",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.nirs.AreaNormalization",
+    "description": "Area normalization of spectra.",
+    "category": "scaling",
+    "tags": [
+      "normalization",
+      "area",
+      "scaling",
+      "intensity-correction"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "method",
+        "type": "select",
+        "default": "sum",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.simple_scale",
+    "name": "SimpleScale",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.scalers.SimpleScale",
+    "description": "nirs4all preprocessing SimpleScale",
+    "category": "scaling",
+    "tags": [
+      "scaling",
+      "min-max",
+      "simple"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": []
   }
 ]

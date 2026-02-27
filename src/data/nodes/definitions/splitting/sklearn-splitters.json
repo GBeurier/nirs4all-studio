@@ -34,7 +34,8 @@
         "type": "int",
         "default": 42,
         "min": 0,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -65,7 +66,8 @@
         "default": 5,
         "min": 2,
         "max": 20,
-        "description": "Number of folds"
+        "description": "Number of folds",
+        "sweepable": true
       },
       {
         "name": "n_repeats",
@@ -73,14 +75,16 @@
         "default": 3,
         "min": 2,
         "max": 10,
-        "description": "Number of times to repeat K-fold"
+        "description": "Number of times to repeat K-fold",
+        "sweepable": true
       },
       {
         "name": "random_state",
         "type": "int",
         "default": 42,
         "min": 0,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -128,7 +132,8 @@
         "type": "int",
         "default": 42,
         "min": 0,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -159,7 +164,8 @@
         "default": 5,
         "min": 2,
         "max": 20,
-        "description": "Number of folds"
+        "description": "Number of folds",
+        "sweepable": true
       },
       {
         "name": "shuffle",
@@ -172,7 +178,8 @@
         "type": "int",
         "default": 42,
         "min": 0,
-        "description": "Random seed for reproducibility"
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -223,7 +230,8 @@
         "default": 5,
         "min": 2,
         "max": 20,
-        "description": "Number of folds"
+        "description": "Number of folds",
+        "sweepable": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -253,7 +261,8 @@
         "default": 5,
         "min": 1,
         "max": 50,
-        "description": "Number of re-shuffling iterations"
+        "description": "Number of re-shuffling iterations",
+        "sweepable": true
       },
       {
         "name": "test_size",
@@ -262,10 +271,236 @@
         "min": 0.05,
         "max": 0.5,
         "step": 0.05,
-        "description": "Proportion for test set"
+        "description": "Proportion for test set",
+        "sweepable": true
       }
     ],
     "supportsParameterSweeps": true,
     "tier": "standard"
+  },
+  {
+    "id": "splitting.leave_one_group_out",
+    "name": "LeaveOneGroupOut",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.LeaveOneGroupOut",
+    "description": "Leave One Group Out cross-validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": []
+  },
+  {
+    "id": "splitting.leave_p_groups_out",
+    "name": "LeavePGroupsOut",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.LeavePGroupsOut",
+    "description": "Leave P Group(s) Out cross-validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_groups",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "splitting.leave_p_out",
+    "name": "LeavePOut",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.LeavePOut",
+    "description": "Leave-P-Out cross-validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "p",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "id": "splitting.predefined_split",
+    "name": "PredefinedSplit",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.PredefinedSplit",
+    "description": "Predefined split cross-validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "test_fold",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "splitting.repeated_stratified_k_fold",
+    "name": "RepeatedStratifiedKFold",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.RepeatedStratifiedKFold",
+    "description": "Repeated class-wise stratified K-Fold cross validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "sweepable": true
+      },
+      {
+        "name": "n_repeats",
+        "type": "int",
+        "default": 10,
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "splitting.stratified_group_k_fold",
+    "name": "StratifiedGroupKFold",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.StratifiedGroupKFold",
+    "description": "Class-wise stratified K-Fold iterator variant with non-overlapping groups.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "sweepable": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "splitting.stratified_shuffle_split",
+    "name": "StratifiedShuffleSplit",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.StratifiedShuffleSplit",
+    "description": "Class-wise stratified ShuffleSplit cross-validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 10,
+        "sweepable": true
+      },
+      {
+        "name": "test_size",
+        "type": "string"
+      },
+      {
+        "name": "train_size",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "splitting.time_series_split",
+    "name": "TimeSeriesSplit",
+    "type": "splitting",
+    "classPath": "sklearn.model_selection._split.TimeSeriesSplit",
+    "description": "Time Series cross-validator.",
+    "category": "sklearn-splitters",
+    "tags": [
+      "sklearn",
+      "splitter",
+      "cross-validation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "sweepable": true
+      },
+      {
+        "name": "max_train_size",
+        "type": "string"
+      },
+      {
+        "name": "test_size",
+        "type": "string"
+      },
+      {
+        "name": "gap",
+        "type": "int",
+        "default": 0,
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true
   }
 ]

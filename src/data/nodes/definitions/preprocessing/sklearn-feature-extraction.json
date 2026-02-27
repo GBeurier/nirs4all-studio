@@ -1,0 +1,297 @@
+[
+  {
+    "id": "preprocessing.dict_vectorizer",
+    "name": "DictVectorizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_extraction._dict_vectorizer.DictVectorizer",
+    "description": "Transforms lists of feature-value mappings to vectors.",
+    "category": "scikit-feature-extraction",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_extraction",
+      "_dict_vectorizer"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "dtype",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "separator",
+        "type": "string",
+        "default": "=",
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "sort",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.feature_hasher",
+    "name": "FeatureHasher",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_extraction._hash.FeatureHasher",
+    "description": "Implements feature hashing, aka the hashing trick.",
+    "category": "scikit-feature-extraction",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_extraction",
+      "_hash"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_features",
+        "type": "int",
+        "default": 1048576,
+        "isAdvanced": true
+      },
+      {
+        "name": "input_type",
+        "type": "string",
+        "default": "dict",
+        "isAdvanced": true
+      },
+      {
+        "name": "dtype",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "alternate_sign",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.hashing_vectorizer",
+    "name": "HashingVectorizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_extraction.text.HashingVectorizer",
+    "description": "Convert a collection of text documents to a matrix of token occurrences.",
+    "category": "scikit-feature-extraction",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_extraction",
+      "text"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "input",
+        "type": "string",
+        "default": "content",
+        "isAdvanced": true
+      },
+      {
+        "name": "encoding",
+        "type": "string",
+        "default": "utf-8",
+        "isAdvanced": true
+      },
+      {
+        "name": "decode_error",
+        "type": "string",
+        "default": "strict",
+        "isAdvanced": true
+      },
+      {
+        "name": "strip_accents",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "lowercase",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "preprocessor",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tokenizer",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "stop_words",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "token_pattern",
+        "type": "string",
+        "default": "(?u)\\b\\w\\w+\\b",
+        "isAdvanced": true
+      },
+      {
+        "name": "ngram_range",
+        "type": "array",
+        "default": [
+          1,
+          1
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "analyzer",
+        "type": "string",
+        "default": "word",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_features",
+        "type": "int",
+        "default": 1048576,
+        "isAdvanced": true
+      },
+      {
+        "name": "binary",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "norm",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1"
+          },
+          {
+            "value": "l2",
+            "label": "L2"
+          },
+          {
+            "value": "max",
+            "label": "Max"
+          }
+        ]
+      },
+      {
+        "name": "alternate_sign",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "dtype",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.patch_extractor",
+    "name": "PatchExtractor",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_extraction.image.PatchExtractor",
+    "description": "Extracts patches from a collection of images.",
+    "category": "scikit-feature-extraction",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_extraction",
+      "image"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "patch_size",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_patches",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.tfidf_transformer",
+    "name": "TfidfTransformer",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_extraction.text.TfidfTransformer",
+    "description": "Transform a count matrix to a normalized tf or tf-idf representation.",
+    "category": "scikit-feature-extraction",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_extraction",
+      "text"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "norm",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1"
+          },
+          {
+            "value": "l2",
+            "label": "L2"
+          },
+          {
+            "value": "max",
+            "label": "Max"
+          }
+        ]
+      },
+      {
+        "name": "use_idf",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "smooth_idf",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "sublinear_tf",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  }
+]

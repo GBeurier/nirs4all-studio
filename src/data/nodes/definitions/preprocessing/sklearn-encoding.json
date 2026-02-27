@@ -1,0 +1,362 @@
+[
+  {
+    "id": "preprocessing.k_bins_discretizer",
+    "name": "KBinsDiscretizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._discretization.KBinsDiscretizer",
+    "description": "Bin continuous data into intervals.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_discretization"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_bins",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "encode",
+        "type": "select",
+        "default": "onehot",
+        "options": [
+          {
+            "value": "onehot",
+            "label": "One-Hot"
+          },
+          {
+            "value": "onehot-dense",
+            "label": "One-Hot Dense"
+          },
+          {
+            "value": "ordinal",
+            "label": "Ordinal"
+          }
+        ]
+      },
+      {
+        "name": "strategy",
+        "type": "select",
+        "default": "quantile",
+        "options": [
+          {
+            "value": "mean",
+            "label": "Mean"
+          },
+          {
+            "value": "median",
+            "label": "Median"
+          },
+          {
+            "value": "most_frequent",
+            "label": "Most Frequent"
+          },
+          {
+            "value": "constant",
+            "label": "Constant"
+          },
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "kmeans",
+            "label": "KMeans"
+          }
+        ]
+      },
+      {
+        "name": "quantile_method",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      },
+      {
+        "name": "dtype",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "subsample",
+        "type": "int",
+        "default": 200000,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.label_binarizer",
+    "name": "LabelBinarizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._label.LabelBinarizer",
+    "description": "Binarize labels in a one-vs-all fashion.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_label"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "neg_label",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "pos_label",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse_output",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.label_encoder",
+    "name": "LabelEncoder",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._label.LabelEncoder",
+    "description": "Encode target labels with value between 0 and n_classes-1.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_label"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": []
+  },
+  {
+    "id": "preprocessing.multi_label_binarizer",
+    "name": "MultiLabelBinarizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._label.MultiLabelBinarizer",
+    "description": "Transform between iterable of iterables and a multilabel format.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_label"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "classes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse_output",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.one_hot_encoder",
+    "name": "OneHotEncoder",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._encoders.OneHotEncoder",
+    "description": "Encode categorical features as a one-hot numeric array.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_encoders"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "categories",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "drop",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse_output",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "dtype",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "handle_unknown",
+        "type": "string",
+        "default": "error",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_frequency",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_categories",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "feature_name_combiner",
+        "type": "string",
+        "default": "concat",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.ordinal_encoder",
+    "name": "OrdinalEncoder",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._encoders.OrdinalEncoder",
+    "description": "Encode categorical features as an integer array.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_encoders"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "categories",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "dtype",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "handle_unknown",
+        "type": "string",
+        "default": "error",
+        "isAdvanced": true
+      },
+      {
+        "name": "unknown_value",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "encoded_missing_value",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_frequency",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_categories",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.target_encoder",
+    "name": "TargetEncoder",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._target_encoder.TargetEncoder",
+    "description": "Target Encoder for regression and classification targets.",
+    "category": "scikit-encoding",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_target_encoder"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "categories",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "target_type",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "smooth",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  }
+]

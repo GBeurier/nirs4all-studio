@@ -1,0 +1,189 @@
+[
+  {
+    "id": "preprocessing.knn_imputer",
+    "name": "KNNImputer",
+    "type": "preprocessing",
+    "classPath": "sklearn.impute._knn.KNNImputer",
+    "description": "Imputation for completing missing values using k-Nearest Neighbors.",
+    "category": "scikit-imputation",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "impute",
+      "_knn"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "missing_values",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "weights",
+        "type": "select",
+        "default": "uniform",
+        "options": [
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "distance",
+            "label": "Distance"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "nan_euclidean",
+        "isAdvanced": true
+      },
+      {
+        "name": "add_indicator",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "keep_empty_features",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.missing_indicator",
+    "name": "MissingIndicator",
+    "type": "preprocessing",
+    "classPath": "sklearn.impute._base.MissingIndicator",
+    "description": "Binary indicators for missing values.",
+    "category": "scikit-imputation",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "impute",
+      "_base"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "missing_values",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "features",
+        "type": "string",
+        "default": "missing-only",
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "error_on_new",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.simple_imputer",
+    "name": "SimpleImputer",
+    "type": "preprocessing",
+    "classPath": "sklearn.impute._base.SimpleImputer",
+    "description": "Univariate imputer for completing missing values with simple strategies.",
+    "category": "scikit-imputation",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "impute",
+      "_base"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "missing_values",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "strategy",
+        "type": "select",
+        "default": "mean",
+        "options": [
+          {
+            "value": "mean",
+            "label": "Mean"
+          },
+          {
+            "value": "median",
+            "label": "Median"
+          },
+          {
+            "value": "most_frequent",
+            "label": "Most Frequent"
+          },
+          {
+            "value": "constant",
+            "label": "Constant"
+          },
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "kmeans",
+            "label": "KMeans"
+          }
+        ]
+      },
+      {
+        "name": "fill_value",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "add_indicator",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "keep_empty_features",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  }
+]

@@ -1,0 +1,489 @@
+[
+  {
+    "id": "model.decision_tree_classifier",
+    "name": "DecisionTreeClassifier",
+    "type": "model",
+    "classPath": "sklearn.tree._classes.DecisionTreeClassifier",
+    "description": "A decision tree classifier.",
+    "category": "sklearn-tree",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "tree",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "gini",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "splitter",
+        "type": "string",
+        "default": "best",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "string"
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.decision_tree_regressor",
+    "name": "DecisionTreeRegressor",
+    "type": "model",
+    "classPath": "sklearn.tree._classes.DecisionTreeRegressor",
+    "description": "A decision tree regressor.",
+    "category": "sklearn-tree",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "tree",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "squared_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "splitter",
+        "type": "string",
+        "default": "best",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "string"
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.extra_tree_classifier",
+    "name": "ExtraTreeClassifier",
+    "type": "model",
+    "classPath": "sklearn.tree._classes.ExtraTreeClassifier",
+    "description": "An extremely randomized tree classifier.",
+    "category": "sklearn-tree",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "tree",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "gini",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "splitter",
+        "type": "string",
+        "default": "random",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "string",
+        "default": "sqrt"
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.extra_tree_regressor",
+    "name": "ExtraTreeRegressor",
+    "type": "model",
+    "classPath": "sklearn.tree._classes.ExtraTreeRegressor",
+    "description": "An extremely randomized tree regressor.",
+    "category": "sklearn-tree",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "tree",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "squared_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "splitter",
+        "type": "string",
+        "default": "random",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_depth",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          30
+        ]
+      },
+      {
+        "name": "min_samples_split",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "min_samples_leaf",
+        "type": "int",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_features",
+        "type": "float",
+        "default": 1,
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_impurity_decrease",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_leaf_nodes",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "ccp_alpha",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

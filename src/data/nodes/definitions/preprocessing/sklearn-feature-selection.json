@@ -1,0 +1,399 @@
+[
+  {
+    "id": "preprocessing.generic_univariate_select",
+    "name": "GenericUnivariateSelect",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._univariate_selection.GenericUnivariateSelect",
+    "description": "Univariate feature selector with configurable strategy.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_univariate_selection"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "score_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "mode",
+        "type": "string",
+        "default": "percentile",
+        "isAdvanced": true
+      },
+      {
+        "name": "param",
+        "type": "float",
+        "default": 0.00001,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.rfe",
+    "name": "RFE",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._rfe.RFE",
+    "description": "Feature ranking with recursive feature elimination.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_rfe"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_features_to_select",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "step",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "importance_getter",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.rfecv",
+    "name": "RFECV",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._rfe.RFECV",
+    "description": "Recursive feature elimination with cross-validation to select features.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_rfe"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "step",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "min_features_to_select",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "importance_getter",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.select_fdr",
+    "name": "SelectFdr",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._univariate_selection.SelectFdr",
+    "description": "Filter: Select the p-values for an estimated false discovery rate.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_univariate_selection"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "score_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.05,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.select_fpr",
+    "name": "SelectFpr",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._univariate_selection.SelectFpr",
+    "description": "Filter: Select the pvalues below alpha based on a FPR test.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_univariate_selection"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "score_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.05,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.select_from_model",
+    "name": "SelectFromModel",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._from_model.SelectFromModel",
+    "description": "Meta-transformer for selecting features based on importance weights.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_from_model"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "threshold",
+        "type": "string"
+      },
+      {
+        "name": "prefit",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "norm_order",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_features",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "importance_getter",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.select_fwe",
+    "name": "SelectFwe",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._univariate_selection.SelectFwe",
+    "description": "Filter: Select the p-values corresponding to Family-wise error rate.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_univariate_selection"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "score_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.05,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.select_k_best",
+    "name": "SelectKBest",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._univariate_selection.SelectKBest",
+    "description": "Select features according to the k highest scores.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_univariate_selection"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "score_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "k",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.select_percentile",
+    "name": "SelectPercentile",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._univariate_selection.SelectPercentile",
+    "description": "Select features according to a percentile of the highest scores.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_univariate_selection"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "score_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "percentile",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.sequential_feature_selector",
+    "name": "SequentialFeatureSelector",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._sequential.SequentialFeatureSelector",
+    "description": "Transformer that performs Sequential Feature Selection.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_sequential"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_features_to_select",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "direction",
+        "type": "string",
+        "default": "forward",
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.variance_threshold",
+    "name": "VarianceThreshold",
+    "type": "preprocessing",
+    "classPath": "sklearn.feature_selection._variance_threshold.VarianceThreshold",
+    "description": "Feature selector that removes all low-variance features.",
+    "category": "scikit-feature-selection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "feature_selection",
+      "_variance_threshold"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 0,
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true
+  }
+]

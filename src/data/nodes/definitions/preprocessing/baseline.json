@@ -33,6 +33,7 @@
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.signal.Detrend"
     ],
@@ -60,11 +61,18 @@
         "min": 0,
         "max": 10,
         "description": "Polynomial order for baseline fitting",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          0,
+          5
+        ]
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
   },
   {
@@ -91,6 +99,20 @@
         "max": 10000000000,
         "description": "Smoothness parameter (lambda)",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [
+              1000,
+              10000,
+              100000,
+              1000000,
+              10000000,
+              100000000
+            ]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "log_float",
         "finetuneRange": [
@@ -107,16 +129,46 @@
         "step": 0.001,
         "description": "Asymmetry parameter",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [
+              0.001,
+              0.005,
+              0.01,
+              0.05,
+              0.1
+            ]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [
           0.001,
           0.1
         ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "min": 10,
+        "max": 500,
+        "description": "Maximum number of iterations",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "description": "Convergence tolerance",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.baseline.ASLSBaseline"
     ],
@@ -146,16 +198,47 @@
         "max": 10000000000,
         "description": "Smoothness parameter",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [
+              1000,
+              10000,
+              100000,
+              1000000,
+              10000000,
+              100000000
+            ]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "log_float",
         "finetuneRange": [
           1000,
           10000000
         ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "min": 10,
+        "max": 500,
+        "description": "Maximum number of iterations",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "description": "Convergence tolerance",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.baseline.AirPLS"
     ],
@@ -185,16 +268,47 @@
         "max": 10000000000,
         "description": "Smoothness parameter",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [
+              1000,
+              10000,
+              100000,
+              1000000,
+              10000000,
+              100000000
+            ]
+          }
+        ],
         "finetunable": true,
         "finetuneType": "log_float",
         "finetuneRange": [
           1000,
           10000000
         ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "min": 10,
+        "max": 500,
+        "description": "Maximum number of iterations",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "description": "Convergence tolerance",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.baseline.ArPLS"
     ],
@@ -224,16 +338,51 @@
         "max": 200,
         "description": "Maximum half-window size",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Small (10-40)",
+            "type": "range",
+            "values": {
+              "from": 10,
+              "to": 40,
+              "step": 5
+            }
+          },
+          {
+            "label": "Large (20-100)",
+            "type": "range",
+            "values": {
+              "from": 20,
+              "to": 100,
+              "step": 10
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           10,
           100
         ]
+      },
+      {
+        "name": "decreasing",
+        "type": "bool",
+        "default": true,
+        "description": "Whether to use decreasing window size",
+        "isAdvanced": true
+      },
+      {
+        "name": "smooth_half_window",
+        "type": "int",
+        "default": null,
+        "description": "Smoothing half-window (null for auto)",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
   },
   {
@@ -260,16 +409,35 @@
         "max": 200,
         "description": "Half-window size for rolling ball",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Small (10-50)",
+            "type": "range",
+            "values": {
+              "from": 10,
+              "to": 50,
+              "step": 5
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           10,
           100
         ]
+      },
+      {
+        "name": "smooth_half_window",
+        "type": "int",
+        "default": null,
+        "description": "Smoothing half-window (null for auto)",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
   },
   {
@@ -295,16 +463,53 @@
         "max": 10,
         "description": "Polynomial order",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Low-Medium (1-4)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 4,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-6)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 6,
+              "step": 1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           6
         ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 250,
+        "min": 10,
+        "max": 1000,
+        "description": "Maximum number of iterations",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "description": "Convergence tolerance",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
   },
   {
@@ -331,16 +536,165 @@
         "max": 10,
         "description": "Polynomial order",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Low-Medium (1-4)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 4,
+              "step": 1
+            }
+          },
+          {
+            "label": "Extended (1-6)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 6,
+              "step": 1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           6
         ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 250,
+        "min": 10,
+        "max": 1000,
+        "description": "Maximum number of iterations",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "description": "Convergence tolerance",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
+  },
+  {
+    "id": "preprocessing.baseline",
+    "name": "Baseline",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.signal.Baseline",
+    "description": "Removes baseline (mean) from each spectrum.",
+    "category": "baseline",
+    "tags": [
+      "baseline",
+      "mean-centering",
+      "preprocessing"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": []
+  },
+  {
+    "id": "preprocessing.beads",
+    "name": "BEADS",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.nirs.BEADS",
+    "description": "Baseline Estimation And Denoising with Sparsity.",
+    "category": "baseline",
+    "tags": [
+      "baseline-correction",
+      "beads",
+      "denoising",
+      "sparsity"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "lam_0",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "lam_1",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "lam_2",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.iasls",
+    "name": "IASLS",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.nirs.IASLS",
+    "description": "Improved Asymmetric Least Squares baseline correction.",
+    "category": "baseline",
+    "tags": [
+      "baseline-correction",
+      "iasls",
+      "whittaker",
+      "asymmetric-least-squares"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "lam",
+        "type": "float",
+        "default": 1000000,
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      },
+      {
+        "name": "lam_1",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      }
+    ]
   }
 ]

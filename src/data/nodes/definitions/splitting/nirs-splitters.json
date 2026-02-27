@@ -44,6 +44,15 @@
           }
         ],
         "description": "Distance metric for sample selection"
+      },
+      {
+        "name": "pca_components",
+        "type": "int",
+        "default": null,
+        "min": 1,
+        "max": 100,
+        "description": "Number of PCA components for dimensionality reduction before distance computation (null for auto)",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -169,7 +178,8 @@
         "min": 0.05,
         "max": 0.5,
         "step": 0.05,
-        "description": "Proportion of samples for test set"
+        "description": "Proportion of samples for test set",
+        "sweepable": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -197,7 +207,8 @@
         "default": 5,
         "min": 2,
         "max": 20,
-        "description": "Number of bins for stratification"
+        "description": "Number of bins for stratification",
+        "sweepable": true
       },
       {
         "name": "test_size",
@@ -206,7 +217,8 @@
         "min": 0.05,
         "max": 0.5,
         "step": 0.05,
-        "description": "Proportion of samples for test set"
+        "description": "Proportion of samples for test set",
+        "sweepable": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -235,7 +247,8 @@
         "default": 5,
         "min": 2,
         "max": 20,
-        "description": "Number of cross-validation folds"
+        "description": "Number of cross-validation folds",
+        "sweepable": true
       },
       {
         "name": "n_bins",
@@ -243,7 +256,8 @@
         "default": 5,
         "min": 2,
         "max": 20,
-        "description": "Number of bins for stratification"
+        "description": "Number of bins for stratification",
+        "sweepable": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -271,7 +285,65 @@
         "min": 0.05,
         "max": 0.5,
         "step": 0.05,
-        "description": "Proportion of samples for test set"
+        "description": "Proportion of samples for test set",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "tier": "standard"
+  },
+  {
+    "id": "splitting.spxy_fold",
+    "name": "SPXYFold",
+    "type": "splitting",
+    "classPath": "nirs4all.operators.splitters.SPXYFold",
+    "description": "SPXY-based K-Fold cross validation",
+    "longDescription": "Assigns samples to folds using joint X-Y distance (SPXY algorithm) to ensure each fold is spatially representative.",
+    "category": "NIRS",
+    "tags": [
+      "splitting",
+      "spxy",
+      "kfold",
+      "spatial"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "n_splits",
+        "type": "int",
+        "default": 5,
+        "min": 2,
+        "max": 20,
+        "description": "Number of folds",
+        "sweepable": true
+      },
+      {
+        "name": "metric",
+        "type": "select",
+        "default": "euclidean",
+        "options": [
+          { "value": "euclidean", "label": "Euclidean" },
+          { "value": "mahalanobis", "label": "Mahalanobis" }
+        ],
+        "description": "Distance metric for X-space",
+        "isAdvanced": true
+      },
+      {
+        "name": "pca_components",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "max": 50,
+        "description": "Number of PCA components for distance calculation",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 42,
+        "min": 0,
+        "description": "Random seed for reproducibility",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,

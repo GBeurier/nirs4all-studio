@@ -127,6 +127,25 @@
         "max": 31,
         "description": "Convolution kernel size",
         "sweepable": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "isAdvanced": true
+      },
+      {
+        "name": "dropout",
+        "type": "float",
+        "default": 0.2,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.05,
+        "description": "Dropout rate",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -183,6 +202,48 @@
           0.0001,
           0.01
         ]
+      },
+      {
+        "name": "activation",
+        "type": "select",
+        "default": "relu",
+        "options": [
+          {
+            "value": "relu",
+            "label": "ReLU"
+          },
+          {
+            "value": "tanh",
+            "label": "Tanh"
+          },
+          {
+            "value": "logistic",
+            "label": "Logistic"
+          }
+        ],
+        "description": "Activation function",
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "adam",
+        "options": [
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          }
+        ],
+        "description": "Weight optimization solver",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -216,7 +277,13 @@
         "min": 10,
         "max": 1000,
         "description": "Number of training epochs",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "hidden_size",
@@ -250,6 +317,15 @@
           0.0001,
           0.01
         ]
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -283,7 +359,13 @@
         "min": 10,
         "max": 1000,
         "description": "Number of training epochs",
-        "sweepable": true
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
       },
       {
         "name": "d_model",
@@ -326,6 +408,25 @@
           0.0001,
           0.01
         ]
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "isAdvanced": true
+      },
+      {
+        "name": "dropout",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.05,
+        "description": "Dropout rate",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,

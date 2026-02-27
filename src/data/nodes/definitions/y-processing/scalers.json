@@ -14,7 +14,20 @@
       "target"
     ],
     "source": "sklearn",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "with_mean",
+        "type": "bool",
+        "default": true,
+        "description": "Center target by subtracting the mean"
+      },
+      {
+        "name": "with_std",
+        "type": "bool",
+        "default": true,
+        "description": "Scale target by dividing by the standard deviation"
+      }
+    ],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.StandardScaler"
     ],
@@ -63,7 +76,20 @@
       "target"
     ],
     "source": "sklearn",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "with_centering",
+        "type": "bool",
+        "default": true,
+        "description": "Center target by subtracting the median"
+      },
+      {
+        "name": "with_scaling",
+        "type": "bool",
+        "default": true,
+        "description": "Scale target by the interquartile range"
+      }
+    ],
     "legacyClassPaths": [
       "sklearn.preprocessing._data.RobustScaler"
     ],
@@ -154,5 +180,226 @@
       "sklearn.preprocessing._data.QuantileTransformer"
     ],
     "tier": "standard"
+  },
+  {
+    "id": "y_processing.integer_k_bins_discretizer",
+    "name": "IntegerKBinsDiscretizer",
+    "type": "y_processing",
+    "classPath": "nirs4all.operators.transforms.targets.IntegerKBinsDiscretizer",
+    "description": "KBinsDiscretizer qui retourne des entiers au lieu de floats",
+    "category": "scaling",
+    "tags": [
+      "discretization",
+      "binning",
+      "target-processing",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_bins",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "encode",
+        "type": "select",
+        "default": "ordinal",
+        "options": [
+          {
+            "value": "onehot",
+            "label": "One-Hot"
+          },
+          {
+            "value": "onehot-dense",
+            "label": "One-Hot Dense"
+          },
+          {
+            "value": "ordinal",
+            "label": "Ordinal"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "strategy",
+        "type": "select",
+        "default": "quantile",
+        "options": [
+          {
+            "value": "mean",
+            "label": "Mean"
+          },
+          {
+            "value": "median",
+            "label": "Median"
+          },
+          {
+            "value": "most_frequent",
+            "label": "Most Frequent"
+          },
+          {
+            "value": "constant",
+            "label": "Constant"
+          },
+          {
+            "value": "uniform",
+            "label": "Uniform"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "kmeans",
+            "label": "KMeans"
+          }
+        ]
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "y_processing.range_discretizer",
+    "name": "RangeDiscretizer",
+    "type": "y_processing",
+    "classPath": "nirs4all.operators.transforms.targets.RangeDiscretizer",
+    "description": "nirs4all y_processing RangeDiscretizer",
+    "category": "scaling",
+    "tags": [
+      "discretization",
+      "binning",
+      "target-processing",
+      "range-based"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "bins",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "y_processing.max_abs_scaler",
+    "name": "MaxAbsScaler",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.MaxAbsScaler",
+    "description": "Scale target by maximum absolute value",
+    "longDescription": "Scales each target feature by its maximum absolute value, preserving sparsity.",
+    "category": "Scaling",
+    "tags": [
+      "scaling",
+      "max-abs",
+      "target"
+    ],
+    "source": "sklearn",
+    "parameters": [],
+    "tier": "standard"
+  },
+  {
+    "id": "y_processing.normalizer",
+    "name": "Normalizer",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.Normalizer",
+    "description": "Normalize target to unit norm",
+    "longDescription": "Normalizes each sample (row) to have unit norm.",
+    "category": "Scaling",
+    "tags": [
+      "normalization",
+      "unit-norm",
+      "target"
+    ],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "norm",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          { "value": "l1", "label": "L1" },
+          { "value": "l2", "label": "L2" },
+          { "value": "max", "label": "Max" }
+        ],
+        "description": "Norm to use"
+      }
+    ],
+    "tier": "advanced"
+  },
+  {
+    "id": "y_processing.log_transform",
+    "name": "LogTransform",
+    "type": "y_processing",
+    "classPath": "nirs4all.operators.transforms.LogTransform",
+    "description": "Log transform target values",
+    "longDescription": "Applies logarithmic transformation to target values for reducing right skewness.",
+    "category": "Scaling",
+    "tags": [
+      "log",
+      "transform",
+      "target",
+      "skewness"
+    ],
+    "source": "nirs4all",
+    "parameters": [],
+    "tier": "standard"
+  },
+  {
+    "id": "y_processing.binarizer",
+    "name": "Binarizer",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.Binarizer",
+    "description": "Binarize target values by threshold",
+    "longDescription": "Converts continuous target values to binary (0/1) based on a threshold, useful for creating classification from regression targets.",
+    "category": "Scaling",
+    "tags": [
+      "binarize",
+      "threshold",
+      "classification",
+      "target"
+    ],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 0.0,
+        "description": "Values above threshold are mapped to 1, below to 0",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [-10.0, 10.0]
+      }
+    ],
+    "supportsFinetuning": true,
+    "tier": "standard"
+  },
+  {
+    "id": "y_processing.function_transformer",
+    "name": "FunctionTransformer",
+    "type": "y_processing",
+    "classPath": "sklearn.preprocessing.FunctionTransformer",
+    "description": "Custom function transform for target",
+    "longDescription": "Applies a user-specified function to transform target values. Supports inverse transform for predictions.",
+    "category": "Scaling",
+    "tags": [
+      "function",
+      "custom",
+      "transform",
+      "target"
+    ],
+    "source": "sklearn",
+    "parameters": [],
+    "tier": "advanced"
   }
 ]

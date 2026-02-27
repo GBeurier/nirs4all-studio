@@ -1,0 +1,478 @@
+[
+  {
+    "id": "model.linear_svc",
+    "name": "LinearSVC",
+    "type": "model",
+    "classPath": "sklearn.svm._classes.LinearSVC",
+    "description": "Linear Support Vector Classification.",
+    "category": "sklearn-svm",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "svm",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "penalty",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1 (Lasso)"
+          },
+          {
+            "value": "l2",
+            "label": "L2 (Ridge)"
+          },
+          {
+            "value": "elasticnet",
+            "label": "Elastic Net"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          }
+        ]
+      },
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "squared_hinge",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "dual",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.01,
+          100
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "multi_class",
+        "type": "string",
+        "default": "ovr",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "intercept_scaling",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.linear_svr",
+    "name": "LinearSVR",
+    "type": "model",
+    "classPath": "sklearn.svm._classes.LinearSVR",
+    "description": "Linear Support Vector Regression.",
+    "category": "sklearn-svm",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "svm",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 0,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.01,
+          100
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "epsilon_insensitive",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "intercept_scaling",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "dual",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.nu_svc",
+    "name": "NuSVC",
+    "type": "model",
+    "classPath": "sklearn.svm._classes.NuSVC",
+    "description": "Nu-Support Vector Classification.",
+    "category": "sklearn-svm",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "svm",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "nu",
+        "type": "float",
+        "default": 0.5,
+        "isAdvanced": true
+      },
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "gamma",
+        "type": "string",
+        "default": "scale",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          10
+        ]
+      },
+      {
+        "name": "coef0",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "shrinking",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "probability",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "cache_size",
+        "type": "int",
+        "default": 200,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": -1,
+        "isAdvanced": true
+      },
+      {
+        "name": "decision_function_shape",
+        "type": "string",
+        "default": "ovr",
+        "isAdvanced": true
+      },
+      {
+        "name": "break_ties",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.nu_svr",
+    "name": "NuSVR",
+    "type": "model",
+    "classPath": "sklearn.svm._classes.NuSVR",
+    "description": "Nu Support Vector Regression.",
+    "category": "sklearn-svm",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "svm",
+      "_classes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "nu",
+        "type": "float",
+        "default": 0.5,
+        "isAdvanced": true
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.01,
+          100
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "gamma",
+        "type": "string",
+        "default": "scale",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          10
+        ]
+      },
+      {
+        "name": "coef0",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "shrinking",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "cache_size",
+        "type": "int",
+        "default": 200,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": -1,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

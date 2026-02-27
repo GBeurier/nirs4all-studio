@@ -1,0 +1,239 @@
+[
+  {
+    "id": "model.bernoulli_nb",
+    "name": "BernoulliNB",
+    "type": "model",
+    "classPath": "sklearn.naive_bayes.BernoulliNB",
+    "description": "Naive Bayes classifier for multivariate Bernoulli models.",
+    "category": "sklearn-naive-bayes",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "naive_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "force_alpha",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "binarize",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_prior",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "class_prior",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.categorical_nb",
+    "name": "CategoricalNB",
+    "type": "model",
+    "classPath": "sklearn.naive_bayes.CategoricalNB",
+    "description": "Naive Bayes classifier for categorical features.",
+    "category": "sklearn-naive-bayes",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "naive_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "force_alpha",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_prior",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "class_prior",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_categories",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.complement_nb",
+    "name": "ComplementNB",
+    "type": "model",
+    "classPath": "sklearn.naive_bayes.ComplementNB",
+    "description": "The Complement Naive Bayes classifier described in Rennie et al. (2003).",
+    "category": "sklearn-naive-bayes",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "naive_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "force_alpha",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_prior",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "class_prior",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "norm",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.gaussian_nb",
+    "name": "GaussianNB",
+    "type": "model",
+    "classPath": "sklearn.naive_bayes.GaussianNB",
+    "description": "Gaussian Naive Bayes (GaussianNB).",
+    "category": "sklearn-naive-bayes",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "naive_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "priors",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "var_smoothing",
+        "type": "float",
+        "default": 1e-9,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.multinomial_nb",
+    "name": "MultinomialNB",
+    "type": "model",
+    "classPath": "sklearn.naive_bayes.MultinomialNB",
+    "description": "Naive Bayes classifier for multinomial models.",
+    "category": "sklearn-naive-bayes",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "naive_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "force_alpha",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_prior",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "class_prior",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

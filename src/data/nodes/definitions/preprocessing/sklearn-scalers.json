@@ -1,0 +1,272 @@
+[
+  {
+    "id": "preprocessing.binarizer",
+    "name": "Binarizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._data.Binarizer",
+    "description": "Binarize data (set feature values to 0 or 1) according to a threshold.",
+    "category": "scikit-scalers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_data"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 0,
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.function_transformer",
+    "name": "FunctionTransformer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._function_transformer.FunctionTransformer",
+    "description": "Constructs a transformer from an arbitrary callable.",
+    "category": "scikit-scalers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_function_transformer"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "inverse_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "validate",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "accept_sparse",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "check_inverse",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "feature_names_out",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "kw_args",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "inv_kw_args",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.kernel_centerer",
+    "name": "KernelCenterer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._data.KernelCenterer",
+    "description": "Center an arbitrary kernel matrix :math:`K`.",
+    "category": "scikit-scalers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_data"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": []
+  },
+  {
+    "id": "preprocessing.normalizer",
+    "name": "Normalizer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._data.Normalizer",
+    "description": "Normalize samples individually to unit norm.",
+    "category": "scikit-scalers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_data"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "norm",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1"
+          },
+          {
+            "value": "l2",
+            "label": "L2"
+          },
+          {
+            "value": "max",
+            "label": "Max"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.polynomial_features",
+    "name": "PolynomialFeatures",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._polynomial.PolynomialFeatures",
+    "description": "Generate polynomial and interaction features.",
+    "category": "scikit-scalers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_polynomial"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "interaction_only",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "include_bias",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "order",
+        "type": "string",
+        "default": "C",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.spline_transformer",
+    "name": "SplineTransformer",
+    "type": "preprocessing",
+    "classPath": "sklearn.preprocessing._polynomial.SplineTransformer",
+    "description": "Generate univariate B-spline bases for features.",
+    "category": "scikit-scalers",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "preprocessing",
+      "_polynomial"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_knots",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          3,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "knots",
+        "type": "string",
+        "default": "uniform",
+        "isAdvanced": true
+      },
+      {
+        "name": "extrapolation",
+        "type": "string",
+        "default": "constant",
+        "isAdvanced": true
+      },
+      {
+        "name": "include_bias",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "order",
+        "type": "string",
+        "default": "C",
+        "isAdvanced": true
+      },
+      {
+        "name": "handle_missing",
+        "type": "string",
+        "default": "error",
+        "isAdvanced": true
+      },
+      {
+        "name": "sparse_output",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

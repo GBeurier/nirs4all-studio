@@ -1,0 +1,211 @@
+[
+  {
+    "id": "model.mlp_classifier",
+    "name": "MLPClassifier",
+    "type": "model",
+    "classPath": "sklearn.neural_network._multilayer_perceptron.MLPClassifier",
+    "description": "Multi-layer Perceptron classifier.",
+    "category": "sklearn-neural",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "neural_network",
+      "_multilayer_perceptron"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "hidden_layer_sizes",
+        "type": "array",
+        "default": [
+          100
+        ]
+      },
+      {
+        "name": "activation",
+        "type": "select",
+        "default": "relu",
+        "options": [
+          {
+            "value": "relu",
+            "label": "ReLU"
+          },
+          {
+            "value": "identity",
+            "label": "Identity"
+          },
+          {
+            "value": "logistic",
+            "label": "Logistic"
+          },
+          {
+            "value": "tanh",
+            "label": "Tanh"
+          }
+        ]
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "adam",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.0001,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "batch_size",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "string",
+        "default": "constant",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ]
+      },
+      {
+        "name": "learning_rate_init",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "power_t",
+        "type": "float",
+        "default": 0.5,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 200,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "momentum",
+        "type": "float",
+        "default": 0.9,
+        "isAdvanced": true
+      },
+      {
+        "name": "nesterovs_momentum",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "beta_1",
+        "type": "float",
+        "default": 0.9,
+        "isAdvanced": true
+      },
+      {
+        "name": "beta_2",
+        "type": "float",
+        "default": 0.999,
+        "isAdvanced": true
+      },
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 1e-8,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_fun",
+        "type": "int",
+        "default": 15000,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

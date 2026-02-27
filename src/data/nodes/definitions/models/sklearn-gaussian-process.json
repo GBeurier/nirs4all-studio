@@ -1,0 +1,165 @@
+[
+  {
+    "id": "model.gaussian_process_classifier",
+    "name": "GaussianProcessClassifier",
+    "type": "model",
+    "classPath": "sklearn.gaussian_process._gpc.GaussianProcessClassifier",
+    "description": "Gaussian process classification (GPC) based on Laplace approximation.",
+    "category": "sklearn-gaussian-process",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "gaussian_process",
+      "_gpc"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "optimizer",
+        "type": "string",
+        "default": "fmin_l_bfgs_b",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_restarts_optimizer",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter_predict",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "copy_X_train",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "multi_class",
+        "type": "string",
+        "default": "one_vs_rest",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.gaussian_process_regressor",
+    "name": "GaussianProcessRegressor",
+    "type": "model",
+    "classPath": "sklearn.gaussian_process._gpr.GaussianProcessRegressor",
+    "description": "Gaussian process regression (GPR).",
+    "category": "sklearn-gaussian-process",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "gaussian_process",
+      "_gpr"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1e-10,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "optimizer",
+        "type": "string",
+        "default": "fmin_l_bfgs_b",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_restarts_optimizer",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "normalize_y",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "copy_X_train",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_targets",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

@@ -1,0 +1,1484 @@
+[
+  {
+    "id": "preprocessing.dictionary_learning",
+    "name": "DictionaryLearning",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._dict_learning.DictionaryLearning",
+    "description": "Dictionary learning.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_dict_learning"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 1e-8,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_algorithm",
+        "type": "string",
+        "default": "lars",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_algorithm",
+        "type": "string",
+        "default": "omp",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_n_nonzero_coefs",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_alpha",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "code_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "dict_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "callback",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "split_sign",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "positive_code",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive_dict",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.factor_analysis",
+    "name": "FactorAnalysis",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._factor_analysis.FactorAnalysis",
+    "description": "Factor Analysis (FA).",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_factor_analysis"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "noise_variance_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "svd_method",
+        "type": "string",
+        "default": "randomized",
+        "isAdvanced": true
+      },
+      {
+        "name": "iterated_power",
+        "type": "int",
+        "default": 3,
+        "isAdvanced": true
+      },
+      {
+        "name": "rotation",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.fast_ica",
+    "name": "FastICA",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._fastica.FastICA",
+    "description": "FastICA: a fast algorithm for Independent Component Analysis.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_fastica"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "parallel",
+        "isAdvanced": true
+      },
+      {
+        "name": "whiten",
+        "type": "string",
+        "default": "unit-variance"
+      },
+      {
+        "name": "fun",
+        "type": "string",
+        "default": "logcosh",
+        "isAdvanced": true
+      },
+      {
+        "name": "fun_args",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 200,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "w_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "whiten_solver",
+        "type": "string",
+        "default": "svd",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.incremental_pca",
+    "name": "IncrementalPCA",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._incremental_pca.IncrementalPCA",
+    "description": "Incremental principal components analysis (IPCA).",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_incremental_pca"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "whiten",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "name": "batch_size",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.isomap",
+    "name": "Isomap",
+    "type": "preprocessing",
+    "classPath": "sklearn.manifold._isomap.Isomap",
+    "description": "Isomap Embedding.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "manifold",
+      "_isomap"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "radius",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "eigen_solver",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "path_method",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "neighbors_algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.kernel_pca",
+    "name": "KernelPCA",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._kernel_pca.KernelPCA",
+    "description": "Kernel Principal component analysis (KPCA).",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_kernel_pca"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "linear",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "gamma",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "coef0",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "kernel_params",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_inverse_transform",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "eigen_solver",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "iterated_power",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "remove_zero_eig",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.latent_dirichlet_allocation",
+    "name": "LatentDirichletAllocation",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._lda.LatentDirichletAllocation",
+    "description": "Latent Dirichlet Allocation with online variational Bayes algorithm.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_lda"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 10,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "doc_topic_prior",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "topic_word_prior",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_method",
+        "type": "string",
+        "default": "batch",
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_decay",
+        "type": "float",
+        "default": 0.7,
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_offset",
+        "type": "float",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 128,
+        "isAdvanced": true
+      },
+      {
+        "name": "evaluate_every",
+        "type": "int",
+        "default": -1,
+        "isAdvanced": true
+      },
+      {
+        "name": "total_samples",
+        "type": "float",
+        "default": 1000000,
+        "isAdvanced": true
+      },
+      {
+        "name": "perp_tol",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "mean_change_tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_doc_update_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.locally_linear_embedding",
+    "name": "LocallyLinearEmbedding",
+    "type": "preprocessing",
+    "classPath": "sklearn.manifold._locally_linear.LocallyLinearEmbedding",
+    "description": "Locally Linear Embedding.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "manifold",
+      "_locally_linear"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "reg",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "eigen_solver",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "standard",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ]
+      },
+      {
+        "name": "hessian_tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "modified_tol",
+        "type": "float",
+        "default": 1e-12,
+        "isAdvanced": true
+      },
+      {
+        "name": "neighbors_algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.mini_batch_dictionary_learning",
+    "name": "MiniBatchDictionaryLearning",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._dict_learning.MiniBatchDictionaryLearning",
+    "description": "Mini-batch dictionary learning.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_dict_learning"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_algorithm",
+        "type": "string",
+        "default": "lars",
+        "isAdvanced": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 256,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "dict_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_algorithm",
+        "type": "string",
+        "default": "omp",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_n_nonzero_coefs",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_alpha",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "split_sign",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "positive_code",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive_dict",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "callback",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_no_improvement",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.mini_batch_nmf",
+    "name": "MiniBatchNMF",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._nmf.MiniBatchNMF",
+    "description": "Mini-Batch Non-Negative Matrix Factorization (NMF).",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_nmf"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "default": "auto",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 1024,
+        "isAdvanced": true
+      },
+      {
+        "name": "beta_loss",
+        "type": "string",
+        "default": "frobenius",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_no_improvement",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 200,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_W",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_H",
+        "type": "string",
+        "default": "same",
+        "isAdvanced": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "forget_factor",
+        "type": "float",
+        "default": 0.7,
+        "isAdvanced": true
+      },
+      {
+        "name": "fresh_restarts",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "fresh_restarts_max_iter",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_max_iter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.mini_batch_sparse_pca",
+    "name": "MiniBatchSparsePCA",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._sparse_pca.MiniBatchSparsePCA",
+    "description": "Mini-batch Sparse Principal Components Analysis.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_sparse_pca"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "ridge_alpha",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "callback",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 3,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "lars",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_no_improvement",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.nmf",
+    "name": "NMF",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._nmf.NMF",
+    "description": "Non-Negative Matrix Factorization (NMF).",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_nmf"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "default": "auto",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "cd",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "beta_loss",
+        "type": "string",
+        "default": "frobenius",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 200,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_W",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_H",
+        "type": "string",
+        "default": "same",
+        "isAdvanced": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.plssvd",
+    "name": "PLSSVD",
+    "type": "preprocessing",
+    "classPath": "sklearn.cross_decomposition._pls.PLSSVD",
+    "description": "Partial Least Square SVD.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "cross_decomposition",
+      "_pls"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "scale",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.sparse_coder",
+    "name": "SparseCoder",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._dict_learning.SparseCoder",
+    "description": "Sparse coding.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_dict_learning"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "dictionary",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_algorithm",
+        "type": "string",
+        "default": "omp",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_n_nonzero_coefs",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_alpha",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "split_sign",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive_code",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "transform_max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.sparse_pca",
+    "name": "SparsePCA",
+    "type": "preprocessing",
+    "classPath": "sklearn.decomposition._sparse_pca.SparsePCA",
+    "description": "Sparse Principal Components Analysis (SparsePCA).",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "decomposition",
+      "_sparse_pca"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "ridge_alpha",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 1e-8,
+        "isAdvanced": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "lars",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ]
+      },
+      {
+        "name": "U_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "V_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.tsne",
+    "name": "TSNE",
+    "type": "preprocessing",
+    "classPath": "sklearn.manifold._t_sne.TSNE",
+    "description": "T-distributed Stochastic Neighbor Embedding.",
+    "category": "scikit-dimensionality",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "manifold",
+      "_t_sne"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "perplexity",
+        "type": "float",
+        "default": 30,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          5,
+          50
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "early_exaggeration",
+        "type": "float",
+        "default": 12,
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_without_progress",
+        "type": "int",
+        "default": 300,
+        "isAdvanced": true
+      },
+      {
+        "name": "min_grad_norm",
+        "type": "float",
+        "default": 1e-7,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "euclidean",
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "default": "pca",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "barnes_hut",
+        "options": [
+          {
+            "value": "barnes_hut",
+            "label": "Barnes-Hut"
+          },
+          {
+            "value": "exact",
+            "label": "Exact"
+          }
+        ]
+      },
+      {
+        "name": "angle",
+        "type": "float",
+        "default": 0.5,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

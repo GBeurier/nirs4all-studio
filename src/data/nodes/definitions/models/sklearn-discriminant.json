@@ -1,0 +1,177 @@
+[
+  {
+    "id": "model.linear_discriminant_analysis",
+    "name": "LinearDiscriminantAnalysis",
+    "type": "model",
+    "classPath": "sklearn.discriminant_analysis.LinearDiscriminantAnalysis",
+    "description": "Linear Discriminant Analysis.",
+    "category": "sklearn-discriminant",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "discriminant_analysis"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "svd",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "shrinkage",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "priors",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "store_covariance",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "covariance_estimator",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "model.quadratic_discriminant_analysis",
+    "name": "QuadraticDiscriminantAnalysis",
+    "type": "model",
+    "classPath": "sklearn.discriminant_analysis.QuadraticDiscriminantAnalysis",
+    "description": "Quadratic Discriminant Analysis.",
+    "category": "sklearn-discriminant",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "discriminant_analysis"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "svd",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "shrinkage",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "priors",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "reg_param",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "store_covariance",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "covariance_estimator",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  }
+]

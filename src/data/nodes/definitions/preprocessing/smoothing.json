@@ -23,16 +23,46 @@
         "step": 0.1,
         "description": "Standard deviation for Gaussian kernel",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Fine (0.5-3)",
+            "type": "range",
+            "values": {
+              "from": 0.5,
+              "to": 3,
+              "step": 0.5
+            }
+          },
+          {
+            "label": "Broad (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [
           0.5,
           10
         ]
+      },
+      {
+        "name": "order",
+        "type": "int",
+        "default": 2,
+        "min": 0,
+        "max": 4,
+        "description": "Derivative order (0=smoothing only)",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "nirs4all.operators.transforms.signal.Gaussian"
     ],
@@ -63,6 +93,26 @@
         "step": 2,
         "description": "Size of the moving window (should be odd)",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Small (3-11)",
+            "type": "range",
+            "values": {
+              "from": 3,
+              "to": 11,
+              "step": 2
+            }
+          },
+          {
+            "label": "Medium (5-21)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 21,
+              "step": 4
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
@@ -73,6 +123,7 @@
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
   }
 ]

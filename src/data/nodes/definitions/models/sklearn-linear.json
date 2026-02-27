@@ -1,0 +1,2857 @@
+[
+  {
+    "id": "model.ard_regression",
+    "name": "ARDRegression",
+    "type": "model",
+    "classPath": "sklearn.linear_model._bayes.ARDRegression",
+    "description": "Bayesian ARD regression.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 300,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_1",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_2",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_1",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_2",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_score",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "threshold_lambda",
+        "type": "float",
+        "default": 10000,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.bayesian_ridge",
+    "name": "BayesianRidge",
+    "type": "model",
+    "classPath": "sklearn.linear_model._bayes.BayesianRidge",
+    "description": "Bayesian ridge regression.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_bayes"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 300,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_1",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_2",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_1",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_2",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "lambda_init",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_score",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.elastic_net_cv",
+    "name": "ElasticNetCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._coordinate_descent.ElasticNetCV",
+    "description": "Elastic Net model with iterative fitting along a regularization path.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_coordinate_descent"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0.5,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_alphas",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      },
+      {
+        "name": "alphas",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "selection",
+        "type": "string",
+        "default": "cyclic",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.gamma_regressor",
+    "name": "GammaRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._glm.glm.GammaRegressor",
+    "description": "Generalized Linear Model with a Gamma distribution.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_glm"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "lbfgs",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.huber_regressor",
+    "name": "HuberRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._huber.HuberRegressor",
+    "description": "L2-regularized linear regression model that is robust to outliers.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_huber"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 1.35,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.0001,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.00001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.lars",
+    "name": "Lars",
+    "type": "model",
+    "classPath": "sklearn.linear_model._least_angle.Lars",
+    "description": "Least Angle Regression model a.k.a. LAR.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_least_angle"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_nonzero_coefs",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 2.220446049250313e-16,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_path",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "jitter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.lars_cv",
+    "name": "LarsCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._least_angle.LarsCV",
+    "description": "Cross-validated Least Angle Regression model.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_least_angle"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_n_alphas",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 2.220446049250313e-16,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.lasso_cv",
+    "name": "LassoCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._coordinate_descent.LassoCV",
+    "description": "Lasso linear model with iterative fitting along a regularization path.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_coordinate_descent"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_alphas",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      },
+      {
+        "name": "alphas",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "selection",
+        "type": "string",
+        "default": "cyclic",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.lasso_lars",
+    "name": "LassoLars",
+    "type": "model",
+    "classPath": "sklearn.linear_model._least_angle.LassoLars",
+    "description": "Lasso model fit with Least Angle Regression a.k.a. Lars.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_least_angle"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 2.220446049250313e-16,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_path",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "jitter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.lasso_lars_cv",
+    "name": "LassoLarsCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._least_angle.LassoLarsCV",
+    "description": "Cross-validated Lasso, using the LARS algorithm.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_least_angle"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_n_alphas",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 2.220446049250313e-16,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.lasso_lars_ic",
+    "name": "LassoLarsIC",
+    "type": "model",
+    "classPath": "sklearn.linear_model._least_angle.LassoLarsIC",
+    "description": "Lasso model fit with Lars using BIC or AIC for model selection.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_least_angle"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "criterion",
+        "type": "select",
+        "default": "aic",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "friedman_mse",
+            "label": "Friedman MSE"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "poisson",
+            "label": "Poisson"
+          },
+          {
+            "value": "gini",
+            "label": "Gini"
+          },
+          {
+            "value": "entropy",
+            "label": "Entropy"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          }
+        ]
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 500,
+        "isAdvanced": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 2.220446049250313e-16,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "noise_variance",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.linear_regression",
+    "name": "LinearRegression",
+    "type": "model",
+    "classPath": "sklearn.linear_model._base.LinearRegression",
+    "description": "Ordinary least squares Linear Regression.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_base"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.000001,
+        "isAdvanced": true
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.logistic_regression",
+    "name": "LogisticRegression",
+    "type": "model",
+    "classPath": "sklearn.linear_model._logistic.LogisticRegression",
+    "description": "Logistic Regression (aka logit, MaxEnt) classifier.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_logistic"
+    ],
+    "source": "sklearn",
+    "tier": "core",
+    "parameters": [
+      {
+        "name": "penalty",
+        "type": "select",
+        "default": "deprecated",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1 (Lasso)"
+          },
+          {
+            "value": "l2",
+            "label": "L2 (Ridge)"
+          },
+          {
+            "value": "elasticnet",
+            "label": "Elastic Net"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          }
+        ]
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.01,
+          100
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "dual",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "intercept_scaling",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "lbfgs",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.logistic_regression_cv",
+    "name": "LogisticRegressionCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._logistic.LogisticRegressionCV",
+    "description": "Logistic Regression CV (aka logit, MaxEnt) classifier.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_logistic"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "Cs",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "l1_ratios",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "dual",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "penalty",
+        "type": "select",
+        "default": "deprecated",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1 (Lasso)"
+          },
+          {
+            "value": "l2",
+            "label": "L2 (Ridge)"
+          },
+          {
+            "value": "elasticnet",
+            "label": "Elastic Net"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          }
+        ]
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "lbfgs",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "refit",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "intercept_scaling",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "use_legacy_attributes",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.multi_task_elastic_net",
+    "name": "MultiTaskElasticNet",
+    "type": "model",
+    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskElasticNet",
+    "description": "Multi-task ElasticNet model trained with L1/L2 mixed-norm as regularizer.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_coordinate_descent"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0.5,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "selection",
+        "type": "string",
+        "default": "cyclic",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.multi_task_elastic_net_cv",
+    "name": "MultiTaskElasticNetCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskElasticNetCV",
+    "description": "Multi-task L1/L2 ElasticNet with built-in cross-validation.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_coordinate_descent"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0.5,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_alphas",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      },
+      {
+        "name": "alphas",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "selection",
+        "type": "string",
+        "default": "cyclic",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.multi_task_lasso",
+    "name": "MultiTaskLasso",
+    "type": "model",
+    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskLasso",
+    "description": "Multi-task Lasso model trained with L1/L2 mixed-norm as regularizer.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_coordinate_descent"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "selection",
+        "type": "string",
+        "default": "cyclic",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.multi_task_lasso_cv",
+    "name": "MultiTaskLassoCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskLassoCV",
+    "description": "Multi-task Lasso model trained with L1/L2 mixed-norm as regularizer.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_coordinate_descent"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_alphas",
+        "type": "string",
+        "default": "deprecated",
+        "isAdvanced": true
+      },
+      {
+        "name": "alphas",
+        "type": "string",
+        "default": "warn",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "selection",
+        "type": "string",
+        "default": "cyclic",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.orthogonal_matching_pursuit",
+    "name": "OrthogonalMatchingPursuit",
+    "type": "model",
+    "classPath": "sklearn.linear_model._omp.OrthogonalMatchingPursuit",
+    "description": "Orthogonal Matching Pursuit model (OMP).",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_omp"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_nonzero_coefs",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "precompute",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.orthogonal_matching_pursuit_cv",
+    "name": "OrthogonalMatchingPursuitCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._omp.OrthogonalMatchingPursuitCV",
+    "description": "Cross-validated Orthogonal Matching Pursuit model (OMP).",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_omp"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.passive_aggressive_classifier",
+    "name": "PassiveAggressiveClassifier",
+    "type": "model",
+    "classPath": "sklearn.linear_model._passive_aggressive.PassiveAggressiveClassifier",
+    "description": "Passive Aggressive Classifier.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_passive_aggressive"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.01,
+          100
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "hinge",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "average",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.passive_aggressive_regressor",
+    "name": "PassiveAggressiveRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._passive_aggressive.PassiveAggressiveRegressor",
+    "description": "Passive Aggressive Regressor.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_passive_aggressive"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "C",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.01,
+          100
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "epsilon_insensitive",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "average",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.perceptron",
+    "name": "Perceptron",
+    "type": "model",
+    "classPath": "sklearn.linear_model._perceptron.Perceptron",
+    "description": "Linear perceptron classifier.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_perceptron"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "penalty",
+        "type": "select",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1 (Lasso)"
+          },
+          {
+            "value": "l2",
+            "label": "L2 (Ridge)"
+          },
+          {
+            "value": "elasticnet",
+            "label": "Elastic Net"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          }
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.0001,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0.15,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "eta0",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.poisson_regressor",
+    "name": "PoissonRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._glm.glm.PoissonRegressor",
+    "description": "Generalized Linear Model with a Poisson distribution.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_glm"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "lbfgs",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.quantile_regressor",
+    "name": "QuantileRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._quantile.QuantileRegressor",
+    "description": "Linear regression model that predicts conditional quantiles.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_quantile"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "quantile",
+        "type": "float",
+        "default": 0.5,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "highs",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "solver_options",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.ransac_regressor",
+    "name": "RANSACRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._ransac.RANSACRegressor",
+    "description": "RANSAC (RANdom SAmple Consensus) algorithm.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_ransac"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "estimator",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_samples",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "residual_threshold",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "is_data_valid",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "is_model_valid",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_trials",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_skips",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "stop_n_inliers",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "stop_score",
+        "type": "float",
+        "isAdvanced": true
+      },
+      {
+        "name": "stop_probability",
+        "type": "float",
+        "default": 0.99,
+        "isAdvanced": true
+      },
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "absolute_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.ridge_classifier",
+    "name": "RidgeClassifier",
+    "type": "model",
+    "classPath": "sklearn.linear_model._ridge.RidgeClassifier",
+    "description": "Classifier using Ridge regression.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_ridge"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "positive",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.ridge_classifier_cv",
+    "name": "RidgeClassifierCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._ridge.RidgeClassifierCV",
+    "description": "Ridge classifier with built-in cross-validation.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_ridge"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "alphas",
+        "type": "array",
+        "default": [
+          0.1,
+          1,
+          10
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "store_cv_results",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.ridge_cv",
+    "name": "RidgeCV",
+    "type": "model",
+    "classPath": "sklearn.linear_model._ridge.RidgeCV",
+    "description": "Ridge regression with built-in cross-validation.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_ridge"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "alphas",
+        "type": "array",
+        "default": [
+          0.1,
+          1,
+          10
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "scoring",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "cv",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "gcv_mode",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "store_cv_results",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha_per_target",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.sgd_classifier",
+    "name": "SGDClassifier",
+    "type": "model",
+    "classPath": "sklearn.linear_model._stochastic_gradient.SGDClassifier",
+    "description": "Linear classifiers (SVM, logistic regression, etc.) with SGD training.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "classifier",
+      "linear_model",
+      "_stochastic_gradient"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "hinge",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "penalty",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1 (Lasso)"
+          },
+          {
+            "value": "l2",
+            "label": "L2 (Ridge)"
+          },
+          {
+            "value": "elasticnet",
+            "label": "Elastic Net"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          }
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.0001,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0.15,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "string",
+        "default": "optimal",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ]
+      },
+      {
+        "name": "eta0",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      },
+      {
+        "name": "power_t",
+        "type": "float",
+        "default": 0.5,
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "average",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.sgd_regressor",
+    "name": "SGDRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._stochastic_gradient.SGDRegressor",
+    "description": "Linear model fitted by minimizing a regularized empirical loss with SGD.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_stochastic_gradient"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "loss",
+        "type": "select",
+        "default": "squared_error",
+        "options": [
+          {
+            "value": "squared_error",
+            "label": "Squared Error"
+          },
+          {
+            "value": "absolute_error",
+            "label": "Absolute Error"
+          },
+          {
+            "value": "huber",
+            "label": "Huber"
+          },
+          {
+            "value": "quantile",
+            "label": "Quantile"
+          },
+          {
+            "value": "log_loss",
+            "label": "Log Loss"
+          },
+          {
+            "value": "hinge",
+            "label": "Hinge"
+          }
+        ]
+      },
+      {
+        "name": "penalty",
+        "type": "select",
+        "default": "l2",
+        "options": [
+          {
+            "value": "l1",
+            "label": "L1 (Lasso)"
+          },
+          {
+            "value": "l2",
+            "label": "L2 (Ridge)"
+          },
+          {
+            "value": "elasticnet",
+            "label": "Elastic Net"
+          },
+          {
+            "value": "none",
+            "label": "None"
+          }
+        ]
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 0.0001,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "default": 0.15,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 1000,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "shuffle",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 0.1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "string",
+        "default": "invscaling",
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.001,
+          1
+        ]
+      },
+      {
+        "name": "eta0",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      },
+      {
+        "name": "power_t",
+        "type": "float",
+        "default": 0.25,
+        "isAdvanced": true
+      },
+      {
+        "name": "early_stopping",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "validation_fraction",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_iter_no_change",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "average",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "model.theil_sen_regressor",
+    "name": "TheilSenRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._theil_sen.TheilSenRegressor",
+    "description": "Theil-Sen Estimator: robust multivariate regression model.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_theil_sen"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_subpopulation",
+        "type": "float",
+        "default": 10000,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_subsamples",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 300,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.001,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "model.tweedie_regressor",
+    "name": "TweedieRegressor",
+    "type": "model",
+    "classPath": "sklearn.linear_model._glm.glm.TweedieRegressor",
+    "description": "Generalized Linear Model with a Tweedie distribution.",
+    "category": "sklearn-linear",
+    "tags": [
+      "sklearn",
+      "regressor",
+      "linear_model",
+      "_glm"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "power",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "alpha",
+        "type": "float",
+        "default": 1,
+        "finetunable": true,
+        "finetuneType": "float",
+        "finetuneRange": [
+          0.0001,
+          10
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "fit_intercept",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "link",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "solver",
+        "type": "select",
+        "default": "lbfgs",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "svd",
+            "label": "SVD"
+          },
+          {
+            "value": "lsqr",
+            "label": "LSQR"
+          },
+          {
+            "value": "saga",
+            "label": "SAGA"
+          },
+          {
+            "value": "lbfgs",
+            "label": "L-BFGS"
+          },
+          {
+            "value": "adam",
+            "label": "Adam"
+          },
+          {
+            "value": "sgd",
+            "label": "SGD"
+          }
+        ]
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  }
+]

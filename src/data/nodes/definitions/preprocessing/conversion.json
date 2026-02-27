@@ -14,7 +14,14 @@
       "beer-lambert"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "percent",
+        "type": "bool",
+        "default": false,
+        "description": "Input is in percent reflectance (0-100)"
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
@@ -33,7 +40,35 @@
       "transform"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "base",
+        "type": "select",
+        "default": "e",
+        "options": [
+          {
+            "value": "e",
+            "label": "Natural (ln)"
+          },
+          {
+            "value": "10",
+            "label": "Base 10 (log10)"
+          },
+          {
+            "value": "2",
+            "label": "Base 2 (log2)"
+          }
+        ],
+        "description": "Logarithm base"
+      },
+      {
+        "name": "auto_offset",
+        "type": "bool",
+        "default": true,
+        "description": "Auto-add offset for non-positive values",
+        "isAdvanced": true
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
@@ -51,7 +86,24 @@
       "absorbance"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "source_type",
+        "type": "select",
+        "default": "reflectance",
+        "options": [
+          {
+            "value": "reflectance",
+            "label": "Reflectance"
+          },
+          {
+            "value": "transmittance",
+            "label": "Transmittance"
+          }
+        ],
+        "description": "Type of input signal"
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
@@ -70,7 +122,24 @@
       "inverse"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "target_type",
+        "type": "select",
+        "default": "reflectance",
+        "options": [
+          {
+            "value": "reflectance",
+            "label": "Reflectance"
+          },
+          {
+            "value": "transmittance",
+            "label": "Transmittance"
+          }
+        ],
+        "description": "Type of output signal"
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
@@ -90,9 +159,97 @@
       "reflectance"
     ],
     "source": "nirs4all",
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "source_type",
+        "type": "select",
+        "default": "reflectance",
+        "options": [
+          {
+            "value": "reflectance",
+            "label": "Reflectance"
+          },
+          {
+            "value": "transmittance",
+            "label": "Transmittance"
+          }
+        ],
+        "description": "Type of input signal"
+      }
+    ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
+  },
+  {
+    "id": "preprocessing.fraction_to_percent",
+    "name": "FractionToPercent",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.signal_conversion.FractionToPercent",
+    "description": "Convert fractional [0, 1] values to percentage [0, 100] range.",
+    "category": "signal-conversion",
+    "tags": [
+      "signal-conversion",
+      "fraction",
+      "percent",
+      "unit-conversion"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": []
+  },
+  {
+    "id": "preprocessing.percent_to_fraction",
+    "name": "PercentToFraction",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.signal_conversion.PercentToFraction",
+    "description": "Convert percentage values to fractional [0, 1] range.",
+    "category": "signal-conversion",
+    "tags": [
+      "signal-conversion",
+      "percent",
+      "fraction",
+      "unit-conversion"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": []
+  },
+  {
+    "id": "preprocessing.signal_type_converter",
+    "name": "SignalTypeConverter",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.signal_conversion.SignalTypeConverter",
+    "description": "General-purpose signal type converter.",
+    "category": "signal-conversion",
+    "tags": [
+      "signal-conversion",
+      "general-purpose",
+      "reflectance",
+      "absorbance",
+      "transmittance"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "source_type",
+        "type": "string",
+        "default": "reflectance",
+        "isAdvanced": true
+      },
+      {
+        "name": "target_type",
+        "type": "string",
+        "default": "absorbance",
+        "isAdvanced": true
+      },
+      {
+        "name": "epsilon",
+        "type": "float",
+        "default": 1e-10,
+        "isAdvanced": true
+      }
+    ]
   }
 ]

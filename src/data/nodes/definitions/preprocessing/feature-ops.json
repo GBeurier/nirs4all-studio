@@ -23,16 +23,65 @@
         "max": 500,
         "description": "Number of principal components to keep",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Compact (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Standard (5-30)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 30,
+              "step": 5
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           50
         ]
+      },
+      {
+        "name": "whiten",
+        "type": "bool",
+        "default": false,
+        "description": "Whiten components to have unit variance",
+        "isAdvanced": true
+      },
+      {
+        "name": "svd_solver",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          {
+            "value": "auto",
+            "label": "Auto"
+          },
+          {
+            "value": "full",
+            "label": "Full"
+          },
+          {
+            "value": "randomized",
+            "label": "Randomized"
+          }
+        ],
+        "description": "SVD solver to use",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "sklearn.decomposition._pca.PCA"
     ],
@@ -62,16 +111,54 @@
         "max": 500,
         "description": "Number of components to keep",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Compact (1-10)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
+          },
+          {
+            "label": "Standard (5-30)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 30,
+              "step": 5
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           50
         ]
+      },
+      {
+        "name": "algorithm",
+        "type": "select",
+        "default": "randomized",
+        "options": [
+          {
+            "value": "randomized",
+            "label": "Randomized"
+          },
+          {
+            "value": "arpack",
+            "label": "ARPACK"
+          }
+        ],
+        "description": "SVD algorithm to use",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "legacyClassPaths": [
       "sklearn.decomposition._truncated_svd.TruncatedSVD"
     ],
@@ -137,6 +224,23 @@
         "max": 4096,
         "description": "Number of points after resampling",
         "sweepable": true
+      },
+      {
+        "name": "method",
+        "type": "select",
+        "default": "linear",
+        "options": [
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "cubic",
+            "label": "Cubic"
+          }
+        ],
+        "description": "Interpolation method",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
@@ -188,5 +292,29 @@
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "tier": "standard"
+  },
+  {
+    "id": "preprocessing.flatten_preprocessing",
+    "name": "FlattenPreprocessing",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.features.FlattenPreprocessing",
+    "description": "Flatten the preprocessing dimension of a 3D feature array.",
+    "category": "feature-engineering",
+    "tags": [
+      "flattening",
+      "preprocessing-fusion",
+      "reshaping",
+      "multi-view"
+    ],
+    "source": "nirs4all",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "sources",
+        "type": "string",
+        "default": "all",
+        "isAdvanced": true
+      }
+    ]
   }
 ]

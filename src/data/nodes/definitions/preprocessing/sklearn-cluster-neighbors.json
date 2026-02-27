@@ -1,0 +1,553 @@
+[
+  {
+    "id": "preprocessing.birch",
+    "name": "Birch",
+    "type": "preprocessing",
+    "classPath": "sklearn.cluster._birch.Birch",
+    "description": "Implements the BIRCH clustering algorithm.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "cluster",
+      "_birch"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "threshold",
+        "type": "float",
+        "default": 0.5,
+        "sweepable": true
+      },
+      {
+        "name": "branching_factor",
+        "type": "int",
+        "default": 50,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_clusters",
+        "type": "int",
+        "default": 3,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "compute_labels",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.bisecting_k_means",
+    "name": "BisectingKMeans",
+    "type": "preprocessing",
+    "classPath": "sklearn.cluster._bisect_k_means.BisectingKMeans",
+    "description": "Bisecting K-Means clustering.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "cluster",
+      "_bisect_k_means"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_clusters",
+        "type": "int",
+        "default": 8,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "default": "random",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_init",
+        "type": "int",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 300,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "copy_x",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "lloyd",
+        "isAdvanced": true
+      },
+      {
+        "name": "bisecting_strategy",
+        "type": "string",
+        "default": "biggest_inertia",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.feature_agglomeration",
+    "name": "FeatureAgglomeration",
+    "type": "preprocessing",
+    "classPath": "sklearn.cluster._agglomerative.FeatureAgglomeration",
+    "description": "Agglomerate features.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "cluster",
+      "_agglomerative"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_clusters",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "euclidean",
+        "isAdvanced": true
+      },
+      {
+        "name": "memory",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "connectivity",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_full_tree",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "linkage",
+        "type": "string",
+        "default": "ward",
+        "isAdvanced": true
+      },
+      {
+        "name": "pooling_func",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "distance_threshold",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_distances",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.k_means",
+    "name": "KMeans",
+    "type": "preprocessing",
+    "classPath": "sklearn.cluster._kmeans.KMeans",
+    "description": "K-Means clustering.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "cluster",
+      "_kmeans"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "n_clusters",
+        "type": "int",
+        "default": 8,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "default": "k-means++",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_init",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 300,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.0001,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "copy_x",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "lloyd",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.k_neighbors_transformer",
+    "name": "KNeighborsTransformer",
+    "type": "preprocessing",
+    "classPath": "sklearn.neighbors._graph.KNeighborsTransformer",
+    "description": "Transform X into a (weighted) graph of k nearest neighbors.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "neighbors",
+      "_graph"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "mode",
+        "type": "string",
+        "default": "distance",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_neighbors",
+        "type": "int",
+        "default": 5,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "leaf_size",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.mini_batch_k_means",
+    "name": "MiniBatchKMeans",
+    "type": "preprocessing",
+    "classPath": "sklearn.cluster._kmeans.MiniBatchKMeans",
+    "description": "Mini-Batch K-Means clustering.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "cluster",
+      "_kmeans"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_clusters",
+        "type": "int",
+        "default": 8,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          20
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "default": "k-means++",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 100,
+        "isAdvanced": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 1024,
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_labels",
+        "type": "bool",
+        "default": true,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "max_no_improvement",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      },
+      {
+        "name": "init_size",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_init",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "reassignment_ratio",
+        "type": "float",
+        "default": 0.01,
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.neighborhood_components_analysis",
+    "name": "NeighborhoodComponentsAnalysis",
+    "type": "preprocessing",
+    "classPath": "sklearn.neighbors._nca.NeighborhoodComponentsAnalysis",
+    "description": "Neighborhood Components Analysis.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "neighbors",
+      "_nca"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "init",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_iter",
+        "type": "int",
+        "default": 50,
+        "isAdvanced": true
+      },
+      {
+        "name": "tol",
+        "type": "float",
+        "default": 0.00001,
+        "isAdvanced": true
+      },
+      {
+        "name": "callback",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.radius_neighbors_transformer",
+    "name": "RadiusNeighborsTransformer",
+    "type": "preprocessing",
+    "classPath": "sklearn.neighbors._graph.RadiusNeighborsTransformer",
+    "description": "Transform X into a (weighted) graph of neighbors nearer than a radius.",
+    "category": "scikit-cluster-neighbors",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "neighbors",
+      "_graph"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "mode",
+        "type": "string",
+        "default": "distance",
+        "isAdvanced": true
+      },
+      {
+        "name": "radius",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "algorithm",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "leaf_size",
+        "type": "int",
+        "default": 30,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric",
+        "type": "string",
+        "default": "minkowski",
+        "isAdvanced": true
+      },
+      {
+        "name": "p",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "metric_params",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  }
+]

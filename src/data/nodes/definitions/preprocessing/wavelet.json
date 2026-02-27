@@ -36,9 +36,43 @@
     "parameters": [
       {
         "name": "wavelet",
-        "type": "string",
-        "default": "db4",
-        "description": "Wavelet type (e.g., db4, sym4, coif1)",
+        "type": "select",
+        "default": "haar",
+        "options": [
+          {
+            "value": "haar",
+            "label": "Haar"
+          },
+          {
+            "value": "db4",
+            "label": "Daubechies 4"
+          },
+          {
+            "value": "db6",
+            "label": "Daubechies 6"
+          },
+          {
+            "value": "db8",
+            "label": "Daubechies 8"
+          },
+          {
+            "value": "sym4",
+            "label": "Symlet 4"
+          },
+          {
+            "value": "sym6",
+            "label": "Symlet 6"
+          },
+          {
+            "value": "coif1",
+            "label": "Coiflet 1"
+          },
+          {
+            "value": "coif3",
+            "label": "Coiflet 3"
+          }
+        ],
+        "description": "Wavelet family to use",
         "sweepable": true
       },
       {
@@ -49,16 +83,58 @@
         "max": 10,
         "description": "Decomposition level",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Low (1-4)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 4,
+              "step": 1
+            }
+          },
+          {
+            "label": "Full (1-7)",
+            "type": "range",
+            "values": {
+              "from": 1,
+              "to": 7,
+              "step": 1
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           1,
           7
         ]
+      },
+      {
+        "name": "mode",
+        "type": "select",
+        "default": "periodization",
+        "options": [
+          {
+            "value": "periodization",
+            "label": "Periodization"
+          },
+          {
+            "value": "symmetric",
+            "label": "Symmetric"
+          },
+          {
+            "value": "zero",
+            "label": "Zero padding"
+          }
+        ],
+        "description": "Signal extension mode",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "standard"
   },
   {
@@ -85,16 +161,238 @@
         "max": 100,
         "description": "Number of PCA components to retain",
         "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Compact (5-15)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 15,
+              "step": 2
+            }
+          },
+          {
+            "label": "Extended (5-50)",
+            "type": "range",
+            "values": {
+              "from": 5,
+              "to": 50,
+              "step": 5
+            }
+          }
+        ],
         "finetunable": true,
         "finetuneType": "int",
         "finetuneRange": [
           5,
           50
         ]
+      },
+      {
+        "name": "wavelet",
+        "type": "select",
+        "default": "db4",
+        "options": [
+          {
+            "value": "haar",
+            "label": "Haar"
+          },
+          {
+            "value": "db4",
+            "label": "Daubechies 4"
+          },
+          {
+            "value": "db6",
+            "label": "Daubechies 6"
+          },
+          {
+            "value": "db8",
+            "label": "Daubechies 8"
+          },
+          {
+            "value": "sym4",
+            "label": "Symlet 4"
+          },
+          {
+            "value": "sym6",
+            "label": "Symlet 6"
+          },
+          {
+            "value": "coif1",
+            "label": "Coiflet 1"
+          },
+          {
+            "value": "coif3",
+            "label": "Coiflet 3"
+          }
+        ],
+        "description": "Wavelet family to use"
+      },
+      {
+        "name": "max_level",
+        "type": "int",
+        "default": 4,
+        "min": 1,
+        "max": 8,
+        "description": "Maximum decomposition level",
+        "isAdvanced": true
+      },
+      {
+        "name": "whiten",
+        "type": "bool",
+        "default": true,
+        "description": "Whiten components",
+        "isAdvanced": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
+    "supportsFinetuning": true,
     "tier": "advanced"
+  },
+  {
+    "id": "preprocessing.wavelet_features",
+    "name": "WaveletFeatures",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.nirs.WaveletFeatures",
+    "description": "Discrete Wavelet Transform feature extractor for spectral data.",
+    "category": "spectral-transforms",
+    "tags": [
+      "wavelet",
+      "feature-extraction",
+      "multi-resolution",
+      "statistics"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "wavelet",
+        "type": "string",
+        "default": "db4",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_level",
+        "type": "int",
+        "default": 5,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_coeffs_per_level",
+        "type": "int",
+        "default": 10,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.wavelet_svd",
+    "name": "WaveletSVD",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.nirs.WaveletSVD",
+    "description": "Multi-scale SVD on wavelet coefficients.",
+    "category": "spectral-transforms",
+    "tags": [
+      "wavelet",
+      "svd",
+      "dimensionality-reduction",
+      "multi-resolution"
+    ],
+    "source": "nirs4all",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "wavelet",
+        "type": "string",
+        "default": "db4",
+        "isAdvanced": true
+      },
+      {
+        "name": "max_level",
+        "type": "int",
+        "default": 4,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components_per_level",
+        "type": "int",
+        "default": 3,
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.wavelet_denoise",
+    "name": "WaveletDenoise",
+    "type": "preprocessing",
+    "classPath": "nirs4all.operators.transforms.WaveletDenoise",
+    "description": "Wavelet denoising for spectral data",
+    "longDescription": "Multi-level discrete wavelet decomposition with soft or hard thresholding on detail coefficients, then reconstructs the signal.",
+    "category": "Wavelet",
+    "tags": [
+      "wavelet",
+      "denoise",
+      "thresholding",
+      "smoothing"
+    ],
+    "source": "nirs4all",
+    "parameters": [
+      {
+        "name": "wavelet",
+        "type": "select",
+        "default": "db4",
+        "options": [
+          { "value": "haar", "label": "Haar" },
+          { "value": "db4", "label": "Daubechies 4" },
+          { "value": "db6", "label": "Daubechies 6" },
+          { "value": "db8", "label": "Daubechies 8" },
+          { "value": "sym4", "label": "Symlet 4" },
+          { "value": "sym6", "label": "Symlet 6" },
+          { "value": "coif1", "label": "Coiflet 1" }
+        ],
+        "description": "Wavelet family to use",
+        "sweepable": true
+      },
+      {
+        "name": "level",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 10,
+        "description": "Decomposition level",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [1, 7]
+      },
+      {
+        "name": "mode",
+        "type": "select",
+        "default": "periodization",
+        "options": [
+          { "value": "periodization", "label": "Periodization" },
+          { "value": "symmetric", "label": "Symmetric" },
+          { "value": "zero", "label": "Zero padding" }
+        ],
+        "description": "Signal extension mode",
+        "isAdvanced": true
+      },
+      {
+        "name": "threshold_mode",
+        "type": "select",
+        "default": "soft",
+        "options": [
+          { "value": "soft", "label": "Soft" },
+          { "value": "hard", "label": "Hard" }
+        ],
+        "description": "Thresholding method",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "tier": "standard"
   }
 ]

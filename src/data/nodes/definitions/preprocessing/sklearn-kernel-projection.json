@@ -1,0 +1,363 @@
+[
+  {
+    "id": "preprocessing.additive_chi2_sampler",
+    "name": "AdditiveChi2Sampler",
+    "type": "preprocessing",
+    "classPath": "sklearn.kernel_approximation.AdditiveChi2Sampler",
+    "description": "Approximate feature map for additive chi2 kernel.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "kernel_approximation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "sample_steps",
+        "type": "int",
+        "default": 2,
+        "isAdvanced": true
+      },
+      {
+        "name": "sample_interval",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ]
+  },
+  {
+    "id": "preprocessing.gaussian_random_projection",
+    "name": "GaussianRandomProjection",
+    "type": "preprocessing",
+    "classPath": "sklearn.random_projection.GaussianRandomProjection",
+    "description": "Reduce dimensionality through Gaussian random projection.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "random_projection"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "default": "auto",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_inverse_components",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  },
+  {
+    "id": "preprocessing.nystroem",
+    "name": "Nystroem",
+    "type": "preprocessing",
+    "classPath": "sklearn.kernel_approximation.Nystroem",
+    "description": "Approximate a kernel map using a subset of the training data.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "kernel_approximation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "kernel",
+        "type": "select",
+        "default": "rbf",
+        "options": [
+          {
+            "value": "rbf",
+            "label": "RBF"
+          },
+          {
+            "value": "linear",
+            "label": "Linear"
+          },
+          {
+            "value": "poly",
+            "label": "Polynomial"
+          },
+          {
+            "value": "sigmoid",
+            "label": "Sigmoid"
+          }
+        ],
+        "isAdvanced": true
+      },
+      {
+        "name": "gamma",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "coef0",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "degree",
+        "type": "string",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ]
+      },
+      {
+        "name": "kernel_params",
+        "type": "string",
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.polynomial_count_sketch",
+    "name": "PolynomialCountSketch",
+    "type": "preprocessing",
+    "classPath": "sklearn.kernel_approximation.PolynomialCountSketch",
+    "description": "Polynomial kernel approximation via Tensor Sketch.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "kernel_approximation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "gamma",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "degree",
+        "type": "int",
+        "default": 2,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          2,
+          5
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "coef0",
+        "type": "int",
+        "default": 0,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.rbf_sampler",
+    "name": "RBFSampler",
+    "type": "preprocessing",
+    "classPath": "sklearn.kernel_approximation.RBFSampler",
+    "description": "Approximate a RBF kernel feature map using random Fourier features.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "kernel_approximation"
+    ],
+    "source": "sklearn",
+    "tier": "standard",
+    "parameters": [
+      {
+        "name": "gamma",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.skewed_chi2_sampler",
+    "name": "SkewedChi2Sampler",
+    "type": "preprocessing",
+    "classPath": "sklearn.kernel_approximation.SkewedChi2Sampler",
+    "description": "Approximate feature map for \"skewed chi-squared\" kernel.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "kernel_approximation"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "skewedness",
+        "type": "float",
+        "default": 1,
+        "isAdvanced": true
+      },
+      {
+        "name": "n_components",
+        "type": "int",
+        "default": 100,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ],
+        "sweepable": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true,
+    "supportsParameterSweeps": true
+  },
+  {
+    "id": "preprocessing.sparse_random_projection",
+    "name": "SparseRandomProjection",
+    "type": "preprocessing",
+    "classPath": "sklearn.random_projection.SparseRandomProjection",
+    "description": "Reduce dimensionality through sparse random projection.",
+    "category": "scikit-kernel-projection",
+    "tags": [
+      "sklearn",
+      "transformer",
+      "random_projection"
+    ],
+    "source": "sklearn",
+    "tier": "advanced",
+    "parameters": [
+      {
+        "name": "n_components",
+        "type": "string",
+        "default": "auto",
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          1,
+          30
+        ]
+      },
+      {
+        "name": "density",
+        "type": "string",
+        "default": "auto",
+        "isAdvanced": true
+      },
+      {
+        "name": "eps",
+        "type": "float",
+        "default": 0.1,
+        "isAdvanced": true
+      },
+      {
+        "name": "dense_output",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "compute_inverse_components",
+        "type": "bool",
+        "default": false,
+        "isAdvanced": true
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true
+      }
+    ],
+    "supportsFinetuning": true
+  }
+]
