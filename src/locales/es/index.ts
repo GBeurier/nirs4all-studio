@@ -343,6 +343,9 @@ const es = {
         description: "Punto de acceso API y configuración de conexión",
         url: "URL del backend",
         urlHint: "Punto de acceso API (solo lectura en producción)",
+        restart: "Reiniciar backend",
+        restartHint: "Detener y reiniciar el proceso backend de Python",
+        restarting: "Reiniciando...",
         status: {
           title: "Estado del backend",
           description: "Salud de la conexión y latencia",

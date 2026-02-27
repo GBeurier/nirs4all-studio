@@ -56,6 +56,10 @@
       "name": "AutoML",
       "description": "Automated machine learning frameworks"
     },
+    "boosting": {
+      "name": "Gradient Boosting",
+      "description": "Gradient boosting frameworks (XGBoost, LightGBM, CatBoost)"
+    },
     "explainability": {
       "name": "Explainability",
       "description": "Model interpretability and explanation tools"
@@ -132,6 +136,21 @@
       "version": ">=1.0.0",
       "description": "AutoGluon AutoML toolkit",
       "category": "automl"
+    },
+    "lightgbm": {
+      "version": ">=4.0.0",
+      "description": "LightGBM gradient boosting framework",
+      "category": "boosting"
+    },
+    "xgboost": {
+      "version": ">=2.0.0",
+      "description": "XGBoost gradient boosting framework",
+      "category": "boosting"
+    },
+    "catboost": {
+      "version": ">=1.2.0",
+      "description": "CatBoost gradient boosting framework",
+      "category": "boosting"
     },
     "shap": {
       "version": ">=0.44",

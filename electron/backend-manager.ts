@@ -48,6 +48,41 @@ export class BackendManager {
     this._quittingForUpdate = true;
   }
 
+  /** Path to the PID file used for orphan backend detection. */
+  private getPidFilePath(): string {
+    return path.join(electron.app.getPath("userData"), "backend.pid");
+  }
+
+  /**
+   * Kill any orphaned backend process from a previous session.
+   * Reads the PID file written by the Python backend on startup and kills
+   * the process if it's still running.
+   */
+  private async killOrphan(): Promise<void> {
+    const fs = require("fs") as typeof import("fs");
+    const pidFile = this.getPidFilePath();
+    if (!fs.existsSync(pidFile)) return;
+
+    try {
+      const pidStr = fs.readFileSync(pidFile, "utf-8").trim();
+      const pid = parseInt(pidStr, 10);
+      if (isNaN(pid)) return;
+
+      console.log(`Found orphaned backend PID ${pid}, killing...`);
+      if (process.platform === "win32") {
+        spawn("taskkill", ["/pid", pid.toString(), "/t", "/f"]);
+      } else {
+        try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ }
+      }
+
+      // Wait briefly for the process to die and release the port
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch { /* ignore read/parse errors */ }
+
+    // Clean up the stale PID file
+    try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
+  }
+
   /**
    * Find an available port dynamically
    */
@@ -258,6 +293,9 @@ export class BackendManager {
     this.status = "starting";
     this.notifyRenderer();
 
+    // Kill any orphaned backend from a previous session
+    await this.killOrphan();
+
     // Find a free port
     this.port = await this.findFreePort();
 
@@ -290,6 +328,9 @@ export class BackendManager {
     this.status = "starting";
     this.notifyRenderer();
 
+    // Kill any orphaned backend from a previous session
+    await this.killOrphan();
+
     // Find a free port (fast, ~10ms)
     this.port = await this.findFreePort();
 
@@ -320,6 +361,7 @@ export class BackendManager {
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
       NIRS4ALL_EXPECTED_PYTHON: pythonPath,
+      NIRS4ALL_PID_FILE: this.getPidFilePath(),
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
       ...(process.env.PORTABLE_EXECUTABLE_FILE
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
@@ -400,6 +442,7 @@ export class BackendManager {
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
       NIRS4ALL_EXPECTED_PYTHON: pythonPathForEnv,
+      NIRS4ALL_PID_FILE: this.getPidFilePath(),
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
       ...(process.env.PORTABLE_EXECUTABLE_FILE
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
@@ -470,12 +513,13 @@ export class BackendManager {
 
     if (!this.process) {
       this.status = "stopped";
+      this.cleanupPidFile();
       return;
     }
 
     console.log("Stopping backend...");
 
-    return new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
         // Force kill if graceful shutdown takes too long
         console.warn("Backend did not stop gracefully, force killing...");
@@ -484,7 +528,7 @@ export class BackendManager {
         this.status = "stopped";
         this.notifyRenderer();
         resolve();
-      }, 5000);
+      }, 2000);
 
       this.process!.once("exit", () => {
         clearTimeout(timeout);
@@ -509,6 +553,14 @@ export class BackendManager {
         this.process!.kill("SIGTERM");
       }
     });
+
+    this.cleanupPidFile();
+  }
+
+  /** Remove the PID file after backend is stopped. */
+  private cleanupPidFile(): void {
+    const fs = require("fs") as typeof import("fs");
+    try { fs.unlinkSync(this.getPidFilePath()); } catch { /* ignore */ }
   }
 
   /**

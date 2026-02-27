@@ -67,6 +67,8 @@ export interface PartitionPrediction {
   val_score: number | null;
   test_score: number | null;
   train_score: number | null;
+  scores?: Record<string, number> | null;
+  best_params?: Record<string, unknown> | null;
   metric: string;
   task_type: string;
   n_samples: number | null;

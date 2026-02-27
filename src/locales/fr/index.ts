@@ -343,6 +343,9 @@ const fr = {
         description: "Point de terminaison API et paramètres de connexion",
         url: "URL du backend",
         urlHint: "Point de terminaison API (lecture seule en production)",
+        restart: "Redémarrer le backend",
+        restartHint: "Arrêter et redémarrer le processus backend Python",
+        restarting: "Redémarrage...",
         status: {
           title: "État du backend",
           description: "Santé de la connexion et latence",

@@ -340,6 +340,9 @@ const pt = {
         description: "Endpoint da API e configurações de conexão",
         url: "URL do Backend",
         urlHint: "Endpoint da API (somente leitura em produção)",
+        restart: "Reiniciar Backend",
+        restartHint: "Parar e reiniciar o processo backend Python",
+        restarting: "Reiniciando...",
         status: {
           title: "Status do Backend",
           description: "Saúde da conexão e latência",

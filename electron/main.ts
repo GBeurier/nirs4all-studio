@@ -459,17 +459,23 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", () => {
-  // Stop the backend — fire-and-forget since Electron doesn't await async handlers.
-  // With taskkill /f this resolves almost immediately.
-  backendManager.stop();
+let isQuitting = false;
+
+app.on("before-quit", (event) => {
+  if (isQuitting) return; // Re-entry after stop() completes — let quit proceed
+  isQuitting = true;
+  event.preventDefault();
+  // Await backend stop before allowing quit — prevents Electron exiting
+  // before taskkill runs. stop() has a 2s force-kill timeout as safety net.
+  backendManager.stop().finally(() => {
+    app.quit(); // Re-enters before-quit with isQuitting=true, then proceeds
+  });
 });
 
-// Safety net: if pending async operations (e.g. ML readiness polling) keep the
-// event loop alive after quit, force-exit after 3 seconds. unref() ensures this
-// timer doesn't itself prevent exit when the event loop is otherwise empty.
+// Safety net: force-exit after 2 seconds if pending async operations keep
+// the event loop alive. Not unref'd so the timer actually fires.
 app.on("will-quit", () => {
-  setTimeout(() => process.exit(0), 3000).unref();
+  setTimeout(() => process.exit(0), 2000);
 });
 
 // Note: uncaught exceptions and unhandled rejections are captured by electron/logger.ts

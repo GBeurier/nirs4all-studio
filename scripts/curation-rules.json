@@ -1,0 +1,342 @@
+{
+  "$comment": "Rules for curating canonical registry nodes into definition files",
+
+  "excludeParams": [
+    "copy", "copy_X", "verbose", "n_jobs", "warm_start",
+    "presort", "class_weight", "max_samples", "oob_score",
+    "monotonic_cst", "min_weight_fraction_leaf"
+  ],
+
+  "alwaysAdvanced": [
+    "random_state", "tol", "max_iter", "algorithm",
+    "n_iter", "n_iter_no_change", "validation_fraction"
+  ],
+
+  "primaryParams": {
+    "model": [
+      "n_components", "n_estimators", "max_depth", "alpha", "C", "epsilon",
+      "kernel", "n_neighbors", "learning_rate", "criterion", "loss",
+      "gamma", "degree", "solver", "penalty", "l1_ratio", "min_samples_leaf",
+      "min_samples_split", "subsample", "max_features", "n_layers",
+      "hidden_layer_sizes", "activation"
+    ],
+    "preprocessing": [
+      "n_components", "n_clusters", "threshold", "with_mean", "with_std",
+      "with_centering", "with_scaling", "strategy", "n_neighbors",
+      "feature_range", "norm", "n_bins", "encode", "degree", "n_knots",
+      "method", "whiten", "perplexity"
+    ],
+    "splitting": [
+      "n_splits", "test_size", "n_repeats", "shuffle", "n_groups", "p",
+      "max_train_size", "gap"
+    ],
+    "y_processing": [
+      "with_mean", "with_std", "n_bins", "strategy"
+    ]
+  },
+
+  "typeConversions": {
+    "kernel": {
+      "type": "select",
+      "options": [
+        { "value": "rbf", "label": "RBF" },
+        { "value": "linear", "label": "Linear" },
+        { "value": "poly", "label": "Polynomial" },
+        { "value": "sigmoid", "label": "Sigmoid" }
+      ]
+    },
+    "solver": {
+      "type": "select",
+      "options": [
+        { "value": "auto", "label": "Auto" },
+        { "value": "svd", "label": "SVD" },
+        { "value": "lsqr", "label": "LSQR" },
+        { "value": "saga", "label": "SAGA" },
+        { "value": "lbfgs", "label": "L-BFGS" },
+        { "value": "adam", "label": "Adam" },
+        { "value": "sgd", "label": "SGD" }
+      ]
+    },
+    "criterion": {
+      "type": "select",
+      "options": [
+        { "value": "squared_error", "label": "Squared Error" },
+        { "value": "friedman_mse", "label": "Friedman MSE" },
+        { "value": "absolute_error", "label": "Absolute Error" },
+        { "value": "poisson", "label": "Poisson" },
+        { "value": "gini", "label": "Gini" },
+        { "value": "entropy", "label": "Entropy" },
+        { "value": "log_loss", "label": "Log Loss" }
+      ]
+    },
+    "loss": {
+      "type": "select",
+      "options": [
+        { "value": "squared_error", "label": "Squared Error" },
+        { "value": "absolute_error", "label": "Absolute Error" },
+        { "value": "huber", "label": "Huber" },
+        { "value": "quantile", "label": "Quantile" },
+        { "value": "log_loss", "label": "Log Loss" },
+        { "value": "hinge", "label": "Hinge" }
+      ]
+    },
+    "penalty": {
+      "type": "select",
+      "options": [
+        { "value": "l1", "label": "L1 (Lasso)" },
+        { "value": "l2", "label": "L2 (Ridge)" },
+        { "value": "elasticnet", "label": "Elastic Net" },
+        { "value": "none", "label": "None" }
+      ]
+    },
+    "activation": {
+      "type": "select",
+      "options": [
+        { "value": "relu", "label": "ReLU" },
+        { "value": "identity", "label": "Identity" },
+        { "value": "logistic", "label": "Logistic" },
+        { "value": "tanh", "label": "Tanh" }
+      ]
+    },
+    "strategy": {
+      "type": "select",
+      "options": [
+        { "value": "mean", "label": "Mean" },
+        { "value": "median", "label": "Median" },
+        { "value": "most_frequent", "label": "Most Frequent" },
+        { "value": "constant", "label": "Constant" },
+        { "value": "uniform", "label": "Uniform" },
+        { "value": "quantile", "label": "Quantile" },
+        { "value": "kmeans", "label": "KMeans" }
+      ]
+    },
+    "norm": {
+      "type": "select",
+      "options": [
+        { "value": "l1", "label": "L1" },
+        { "value": "l2", "label": "L2" },
+        { "value": "max", "label": "Max" }
+      ]
+    },
+    "encode": {
+      "type": "select",
+      "options": [
+        { "value": "onehot", "label": "One-Hot" },
+        { "value": "onehot-dense", "label": "One-Hot Dense" },
+        { "value": "ordinal", "label": "Ordinal" }
+      ]
+    },
+    "method": {
+      "type": "select",
+      "options": [
+        { "value": "barnes_hut", "label": "Barnes-Hut" },
+        { "value": "exact", "label": "Exact" }
+      ]
+    },
+    "weights": {
+      "type": "select",
+      "options": [
+        { "value": "uniform", "label": "Uniform" },
+        { "value": "distance", "label": "Distance" }
+      ]
+    }
+  },
+
+  "duplicateMap": {
+    "$comment": "Canonical IDs that are duplicates of existing curated nodes (different ID, different classPath)",
+    "filter.metadata_filter": "filter.metadata",
+    "filter.high_leverage_filter": "filter.high_leverage",
+    "filter.x_outlier_filter": "filter.x_outlier",
+    "filter.y_outlier_filter": "filter.y_outlier",
+    "filter.spectral_quality_filter": "filter.spectral_quality",
+    "preprocessing.air_pls": "preprocessing.airpls",
+    "preprocessing.ar_pls": "preprocessing.arpls",
+    "preprocessing.mod_poly": "preprocessing.modpoly",
+    "preprocessing.i_mod_poly": "preprocessing.imodpoly",
+    "preprocessing.py_baseline_correction": "preprocessing.baseline_correction",
+    "preprocessing.local_standard_normal_variate": "preprocessing.local_snv",
+    "preprocessing.robust_standard_normal_variate": "preprocessing.robust_snv",
+    "preprocessing.extended_multiplicative_scatter_correction": "preprocessing.emsc",
+    "preprocessing.resample_transformer": "preprocessing.resampler",
+    "splitting.kennard_stone_splitter": "splitting.kennard_stone",
+    "splitting.k_means_splitter": "splitting.kmeans_splitter",
+    "splitting.s_plit_splitter": "splitting.split_splitter",
+    "splitting.spxy_splitter": "splitting.spxy",
+    "splitting.systematic_circular_splitter": "splitting.systematic_circular",
+    "splitting.binned_stratified_group_k_fold": "splitting.binned_stratified_group_kfold",
+    "splitting.k_bins_stratified_splitter": "splitting.kbins_stratified",
+    "model.di_pls": "model.dipls"
+  },
+
+  "tierAssignments": {
+    "$comment": "Override tier for specific nodes. Unspecified nodes default to 'advanced'.",
+    "core": [
+      "model.linear_regression",
+      "model.decision_tree_regressor",
+      "model.gradient_boosting_regressor",
+      "model.k_neighbors_regressor",
+      "model.gaussian_nb",
+      "model.logistic_regression",
+      "preprocessing.normalizer",
+      "preprocessing.simple_imputer",
+      "preprocessing.select_k_best",
+      "preprocessing.variance_threshold"
+    ],
+    "standard": [
+      "model.ada_boost_regressor",
+      "model.ada_boost_classifier",
+      "model.bagging_regressor",
+      "model.bagging_classifier",
+      "model.extra_trees_regressor",
+      "model.extra_trees_classifier",
+      "model.gradient_boosting_classifier",
+      "model.hist_gradient_boosting_regressor",
+      "model.hist_gradient_boosting_classifier",
+      "model.bayesian_ridge",
+      "model.ard_regression",
+      "model.huber_regressor",
+      "model.lasso_cv",
+      "model.ridge_cv",
+      "model.elastic_net_cv",
+      "model.lars",
+      "model.lasso_lars",
+      "model.sgd_regressor",
+      "model.sgd_classifier",
+      "model.k_neighbors_classifier",
+      "model.kernel_ridge",
+      "model.gaussian_process_regressor",
+      "model.gaussian_process_classifier",
+      "model.mlp_classifier",
+      "model.decision_tree_classifier",
+      "model.extra_tree_regressor",
+      "model.extra_tree_classifier",
+      "model.linear_svc",
+      "model.linear_svr",
+      "model.nu_svr",
+      "model.nu_svc",
+      "model.bernoulli_nb",
+      "model.linear_discriminant_analysis",
+      "model.quadratic_discriminant_analysis",
+      "model.dummy_regressor",
+      "model.dummy_classifier",
+      "model.cca",
+      "model.pls_canonical",
+      "model.stacking_regressor",
+      "model.stacking_classifier",
+      "model.voting_regressor",
+      "model.voting_classifier",
+      "model.ransac_regressor",
+      "model.theil_sen_regressor",
+      "model.quantile_regressor",
+      "preprocessing.incremental_pca",
+      "preprocessing.kernel_pca",
+      "preprocessing.fast_ica",
+      "preprocessing.nmf",
+      "preprocessing.sparse_pca",
+      "preprocessing.factor_analysis",
+      "preprocessing.binarizer",
+      "preprocessing.polynomial_features",
+      "preprocessing.spline_transformer",
+      "preprocessing.nystroem",
+      "preprocessing.rbf_sampler",
+      "preprocessing.knn_imputer",
+      "preprocessing.k_bins_discretizer",
+      "preprocessing.function_transformer",
+      "preprocessing.rfe",
+      "preprocessing.rfecv",
+      "preprocessing.select_from_model",
+      "preprocessing.select_percentile",
+      "preprocessing.sequential_feature_selector",
+      "preprocessing.k_means",
+      "preprocessing.feature_agglomeration",
+      "preprocessing.tsne",
+      "preprocessing.isomap",
+      "preprocessing.area_normalization",
+      "preprocessing.simple_scale",
+      "preprocessing.signal_type_converter",
+      "preprocessing.fraction_to_percent",
+      "preprocessing.percent_to_fraction",
+      "preprocessing.wavelet_features",
+      "preprocessing.wavelet_svd",
+      "preprocessing.derivate",
+      "preprocessing.beads",
+      "preprocessing.baseline",
+      "preprocessing.iasls",
+      "preprocessing.flexible_pca",
+      "preprocessing.flexible_svd",
+      "splitting.time_series_split",
+      "splitting.repeated_stratified_k_fold",
+      "splitting.stratified_shuffle_split",
+      "splitting.stratified_group_k_fold",
+      "splitting.leave_one_group_out",
+      "y_processing.integer_k_bins_discretizer",
+      "y_processing.range_discretizer"
+    ]
+  },
+
+  "finetuningRules": {
+    "$comment": "Auto-assign finetuning based on param name patterns",
+    "n_components": { "finetuneType": "int", "range": [1, 30] },
+    "n_estimators": { "finetuneType": "int", "range": [10, 500] },
+    "max_depth": { "finetuneType": "int", "range": [2, 30] },
+    "alpha": { "finetuneType": "float", "range": [0.0001, 10.0] },
+    "C": { "finetuneType": "float", "range": [0.01, 100.0] },
+    "epsilon": { "finetuneType": "float", "range": [0.001, 1.0] },
+    "gamma": { "finetuneType": "float", "range": [0.001, 10.0] },
+    "learning_rate": { "finetuneType": "float", "range": [0.001, 1.0] },
+    "n_neighbors": { "finetuneType": "int", "range": [1, 30] },
+    "l1_ratio": { "finetuneType": "float", "range": [0.0, 1.0] },
+    "min_samples_leaf": { "finetuneType": "int", "range": [1, 20] },
+    "min_samples_split": { "finetuneType": "int", "range": [2, 20] },
+    "subsample": { "finetuneType": "float", "range": [0.5, 1.0] },
+    "n_clusters": { "finetuneType": "int", "range": [2, 20] },
+    "perplexity": { "finetuneType": "float", "range": [5, 50] },
+    "n_bins": { "finetuneType": "int", "range": [2, 20] },
+    "degree": { "finetuneType": "int", "range": [2, 5] },
+    "n_knots": { "finetuneType": "int", "range": [3, 20] }
+  },
+
+  "outputFileMapping": {
+    "$comment": "Maps canonical category to output JSON file (relative to definitions/)",
+    "model/sklearn-linear": "models/sklearn-linear.json",
+    "model/sklearn-ensemble": "models/sklearn-ensemble.json",
+    "model/sklearn-tree": "models/sklearn-tree.json",
+    "model/sklearn-svm": "models/sklearn-svm.json",
+    "model/sklearn-neighbors": "models/sklearn-neighbors.json",
+    "model/sklearn-naive-bayes": "models/sklearn-naive-bayes.json",
+    "model/sklearn-neural": "models/sklearn-neural.json",
+    "model/sklearn-gaussian-process": "models/sklearn-gaussian-process.json",
+    "model/sklearn-discriminant": "models/sklearn-discriminant.json",
+    "model/sklearn-meta": "models/sklearn-meta.json",
+    "model/sklearn-probabilistic": "models/sklearn-misc.json",
+    "model/sklearn-baseline": "models/sklearn-misc.json",
+    "model/sklearn-cross-decomposition": "models/sklearn-misc.json",
+    "model/sklearn-kernel": "models/sklearn-misc.json",
+    "model/sklearn-misc-models": "models/sklearn-misc.json",
+    "model/sklearn-semi-supervised": "models/sklearn-misc.json",
+    "model/pls": "models/pls-variants.json",
+    "preprocessing/scikit-scalers": "preprocessing/sklearn-scalers.json",
+    "preprocessing/scikit-dimensionality": "preprocessing/sklearn-dimensionality.json",
+    "preprocessing/scikit-feature-selection": "preprocessing/sklearn-feature-selection.json",
+    "preprocessing/scikit-encoding": "preprocessing/sklearn-encoding.json",
+    "preprocessing/scikit-imputation": "preprocessing/sklearn-imputation.json",
+    "preprocessing/scikit-kernel-projection": "preprocessing/sklearn-kernel-projection.json",
+    "preprocessing/scikit-cluster-neighbors": "preprocessing/sklearn-cluster-neighbors.json",
+    "preprocessing/scikit-feature-extraction": "preprocessing/sklearn-feature-extraction.json",
+    "preprocessing/scikit-meta-transformers": "preprocessing/sklearn-misc.json",
+    "preprocessing/scikit-misc-transformers": "preprocessing/sklearn-misc.json",
+    "preprocessing/baseline": "preprocessing/baseline.json",
+    "preprocessing/scaling": "preprocessing/scaling.json",
+    "preprocessing/scatter-correction": "preprocessing/nirs-core.json",
+    "preprocessing/signal-conversion": "preprocessing/conversion.json",
+    "preprocessing/spectral-transforms": "preprocessing/wavelet.json",
+    "preprocessing/derivatives": "preprocessing/derivatives.json",
+    "preprocessing/feature-selection": "preprocessing/feature-selection.json",
+    "preprocessing/feature-engineering": "preprocessing/feature-ops.json",
+    "splitting/sklearn-splitters": "splitting/sklearn-splitters.json",
+    "splitting/sklearn": "splitting/nirs-splitters.json",
+    "splitting/nirs": "splitting/nirs-splitters.json",
+    "y_processing/scaling": "y-processing/scalers.json",
+    "y_processing/target-transforms": "y-processing/scalers.json"
+  }
+}

@@ -3,6 +3,8 @@
 Development backlog for nirs4all Studio. Items are organized by area.
 
 
+> [TaskType] Ensure tasktype correctly detected or customized
+
 ## Priority / Next
 
 - Add predict from final prediction (and either dataset, or drag n drop X csv)
@@ -10,7 +12,11 @@ Development backlog for nirs4all Studio. Items are organized by area.
 - Add documentation links and update warnings in the UI
 - Stop full dataset list refresh on single dataset delete
 - Convert doc to rtd
-
+- Run parallelism
+- Fix operator that add itself when coming back to playground
+- Fix all operators definition
+- Add presets and allow preset select in run experiment
+- run wizard with pipeline and dataset on the same 1st step. So we can go run from datasets or pipeline editor with pipeline/Datset already selected
 
 ### Bugs
 

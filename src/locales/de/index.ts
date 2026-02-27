@@ -341,6 +341,9 @@ const de = {
         description: "API-Endpunkt und Verbindungseinstellungen",
         url: "Backend-URL",
         urlHint: "API-Endpunkt (schreibgeschützt in Produktion)",
+        restart: "Backend neu starten",
+        restartHint: "Python-Backend-Prozess stoppen und neu starten",
+        restarting: "Wird neu gestartet...",
         status: {
           title: "Backend-Status",
           description: "Verbindungszustand und Latenz",

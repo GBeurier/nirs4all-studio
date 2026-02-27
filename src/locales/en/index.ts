@@ -343,6 +343,9 @@ const en = {
         description: "API endpoint and connection settings",
         url: "Backend URL",
         urlHint: "API endpoint (read-only in production)",
+        restart: "Restart Backend",
+        restartHint: "Stop and restart the Python backend process",
+        restarting: "Restarting...",
         status: {
           title: "Backend Status",
           description: "Connection health and latency",

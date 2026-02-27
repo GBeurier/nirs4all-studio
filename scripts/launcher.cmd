@@ -19,6 +19,7 @@ set "PORT_FRONTEND=5173"
 set "PORT_BACKEND=8000"
 set "NIRS4ALL_VENV=%PROJECT_ROOT%\..\.venv"
 set "LOG_DIR=%TEMP%\nirs4all"
+set "BACKEND_PID_FILE=%APPDATA%\nirs4all-webapp\backend.pid"
 
 REM Ensure log directory exists
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
@@ -152,16 +153,16 @@ echo ========================================
 echo.
 echo Stopping processes...
 
-REM Kill Node/Vite processes
+REM Keep process cleanup fast: per-PID WMIC scans can be very slow with many Node/Python processes.
+REM Port-based cleanup below guarantees stale frontend/backend listeners are terminated.
 taskkill /F /IM "node.exe" /FI "WINDOWTITLE eq *vite*" 2>nul
-for /f "tokens=2" %%a in ('tasklist /fi "imagename eq node.exe" /fo list ^| find "PID:"') do (
-    wmic process where "ProcessId=%%a" get CommandLine 2>nul | findstr /i "vite" >nul && taskkill /F /PID %%a 2>nul
-)
 
-REM Kill Python backend processes
-for /f "tokens=2" %%a in ('tasklist /fi "imagename eq python.exe" /fo list ^| find "PID:"') do (
-    wmic process where "ProcessId=%%a" get CommandLine 2>nul | findstr /i "uvicorn main:app" >nul && taskkill /F /PID %%a 2>nul
-    wmic process where "ProcessId=%%a" get CommandLine 2>nul | findstr /i "main.py" >nul && taskkill /F /PID %%a 2>nul
+REM Kill backend process tracked by Electron/main.py (covers dynamic backend ports).
+if exist "%BACKEND_PID_FILE%" (
+    for /f "usebackq tokens=* delims=" %%a in ("%BACKEND_PID_FILE%") do (
+        tasklist /FI "PID eq %%a" /FI "IMAGENAME eq python.exe" | find /I "python.exe" >nul && taskkill /F /PID %%a 2>nul
+    )
+    del /q "%BACKEND_PID_FILE%" 2>nul
 )
 
 REM Kill Electron

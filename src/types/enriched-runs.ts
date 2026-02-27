@@ -62,6 +62,7 @@ export interface TopChainResult {
   final_test_score: number | null;
   final_train_score: number | null;
   final_scores: Record<string, number>;
+  best_params?: Record<string, unknown> | null;
   is_refit_only?: boolean;
 }
 
@@ -81,4 +82,30 @@ export interface ScoreDistribution {
 export interface EnrichedRunsResponse {
   runs: EnrichedRun[];
   total: number;
+}
+
+/** Response from GET /workspaces/{id}/runs/{run_id}/datasets/{name}/chains */
+export interface AllChainsResponse {
+  chains: AllChainEntry[];
+  total: number;
+  metric: string | null;
+}
+
+/** One chain entry in the all-chains response. */
+export interface AllChainEntry {
+  chain_id: string;
+  model_name: string;
+  model_class: string;
+  preprocessings: string;
+  best_params: Record<string, unknown> | null;
+  cv_val_score: number | null;
+  cv_test_score: number | null;
+  cv_train_score: number | null;
+  cv_fold_count: number;
+  cv_scores: Record<string, Record<string, number>> | null;
+  final_test_score: number | null;
+  final_train_score: number | null;
+  final_scores: Record<string, number> | null;
+  metric: string | null;
+  task_type: string | null;
 }

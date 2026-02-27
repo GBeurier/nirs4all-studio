@@ -12,6 +12,7 @@ Phase 6: Workspace management and AutoML search.
 import os
 import time
 import traceback
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 _t0 = time.perf_counter()
@@ -90,17 +91,178 @@ from websocket import ws_manager
 _t4 = time.perf_counter()
 logger.info("STARTUP TIMING: All router imports: %.2fs (total so far: %.2fs)", _t4 - _t3, _t4 - _t0)
 
+# Startup readiness flag — set to True once the startup event has completed.
+# Used by /api/health so Electron waits for full initialization before loading the UI.
+startup_complete = False
+
+# Background async tasks created during startup — tracked so we can cancel them on shutdown.
+_background_tasks: list = []
+
+# PID file path (set via NIRS4ALL_PID_FILE env var by Electron)
+_pid_file: Path | None = None
+
+
+# ============= Application Lifespan =============
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Application lifespan: startup and shutdown in a single context manager.
+
+    Startup (two-phase):
+      Phase 1 (core_ready): FastAPI running, workspace config read, basic endpoints work.
+      Phase 2 (ml_ready): nirs4all/sklearn loaded in background thread, heavy pages functional.
+    Shutdown:
+      Cancel background tasks, stop job executor, close WebSocket connections, remove PID file.
+    """
+    import asyncio
+    import sys
+
+    global startup_complete, _pid_file
+
+    # --- STARTUP ---
+
+    # Suppress Windows ProactorEventLoop ConnectionResetError (WinError 10054).
+    # On Windows + Python 3.13, abrupt client disconnects (e.g. browser tab closed,
+    # Playwright test ended) trigger ConnectionResetError in _call_connection_lost.
+    # This is harmless but can briefly block the event loop from accepting connections.
+    if sys.platform == "win32":
+        loop = asyncio.get_running_loop()
+        _original_handler = loop.get_exception_handler()
+
+        def _suppress_connection_reset(loop, context):
+            exc = context.get("exception")
+            if isinstance(exc, ConnectionResetError):
+                return  # Silently ignore
+            if _original_handler:
+                _original_handler(loop, context)
+            else:
+                loop.default_exception_handler(context)
+
+        loop.set_exception_handler(_suppress_connection_reset)
+
+    _ts = time.perf_counter()
+
+    from api.lazy_imports import start_ml_loading
+    from api.updates import update_manager
+    from api.workspace_manager import workspace_manager
+
+    # Log startup
+    logger.info("STARTUP TIMING: startup_event entered at %.2fs since module load", _ts - _t0)
+    logger.info("nirs4all webapp starting...")
+    logger.info("Webapp version: %s", update_manager.get_webapp_version())
+
+    # Write PID file so Electron can detect orphaned backends on next launch
+    pid_file_path = os.environ.get("NIRS4ALL_PID_FILE")
+    if pid_file_path:
+        try:
+            _pid_file = Path(pid_file_path)
+            _pid_file.parent.mkdir(parents=True, exist_ok=True)
+            _pid_file.write_text(str(os.getpid()))
+            logger.info("Wrote PID file: %s (pid=%d)", _pid_file, os.getpid())
+        except Exception as e:
+            logger.warning("Failed to write PID file: %s", e)
+            _pid_file = None
+
+    # Set workspace env var (lightweight — no nirs4all import needed)
+    try:
+        active_ws = workspace_manager.get_active_workspace()
+        if active_ws:
+            os.environ["NIRS4ALL_WORKSPACE"] = active_ws.path
+            logger.info("Set NIRS4ALL_WORKSPACE env var: %s", active_ws.path)
+        else:
+            logger.info("No active workspace found in settings")
+    except Exception as e:
+        logger.error("Failed to read active workspace: %s", e)
+
+    # Check environment coherence — detect stale VenvManager custom paths
+    try:
+        from api.venv_manager import venv_manager as _vm
+        vm_path = str(_vm.venv_path)
+        runtime_path = sys.prefix
+        if os.path.normcase(os.path.normpath(vm_path)) != os.path.normcase(os.path.normpath(runtime_path)):
+            logger.warning(
+                "ENV MISMATCH: VenvManager targets %s but running in %s. "
+                "Custom venv path may be stale.",
+                vm_path, runtime_path,
+            )
+        else:
+            logger.info("Environment coherence OK: VenvManager and runtime both target %s", runtime_path)
+        expected_python = os.environ.get("NIRS4ALL_EXPECTED_PYTHON")
+        if expected_python and os.path.normcase(os.path.normpath(expected_python)) != os.path.normcase(os.path.normpath(sys.executable)):
+            logger.warning(
+                "PYTHON MISMATCH: Electron expected %s but running as %s",
+                expected_python, sys.executable,
+            )
+    except Exception as e:
+        logger.warning("Could not check environment coherence: %s", e)
+
+    # Phase 1 complete — core is ready, Electron can show the window
+    startup_complete = True
+    _te = time.perf_counter()
+    logger.info("STARTUP TIMING: Phase 1 complete at %.2fs since module load (startup_event took %.2fs)", _te - _t0, _te - _ts)
+
+    # Start ML dependency loading in background thread
+    start_ml_loading()
+
+    # Monitor ML loading and restore workspace with nirs4all when ready
+    _background_tasks.append(asyncio.create_task(_wait_for_ml_ready()))
+
+    # Other background tasks
+    _background_tasks.append(asyncio.create_task(cleanup_old_updates_background()))
+    if update_manager.settings.auto_check:
+        _background_tasks.append(asyncio.create_task(check_updates_background()))
+    _background_tasks.append(asyncio.create_task(cache_recommended_config_background()))
+
+    yield  # --- APPLICATION RUNS ---
+
+    # --- SHUTDOWN ---
+    logger.info("Shutdown initiated, cleaning up resources...")
+
+    # 1. Cancel background async tasks
+    for task in _background_tasks:
+        if not task.done():
+            task.cancel()
+    # Brief wait for cancellation to propagate
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+    _background_tasks.clear()
+
+    # 2. Stop the job manager's thread pool (don't wait for running jobs)
+    try:
+        from api.jobs.manager import job_manager
+        job_manager.shutdown(wait=False)
+        logger.info("Job manager shut down")
+    except Exception as e:
+        logger.warning("Error shutting down job manager: %s", e)
+
+    # 3. Close all WebSocket connections
+    for ws in list(ws_manager._connections):
+        try:
+            await ws.close()
+        except Exception:
+            pass
+    logger.info("WebSocket connections closed")
+
+    # 4. Remove PID file
+    if _pid_file and _pid_file.exists():
+        try:
+            _pid_file.unlink()
+            logger.info("Removed PID file: %s", _pid_file)
+        except Exception as e:
+            logger.warning("Failed to remove PID file: %s", e)
+
+    logger.info("Shutdown cleanup complete")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="nirs4all API",
     description="API for nirs4all unified NIRS analysis desktop application",
     version="0.2.0",
     default_response_class=ORJSONResponse,
+    lifespan=lifespan,
 )
-
-# Startup readiness flag — set to True once the startup event has completed.
-# Used by /api/health so Electron waits for full initialization before loading the UI.
-startup_complete = False
 
 
 # ============= Exception Handlers for Error Logging =============
@@ -175,101 +337,6 @@ app.include_router(shap_router, prefix="/api", tags=["shap"])
 app.include_router(projects_router, prefix="/api", tags=["projects"])
 app.include_router(inspector_router, prefix="/api", tags=["inspector"])
 app.include_router(config_router, prefix="/api", tags=["config"])
-
-
-# ============= Startup Events =============
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on application startup (two-phase).
-
-    Phase 1 (core_ready): FastAPI running, workspace config read, basic endpoints work.
-    Phase 2 (ml_ready): nirs4all/sklearn loaded in background thread, heavy pages functional.
-    """
-    import asyncio
-    import sys
-
-    # Suppress Windows ProactorEventLoop ConnectionResetError (WinError 10054).
-    # On Windows + Python 3.13, abrupt client disconnects (e.g. browser tab closed,
-    # Playwright test ended) trigger ConnectionResetError in _call_connection_lost.
-    # This is harmless but can briefly block the event loop from accepting connections.
-    if sys.platform == "win32":
-        loop = asyncio.get_running_loop()
-        _original_handler = loop.get_exception_handler()
-
-        def _suppress_connection_reset(loop, context):
-            exc = context.get("exception")
-            if isinstance(exc, ConnectionResetError):
-                return  # Silently ignore
-            if _original_handler:
-                _original_handler(loop, context)
-            else:
-                loop.default_exception_handler(context)
-
-        loop.set_exception_handler(_suppress_connection_reset)
-
-    _ts = time.perf_counter()
-
-    from api.lazy_imports import start_ml_loading
-    from api.updates import update_manager
-    from api.workspace_manager import workspace_manager
-
-    # Log startup
-    logger.info("STARTUP TIMING: startup_event entered at %.2fs since module load", _ts - _t0)
-    logger.info("nirs4all webapp starting...")
-    logger.info("Webapp version: %s", update_manager.get_webapp_version())
-
-    # Set workspace env var (lightweight — no nirs4all import needed)
-    try:
-        active_ws = workspace_manager.get_active_workspace()
-        if active_ws:
-            os.environ["NIRS4ALL_WORKSPACE"] = active_ws.path
-            logger.info("Set NIRS4ALL_WORKSPACE env var: %s", active_ws.path)
-        else:
-            logger.info("No active workspace found in settings")
-    except Exception as e:
-        logger.error("Failed to read active workspace: %s", e)
-
-    # Check environment coherence — detect stale VenvManager custom paths
-    try:
-        from api.venv_manager import venv_manager as _vm
-        vm_path = str(_vm.venv_path)
-        runtime_path = sys.prefix
-        if os.path.normcase(os.path.normpath(vm_path)) != os.path.normcase(os.path.normpath(runtime_path)):
-            logger.warning(
-                "ENV MISMATCH: VenvManager targets %s but running in %s. "
-                "Custom venv path may be stale.",
-                vm_path, runtime_path,
-            )
-        else:
-            logger.info("Environment coherence OK: VenvManager and runtime both target %s", runtime_path)
-        expected_python = os.environ.get("NIRS4ALL_EXPECTED_PYTHON")
-        if expected_python and os.path.normcase(os.path.normpath(expected_python)) != os.path.normcase(os.path.normpath(sys.executable)):
-            logger.warning(
-                "PYTHON MISMATCH: Electron expected %s but running as %s",
-                expected_python, sys.executable,
-            )
-    except Exception as e:
-        logger.warning("Could not check environment coherence: %s", e)
-
-    # Phase 1 complete — core is ready, Electron can show the window
-    global startup_complete
-    startup_complete = True
-    _te = time.perf_counter()
-    logger.info("STARTUP TIMING: Phase 1 complete at %.2fs since module load (startup_event took %.2fs)", _te - _t0, _te - _ts)
-
-    # Start ML dependency loading in background thread
-    start_ml_loading()
-
-    # Monitor ML loading and restore workspace with nirs4all when ready
-    asyncio.create_task(_wait_for_ml_ready())
-
-    # Other background tasks
-    asyncio.create_task(cleanup_old_updates_background())
-    if update_manager.settings.auto_check:
-        asyncio.create_task(check_updates_background())
-    asyncio.create_task(cache_recommended_config_background())
 
 
 async def _wait_for_ml_ready():

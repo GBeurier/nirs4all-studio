@@ -31,6 +31,8 @@ import {
   FolderPlus,
   FileArchive,
   ZoomIn,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useDeveloperMode } from "@/context/DeveloperModeContext";
@@ -90,6 +92,8 @@ import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
 import {
   getWorkspace,
   getLinkedWorkspaces,
+  requestRestart,
+  resetBackendUrl,
 } from "@/api/client";
 import type { UIDensity, UIZoomLevel } from "@/types/settings";
 import type { LinkedWorkspace } from "@/types/linked-workspaces";
@@ -118,6 +122,7 @@ export default function Settings() {
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [activeN4AWorkspaceId, setActiveN4AWorkspaceId] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState<string>("...");
+  const [isRestarting, setIsRestarting] = useState(false);
 
   // Load workspace info on mount
   useEffect(() => {
@@ -519,6 +524,41 @@ export default function Settings() {
                     className="w-64"
                     readOnly
                   />
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{t("settings.advanced.backend.restart")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.advanced.backend.restartHint")}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isRestarting}
+                    onClick={async () => {
+                      setIsRestarting(true);
+                      try {
+                        const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean; port?: number }> } | undefined;
+                        if (electronApi?.restartBackend) {
+                          const result = await electronApi.restartBackend();
+                          if (result.success) {
+                            resetBackendUrl();
+                            if (result.port) setBackendUrl(`http://127.0.0.1:${result.port}`);
+                            window.dispatchEvent(new CustomEvent("backend-restarted"));
+                          }
+                        } else {
+                          await requestRestart();
+                        }
+                      } finally {
+                        setIsRestarting(false);
+                      }
+                    }}
+                  >
+                    {isRestarting ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <RotateCcw className="mr-2 h-3 w-3" />}
+                    {isRestarting ? t("settings.advanced.backend.restarting") : t("settings.advanced.backend.restart")}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

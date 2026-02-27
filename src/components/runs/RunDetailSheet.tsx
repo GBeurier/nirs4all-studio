@@ -71,6 +71,7 @@ import { RunStatus, runStatusConfig } from "@/types/runs";
 import type { EnrichedRun, EnrichedDatasetRun, TopChainResult } from "@/types/enriched-runs";
 import type { ChainSummary } from "@/types/aggregated-predictions";
 import { getAggregatedPredictions, getScoreDistribution } from "@/api/client";
+import { filterParasiticDatasets } from "./datasetFilters";
 
 // ---------------------------------------------------------------------------
 // Props & helpers
@@ -140,6 +141,11 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
     setPredictDialogOpen(true);
   };
 
+  const datasets = useMemo(
+    () => (run ? filterParasiticDatasets(run.datasets) : []),
+    [run],
+  );
+
   if (!run) return null;
 
   const status = (run.status || "completed") as RunStatus;
@@ -181,7 +187,7 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
 
           {/* Summary stat cards */}
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-4">
-            <StatCard icon={Database} label="Datasets" value={run.datasets_count} />
+            <StatCard icon={Database} label="Datasets" value={datasets.length} />
             <StatCard icon={Layers} label="Pipelines" value={run.pipeline_runs_count} />
             <StatCard icon={Target} label="Final Models" value={run.final_models_count} accent />
             <StatCard icon={Box} label="Trained" value={run.total_models_trained} />
@@ -211,13 +217,13 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
 
           <ScrollArea className="flex-1 mt-4">
             <TabsContent value="overview" className="m-0">
-              <OverviewTab run={run} />
+              <OverviewTab run={run} datasets={datasets} />
             </TabsContent>
             <TabsContent value="leaderboard" className="m-0">
-              <LeaderboardTab run={run} open={open} activeTab={activeTab} onPredict={handlePredict} />
+              <LeaderboardTab run={run} datasets={datasets} open={open} activeTab={activeTab} />
             </TabsContent>
             <TabsContent value="datasets" className="m-0">
-              <DatasetsTab run={run} workspaceId={workspaceId} onPredict={handlePredict} />
+              <DatasetsTab run={run} datasets={datasets} workspaceId={workspaceId} onPredict={handlePredict} />
             </TabsContent>
           </ScrollArea>
         </Tabs>
@@ -262,15 +268,15 @@ function StatCard({ icon: Icon, label, value, accent }: {
 // Tab 1: Overview
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ run }: { run: EnrichedRun }) {
+function OverviewTab({ run, datasets }: { run: EnrichedRun; datasets: EnrichedDatasetRun[] }) {
   // Derive unique preprocessings from top chains
   const uniquePreprocessings = useMemo(() => {
     const set = new Set<string>();
-    run.datasets.forEach(ds => ds.top_5.forEach(c => {
+    datasets.forEach(ds => ds.top_5.forEach(c => {
       if (c.preprocessings) set.add(c.preprocessings);
     }));
     return Array.from(set);
-  }, [run.datasets]);
+  }, [datasets]);
 
   return (
     <div className="space-y-4">
@@ -302,14 +308,14 @@ function OverviewTab({ run }: { run: EnrichedRun }) {
       )}
 
       {/* Best Results per dataset */}
-      {run.datasets.some(ds => ds.best_final_score != null || ds.best_avg_val_score != null) && (
+      {datasets.some(ds => ds.best_final_score != null || ds.best_avg_val_score != null) && (
         <div className="p-4 rounded-lg border bg-card">
           <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
             <Award className="h-4 w-4 text-chart-1" />
             Best Results
           </h4>
           <div className="space-y-2">
-            {run.datasets
+            {datasets
               .filter(ds => ds.best_final_score != null || ds.best_avg_val_score != null)
               .map(ds => {
                 const hasFinal = ds.best_final_score != null;
@@ -372,7 +378,7 @@ function OverviewTab({ run }: { run: EnrichedRun }) {
       )}
 
       {/* Datasets summary table */}
-      {run.datasets.length > 0 && (
+      {datasets.length > 0 && (
         <div className="rounded-lg border overflow-hidden">
           <h4 className="font-medium text-sm p-3 bg-muted/30 border-b flex items-center gap-2">
             <Database className="h-4 w-4 text-muted-foreground" />
@@ -390,7 +396,7 @@ function OverviewTab({ run }: { run: EnrichedRun }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {run.datasets.map(ds => {
+              {datasets.map(ds => {
                 const bestScore = ds.best_final_score ?? ds.best_avg_val_score;
                 const hasFinal = ds.best_final_score != null;
                 return (
@@ -492,18 +498,18 @@ function formatCVStrategy(strategy?: string): string {
 type SortColumn = "cv_val" | "cv_test" | "final" | "folds";
 type SortDir = "asc" | "desc";
 
-function LeaderboardTab({ run, open, activeTab, onPredict }: {
+function LeaderboardTab({ run, datasets, open, activeTab }: {
   run: EnrichedRun;
+  datasets: EnrichedDatasetRun[];
   open: boolean;
   activeTab: string;
-  onPredict: (chain: TopChainResult, datasetName: string) => void;
 }) {
   const [datasetFilter, setDatasetFilter] = useState<string>("__all__");
   const [sortCol, setSortCol] = useState<SortColumn>("cv_val");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Determine default sort direction from metric
-  const primaryMetric = run.datasets[0]?.metric;
+  const primaryMetric = datasets[0]?.metric;
   const defaultDescending = !isLowerBetter(primaryMetric);
 
   const { data, isLoading } = useQuery({
@@ -513,7 +519,14 @@ function LeaderboardTab({ run, open, activeTab, onPredict }: {
     staleTime: 60000,
   });
 
-  const predictions = useMemo(() => data?.predictions || [], [data]);
+  const allowedDatasets = useMemo(() => new Set(datasets.map((ds) => ds.dataset_name)), [datasets]);
+  const predictions = useMemo(
+    () => (data?.predictions || []).filter((pred) => {
+      if (!pred.dataset_name) return false;
+      return allowedDatasets.has(pred.dataset_name);
+    }),
+    [data, allowedDatasets],
+  );
 
   const sortedPredictions = useMemo(() => {
     let filtered = predictions;
@@ -586,7 +599,7 @@ function LeaderboardTab({ run, open, activeTab, onPredict }: {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All datasets</SelectItem>
-            {run.datasets.map(ds => (
+            {datasets.map(ds => (
               <SelectItem key={ds.dataset_name} value={ds.dataset_name}>{ds.dataset_name}</SelectItem>
             ))}
           </SelectContent>
@@ -671,12 +684,13 @@ function LeaderboardTab({ run, open, activeTab, onPredict }: {
 // Tab 3: Datasets
 // ---------------------------------------------------------------------------
 
-function DatasetsTab({ run, workspaceId, onPredict }: {
+function DatasetsTab({ run, datasets, workspaceId, onPredict }: {
   run: EnrichedRun;
+  datasets: EnrichedDatasetRun[];
   workspaceId: string;
   onPredict: (chain: TopChainResult, datasetName: string) => void;
 }) {
-  if (run.datasets.length === 0) {
+  if (datasets.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
         <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -687,7 +701,7 @@ function DatasetsTab({ run, workspaceId, onPredict }: {
 
   return (
     <div className="space-y-4">
-      {run.datasets.map(ds => (
+      {datasets.map(ds => (
         <EnhancedDatasetCard
           key={ds.dataset_name}
           dataset={ds}
