@@ -44,6 +44,8 @@ SPLITTER_ALIASES = {
 
 MODEL_ALIASES = {
     "RandomForest": "RandomForestRegressor",
+    "LightGBM": "LGBMRegressor",
+    "XGBoost": "XGBRegressor",
 }
 
 SKLEARN_PREPROCESSING_MODULES = [
@@ -60,6 +62,12 @@ SKLEARN_MODEL_MODULES = [
     "sklearn.linear_model",
     "sklearn.neighbors",
     "sklearn.svm",
+]
+
+THIRDPARTY_MODEL_MODULES = [
+    "xgboost",
+    "lightgbm.sklearn",
+    "catboost",
 ]
 
 NIRS4ALL_PREPROCESSING_MODULES = [
@@ -333,6 +341,8 @@ def _resolve_operator_class(name: str, step_type: str) -> Any:
         cls = _resolve_class(lookup_name, NIRS4ALL_MODEL_MODULES)
         if cls is None:
             cls = _resolve_class(lookup_name, SKLEARN_MODEL_MODULES)
+        if cls is None:
+            cls = _resolve_class(lookup_name, THIRDPARTY_MODEL_MODULES)
     elif step_type == "filter":
         cls = _resolve_class(lookup_name, NIRS4ALL_FILTER_MODULES)
         if cls is None:
@@ -1363,6 +1373,7 @@ ALL_RESOLVE_MODULES = (
     + SKLEARN_PREPROCESSING_MODULES
     + SKLEARN_SPLITTER_MODULES
     + SKLEARN_MODEL_MODULES
+    + THIRDPARTY_MODEL_MODULES
 )
 
 # Combined alias map for resolving short names
@@ -1764,4 +1775,3 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str]]) -> N
     # Recurse into children (for containers like sample_augmentation)
     for child in step.get("children", []):
         _check_step_imports(child, issues)
-

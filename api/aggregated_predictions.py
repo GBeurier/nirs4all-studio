@@ -413,7 +413,22 @@ async def get_chain_partition_detail(
             partition=partition,
             fold_id=fold_id,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = []
+        for row in df.iter_rows(named=True):
+            d = dict(row)
+            if isinstance(d.get("scores"), str):
+                import json
+                try:
+                    d["scores"] = json.loads(d["scores"])
+                except Exception:
+                    pass
+            if isinstance(d.get("best_params"), str):
+                import json
+                try:
+                    d["best_params"] = json.loads(d["best_params"])
+                except Exception:
+                    pass
+            records.append(_sanitize_dict(d))
         return {
             "chain_id": chain_id,
             "predictions": records,
@@ -434,7 +449,7 @@ async def get_prediction_arrays(prediction_id: str):
     import numpy as np
     store = _get_store()
     try:
-        arrays = store.get_prediction_arrays(prediction_id)
+        arrays = store.get_prediction(prediction_id, load_arrays=True)
         if arrays is None:
             raise HTTPException(
                 status_code=404,

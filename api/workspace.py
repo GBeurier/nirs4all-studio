@@ -2602,6 +2602,34 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
         )
 
 
+@router.get("/workspaces/{workspace_id}/runs/{run_id}/datasets/{dataset_name}/chains")
+async def get_all_chains_for_dataset(workspace_id: str, run_id: str, dataset_name: str):
+    """Get ALL chain summaries for a run+dataset, sorted by primary metric."""
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
+        if not STORE_AVAILABLE:
+            return {"chains": [], "total": 0, "metric": None}
+
+        workspace_path = Path(ws.path)
+        store_path = workspace_path / "store.duckdb"
+        if not store_path.exists():
+            return {"chains": [], "total": 0, "metric": None}
+
+        adapter = StoreAdapter(workspace_path)
+        try:
+            return adapter.get_all_chains_for_dataset(run_id, dataset_name)
+        finally:
+            adapter.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/workspaces/{workspace_id}/runs/{run_id}/datasets/{dataset_name}/scores")
 async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: str, n_bins: int = 20):
     """Get score distribution histogram data for a run+dataset."""

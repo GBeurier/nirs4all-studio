@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -549,10 +550,13 @@ class StoreAdapter:
             agg_df = store.query_aggregated_predictions(run_id=run_id)
             agg_rows = list(agg_df.iter_rows(named=True)) if len(agg_df) > 0 else []
 
-            # Group by dataset_name
+            # Group by dataset_name, filtering out parasitic calibration/validation subsets
+            _PARASITIC_DS_RE = re.compile(r"_X_?(?:cal|val)$", re.IGNORECASE)
             datasets_map: dict[str, list] = {}
             for agg in agg_rows:
                 ds = agg.get("dataset_name", "unknown")
+                if _PARASITIC_DS_RE.search(ds):
+                    continue
                 if ds not in datasets_map:
                     datasets_map[ds] = []
                 datasets_map[ds].append(agg)
@@ -587,10 +591,10 @@ class StoreAdapter:
                 if isinstance(dm, dict):
                     datasets_meta_map[dm.get("name", "")] = dm
 
-            # Ensure we have all datasets even if no predictions yet
+            # Ensure we have all datasets even if no predictions yet (skip parasitic subsets)
             for dm in datasets_meta:
                 ds_name = dm.get("name", "") if isinstance(dm, dict) else str(dm)
-                if ds_name and ds_name not in datasets_map:
+                if ds_name and ds_name not in datasets_map and not _PARASITIC_DS_RE.search(ds_name):
                     datasets_map[ds_name] = []
 
             # Build per-dataset enriched data
@@ -673,7 +677,7 @@ class StoreAdapter:
                     try:
                         ph = ", ".join(f"${i + 1}" for i in range(len(all_chain_ids)))
                         cs_df = store._fetch_pl(
-                            f"SELECT chain_id, cv_scores, final_test_score, final_train_score, final_scores "
+                            f"SELECT chain_id, cv_scores, final_test_score, final_train_score, final_scores, best_params "
                             f"FROM v_chain_summary WHERE chain_id IN ({ph})",
                             all_chain_ids,
                         )
@@ -707,6 +711,10 @@ class StoreAdapter:
                         if best_final_score is None or higher_is_better and final_ts > best_final_score or not higher_is_better and final_ts < best_final_score:
                             best_final_score = final_ts
 
+                    # Parse best_params from chain summary or aggregated entry
+                    bp_raw = cs.get("best_params") or entry.get("best_params")
+                    best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
+
                     top_5.append(_sanitize_dict({
                         "chain_id": chain_id,
                         "model_name": entry.get("model_name", ""),
@@ -720,6 +728,7 @@ class StoreAdapter:
                         "final_test_score": final_ts,
                         "final_train_score": final_trs,
                         "final_scores": final_scores,
+                        "best_params": best_params,
                     }))
 
                 # Add refit-only chains not in top_5
@@ -951,6 +960,66 @@ class StoreAdapter:
         except Exception:
             pass
         return None
+
+    # ------------------------------------------------------------------
+    # All chains for a run + dataset (lazy-loaded by frontend)
+    # ------------------------------------------------------------------
+
+    def get_all_chains_for_dataset(self, run_id: str, dataset_name: str) -> dict[str, Any]:
+        """Get ALL chain summaries for a run+dataset, sorted by primary metric.
+
+        Returns:
+            ``{"chains": [...], "total": N, "metric": "rmse"}``
+        """
+        store = self._store
+        try:
+            df = store.query_chain_summaries(run_id=run_id, dataset_name=dataset_name)
+        except Exception:
+            return {"chains": [], "total": 0, "metric": None}
+
+        if len(df) == 0:
+            return {"chains": [], "total": 0, "metric": None}
+
+        rows = list(df.iter_rows(named=True))
+        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
+
+        from nirs4all.pipeline.run import get_metric_info
+        metric_info = get_metric_info(metric)
+        higher_is_better = metric_info.get("higher_is_better", True)
+
+        # Sort by cv_val_score
+        scored = [r for r in rows if r.get("cv_val_score") is not None]
+        unscored = [r for r in rows if r.get("cv_val_score") is None]
+        scored.sort(key=lambda x: x.get("cv_val_score", 0), reverse=higher_is_better)
+
+        chains = []
+        for entry in scored + unscored:
+            cv_scores_raw = entry.get("cv_scores")
+            cv_scores = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
+            final_scores_raw = entry.get("final_scores")
+            final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+            bp_raw = entry.get("best_params")
+            best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
+
+            chains.append(_sanitize_dict({
+                "chain_id": entry.get("chain_id", ""),
+                "model_name": entry.get("model_name", ""),
+                "model_class": entry.get("model_class", ""),
+                "preprocessings": entry.get("preprocessings", ""),
+                "best_params": best_params,
+                "cv_val_score": _sanitize_float(entry.get("cv_val_score")),
+                "cv_test_score": _sanitize_float(entry.get("cv_test_score")),
+                "cv_train_score": _sanitize_float(entry.get("cv_train_score")),
+                "cv_fold_count": entry.get("cv_fold_count", 0),
+                "cv_scores": cv_scores,
+                "final_test_score": _sanitize_float(entry.get("final_test_score")),
+                "final_train_score": _sanitize_float(entry.get("final_train_score")),
+                "final_scores": final_scores,
+                "metric": entry.get("metric"),
+                "task_type": entry.get("task_type"),
+            }))
+
+        return {"chains": chains, "total": len(chains), "metric": metric}
 
     # ------------------------------------------------------------------
     # Results Summary (top models per dataset)
