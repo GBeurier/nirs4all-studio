@@ -71,101 +71,86 @@ import { cn } from '@/lib/utils';
 import { useNodeRegistryOptional, usePipelineEditorPreferencesOptional, type NodeDefinition, type TierLevel } from '@/components/pipeline-editor/contexts';
 import type { OperatorDefinition } from '@/types/playground';
 
-// Icon mapping for operators
+// Icon mapping for operator categories (case-insensitive lookup via normalized key)
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  // Preprocessing
-  scatter_correction: Waves,
-  derivative: TrendingUp,
-  smoothing: TrendingUp,
-  baseline: Minus,
-  scaling: Scaling,
-  wavelet: Layers,
-  conversion: TrendingDown,
-  features: Scissors,
-  // Augmentation
-  noise: Waves,
-  baseline_drift: TrendingDown,
-  wavelength_distortion: Maximize2,
-  resolution: TrendingUp,
-  masking: Scissors,
-  artefacts: Waves,
-  mixing: Shuffle,
-  scatter_simulation: Waves,
-  geometric: Maximize2,
-  // Splitting
-  kfold: Grid3X3,
-  stratified: Target,
-  shuffle: Shuffle,
-  grouped: Users,
-  distance: Ruler,
-  // Filter
-  outlier: XCircle,
-  range: Filter,
-  metadata: Layers,
-  quality: Shield,
-  other: GitBranch,
+  // Preprocessing categories (from NodeRegistry JSON definitions)
+  'nirs core': Waves,
+  'baseline': Minus,
+  'smoothing': TrendingUp,
+  'scaling': Scaling,
+  'normalization': Scaling,
+  'derivatives': TrendingUp,
+  'wavelet': Layers,
+  'wavelets': Layers,
+  'conversion': TrendingDown,
+  'feature selection': Scissors,
+  'feature ops': Scissors,
+  'features': Scissors,
+  'dimensionality reduction': Maximize2,
+  // sklearn preprocessing subcategories
+  'scikit-scalers': Scaling,
+  'scikit-dimensionality': Maximize2,
+  'scikit-encoding': Layers,
+  'scikit-imputation': Shield,
+  'scikit-feature-selection': Scissors,
+  'scikit-feature-extraction': Scissors,
+  'scikit-kernel-projection': Maximize2,
+  'scikit-meta-transformers': Layers,
+  'scikit-misc-transformers': GitBranch,
+  'scikit-cluster-neighbors': Target,
+  'signal-conversion': TrendingDown,
+  'spectral-transforms': Waves,
+  'feature-engineering': Scissors,
+  'feature-selection': Scissors,
+  // Legacy backend keys
+  'scatter_correction': Waves,
+  'derivative': TrendingUp,
+  'wavelet_single': Layers,
+  // Augmentation categories
+  'noise': Waves,
+  'scattering': Waves,
+  'environmental': Zap,
+  'edge artifacts': Zap,
+  'spectral': Waves,
+  'spline': TrendingUp,
+  'synthesis': Layers,
+  'wavelength': Maximize2,
+  'random': Shuffle,
+  'mixing': Shuffle,
+  // Splitting categories
+  'nirs': Ruler,
+  'sklearn': Grid3X3,
+  'sklearn-splitters': Grid3X3,
+  // Filter categories
+  'outlier': XCircle,
+  'quality': Shield,
+  'selection': Filter,
+  'metadata': Layers,
+  // Fallback
+  'other': GitBranch,
 };
 
 /**
- * Get icon for an operator based on category
+ * Get icon for an operator based on category (case-insensitive)
  */
 function getOperatorIcon(category: string): React.ComponentType<{ className?: string }> {
-  return ICON_MAP[category] || Waves;
+  return ICON_MAP[category.toLowerCase()] || Waves;
 }
 
 // Playground tab type - maps to the 4 playground categories
 type PlaygroundTabType = 'preprocessing' | 'augmentation' | 'splitting' | 'filter';
 
-// Category labels for display
-const CATEGORY_LABELS: Record<string, Record<string, string>> = {
-  preprocessing: {
-    scatter_correction: 'Scatter Correction',
-    derivative: 'Derivatives',
-    smoothing: 'Smoothing',
-    baseline: 'Baseline',
-    scaling: 'Scaling',
-    wavelet: 'Wavelets',
-    conversion: 'Conversion',
-    features: 'Features',
-    other: 'Other',
-  },
-  augmentation: {
-    noise: 'Noise',
-    baseline_drift: 'Baseline Drift',
-    wavelength_distortion: 'Wavelength Distortion',
-    resolution: 'Resolution & Smoothing',
-    masking: 'Masking & Dropout',
-    artefacts: 'Artefacts',
-    mixing: 'Sample Mixing',
-    scatter_simulation: 'Scatter Simulation',
-    geometric: 'Geometric',
-    container: 'Containers',
-    other: 'Other',
-  },
-  splitting: {
-    kfold: 'K-Fold',
-    stratified: 'Stratified',
-    shuffle: 'Shuffle Split',
-    grouped: 'Grouped',
-    distance: 'Distance-Based',
-    other: 'Other',
-  },
-  filter: {
-    outlier: 'Outlier Detection',
-    range: 'Range Filtering',
-    metadata: 'Metadata Filtering',
-    quality: 'Quality Control',
-    distance: 'Distance-Based',
-    container: 'Containers',
-    other: 'Other',
-  },
-};
+/**
+ * Get display label for a category.
+ * Uses the category name directly since NodeRegistry definitions
+ * already use human-readable names (e.g., "NIRS Core", "Noise").
+ */
 
 /**
  * Convert NodeDefinition to OperatorDefinition for playground compatibility
  */
 function nodeToOperatorDef(node: NodeDefinition, tabType: PlaygroundTabType): OperatorDefinition {
-  // Build params from node parameters
+  // Build params from node parameters, including rich metadata
   const params: OperatorDefinition['params'] = {};
   if (node.parameters) {
     for (const param of node.parameters) {
@@ -174,26 +159,35 @@ function nodeToOperatorDef(node: NodeDefinition, tabType: PlaygroundTabType): Op
         default: param.default,
         type: param.type,
         default_is_callable: false,
+        min: param.min,
+        max: param.max,
+        step: param.step,
+        options: param.options as OperatorDefinition['params'][string]['options'],
+        description: param.description,
+        isAdvanced: param.isAdvanced,
       };
     }
   }
 
+  // Use name as display_name, inserting spaces before capitals for readability
+  const displayName = node.name
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+
   return {
     name: node.name,
-    display_name: node.name,
+    display_name: displayName,
     description: node.description,
-    category: node.category ?? 'other',
+    category: node.category ?? 'Other',
     params,
     type: tabType,
     source: node.source,
   };
 }
 
-/**
- * Get display label for a category
- */
-function getCategoryLabel(category: string, type: PlaygroundTabType): string {
-  return CATEGORY_LABELS[type]?.[category] || category;
+function getCategoryLabel(category: string, _type: PlaygroundTabType): string {
+  // NodeRegistry definitions already use human-readable category names
+  return category;
 }
 
 /** Tier selector labels */
@@ -231,7 +225,7 @@ export function OperatorPalette({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<PlaygroundTabType>('preprocessing');
-  const [expandedCategory, setExpandedCategory] = useState<string | null>('scatter_correction');
+  const [expandedCategory, setExpandedCategory] = useState<string | null>('NIRS Core');
 
   // Use shared registry and preferences contexts
   const registryContext = useNodeRegistryOptional();

@@ -409,8 +409,18 @@ class PlaygroundExecutor:
                         "removed_count": removed_count,
                         "reason": filter_result.get("reason", "Filtered"),
                     })
+                elif step.type == "augmentation":
+                    # Handle augmentation operators
+                    X_processed = self._execute_augmentation(step, X_processed)
+                    trace = StepTrace(
+                        step_id=step.id,
+                        name=step.name,
+                        duration_ms=(time.perf_counter() - step_start) * 1000,
+                        success=True,
+                        output_shape=list(X_processed.shape)
+                    )
                 else:
-                    # Handle preprocessing / augmentation
+                    # Handle preprocessing
                     X_processed = self._execute_preprocessing(step, X_processed)
                     trace = StepTrace(
                         step_id=step.id,
@@ -625,6 +635,34 @@ class PlaygroundExecutor:
         if operator is None:
             raise ValueError(f"Unknown preprocessing operator: {step.name}")
 
+        return operator.fit_transform(X)
+
+    def _execute_augmentation(
+        self,
+        step: PlaygroundStep,
+        X,
+    ):
+        """Execute an augmentation step.
+
+        Resolves augmentation operators from nirs4all.operators.augmentation.
+
+        Args:
+            step: Step configuration
+            X: Input data
+
+        Returns:
+            Augmented data
+        """
+        operator = instantiate_operator(step.name, step.params, "augmentation")
+        if operator is None:
+            # Fall back to preprocessing resolution (some operators work in both)
+            operator = instantiate_operator(step.name, step.params, "preprocessing")
+        if operator is None:
+            raise ValueError(f"Unknown augmentation operator: {step.name}")
+
+        # Augmenters may have an augment() method or fit_transform()
+        if hasattr(operator, "augment"):
+            return operator.augment(X)
         return operator.fit_transform(X)
 
     def _execute_filter(

@@ -231,10 +231,10 @@ interface DynamicParamRendererProps {
 }
 
 function DynamicParamRenderer({ params, paramDefs, onUpdate }: DynamicParamRendererProps) {
-  // Filter out internal params and render user-facing ones
-  const visibleParams = Object.entries(paramDefs).filter(([key]) => {
-    // Skip internal params
+  // Filter out internal and advanced params, render user-facing ones
+  const visibleParams = Object.entries(paramDefs).filter(([key, info]) => {
     if (key.startsWith('_')) return false;
+    if (info.isAdvanced) return false;
     return true;
   });
 
@@ -266,9 +266,9 @@ interface ParamInputProps {
 }
 
 function ParamInput({ paramKey, paramInfo, value, onUpdate }: ParamInputProps) {
-  const displayName = paramKey
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
+  const displayName = paramInfo.description
+    ? paramKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : paramKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   // Determine input type
   if (paramInfo.type === 'bool' || typeof value === 'boolean') {
@@ -279,6 +279,29 @@ function ParamInput({ paramKey, paramInfo, value, onUpdate }: ParamInputProps) {
           checked={value as boolean}
           onCheckedChange={(v) => onUpdate(paramKey, v)}
         />
+      </div>
+    );
+  }
+
+  if (paramInfo.type === 'select' && paramInfo.options) {
+    return (
+      <div>
+        <Label className="text-xs text-muted-foreground">{displayName}</Label>
+        <Select
+          value={String(value ?? paramInfo.default ?? '')}
+          onValueChange={(v) => onUpdate(paramKey, v)}
+        >
+          <SelectTrigger className="h-8 text-xs mt-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {paramInfo.options.map((opt) => (
+              <SelectItem key={String(opt.value)} value={String(opt.value)} className="text-xs">
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     );
   }
@@ -366,8 +389,8 @@ function NumericParamInput({
 }: NumericParamInputProps) {
   const isInt = paramInfo.type === 'int';
 
-  // Common parameter ranges
-  const ranges: Record<string, [number, number, number]> = {
+  // Fallback ranges for known parameter names (used when definition lacks min/max)
+  const fallbackRanges: Record<string, [number, number, number]> = {
     n_splits: [2, 20, 1],
     window_length: [3, 51, 2],
     polyorder: [1, 5, 1],
@@ -376,7 +399,11 @@ function NumericParamInput({
     random_state: [0, 100, 1],
   };
 
-  const [min, max, step] = ranges[paramKey] || (isInt ? [1, 100, 1] : [0, 1, 0.1]);
+  // Prefer definition-provided min/max/step, fall back to known ranges, then type defaults
+  const fallback = fallbackRanges[paramKey] || (isInt ? [1, 100, 1] : [0, 1, 0.1]);
+  const min = paramInfo.min ?? fallback[0];
+  const max = paramInfo.max ?? fallback[1];
+  const step = paramInfo.step ?? fallback[2];
 
   const commitHandler = useCallback((v: number) => {
     onUpdate(paramKey, v);

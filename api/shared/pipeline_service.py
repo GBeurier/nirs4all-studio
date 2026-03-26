@@ -24,6 +24,7 @@ NIRS4ALL_AVAILABLE = True
 # Cache for dynamically discovered operators
 _preprocessing_cache: dict[str, type] | None = None
 _splitter_cache: dict[str, tuple[str, str]] | None = None
+_augmentation_cache: dict[str, type] | None = None
 
 
 def _build_preprocessing_cache() -> dict[str, type]:
@@ -130,6 +131,60 @@ def _build_splitter_cache() -> dict[str, tuple[str, str]]:
     return cache
 
 
+def _build_augmentation_cache() -> dict[str, type]:
+    """Build cache of augmentation operators from nirs4all.operators.augmentation.
+
+    Scans all augmentation submodules using the cached imports.
+
+    Returns:
+        Dict mapping lowercase names to operator classes
+    """
+    cache = {}
+
+    if not NIRS4ALL_AVAILABLE:
+        return cache
+
+    # Scan all cached augmentation modules
+    augmentation_modules = [
+        get_cached("augmentation_spectral"),
+        get_cached("augmentation_random"),
+    ]
+
+    # Also try the main augmentation package which re-exports from all submodules
+    try:
+        augmentation_pkg = importlib.import_module("nirs4all.operators.augmentation")
+        augmentation_modules.append(augmentation_pkg)
+    except ImportError:
+        pass
+
+    for module in augmentation_modules:
+        if module is None:
+            continue
+
+        exported_names = getattr(module, "__all__", dir(module))
+        for name in exported_names:
+            if name.startswith("_"):
+                continue
+
+            obj = getattr(module, name, None)
+            if obj is None or not inspect.isclass(obj):
+                continue
+
+            # Check if it's an augmenter (has augment or fit_transform)
+            if not (hasattr(obj, "augment") or hasattr(obj, "fit_transform")):
+                continue
+
+            # Skip base classes
+            if name in ("Augmenter", "BaseEstimator", "TransformerMixin"):
+                continue
+
+            cache[name.lower()] = obj
+            name_normalized = name.lower().replace("_", "").replace("-", "")
+            cache[name_normalized] = obj
+
+    return cache
+
+
 def _get_preprocessing_cache() -> dict[str, type]:
     """Get or build preprocessing operator cache."""
     global _preprocessing_cache
@@ -146,6 +201,14 @@ def _get_splitter_cache() -> dict[str, tuple[str, str]]:
     return _splitter_cache
 
 
+def _get_augmentation_cache() -> dict[str, type]:
+    """Get or build augmentation operator cache."""
+    global _augmentation_cache
+    if _augmentation_cache is None:
+        _augmentation_cache = _build_augmentation_cache()
+    return _augmentation_cache
+
+
 def resolve_operator(
     name: str,
     operator_type: str = "preprocessing"
@@ -154,7 +217,7 @@ def resolve_operator(
 
     Args:
         name: Operator name (case-insensitive)
-        operator_type: Type of operator ("preprocessing" or "splitting")
+        operator_type: Type of operator ("preprocessing", "splitting", or "augmentation")
 
     Returns:
         The operator class, or None if not found
@@ -191,6 +254,28 @@ def resolve_operator(
             splitter_cls = getattr(nirs_splitters, name, None)
             if splitter_cls:
                 return splitter_cls
+
+        return None
+
+    elif operator_type == "augmentation":
+        cache = _get_augmentation_cache()
+
+        # Try normalized name in cache
+        if name_normalized in cache:
+            return cache[name_normalized]
+
+        # Try exact name match
+        if name.lower() in cache:
+            return cache[name.lower()]
+
+        # Try direct lookup from augmentation package
+        try:
+            augmentation_pkg = importlib.import_module("nirs4all.operators.augmentation")
+            aug_cls = getattr(augmentation_pkg, name, None)
+            if aug_cls:
+                return aug_cls
+        except ImportError:
+            pass
 
         return None
 
@@ -494,37 +579,49 @@ def get_augmentation_methods() -> list[dict[str, Any]]:
         return []
 
     methods = []
+    seen_names: set[str] = set()
 
-    # Scan augmentation modules
-    augmentation_modules = [
+    # Scan cached augmentation modules
+    augmentation_modules: list[tuple] = [
         (get_cached("augmentation_spectral"), "spectral"),
         (get_cached("augmentation_random"), "random"),
     ]
+
+    # Also scan the main augmentation package (re-exports from all submodules)
+    try:
+        augmentation_pkg = importlib.import_module(
+            "nirs4all.operators.augmentation"
+        )
+        augmentation_modules.append((augmentation_pkg, "augmentation"))
+    except ImportError:
+        pass
 
     for module, source in augmentation_modules:
         if module is None:
             continue
 
-        # Use __all__ if available, otherwise scan module
         exported_names = getattr(module, "__all__", dir(module))
 
         for name in exported_names:
             if name.startswith("_"):
+                continue
+            if name in seen_names:
                 continue
 
             obj = getattr(module, name, None)
             if obj is None or not inspect.isclass(obj):
                 continue
 
-            # Check if it's an augmenter (has augment or fit_transform method)
+            # Check if it's an augmenter
             if not (hasattr(obj, "augment") or hasattr(obj, "fit_transform")):
                 continue
 
-            # Skip base classes
+            # Skip base classes and constants
             if name in ("Augmenter", "BaseEstimator", "TransformerMixin"):
                 continue
 
-            # Extract method info
+            seen_names.add(name)
+
             method_info = _extract_method_info(obj, name, "augmentation")
             if method_info:
                 method_info["source"] = f"nirs4all.{source}"
@@ -587,10 +684,16 @@ def _extract_method_info(cls: type, name: str, operator_type: str) -> dict[str, 
         except (ValueError, TypeError):
             pass
 
-        # Categorize
-        category = _categorize_operator(name, operator_type)
+        # Read _webapp_meta if available (nirs4all operators)
+        webapp_meta = getattr(cls, "_webapp_meta", None)
 
-        return {
+        # Categorize (prefer _webapp_meta category if available)
+        if webapp_meta and "category" in webapp_meta:
+            category = webapp_meta["category"]
+        else:
+            category = _categorize_operator(name, operator_type)
+
+        result = {
             "name": name,
             "display_name": _to_display_name(name),
             "description": description,
@@ -598,6 +701,15 @@ def _extract_method_info(cls: type, name: str, operator_type: str) -> dict[str, 
             "params": params,
             "type": operator_type,
         }
+
+        # Add tier and tags from _webapp_meta
+        if webapp_meta:
+            if "tier" in webapp_meta:
+                result["tier"] = webapp_meta["tier"]
+            if "tags" in webapp_meta:
+                result["tags"] = webapp_meta["tags"]
+
+        return result
     except Exception:
         return None
 

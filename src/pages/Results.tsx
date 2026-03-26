@@ -3,97 +3,69 @@ import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  RefreshCw,
-  ChevronDown,
-  ChevronRight,
-  Database,
-  Box,
-  Search,
-  ExternalLink,
-  BarChart3,
-  Download,
+  RefreshCw, Database, Box, Search, BarChart3, Download,
 } from "lucide-react";
-import { Link } from "react-router-dom";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { isBetterScore, formatScore, formatMetricName } from "@/lib/scores";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
-import {
-  getLinkedWorkspaces,
-  getWorkspaceResultsSummary,
-} from "@/api/client";
+import { getLinkedWorkspaces, getWorkspaceResultsSummary } from "@/api/client";
 import type { DatasetTopChains } from "@/types/runs";
-import { TopScoreItem } from "@/components/runs/TopScoreItem";
+import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
+import { DatasetResultCard } from "@/components/scores/DatasetResultCard";
+import type { EnrichedDatasetRun } from "@/types/enriched-runs";
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
 };
-
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0 },
 };
 
+/** Adapt DatasetTopChains to the EnrichedDatasetRun shape expected by DatasetResultCard. */
+function adaptToEnrichedDataset(d: DatasetTopChains): EnrichedDatasetRun {
+  const refitChain = d.top_chains.find(c => c.final_test_score != null);
+  return {
+    dataset_name: d.dataset_name,
+    best_avg_val_score: d.top_chains[0]?.avg_val_score ?? null,
+    best_avg_test_score: d.top_chains[0]?.avg_test_score ?? null,
+    best_final_score: refitChain?.final_test_score ?? null,
+    metric: d.metric,
+    task_type: d.task_type,
+    gain_from_previous_best: null,
+    pipeline_count: d.top_chains.length,
+    top_5: d.top_chains,
+  };
+}
+
 export default function Results() {
   const { t } = useTranslation();
-  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Fetch linked workspaces
+  // Detect task type from data for metric selector
+  const [selectedMetrics, setSelectedMetrics] = useMetricSelection("results", "regression");
+
   const { data: workspacesData } = useQuery({
     queryKey: ["linked-workspaces"],
     queryFn: getLinkedWorkspaces,
     staleTime: 30000,
   });
+  const activeWorkspace = workspacesData?.workspaces.find(w => w.is_active) ?? null;
 
-  const activeWorkspace = workspacesData?.workspaces.find((w) => w.is_active) ?? null;
-
-  // Fetch results summary from DuckDB
-  const {
-    data: summaryData,
-    isLoading,
-    refetch,
-  } = useQuery({
+  const { data: summaryData, isLoading, refetch } = useQuery({
     queryKey: ["results-summary", activeWorkspace?.id],
     queryFn: () => getWorkspaceResultsSummary(activeWorkspace!.id),
     enabled: !!activeWorkspace,
     staleTime: 30000,
   });
 
-  const datasets = useMemo<DatasetTopChains[]>(
-    () => summaryData?.datasets || [],
-    [summaryData],
-  );
-
-  // Auto-expand first dataset on initial load
-  useMemo(() => {
-    if (datasets.length > 0 && expandedDatasets.size === 0) {
-      setExpandedDatasets(new Set([datasets[0].dataset_name]));
-    }
-  }, [datasets, expandedDatasets.size]);
-
-  const toggleDataset = (name: string) => {
-    setExpandedDatasets((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
+  const datasets = useMemo<DatasetTopChains[]>(() => summaryData?.datasets || [], [summaryData]);
 
   // Stats
   const stats = useMemo(() => {
@@ -120,41 +92,24 @@ export default function Results() {
         }
       }
     }
-    return {
-      datasetCount: datasets.length,
-      totalModels,
-      bestFinal,
-      bestFinalMetric,
-      bestFinalModel,
-      bestCV,
-      bestCVMetric,
-      hasFinal: bestFinal != null,
-    };
+    return { datasetCount: datasets.length, totalModels, bestFinal, bestFinalMetric, bestFinalModel, bestCV, bestCVMetric, hasFinal: bestFinal != null };
   }, [datasets]);
 
-  // Filter by search
-  const filteredDatasets = useMemo(() => {
-    return datasets.filter((d) =>
-      d.dataset_name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [datasets, searchQuery]);
+  const filteredDatasets = useMemo(
+    () => datasets.filter(d => d.dataset_name.toLowerCase().includes(searchQuery.toLowerCase())),
+    [datasets, searchQuery],
+  );
 
   // Loading
   if (isLoading) {
     return (
       <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
-        <motion.div variants={itemVariants} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-            <p className="text-muted-foreground">{t("results.loading")}</p>
-          </div>
+        <motion.div variants={itemVariants}>
+          <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
+          <p className="text-muted-foreground">{t("results.loading")}</p>
         </motion.div>
         <div className="grid gap-4 md:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="glass-card">
-              <CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent>
-            </Card>
-          ))}
+          {[...Array(3)].map((_, i) => <Card key={i} className="glass-card"><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>)}
         </div>
         <CardSkeleton count={3} />
       </motion.div>
@@ -166,85 +121,71 @@ export default function Results() {
     return (
       <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
         <motion.div variants={itemVariants}>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-            <p className="text-muted-foreground">{t("results.subtitle")}</p>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
+          <p className="text-muted-foreground">{t("results.subtitle")}</p>
         </motion.div>
-        <motion.div variants={itemVariants}>
-          <NoWorkspaceState
-            title={t("results.noWorkspace", { defaultValue: "No workspace linked" })}
-            description={t("results.noWorkspaceHint", { defaultValue: "Link a nirs4all workspace to view results and training history. Go to Settings to configure your workspace." })}
-          />
-        </motion.div>
+        <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace to view results. Go to Settings to configure." />
       </motion.div>
     );
   }
 
   return (
     <MlLoadingOverlay>
-    <motion.div className="space-y-6" variants={containerVariants} initial="hidden" animate="visible">
+    <motion.div className="space-y-5" variants={containerVariants} initial="hidden" animate="visible">
       {/* Header */}
-      <motion.div variants={itemVariants} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <motion.div variants={itemVariants} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("results.title")}</h1>
-          <p className="text-muted-foreground">Workspace: {activeWorkspace.name}</p>
+          <p className="text-muted-foreground text-sm">Workspace: {activeWorkspace.name}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+        <div className="flex items-center gap-2 flex-wrap">
+          <MetricSelector taskType={datasets[0]?.task_type || "regression"} selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Export
+          <Button variant="outline" size="sm" disabled>
+            <Download className="h-4 w-4 mr-1" /> Export
           </Button>
         </div>
       </motion.div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Database className="h-5 w-5 text-primary" />
-            </div>
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10"><Database className="h-5 w-5 text-primary" /></div>
             <div>
-              <p className="text-sm text-muted-foreground">{t("results.stats.datasets")}</p>
-              <p className="text-2xl font-bold text-foreground">{stats.datasetCount}</p>
+              <p className="text-xs text-muted-foreground">{t("results.stats.datasets")}</p>
+              <p className="text-2xl font-bold">{stats.datasetCount}</p>
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Box className="h-5 w-5 text-primary" />
-            </div>
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10"><Box className="h-5 w-5 text-primary" /></div>
             <div>
-              <p className="text-sm text-muted-foreground">Top Models</p>
-              <p className="text-2xl font-bold text-foreground">{stats.totalModels}</p>
+              <p className="text-xs text-muted-foreground">Top Models</p>
+              <p className="text-2xl font-bold">{stats.totalModels}</p>
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center gap-3">
+          <CardContent className="p-3 flex items-center gap-3">
             <div className={cn("p-2 rounded-lg", stats.hasFinal ? "bg-emerald-500/10" : "bg-chart-1/10")}>
               <BarChart3 className={cn("h-5 w-5", stats.hasFinal ? "text-emerald-500" : "text-chart-1")} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground">{stats.hasFinal ? "Best Final Score" : "Best CV Score"}</p>
+              <p className="text-xs text-muted-foreground">{stats.hasFinal ? "Best Final" : "Best CV"}</p>
               <div className="flex items-baseline gap-1.5">
                 <p className={cn("text-2xl font-bold font-mono tabular-nums", stats.hasFinal ? "text-emerald-500" : "text-foreground")}>
-                  {stats.hasFinal
-                    ? formatScore(stats.bestFinal)
-                    : formatScore(stats.bestCV)}
+                  {formatScore(stats.hasFinal ? stats.bestFinal : stats.bestCV)}
                 </p>
-                <span className="text-xs text-muted-foreground uppercase">
+                <span className="text-[10px] text-muted-foreground uppercase">
                   {formatMetricName(stats.hasFinal ? stats.bestFinalMetric : stats.bestCVMetric)}
                 </span>
               </div>
               {stats.bestFinalModel && stats.hasFinal && (
-                <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">{stats.bestFinalModel}</p>
+                <p className="text-[10px] text-muted-foreground font-mono truncate">{stats.bestFinalModel}</p>
               )}
             </div>
           </CardContent>
@@ -252,118 +193,30 @@ export default function Results() {
       </div>
 
       {/* Search */}
-      <div className="flex gap-4">
+      <div className="flex gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("results.filters.searchPlaceholder")}
-            className="pl-9"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <Input placeholder="Search datasets..." className="pl-9 h-8 text-sm" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
         </div>
       </div>
 
-      {/* Datasets with top models */}
+      {/* Dataset Cards */}
       {filteredDatasets.length === 0 ? (
         <NoResultsState
           title={t("results.noResults", { defaultValue: "No results found" })}
-          description={t("results.noResultsHint", { defaultValue: "Run experiments to generate results. Compare model performance, view prediction plots, and analyze residuals." })}
+          description="Run experiments to generate results."
         />
       ) : (
-        <div className="space-y-4">
-          {filteredDatasets.map((dataset) => {
-            const isExpanded = expandedDatasets.has(dataset.dataset_name);
-            const finalChain = dataset.top_chains.find(c => c.final_test_score != null);
-            const topChain = dataset.top_chains[0];
-            const bestFinalScore = finalChain?.final_test_score ?? null;
-            const bestCvScore = topChain?.avg_val_score;
-            const displayScore = bestFinalScore ?? bestCvScore;
-
-            return (
-              <Card key={dataset.dataset_name} className="overflow-hidden">
-                <Collapsible open={isExpanded} onOpenChange={() => toggleDataset(dataset.dataset_name)}>
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          {isExpanded ? (
-                            <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                          )}
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Database className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-foreground">{dataset.dataset_name}</h3>
-                            <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Box className="h-3.5 w-3.5" />
-                                {dataset.top_chains.length} models
-                              </span>
-                              {dataset.metric && (
-                                <>
-                                  <span>•</span>
-                                  <span>{dataset.metric.toUpperCase()}</span>
-                                </>
-                              )}
-                              {dataset.task_type && (
-                                <>
-                                  <span>•</span>
-                                  <span className="capitalize">{dataset.task_type}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          {displayScore != null && (
-                            <Badge variant="outline" className={cn(
-                              "font-mono",
-                              bestFinalScore != null
-                                ? "text-emerald-500 border-emerald-500/30"
-                                : "text-chart-1 border-chart-1/30",
-                            )}>
-                              {bestFinalScore != null ? "Final" : "CV"}{dataset.metric ? ` ${formatMetricName(dataset.metric)}` : ""} {formatScore(displayScore)}
-                            </Badge>
-                          )}
-                          <Button variant="ghost" size="sm" asChild onClick={(e) => e.stopPropagation()}>
-                            <Link to={`/datasets/${encodeURIComponent(dataset.dataset_name)}`}>
-                              <ExternalLink className="h-4 w-4 mr-1" />
-                              Dataset
-                            </Link>
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-
-                  <CollapsibleContent>
-                    <CardContent className="px-4 pb-4 pt-0 space-y-1">
-                      {dataset.top_chains.length > 0 ? (
-                        dataset.top_chains.map((chain, index) => (
-                          <TopScoreItem
-                            key={chain.chain_id}
-                            chain={chain}
-                            rank={index + 1}
-                            taskType={dataset.task_type}
-                            runId={chain.run_id || ""}
-                            datasetName={dataset.dataset_name}
-                          />
-                        ))
-                      ) : (
-                        <div className="text-sm text-muted-foreground text-center py-4">
-                          No scored models available
-                        </div>
-                      )}
-                    </CardContent>
-                  </CollapsibleContent>
-                </Collapsible>
-              </Card>
-            );
-          })}
+        <div className="space-y-3">
+          {filteredDatasets.map((dataset, idx) => (
+            <motion.div key={dataset.dataset_name} variants={itemVariants}>
+              <DatasetResultCard
+                dataset={adaptToEnrichedDataset(dataset)}
+                selectedMetrics={selectedMetrics}
+                defaultExpanded={idx === 0}
+              />
+            </motion.div>
+          ))}
         </div>
       )}
     </motion.div>

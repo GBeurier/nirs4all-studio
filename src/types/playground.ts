@@ -457,13 +457,33 @@ export interface SubsetInfo {
 // ============= Operator Registry Types =============
 
 /**
- * Parameter info from the backend
+ * Select option for parameter dropdowns
+ */
+export interface OperatorSelectOption {
+  value: string | number | boolean;
+  label: string;
+}
+
+/**
+ * Parameter info from the backend or NodeRegistry definitions
  */
 export interface OperatorParamInfo {
   required: boolean;
   default?: unknown;
   type?: string;
   default_is_callable?: boolean;
+  /** Minimum value for numeric params */
+  min?: number;
+  /** Maximum value for numeric params */
+  max?: number;
+  /** Step increment for numeric params */
+  step?: number;
+  /** Options for select-type params */
+  options?: OperatorSelectOption[];
+  /** Human-readable description */
+  description?: string;
+  /** Whether this is an advanced parameter (hidden by default) */
+  isAdvanced?: boolean;
 }
 
 /**

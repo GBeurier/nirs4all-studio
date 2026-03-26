@@ -76,13 +76,15 @@ export function editorStepToUnified(
     return null;
   }
 
-  if (step.type !== 'preprocessing' && step.type !== 'splitting') {
+  // Accept all playground-compatible types
+  const playgroundTypes = ['preprocessing', 'splitting', 'augmentation', 'filter'] as const;
+  if (!playgroundTypes.includes(step.type as typeof playgroundTypes[number])) {
     return null;
   }
 
   return {
     id: step.id,
-    type: step.type,
+    type: step.type as UnifiedOperator['type'],
     name: step.name,
     params: step.params,
     enabled: true,

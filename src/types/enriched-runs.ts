@@ -61,7 +61,8 @@ export interface TopChainResult {
   };
   final_test_score: number | null;
   final_train_score: number | null;
-  final_scores: Record<string, number>;
+  /** Can be flat `{rmse: 0.3}` or nested `{test: {rmse: 0.3}}` — use `extractScoreValue()` to read. */
+  final_scores: Record<string, unknown>;
   best_params?: Record<string, unknown> | null;
   is_refit_only?: boolean;
 }

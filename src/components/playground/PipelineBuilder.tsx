@@ -58,6 +58,12 @@ function nodeParamsToOperatorParams(node: NodeDefinition | undefined): Record<st
       default: param.default,
       type: param.type,
       default_is_callable: false,
+      min: param.min,
+      max: param.max,
+      step: param.step,
+      options: param.options as OperatorParamInfo['options'],
+      description: param.description,
+      isAdvanced: param.isAdvanced,
     };
   }
   return result;
