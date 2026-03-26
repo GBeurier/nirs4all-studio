@@ -34,21 +34,21 @@ npm version 1.1.0 --no-git-tag-version
 
 ```bash
 git add version.json package.json package-lock.json
-git commit -m "Release v1.1.0"
-git tag v1.1.0
+git commit -m "Release 1.1.0"
+git tag 1.1.0
 git push origin main --tags
 ```
 
 For a pre-release (beta):
 
 ```bash
-git tag v1.1.0-beta.1
-git push origin v1.1.0-beta.1
+git tag 1.1.0-beta.1
+git push origin 1.1.0-beta.1
 ```
 
 ### 3. Wait for CI
 
-The `electron-release.yml` workflow triggers on `v*` tags. It will:
+The `release-unified.yml` workflow triggers on `[0-9]*` tags (no `v` prefix). It will:
 
 1. Build **CPU** and **GPU** flavors for Linux and Windows
 2. Generate **SHA256 checksums** as `.sha256` sidecar files
@@ -103,14 +103,14 @@ If you need to rebuild without pushing a new tag:
 
 1. Go to **Actions > Electron Build & Release**
 2. Click **Run workflow**
-3. Enter the tag (e.g., `v1.1.0`) and select flavor (`cpu`, `gpu`, or `both`)
+3. Enter the tag (e.g., `1.1.0`) and select flavor (`cpu`, `gpu`, or `both`)
 
 ---
 
 ## Checklist
 
 - [ ] `version.json` updated
-- [ ] Tag pushed (`v*` format)
+- [ ] Tag pushed (`[0-9]*` format, no `v` prefix)
 - [ ] CI workflow completed successfully
 - [ ] All platform assets attached to the release
 - [ ] `.sha256` checksum files present for each asset
