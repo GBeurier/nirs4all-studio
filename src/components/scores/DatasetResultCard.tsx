@@ -459,6 +459,9 @@ export function DatasetResultCard({
   const bestChain = refitChains[0] || cvChains[0];
   const bestScores = bestChain ? extractChainScores(bestChain, selectedMetrics, dataset.metric) : {};
   const bestContext: ScoreContext = hasFinal ? "final" : "cv";
+  const bestSummaryLabel = hasFinal
+    ? `Best Refit ${getContextLabel(dataset.metric || "score", "final", dataset.metric)}`
+    : `Best CV ${getContextLabel(dataset.metric || "score", "cv", dataset.metric)}`;
 
   // Delta between final and CV for the top model
   const topChain = refitChains[0] || cvChains[0];
@@ -506,6 +509,9 @@ export function DatasetResultCard({
                 <div className="flex-1 min-w-0 hidden md:flex items-center justify-center">
                   {bestChain && (
                     <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {bestSummaryLabel}
+                      </span>
                       {delta != null && delta > 0 && (
                         <Badge variant="outline" className="text-[9px] text-emerald-500 border-emerald-500/20 gap-0.5">
                           <TrendingDown className="h-2.5 w-2.5" />

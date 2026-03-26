@@ -447,31 +447,55 @@ async def get_prediction_arrays(prediction_id: str):
     Arrays are loaded on demand and returned as JSON lists.
     """
     import numpy as np
+
     store = _get_store()
     try:
-        arrays = store.get_prediction(prediction_id, load_arrays=True)
+        arrays = None
+
+        get_arrays = getattr(store, "get_prediction_arrays", None)
+        if callable(get_arrays):
+            arrays = get_arrays(prediction_id)
+        else:
+            prediction = store.get_prediction(prediction_id, load_arrays=True)
+            if prediction is not None:
+                arrays = prediction
+
         if arrays is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"No arrays found for prediction {prediction_id}",
             )
 
-        result: dict[str, Any] = {"prediction_id": prediction_id, "n_samples": 0}
+        def _to_list(value: Any) -> Any:
+            if value is None:
+                return None
+            if isinstance(value, np.ndarray):
+                return value.tolist()
+            if isinstance(value, (list, tuple)):
+                return list(value)
+            return None
 
-        for key in ("y_true", "y_pred", "y_proba", "weights"):
-            val = arrays.get(key)
-            if val is not None and isinstance(val, np.ndarray):
-                result[key] = val.tolist()
-                if key == "y_true":
-                    result["n_samples"] = len(val)
-            else:
-                result[key] = None
+        y_true = _to_list(arrays.get("y_true"))
+        y_pred = _to_list(arrays.get("y_pred"))
+        y_proba = _to_list(arrays.get("y_proba"))
+        weights = _to_list(arrays.get("weights"))
+        sample_indices = _to_list(arrays.get("sample_indices"))
 
-        sample_indices = arrays.get("sample_indices")
-        if sample_indices is not None and isinstance(sample_indices, np.ndarray):
-            result["sample_indices"] = sample_indices.tolist()
-        else:
-            result["sample_indices"] = None
+        n_samples = 0
+        for value in (y_true, y_pred, sample_indices, weights, y_proba):
+            if value is not None:
+                n_samples = len(value)
+                break
+
+        result: dict[str, Any] = {
+            "prediction_id": arrays.get("prediction_id", prediction_id),
+            "y_true": y_true,
+            "y_pred": y_pred,
+            "y_proba": y_proba,
+            "sample_indices": sample_indices,
+            "weights": weights,
+            "n_samples": n_samples,
+        }
 
         return result
     finally:

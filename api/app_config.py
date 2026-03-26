@@ -16,6 +16,8 @@ The app config folder location is determined by (in order of priority):
 import json
 import os
 import sys
+import tempfile
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -285,16 +287,50 @@ class AppConfigManager:
                 logger.error("Failed to load app settings: %s", e)
         return self._default_app_settings()
 
-    def save_app_settings(self, settings: dict[str, Any]) -> bool:
-        """Save app settings to disk."""
+    def _write_json_atomic(self, path: Path, data: dict[str, Any], error_prefix: str) -> bool:
+        """Write JSON data atomically to avoid cross-process partial writes."""
+        tmp_path: Path | None = None
         try:
-            settings["last_updated"] = datetime.now().isoformat()
-            with open(self._app_settings_path, "w", encoding="utf-8") as f:
-                json.dump(settings, f, indent=2)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f"{path.stem}_",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                json.dump(data, tmp, indent=2)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+                tmp_path = Path(tmp.name)
+
+            for attempt in range(5):
+                try:
+                    os.replace(tmp_path, path)
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
             return True
         except Exception as e:
-            logger.error("Failed to save app settings: %s", e)
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            logger.error("%s: %s", error_prefix, e)
             return False
+
+    def save_app_settings(self, settings: dict[str, Any]) -> bool:
+        """Save app settings to disk."""
+        settings["last_updated"] = datetime.now().isoformat()
+        return self._write_json_atomic(
+            self._app_settings_path,
+            settings,
+            "Failed to save app settings",
+        )
 
     def update_app_settings(self, updates: dict[str, Any]) -> bool:
         """Update app settings with deep merge."""
@@ -381,14 +417,12 @@ class AppConfigManager:
 
     def _save_dataset_links(self, data: dict[str, Any]) -> bool:
         """Save dataset links to disk."""
-        try:
-            data["last_updated"] = datetime.now().isoformat()
-            with open(self._dataset_links_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            return True
-        except Exception as e:
-            logger.error("Failed to save dataset links: %s", e)
-            return False
+        data["last_updated"] = datetime.now().isoformat()
+        return self._write_json_atomic(
+            self._dataset_links_path,
+            data,
+            "Failed to save dataset links",
+        )
 
     def get_datasets(self) -> list[DatasetLink]:
         """Get all linked datasets."""

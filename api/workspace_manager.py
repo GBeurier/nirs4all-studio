@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -1865,8 +1866,26 @@ class WorkspaceManager:
         # For backward compatibility, keep app_data_dir reference
         self.app_data_dir = self.app_config.config_dir
 
+        # Keep a process-local active workspace so requests/tests do not depend
+        # entirely on the shared app_settings.json state.
+        self._active_workspace_override: LinkedWorkspace | None = None
+
         # Ensure default workspace exists on first launch
-        self.ensure_default_workspace()
+        self._active_workspace_override = self.ensure_default_workspace()
+
+    def _set_process_local_active_workspace(self, workspace: LinkedWorkspace | None) -> None:
+        """Record active workspace for the current process and sync env state."""
+        self._active_workspace_override = workspace
+        if workspace is None:
+            return
+
+        from .lazy_imports import get_cached
+
+        _nirs4all_ws = get_cached("nirs4all_workspace")
+        if _nirs4all_ws is not None:
+            _nirs4all_ws.set_active_workspace(workspace.path)
+        else:
+            os.environ["NIRS4ALL_WORKSPACE"] = workspace.path
 
     def ensure_default_workspace(self) -> LinkedWorkspace | None:
         """Create and link a default workspace if none exists.
@@ -1986,7 +2005,8 @@ class WorkspaceManager:
         resolved = str(workspace_path.resolve())
         for ws in self.get_linked_workspaces():
             if ws.path == resolved:
-                self.activate_workspace(ws.id)
+                active_ws = self.activate_workspace(ws.id)
+                self._set_process_local_active_workspace(active_ws or ws)
                 return self._create_workspace_config_from_linked(ws)
 
         # Link and activate - try validated link first, fall back to internal
@@ -1996,7 +2016,8 @@ class WorkspaceManager:
             # Workspace may be newly created or have non-standard structure
             # Use internal link which bypasses strict validation
             linked_ws = self.link_workspace_internal(resolved, workspace_path.name)
-        self.activate_workspace(linked_ws.id)
+        active_ws = self.activate_workspace(linked_ws.id)
+        self._set_process_local_active_workspace(active_ws or linked_ws)
         return self._create_workspace_config_from_linked(linked_ws)
 
     def get_current_workspace(self) -> WorkspaceConfig | None:
@@ -2552,10 +2573,34 @@ class WorkspaceManager:
 
     def get_active_workspace(self) -> LinkedWorkspace | None:
         """Get the currently active linked workspace."""
+        if self._active_workspace_override and Path(self._active_workspace_override.path).exists():
+            return self._active_workspace_override
+
         workspaces = self.get_linked_workspaces()
         for ws in workspaces:
             if ws.is_active:
+                self._set_process_local_active_workspace(ws)
                 return ws
+
+        env_workspace = os.environ.get("NIRS4ALL_WORKSPACE")
+        if env_workspace:
+            env_path = Path(env_workspace).resolve()
+            if env_path.exists():
+                for ws in workspaces:
+                    if Path(ws.path).resolve() == env_path:
+                        ws.is_active = True
+                        self._set_process_local_active_workspace(ws)
+                        return ws
+
+                fallback = LinkedWorkspace(
+                    id="env_active_workspace",
+                    path=str(env_path),
+                    name=env_path.name,
+                    is_active=True,
+                    linked_at="",
+                )
+                self._set_process_local_active_workspace(fallback)
+                return fallback
         return None
 
     def link_workspace(self, path: str, name: str | None = None) -> LinkedWorkspace:
@@ -2646,15 +2691,7 @@ class WorkspaceManager:
         if found:
             settings["linked_workspaces"] = workspaces
             self.app_config.save_app_settings(settings)
-
-            # Set workspace in nirs4all library (handles environment variable internally)
-            from .lazy_imports import get_cached
-            _nirs4all_ws = get_cached("nirs4all_workspace")
-            if _nirs4all_ws is not None:
-                _nirs4all_ws.set_active_workspace(found.path)
-            else:
-                # Fallback if nirs4all not loaded yet
-                os.environ["NIRS4ALL_WORKSPACE"] = found.path
+            self._set_process_local_active_workspace(found)
 
         return found
 
