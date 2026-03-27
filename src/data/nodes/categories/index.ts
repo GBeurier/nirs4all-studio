@@ -76,11 +76,17 @@ const categories: CategoryConfig[] = [
     displayOrder: 6,
     subcategories: [
       { id: "noise", label: "Noise", displayOrder: 1 },
-      { id: "drift", label: "Drift", displayOrder: 2 },
-      { id: "shift", label: "Shift", displayOrder: 3 },
-      { id: "masking", label: "Masking", displayOrder: 4 },
-      { id: "mixing", label: "Mixing", displayOrder: 5 },
-      { id: "transform", label: "Transform", displayOrder: 6 }
+      { id: "baseline", label: "Baseline", displayOrder: 2 },
+      { id: "wavelength", label: "Wavelength", displayOrder: 3 },
+      { id: "spectral", label: "Spectral", displayOrder: 4 },
+      { id: "masking", label: "Masking", displayOrder: 5 },
+      { id: "mixing", label: "Mixing", displayOrder: 6 },
+      { id: "spline", label: "Spline", displayOrder: 7 },
+      { id: "random", label: "Random", displayOrder: 8 },
+      { id: "environmental", label: "Environmental", displayOrder: 9 },
+      { id: "scattering", label: "Scattering", displayOrder: 10 },
+      { id: "edge artifacts", label: "Edge Artifacts", displayOrder: 11 },
+      { id: "synthesis", label: "Synthesis", displayOrder: 12 }
     ]
   },
   {

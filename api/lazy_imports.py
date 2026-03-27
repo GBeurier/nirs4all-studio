@@ -155,8 +155,18 @@ def _do_load_ml_deps():
         # 8. Augmentation
         from nirs4all.operators.augmentation import random as augmentation_random
         from nirs4all.operators.augmentation import spectral as augmentation_spectral
+        from nirs4all.operators.augmentation import splines as augmentation_splines
+        from nirs4all.operators.augmentation import environmental as augmentation_environmental
+        from nirs4all.operators.augmentation import scattering as augmentation_scattering
+        from nirs4all.operators.augmentation import edge_artifacts as augmentation_edge_artifacts
+        from nirs4all.operators.augmentation import synthesis as augmentation_synthesis
         _cache["augmentation_random"] = augmentation_random
         _cache["augmentation_spectral"] = augmentation_spectral
+        _cache["augmentation_splines"] = augmentation_splines
+        _cache["augmentation_environmental"] = augmentation_environmental
+        _cache["augmentation_scattering"] = augmentation_scattering
+        _cache["augmentation_edge_artifacts"] = augmentation_edge_artifacts
+        _cache["augmentation_synthesis"] = augmentation_synthesis
         _yield_gil()
 
         # 9. Filters

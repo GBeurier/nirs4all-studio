@@ -148,14 +148,12 @@ def _build_augmentation_cache() -> dict[str, type]:
     augmentation_modules = [
         get_cached("augmentation_spectral"),
         get_cached("augmentation_random"),
+        get_cached("augmentation_splines"),
+        get_cached("augmentation_environmental"),
+        get_cached("augmentation_scattering"),
+        get_cached("augmentation_edge_artifacts"),
+        get_cached("augmentation_synthesis"),
     ]
-
-    # Also try the main augmentation package which re-exports from all submodules
-    try:
-        augmentation_pkg = importlib.import_module("nirs4all.operators.augmentation")
-        augmentation_modules.append(augmentation_pkg)
-    except ImportError:
-        pass
 
     for module in augmentation_modules:
         if module is None:
@@ -581,20 +579,16 @@ def get_augmentation_methods() -> list[dict[str, Any]]:
     methods = []
     seen_names: set[str] = set()
 
-    # Scan cached augmentation modules
+    # Scan all cached augmentation modules
     augmentation_modules: list[tuple] = [
         (get_cached("augmentation_spectral"), "spectral"),
         (get_cached("augmentation_random"), "random"),
+        (get_cached("augmentation_splines"), "splines"),
+        (get_cached("augmentation_environmental"), "environmental"),
+        (get_cached("augmentation_scattering"), "scattering"),
+        (get_cached("augmentation_edge_artifacts"), "edge_artifacts"),
+        (get_cached("augmentation_synthesis"), "synthesis"),
     ]
-
-    # Also scan the main augmentation package (re-exports from all submodules)
-    try:
-        augmentation_pkg = importlib.import_module(
-            "nirs4all.operators.augmentation"
-        )
-        augmentation_modules.append((augmentation_pkg, "augmentation"))
-    except ImportError:
-        pass
 
     for module, source in augmentation_modules:
         if module is None:

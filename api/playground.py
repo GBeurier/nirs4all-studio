@@ -186,6 +186,7 @@ class ExecuteResponse(BaseModel):
     umap: dict[str, Any] | None = Field(None, description="UMAP projection if computed")
     folds: dict[str, Any] | None = Field(None, description="Fold information if splitter present")
     filter_info: dict[str, Any] | None = Field(None, description="Filter results if filters applied")
+    augmentation_info: dict[str, Any] | None = Field(None, description="Augmentation results: original_count, total_count, steps applied")
     repetitions: dict[str, Any] | None = Field(None, description="Repetition analysis if detected or configured")
     metrics: dict[str, Any] | None = Field(None, description="Spectral metrics if computed (Phase 5)")
     subset_info: dict[str, Any] | None = Field(None, description="Subset mode info: subset_mode, total_samples, displayed_samples")
@@ -332,6 +333,7 @@ class PlaygroundExecutor:
         step_errors: list[dict[str, Any]] = []
         fold_info = None
         filter_info = None
+        augmentation_info = None
         splitter_applied = False
         total_filtered = 0
         filter_mask = np.ones(X_sampled.shape[0], dtype=bool)
@@ -345,8 +347,12 @@ class PlaygroundExecutor:
                 cached_state = _step_cache.get(prefix_key)
                 if cached_state is not None:
                     X_processed = cached_state["X"].copy()
+                    cached_y = cached_state.get("y")
+                    if cached_y is not None:
+                        y_sampled = cached_y.copy()
                     fold_info = cached_state.get("fold_info")
                     filter_info = cached_state.get("filter_info")
+                    augmentation_info = cached_state.get("augmentation_info")
                     filter_mask = cached_state.get("filter_mask", np.ones(X_sampled.shape[0], dtype=bool)).copy()
                     execution_trace = list(cached_state.get("trace", []))
                     step_errors = list(cached_state.get("errors", []))
@@ -410,8 +416,22 @@ class PlaygroundExecutor:
                         "reason": filter_result.get("reason", "Filtered"),
                     })
                 elif step.type == "augmentation":
-                    # Handle augmentation operators
-                    X_processed = self._execute_augmentation(step, X_processed)
+                    # Handle augmentation operators — generate new samples
+                    n_copies = step.params.get("n_augmented_copies", 1)
+                    X_processed, y_sampled, aug_meta = self._execute_augmentation(
+                        step, X_processed, y_sampled, n_augmented_copies=n_copies
+                    )
+                    if augmentation_info is None:
+                        augmentation_info = {
+                            "steps": [],
+                            "original_count": aug_meta["original_count"],
+                        }
+                    augmentation_info["steps"].append({
+                        "name": step.name,
+                        "copies": n_copies,
+                        "samples_added": aug_meta["augmented_count"],
+                    })
+                    augmentation_info["total_count"] = aug_meta["total_count"]
                     trace = StepTrace(
                         step_id=step.id,
                         name=step.name,
@@ -436,8 +456,10 @@ class PlaygroundExecutor:
                 prefix_key = _compute_prefix_key(data_fp, enabled_steps[:executed_step_idx])
                 _step_cache.put(prefix_key, {
                     "X": X_processed.copy(),
+                    "y": y_sampled.copy() if y_sampled is not None else None,
                     "fold_info": fold_info,
                     "filter_info": filter_info,
+                    "augmentation_info": augmentation_info,
                     "filter_mask": filter_mask.copy(),
                     "trace": list(execution_trace),
                     "errors": list(step_errors),
@@ -566,6 +588,7 @@ class PlaygroundExecutor:
             umap=umap_result,
             folds=fold_info,
             filter_info=filter_info,
+            augmentation_info=augmentation_info,
             repetitions=repetition_result,
             metrics=metrics_result,
             subset_info=subset_info,
@@ -641,29 +664,55 @@ class PlaygroundExecutor:
         self,
         step: PlaygroundStep,
         X,
+        y,
+        n_augmented_copies: int = 1,
     ):
-        """Execute an augmentation step.
+        """Execute an augmentation step, generating new augmented samples.
 
-        Resolves augmentation operators from nirs4all.operators.augmentation.
+        Resolves augmentation operators from nirs4all.operators.augmentation,
+        then generates N augmented copies of the input data by applying the
+        operator repeatedly. Original samples are preserved and augmented
+        copies are concatenated.
 
         Args:
             step: Step configuration
-            X: Input data
+            X: Input data (n_samples, n_features)
+            y: Target values (n_samples,) or None
+            n_augmented_copies: Number of augmented copies per original sample
 
         Returns:
-            Augmented data
+            Tuple of (X_augmented, y_augmented, augmentation_meta)
         """
-        operator = instantiate_operator(step.name, step.params, "augmentation")
+        import numpy as np
+
+        # Filter out augmentation-specific params before instantiating
+        operator_params = {k: v for k, v in step.params.items() if k != "n_augmented_copies"}
+        operator = instantiate_operator(step.name, operator_params, "augmentation")
         if operator is None:
             # Fall back to preprocessing resolution (some operators work in both)
-            operator = instantiate_operator(step.name, step.params, "preprocessing")
+            operator = instantiate_operator(step.name, operator_params, "preprocessing")
         if operator is None:
             raise ValueError(f"Unknown augmentation operator: {step.name}")
 
-        # Augmenters may have an augment() method or fit_transform()
-        if hasattr(operator, "augment"):
-            return operator.augment(X)
-        return operator.fit_transform(X)
+        original_count = X.shape[0]
+
+        # Generate augmented copies
+        augmented_copies = []
+        for _ in range(n_augmented_copies):
+            X_aug = operator.fit_transform(X)
+            augmented_copies.append(X_aug)
+
+        # Concatenate original + augmented
+        X_out = np.concatenate([X] + augmented_copies, axis=0)
+        y_out = np.tile(y, n_augmented_copies + 1) if y is not None else None
+
+        aug_meta = {
+            "original_count": original_count,
+            "augmented_count": original_count * n_augmented_copies,
+            "total_count": X_out.shape[0],
+        }
+
+        return X_out, y_out, aug_meta
 
     def _execute_filter(
         self,
