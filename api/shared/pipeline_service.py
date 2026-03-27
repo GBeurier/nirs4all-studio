@@ -194,7 +194,11 @@ def _get_preprocessing_cache() -> dict[str, type]:
     """Get or build preprocessing operator cache."""
     global _preprocessing_cache
     if _preprocessing_cache is None:
-        _preprocessing_cache = _build_preprocessing_cache()
+        cache = _build_preprocessing_cache()
+        # Only memoize if ML deps are loaded, otherwise retry next call
+        if cache:
+            _preprocessing_cache = cache
+        return cache
     return _preprocessing_cache
 
 
@@ -202,7 +206,10 @@ def _get_splitter_cache() -> dict[str, tuple[str, str]]:
     """Get or build splitter operator cache."""
     global _splitter_cache
     if _splitter_cache is None:
-        _splitter_cache = _build_splitter_cache()
+        cache = _build_splitter_cache()
+        if cache:
+            _splitter_cache = cache
+        return cache
     return _splitter_cache
 
 
@@ -210,7 +217,10 @@ def _get_augmentation_cache() -> dict[str, type]:
     """Get or build augmentation operator cache."""
     global _augmentation_cache
     if _augmentation_cache is None:
-        _augmentation_cache = _build_augmentation_cache()
+        cache = _build_augmentation_cache()
+        if cache:
+            _augmentation_cache = cache
+        return cache
     return _augmentation_cache
 
 

@@ -14,7 +14,14 @@ from fastapi.testclient import TestClient
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from api.lazy_imports import _do_load_ml_deps, is_ml_ready
 from main import app
+
+# Ensure ML dependencies are loaded synchronously before tests run,
+# otherwise the lazy import background thread may not have finished
+# and operator resolution will fail with empty caches.
+if not is_ml_ready():
+    _do_load_ml_deps()
 
 client = TestClient(app)
 
