@@ -76,41 +76,6 @@
         "sweepable": true
       },
       {
-        "name": "level",
-        "type": "int",
-        "default": 3,
-        "min": 1,
-        "max": 10,
-        "description": "Decomposition level",
-        "sweepable": true,
-        "sweepPresets": [
-          {
-            "label": "Low (1-4)",
-            "type": "range",
-            "values": {
-              "from": 1,
-              "to": 4,
-              "step": 1
-            }
-          },
-          {
-            "label": "Full (1-7)",
-            "type": "range",
-            "values": {
-              "from": 1,
-              "to": 7,
-              "step": 1
-            }
-          }
-        ],
-        "finetunable": true,
-        "finetuneType": "int",
-        "finetuneRange": [
-          1,
-          7
-        ]
-      },
-      {
         "name": "mode",
         "type": "select",
         "default": "periodization",
@@ -134,7 +99,7 @@
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
-    "supportsFinetuning": true,
+    "supportsFinetuning": false,
     "tier": "standard"
   },
   {
@@ -154,12 +119,12 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "n_components",
+        "name": "n_components_per_level",
         "type": "int",
-        "default": 10,
+        "default": 3,
         "min": 1,
-        "max": 100,
-        "description": "Number of PCA components to retain",
+        "max": 50,
+        "description": "Number of PCA components per wavelet level",
         "sweepable": true,
         "sweepPresets": [
           {

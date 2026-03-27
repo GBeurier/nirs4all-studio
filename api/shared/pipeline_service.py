@@ -9,6 +9,7 @@ Uses dynamic introspection of nirs4all operators instead of hardcoded mappings.
 
 import importlib
 import inspect
+import math
 import re
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -48,6 +49,8 @@ def _build_preprocessing_cache() -> dict[str, type]:
         "snv": "standardnormalvariate",
         "msc": "multiplicativescattercorrection",
         "savgol": "savitzkygolay",
+        "movingaverage": "savitzkygolay",
+        "baselinecorrection": "baseline",
     }
 
     # Get all exported names from transforms module
@@ -76,19 +79,23 @@ def _build_preprocessing_cache() -> dict[str, type]:
         if full_name in cache:
             cache[alias] = cache[full_name]
 
-    # Add sklearn scalers
-    sklearn_scalers = [
-        ("sklearn.preprocessing", "StandardScaler"),
-        ("sklearn.preprocessing", "MinMaxScaler"),
-        ("sklearn.preprocessing", "RobustScaler"),
+    # Add sklearn preprocessing and decomposition classes
+    sklearn_modules = [
+        "sklearn.preprocessing",
+        "sklearn.decomposition",
     ]
 
-    for module_path, class_name in sklearn_scalers:
+    for module_path in sklearn_modules:
         try:
             module = importlib.import_module(module_path)
-            obj = getattr(module, class_name, None)
-            if obj:
-                cache[class_name.lower()] = obj
+            for attr_name in dir(module):
+                if attr_name.startswith("_"):
+                    continue
+                obj = getattr(module, attr_name, None)
+                if obj is None or not inspect.isclass(obj):
+                    continue
+                if hasattr(obj, "fit_transform") or hasattr(obj, "transform"):
+                    cache[attr_name.lower()] = obj
         except ImportError:
             pass
 
@@ -335,6 +342,45 @@ def convert_frontend_step(frontend_step: dict[str, Any]) -> dict[str, Any]:
     return nirs4all_step
 
 
+def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Normalize frontend parameters for Python operator constructors.
+
+    Handles JSON-to-Python type mismatches:
+    - Reconstructs tuple params from _min/_max suffix pairs
+      (e.g. feature_range_min/max -> feature_range=(min, max))
+    - Converts LogTransform base strings to floats
+    - Filters out None values so Python defaults are used
+
+    Args:
+        name: Operator class name
+        params: Raw parameters from frontend
+
+    Returns:
+        Normalized parameters dict
+    """
+    normalized = {k: v for k, v in params.items() if v is not None}
+
+    # Generic: reconstruct tuple parameters from _min/_max suffix pairs.
+    min_keys = [k for k in list(normalized) if k.endswith("_min")]
+    for min_key in min_keys:
+        base = min_key[:-4]  # strip "_min"
+        max_key = base + "_max"
+        if max_key in normalized:
+            min_val = normalized.pop(min_key)
+            max_val = normalized.pop(max_key)
+            if min_val is not None and max_val is not None:
+                normalized[base] = (min_val, max_val)
+
+    # LogTransform: convert base string to float
+    if name == "LogTransform" and "base" in normalized:
+        base_val = normalized["base"]
+        if isinstance(base_val, str):
+            base_map = {"e": math.e, "10": 10.0, "2": 2.0}
+            normalized["base"] = base_map.get(base_val, math.e)
+
+    return normalized
+
+
 def instantiate_operator(
     name: str,
     params: dict[str, Any],
@@ -356,6 +402,8 @@ def instantiate_operator(
     operator_cls = resolve_operator(name, operator_type)
     if operator_cls is None:
         return None
+
+    params = normalize_params(name, params)
 
     try:
         return operator_cls(**params)

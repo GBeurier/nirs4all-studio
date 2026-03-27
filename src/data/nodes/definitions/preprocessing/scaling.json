@@ -180,14 +180,19 @@
         "default": "sum",
         "options": [
           {
-            "value": "barnes_hut",
-            "label": "Barnes-Hut"
+            "value": "sum",
+            "label": "Sum"
           },
           {
-            "value": "exact",
-            "label": "Exact"
+            "value": "abs_sum",
+            "label": "Absolute Sum"
+          },
+          {
+            "value": "trapz",
+            "label": "Trapezoidal Integration"
           }
-        ]
+        ],
+        "description": "Method for computing area"
       }
     ]
   },

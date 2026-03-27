@@ -441,7 +441,7 @@ class PlaygroundExecutor:
                     )
                 else:
                     # Handle preprocessing
-                    X_processed = self._execute_preprocessing(step, X_processed)
+                    X_processed = self._execute_preprocessing(step, X_processed, wavelengths)
                     trace = StepTrace(
                         step_id=step.id,
                         name=step.name,
@@ -644,19 +644,39 @@ class PlaygroundExecutor:
         self,
         step: PlaygroundStep,
         X,
+        wavelengths=None,
     ):
         """Execute a preprocessing step.
 
         Args:
             step: Step configuration
             X: Input data
+            wavelengths: Wavelength array (passed to operators that need it)
 
         Returns:
             Transformed data
         """
-        operator = instantiate_operator(step.name, step.params, "preprocessing")
+        import numpy as np
+
+        params = dict(step.params)
+
+        # Resampler: convert n_points to target_wavelengths using current wavelengths
+        if step.name == "Resampler" and wavelengths is not None:
+            wl_arr = np.asarray(wavelengths, dtype=float)
+            n_points = int(params.pop("n_points", X.shape[1]))
+            params["target_wavelengths"] = np.linspace(wl_arr.min(), wl_arr.max(), n_points)
+
+        operator = instantiate_operator(step.name, params, "preprocessing")
         if operator is None:
             raise ValueError(f"Unknown preprocessing operator: {step.name}")
+
+        # Pass wavelengths to operators that need them:
+        # - SpectraTransformerMixin subclasses (have _requires_wavelengths)
+        # - Resampler (needs wavelengths in fit() but doesn't use the mixin)
+        requires_wl = getattr(operator, "_requires_wavelengths", False)
+        needs_wl = requires_wl or step.name == "Resampler"
+        if needs_wl and wavelengths is not None:
+            return operator.fit_transform(X, wavelengths=wavelengths)
 
         return operator.fit_transform(X)
 

@@ -17,7 +17,7 @@
       {
         "name": "sigma",
         "type": "float",
-        "default": 2,
+        "default": 1,
         "min": 0.1,
         "max": 20,
         "step": 0.1,
@@ -72,9 +72,9 @@
     "id": "preprocessing.moving_average",
     "name": "MovingAverage",
     "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.MovingAverage",
+    "classPath": "nirs4all.operators.transforms.SavitzkyGolay",
     "description": "Moving average smoothing",
-    "longDescription": "Simple moving average filter for smoothing spectra.",
+    "longDescription": "Simple moving average filter for smoothing spectra. Implemented as Savitzky-Golay with polyorder=1 and deriv=0.",
     "category": "Smoothing",
     "tags": [
       "smoothing",
@@ -85,13 +85,13 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "window_size",
+        "name": "window_length",
         "type": "int",
         "default": 5,
         "min": 3,
         "max": 51,
         "step": 2,
-        "description": "Size of the moving window (should be odd)",
+        "description": "Size of the moving window (must be odd)",
         "sweepable": true,
         "sweepPresets": [
           {
@@ -119,11 +119,26 @@
           3,
           31
         ]
+      },
+      {
+        "name": "polyorder",
+        "type": "int",
+        "default": 1,
+        "isHidden": true
+      },
+      {
+        "name": "deriv",
+        "type": "int",
+        "default": 0,
+        "isHidden": true
       }
     ],
     "supportsParameterSweeps": true,
     "supportsStepGenerator": true,
     "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "nirs4all.operators.transforms.MovingAverage"
+    ],
     "tier": "standard"
   }
 ]

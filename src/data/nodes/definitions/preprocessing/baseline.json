@@ -16,12 +16,12 @@
     "source": "nirs4all",
     "parameters": [
       {
-        "name": "order",
+        "name": "bp",
         "type": "int",
-        "default": 2,
+        "default": 0,
         "min": 0,
         "max": 10,
-        "description": "Polynomial order for detrending",
+        "description": "Breakpoints for piecewise linear detrending",
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
@@ -43,36 +43,20 @@
     "id": "preprocessing.baseline_correction",
     "name": "BaselineCorrection",
     "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.BaselineCorrection",
-    "description": "Polynomial baseline correction",
-    "longDescription": "Fits and subtracts a polynomial baseline from spectra.",
+    "classPath": "nirs4all.operators.transforms.signal.Baseline",
+    "description": "Baseline correction (mean subtraction)",
+    "longDescription": "Removes baseline (mean) from each spectrum.",
     "category": "Baseline",
     "tags": [
       "baseline",
-      "polynomial",
+      "mean-centering",
       "correction"
     ],
     "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "order",
-        "type": "int",
-        "default": 2,
-        "min": 0,
-        "max": 10,
-        "description": "Polynomial order for baseline fitting",
-        "sweepable": true,
-        "finetunable": true,
-        "finetuneType": "int",
-        "finetuneRange": [
-          0,
-          5
-        ]
-      }
-    ],
-    "supportsParameterSweeps": true,
+    "parameters": [],
+    "supportsParameterSweeps": false,
     "supportsStepGenerator": true,
-    "supportsFinetuning": true,
+    "supportsFinetuning": false,
     "tier": "standard"
   },
   {
@@ -193,7 +177,7 @@
       {
         "name": "lam",
         "type": "float",
-        "default": 100000,
+        "default": 1000000,
         "min": 100,
         "max": 10000000000,
         "description": "Smoothness parameter",
@@ -263,7 +247,7 @@
       {
         "name": "lam",
         "type": "float",
-        "default": 100000,
+        "default": 1000000,
         "min": 100,
         "max": 10000000000,
         "description": "Smoothness parameter",
@@ -404,7 +388,7 @@
       {
         "name": "half_window",
         "type": "int",
-        "default": 25,
+        "default": 50,
         "min": 5,
         "max": 200,
         "description": "Half-window size for rolling ball",
@@ -458,7 +442,7 @@
       {
         "name": "poly_order",
         "type": "int",
-        "default": 2,
+        "default": 5,
         "min": 1,
         "max": 10,
         "description": "Polynomial order",
@@ -531,7 +515,7 @@
       {
         "name": "poly_order",
         "type": "int",
-        "default": 2,
+        "default": 5,
         "min": 1,
         "max": 10,
         "description": "Polynomial order",
