@@ -3,6 +3,11 @@ Shared utilities for nirs4all webapp API.
 
 This module contains shared functions and services used across multiple API endpoints.
 """
+from .dataset_config import (
+    build_nirs4all_config,
+    build_nirs4all_config_from_stored,
+    normalize_file_type,
+)
 from .pipeline_service import (
     convert_frontend_step,
     get_preprocessing_methods,
@@ -12,6 +17,9 @@ from .pipeline_service import (
 )
 
 __all__ = [
+    "build_nirs4all_config",
+    "build_nirs4all_config_from_stored",
+    "normalize_file_type",
     "convert_frontend_step",
     "resolve_operator",
     "get_splitter_methods",

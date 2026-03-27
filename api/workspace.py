@@ -283,6 +283,11 @@ async def link_dataset(request: LinkDatasetRequest):
                         elif "targets" in config:
                             dataset_info["targets"] = config["targets"]
 
+                        # Preserve user-configured default_target from wizard config
+                        config = dataset_info.get("config", {})
+                        if config.get("default_target") and not dataset_info.get("default_target"):
+                            dataset_info["default_target"] = config["default_target"]
+
                         if dataset_info.get("targets") and not dataset_info.get("default_target"):
                             dataset_info["default_target"] = dataset_info["targets"][0].get("column")
                     except Exception as meta_err:
@@ -1432,7 +1437,7 @@ def _call_migrate_arrays_to_parquet(
     batch_size: int | None = None,
 ) -> dict[str, Any]:
     """Call migration function with backward-compatible signature handling."""
-    migrate_arrays_to_parquet = get_cached("migrate_arrays_to_parquet")
+    migrate_arrays_to_parquet = get_cached("migrate_arrays_to_parquet", optional=True)
     if not MIGRATION_AVAILABLE or migrate_arrays_to_parquet is None:
         raise HTTPException(status_code=501, detail="Migration API is not available in current nirs4all version")
 

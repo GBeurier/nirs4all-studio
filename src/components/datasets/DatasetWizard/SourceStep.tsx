@@ -11,7 +11,7 @@ import { useRef } from "react";
 import { Folder, File, FolderSearch, Info } from "lucide-react";
 import { useWizard } from "./WizardContext";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
-import { detectUnified } from "@/api/client";
+import { detectUnified, detectFilesList } from "@/api/client";
 import type { WizardSourceType, DetectedFile } from "@/types/datasets";
 
 interface SourceOptionProps {
@@ -193,36 +193,66 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
           const name = parts[parts.length - 1] || "dataset";
           dispatch({ type: "SET_DATASET_NAME", payload: name });
 
-          // Create detected files from selection
-          // Note: For manual file selection, users map file types in FileMappingStep.
-          // Type detection is only done by backend via detectUnified for folder sources.
-          const detectedFiles: DetectedFile[] = filePaths.map((filePath) => {
-            const filename = filePath.split(/[/\\]/).pop() || "";
-            const lowerName = filename.toLowerCase();
-
-            // Only detect format from extension (simple, unambiguous)
-            let format: DetectedFile["format"] = "csv";
-            if (lowerName.endsWith(".xlsx")) format = "xlsx";
-            else if (lowerName.endsWith(".xls")) format = "xls";
-            else if (lowerName.endsWith(".parquet")) format = "parquet";
-            else if (lowerName.endsWith(".npy")) format = "npy";
-            else if (lowerName.endsWith(".npz")) format = "npz";
-            else if (lowerName.endsWith(".mat")) format = "mat";
-
-            return {
-              path: filePath,
-              filename,
-              type: "unknown" as const, // User will map in next step
-              split: "train" as const, // Default to train
-              source: null,
-              format,
-              size_bytes: 0,
-              confidence: 0.0,
-              detected: false,
-            };
-          });
-
-          dispatch({ type: "SET_FILES", payload: detectedFiles });
+          // Use backend detection to get proper type/split assignments
+          try {
+            const detectionResult = await detectFilesList(filePaths);
+            if (detectionResult.files && detectionResult.files.length > 0) {
+              dispatch({ type: "SET_FILES", payload: detectionResult.files });
+              if (detectionResult.parsing_options) {
+                dispatch({ type: "SET_PARSING", payload: detectionResult.parsing_options });
+              }
+            } else {
+              // Fallback: create files with format detection only
+              const detectedFiles: DetectedFile[] = filePaths.map((filePath) => {
+                const filename = filePath.split(/[/\\]/).pop() || "";
+                const lowerName = filename.toLowerCase();
+                let format: DetectedFile["format"] = "csv";
+                if (lowerName.endsWith(".xlsx")) format = "xlsx";
+                else if (lowerName.endsWith(".xls")) format = "xls";
+                else if (lowerName.endsWith(".parquet")) format = "parquet";
+                else if (lowerName.endsWith(".npy")) format = "npy";
+                else if (lowerName.endsWith(".npz")) format = "npz";
+                else if (lowerName.endsWith(".mat")) format = "mat";
+                return {
+                  path: filePath,
+                  filename,
+                  type: "unknown" as const,
+                  split: "train" as const,
+                  source: null,
+                  format,
+                  size_bytes: 0,
+                  confidence: 0.0,
+                  detected: false,
+                };
+              });
+              dispatch({ type: "SET_FILES", payload: detectedFiles });
+            }
+          } catch {
+            // Fallback: create files with format detection only
+            const detectedFiles: DetectedFile[] = filePaths.map((filePath) => {
+              const filename = filePath.split(/[/\\]/).pop() || "";
+              const lowerName = filename.toLowerCase();
+              let format: DetectedFile["format"] = "csv";
+              if (lowerName.endsWith(".xlsx")) format = "xlsx";
+              else if (lowerName.endsWith(".xls")) format = "xls";
+              else if (lowerName.endsWith(".parquet")) format = "parquet";
+              else if (lowerName.endsWith(".npy")) format = "npy";
+              else if (lowerName.endsWith(".npz")) format = "npz";
+              else if (lowerName.endsWith(".mat")) format = "mat";
+              return {
+                path: filePath,
+                filename,
+                type: "unknown" as const,
+                split: "train" as const,
+                source: null,
+                format,
+                size_bytes: 0,
+                confidence: 0.0,
+                detected: false,
+              };
+            });
+            dispatch({ type: "SET_FILES", payload: detectedFiles });
+          }
           nextStep();
         }
       }

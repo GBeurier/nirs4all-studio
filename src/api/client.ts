@@ -441,6 +441,8 @@ export interface UpdateDatasetRequest {
   description?: string;
   config?: Partial<DatasetConfig>;
   default_target?: string;
+  task_type?: string;
+  signal_types?: string[];
 }
 
 export async function updateDatasetConfig(
@@ -560,9 +562,10 @@ export interface ValidateFilesResponse {
 export async function validateFiles(
   path: string,
   files: DetectedFile[],
-  parsing?: Partial<ParsingOptions>
+  parsing?: Partial<ParsingOptions>,
+  perFileOverrides?: Record<string, Partial<ParsingOptions>>
 ): Promise<ValidateFilesResponse> {
-  return api.post("/datasets/validate-files", { path, files, parsing });
+  return api.post("/datasets/validate-files", { path, files, parsing, per_file_overrides: perFileOverrides });
 }
 
 /**

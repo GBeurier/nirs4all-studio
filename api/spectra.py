@@ -52,176 +52,54 @@ def _get_dataset_config(dataset_id: str) -> dict[str, Any] | None:
 
 
 def _build_nirs4all_config_from_stored(dataset_config: dict[str, Any]) -> dict[str, Any]:
+    """Build nirs4all DatasetConfigs-compatible config from stored dataset configuration.
+
+    Delegates to the canonical translator in shared.dataset_config.
     """
-    Build nirs4all DatasetConfigs-compatible config from stored dataset configuration.
+    from .shared.dataset_config import build_nirs4all_config_from_stored
 
-    This mirrors the logic in POST /datasets/preview and GET /datasets/{id}/preview
-    to ensure consistent dataset loading across all views.
-    """
-    dataset_path = dataset_config.get("path", "")
-    stored_config = dataset_config.get("config", {})
+    config = build_nirs4all_config_from_stored(dataset_config)
 
-    # Get parsing options from stored config or use defaults
-    delimiter = stored_config.get("delimiter", ",")
-    decimal_separator = stored_config.get("decimal_separator", ".")
-    has_header = stored_config.get("has_header", True)
-    header_unit = stored_config.get("header_unit", "cm-1")
-    signal_type = stored_config.get("signal_type", "auto")
+    # Handle single-file and folder auto-detection fallbacks not covered by canonical translator
+    if "train_x" not in config:
+        dataset_path = dataset_config.get("path", "")
+        folder_path = Path(dataset_path)
 
-    global_params = {
-        "delimiter": delimiter,
-        "decimal_separator": decimal_separator,
-        "has_header": has_header,
-    }
+        if folder_path.is_file():
+            stored_config = dataset_config.get("config", {})
+            header_unit = stored_config.get("header_unit", "cm-1")
+            signal_type = stored_config.get("signal_type", "auto")
 
-    # X-specific params
-    x_specific_params = {}
-    if header_unit:
-        x_specific_params["header_unit"] = header_unit
-    if signal_type and signal_type != "auto":
-        x_specific_params["signal_type"] = signal_type
+            config["train_x"] = str(folder_path)
+            x_params: dict[str, Any] = {}
+            if header_unit:
+                x_params["header_unit"] = header_unit
+            if signal_type and signal_type != "auto":
+                x_params["signal_type"] = signal_type
+            if x_params:
+                config["train_x_params"] = x_params
 
-    config: dict[str, Any] = {
-        "global_params": global_params
-    }
-
-    # Get files from stored config
-    files = stored_config.get("files", [])
-
-    if files:
-        # Map files to config (same logic as POST endpoint)
-        for file_config in files:
-            file_type = file_config.get("type", "X")
-            file_split = file_config.get("split", "train")
-            file_path = file_config.get("path", "")
-            file_overrides = file_config.get("overrides")
-
-            file_key = None
-            if file_type == "X":
-                file_key = f"{file_split}_x"
-            elif file_type == "Y":
-                file_key = f"{file_split}_y"
-            elif file_type == "metadata":
-                file_key = f"{file_split}_group"
-
-            if file_key:
-                # Handle multi-source (list of X files for same split)
-                if file_key in config and file_type == "X":
-                    existing = config[file_key]
-                    if isinstance(existing, list):
-                        config[file_key].append(file_path)
-                    else:
-                        config[file_key] = [existing, file_path]
-                else:
-                    config[file_key] = file_path
-
-                # Per-file params (merge with x_specific_params for X files)
-                params_key = f"{file_key}_params"
-                if file_type == "X" and x_specific_params:
-                    if file_overrides:
-                        config[params_key] = {**x_specific_params, **file_overrides}
-                    else:
-                        config[params_key] = x_specific_params.copy()
-                elif file_overrides:
-                    config[params_key] = file_overrides
-    else:
-        # Fallback: try to auto-detect files from folder or use old format
-        # Check for train_x, train_y in stored config (old format)
-        if stored_config.get("train_x"):
-            config["train_x"] = stored_config["train_x"]
-            if x_specific_params:
-                config["train_x_params"] = x_specific_params
-        if stored_config.get("train_y"):
-            config["train_y"] = stored_config["train_y"]
-        if stored_config.get("test_x"):
-            config["test_x"] = stored_config["test_x"]
-            if x_specific_params:
-                config["test_x_params"] = x_specific_params
-        if stored_config.get("test_y"):
-            config["test_y"] = stored_config["test_y"]
-
-        # If still no files configured, try to detect from folder
-        if "train_x" not in config:
-            folder_path = Path(dataset_path)
-            if folder_path.is_dir():
-                # Look for dataset_config.json
-                config_file = folder_path / "dataset_config.json"
-                if config_file.exists():
-                    import json
-                    with open(config_file, encoding="utf-8") as f:
-                        folder_config = json.load(f)
-                        config.update(folder_config)
-                else:
-                    # Try to detect standard nirs4all folder structure (Xtrain.csv, Ytrain.csv, etc.)
-                    csv_files = list(folder_path.glob("*.csv"))
-                    csv_lower_map = {f.name.lower(): f for f in csv_files}
-
-                    # Look for X files: Xtrain.csv, X_train.csv, xcal.csv, x_cal.csv
-                    x_train_names = ["xtrain.csv", "x_train.csv", "xcal.csv", "x_cal.csv"]
-                    x_test_names = ["xtest.csv", "x_test.csv", "xval.csv", "x_val.csv"]
-                    y_train_names = ["ytrain.csv", "y_train.csv", "ycal.csv", "y_cal.csv"]
-                    y_test_names = ["ytest.csv", "y_test.csv", "yval.csv", "y_val.csv"]
-
-                    # Check for standard X/Y file structure
-                    detected_x_file = None
-                    for name in x_train_names:
-                        if name in csv_lower_map:
-                            detected_x_file = csv_lower_map[name]
-                            config["train_x"] = str(detected_x_file)
-                            if x_specific_params:
-                                config["train_x_params"] = x_specific_params.copy()
-                            break
-
-                    for name in x_test_names:
-                        if name in csv_lower_map:
-                            config["test_x"] = str(csv_lower_map[name])
-                            if x_specific_params:
-                                config["test_x_params"] = x_specific_params.copy()
-                            break
-
-                    for name in y_train_names:
-                        if name in csv_lower_map:
-                            config["train_y"] = str(csv_lower_map[name])
-                            break
-
-                    for name in y_test_names:
-                        if name in csv_lower_map:
-                            config["test_y"] = str(csv_lower_map[name])
-                            break
-
-                    # If no standard structure found, fall back to first CSV as X
-                    if "train_x" not in config and csv_files:
-                        detected_x_file = csv_files[0]
-                        config["train_x"] = str(detected_x_file)
-                        if x_specific_params:
-                            config["train_x_params"] = x_specific_params
-
-                    # Auto-detect delimiter from detected X file
-                    if detected_x_file and detected_x_file.exists():
-                        try:
-                            with open(detected_x_file, encoding="utf-8") as f:
-                                first_line = f.readline()
-                                # Count delimiters to find the most likely one
-                                semicolon_count = first_line.count(";")
-                                comma_count = first_line.count(",")
-                                tab_count = first_line.count("\t")
-
-                                if semicolon_count > comma_count and semicolon_count > tab_count:
-                                    detected_delimiter = ";"
-                                elif tab_count > comma_count and tab_count > semicolon_count:
-                                    detected_delimiter = "\t"
-                                else:
-                                    detected_delimiter = ","
-
-                                # Update global_params with detected delimiter
-                                config["global_params"]["delimiter"] = detected_delimiter
-                        except Exception:
-                            pass  # Keep default delimiter
-            elif folder_path.is_file():
-                # Single file - create minimal config
-                config["train_x"] = str(folder_path)
-                if x_specific_params:
-                    config["train_x_params"] = x_specific_params
+        elif folder_path.is_dir() and "train_x" not in config:
+            # Auto-detect delimiter from first CSV file if folder detection found files
+            csv_files = list(folder_path.glob("*.csv"))
+            if csv_files and "train_x" not in config:
+                config["train_x"] = str(csv_files[0])
+                # Try delimiter auto-detection
+                try:
+                    with open(csv_files[0], encoding="utf-8") as f:
+                        first_line = f.readline()
+                        semicolons = first_line.count(";")
+                        commas = first_line.count(",")
+                        tabs = first_line.count("\t")
+                        if semicolons > commas and semicolons > tabs:
+                            detected = ";"
+                        elif tabs > commas and tabs > semicolons:
+                            detected = "\t"
+                        else:
+                            detected = ","
+                        config.setdefault("global_params", {})["delimiter"] = detected
+                except Exception:
+                    pass
 
     return config
 
@@ -293,12 +171,14 @@ async def get_spectra(
     partition: str = Query("train", description="Partition to get spectra from"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
     include_y: bool = Query(False, description="Whether to include target (y) values"),
+    include_metadata: bool = Query(False, description="Whether to include sample metadata"),
 ):
     """
     Get raw spectra data from a dataset.
 
     Returns spectral data as a 2D array with wavelength headers.
     Optionally includes target (y) values when include_y=True.
+    Optionally includes sample metadata when include_metadata=True.
     """
     import numpy as np
     if not NIRS4ALL_AVAILABLE:
@@ -387,6 +267,30 @@ async def get_spectra(
             except Exception as e:
                 logger.warning("Could not get y values: %s", e)
                 response["y"] = None
+
+        # Include metadata if requested
+        if include_metadata:
+            try:
+                meta_df = dataset.metadata(selector)
+                if meta_df is not None and len(meta_df) > 0:
+                    meta_df_slice = meta_df[start:end]
+                    raw_dict = meta_df_slice.to_dict(as_series=False)
+                    # Ensure all values are JSON-serializable (NaN → None)
+                    metadata_dict = {}
+                    for col_name, col_values in raw_dict.items():
+                        metadata_dict[col_name] = [
+                            None if v is None or (isinstance(v, float) and v != v) else v
+                            for v in col_values
+                        ]
+                    response["metadata"] = metadata_dict
+                    response["metadata_columns"] = list(raw_dict.keys())
+                else:
+                    response["metadata"] = None
+                    response["metadata_columns"] = []
+            except Exception as e:
+                logger.warning("Could not get metadata: %s", e)
+                response["metadata"] = None
+                response["metadata_columns"] = []
 
         return response
 

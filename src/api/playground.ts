@@ -14,7 +14,7 @@ import type {
   ValidationResponse,
   PlaygroundStep,
 } from '@/types/playground';
-import type { SpectralData } from '@/types/spectral';
+import type { SpectralData, SampleMetadata } from '@/types/spectral';
 
 /**
  * Response from the /api/spectra/{dataset_id} endpoint
@@ -31,6 +31,8 @@ export interface SpectraResponse {
   wavelengths: (number | string)[];
   wavelength_unit: string;
   y?: number[] | null;
+  metadata?: Record<string, unknown[]> | null;
+  metadata_columns?: string[];
 }
 
 /**
@@ -267,6 +269,7 @@ export async function getDatasetSpectra(
     partition?: string;
     source?: number;
     includeY?: boolean;
+    includeMetadata?: boolean;
   }
 ): Promise<SpectraResponse> {
   const params = new URLSearchParams();
@@ -275,6 +278,7 @@ export async function getDatasetSpectra(
   if (options?.partition) params.set('partition', options.partition);
   if (options?.source !== undefined) params.set('source', options.source.toString());
   if (options?.includeY) params.set('include_y', 'true');
+  if (options?.includeMetadata) params.set('include_metadata', 'true');
 
   const query = params.toString() ? `?${params.toString()}` : '';
   return api.get<SpectraResponse>(`/spectra/${datasetId}${query}`);
@@ -312,8 +316,8 @@ export async function loadWorkspaceDataset(
   datasetId: string,
   datasetName?: string
 ): Promise<SpectralData> {
-  // Request Y values along with spectra
-  const response = await getDatasetSpectra(datasetId, { includeY: true });
+  // Request Y values and metadata along with spectra
+  const response = await getDatasetSpectra(datasetId, { includeY: true, includeMetadata: true });
 
   // Convert wavelengths to numbers with robust handling
   // Backend may return numbers, strings, or edge cases like empty/null
@@ -349,11 +353,31 @@ export async function loadWorkspaceDataset(
     ? response.y
     : response.spectra.map((_, i) => i);
 
+  // Convert column-oriented metadata to SampleMetadata[] format
+  let metadata: SampleMetadata[] | undefined;
+  if (response.metadata && response.metadata_columns && response.metadata_columns.length > 0) {
+    const numSamples = response.spectra.length;
+    metadata = Array.from({ length: numSamples }, (_, i) => {
+      const row: SampleMetadata = {};
+      for (const col of response.metadata_columns!) {
+        const values = response.metadata![col];
+        if (values && i < values.length) {
+          const val = values[i];
+          if (val !== null && val !== undefined) {
+            row[col] = val as string | number | boolean;
+          }
+        }
+      }
+      return row;
+    });
+  }
+
   return {
     wavelengths,
     spectra: response.spectra,
     y,
     sampleIds,
+    metadata,
   };
 }
 

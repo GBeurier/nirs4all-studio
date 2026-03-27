@@ -200,31 +200,24 @@ export function TargetsStep() {
     try {
       const yFile = yFiles[0];
 
-      // Web mode: use File objects directly
+      // Get effective parsing for Y file (wizard params merged with per-file overrides)
+      const yOverrides = state.perFileOverrides[yFile.path] || {};
+      const effectiveDelimiter = yOverrides.delimiter || state.parsing?.delimiter || ";";
+      const effectiveDecimalSep = yOverrides.decimal_separator || state.parsing?.decimal_separator || ".";
+
+      // Web mode: use File objects directly with effective parsing params
       if (!state.basePath && state.fileBlobs.size > 0) {
         const fileBlob = state.fileBlobs.get(yFile.path);
         if (fileBlob) {
           const text = await fileBlob.text();
           const lines = text.split(/\r?\n/).filter((l) => l.trim());
           if (lines.length > 0) {
-            const delimiters = [";", ",", "\t", "|"];
-            const delimiterCounts = delimiters.map((d) => ({ d, count: lines[0].split(d).length }));
-            const bestDelim = delimiterCounts.reduce((a, b) => (a.count > b.count ? a : b)).d;
-            const rows = lines.slice(0, 101).map((line) => line.split(bestDelim));
+            const rows = lines.slice(0, 101).map((line) => line.split(effectiveDelimiter));
 
             if (rows.length > 1) {
-              // rows[0] = header, rows[1:] = data
               const headerRow = rows[0];
-              const dataRows = rows.slice(1); // Use all available data rows for better detection
-
-              let decimalSep = ".";
-              if (bestDelim !== ",") {
-                const allValues = dataRows.flat().join(" ");
-                const commaDecimals = (allValues.match(/\d+,\d+/g) || []).length;
-                const dotDecimals = (allValues.match(/\d+\.\d+/g) || []).length;
-                if (commaDecimals > dotDecimals) decimalSep = ",";
-              }
-              setDetectedColumns(parseColumnsFromData(headerRow, dataRows, decimalSep));
+              const dataRows = rows.slice(1);
+              setDetectedColumns(parseColumnsFromData(headerRow, dataRows, effectiveDecimalSep));
               return;
             }
           }
@@ -233,8 +226,8 @@ export function TargetsStep() {
         return;
       }
 
-      // Desktop mode: use backend API with nirs4all detection
-      const result = await detectFormat({ path: yFile.path, sample_rows: 100 });
+      // Desktop mode: use backend API with effective parsing params
+      const result = await detectFormat({ path: yFile.path, sample_rows: 100, delimiter: effectiveDelimiter, decimal_separator: effectiveDecimalSep });
 
       // Prefer column_info from backend (uses nirs4all's detect_task_type)
       if (result.column_info && result.column_info.length > 0) {
@@ -307,6 +300,12 @@ export function TargetsStep() {
       if (defaultTarget) {
         dispatch({ type: "SET_DEFAULT_TARGET", payload: defaultTarget.column });
       }
+
+      // Derive overall task_type from the default or first target
+      const taskTarget = defaultTarget || newTargets[0];
+      if (taskTarget && taskTarget.type !== "auto") {
+        dispatch({ type: "SET_TASK_TYPE", payload: taskTarget.type });
+      }
     }
   }, [detectedColumns, state.targets, dispatch]);
 
@@ -324,10 +323,14 @@ export function TargetsStep() {
   }, [state.taskType, state.aggregation.enabled, state.aggregation.method, dispatch]);
 
   const handleTargetTypeChange = (column: string, type: TaskType) => {
-    dispatch({
-      type: "SET_TARGETS",
-      payload: state.targets.map((t) => (t.column === column ? { ...t, type } : t)),
-    });
+    const updatedTargets = state.targets.map((t) => (t.column === column ? { ...t, type } : t));
+    dispatch({ type: "SET_TARGETS", payload: updatedTargets });
+
+    // Derive overall task_type from targets (use default target's type, or first target)
+    const defaultTarget = updatedTargets.find((t) => t.is_default) || updatedTargets[0];
+    if (defaultTarget && defaultTarget.type !== "auto") {
+      dispatch({ type: "SET_TASK_TYPE", payload: defaultTarget.type });
+    }
   };
 
   const handleTargetUnitChange = (column: string, unit: string) => {

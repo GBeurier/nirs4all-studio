@@ -177,6 +177,8 @@ export interface DatasetConfig {
   task_type?: TaskType;
   /** Aggregation settings */
   aggregation?: AggregationConfig;
+  /** Fold configuration */
+  folds?: FoldConfig | null;
 }
 
 /**
@@ -489,6 +491,10 @@ export interface AutoDetectResponse {
 export interface DetectFormatRequest {
   path: string;
   sample_rows?: number;
+  /** Override delimiter instead of auto-detecting */
+  delimiter?: string;
+  /** Override decimal separator instead of auto-detecting */
+  decimal_separator?: string;
 }
 
 /**

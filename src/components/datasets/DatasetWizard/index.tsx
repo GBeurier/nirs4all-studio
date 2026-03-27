@@ -165,7 +165,7 @@ function DataStats() {
     dispatch({ type: "SET_VALIDATING", payload: true });
 
     try {
-      const result = await validateFiles(state.basePath, filesToValidate, state.parsing);
+      const result = await validateFiles(state.basePath, filesToValidate, state.parsing, state.perFileOverrides);
 
       if (result.error) {
         dispatch({ type: "SET_VALIDATION_ERROR", payload: result.error });
@@ -440,6 +440,7 @@ function WizardContent({ onAdd, onClose, onScanFolder }: WizardContentProps) {
         default_target: state.defaultTarget,
         task_type: state.taskType,
         aggregation: state.aggregation,
+        folds: state.folds,
       };
 
       await onAdd(state.basePath, config);

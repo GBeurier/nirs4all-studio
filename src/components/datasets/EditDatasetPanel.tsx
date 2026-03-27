@@ -234,6 +234,12 @@ export function EditDatasetPanel({
       if (defaultTarget !== (dataset.default_target || "")) {
         updates.default_target = defaultTarget || undefined;
       }
+      if (taskType !== (dataset.task_type || "auto")) {
+        updates.task_type = taskType;
+      }
+      if (signalType !== (dataset.signal_types?.[0] || "auto")) {
+        updates.signal_types = [signalType];
+      }
 
       // Build config with parsing options
       const newConfig: Partial<DatasetConfig> = {

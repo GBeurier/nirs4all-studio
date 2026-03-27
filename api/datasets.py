@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .shared.logger import get_logger
@@ -77,6 +77,8 @@ class DetectFormatRequest(BaseModel):
 
     path: str = Field(..., description="File path to analyze")
     sample_rows: int = Field(10, description="Number of sample rows to return")
+    delimiter: str | None = Field(None, description="Override delimiter instead of auto-detecting")
+    decimal_separator: str | None = Field(None, description="Override decimal separator instead of auto-detecting")
 
 
 class UnifiedDetectionResponse(BaseModel):
@@ -112,6 +114,9 @@ class ParsingOptions(BaseModel):
     has_header: bool = True
     header_unit: str = "cm-1"
     signal_type: str = "auto"
+    encoding: str | None = None
+    na_policy: str | None = None
+    na_fill_config: dict[str, Any] | None = None
 
 
 class PreviewDataRequest(BaseModel):
@@ -226,55 +231,42 @@ def _build_nirs4all_config(
     parsing: ParsingOptions,
     base_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Build nirs4all config dict from file configs and parsing options."""
-    global_params = {
+    """Build nirs4all config dict from file configs and parsing options.
+
+    Delegates to the canonical translator in shared.dataset_config.
+    """
+    from .shared.dataset_config import build_nirs4all_config
+
+    # Convert Pydantic models to plain dicts for the canonical translator
+    file_dicts = [
+        {
+            "path": f.path,
+            "type": f.type,
+            "split": f.split,
+            "overrides": f.overrides,
+        }
+        for f in files
+    ]
+
+    parsing_dict = {
         "delimiter": parsing.delimiter,
         "decimal_separator": parsing.decimal_separator,
         "has_header": parsing.has_header,
+        "header_unit": parsing.header_unit,
+        "signal_type": parsing.signal_type,
     }
+    if parsing.encoding:
+        parsing_dict["encoding"] = parsing.encoding
+    if parsing.na_policy:
+        parsing_dict["na_policy"] = parsing.na_policy
+    if parsing.na_fill_config:
+        parsing_dict["na_fill_config"] = parsing.na_fill_config
 
-    x_specific_params = {}
-    if parsing.header_unit:
-        x_specific_params["header_unit"] = parsing.header_unit
-    if parsing.signal_type and parsing.signal_type != "auto":
-        x_specific_params["signal_type"] = parsing.signal_type
-
-    config: dict[str, Any] = {"global_params": global_params}
-
-    for file_config in files:
-        file_path = Path(file_config.path)
-        if not file_path.is_absolute() and base_path:
-            file_path = base_path / file_config.path
-        resolved_path = str(file_path)
-
-        file_key = None
-        if file_config.type == "X":
-            file_key = f"{file_config.split}_x"
-        elif file_config.type == "Y":
-            file_key = f"{file_config.split}_y"
-        elif file_config.type == "metadata":
-            file_key = f"{file_config.split}_group"
-
-        if file_key:
-            if file_key in config and file_config.type == "X":
-                existing = config[file_key]
-                if isinstance(existing, list):
-                    config[file_key].append(resolved_path)
-                else:
-                    config[file_key] = [existing, resolved_path]
-            else:
-                config[file_key] = resolved_path
-
-            params_key = f"{file_key}_params"
-            if file_config.type == "X" and x_specific_params:
-                if file_config.overrides:
-                    config[params_key] = {**x_specific_params, **file_config.overrides}
-                else:
-                    config[params_key] = x_specific_params.copy()
-            elif file_config.overrides:
-                config[params_key] = file_config.overrides
-
-    return config
+    return build_nirs4all_config(
+        files=file_dicts,
+        parsing=parsing_dict,
+        base_path=str(base_path) if base_path else None,
+    )
 
 
 def _compute_spectra_preview(X, wavelengths) -> dict[str, Any]:
@@ -698,10 +690,14 @@ async def detect_format(request: DetectFormatRequest):
         # Load sample data for CSV files
         if file_format == "csv" and request.sample_rows > 0:
             try:
+                # Use provided overrides if available, otherwise use auto-detected values
+                effective_delimiter = request.delimiter or detection_result.delimiter
+                effective_decimal = request.decimal_separator or detection_result.decimal_separator
+
                 data, _, _, headers, _ = get_cached("load_file")(
                     str(file_path),
-                    delimiter=detection_result.delimiter,
-                    decimal_separator=detection_result.decimal_separator,
+                    delimiter=effective_delimiter,
+                    decimal_separator=effective_decimal,
                     has_header=detection_result.has_header,
                     data_type="auto",
                 )
@@ -770,6 +766,7 @@ class ValidateFilesRequest(BaseModel):
     path: str = Field(..., description="Base path for files")
     files: list[DetectedFile] = Field(..., description="Files to validate")
     parsing: dict[str, Any] | None = Field(None, description="Parsing options")
+    per_file_overrides: dict[str, dict[str, Any]] | None = Field(None, description="Per-file parsing overrides keyed by file path")
 
 
 class FileShapeInfo(BaseModel):
@@ -801,6 +798,7 @@ async def validate_files(request: ValidateFilesRequest):
 
     base_path = Path(request.path) if request.path else None
     parsing = request.parsing or {}
+    per_file_overrides = request.per_file_overrides or {}
     shapes: dict[str, FileShapeInfo] = {}
 
     # Filter to X and Y files only
@@ -820,12 +818,18 @@ async def validate_files(request: ValidateFilesRequest):
             )
             continue
 
+        # Merge global parsing with per-file overrides
+        effective_parsing = {**parsing}
+        file_overrides = per_file_overrides.get(file_config.path, {})
+        if file_overrides:
+            effective_parsing.update(file_overrides)
+
         try:
             data, _, _, _, _ = get_cached("load_file")(
                 str(file_path),
-                delimiter=parsing.get("delimiter", ";"),
-                decimal_separator=parsing.get("decimal_separator", "."),
-                has_header=parsing.get("has_header", True),
+                delimiter=effective_parsing.get("delimiter", ";"),
+                decimal_separator=effective_parsing.get("decimal_separator", "."),
+                has_header=effective_parsing.get("has_header", True),
             )
 
             if data is not None:
@@ -985,6 +989,87 @@ async def preview_dataset(request: PreviewDataRequest):
 
     except Exception as e:
         return PreviewDataResponse(success=False, error=f"Preview failed: {e}")
+
+
+@router.post("/datasets/preview-upload", response_model=PreviewDataResponse)
+async def preview_dataset_upload(
+    request: Request,
+    metadata: str = "",
+):
+    """Preview dataset from uploaded files (web mode without filesystem access).
+
+    Receives files as multipart/form-data and metadata as a JSON query parameter.
+    Writes uploaded files to a temp directory, builds nirs4all config, and previews.
+    """
+    import json
+    import shutil
+    import tempfile
+
+    if not NIRS4ALL_AVAILABLE:
+        return PreviewDataResponse(success=False, error="nirs4all library not available")
+
+    try:
+        meta = json.loads(metadata) if metadata else {}
+    except json.JSONDecodeError as e:
+        return PreviewDataResponse(success=False, error=f"Invalid metadata JSON: {e}")
+
+    file_configs = meta.get("files", [])
+    parsing_dict = meta.get("parsing", {})
+    max_samples = meta.get("max_samples", 100)
+
+    # Parse multipart form data
+    form = await request.form()
+    uploaded_files = form.getlist("files")
+
+    if not uploaded_files:
+        return PreviewDataResponse(success=False, error="No files uploaded")
+
+    temp_dir = None
+    try:
+        temp_dir = tempfile.mkdtemp(prefix="nirs4all_preview_")
+        temp_path = Path(temp_dir)
+
+        # Write uploaded files to temp directory
+        for upload_file in uploaded_files:
+            filename = upload_file.filename
+            target_path = temp_path / filename
+            content = await upload_file.read()
+            target_path.write_bytes(content)
+
+        # Map file configs to temp paths
+        preview_files = []
+        for fc in file_configs:
+            fc_path = fc.get("path", "")
+            fc_filename = Path(fc_path).name
+            temp_file = temp_path / fc_filename
+            if temp_file.exists():
+                preview_files.append(DatasetFileConfig(
+                    path=str(temp_file),
+                    type=fc.get("type", "X"),
+                    split=fc.get("split", "train"),
+                    source=fc.get("source"),
+                    overrides=fc.get("overrides"),
+                ))
+
+        if not preview_files:
+            return PreviewDataResponse(success=False, error="No matching files found in upload")
+
+        parsing = ParsingOptions(**{k: v for k, v in parsing_dict.items() if k in ParsingOptions.model_fields})
+
+        # Reuse the existing preview logic
+        result = await preview_dataset(PreviewDataRequest(
+            path=temp_dir,
+            files=preview_files,
+            parsing=parsing,
+            max_samples=max_samples,
+        ))
+        return result
+
+    except Exception as e:
+        return PreviewDataResponse(success=False, error=f"Upload preview failed: {e}")
+    finally:
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @router.get("/datasets/{dataset_id}/preview", response_model=PreviewDataResponse)
@@ -1226,6 +1311,8 @@ class UpdateDatasetRequest(BaseModel):
     description: str | None = None
     config: dict[str, Any] | None = None
     default_target: str | None = None
+    task_type: str | None = None
+    signal_types: list[str] | None = None
 
 
 @router.put("/datasets/{dataset_id}")
@@ -1244,6 +1331,10 @@ async def update_dataset(dataset_id: str, request: UpdateDatasetRequest):
         updates["config"] = request.config
     if request.default_target is not None:
         updates["default_target"] = request.default_target
+    if request.task_type is not None:
+        updates["task_type"] = request.task_type
+    if request.signal_types is not None:
+        updates["signal_types"] = request.signal_types
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")

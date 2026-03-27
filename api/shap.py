@@ -243,7 +243,7 @@ async def get_shap_config():
         default_bin_size=20,
         default_bin_stride=10,
         aggregation_methods=["sum", "sum_abs", "mean", "mean_abs"],
-        shap_available=get_cached("SHAP_AVAILABLE") or False
+        shap_available=get_cached("SHAP_AVAILABLE", optional=True) or False
     )
 
 
@@ -278,7 +278,7 @@ async def compute_shap_explanation(request: ShapComputeRequest):
     """
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all not available. SHAP analysis requires nirs4all.")
-    if not get_cached("SHAP_AVAILABLE"):
+    if not get_cached("SHAP_AVAILABLE", optional=True):
         raise HTTPException(status_code=501, detail="SHAP not installed. Install with: pip install shap")
     if not request.chain_id and not request.bundle_path:
         raise HTTPException(status_code=400, detail="Either chain_id or bundle_path is required")

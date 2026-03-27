@@ -1879,13 +1879,14 @@ class WorkspaceManager:
         if workspace is None:
             return
 
-        from .lazy_imports import get_cached
+        from .lazy_imports import is_ml_ready, get_cached
 
-        _nirs4all_ws = get_cached("nirs4all_workspace")
-        if _nirs4all_ws is not None:
-            _nirs4all_ws.set_active_workspace(workspace.path)
-        else:
-            os.environ["NIRS4ALL_WORKSPACE"] = workspace.path
+        if is_ml_ready():
+            _nirs4all_ws = get_cached("nirs4all_workspace", optional=True)
+            if _nirs4all_ws is not None:
+                _nirs4all_ws.set_active_workspace(workspace.path)
+                return
+        os.environ["NIRS4ALL_WORKSPACE"] = workspace.path
 
     def ensure_default_workspace(self) -> LinkedWorkspace | None:
         """Create and link a default workspace if none exists.
@@ -2512,7 +2513,7 @@ class WorkspaceManager:
                 "has_header": True,
                 "header_unit": "nm",
                 "signal_type": "auto",
-                "na_policy": "drop",
+                "na_policy": "auto",
                 "auto_detect": True,
             },
             "developer_mode": False,

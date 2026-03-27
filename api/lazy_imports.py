@@ -55,16 +55,37 @@ def require_ml_ready():
     """Raise HTTP 503 if ML deps are not yet loaded."""
     if not _ml_ready:
         from fastapi import HTTPException
+
+        if _ml_error:
+            detail = f"ML dependencies failed to load: {_ml_error}"
+        elif _ml_loading:
+            detail = "ML dependencies are still loading. Please wait a moment and retry."
+        else:
+            detail = "ML dependencies have not started loading yet."
         raise HTTPException(
             status_code=503,
-            detail="ML dependencies are still loading. Please wait a moment and retry.",
+            detail=detail,
             headers={"Retry-After": "5"},
         )
 
 
-def get_cached(key: str) -> Any:
-    """Get a lazily-cached import. Returns None if not yet loaded."""
-    return _cache.get(key)
+def get_cached(key: str, *, optional: bool = False) -> Any:
+    """Get a lazily-cached import.
+
+    Raises HTTP 503 if ML dependencies are not yet loaded (or failed to load).
+    Use optional=True to return None instead of raising when the key is missing
+    but ML deps are ready (for optional dependencies like SHAP).
+    """
+    if not _ml_ready:
+        require_ml_ready()
+    value = _cache.get(key)
+    if value is None and not optional:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=f"ML component '{key}' is not available.",
+        )
+    return value
 
 
 def _yield_gil():

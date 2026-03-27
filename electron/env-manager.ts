@@ -112,21 +112,25 @@ export class EnvManager {
         this.savedAppVersion = data.appVersion ?? null;
         this.savedSkipWizard = data.skipWizardOnLaunch ?? false;
       }
-    } catch {
-      // Ignore corrupt settings
+    } catch (error) {
+      console.warn(`[EnvManager] Failed to load settings: ${error}`);
     }
   }
 
   private saveSettings(): void {
     try {
+      const dir = path.dirname(this.settingsPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
       const data: EnvSettings = {};
       if (this.customEnvPath) data.customEnvPath = this.customEnvPath;
       if (this.customPythonPath) data.customPythonPath = this.customPythonPath;
       if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
       if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
       fs.writeFileSync(this.settingsPath, JSON.stringify(data, null, 2));
-    } catch {
-      // Best effort
+    } catch (error) {
+      console.error(`[EnvManager] Failed to save settings: ${error}`);
     }
   }
 
@@ -246,23 +250,24 @@ export class EnvManager {
   /**
    * Single decision point for whether the setup wizard should be shown.
    *
-   * - Installed version: shows on first launch after install/update (version mismatch),
-   *   then not again until the next version change.
+   * - Shows when the environment is not ready (first launch, broken env).
    * - Portable version: shows every launch unless "don't ask again" was checked.
-   *   Version change always forces the wizard (even if skipped).
+   * - Version changes are handled silently when the env is already functional
+   *   (ensureBackendPackages covers package updates at startup).
    */
   shouldShowWizard(): boolean {
-    const currentVersion = app.getVersion();
-    const versionChanged = this.savedAppVersion !== currentVersion;
-
     // Env not configured at all → must show wizard
     if (!this.isReady()) return true;
 
-    // Version changed (new install/update) → always show wizard
-    if (versionChanged) return true;
-
     // Portable mode: show every time unless user opted out
     if (this.isPortable() && !this.savedSkipWizard) return true;
+
+    // Env is ready — silently stamp current version so portable opt-out stays valid
+    const currentVersion = app.getVersion();
+    if (this.savedAppVersion !== currentVersion) {
+      this.savedAppVersion = currentVersion;
+      this.saveSettings();
+    }
 
     return false;
   }
