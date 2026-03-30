@@ -897,7 +897,7 @@ class StoreAdapter:
         try:
             # Use a simpler approach: get all artifact IDs from chains,
             # then sum their sizes.  The JSON extraction can be fragile
-            # in DuckDB so we fall back to 0 on any error.
+            # in the store so we fall back to 0 on any error.
             pipeline_filter = (
                 "SELECT pipeline_id FROM pipelines WHERE run_id = $1"
             )

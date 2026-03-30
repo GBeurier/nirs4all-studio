@@ -156,8 +156,8 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
             Array Storage Migration
           </DialogTitle>
           <DialogDescription>
-            Migrate legacy DuckDB prediction arrays into Parquet sidecar files.
-            Back up `store.duckdb` before running a full migration.
+            Migrate legacy prediction arrays into Parquet sidecar files.
+            Back up your store database before running a full migration.
           </DialogDescription>
         </DialogHeader>
 
@@ -226,8 +226,8 @@ export function MigrationDialog({ open, onOpenChange, onCompleted }: MigrationDi
                   <div>Rows migrated: {report.rows_migrated.toLocaleString()}</div>
                   <div>Verification: {report.verification_passed ? "Passed" : "Failed"}</div>
                   <div>Mismatches: {report.verification_mismatches}</div>
-                  <div>DuckDB before: {formatBytes(report.duckdb_size_before)}</div>
-                  <div>DuckDB after: {formatBytes(report.duckdb_size_after)}</div>
+                  <div>DB before: {formatBytes(report.duckdb_size_before)}</div>
+                  <div>DB after: {formatBytes(report.duckdb_size_after)}</div>
                   <div>Parquet size: {formatBytes(report.parquet_total_size)}</div>
                   <div>Duration: {report.duration_seconds.toFixed(2)}s</div>
                 </div>

@@ -85,13 +85,13 @@ class LinkedWorkspace:
 class WorkspaceScanner:
     """Scans and discovers content from nirs4all workspaces.
 
-    Primary discovery uses the DuckDB ``WorkspaceStore`` (``store.duckdb``).
+    Primary discovery uses ``WorkspaceStore`` (``store.sqlite``).
     Falls back to filesystem scanning only when the store file does not
     exist (legacy workspaces).
 
     Discovery targets:
-    - Runs (from ``store.duckdb`` or ``workspace/runs/`` manifests)
-    - Predictions (from ``store.duckdb`` or ``.meta.parquet`` files)
+    - Runs (from ``store.sqlite`` or ``workspace/runs/`` manifests)
+    - Predictions (from ``store.sqlite`` or ``.meta.parquet`` files)
     - Exports (from ``workspace/exports/``)
     - Library templates (from ``workspace/library/``)
     """
@@ -119,15 +119,19 @@ class WorkspaceScanner:
             # Default to the nested structure
             self.workspace_dir = potential_workspace_dir
 
-        # Lazily initialised StoreAdapter (only when store.duckdb exists)
+        # Lazily initialised StoreAdapter (only when store DB exists)
         self._store_adapter = None
 
     @property
     def store_adapter(self):
-        """Return a ``StoreAdapter`` if the DuckDB store file exists, else ``None``."""
+        """Return a ``StoreAdapter`` if a store database file exists, else ``None``."""
         if self._store_adapter is not None:
             return self._store_adapter
-        store_db = self.workspace_dir / "store.duckdb"
+        store_db = self.workspace_dir / "store.sqlite"
+        if not store_db.exists():
+            store_db = self.workspace_dir / "store.duckdb"
+        if not store_db.exists():
+            store_db = self.workspace_path / "store.sqlite"
         if not store_db.exists():
             store_db = self.workspace_path / "store.duckdb"
         if store_db.exists():
@@ -139,7 +143,7 @@ class WorkspaceScanner:
         return self._store_adapter
 
     def _has_store(self) -> bool:
-        """Return ``True`` if a DuckDB store is available."""
+        """Return ``True`` if a store database is available."""
         return self.store_adapter is not None
 
     def is_valid_workspace(self) -> tuple[bool, str]:
@@ -154,9 +158,9 @@ class WorkspaceScanner:
         if not self.workspace_path.is_dir():
             return False, "Path is not a directory"
 
-        # DuckDB store is the primary indicator
+        # Store database is the primary indicator
         if self._has_store():
-            return True, "Valid nirs4all workspace (DuckDB store)"
+            return True, "Valid nirs4all workspace (store database)"
 
         # workspace.json is a strong indicator (created by create_workspace)
         if (self.workspace_path / "workspace.json").exists():
@@ -228,13 +232,13 @@ class WorkspaceScanner:
     def discover_runs(self) -> list[dict[str, Any]]:
         """Discover all runs.
 
-        When a DuckDB store exists, runs are read from ``store.list_runs()``.
+        When a store database exists, runs are read from ``store.list_runs()``.
         Otherwise falls back to filesystem manifest scanning (legacy path).
 
         Returns:
             List of run information dictionaries.
         """
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if self._has_store():
             return self._discover_runs_from_store()
 
@@ -520,14 +524,14 @@ class WorkspaceScanner:
     def discover_predictions(self) -> list[dict[str, Any]]:
         """Discover prediction databases.
 
-        When a DuckDB store exists, predictions are read from
+        When a store database exists, predictions are read from
         ``store.query_predictions()``.  Otherwise falls back to scanning
         ``.meta.parquet`` / JSON files on the filesystem (legacy path).
 
         Returns:
             List of prediction database information.
         """
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if self._has_store():
             return self._discover_predictions_from_store()
 
@@ -922,7 +926,7 @@ class WorkspaceScanner:
     def discover_results(self, run_id: str | None = None) -> list[dict[str, Any]]:
         """Discover individual results (pipeline config x dataset combinations).
 
-        When a DuckDB store exists, results are read from
+        When a store database exists, results are read from
         ``store.list_pipelines()``.  Otherwise falls back to filesystem
         manifest scanning (legacy path).
 
@@ -932,7 +936,7 @@ class WorkspaceScanner:
         Returns:
             List of result information dictionaries.
         """
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if self._has_store():
             return self._discover_results_from_store(run_id)
 

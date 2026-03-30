@@ -49,7 +49,7 @@ router = APIRouter(prefix="/updates", tags=["updates"])
 # Packages that require a backend restart after install/update/uninstall
 RESTART_REQUIRED_PACKAGES = {
     "nirs4all", "numpy", "scipy", "scikit-learn", "pandas",
-    "duckdb", "pydantic", "fastapi", "uvicorn",
+    "pydantic", "fastapi", "uvicorn",
 }
 
 

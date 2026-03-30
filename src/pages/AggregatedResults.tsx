@@ -1,6 +1,6 @@
 /**
  * AggregatedResults page — displays chain-level aggregated predictions
- * from the DuckDB store via the /api/aggregated-predictions endpoint.
+ * from the SQLite store via the /api/aggregated-predictions endpoint.
  *
  * Hierarchy: Run → Pipeline → Chain → Partition predictions.
  * The page shows one row per (chain, metric, dataset) combination with
@@ -429,7 +429,7 @@ export default function AggregatedResults() {
               <CardHeader className="pb-3">
                 <div className="text-sm font-medium">Developer SQL Query</div>
                 <p className="text-xs text-muted-foreground">
-                  Read-only SQL against prediction metadata (DuckDB tables/views).
+                  Read-only SQL against prediction metadata (SQLite tables/views).
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">

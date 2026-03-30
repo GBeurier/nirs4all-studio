@@ -123,6 +123,12 @@ SKIP_RESOLVE = {
     "MovingAverage",  # alias to SavitzkyGolay (JSON now fixed, but legacyClassPath)
 }
 
+# Parameters that exist only in the UI and are transformed at runtime
+# (e.g. n_points → target_wavelengths array when wavelength context is available)
+UI_ONLY_PARAMS = {
+    ("Resampler", "n_points"),
+}
+
 
 # ============================================================================
 # Preprocessing operators
@@ -138,8 +144,6 @@ _preprocessing_ops = _load_definitions("preprocessing")
 )
 def test_preprocessing_resolve(name, op_def):
     """Each preprocessing operator's classPath must resolve to a Python class."""
-    if name in SKIP_FIT_TRANSFORM and name not in REQUIRES_Y:
-        pytest.skip(f"{name} excluded")
     if name in SKIP_RESOLVE:
         pytest.skip(f"{name} uses alias resolution")
 
@@ -192,8 +196,8 @@ def test_preprocessing_instantiate_and_transform(name, op_def):
 )
 def test_preprocessing_params_accepted(name, op_def):
     """Each non-hidden parameter in JSON must be accepted by the operator constructor."""
-    if name in SKIP_FIT_TRANSFORM and name not in REQUIRES_Y:
-        pytest.skip(f"{name} excluded")
+    if name in SKIP_RESOLVE:
+        pytest.skip(f"{name} uses alias resolution")
 
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
@@ -214,20 +218,35 @@ def test_preprocessing_params_accepted(name, op_def):
     if has_kwargs:
         pytest.skip(f"{name} accepts **kwargs")
 
+    # Build raw defaults and normalize them (applies rename mappings like n_pls_components → n_components)
+    raw_params = _build_defaults(op_def)
+    normalized = normalize_params(name, raw_params)
+    normalized_names = set(normalized.keys())
+
     for param in op_def.get("parameters", []):
         param_name = param["name"]
         if param.get("isHidden"):
             continue
+        # Skip UI-only params that are transformed at runtime
+        if (name, param_name) in UI_ONLY_PARAMS:
+            continue
+        # Use normalized name if the param was renamed by normalize_params
+        effective_name = param_name
+        if param_name not in normalized_names:
+            # Check if normalize_params renamed this param
+            renamed = normalized_names - set(p["name"] for p in op_def.get("parameters", []))
+            if len(renamed) == 1:
+                effective_name = next(iter(renamed))
         # After normalization, _min/_max pairs become tuple params
-        if param_name.endswith("_min") or param_name.endswith("_max"):
-            base = param_name[:-4] if param_name.endswith("_min") else param_name[:-4]
-            assert base in valid_param_names or param_name in valid_param_names, (
+        if effective_name.endswith("_min") or effective_name.endswith("_max"):
+            base = effective_name[:-4]
+            assert base in valid_param_names or effective_name in valid_param_names, (
                 f"{name}: param '{param_name}' (or base '{base}') not accepted by constructor. "
                 f"Valid params: {sorted(valid_param_names)}"
             )
         else:
-            assert param_name in valid_param_names, (
-                f"{name}: param '{param_name}' not accepted by constructor. "
+            assert effective_name in valid_param_names, (
+                f"{name}: param '{param_name}' (normalized to '{effective_name}') not accepted by constructor. "
                 f"Valid params: {sorted(valid_param_names)}"
             )
 
@@ -354,9 +373,6 @@ SKIP_SPLITTER = {
 )
 def test_splitter_resolve(name, op_def):
     """Each splitter operator's classPath must resolve to a Python class."""
-    if name in SKIP_SPLITTER:
-        pytest.skip(f"{name} requires group info")
-
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
     assert cls is not None, f"Cannot import splitter '{name}' from '{class_path}'"

@@ -8,7 +8,7 @@ This module provides FastAPI routes for:
 
 Uses nirs4all library for all prediction and explanation operations.
 
-For stored predictions (DuckDB), see the /api/aggregated-predictions
+For stored predictions (SQLite store), see the /api/aggregated-predictions
 endpoints in aggregated_predictions.py.
 """
 

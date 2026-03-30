@@ -23,8 +23,8 @@ Cross-validation
 Dataset
 : A collection of spectral measurements and their associated target values. In nirs4all Studio, a dataset is imported from a file and contains spectra (the measurements), targets (what you want to predict), and optionally metadata (extra information about each sample).
 
-DuckDB
-: The embedded database engine used by nirs4all to store workspace data. DuckDB runs locally within the application -- no separate database server is needed. Your workspace database file is named `store.duckdb`.
+SQLite
+: The embedded database engine used by nirs4all to store workspace data. SQLite runs locally within the application -- no separate database server is needed. Your workspace database file is named `store.sqlite`.
 
 Experiment
 : A complete analysis session that pairs one or more datasets with a pipeline and runs the analysis. When you launch an experiment, nirs4all executes every chain in your pipeline against the selected datasets and records the results.
@@ -123,4 +123,4 @@ Wavelength
 : A specific position in the electromagnetic spectrum where a measurement is taken, expressed in nanometers (nm). Each wavelength in a NIR spectrum corresponds to one feature. The wavelength range determines which chemical bonds and properties can be detected.
 
 Workspace
-: A folder on your computer that stores all data for a set of related analyses. A workspace contains a DuckDB database, trained model artifacts, and exported files. You can create multiple workspaces to keep different projects separate. See {doc}`workspace-concept` for details.
+: A folder on your computer that stores all data for a set of related analyses. A workspace contains a SQLite database, trained model artifacts, and exported files. You can create multiple workspaces to keep different projects separate. See {doc}`workspace-concept` for details.

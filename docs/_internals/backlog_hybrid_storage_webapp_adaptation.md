@@ -1,4 +1,4 @@
-# Backlog: Webapp Adaptation — Hybrid DuckDB + Parquet Storage
+# Backlog: Webapp Adaptation — Hybrid SQLite + Parquet Storage
 
 **Date**: 2026-02-18
 **Status**: Draft — Pending team approval
@@ -9,7 +9,7 @@
 
 ## Goal
 
-Adapt the webapp to the nirs4all library's hybrid storage architecture (DuckDB metadata + Parquet array sidecar files). The webapp is a **thin orchestration layer** — it does not implement storage logic. This backlog covers:
+Adapt the webapp to the nirs4all library's hybrid storage architecture (SQLite metadata + Parquet array sidecar files). The webapp is a **thin orchestration layer** — it does not implement storage logic. This backlog covers:
 
 1. Updating the backend to consume the new nirs4all storage API correctly.
 2. Exposing migration, maintenance, and storage health features to the user.
@@ -35,7 +35,7 @@ Phases W1 and W2 can start as soon as nirs4all Phases 1 and 2 are respectively c
 
 ## Phase W1 — Transparent Adaptation
 
-The nirs4all library's `WorkspaceStore` interface is designed so that callers do not need to know whether arrays come from DuckDB or Parquet. Most webapp code should work unchanged. This phase identifies and fixes the few places that do need attention.
+The nirs4all library's `WorkspaceStore` interface is designed so that callers do not need to know whether arrays come from SQLite or Parquet. Most webapp code should work unchanged. This phase identifies and fixes the few places that do need attention.
 
 ### W1.1 Verify StoreAdapter compatibility
 
@@ -51,7 +51,7 @@ The `StoreAdapter` calls `self._store.get_prediction_arrays(prediction_id)` and 
 | `get_prediction_arrays()` | 418 | Calls `store.get_prediction_arrays(id)` — transparent |
 | `get_predictions_summary()` | 169 | Metadata-only query — unchanged |
 | `get_predictions_page()` | 217 | Metadata-only query — unchanged |
-| `get_chain_summaries()` | all chain methods | DuckDB views — unchanged |
+| `get_chain_summaries()` | all chain methods | SQLite views — unchanged |
 
 No code changes expected. Validation only.
 
@@ -101,7 +101,7 @@ categories = {
 
 **File**: `api/store_adapter.py` or `api/workspace.py`
 
-After nirs4all Phase 2.4, `WorkspaceStore.__init__` detects legacy stores (with `prediction_arrays` DuckDB table but no `arrays/` directory) and logs a warning. The webapp should surface this status to the user.
+After nirs4all Phase 2.4, `WorkspaceStore.__init__` detects legacy stores (with `prediction_arrays` SQLite table but no `arrays/` directory) and logs a warning. The webapp should surface this status to the user.
 
 **Changes**:
 - Add a method `get_store_status()` on `StoreAdapter` that returns the storage mode:
@@ -126,9 +126,9 @@ def get_store_status(self) -> dict[str, Any]:
 
 **File**: `api/workspace_manager.py`
 
-The `WorkspaceScanner` has a fallback path for workspaces without `store.duckdb` (line 526). This path is unchanged. But the scanner should now also recognize the `arrays/` directory as part of a valid workspace.
+The `WorkspaceScanner` has a fallback path for workspaces without `store.sqlite` (line 526). This path is unchanged. But the scanner should now also recognize the `arrays/` directory as part of a valid workspace.
 
-**Action**: If `WorkspaceScanner._has_store()` checks for `store.duckdb`, no change needed. If it scans for content, update to recognize `arrays/` as a valid workspace artifact.
+**Action**: If `WorkspaceScanner._has_store()` checks for `store.sqlite`, no change needed. If it scans for content, update to recognize `arrays/` as a valid workspace artifact.
 
 ---
 
@@ -214,7 +214,7 @@ When a legacy store is detected (`storage_mode == "legacy"`), display a persiste
 
 **Migration dialog** (triggered by "Migrate Now"):
 1. Show current stats: legacy row count, estimated duration.
-2. Remind user to back up `store.duckdb`.
+2. Remind user to back up `store.sqlite`.
 3. "Start Migration" button → calls `POST /workspace/migrate`.
 4. Progress bar driven by WebSocket `MAINTENANCE_PROGRESS` events.
 5. On completion: show `MigrationReport` summary (rows migrated, size before/after, duration).
@@ -273,8 +273,8 @@ interface MigrationReport {
   verification_passed: boolean;
   verification_sample_size: number;
   verification_mismatches: number;
-  duckdb_size_before: number;
-  duckdb_size_after: number;
+  sqlite_size_before: number;
+  sqlite_size_after: number;
   parquet_total_size: number;
   duration_seconds: number;
   errors: string[];
@@ -330,7 +330,7 @@ Returns:
 class StorageHealthResponse(BaseModel):
     storage_mode: str                    # "migrated" | "legacy" | "mid_migration" | "new"
     migration_needed: bool
-    duckdb_size_bytes: int
+    sqlite_size_bytes: int
     parquet_total_size_bytes: int
     total_predictions: int
     total_datasets: int
@@ -350,7 +350,7 @@ Add hybrid storage breakdown to the existing stats endpoint:
 class WorkspaceStatsResponse(BaseModel):
     ...  # existing fields
     # New fields
-    duckdb_size_bytes: int = Field(0, description="DuckDB metadata store size")
+    sqlite_size_bytes: int = Field(0, description="SQLite metadata store size")
     parquet_arrays_size_bytes: int = Field(0, description="Total Parquet array files size")
     storage_mode: str = Field("unknown", description="Storage backend: migrated, legacy, new")
 ```
@@ -366,7 +366,7 @@ A card in the Settings > Workspace tab showing:
 | Section | Content |
 |---------|---------|
 | **Status** | Badge: "Migrated" (green) / "Legacy" (amber) / "New" (blue) |
-| **Storage breakdown** | DuckDB: X MB — Parquet arrays: Y MB — Artifacts: Z MB |
+| **Storage breakdown** | SQLite: X MB — Parquet arrays: Y MB — Artifacts: Z MB |
 | **Integrity** | "Healthy" (green) / "N orphans detected" (amber) / "Corrupt files" (red) |
 | **Per-dataset** | Collapsible list: dataset name, prediction count, Parquet file size |
 | **Actions** | [Compact] [Clean Dead Links] [Run Integrity Check] |
@@ -420,7 +420,7 @@ export async function removeBottomPredictions(options: {
 interface StorageHealthResponse {
   storage_mode: string;
   migration_needed: boolean;
-  duckdb_size_bytes: number;
+  sqlite_size_bytes: number;
   parquet_total_size_bytes: number;
   total_predictions: number;
   total_datasets: number;
@@ -544,7 +544,7 @@ POST /aggregated-predictions/query
     Returns: { "columns": list[str], "rows": list[list[Any]], "row_count": int }
 ```
 
-**Implementation**: calls `predictions.query(sql)` which executes read-only SQL against DuckDB. Arrays are not included. This exposes the full power of SQL for advanced users.
+**Implementation**: calls `predictions.query(sql)` which executes read-only SQL against SQLite. Arrays are not included. This exposes the full power of SQL for advanced users.
 
 **Security**: validate that the SQL is read-only (no INSERT, UPDATE, DELETE, DROP, ALTER). Reject if not.
 

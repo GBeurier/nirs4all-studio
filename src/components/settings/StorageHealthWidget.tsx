@@ -142,7 +142,7 @@ export function StorageHealthWidget({ className }: StorageHealthWidgetProps) {
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">DuckDB</div>
+              <div className="text-xs text-muted-foreground">Database</div>
               <div className="text-sm font-medium">{formatBytes(health.duckdb_size_bytes)}</div>
             </div>
             <div className="rounded-md border p-3">

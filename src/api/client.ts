@@ -2274,7 +2274,7 @@ export async function deleteSnapshot(name: string): Promise<{
 }
 
 // =============================================================================
-// Aggregated Predictions (DuckDB store)
+// Aggregated Predictions (SQLite store)
 // =============================================================================
 
 import type {
@@ -2287,7 +2287,7 @@ import type {
 } from "@/types/aggregated-predictions";
 
 /**
- * Query aggregated predictions from the DuckDB store.
+ * Query aggregated predictions from the SQLite store.
  * Returns one row per (chain_id, metric, dataset_name).
  */
 export async function getAggregatedPredictions(

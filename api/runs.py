@@ -208,7 +208,7 @@ class Run(BaseModel):
     total_pipelines: int | None = None
     completed_pipelines: int | None = None
     workspace_path: str | None = None  # For persistence
-    store_run_id: str | None = None  # DuckDB WorkspaceStore run UUID
+    store_run_id: str | None = None  # WorkspaceStore run UUID
     project_id: str | None = None  # Project grouping
 
 

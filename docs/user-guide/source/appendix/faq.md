@@ -78,7 +78,7 @@
 : GPU support requires CUDA (Windows/Linux) or Metal (macOS). Install the GPU version of the Python dependencies. Check Settings > Advanced > System Info to verify GPU detection.
 
 **Where are my files stored?**
-: - **Workspace data**: In your workspace folder (wherever you created it). Contains `store.duckdb`, `artifacts/`, and `exports/`.
+: - **Workspace data**: In your workspace folder (wherever you created it). Contains `store.sqlite`, `artifacts/`, and `exports/`.
   - **App settings**: In `~/.nirs4all-webapp/` (your home directory).
   - **Desktop app**: Installed in the standard application directory for your OS.
 

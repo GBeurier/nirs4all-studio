@@ -1043,7 +1043,7 @@ class WorkspaceStatsResponse(BaseModel):
     space_usage: list[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
     linked_datasets_count: int = Field(0, description="Number of linked datasets")
     linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
-    duckdb_size_bytes: int = Field(0, description="DuckDB metadata store size")
+    duckdb_size_bytes: int = Field(0, description="Metadata store size (SQLite)")
     parquet_arrays_size_bytes: int = Field(0, description="Total Parquet array files size")
     storage_mode: str = Field("unknown", description="Storage backend: migrated, legacy, new")
     created_at: str = Field(..., description="Workspace creation time")
@@ -1225,7 +1225,9 @@ def _to_plain_dict(value: Any) -> Any:
 def _get_storage_status_for_workspace(workspace_path: Path) -> dict[str, Any]:
     """Resolve storage mode/status for a workspace."""
     has_arrays_directory = (workspace_path / "arrays").exists()
-    db_path = workspace_path / "store.duckdb"
+    db_path = workspace_path / "store.sqlite"
+    if not db_path.exists():
+        db_path = workspace_path / "store.duckdb"
 
     status = {
         "storage_mode": "new",
@@ -1256,7 +1258,7 @@ def _get_legacy_arrays_row_count(workspace_path: Path) -> int | None:
     """Count legacy rows in prediction_arrays if the table exists."""
     if not STORE_AVAILABLE:
         return None
-    if not (workspace_path / "store.duckdb").exists():
+    if not (workspace_path / "store.sqlite").exists() and not (workspace_path / "store.duckdb").exists():
         return None
 
     try:
@@ -1533,7 +1535,7 @@ async def get_workspace_stats():
             if file.is_file():
                 try:
                     total_workspace_size += file.stat().st_size
-                    if file.name == "store.duckdb":
+                    if file.name in ("store.sqlite", "store.duckdb"):
                         duckdb_size_bytes = file.stat().st_size
                 except (OSError, PermissionError):
                     pass
@@ -1800,10 +1802,12 @@ async def get_workspace_storage_health():
         status = _get_storage_status_for_workspace(workspace_path)
 
         duckdb_size_bytes = 0
-        duckdb_path = workspace_path / "store.duckdb"
-        if duckdb_path.exists():
+        db_path = workspace_path / "store.sqlite"
+        if not db_path.exists():
+            db_path = workspace_path / "store.duckdb"
+        if db_path.exists():
             try:
-                duckdb_size_bytes = duckdb_path.stat().st_size
+                duckdb_size_bytes = db_path.stat().st_size
             except Exception:
                 duckdb_size_bytes = 0
 
@@ -1812,7 +1816,7 @@ async def get_workspace_storage_health():
 
         total_predictions = 0
         dataset_rows: list[dict[str, Any]] = []
-        if STORE_AVAILABLE and duckdb_path.exists():
+        if STORE_AVAILABLE and db_path.exists():
             try:
                 store = get_cached("WorkspaceStore")(workspace_path)
                 try:
@@ -2358,7 +2362,7 @@ async def scan_workspace(workspace_id: str):
 async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh: bool = False):
     """Get discovered runs from a linked workspace.
 
-    When a DuckDB store is available, runs come directly from the store
+    When a store database is available, runs come directly from the store
     (fast, authoritative).  Otherwise falls back to manifest + parquet
     discovery:
 
@@ -2384,7 +2388,7 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         # When a store exists, scanner.discover_runs() already reads
         # from it and the parquet-derived phase is unnecessary.
         if scanner._has_store():
@@ -2516,7 +2520,9 @@ async def get_enriched_workspace_runs(workspace_id: str, project_id: str | None 
             return {"runs": [], "total": 0}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.duckdb"
+        store_path = workspace_path / "store.sqlite"
+        if not store_path.exists():
+            store_path = workspace_path / "store.duckdb"
         if not store_path.exists():
             return {"runs": [], "total": 0}
 
@@ -2546,7 +2552,7 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             run = scanner.store_adapter.get_run_detail(run_id)
             if run is not None:
@@ -2578,7 +2584,7 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
 async def delete_workspace_run(workspace_id: str, run_id: str):
     """Delete a run from a workspace.
 
-    When a DuckDB store is available, deletes the run with cascade
+    When a store database is available, deletes the run with cascade
     (pipelines, chains, predictions, arrays, logs).  Returns 404
     if the workspace or store is not found.
     """
@@ -2591,7 +2597,7 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
         scanner = WorkspaceScanner(workspace_path)
 
         if not scanner._has_store():
-            raise HTTPException(status_code=501, detail="Run deletion requires a DuckDB store")
+            raise HTTPException(status_code=501, detail="Run deletion requires a store database")
 
         result = scanner.store_adapter.delete_run(run_id)
 
@@ -2620,7 +2626,9 @@ async def get_all_chains_for_dataset(workspace_id: str, run_id: str, dataset_nam
             return {"chains": [], "total": 0, "metric": None}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.duckdb"
+        store_path = workspace_path / "store.sqlite"
+        if not store_path.exists():
+            store_path = workspace_path / "store.duckdb"
         if not store_path.exists():
             return {"chains": [], "total": 0, "metric": None}
 
@@ -2660,12 +2668,12 @@ async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: s
 
 
 def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list) -> None:
-    """Resolve DuckDB dataset_name → linked dataset ID using smart matching.
+    """Resolve store dataset_name → linked dataset ID using smart matching.
 
     Matching strategies (in priority order):
     1. Exact name match (case-insensitive)
-    2. folder_to_name(linked_path) is a prefix of DuckDB name (longest wins)
-    3. Linked name is a prefix of DuckDB name (longest wins)
+    2. folder_to_name(linked_path) is a prefix of store name (longest wins)
+    3. Linked name is a prefix of store name (longest wins)
 
     Mutates each entry in datasets_result to add ``linked_dataset_id``.
     """
@@ -2685,25 +2693,25 @@ def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list)
         linked_info.append((ld_id, name_lower, folder_lower))
 
     for ds_entry in datasets_result:
-        duckdb_name = ds_entry.get("dataset_name", "")
-        if not duckdb_name:
+        store_name = ds_entry.get("dataset_name", "")
+        if not store_name:
             continue
 
-        duckdb_lower = duckdb_name.lower()
+        store_lower = store_name.lower()
 
         # Strategy 1: exact name match (case-insensitive)
         for ld_id, name_lower, _ in linked_info:
-            if duckdb_lower == name_lower:
+            if store_lower == name_lower:
                 ds_entry["linked_dataset_id"] = ld_id
                 break
         if "linked_dataset_id" in ds_entry:
             continue
 
-        # Strategy 2: folder_to_name(path) is a prefix of DuckDB name (longest wins)
+        # Strategy 2: folder_to_name(path) is a prefix of store name (longest wins)
         best_id: str | None = None
         best_len = 0
         for ld_id, _, folder_lower in linked_info:
-            if folder_lower and duckdb_lower.startswith(folder_lower) and len(folder_lower) > best_len:
+            if folder_lower and store_lower.startswith(folder_lower) and len(folder_lower) > best_len:
                 best_id = ld_id
                 best_len = len(folder_lower)
 
@@ -2713,7 +2721,7 @@ def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list)
 
         # Strategy 3: linked name prefix (longest wins)
         for ld_id, name_lower, _ in linked_info:
-            if name_lower and duckdb_lower.startswith(name_lower) and len(name_lower) > best_len:
+            if name_lower and store_lower.startswith(name_lower) and len(name_lower) > best_len:
                 best_id = ld_id
                 best_len = len(name_lower)
 
@@ -2734,7 +2742,9 @@ async def get_workspace_results_summary(workspace_id: str):
             return {"workspace_id": workspace_id, "datasets": []}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.duckdb"
+        store_path = workspace_path / "store.sqlite"
+        if not store_path.exists():
+            store_path = workspace_path / "store.duckdb"
         if not store_path.exists():
             return {"workspace_id": workspace_id, "datasets": []}
 
@@ -2743,7 +2753,7 @@ async def get_workspace_results_summary(workspace_id: str):
             result = adapter.get_dataset_top_chains()
             result["workspace_id"] = workspace_id
 
-            # Resolve DuckDB dataset names to linked dataset IDs
+            # Resolve store dataset names to linked dataset IDs
             linked_datasets = app_config.get_datasets()
             _resolve_dataset_mapping(result.get("datasets", []), linked_datasets)
 
@@ -2873,7 +2883,7 @@ async def get_workspace_predictions_data(
 ):
     """Get prediction records with metadata.
 
-    When a DuckDB store is available, reads directly from the store
+    When a store database is available, reads directly from the store
     (fast, paginated at the DB level).  Otherwise falls back to reading
     ``.meta.parquet`` files with pandas.
     """
@@ -2885,7 +2895,7 @@ async def get_workspace_predictions_data(
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             page = scanner.store_adapter.get_predictions_page(
                 dataset_name=dataset,
@@ -3028,7 +3038,7 @@ async def get_workspace_predictions_data(
 async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
     """Get scatter plot data (y_true vs y_pred) for a specific prediction.
 
-    When a DuckDB store is available, loads arrays directly from the
+    When a store database is available, loads arrays directly from the
     store.  Otherwise falls back to ``.arrays.parquet`` files.
 
     Returns:
@@ -3045,7 +3055,7 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             scatter = scanner.store_adapter.get_prediction_scatter(prediction_id)
             if scatter is not None:
@@ -3120,7 +3130,7 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
 async def get_workspace_predictions_summary(workspace_id: str):
     """Get aggregated prediction summary.
 
-    When a DuckDB store is available, the summary is computed directly
+    When a store database is available, the summary is computed directly
     from the store (fast).  Otherwise falls back to reading parquet
     file footers.
 
@@ -3139,7 +3149,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             summary = scanner.store_adapter.get_predictions_summary()
             return summary

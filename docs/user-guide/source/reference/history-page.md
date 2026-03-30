@@ -100,7 +100,7 @@ For running experiments, the History page periodically polls for status changes:
 - The statistics bar counts update as runs complete or fail.
 
 :::{note}
-The History page polls every 10 seconds for active runs and every 30 seconds for the full enriched run list from the DuckDB store. For real-time granular progress, open the {doc}`run-progress-page` for a specific run.
+The History page polls every 10 seconds for active runs and every 30 seconds for the full enriched run list from the SQLite store. For real-time granular progress, open the {doc}`run-progress-page` for a specific run.
 :::
 
 :::{seealso}

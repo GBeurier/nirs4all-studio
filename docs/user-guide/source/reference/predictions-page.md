@@ -95,7 +95,7 @@ Exported files are saved to the `exports/` directory inside your active workspac
 
 ## How predictions are stored
 
-Predictions are saved automatically at the end of each experiment run that includes an evaluation step. They are stored in the workspace database (`store.duckdb`) and linked to the originating run, model, and dataset. Deleting a prediction set does not affect the trained model or the original run history.
+Predictions are saved automatically at the end of each experiment run that includes an evaluation step. They are stored in the workspace database (`store.sqlite`) and linked to the originating run, model, and dataset. Deleting a prediction set does not affect the trained model or the original run history.
 
 :::{seealso}
 - {doc}`results-page` -- Performance summaries for completed experiments.

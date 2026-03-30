@@ -1,5 +1,5 @@
 /**
- * Types for chain summaries from DuckDB store.
+ * Types for chain summaries from the SQLite store.
  *
  * These types correspond to the backend endpoints in
  * /api/aggregated-predictions/ which read from the

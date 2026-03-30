@@ -388,6 +388,17 @@ def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
             base_map = {"e": math.e, "10": 10.0, "2": 2.0}
             normalized["base"] = base_map.get(base_val, math.e)
 
+    # CARS: frontend uses n_pls_components, Python constructor uses n_components
+    if name == "CARS" and "n_pls_components" in normalized:
+        normalized["n_components"] = normalized.pop("n_pls_components")
+
+    # Resampler: frontend uses n_points (int), Python needs target_wavelengths (array).
+    # Actual conversion to array happens at execution time (playground, pipeline runner)
+    # when wavelength context is available. Here we just remove n_points so it doesn't
+    # cause a TypeError on the constructor.
+    if name == "Resampler" and "n_points" in normalized:
+        normalized.pop("n_points")
+
     return normalized
 
 

@@ -76,7 +76,7 @@ A table listing all linked workspaces:
 
 | Action | Description |
 |--------|-------------|
-| **Link Workspace** | Opens a folder picker to link an existing workspace folder (one containing a `store.duckdb` file). |
+| **Link Workspace** | Opens a folder picker to link an existing workspace folder (one containing a `store.sqlite` file). |
 | **Create New** | Opens a dialog to create a new, empty workspace at a chosen location. |
 | **Switch** | Activate a different workspace. The entire application context (datasets, runs, results) switches to the selected workspace. |
 | **Unlink** | Removes the workspace from the linked list. This does **not** delete the workspace folder or its data -- it only removes the reference from the application. |

@@ -24,7 +24,7 @@ Before importing data, make sure your workspace is properly configured.
 3. If no workspace appears, click **Link Workspace** and select a folder on your computer. This folder will store datasets, pipelines, and experiment results.
 
 :::{tip}
-A workspace is just a folder on your disk. It contains a `store.duckdb` database, an `artifacts/` directory for trained models, and an `exports/` directory for bundles. You can link multiple workspaces and switch between them at any time.
+A workspace is just a folder on your disk. It contains a `store.sqlite` database, an `artifacts/` directory for trained models, and an `exports/` directory for bundles. You can link multiple workspaces and switch between them at any time.
 :::
 
 ---

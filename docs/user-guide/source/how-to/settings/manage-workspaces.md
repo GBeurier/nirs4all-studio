@@ -16,7 +16,7 @@ This guide shows you how to link, switch, and unlink workspaces in nirs4all Stud
 
 3. **Click "Link Workspace".** A folder browser dialog opens.
 
-4. **Choose a folder.** Navigate to an existing workspace folder (one that contains a `store.duckdb` file), or select an empty folder to create a new workspace.
+4. **Choose a folder.** Navigate to an existing workspace folder (one that contains a `store.sqlite` file), or select an empty folder to create a new workspace.
 
    - If the folder already contains workspace data, it will be linked as-is.
    - If the folder is empty, nirs4all Studio creates the required workspace structure automatically.
@@ -63,7 +63,7 @@ Every workspace folder contains three items:
 
 | Item | Purpose |
 |------|---------|
-| `store.duckdb` | A local database that holds all runs, results, metrics, pipeline configurations, and dataset references. |
+| `store.sqlite` | A local database that holds all runs, results, metrics, pipeline configurations, and dataset references. |
 | `artifacts/` | A folder containing trained models, intermediate files, and binary data produced during experiments. |
 | `exports/` | A folder where exported models (`.n4a` bundles) and prediction CSV files are saved. |
 

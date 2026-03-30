@@ -210,7 +210,7 @@ def _do_load_ml_deps():
             logger.debug("nirs4all filter operators not available")
         _yield_gil()
 
-        # 10. Storage (DuckDB)
+        # 10. Storage (SQLite)
         from nirs4all.pipeline.storage import WorkspaceStore
         _cache["WorkspaceStore"] = WorkspaceStore
 

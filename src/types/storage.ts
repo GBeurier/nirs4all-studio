@@ -1,5 +1,5 @@
 /**
- * Storage, migration, and maintenance types for hybrid DuckDB + Parquet mode.
+ * Storage, migration, and maintenance types for hybrid SQLite + Parquet mode.
  */
 
 export interface StorageStatusResponse {
@@ -23,7 +23,9 @@ export interface MigrationReport {
   verification_passed: boolean;
   verification_sample_size: number;
   verification_mismatches: number;
+  /** @deprecated Legacy field name kept for backward compat with migration reports */
   duckdb_size_before: number;
+  /** @deprecated Legacy field name kept for backward compat with migration reports */
   duckdb_size_after: number;
   parquet_total_size: number;
   duration_seconds: number;
@@ -43,6 +45,7 @@ export interface DatasetStorageInfo {
 export interface StorageHealthResponse {
   storage_mode: string;
   migration_needed: boolean;
+  /** Size of the store database (store.sqlite or legacy store.duckdb). */
   duckdb_size_bytes: number;
   parquet_total_size_bytes: number;
   total_predictions: number;

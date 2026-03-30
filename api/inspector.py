@@ -18,7 +18,7 @@ Phases 1–5 endpoints:
 - /inspector/bias-variance — Bias-variance decomposition (Phase 5)
 - /inspector/learning-curve — Learning curve by training size (Phase 5)
 
-All data is read from the workspace's DuckDB store via WorkspaceStore.
+All data is read from the workspace's SQLite store via WorkspaceStore.
 """
 
 from __future__ import annotations
@@ -273,7 +273,7 @@ def _get_store():
     if not STORE_AVAILABLE:
         raise HTTPException(
             status_code=501,
-            detail="nirs4all library is required for DuckDB store access",
+            detail="nirs4all library is required for store access",
         )
 
     workspace = workspace_manager.get_current_workspace()
@@ -281,11 +281,10 @@ def _get_store():
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     workspace_path = Path(workspace.path)
-    db_path = workspace_path / "store.duckdb"
-    if not db_path.exists():
+    if not (workspace_path / "store.sqlite").exists() and not (workspace_path / "store.duckdb").exists():
         raise HTTPException(
             status_code=404,
-            detail="No DuckDB store found in workspace. Run a pipeline first.",
+            detail="No store found in workspace. Run a pipeline first.",
         )
 
     return get_cached("WorkspaceStore")(workspace_path)

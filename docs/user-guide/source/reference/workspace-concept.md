@@ -8,7 +8,7 @@ Every workspace folder contains three things:
 
 | Item | Description |
 |------|-------------|
-| `store.duckdb` | A local database file that holds all your runs, results, metrics, pipeline configurations, and dataset references. |
+| `store.sqlite` | A local database file that holds all your runs, results, metrics, pipeline configurations, and dataset references. |
 | `artifacts/` | A folder containing trained models, intermediate files, and other binary data produced during experiments. |
 | `exports/` | A folder where exported models (`.n4a` bundles) and prediction files are saved. |
 
@@ -49,7 +49,7 @@ If you already have a workspace folder (perhaps shared by a colleague or created
 
 1. Open **Settings** and go to the **Workspaces** tab.
 2. Click **Link Workspace**.
-3. Navigate to the folder containing the `store.duckdb` file.
+3. Navigate to the folder containing the `store.sqlite` file.
 4. The workspace appears in your workspace list.
 
 ### Switching workspaces

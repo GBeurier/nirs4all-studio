@@ -378,7 +378,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
             <p className="text-xl font-semibold capitalize">{stats.storage_mode}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">DuckDB / Parquet</p>
+            <p className="text-sm text-muted-foreground">Database / Parquet</p>
             <p className="text-sm font-medium">
               {formatBytes(stats.duckdb_size_bytes)} / {formatBytes(stats.parquet_arrays_size_bytes)}
             </p>

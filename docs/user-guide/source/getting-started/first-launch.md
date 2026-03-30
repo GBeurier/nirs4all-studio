@@ -18,7 +18,7 @@ Inside the workspace folder, you will find:
 
 | Item | Purpose |
 |---|---|
-| `store.duckdb` | A database file that holds metadata for all your datasets, pipelines, runs, and results |
+| `store.sqlite` | A database file that holds metadata for all your datasets, pipelines, runs, and results |
 | `artifacts/` | Trained models, serialized objects, and other binary files |
 | `exports/` | Exported models and prediction files |
 
@@ -66,7 +66,7 @@ Selecting an existing workspace folder to link to the application.
 ```
 
 :::{warning}
-Make sure you select a folder that was created by nirs4all Studio (it should contain a `store.duckdb` file). Selecting a regular folder will not work.
+Make sure you select a folder that was created by nirs4all Studio (it should contain a `store.sqlite` file). Selecting a regular folder will not work.
 :::
 
 ## Switching Between Workspaces

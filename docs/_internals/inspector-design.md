@@ -7,7 +7,7 @@
 
 ## 1. Vision & Objectifs
 
-L'**Inspector** est le pendant "prédictions" du **Playground** (qui gère spectres et features). Il fournit une suite complète d'outils de dataviz et d'analyse pour explorer les résultats d'un run (ou de plusieurs runs) stockés dans le workspace DuckDB.
+L'**Inspector** est le pendant "prédictions" du **Playground** (qui gère spectres et features). Il fournit une suite complète d'outils de dataviz et d'analyse pour explorer les résultats d'un run (ou de plusieurs runs) stockés dans le workspace SQLite.
 
 ### Objectifs principaux
 
@@ -60,7 +60,7 @@ L'**Inspector** est le pendant "prédictions" du **Playground** (qui gère spect
 ### 2.2 Flux de données
 
 ```
-DuckDB (WorkspaceStore)
+SQLite (WorkspaceStore)
     │
     ├── v_chain_summary (chaînes agrégées)
     ├── predictions (prédictions individuelles fold-level)
@@ -1009,7 +1009,7 @@ api/                                           # Backend FastAPI
 
 ### Phase 1 — Foundation
 - Layout page (sidebar + canvas)
-- InspectorDataContext (chargement depuis DuckDB)
+- InspectorDataContext (chargement depuis SQLite)
 - InspectorSelectionContext (sélection partagée basique)
 - GroupBuilder (mode `by_variable` uniquement)
 - **Panneaux** : Scatter Pred/Obs, Rankings Table, Score Histogram

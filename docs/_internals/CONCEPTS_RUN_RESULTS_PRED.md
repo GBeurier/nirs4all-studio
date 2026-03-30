@@ -516,9 +516,9 @@ AggregatedPrediction = Chain × Metric × Dataset
 
 ### Data Source
 
-Aggregated predictions are computed by the `v_aggregated_predictions` VIEW in DuckDB. This VIEW joins `predictions → chains → pipelines → runs` and groups by `(chain_id, metric, dataset_name)`.
+Aggregated predictions are computed by the `v_aggregated_predictions` VIEW in SQLite. This VIEW joins `predictions → chains → pipelines → runs` and groups by `(chain_id, metric, dataset_name)`.
 
-The VIEW is part of the DuckDB schema (`store.duckdb`) and is automatically available — no write-time hooks, rebuild steps, or materialization needed. Deleting a run or prediction is immediately reflected in query results.
+The VIEW is part of the SQLite schema (`store.sqlite`) and is automatically available — no write-time hooks, rebuild steps, or materialization needed. Deleting a run or prediction is immediately reflected in query results.
 
 ### Key Properties
 
@@ -718,11 +718,11 @@ PLSRegression_fold0_val
 
 ### Workspace Structure
 
-All structured data is stored in a single DuckDB database. Binary artifacts are stored in a flat content-addressed directory.
+All structured data is stored in a single SQLite database. Binary artifacts are stored in a flat content-addressed directory.
 
 ```
 workspace/
-├── store.duckdb                        # All metadata, configs, logs, chains, predictions
+├── store.sqlite                        # All metadata, configs, logs, chains, predictions
 │                                        # Tables: runs, pipelines, chains,
 │                                        # predictions, prediction_arrays, artifacts, logs
 │
@@ -757,9 +757,9 @@ top = store.top_predictions(n=10, metric="val_score")
 | `missing` | File not found at stored path | Update path |
 | `hash_mismatch` | File found but content changed | Create new version or accept |
 
-### DuckDB Tables
+### SQLite Tables
 
-All data previously stored in YAML manifest files is now in DuckDB tables:
+All data previously stored in YAML manifest files is now in SQLite tables:
 
 #### runs table
 ```sql
@@ -819,11 +819,11 @@ LIMIT 5;
 
 ---
 
-## 8. Performance: DuckDB Store Queries
+## 8. Performance: SQLite Store Queries
 
 ### Overview
 
-With DuckDB-backed storage, all prediction queries are instant SQL operations on `store.duckdb`. No filesystem scanning, no Parquet file loading, no client-side aggregation.
+With SQLite-backed storage, all prediction queries are instant SQL operations on `store.sqlite`. No filesystem scanning, no Parquet file loading, no client-side aggregation.
 
 ```python
 from nirs4all.pipeline.storage import WorkspaceStore
@@ -842,7 +842,7 @@ runs = store.list_runs(status="completed")
 
 ### Webapp Backend Integration
 
-The webapp backend queries `store.duckdb` directly through `WorkspaceStore` methods:
+The webapp backend queries `store.sqlite` directly through `WorkspaceStore` methods:
 
 ```python
 # api/workspace.py
@@ -851,7 +851,7 @@ from nirs4all.pipeline.storage import WorkspaceStore
 
 @router.get("/workspaces/{workspace_id}/predictions/summary")
 async def get_predictions_summary(workspace_id: str):
-    """Instant prediction summary from DuckDB."""
+    """Instant prediction summary from SQLite."""
     ws = workspace_manager._find_linked_workspace(workspace_id)
     store = WorkspaceStore(Path(ws.path) / "workspace")
 
@@ -869,7 +869,7 @@ async def get_workspace_predictions_data(
     dataset: str | None = None, model: str | None = None,
     partition: str | None = None,
 ):
-    """Paginated prediction query from DuckDB."""
+    """Paginated prediction query from SQLite."""
     store = WorkspaceStore(Path(ws.path) / "workspace")
     preds = store.query_predictions(
         dataset_name=dataset, model_class=model,
@@ -880,7 +880,7 @@ async def get_workspace_predictions_data(
 
 ### Webapp Frontend
 
-The frontend uses TanStack Query to call backend endpoints. All aggregation happens server-side in DuckDB:
+The frontend uses TanStack Query to call backend endpoints. All aggregation happens server-side in SQLite:
 
 ```typescript
 // src/pages/Predictions.tsx
@@ -898,7 +898,7 @@ const { data: details } = useQuery({
 
 ### Performance
 
-| Metric | Legacy (Parquet scan) | DuckDB Store |
+| Metric | Legacy (Parquet scan) | SQLite Store |
 |--------|----------------------|--------------|
 | **Initial page load** | 2-5 seconds | **< 50ms** |
 | **Dashboard stats** | Client-side aggregation | **Server-side SQL** |
@@ -910,10 +910,10 @@ const { data: details } = useQuery({
 
 | Benefit | Description |
 |---------|-------------|
-| **Single source of truth** | All data in `store.duckdb`, no separate caches |
+| **Single source of truth** | All data in `store.sqlite`, no separate caches |
 | **Always in sync** | Data written during training, no rebuild needed |
 | **SQL queries** | Flexible filtering, sorting, aggregation |
-| **Zero-copy Arrow** | DuckDB returns Polars DataFrames via Arrow transfer |
+| **Zero-copy Arrow** | SQLite returns Polars DataFrames via Arrow transfer |
 | **Indexed** | Key columns indexed for fast lookups |
 
 ---
@@ -1017,7 +1017,7 @@ const { data: details } = useQuery({
 ├── POST   /confidence             # Confidence prediction (NOT deprecated)
 └── POST   /explain                # Prediction explanation (NOT deprecated)
 
-/api/aggregated-predictions          # ✅ CURRENT — DuckDB-backed
+/api/aggregated-predictions          # ✅ CURRENT — SQLite-backed
 ├── GET    /                       # List aggregated chain-level results
 │                                   #   query: run_id?, pipeline_id?, dataset_name?,
 │                                   #          model_class?, metric?
@@ -1116,9 +1116,9 @@ Generate meaningful names from content:
 | Concept | Scope | Contains | Stored In |
 |---------|-------|----------|-----------|
 | Pipeline Template | Recipe | Steps with optional generators | `library/templates/<id>.json` |
-| Run | Experiment | Templates[] × Datasets[] → Results | `store.duckdb` (runs table) |
-| Pipeline | Execution | 1 Dataset + 1 Config → Predictions | `store.duckdb` (pipelines table) |
-| Prediction | Output | Model + Partition + Scores | `store.duckdb` (predictions table) |
+| Run | Experiment | Templates[] × Datasets[] → Results | `store.sqlite` (runs table) |
+| Pipeline | Execution | 1 Dataset + 1 Config → Predictions | `store.sqlite` (pipelines table) |
+| Prediction | Output | Model + Partition + Scores | `store.sqlite` (predictions table) |
 
 ### Key Formula
 
@@ -1151,18 +1151,18 @@ This section analyzes the discrepancies between the conceptual model described a
 |---------|--------------|---------|
 | Pipeline Template | ⚠️ Partial | Templates expanded immediately by `PipelineConfigs`. Original **not saved**. |
 | Multiple Templates | ❌ Not Implemented | `nirs4all.run()` accepts one pipeline, not a list of templates |
-| Run | ✅ Implemented | `WorkspaceStore.begin_run()` / `complete_run()` in `store.duckdb` |
-| Pipeline | ✅ Implemented | `WorkspaceStore.begin_pipeline()` / `complete_pipeline()` in `store.duckdb` |
-| Prediction | ✅ Implemented | Stored in `store.duckdb` predictions table with rich metadata |
+| Run | ✅ Implemented | `WorkspaceStore.begin_run()` / `complete_run()` in `store.sqlite` |
+| Pipeline | ✅ Implemented | `WorkspaceStore.begin_pipeline()` / `complete_pipeline()` in `store.sqlite` |
+| Prediction | ✅ Implemented | Stored in `store.sqlite` predictions table with rich metadata |
 
 ### nirs4all_webapp (Current Implementation)
 
 | Concept | Implemented? | Details |
 |---------|--------------|---------|
 | Run (UI types) | ⚠️ Partial | Types in `types/runs.ts` support multiple datasets, but not multiple templates |
-| Run Discovery | ✅ Implemented | Queries `store.duckdb` runs table via `WorkspaceStore.list_runs()` |
+| Run Discovery | ✅ Implemented | Queries `store.sqlite` runs table via `WorkspaceStore.list_runs()` |
 | Results View | ❌ Not Implemented | No dedicated results page, mixed into runs |
-| Predictions View | ✅ Implemented | Queries `store.duckdb` predictions table, displays well |
+| Predictions View | ✅ Implemented | Queries `store.sqlite` predictions table, displays well |
 
 ---
 
@@ -1366,13 +1366,13 @@ result = nirs4all.run(
 
 ## Gap #4: Manifest Structure Doesn't Match Concepts
 
-> **RESOLVED by DuckDB migration.** All structured data is now in `store.duckdb` with proper relational tables: `runs`, `pipelines`, `chains`, `predictions`. Run-level and pipeline-level grouping are first-class entities. See Section 7 for the current workspace structure.
+> **RESOLVED by SQLite migration.** All structured data is now in `store.sqlite` with proper relational tables: `runs`, `pipelines`, `chains`, `predictions`. Run-level and pipeline-level grouping are first-class entities. See Section 7 for the current workspace structure.
 
 ---
 
 ## Gap #5: Webapp Reads Wrong Data Source
 
-> **RESOLVED by DuckDB migration.** The webapp now queries `store.duckdb` via `WorkspaceStore.list_runs()` and `WorkspaceStore.query_predictions()`. Runs are first-class entities in the `runs` table with proper grouping. No more Parquet scanning or manifest file discovery.
+> **RESOLVED by SQLite migration.** The webapp now queries `store.sqlite` via `WorkspaceStore.list_runs()` and `WorkspaceStore.query_predictions()`. Runs are first-class entities in the `runs` table with proper grouping. No more Parquet scanning or manifest file discovery.
 
 ---
 
@@ -1482,7 +1482,7 @@ Predictions page (model outputs)
 
 ## Gap #8: Limited Dataset Metadata in Runs
 
-> **PARTIALLY RESOLVED by DuckDB migration.** The `runs` table stores a `datasets` JSON column with dataset metadata (name, path, hash). The `predictions` table stores `dataset_name`, `n_samples`, `n_features` per prediction. Rich dataset metadata (wavelength range, y_stats) can be stored in the `runs.datasets` JSON field. The webapp queries this data directly from `store.duckdb` without needing separate discovery or registry files.
+> **PARTIALLY RESOLVED by SQLite migration.** The `runs` table stores a `datasets` JSON column with dataset metadata (name, path, hash). The `predictions` table stores `dataset_name`, `n_samples`, `n_features` per prediction. Rich dataset metadata (wavelength range, y_stats) can be stored in the `runs.datasets` JSON field. The webapp queries this data directly from `store.sqlite` without needing separate discovery or registry files.
 
 ---
 
@@ -1492,13 +1492,13 @@ Predictions page (model outputs)
 
 ### Phase 0: Performance Optimization (Priority)
 
-> **RESOLVED by DuckDB migration.** All performance concerns around Parquet scanning, client-side aggregation, and summary recomputation are eliminated by using DuckDB as the single storage backend. `WorkspaceStore.top_predictions()` and `WorkspaceStore.query_predictions()` return instant results via SQL queries with indexed columns. The webapp backend delegates all queries to `WorkspaceStore` methods. The frontend uses TanStack Query with server-side pagination.
+> **RESOLVED by SQLite migration.** All performance concerns around Parquet scanning, client-side aggregation, and summary recomputation are eliminated by using SQLite as the single storage backend. `WorkspaceStore.top_predictions()` and `WorkspaceStore.query_predictions()` return instant results via SQL queries with indexed columns. The webapp backend delegates all queries to `WorkspaceStore` methods. The frontend uses TanStack Query with server-side pagination.
 
 ---
 
 ### Phase 1: Library Changes (nirs4all)
 
-> **PARTIALLY RESOLVED by DuckDB migration.** The Run entity is now implemented as a row in the `runs` table of `store.duckdb`, created by `WorkspaceStore.begin_run()`. Pipelines, chains, and predictions are stored in their respective tables with proper foreign key relationships. Manifest files (YAML) have been replaced entirely by DuckDB tables.
+> **PARTIALLY RESOLVED by SQLite migration.** The Run entity is now implemented as a row in the `runs` table of `store.sqlite`, created by `WorkspaceStore.begin_run()`. Pipelines, chains, and predictions are stored in their respective tables with proper foreign key relationships. Manifest files (YAML) have been replaced entirely by SQLite tables.
 
 **Remaining items:**
 
@@ -1529,7 +1529,7 @@ Predictions page (model outputs)
 
 ### Phase 2: Backend Changes (nirs4all_webapp)
 
-> **PARTIALLY RESOLVED by DuckDB migration.** The webapp backend now queries `store.duckdb` via `WorkspaceStore` for all run, pipeline, and prediction data. No more Parquet scanning or manifest file discovery. The dual-path confusion (parquet vs manifest) is eliminated.
+> **PARTIALLY RESOLVED by SQLite migration.** The webapp backend now queries `store.sqlite` via `WorkspaceStore` for all run, pipeline, and prediction data. No more Parquet scanning or manifest file discovery. The dual-path confusion (parquet vs manifest) is eliminated.
 
 **Remaining items:**
 
@@ -1545,7 +1545,7 @@ Predictions page (model outputs)
 
 #### 2.2 Dataset Management
 
-2. **Dataset auto-discovery from store.duckdb**
+2. **Dataset auto-discovery from store.sqlite**
    - Extract unique datasets from `runs.datasets` JSON and `predictions.dataset_name`
    - API endpoint: `POST /api/workspaces/:id/sync-datasets`
 
@@ -1573,18 +1573,18 @@ Predictions page (model outputs)
 
 ### Phase 4: Migration & Compatibility
 
-> **RESOLVED by DuckDB migration.** Legacy manifests and Parquet files are no longer used. The DuckDB schema is created automatically on first use. Old workspaces need to be re-run to populate the new `store.duckdb`.
+> **RESOLVED by SQLite migration.** Legacy manifests and Parquet files are no longer used. The SQLite schema is created automatically on first use. Old workspaces need to be re-run to populate the new `store.sqlite`.
 
 ---
 
 ### 🆕 Phase 5: Robustness (from review)
 
-> **PARTIALLY RESOLVED by DuckDB migration.** Run and pipeline status tracking is now built into `store.duckdb`. `WorkspaceStore.begin_run()` creates a run with status "running", `complete_run()` marks it "completed", `fail_run()` marks it "failed". Similarly for pipelines. DuckDB's ACID properties handle concurrent writes.
+> **PARTIALLY RESOLVED by SQLite migration.** Run and pipeline status tracking is now built into `store.sqlite`. `WorkspaceStore.begin_run()` creates a run with status "running", `complete_run()` marks it "completed", `fail_run()` marks it "failed". Similarly for pipelines. SQLite's ACID properties handle concurrent writes.
 
 #### 5.1 Error Recovery (remaining)
 
 1. **Checkpoint / resume support**
-   - Query `store.duckdb` for completed pipelines within a failed run
+   - Query `store.sqlite` for completed pipelines within a failed run
    - Resume from the last successful pipeline
 
 #### 5.2 Concurrent Run Handling
@@ -1592,7 +1592,7 @@ Predictions page (model outputs)
 3. **Resource locking**
    - Prevent conflicts when multiple runs access same dataset
    - Queue mechanism for shared resources
-   - DuckDB handles concurrent writes with ACID transactions
+   - SQLite handles concurrent writes with ACID transactions
 
 #### 5.3 State Machine Formalization
 
@@ -1617,7 +1617,7 @@ Predictions page (model outputs)
 | Component | File | Change | Status |
 |-----------|------|--------|--------|
 | **Phase 0: Performance** | | | |
-| DuckDB store queries | `pipeline/storage/workspace_store.py` | `top_predictions()`, `query_predictions()` | DONE |
+| SQLite store queries | `pipeline/storage/workspace_store.py` | `top_predictions()`, `query_predictions()` | DONE |
 | Webapp summary endpoint | `api/workspace.py` | Delegate to `WorkspaceStore` | DONE |
 | Virtual scrolling | `Predictions.tsx` | Use TanStack Query + server pagination | TODO |
 | **Phase 1: nirs4all** | | | |
@@ -1635,7 +1635,7 @@ Predictions page (model outputs)
 | Runs page | `Runs.tsx` | Show templates per run | TODO |
 | Run creation | `NewRun.tsx` | Select multiple templates | TODO |
 | **Phase 4: Migration** | | | |
-| DuckDB schema | Auto-created on first use | No migration needed | DONE |
+| SQLite schema | Auto-created on first use | No migration needed | DONE |
 | **Phase 5: Robustness** | | | |
 | Run status tracking | `workspace_store.py` | `begin_run`/`complete_run`/`fail_run` | DONE |
 | Resume support | `workspace_store.py` | Query completed pipelines in failed run | TODO |
@@ -1650,7 +1650,7 @@ This section documents the results of an independent code review comparing this 
 
 ## Overall Assessment
 
-**Verdict:** The design is **fundamentally sound** and correctly identifies the major architectural gaps. The concept hierarchy (Run → Pipeline → Prediction) is well-defined. Many gaps identified here have been **resolved by the DuckDB storage migration** (Phases 0, 4, 5 largely complete).
+**Verdict:** The design is **fundamentally sound** and correctly identifies the major architectural gaps. The concept hierarchy (Run → Pipeline → Prediction) is well-defined. Many gaps identified here have been **resolved by the SQLite storage migration** (Phases 0, 4, 5 largely complete).
 
 **Remaining refinements** are primarily around template preservation and multi-template support.
 
@@ -1683,13 +1683,13 @@ generator_choices:
 
 ### Gap #5: "Webapp Reads Wrong Data Source" - RESOLVED
 
-> **Resolved by DuckDB migration.** The webapp now has a single discovery path: query `store.duckdb` via `WorkspaceStore`. The dual-path confusion (parquet vs manifest) is eliminated.
+> **Resolved by SQLite migration.** The webapp now has a single discovery path: query `store.sqlite` via `WorkspaceStore`. The dual-path confusion (parquet vs manifest) is eliminated.
 
 ---
 
 ### Gap #8: "Limited Dataset Metadata in Runs" - Partially Resolved
 
-> **Partially resolved by DuckDB migration.** The `runs` table stores a `datasets` JSON column with dataset metadata. The `predictions` table stores `dataset_name`, `n_samples`, `n_features`. Rich metadata (y_stats, wavelength_range) can be added to the `runs.datasets` JSON field.
+> **Partially resolved by SQLite migration.** The `runs` table stores a `datasets` JSON column with dataset metadata. The `predictions` table stores `dataset_name`, `n_samples`, `n_features`. Rich metadata (y_stats, wavelength_range) can be added to the `runs.datasets` JSON field.
 
 ---
 
@@ -1767,11 +1767,11 @@ METRIC_METADATA = {
 
 ### 1. God Object: Run Manifest - RESOLVED
 
-> **Resolved by DuckDB migration.** Data is now normalized across relational tables (`runs`, `pipelines`, `chains`, `predictions`, `artifacts`, `logs`). No single manifest file. Each table has a focused responsibility.
+> **Resolved by SQLite migration.** Data is now normalized across relational tables (`runs`, `pipelines`, `chains`, `predictions`, `artifacts`, `logs`). No single manifest file. Each table has a focused responsibility.
 
 ### 2. Duplicate Data Storage - RESOLVED
 
-> **Resolved by DuckDB migration.** Dataset metadata stored once in `runs.datasets` JSON. Predictions reference datasets by `dataset_name`. No separate registry files needed.
+> **Resolved by SQLite migration.** Dataset metadata stored once in `runs.datasets` JSON. Predictions reference datasets by `dataset_name`. No separate registry files needed.
 
 ### 3. Synchronous Batch Loading (Frontend)
 
@@ -1785,11 +1785,11 @@ The proposed frontend still accumulates ALL predictions before showing UI, defea
 
 ## Critical Bottlenecks Identified
 
-> **All bottlenecks RESOLVED by DuckDB migration:**
+> **All bottlenecks RESOLVED by SQLite migration:**
 >
-> 1. **Sequential Parquet Scanning** -- Eliminated. Single `store.duckdb` file with indexed SQL queries.
+> 1. **Sequential Parquet Scanning** -- Eliminated. Single `store.sqlite` file with indexed SQL queries.
 > 2. **Hash Computation on Path Resolution** -- Dataset info stored in `runs.datasets` JSON column.
-> 3. **Full DataFrame Sort for Top-K** -- DuckDB uses `ORDER BY ... LIMIT` with efficient query planning.
+> 3. **Full DataFrame Sort for Top-K** -- SQLite uses `ORDER BY ... LIMIT` with efficient query planning.
 > 4. **Summary Recomputation on Every Save** -- No summaries needed. Data is written once during training; queries are instant SQL.
 
 ---
@@ -1798,15 +1798,15 @@ The proposed frontend still accumulates ALL predictions before showing UI, defea
 
 ### 1. Error Recovery Strategy
 
-> **Partially resolved.** `WorkspaceStore.fail_run()` and `fail_pipeline()` mark failed entities. Completed pipelines within a failed run are preserved in `store.duckdb`. Resume support (re-running only failed pipelines) is a remaining TODO.
+> **Partially resolved.** `WorkspaceStore.fail_run()` and `fail_pipeline()` mark failed entities. Completed pipelines within a failed run are preserved in `store.sqlite`. Resume support (re-running only failed pipelines) is a remaining TODO.
 
 ### 2. Concurrent Run Handling
 
-> **Partially resolved.** DuckDB provides ACID transactions, so concurrent writes to `store.duckdb` are safe. Resource locking for shared datasets during training remains a TODO.
+> **Partially resolved.** SQLite provides ACID transactions, so concurrent writes to `store.sqlite` are safe. Resource locking for shared datasets during training remains a TODO.
 
 ### 3. Backward Compatibility
 
-> **Resolved by clean break.** The DuckDB migration is a clean break from the legacy file-based storage. Old workspaces need to be re-run. No migration from v1 manifests/Parquet files.
+> **Resolved by clean break.** The SQLite migration is a clean break from the legacy file-based storage. Old workspaces need to be re-run. No migration from v1 manifests/Parquet files.
 
 ---
 
@@ -1824,15 +1824,15 @@ The proposed frontend still accumulates ALL predictions before showing UI, defea
 | Low | Resume support | Re-run only failed pipelines | TODO |
 | Low | Run lineage tracking | Template versioning | TODO |
 
-> **Note:** Many previously high-priority items (Parquet scanning, manifest god object, duplicate data storage, race conditions) were **resolved by the DuckDB storage migration**.
+> **Note:** Many previously high-priority items (Parquet scanning, manifest god object, duplicate data storage, race conditions) were **resolved by the SQLite storage migration**.
 
 ---
 
 ## Conclusion
 
-This design document provides a solid foundation for evolving the nirs4all ecosystem. The core concepts are well-defined and the identified gaps are real. The **DuckDB storage migration** resolved the majority of storage, performance, and data consistency issues:
+This design document provides a solid foundation for evolving the nirs4all ecosystem. The core concepts are well-defined and the identified gaps are real. The **SQLite storage migration** resolved the majority of storage, performance, and data consistency issues:
 
-1. **Single source of truth** -- All data in `store.duckdb` (no manifests, no Parquet files, no registry files)
+1. **Single source of truth** -- All data in `store.sqlite` (no manifests, no Parquet files, no registry files)
 2. **Relational data model** -- Runs, pipelines, chains, predictions in normalized tables
 3. **Instant queries** -- SQL with indexes instead of filesystem scanning
 4. **ACID transactions** -- Safe concurrent writes
