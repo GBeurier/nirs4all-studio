@@ -1,16 +1,12 @@
 /**
- * Chinese translations for nirs4all webapp
+ * Chinese (Simplified) translations for nirs4all webapp
  *
- * Uses English as the base and overrides translated keys.
+ * 简体中文翻译
  */
 
-import en from "@/locales/en";
-
 const zh = {
-  ...en,
-
+  // ============= Common / Global =============
   common: {
-    ...en.common,
     loading: "加载中...",
     save: "保存",
     cancel: "取消",
@@ -63,8 +59,8 @@ const zh = {
     revertChanges: "撤销更改",
   },
 
+  // ============= Time / Date =============
   time: {
-    ...en.time,
     justNow: "刚刚",
     minutesAgo: "{{count}} 分钟前",
     minutesAgo_other: "{{count}} 分钟前",
@@ -82,8 +78,8 @@ const zh = {
     updatedAt: "更新于",
   },
 
+  // ============= Navigation =============
   nav: {
-    ...en.nav,
     datasets: "数据集",
     pipelines: "流水线",
     pipelineEditor: "流水线编辑器",
@@ -100,21 +96,23 @@ const zh = {
     settings: "设置",
   },
 
+  // ============= Settings Page =============
   settings: {
-    ...en.settings,
     title: "设置",
     subtitle: "配置工作区和应用偏好",
+
+    // Tab labels
     tabs: {
-      ...en.settings.tabs,
       general: "常规",
       workspace: "工作区",
       data: "数据默认值",
       advanced: "高级",
     },
+
+    // General settings section
     general: {
-      ...en.settings.general,
+      // Appearance
       appearance: {
-        ...en.settings.general.appearance,
         title: "外观",
         description: "自定义应用界面外观",
         theme: "主题",
@@ -122,26 +120,26 @@ const zh = {
         themeDark: "深色",
         themeSystem: "跟随系统",
       },
+      // Display density
       density: {
-        ...en.settings.general.density,
         title: "显示密度",
         description: "调整界面中的间距和留白",
         compact: "紧凑",
         comfortable: "舒适",
         spacious: "宽松",
       },
+      // Animations
       animations: {
-        ...en.settings.general.animations,
         title: "减少动画",
         description: "为无障碍或性能降低界面动效",
       },
+      // Zoom
       zoom: {
-        ...en.settings.general.zoom,
         title: "界面缩放",
         description: "调整整体界面比例以提升可读性",
       },
+      // Language
       language: {
-        ...en.settings.general.language,
         title: "语言",
         description: "选择你偏好的界面语言",
         select: "选择语言",
@@ -149,10 +147,10 @@ const zh = {
         restart: "部分更改可能需要刷新页面后生效",
       },
     },
+
+    // Workspace section
     workspace: {
-      ...en.settings.workspace,
       current: {
-        ...en.settings.workspace.current,
         title: "当前工作区",
         description: "设置用于存放流水线、结果和预测的工作区目录",
         placeholder: "未选择工作区",
@@ -160,7 +158,6 @@ const zh = {
         browseButton: "浏览",
       },
       create: {
-        ...en.settings.workspace.create,
         title: "创建新工作区",
         description: "创建带标准目录结构的新工作区",
         name: "名称",
@@ -171,6 +168,8 @@ const zh = {
         descriptionLabel: "描述",
         descriptionPlaceholder: "可选描述...",
         createStructure: "创建标准目录结构",
+        createStructureHint:
+          "(results/, pipelines/, models/, predictions/)",
         createButton: "创建工作区",
         creating: "创建中...",
         switching: "正在切换到新工作区...",
@@ -180,13 +179,11 @@ const zh = {
         pathPreview: "工作区将创建在",
         pathPreviewEmpty: "请选择位置并输入名称",
         validation: {
-          ...en.settings.workspace.create.validation,
           nameRequired: "工作区名称为必填项",
           locationRequired: "工作区位置为必填项",
         },
       },
       recent: {
-        ...en.settings.workspace.recent,
         title: "最近使用的工作区",
         empty: "暂无最近工作区",
         emptyHint: "未找到最近工作区。请先创建或打开一个工作区。",
@@ -208,7 +205,6 @@ const zh = {
         pipelines_other: "{{count}} 条流水线",
       },
       stats: {
-        ...en.settings.workspace.stats,
         title: "工作区统计",
         description: "按类别统计存储使用情况",
         totalSize: "总大小",
@@ -216,7 +212,6 @@ const zh = {
         externalData: "外部数据",
         refresh: "刷新",
         categories: {
-          ...en.settings.workspace.stats.categories,
           datasets: "数据集",
           pipelines: "流水线",
           results: "结果",
@@ -227,7 +222,6 @@ const zh = {
         },
       },
       export: {
-        ...en.settings.workspace.export,
         title: "导出工作区",
         description: "创建工作区归档文件",
         includeDatasets: "包含数据集",
@@ -240,7 +234,6 @@ const zh = {
         error: "工作区导出失败",
       },
       import: {
-        ...en.settings.workspace.import,
         title: "导入工作区",
         description: "从归档文件导入工作区",
         archivePath: "归档文件",
@@ -252,51 +245,89 @@ const zh = {
         error: "工作区导入失败",
       },
     },
+
+    // Data defaults section
     dataDefaults: {
-      ...en.settings.dataDefaults,
       title: "数据加载默认值",
       description: "通过向导加载新数据集时使用的默认设置",
       note: "这些默认值会在向导中添加新数据集时应用。每个数据集在加载过程中都可覆盖这些设置。",
       selectWorkspace: "请选择一个工作区来配置数据加载默认值",
       savedSuccess: "默认值保存成功",
       parsing: {
-        ...en.settings.dataDefaults.parsing,
         title: "解析选项",
         tooltip: "自动检测关闭或失败时将使用这些默认值",
         delimiter: "分隔符",
         delimiterDescription: "列分隔字符",
+        delimiters: {
+          semicolon: "分号 (;)",
+          comma: "逗号 (,)",
+          tab: "制表符",
+          space: "空格",
+        },
         decimal: "小数分隔符",
         decimalDescription: "小数点字符",
+        decimals: {
+          dot: "点号 (.)",
+          comma: "逗号 (,)",
+        },
         hasHeader: "包含表头行",
         hasHeaderDescription: "首行包含列名",
         headerUnit: "表头单位",
         headerUnitDescription: "波长列标题的单位",
+        headerUnits: {
+          nm: "纳米 (nm)",
+          "cm-1": "波数 (cm⁻¹)",
+          text: "文字标签",
+          none: "无单位",
+          index: "列索引",
+        },
       },
       signal: {
-        ...en.settings.dataDefaults.signal,
         title: "信号配置",
         type: "信号类型",
         typeDescription: "光谱测量类型",
+        types: {
+          auto: "自动检测",
+          absorbance: "吸光度",
+          reflectance: "反射率",
+          "reflectance%": "反射率 (%)",
+          transmittance: "透射率",
+          "transmittance%": "透射率 (%)",
+        },
       },
       missing: {
-        ...en.settings.dataDefaults.missing,
         title: "缺失值",
         description: "如何处理缺失或无效值",
         policy: "NA 策略",
+        policies: {
+          auto: "自动（NA 时中止）",
+          abort: "NA 时中止",
+          remove_sample: "移除含 NA 的样本",
+          remove_feature: "移除含 NA 的特征",
+          replace: "替换 NA 值",
+          ignore: "忽略（在流水线中处理）",
+        },
         fillConfig: "填充值配置",
         fillMethod: "填充方式",
         fillMethodDescription: "替换缺失值所使用的方法",
         fillValue: "填充值",
         fillValueDescription: "用于替换的常量值",
+        fillMethods: {
+          value: "常量值",
+          mean: "列均值",
+          median: "列中位数",
+          forward_fill: "前向填充",
+          backward_fill: "后向填充",
+        },
       },
       autoDetect: "自动检测格式",
       save: "保存默认值",
       reset: "恢复默认值",
     },
+
+    // Advanced section
     advanced: {
-      ...en.settings.advanced,
       developer: {
-        ...en.settings.advanced.developer,
         title: "开发者模式",
         description: "启用开发和测试专用功能",
         enable: "启用开发者模式",
@@ -304,13 +335,14 @@ const zh = {
         needsWorkspace: "请选择工作区后再启用开发者模式",
       },
       backend: {
-        ...en.settings.advanced.backend,
         title: "后端连接",
         description: "API 端点和连接设置",
         url: "后端地址",
         urlHint: "API 端点（生产环境只读）",
+        restart: "重启后端",
+        restartHint: "停止并重启 Python 后端进程",
+        restarting: "重启中...",
         status: {
-          ...en.settings.advanced.backend.status,
           title: "后端状态",
           description: "连接健康度与延迟",
           connected: "已连接",
@@ -328,7 +360,6 @@ const zh = {
         },
       },
       system: {
-        ...en.settings.advanced.system,
         title: "系统信息",
         description: "Python 环境与系统详情",
         python: "Python",
@@ -338,13 +369,13 @@ const zh = {
         os: "操作系统",
         osRelease: "系统版本",
         architecture: "架构",
+        nirs4all: "nirs4all",
         capabilities: "能力",
         packages: "已安装包",
         copyToClipboard: "复制系统信息",
         copied: "已复制到剪贴板",
       },
       errors: {
-        ...en.settings.advanced.errors,
         title: "错误日志",
         description: "用于调试的近期错误",
         empty: "暂无错误记录",
@@ -358,7 +389,6 @@ const zh = {
         copyError: "复制错误详情",
       },
       troubleshooting: {
-        ...en.settings.advanced.troubleshooting,
         title: "故障排查",
         description: "清理本地数据并重置设置",
         clearCache: "清理本地缓存",
@@ -372,8 +402,9 @@ const zh = {
           "此操作会将所有应用设置恢复为默认值并清空本地存储，且无法撤销。",
       },
     },
+
+    // Python Environment Picker
     pythonEnv: {
-      ...en.settings.pythonEnv,
       title: "Python 环境",
       description: "分析后端使用的 Python 解释器",
       ready: "就绪",
@@ -394,8 +425,9 @@ const zh = {
       createInFolder: "在自定义目录中创建",
       settingUp: "正在配置 Python 环境...",
     },
+
+    // Config Alignment
     configAlignment: {
-      ...en.settings.configAlignment,
       title: "推荐配置",
       description: "将已安装包与当前配置档推荐版本进行比较",
       aligned: "已对齐",
@@ -411,25 +443,24 @@ const zh = {
       source: "配置来源 {{source}}（应用 v{{version}}）",
       unavailable: "推荐配置不可用",
     },
+
+    // App info footer
     appInfo: {
-      ...en.settings.appInfo,
       version: "nirs4all Studio v{{version}}",
       copyright: "© {{year}} nirs4all Studio",
     },
   },
 
+  // ============= Keyboard Shortcuts =============
   shortcuts: {
-    ...en.shortcuts,
     title: "键盘快捷键",
     description: "快捷键速查",
     categories: {
-      ...en.shortcuts.categories,
       global: "全局",
       pipelineEditor: "流水线编辑器",
       playground: "实验台",
     },
     keys: {
-      ...en.shortcuts.keys,
       commandPalette: "打开命令面板",
       toggleSidebar: "切换侧边栏",
       openSettings: "打开设置",
@@ -443,33 +474,29 @@ const zh = {
     },
   },
 
+  // ============= Layout =============
   layout: {
-    ...en.layout,
     sidebar: {
-      ...en.layout.sidebar,
       groups: {
-        ...en.layout.sidebar.groups,
         prepare: "准备",
         explore: "探索",
         results: "结果",
       },
     },
     header: {
-      ...en.layout.header,
       searchPlaceholder: "搜索...",
       search: "搜索",
       toggleTheme: "切换主题",
     },
   },
 
+  // ============= Inspector =============
   inspector: {
-    ...en.inspector,
     title: "检查器",
     comingSoon:
       "批量预测分析即将上线。该工具将帮助你深入检查和分析预测结果。",
     underConstruction: "开发中",
     sidebar: {
-      ...en.inspector.sidebar,
       source: "来源",
       selectRun: "运行",
       selectDataset: "数据集",
@@ -487,22 +514,59 @@ const zh = {
       clearPins: "清除固定",
       savedSelections: "已保存选择",
     },
+    panels: {
+      scatter: "预测值 vs 观测值",
+      residuals: "残差",
+      rankings: "排名",
+      histogram: "分数分布",
+      heatmap: "性能热力图",
+      candlestick: "箱线图",
+      branch_comparison: "分支比较",
+      branch_topology: "分支拓扑",
+      fold_stability: "折叠稳定性",
+      preprocessing_impact: "预处理影响",
+      hyperparameter: "超参数敏感性",
+      bias_variance: "偏差-方差",
+      learning_curve: "学习曲线",
+    },
+    toolbar: {
+      scoreColumn: "评分",
+      partition: "分区",
+      export: "导出",
+      exportPng: "导出面板为 PNG",
+      exportCsv: "导出数据为 CSV",
+    },
+    filters: {
+      all: "全部",
+      regression: "回归",
+      classification: "分类",
+      hideOutliers: "隐藏离群点",
+      onlyOutliers: "仅显示离群点",
+      selectedOnly: "仅显示已选",
+      unselectedOnly: "仅显示未选",
+    },
+    groupModes: {
+      by_variable: "变量",
+      by_range: "范围",
+      by_top_k: "Top K",
+      by_branch: "分支",
+      by_expression: "表达式",
+    },
     noData: "暂无可用数据。",
     loading: "正在加载检查器数据...",
   },
 
+  // ============= Lab =============
   lab: {
-    ...en.lab,
     tabs: {
-      ...en.lab.tabs,
       synthesis: "合成",
       transfer: "迁移",
       shapley: "Shapley",
     },
   },
 
+  // ============= Datasets =============
   datasets: {
-    ...en.datasets,
     title: "数据集",
     subtitle: "管理光谱数据集及其配置",
     workspace: "工作区",
@@ -520,21 +584,18 @@ const zh = {
     refreshAll: "全部刷新",
     loading: "正在加载数据集...",
     stats: {
-      ...en.datasets.stats,
       totalDatasets: "数据集总数",
       totalSamples: "样本总数",
       features: "特征数",
       groups: "分组数",
     },
     filters: {
-      ...en.datasets.filters,
       searchPlaceholder: "搜索数据集...",
       groupPlaceholder: "按分组筛选",
       allDatasets: "全部数据集",
       sortPlaceholder: "排序方式",
     },
     sort: {
-      ...en.datasets.sort,
       name: "名称",
       dateAdded: "添加日期",
       samples: "样本数",
@@ -543,7 +604,6 @@ const zh = {
       descending: "降序",
     },
     actions: {
-      ...en.datasets.actions,
       view: "查看",
       edit: "编辑",
       refresh: "刷新",
@@ -552,7 +612,6 @@ const zh = {
       delete: "删除",
     },
     info: {
-      ...en.datasets.info,
       samples: "样本",
       features: "特征",
       targets: "目标",
@@ -561,16 +620,24 @@ const zh = {
       spectralRange: "光谱范围",
     },
     synthetic: {
-      ...en.datasets.synthetic,
       title: "生成合成数据集",
       description: "为测试和开发创建合成 NIRS 数据",
       taskType: "任务类型",
+      taskTypes: {
+        regression: "回归",
+        binary_classification: "二分类",
+        multiclass_classification: "多分类",
+      },
       samples: "样本数量",
       complexity: "复杂度",
+      complexities: {
+        simple: "简单",
+        realistic: "真实",
+        complex: "复杂",
+      },
       classes: "类别数量",
       trainRatio: "训练集比例",
       options: {
-        ...en.datasets.synthetic.options,
         title: "选项",
         includeMetadata: "包含元数据",
         includeRepetitions: "包含重复样本",
@@ -586,13 +653,11 @@ const zh = {
       error: "合成数据集生成失败",
     },
     detail: {
-      ...en.datasets.detail,
       loading: "正在加载数据集...",
       error: "加载数据集失败",
       notFound: "未找到数据集",
       goBack: "返回",
       tabs: {
-        ...en.datasets.detail.tabs,
         overview: "概览",
         spectra: "光谱",
         targets: "目标",
@@ -601,8 +666,8 @@ const zh = {
     },
   },
 
+  // ============= Pipelines =============
   pipelines: {
-    ...en.pipelines,
     title: "流水线",
     subtitle: "{{total}} 条流水线 • {{favorites}} 个收藏 • {{withRuns}} 条有运行历史",
     empty: "暂无流水线",
@@ -615,11 +680,9 @@ const zh = {
     importPipeline: "导入流水线",
     clearSearch: "清空搜索",
     filters: {
-      ...en.pipelines.filters,
       searchPlaceholder: "搜索流水线、标签...",
     },
     tabs: {
-      ...en.pipelines.tabs,
       all: "全部",
       favorites: "收藏",
       myPipelines: "我的流水线",
@@ -627,22 +690,20 @@ const zh = {
       history: "历史",
     },
     sort: {
-      ...en.pipelines.sort,
       lastModified: "最近修改",
       name: "名称",
       mostRuns: "运行次数最多",
       mostSteps: "步骤最多",
     },
     presets: {
-      ...en.pipelines.presets,
       title: "预设流水线",
       description: "从模板开始并进行自定义",
     },
     editor: {
-      ...en.pipelines.editor,
       title: "流水线编辑器",
       untitled: "未命名流水线",
       newPipeline: "新建流水线",
+      defaultDescription: "SNV + SG → PLS",
       save: "保存流水线",
       run: "运行流水线",
       validate: "验证",
@@ -654,9 +715,13 @@ const zh = {
       addToFavorites: "加入收藏",
       removeFromFavorites: "取消收藏",
       loadingSamples: "样本加载中...",
+      import: {
+        success: "已从实验台导入流水线",
+        successDetail: "已加载 {{count}} 个算子",
+        failure: "从实验台导入流水线失败",
+      },
     },
     steps: {
-      ...en.pipelines.steps,
       preprocessing: "预处理",
       splitting: "划分",
       model: "模型",
@@ -664,8 +729,8 @@ const zh = {
     },
   },
 
+  // ============= Runs =============
   runs: {
-    ...en.runs,
     title: "运行",
     subtitle: "跟踪并监控当前和历史流水线运行",
     empty: "暂无运行记录",
@@ -675,7 +740,6 @@ const zh = {
     error: "错误",
     unknownError: "未知错误",
     stats: {
-      ...en.runs.stats,
       running: "运行中",
       queued: "排队中",
       completed: "已完成",
@@ -683,7 +747,6 @@ const zh = {
       totalPipelines: "流水线总数",
     },
     status: {
-      ...en.runs.status,
       queued: "排队中",
       running: "运行中",
       completed: "已完成",
@@ -693,7 +756,6 @@ const zh = {
       pending: "待处理",
     },
     actions: {
-      ...en.runs.actions,
       view: "查看详情",
       stop: "停止",
       pause: "暂停",
@@ -702,7 +764,6 @@ const zh = {
       delete: "删除",
     },
     guide: {
-      ...en.runs.guide,
       title: "如何开始新运行",
       selectDatasets: "选择数据集",
       selectDatasetsDesc: "选择一个或多个用于训练的数据集",
@@ -713,37 +774,35 @@ const zh = {
     },
   },
 
+  // ============= Results =============
   results: {
-    ...en.results,
     title: "结果",
     subtitle: "查看和分析实验结果",
     loading: "正在加载工作区结果...",
     error: "加载结果失败",
     unknown: "未知",
     none: "无",
+    cv: "CV",
     model: "模型",
     stats: {
-      ...en.results.stats,
       datasets: "数据集",
       pipelines: "流水线",
       completed: "已完成",
       failed: "失败",
     },
     filters: {
-      ...en.results.filters,
       searchPlaceholder: "搜索数据集...",
     },
   },
 
+  // ============= Predictions =============
   predictions: {
-    ...en.predictions,
     title: "预测",
     subtitle: "查看模型预测和性能指标",
     loading: "正在加载预测...",
     error: "加载预测时出错",
     errorLoad: "预测加载失败",
     metrics: {
-      ...en.predictions.metrics,
       valScore: "验证分数",
       testScore: "测试分数",
       trainScore: "训练分数",
@@ -751,7 +810,6 @@ const zh = {
     visibleMetrics: "可见指标",
     quickView: "快速查看",
     filters: {
-      ...en.predictions.filters,
       searchPlaceholder: "搜索预测...",
       dataset: "数据集",
       allDatasets: "全部数据集",
@@ -763,7 +821,6 @@ const zh = {
       allTypes: "全部类型",
     },
     table: {
-      ...en.predictions.table,
       dataset: "数据集",
       model: "模型",
       partition: "分区",
@@ -774,8 +831,8 @@ const zh = {
     },
   },
 
+  // ============= Aggregated Results =============
   aggregatedResults: {
-    ...en.aggregatedResults,
     title: "聚合结果",
     subtitle: "跨折和分区的链路级模型性能",
     loading: "正在加载聚合结果...",
@@ -783,49 +840,41 @@ const zh = {
     emptyHint: "请先运行流水线生成预测结果，系统会在此进行聚合展示。",
   },
 
+  // ============= Analysis =============
   analysis: {
-    ...en.analysis,
     title: "分析",
     subtitle: "用于探索和分析光谱数据的高级工具",
     badges: {
-      ...en.analysis.badges,
       beta: "测试版",
       comingSoon: "即将推出",
       notAvailable: "不可用",
     },
     openTool: "打开工具",
     pca: {
-      ...en.analysis.pca,
       title: "PCA 分析",
       description: "主成分分析，用于降维和数据探索",
     },
     variableImportance: {
-      ...en.analysis.variableImportance,
       title: "变量重要性",
       description: "识别最重要的波长和光谱区间",
     },
     modelComparison: {
-      ...en.analysis.modelComparison,
       title: "模型比较",
       description: "比较不同模型和流水线的性能",
     },
     residualAnalysis: {
-      ...en.analysis.residualAnalysis,
       title: "残差分析",
       description: "分析预测残差并识别离群点",
     },
     refitScoring: {
-      ...en.analysis.refitScoring,
       title: "Refit 评分",
       description: "比较 CV 评分与最终模型评分，并查看在全量数据上重训后的可部署模型。",
     },
     transfer: {
-      ...en.analysis.transfer,
       title: "迁移分析",
       description: "评估预处理对跨数据集距离的影响，用于校准迁移",
     },
     gettingStarted: {
-      ...en.analysis.gettingStarted,
       title: "分析入门",
       description:
         "分析工具可帮助你更好地理解光谱数据。可先使用 PCA 探索模式，再通过变量重要性定位关键波长，最后比较模型性能以选择最佳方案。",
@@ -834,14 +883,13 @@ const zh = {
       interactive: "交互式可视化",
     },
     empty: {
-      ...en.analysis.empty,
       description: "请先运行实验以生成分析数据。运行完成后结果将显示在这里。",
       viewRuns: "查看运行",
     },
   },
 
+  // ============= SHAP Variable Importance =============
   shap: {
-    ...en.shap,
     title: "变量重要性",
     computing: "计算中...",
     compute: "计算解释",
@@ -851,15 +899,13 @@ const zh = {
     noBundles: "未找到导出的模型包",
     noResults: "暂无结果",
     instructions:
-      "选择已训练的模型和数据集，然后点击“计算解释”，分析哪些波长对预测最重要。",
+      "选择已训练的模型和数据集，然后点击"计算解释"，分析哪些波长对预测最重要。",
     features: {
-      ...en.shap.features,
       spectral: "光谱重要性",
       beeswarm: "SHAP 分布",
       waterfall: "单样本分解",
     },
     form: {
-      ...en.shap.form,
       modelSource: "模型来源",
       fromRun: "来自训练运行",
       fromBundle: "来自导出模型包",
@@ -878,58 +924,48 @@ const zh = {
       aggregation: "聚合方式",
     },
     results: {
-      ...en.shap.results,
       title: "SHAP 分析结果",
       samples: "样本",
     },
     tabs: {
-      ...en.shap.tabs,
       spectral: "光谱",
       beeswarm: "蜂群图",
       waterfall: "瀑布图",
       ranking: "排名",
     },
     spectral: {
-      ...en.shap.spectral,
       description: "在平均光谱上高亮重要波长区间。颜色越深表示重要性越高。",
     },
     beeswarm: {
-      ...en.shap.beeswarm,
       description: "SHAP 值在样本间的分布。每个点代表一个样本，颜色表示特征值。",
     },
     waterfall: {
-      ...en.shap.waterfall,
       description: "展示单个样本中各特征对预测结果的贡献。",
     },
     ranking: {
-      ...en.shap.ranking,
       description: "按平均绝对 SHAP 值排序的波长区间。",
     },
   },
 
+  // ============= New Experiment =============
   newExperiment: {
-    ...en.newExperiment,
     title: "新建实验",
     steps: {
-      ...en.newExperiment.steps,
       selectDatasets: "选择数据集",
       selectPipelines: "选择流水线",
       configure: "配置",
       launch: "启动",
     },
     filters: {
-      ...en.newExperiment.filters,
       searchDatasets: "搜索数据集...",
       searchPipelines: "搜索流水线...",
     },
     tabs: {
-      ...en.newExperiment.tabs,
       allPipelines: "全部流水线",
       favorites: "收藏",
       presets: "预设",
     },
     config: {
-      ...en.newExperiment.config,
       descriptionPlaceholder: "此实验的可选描述...",
       crossValidation: "交叉验证",
       kfold: "K 折",
@@ -941,8 +977,8 @@ const zh = {
     summary: "摘要",
   },
 
+  // ============= Errors & Validation =============
   errors: {
-    ...en.errors,
     generic: "发生错误",
     networkError: "网络错误，请检查连接。",
     serverError: "服务器错误，请稍后重试。",
@@ -959,15 +995,13 @@ const zh = {
     alreadyExists: "已存在",
   },
 
+  // ============= Confirmations =============
   confirm: {
-    ...en.confirm,
     delete: {
-      ...en.confirm.delete,
       title: "确认删除",
       description: "确认要删除吗？该操作无法撤销。",
     },
     unsavedChanges: {
-      ...en.confirm.unsavedChanges,
       title: "未保存更改",
       description: "你有未保存的更改。是否在离开前保存？",
       save: "保存",
@@ -976,13 +1010,12 @@ const zh = {
     },
   },
 
+  // ============= Setup Wizard =============
   setupWizard: {
-    ...en.setupWizard,
     title: "欢迎使用 nirs4all Studio",
     subtitle: "让我们先完成环境配置以获得最佳体验",
     skip: "跳过设置",
     env: {
-      ...en.setupWizard.env,
       title: "Python 环境设置",
       description: "nirs4all Studio 需要 Python 环境来运行分析后端。此步骤仅需一次。",
       autoSetup: "自动设置",
@@ -998,7 +1031,6 @@ const zh = {
       changeEnv: "或更换环境",
     },
     envProgress: {
-      ...en.setupWizard.envProgress,
       title: "正在设置 Python 环境",
       downloading: "正在下载 Python",
       extracting: "正在解压运行时",
@@ -1013,7 +1045,6 @@ const zh = {
       tryAgain: "重试",
     },
     detect: {
-      ...en.setupWizard.detect,
       title: "硬件检测",
       description: "检测 GPU 能力以推荐最佳配置",
       scanning: "正在扫描 GPU 硬件...",
@@ -1021,21 +1052,18 @@ const zh = {
       autoAdvance: "正在选择推荐配置...",
     },
     profile: {
-      ...en.setupWizard.profile,
       title: "选择计算配置档",
       description: "选择 nirs4all 在你的系统上的运行方式。后续可在设置中修改。",
       recommended: "推荐",
       loadFailed: "加载配置档失败，后端可能仍在启动中。",
     },
     extras: {
-      ...en.setupWizard.extras,
       title: "可选扩展包",
       description: "选择要安装的附加包，也可稍后在设置中安装。",
       install: "安装并继续",
       skipInstall: "暂时跳过",
     },
     install: {
-      ...en.setupWizard.install,
       title: "正在安装依赖",
       description: "正在配置你的环境，这可能需要几分钟。",
       preparing: "正在准备安装...",
@@ -1045,7 +1073,6 @@ const zh = {
       continueAnyway: "仍然继续",
     },
     ready: {
-      ...en.setupWizard.ready,
       title: "配置完成！",
       description: "你的环境已配置完成，可以开始使用。",
       profile: "计算配置档",
@@ -1056,8 +1083,8 @@ const zh = {
     },
   },
 
+  // ============= Accessibility =============
   a11y: {
-    ...en.a11y,
     skipToContent: "跳转到内容",
     closeDialog: "关闭对话框",
     openMenu: "打开菜单",

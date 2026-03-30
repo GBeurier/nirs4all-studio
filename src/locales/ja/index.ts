@@ -1,16 +1,12 @@
 /**
  * Japanese translations for nirs4all webapp
  *
- * Uses English as the base and overrides translated keys.
+ * 日本語翻訳
  */
 
-import en from "@/locales/en";
-
 const ja = {
-  ...en,
-
+  // ============= Common / Global =============
   common: {
-    ...en.common,
     loading: "読み込み中...",
     save: "保存",
     cancel: "キャンセル",
@@ -63,8 +59,8 @@ const ja = {
     revertChanges: "変更を元に戻す",
   },
 
+  // ============= Time / Date =============
   time: {
-    ...en.time,
     justNow: "たった今",
     minutesAgo: "{{count}}分前",
     minutesAgo_other: "{{count}}分前",
@@ -82,8 +78,8 @@ const ja = {
     updatedAt: "更新日時",
   },
 
+  // ============= Navigation =============
   nav: {
-    ...en.nav,
     datasets: "データセット",
     pipelines: "パイプライン",
     pipelineEditor: "パイプラインエディター",
@@ -100,21 +96,23 @@ const ja = {
     settings: "設定",
   },
 
+  // ============= Settings Page =============
   settings: {
-    ...en.settings,
     title: "設定",
     subtitle: "ワークスペースとアプリケーションの設定を構成します",
+
+    // Tab labels
     tabs: {
-      ...en.settings.tabs,
       general: "一般",
       workspace: "ワークスペース",
       data: "データ既定値",
       advanced: "詳細設定",
     },
+
+    // General settings section
     general: {
-      ...en.settings.general,
+      // Appearance
       appearance: {
-        ...en.settings.general.appearance,
         title: "外観",
         description: "アプリケーションの見た目をカスタマイズします",
         theme: "テーマ",
@@ -122,26 +120,26 @@ const ja = {
         themeDark: "ダーク",
         themeSystem: "システム設定に従う",
       },
+      // Display density
       density: {
-        ...en.settings.general.density,
         title: "表示密度",
         description: "インターフェース全体の余白と間隔を調整します",
         compact: "コンパクト",
         comfortable: "標準",
         spacious: "ゆったり",
       },
+      // Animations
       animations: {
-        ...en.settings.general.animations,
         title: "アニメーションを抑制",
         description: "アクセシビリティやパフォーマンスのためにモーションを最小化します",
       },
+      // Zoom
       zoom: {
-        ...en.settings.general.zoom,
         title: "UIズーム",
         description: "読みやすさのためにインターフェース全体の倍率を調整します",
       },
+      // Language
       language: {
-        ...en.settings.general.language,
         title: "言語",
         description: "インターフェースの言語を選択します",
         select: "言語を選択",
@@ -149,10 +147,10 @@ const ja = {
         restart: "一部の変更はページの再読み込みが必要な場合があります",
       },
     },
+
+    // Workspace section
     workspace: {
-      ...en.settings.workspace,
       current: {
-        ...en.settings.workspace.current,
         title: "現在のワークスペース",
         description: "パイプライン、結果、予測を保存するワークスペースフォルダーを設定します",
         placeholder: "ワークスペースが選択されていません",
@@ -160,7 +158,6 @@ const ja = {
         browseButton: "参照",
       },
       create: {
-        ...en.settings.workspace.create,
         title: "新規ワークスペースの作成",
         description: "標準フォルダー構造で新しいワークスペースをセットアップします",
         name: "名前",
@@ -171,6 +168,8 @@ const ja = {
         descriptionLabel: "説明",
         descriptionPlaceholder: "任意の説明...",
         createStructure: "標準フォルダー構造を作成",
+        createStructureHint:
+          "(results/, pipelines/, models/, predictions/)",
         createButton: "ワークスペースを作成",
         creating: "作成中...",
         switching: "新しいワークスペースに切り替え中...",
@@ -180,13 +179,11 @@ const ja = {
         pathPreview: "ワークスペースの作成先",
         pathPreviewEmpty: "場所を選択して名前を入力してください",
         validation: {
-          ...en.settings.workspace.create.validation,
           nameRequired: "ワークスペース名は必須です",
           locationRequired: "ワークスペースの場所は必須です",
         },
       },
       recent: {
-        ...en.settings.workspace.recent,
         title: "最近のワークスペース",
         empty: "最近のワークスペースはありません",
         emptyHint: "最近のワークスペースが見つかりません。ワークスペースを作成または開いてください。",
@@ -208,7 +205,6 @@ const ja = {
         pipelines_other: "{{count}}件のパイプライン",
       },
       stats: {
-        ...en.settings.workspace.stats,
         title: "ワークスペースの統計",
         description: "カテゴリ別のストレージ使用量",
         totalSize: "合計サイズ",
@@ -216,7 +212,6 @@ const ja = {
         externalData: "外部データ",
         refresh: "更新",
         categories: {
-          ...en.settings.workspace.stats.categories,
           datasets: "データセット",
           pipelines: "パイプライン",
           results: "結果",
@@ -227,7 +222,6 @@ const ja = {
         },
       },
       export: {
-        ...en.settings.workspace.export,
         title: "ワークスペースのエクスポート",
         description: "ワークスペースのアーカイブを作成します",
         includeDatasets: "データセットを含める",
@@ -240,7 +234,6 @@ const ja = {
         error: "ワークスペースのエクスポートに失敗しました",
       },
       import: {
-        ...en.settings.workspace.import,
         title: "ワークスペースのインポート",
         description: "アーカイブからワークスペースをインポートします",
         archivePath: "アーカイブファイル",
@@ -252,51 +245,89 @@ const ja = {
         error: "ワークスペースのインポートに失敗しました",
       },
     },
+
+    // Data defaults section
     dataDefaults: {
-      ...en.settings.dataDefaults,
       title: "データ読み込みの既定値",
       description: "ウィザードで新しいデータセットを読み込む際に使用される既定の設定です",
       note: "これらの既定値はウィザードで新しいデータセットを追加する際に適用されます。各データセットは読み込み時にこれらの設定を上書きできます。",
       selectWorkspace: "データ読み込みの既定値を設定するにはワークスペースを選択してください",
       savedSuccess: "既定値を保存しました",
       parsing: {
-        ...en.settings.dataDefaults.parsing,
         title: "解析オプション",
-        tooltip: "自動検出が無効またはで失敗した場合にこれらの既定値が使用されます",
+        tooltip: "自動検出が無効または失敗した場合にこれらの既定値が使用されます",
         delimiter: "区切り文字",
         delimiterDescription: "列の区切り文字",
+        delimiters: {
+          semicolon: "セミコロン (;)",
+          comma: "カンマ (,)",
+          tab: "タブ",
+          space: "スペース",
+        },
         decimal: "小数点記号",
         decimalDescription: "小数点の文字",
+        decimals: {
+          dot: "ピリオド (.)",
+          comma: "カンマ (,)",
+        },
         hasHeader: "ヘッダー行あり",
         hasHeaderDescription: "最初の行に列名が含まれています",
         headerUnit: "ヘッダーの単位",
         headerUnitDescription: "波長列ヘッダーの単位",
+        headerUnits: {
+          nm: "ナノメートル (nm)",
+          "cm-1": "波数 (cm⁻¹)",
+          text: "テキストラベル",
+          none: "単位なし",
+          index: "列インデックス",
+        },
       },
       signal: {
-        ...en.settings.dataDefaults.signal,
         title: "シグナル設定",
         type: "シグナルタイプ",
         typeDescription: "分光測定の種類",
+        types: {
+          auto: "自動検出",
+          absorbance: "吸光度",
+          reflectance: "反射率",
+          "reflectance%": "反射率 (%)",
+          transmittance: "透過率",
+          "transmittance%": "透過率 (%)",
+        },
       },
       missing: {
-        ...en.settings.dataDefaults.missing,
         title: "欠損値",
         description: "欠損値や無効な値の処理方法",
         policy: "NAポリシー",
+        policies: {
+          auto: "自動（NAで中止）",
+          abort: "NAで中止",
+          remove_sample: "NAを含むサンプルを削除",
+          remove_feature: "NAを含む特徴量を削除",
+          replace: "NA値を置換",
+          ignore: "無視（パイプラインで処理）",
+        },
         fillConfig: "補完設定",
         fillMethod: "補完方法",
         fillMethodDescription: "欠損値を置換するために使用する方法",
         fillValue: "補完値",
         fillValueDescription: "置換に使用する定数値",
+        fillMethods: {
+          value: "定数値",
+          mean: "列平均",
+          median: "列中央値",
+          forward_fill: "前方補完",
+          backward_fill: "後方補完",
+        },
       },
       autoDetect: "フォーマットの自動検出",
       save: "既定値を保存",
       reset: "既定値にリセット",
     },
+
+    // Advanced section
     advanced: {
-      ...en.settings.advanced,
       developer: {
-        ...en.settings.advanced.developer,
         title: "開発者モード",
         description: "開発およびテスト用の追加機能を有効にします",
         enable: "開発者モードを有効にする",
@@ -304,13 +335,14 @@ const ja = {
         needsWorkspace: "開発者モードを有効にするにはワークスペースを選択してください",
       },
       backend: {
-        ...en.settings.advanced.backend,
         title: "バックエンド接続",
         description: "APIエンドポイントと接続設定",
         url: "バックエンドURL",
         urlHint: "APIエンドポイント（本番環境では読み取り専用）",
+        restart: "バックエンドを再起動",
+        restartHint: "Pythonバックエンドプロセスを停止して再起動します",
+        restarting: "再起動中...",
         status: {
-          ...en.settings.advanced.backend.status,
           title: "バックエンドステータス",
           description: "接続状態とレイテンシ",
           connected: "接続済み",
@@ -328,7 +360,6 @@ const ja = {
         },
       },
       system: {
-        ...en.settings.advanced.system,
         title: "システム情報",
         description: "Python環境とシステムの詳細",
         python: "Python",
@@ -338,13 +369,13 @@ const ja = {
         os: "オペレーティングシステム",
         osRelease: "リリース",
         architecture: "アーキテクチャ",
+        nirs4all: "nirs4all",
         capabilities: "機能",
         packages: "インストール済みパッケージ",
         copyToClipboard: "システム情報をコピー",
         copied: "クリップボードにコピーしました",
       },
       errors: {
-        ...en.settings.advanced.errors,
         title: "エラーログ",
         description: "デバッグ用の最近のエラー",
         empty: "エラーの記録はありません",
@@ -358,7 +389,6 @@ const ja = {
         copyError: "エラー詳細をコピー",
       },
       troubleshooting: {
-        ...en.settings.advanced.troubleshooting,
         title: "トラブルシューティング",
         description: "ローカルデータのクリアと設定のリセット",
         clearCache: "ローカルキャッシュをクリア",
@@ -373,8 +403,9 @@ const ja = {
           "すべてのアプリケーション設定が既定値にリセットされ、ローカルストレージがクリアされます。この操作は元に戻せません。",
       },
     },
+
+    // Python Environment Picker
     pythonEnv: {
-      ...en.settings.pythonEnv,
       title: "Python環境",
       description: "分析バックエンドで使用されるPythonインタープリター",
       ready: "準備完了",
@@ -395,8 +426,9 @@ const ja = {
       createInFolder: "カスタムフォルダーに作成",
       settingUp: "Python環境をセットアップ中...",
     },
+
+    // Config Alignment
     configAlignment: {
-      ...en.settings.configAlignment,
       title: "推奨構成",
       description: "インストール済みパッケージをプロファイルの推奨構成と比較します",
       aligned: "整合済み",
@@ -412,25 +444,24 @@ const ja = {
       source: "構成元 {{source}}（アプリ v{{version}}）",
       unavailable: "推奨構成は利用できません",
     },
+
+    // App info footer
     appInfo: {
-      ...en.settings.appInfo,
       version: "nirs4all Studio v{{version}}",
       copyright: "© {{year}} nirs4all Studio",
     },
   },
 
+  // ============= Keyboard Shortcuts =============
   shortcuts: {
-    ...en.shortcuts,
     title: "キーボードショートカット",
     description: "キーボードショートカットのクイックリファレンス",
     categories: {
-      ...en.shortcuts.categories,
       global: "グローバル",
       pipelineEditor: "パイプラインエディター",
       playground: "プレイグラウンド",
     },
     keys: {
-      ...en.shortcuts.keys,
       commandPalette: "コマンドパレットを開く",
       toggleSidebar: "サイドバーの切り替え",
       openSettings: "設定を開く",
@@ -444,33 +475,29 @@ const ja = {
     },
   },
 
+  // ============= Layout =============
   layout: {
-    ...en.layout,
     sidebar: {
-      ...en.layout.sidebar,
       groups: {
-        ...en.layout.sidebar.groups,
         prepare: "準備",
         explore: "探索",
         results: "結果",
       },
     },
     header: {
-      ...en.layout.header,
       searchPlaceholder: "検索...",
       search: "検索",
       toggleTheme: "テーマの切り替え",
     },
   },
 
+  // ============= Inspector =============
   inspector: {
-    ...en.inspector,
     title: "インスペクター",
     comingSoon:
       "バッチ予測分析は近日公開予定です。このツールでは予測結果を詳細に検査・分析できるようになります。",
     underConstruction: "準備中",
     sidebar: {
-      ...en.inspector.sidebar,
       source: "ソース",
       selectRun: "実行",
       selectDataset: "データセット",
@@ -488,22 +515,59 @@ const ja = {
       clearPins: "ピン留めを解除",
       savedSelections: "保存済み選択",
     },
+    panels: {
+      scatter: "予測値 vs 観測値",
+      residuals: "残差",
+      rankings: "ランキング",
+      histogram: "スコア分布",
+      heatmap: "パフォーマンスヒートマップ",
+      candlestick: "箱ひげ図",
+      branch_comparison: "ブランチ比較",
+      branch_topology: "ブランチトポロジー",
+      fold_stability: "フォールド安定性",
+      preprocessing_impact: "前処理の影響",
+      hyperparameter: "ハイパーパラメーター感度",
+      bias_variance: "バイアス・バリアンス",
+      learning_curve: "学習曲線",
+    },
+    toolbar: {
+      scoreColumn: "スコア",
+      partition: "パーティション",
+      export: "エクスポート",
+      exportPng: "パネルをPNGでエクスポート",
+      exportCsv: "データをCSVでエクスポート",
+    },
+    filters: {
+      all: "すべて",
+      regression: "回帰",
+      classification: "分類",
+      hideOutliers: "外れ値を非表示",
+      onlyOutliers: "外れ値のみ",
+      selectedOnly: "選択済みのみ",
+      unselectedOnly: "未選択のみ",
+    },
+    groupModes: {
+      by_variable: "変数",
+      by_range: "範囲",
+      by_top_k: "上位K件",
+      by_branch: "ブランチ",
+      by_expression: "式",
+    },
     noData: "データがありません。",
     loading: "インスペクターデータを読み込み中...",
   },
 
+  // ============= Lab =============
   lab: {
-    ...en.lab,
     tabs: {
-      ...en.lab.tabs,
       synthesis: "合成",
       transfer: "転移",
       shapley: "Shapley",
     },
   },
 
+  // ============= Datasets =============
   datasets: {
-    ...en.datasets,
     title: "データセット",
     subtitle: "スペクトルデータセットと構成を管理します",
     workspace: "ワークスペース",
@@ -521,21 +585,18 @@ const ja = {
     refreshAll: "すべて更新",
     loading: "データセットを読み込み中...",
     stats: {
-      ...en.datasets.stats,
       totalDatasets: "データセット数",
       totalSamples: "サンプル数",
       features: "特徴量",
       groups: "グループ数",
     },
     filters: {
-      ...en.datasets.filters,
       searchPlaceholder: "データセットを検索...",
       groupPlaceholder: "グループでフィルター",
       allDatasets: "すべてのデータセット",
       sortPlaceholder: "並べ替え",
     },
     sort: {
-      ...en.datasets.sort,
       name: "名前",
       dateAdded: "追加日",
       samples: "サンプル数",
@@ -544,7 +605,6 @@ const ja = {
       descending: "降順",
     },
     actions: {
-      ...en.datasets.actions,
       view: "表示",
       edit: "編集",
       refresh: "更新",
@@ -553,7 +613,6 @@ const ja = {
       delete: "削除",
     },
     info: {
-      ...en.datasets.info,
       samples: "サンプル",
       features: "特徴量",
       targets: "ターゲット",
@@ -562,16 +621,24 @@ const ja = {
       spectralRange: "スペクトル範囲",
     },
     synthetic: {
-      ...en.datasets.synthetic,
       title: "合成データセットの生成",
       description: "テストと開発のための合成NIRSデータを作成します",
       taskType: "タスクタイプ",
+      taskTypes: {
+        regression: "回帰",
+        binary_classification: "二値分類",
+        multiclass_classification: "多クラス分類",
+      },
       samples: "サンプル数",
       complexity: "複雑度",
+      complexities: {
+        simple: "シンプル",
+        realistic: "リアル",
+        complex: "複雑",
+      },
       classes: "クラス数",
       trainRatio: "訓練データ比率",
       options: {
-        ...en.datasets.synthetic.options,
         title: "オプション",
         includeMetadata: "メタデータを含める",
         includeRepetitions: "繰り返しを含める",
@@ -587,13 +654,11 @@ const ja = {
       error: "合成データセットの生成に失敗しました",
     },
     detail: {
-      ...en.datasets.detail,
       loading: "データセットを読み込み中...",
       error: "データセットの読み込みに失敗しました",
       notFound: "データセットが見つかりません",
       goBack: "戻る",
       tabs: {
-        ...en.datasets.detail.tabs,
         overview: "概要",
         spectra: "スペクトル",
         targets: "ターゲット",
@@ -602,8 +667,8 @@ const ja = {
     },
   },
 
+  // ============= Pipelines =============
   pipelines: {
-    ...en.pipelines,
     title: "パイプライン",
     subtitle: "{{total}}件のパイプライン • {{favorites}}件のお気に入り • {{withRuns}}件の実行履歴あり",
     empty: "パイプラインはまだありません",
@@ -616,11 +681,9 @@ const ja = {
     importPipeline: "パイプラインをインポート",
     clearSearch: "検索をクリア",
     filters: {
-      ...en.pipelines.filters,
       searchPlaceholder: "パイプライン、タグを検索...",
     },
     tabs: {
-      ...en.pipelines.tabs,
       all: "すべて",
       favorites: "お気に入り",
       myPipelines: "マイパイプライン",
@@ -628,22 +691,20 @@ const ja = {
       history: "履歴",
     },
     sort: {
-      ...en.pipelines.sort,
       lastModified: "最終更新",
       name: "名前",
       mostRuns: "実行回数順",
       mostSteps: "ステップ数順",
     },
     presets: {
-      ...en.pipelines.presets,
       title: "プリセットパイプライン",
       description: "テンプレートから始めてカスタマイズします",
     },
     editor: {
-      ...en.pipelines.editor,
       title: "パイプラインエディター",
       untitled: "無題のパイプライン",
       newPipeline: "新規パイプライン",
+      defaultDescription: "SNV + SG → PLS",
       save: "パイプラインを保存",
       run: "パイプラインを実行",
       validate: "検証",
@@ -655,9 +716,13 @@ const ja = {
       addToFavorites: "お気に入りに追加",
       removeFromFavorites: "お気に入りから削除",
       loadingSamples: "サンプルを読み込み中...",
+      import: {
+        success: "プレイグラウンドからパイプラインをインポートしました",
+        successDetail: "{{count}}個のオペレーターを読み込みました",
+        failure: "プレイグラウンドからのパイプラインインポートに失敗しました",
+      },
     },
     steps: {
-      ...en.pipelines.steps,
       preprocessing: "前処理",
       splitting: "分割",
       model: "モデル",
@@ -665,8 +730,8 @@ const ja = {
     },
   },
 
+  // ============= Runs =============
   runs: {
-    ...en.runs,
     title: "実行",
     subtitle: "アクティブおよび過去のパイプライン実行を追跡・監視します",
     empty: "実行履歴はまだありません",
@@ -676,7 +741,6 @@ const ja = {
     error: "エラー",
     unknownError: "不明なエラー",
     stats: {
-      ...en.runs.stats,
       running: "実行中",
       queued: "待機中",
       completed: "完了",
@@ -684,7 +748,6 @@ const ja = {
       totalPipelines: "パイプライン総数",
     },
     status: {
-      ...en.runs.status,
       queued: "待機中",
       running: "実行中",
       completed: "完了",
@@ -694,7 +757,6 @@ const ja = {
       pending: "保留中",
     },
     actions: {
-      ...en.runs.actions,
       view: "詳細を表示",
       stop: "停止",
       pause: "一時停止",
@@ -703,7 +765,6 @@ const ja = {
       delete: "削除",
     },
     guide: {
-      ...en.runs.guide,
       title: "新しい実行を開始するには",
       selectDatasets: "データセットを選択",
       selectDatasetsDesc: "訓練に使用する1つ以上のデータセットを選択します",
@@ -714,37 +775,35 @@ const ja = {
     },
   },
 
+  // ============= Results =============
   results: {
-    ...en.results,
     title: "結果",
     subtitle: "実験結果の表示と分析",
     loading: "ワークスペースの結果を読み込み中...",
     error: "結果の読み込みに失敗しました",
     unknown: "不明",
     none: "なし",
+    cv: "CV",
     model: "モデル",
     stats: {
-      ...en.results.stats,
       datasets: "データセット",
       pipelines: "パイプライン",
       completed: "完了",
       failed: "失敗",
     },
     filters: {
-      ...en.results.filters,
       searchPlaceholder: "データセットを検索...",
     },
   },
 
+  // ============= Predictions =============
   predictions: {
-    ...en.predictions,
     title: "予測",
     subtitle: "モデルの予測とパフォーマンス指標を表示します",
     loading: "予測を読み込み中...",
     error: "予測の読み込みエラー",
     errorLoad: "予測の読み込みに失敗しました",
     metrics: {
-      ...en.predictions.metrics,
       valScore: "検証スコア",
       testScore: "テストスコア",
       trainScore: "訓練スコア",
@@ -752,7 +811,6 @@ const ja = {
     visibleMetrics: "表示する指標",
     quickView: "クイックビュー",
     filters: {
-      ...en.predictions.filters,
       searchPlaceholder: "予測を検索...",
       dataset: "データセット",
       allDatasets: "すべてのデータセット",
@@ -764,7 +822,6 @@ const ja = {
       allTypes: "すべてのタイプ",
     },
     table: {
-      ...en.predictions.table,
       dataset: "データセット",
       model: "モデル",
       partition: "パーティション",
@@ -775,8 +832,8 @@ const ja = {
     },
   },
 
+  // ============= Aggregated Results =============
   aggregatedResults: {
-    ...en.aggregatedResults,
     title: "集計結果",
     subtitle: "フォールドとパーティションをまたいだチェーンレベルのモデル性能",
     loading: "集計結果を読み込み中...",
@@ -784,49 +841,41 @@ const ja = {
     emptyHint: "パイプラインを実行して予測結果を生成すると、ここに集計されます。",
   },
 
+  // ============= Analysis =============
   analysis: {
-    ...en.analysis,
     title: "分析",
     subtitle: "スペクトルデータの探索と分析のための高度なツール",
     badges: {
-      ...en.analysis.badges,
       beta: "ベータ",
       comingSoon: "近日公開",
       notAvailable: "利用不可",
     },
     openTool: "ツールを開く",
     pca: {
-      ...en.analysis.pca,
       title: "PCA分析",
       description: "次元削減とデータ探索のための主成分分析",
     },
     variableImportance: {
-      ...en.analysis.variableImportance,
       title: "変数重要度",
       description: "重要な波長とスペクトル領域を特定します",
     },
     modelComparison: {
-      ...en.analysis.modelComparison,
       title: "モデル比較",
       description: "異なるモデルとパイプライン間のパフォーマンスを比較します",
     },
     residualAnalysis: {
-      ...en.analysis.residualAnalysis,
       title: "残差分析",
       description: "予測残差を分析し外れ値を特定します",
     },
     refitScoring: {
-      ...en.analysis.refitScoring,
       title: "リフィットスコアリング",
       description: "CVスコアと最終モデルスコアを比較します。全データで再訓練したデプロイ可能なモデルを確認できます。",
     },
     transfer: {
-      ...en.analysis.transfer,
       title: "転移分析",
       description: "キャリブレーション転移のためのデータセット間距離への前処理の影響を評価します",
     },
     gettingStarted: {
-      ...en.analysis.gettingStarted,
       title: "分析の始め方",
       description:
         "分析ツールはスペクトルデータの理解に役立ちます。まずPCAでパターンを探索し、次に変数重要度で重要な波長を特定し、モデル比較で最適なアプローチを見つけましょう。",
@@ -835,14 +884,13 @@ const ja = {
       interactive: "インタラクティブな可視化",
     },
     empty: {
-      ...en.analysis.empty,
       description: "まず実験を実行して分析用のデータを生成してください。実行が完了するとここに結果が表示されます。",
       viewRuns: "実行を表示",
     },
   },
 
+  // ============= SHAP Variable Importance =============
   shap: {
-    ...en.shap,
     title: "変数重要度",
     computing: "計算中...",
     compute: "説明を計算",
@@ -854,13 +902,11 @@ const ja = {
     instructions:
       "訓練済みモデルとデータセットを選択し、「説明を計算」をクリックして、予測に最も重要な波長を分析します。",
     features: {
-      ...en.shap.features,
       spectral: "スペクトル重要度",
       beeswarm: "SHAP分布",
       waterfall: "サンプル分解",
     },
     form: {
-      ...en.shap.form,
       modelSource: "モデルソース",
       fromRun: "訓練実行から",
       fromBundle: "エクスポートバンドルから",
@@ -879,58 +925,48 @@ const ja = {
       aggregation: "集約方法",
     },
     results: {
-      ...en.shap.results,
       title: "SHAP分析結果",
       samples: "サンプル",
     },
     tabs: {
-      ...en.shap.tabs,
       spectral: "スペクトル",
       beeswarm: "ビースウォーム",
       waterfall: "ウォーターフォール",
       ranking: "ランキング",
     },
     spectral: {
-      ...en.shap.spectral,
       description: "平均スペクトル上に重要な波長領域をハイライト表示します。色が濃いほど重要度が高いことを示します。",
     },
     beeswarm: {
-      ...en.shap.beeswarm,
       description: "サンプル全体のSHAP値の分布です。各点はサンプルを表し、色は特徴量の値を示します。",
     },
     waterfall: {
-      ...en.shap.waterfall,
       description: "単一サンプルに対する各特徴量の予測への寄与を表示します。",
     },
     ranking: {
-      ...en.shap.ranking,
       description: "平均絶対SHAP値でランク付けされた波長領域です。",
     },
   },
 
+  // ============= New Experiment =============
   newExperiment: {
-    ...en.newExperiment,
     title: "新規実験",
     steps: {
-      ...en.newExperiment.steps,
       selectDatasets: "データセットを選択",
       selectPipelines: "パイプラインを選択",
       configure: "設定",
       launch: "開始",
     },
     filters: {
-      ...en.newExperiment.filters,
       searchDatasets: "データセットを検索...",
       searchPipelines: "パイプラインを検索...",
     },
     tabs: {
-      ...en.newExperiment.tabs,
       allPipelines: "すべてのパイプライン",
       favorites: "お気に入り",
       presets: "プリセット",
     },
     config: {
-      ...en.newExperiment.config,
       descriptionPlaceholder: "この実験の説明（任意）...",
       crossValidation: "交差検証",
       kfold: "K分割",
@@ -942,8 +978,8 @@ const ja = {
     summary: "サマリー",
   },
 
+  // ============= Errors & Validation =============
   errors: {
-    ...en.errors,
     generic: "エラーが発生しました",
     networkError: "ネットワークエラーです。接続を確認してください。",
     serverError: "サーバーエラーです。しばらくしてから再試行してください。",
@@ -960,15 +996,13 @@ const ja = {
     alreadyExists: "すでに存在します",
   },
 
+  // ============= Confirmations =============
   confirm: {
-    ...en.confirm,
     delete: {
-      ...en.confirm.delete,
       title: "削除の確認",
       description: "本当に削除しますか？この操作は元に戻せません。",
     },
     unsavedChanges: {
-      ...en.confirm.unsavedChanges,
       title: "未保存の変更",
       description: "未保存の変更があります。離れる前に保存しますか？",
       save: "保存",
@@ -977,13 +1011,12 @@ const ja = {
     },
   },
 
+  // ============= Setup Wizard =============
   setupWizard: {
-    ...en.setupWizard,
     title: "nirs4all Studioへようこそ",
     subtitle: "最適な体験のために環境を設定しましょう",
     skip: "セットアップをスキップ",
     env: {
-      ...en.setupWizard.env,
       title: "Python環境のセットアップ",
       description: "nirs4all Studioは分析バックエンドの実行にPython環境が必要です。この設定は一度だけです。",
       autoSetup: "自動セットアップ",
@@ -999,7 +1032,6 @@ const ja = {
       changeEnv: "または環境を変更",
     },
     envProgress: {
-      ...en.setupWizard.envProgress,
       title: "Python環境をセットアップ中",
       downloading: "Pythonをダウンロード中",
       extracting: "ランタイムを展開中",
@@ -1014,7 +1046,6 @@ const ja = {
       tryAgain: "再試行",
     },
     detect: {
-      ...en.setupWizard.detect,
       title: "ハードウェア検出",
       description: "最適な構成を推奨するためにGPU機能をスキャンしています",
       scanning: "GPUハードウェアをスキャン中...",
@@ -1022,21 +1053,18 @@ const ja = {
       autoAdvance: "推奨プロファイルを選択中...",
     },
     profile: {
-      ...en.setupWizard.profile,
       title: "計算プロファイルの選択",
       description: "nirs4allをシステム上でどのように実行するかを選択します。後から設定で変更できます。",
       recommended: "推奨",
       loadFailed: "プロファイルの読み込みに失敗しました。バックエンドがまだ起動中の可能性があります。",
     },
     extras: {
-      ...en.setupWizard.extras,
       title: "オプションパッケージ",
       description: "追加パッケージを選択してインストールします。後から設定でもインストールできます。",
       install: "インストールして続行",
       skipInstall: "今はスキップ",
     },
     install: {
-      ...en.setupWizard.install,
       title: "パッケージをインストール中",
       description: "環境をセットアップしています。数分かかる場合があります。",
       preparing: "インストールを準備中...",
@@ -1046,7 +1074,6 @@ const ja = {
       continueAnyway: "続行する",
     },
     ready: {
-      ...en.setupWizard.ready,
       title: "準備が整いました！",
       description: "環境の設定が完了し、使用する準備ができました。",
       profile: "計算プロファイル",
@@ -1057,8 +1084,8 @@ const ja = {
     },
   },
 
+  // ============= Accessibility =============
   a11y: {
-    ...en.a11y,
     skipToContent: "コンテンツへスキップ",
     closeDialog: "ダイアログを閉じる",
     openMenu: "メニューを開く",
