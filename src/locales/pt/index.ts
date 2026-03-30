@@ -90,6 +90,7 @@ const pt = {
     scores: "Pontuações",
     predictions: "Predições",
     aggregatedResults: "Resultados Agregados",
+    predict: "Prever",
     lab: "Laboratório",
     settings: "Configurações",
   },
@@ -1090,6 +1091,73 @@ const pt = {
     loading: "Carregando, por favor aguarde",
     expandSection: "Expandir seção",
     collapseSection: "Recolher seção",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "Prever",
+    subtitle: "Aplicar um modelo treinado a novos dados",
+    action: "Prever (novos dados)",
+    model: {
+      title: "Selecionar modelo",
+      description: "Escolha um modelo treinado para a previsão",
+      search: "Pesquisar modelos...",
+      noModels: "Nenhum modelo treinado encontrado",
+      noModelsHint: "Treine um pipeline primeiro e depois volte para prever",
+    },
+    data: {
+      title: "Fornecer dados",
+      description: "Escolha como fornecer espectros para a previsão",
+      tabs: {
+        dataset: "Conjunto de dados",
+        upload: "Carregar arquivo",
+        paste: "Colar dados",
+      },
+      dataset: {
+        select: "Selecionar um conjunto de dados",
+        partition: "Partição",
+        allPartitions: "Todas as partições",
+      },
+      upload: {
+        dropzone: "Solte um arquivo CSV ou Excel aqui",
+        browse: "ou clique para procurar",
+        formats: "Formatos suportados: .csv, .xlsx",
+      },
+      paste: {
+        placeholder: "Cole espectros como linhas CSV ou array JSON\nex. 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "Cada linha é um espectro. Aceita separadores de vírgula, tabulação ou ponto e vírgula.",
+        invalid: "Não foi possível analisar os dados colados. Verifique o formato.",
+      },
+      runPrediction: "Executar previsão",
+      running: "Prevendo...",
+    },
+    results: {
+      title: "Resultados da previsão",
+      summary: "{{count}} previsões com {{model}}",
+      newPrediction: "Nova previsão",
+      tabs: {
+        table: "Tabela",
+        chart: "Gráfico",
+      },
+      table: {
+        sample: "Amostra",
+        predicted: "Previsto",
+        actual: "Real",
+        residual: "Resíduo",
+      },
+      metrics: {
+        title: "Métricas de desempenho",
+      },
+      export: {
+        csv: "Exportar CSV",
+      },
+    },
+    errors: {
+      noModel: "Por favor, selecione um modelo primeiro",
+      noData: "Por favor, forneça dados para a previsão",
+      predictionFailed: "A previsão falhou",
+      fileParseError: "Não foi possível analisar o arquivo carregado",
+    },
   },
 };
 

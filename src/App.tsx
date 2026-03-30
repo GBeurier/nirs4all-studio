@@ -14,6 +14,7 @@ import Runs from "@/pages/Runs";
 import RunProgress from "@/pages/RunProgress";
 import Results from "@/pages/Results";
 import AggregatedResults from "@/pages/AggregatedResults";
+import Predict from "@/pages/Predict";
 import Predictions from "@/pages/Predictions";
 import Lab from "@/pages/Lab";
 import SpectraSynthesis from "@/pages/SpectraSynthesis";
@@ -311,6 +312,7 @@ function App() {
         <Route path="runs/:id" element={<RunProgress />} />
         <Route path="results" element={<Results />} />
         <Route path="results/aggregated" element={<AggregatedResults />} />
+        <Route path="predict" element={<Predict />} />
         <Route path="predictions" element={<Predictions />} />
         <Route path="lab" element={<Lab />}>
           <Route index element={<Navigate to="/lab/synthesis" replace />} />

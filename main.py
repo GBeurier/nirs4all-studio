@@ -72,6 +72,7 @@ from api.inspector import router as inspector_router
 from api.models import router as models_router
 from api.pipelines import router as pipelines_router
 from api.playground import router as playground_router
+from api.predict import router as predict_router
 from api.predictions import router as predictions_router
 from api.preprocessing import router as preprocessing_router
 from api.projects import router as projects_router
@@ -319,6 +320,7 @@ app.include_router(workspace_router, prefix="/api", tags=["workspace"])
 app.include_router(datasets_router, prefix="/api", tags=["datasets"])
 app.include_router(pipelines_router, prefix="/api", tags=["pipelines"])
 app.include_router(aggregated_predictions_router, prefix="/api", tags=["aggregated-predictions"])
+app.include_router(predict_router, prefix="/api", tags=["predict"])
 app.include_router(predictions_router, prefix="/api", tags=["predictions"])
 app.include_router(system_router, prefix="/api", tags=["system"])
 app.include_router(spectra_router, prefix="/api", tags=["spectra"])

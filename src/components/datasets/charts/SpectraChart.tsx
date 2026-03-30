@@ -96,7 +96,7 @@ export function SpectraChart({
   }
 
   return (
-    <svg width={width} height={height} className="w-full h-auto">
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ aspectRatio: `${width} / ${height}` }}>
       {/* Grid lines */}
       {[0.25, 0.5, 0.75].map((t) => (
         <line

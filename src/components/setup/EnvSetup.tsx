@@ -45,6 +45,7 @@ import {
   resetBackendUrl,
   detectGPU,
   getRecommendedConfig,
+  getDependencies,
   getSetupStatus,
   alignConfig,
   completeSetup,
@@ -236,10 +237,11 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     // Give the backend a moment to fully initialize its routes after startup
     await new Promise((r) => setTimeout(r, 500));
 
-    // Fetch GPU info and config in parallel — failures are independent
-    const [gpuResult, configResult] = await Promise.all([
+    // Fetch GPU info, config, and dependencies in parallel — failures are independent
+    const [gpuResult, configResult, depsResult] = await Promise.all([
       detectGPU().catch((err) => { console.warn("GPU detection failed:", err); return null; }),
       fetchConfig(),
+      getDependencies().catch((err) => { console.warn("Dependencies fetch failed:", err); return null; }),
     ]);
 
     if (gpuResult) {
@@ -249,6 +251,22 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     }
     if (configResult) {
       setConfig(configResult);
+
+      // Pre-check optional packages that are already installed in the environment
+      if (depsResult) {
+        const installedNames = new Set(
+          depsResult.categories
+            .flatMap((cat) => cat.packages)
+            .filter((pkg) => pkg.is_installed)
+            .map((pkg) => pkg.name),
+        );
+        const preSelected = configResult.optional
+          .filter((pkg) => installedNames.has(pkg.name))
+          .map((pkg) => pkg.name);
+        if (preSelected.length > 0) {
+          setSelectedExtras(preSelected);
+        }
+      }
     }
 
     // Brief pause to show GPU info, then advance to profile

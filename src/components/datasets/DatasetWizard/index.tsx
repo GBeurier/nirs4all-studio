@@ -132,8 +132,11 @@ function DataStats() {
   const xTestFiles = state.files.filter(f => f.type === "X" && f.split === "test");
   const yTrainFiles = state.files.filter(f => f.type === "Y" && f.split === "train");
   const yTestFiles = state.files.filter(f => f.type === "Y" && f.split === "test");
+  const metadataTrainFiles = state.files.filter(f => f.type === "metadata" && f.split === "train");
+  const metadataTestFiles = state.files.filter(f => f.type === "metadata" && f.split === "test");
   const xFiles = state.files.filter(f => f.type === "X");
   const yFiles = state.files.filter(f => f.type === "Y");
+  const metadataFiles = state.files.filter(f => f.type === "metadata");
 
   // Check if we're in web mode (no filesystem access)
   const isWebMode = !state.basePath && state.fileBlobs.size > 0;
@@ -144,7 +147,7 @@ function DataStats() {
     if (isWebMode) {
       // In web mode, use file info from the File objects or skip validation
       const shapes: Record<string, { num_rows?: number; num_columns?: number }> = {};
-      for (const f of state.files.filter(f => f.type === "X" || f.type === "Y")) {
+      for (const f of state.files.filter(f => f.type === "X" || f.type === "Y" || f.type === "metadata")) {
         // Use any pre-detected info if available
         if (f.num_rows && f.num_columns) {
           shapes[f.path] = { num_rows: f.num_rows, num_columns: f.num_columns };
@@ -158,8 +161,8 @@ function DataStats() {
 
     if (!state.basePath || state.files.length === 0 || state.isValidating) return;
 
-    // Only validate X and Y files
-    const filesToValidate = state.files.filter(f => f.type === "X" || f.type === "Y");
+    // Validate X, Y, and metadata files
+    const filesToValidate = state.files.filter(f => f.type === "X" || f.type === "Y" || f.type === "metadata");
     if (filesToValidate.length === 0) return;
 
     dispatch({ type: "SET_VALIDATING", payload: true });
@@ -224,11 +227,14 @@ function DataStats() {
   const xTestShape = getGroupShape(xTestFiles);
   const yTrainShape = getGroupShape(yTrainFiles);
   const yTestShape = getGroupShape(yTestFiles);
+  const metaTrainShape = getGroupShape(metadataTrainFiles);
+  const metaTestShape = getGroupShape(metadataTestFiles);
 
   // Check for any validation errors
   const hasAnyError = state.validationError ||
     xTrainShape.hasError || xTestShape.hasError ||
-    yTrainShape.hasError || yTestShape.hasError;
+    yTrainShape.hasError || yTestShape.hasError ||
+    metaTrainShape.hasError || metaTestShape.hasError;
 
   // Loading states
   if (state.isLoading) {
@@ -291,7 +297,7 @@ function DataStats() {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mb-4 px-2 py-2 bg-muted/30 rounded-md font-mono">
       {/* Train shapes */}
-      {(xTrainFiles.length > 0 || yTrainFiles.length > 0) && (
+      {(xTrainFiles.length > 0 || yTrainFiles.length > 0 || metadataTrainFiles.length > 0) && (
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground font-sans">Train:</span>
           {xTrainFiles.length > 0 && (
@@ -308,11 +314,18 @@ function DataStats() {
               {formatShape(yTrainShape, yTrainFiles, xTrainShape.rows)}
             </span>
           )}
+          {metadataTrainFiles.length > 0 && (
+            <span>
+              <span className="text-purple-500">Meta</span>
+              <span className="text-muted-foreground">=</span>
+              {formatShape(metaTrainShape, metadataTrainFiles, xTrainShape.rows)}
+            </span>
+          )}
         </div>
       )}
 
       {/* Test shapes */}
-      {(xTestFiles.length > 0 || yTestFiles.length > 0) && (
+      {(xTestFiles.length > 0 || yTestFiles.length > 0 || metadataTestFiles.length > 0) && (
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground font-sans">Test:</span>
           {xTestFiles.length > 0 && (
@@ -329,6 +342,13 @@ function DataStats() {
               {formatShape(yTestShape, yTestFiles, xTestShape.rows)}
             </span>
           )}
+          {metadataTestFiles.length > 0 && (
+            <span>
+              <span className="text-purple-500">Meta</span>
+              <span className="text-muted-foreground">=</span>
+              {formatShape(metaTestShape, metadataTestFiles, xTestShape.rows)}
+            </span>
+          )}
         </div>
       )}
 
@@ -337,6 +357,7 @@ function DataStats() {
         <span className="text-muted-foreground font-sans">
           {xFiles.length} X file{xFiles.length !== 1 ? "s" : ""}
           {yFiles.length > 0 && `, ${yFiles.length} Y file${yFiles.length !== 1 ? "s" : ""}`}
+          {metadataFiles.length > 0 && `, ${metadataFiles.length} Meta file${metadataFiles.length !== 1 ? "s" : ""}`}
         </span>
       )}
 

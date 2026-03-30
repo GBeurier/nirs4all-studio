@@ -825,25 +825,32 @@ export function ParsingStep() {
 
         <ScrollArea className="flex-1 border rounded-lg">
           {state.files.length > 0 ? (
-            state.files.map((file) => (
-              <FileOverrideRow
-                key={file.path}
-                filename={file.filename}
-                path={file.path}
-                hasOverride={!!state.perFileOverrides[file.path]}
-                overrides={state.perFileOverrides[file.path] || {}}
-                onToggle={() => handleFileOverrideToggle(file.path)}
-                onChange={(updates) =>
-                  dispatch({
-                    type: "SET_FILE_OVERRIDE",
-                    payload: { path: file.path, options: updates },
-                  })
-                }
-                onAutoDetect={() => handlePerFileAutoDetect(file.path)}
-                shape={file.num_rows != null && file.num_columns != null ? { rows: file.num_rows, cols: file.num_columns } : undefined}
-                isDetecting={detectingFiles[file.path]}
-              />
-            ))
+            state.files.map((file) => {
+              const validated = state.validatedShapes[file.path];
+              const rows = validated?.num_rows ?? file.num_rows;
+              const cols = validated?.num_columns ?? file.num_columns;
+              const hasError = validated?.error != null;
+              return (
+                <FileOverrideRow
+                  key={file.path}
+                  filename={file.filename}
+                  path={file.path}
+                  hasOverride={!!state.perFileOverrides[file.path]}
+                  overrides={state.perFileOverrides[file.path] || {}}
+                  onToggle={() => handleFileOverrideToggle(file.path)}
+                  onChange={(updates) =>
+                    dispatch({
+                      type: "SET_FILE_OVERRIDE",
+                      payload: { path: file.path, options: updates },
+                    })
+                  }
+                  onAutoDetect={() => handlePerFileAutoDetect(file.path)}
+                  shape={!hasError && rows != null && cols != null ? { rows, cols } : undefined}
+                  isDetecting={detectingFiles[file.path]}
+                />
+              );
+            })
+
           ) : (
             <div className="p-8 text-center text-muted-foreground">
               No files to configure

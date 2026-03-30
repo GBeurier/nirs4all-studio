@@ -92,6 +92,7 @@ const zh = {
     scores: "评分",
     predictions: "预测",
     aggregatedResults: "聚合结果",
+    predict: "预测",
     lab: "实验室",
     settings: "设置",
   },
@@ -899,7 +900,7 @@ const zh = {
     noBundles: "未找到导出的模型包",
     noResults: "暂无结果",
     instructions:
-      "选择已训练的模型和数据集，然后点击"计算解释"，分析哪些波长对预测最重要。",
+      '选择已训练的模型和数据集，然后点击"计算解释"，分析哪些波长对预测最重要。',
     features: {
       spectral: "光谱重要性",
       beeswarm: "SHAP 分布",
@@ -1091,6 +1092,73 @@ const zh = {
     loading: "正在加载，请稍候",
     expandSection: "展开区域",
     collapseSection: "折叠区域",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "预测",
+    subtitle: "将训练好的模型应用于新数据",
+    action: "预测（新数据）",
+    model: {
+      title: "选择模型",
+      description: "选择一个训练好的模型进行预测",
+      search: "搜索模型...",
+      noModels: "未找到训练好的模型",
+      noModelsHint: "请先训练一个管道，然后返回进行预测",
+    },
+    data: {
+      title: "提供数据",
+      description: "选择如何提供用于预测的光谱",
+      tabs: {
+        dataset: "数据集",
+        upload: "上传文件",
+        paste: "粘贴数据",
+      },
+      dataset: {
+        select: "选择数据集",
+        partition: "分区",
+        allPartitions: "所有分区",
+      },
+      upload: {
+        dropzone: "将CSV或Excel文件拖放到此处",
+        browse: "或点击浏览",
+        formats: "支持格式：.csv, .xlsx",
+      },
+      paste: {
+        placeholder: "粘贴光谱为CSV行或JSON数组\n例如 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "每行一个光谱。接受逗号、制表符或分号分隔符。",
+        invalid: "无法解析粘贴的数据。请检查格式。",
+      },
+      runPrediction: "运行预测",
+      running: "预测中...",
+    },
+    results: {
+      title: "预测结果",
+      summary: "使用{{model}}的{{count}}个预测",
+      newPrediction: "新建预测",
+      tabs: {
+        table: "表格",
+        chart: "图表",
+      },
+      table: {
+        sample: "样本",
+        predicted: "预测值",
+        actual: "实际值",
+        residual: "残差",
+      },
+      metrics: {
+        title: "性能指标",
+      },
+      export: {
+        csv: "导出CSV",
+      },
+    },
+    errors: {
+      noModel: "请先选择一个模型",
+      noData: "请提供用于预测的数据",
+      predictionFailed: "预测失败",
+      fileParseError: "无法解析上传的文件",
+    },
   },
 };
 

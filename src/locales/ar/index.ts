@@ -90,6 +90,7 @@ const ar = {
     scores: "الدرجات",
     predictions: "التنبؤات",
     aggregatedResults: "النتائج المجمّعة",
+    predict: "التنبؤ",
     lab: "المختبر",
     settings: "الإعدادات",
   },
@@ -1090,6 +1091,73 @@ const ar = {
     loading: "جارٍ التحميل، يرجى الانتظار",
     expandSection: "توسيع القسم",
     collapseSection: "طي القسم",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "التنبؤ",
+    subtitle: "تطبيق نموذج مدرّب على بيانات جديدة",
+    action: "التنبؤ (بيانات جديدة)",
+    model: {
+      title: "اختيار النموذج",
+      description: "اختر نموذجًا مدرّبًا للتنبؤ",
+      search: "البحث عن نماذج...",
+      noModels: "لم يتم العثور على نماذج مدرّبة",
+      noModelsHint: "قم بتدريب خط أنابيب أولاً، ثم عُد للتنبؤ",
+    },
+    data: {
+      title: "تقديم البيانات",
+      description: "اختر كيفية تقديم الأطياف للتنبؤ",
+      tabs: {
+        dataset: "مجموعة بيانات",
+        upload: "رفع ملف",
+        paste: "لصق البيانات",
+      },
+      dataset: {
+        select: "اختيار مجموعة بيانات",
+        partition: "القسم",
+        allPartitions: "جميع الأقسام",
+      },
+      upload: {
+        dropzone: "أسقط ملف CSV أو Excel هنا",
+        browse: "أو انقر للتصفح",
+        formats: "الصيغ المدعومة: .csv, .xlsx",
+      },
+      paste: {
+        placeholder: "الصق الأطياف كصفوف CSV أو مصفوفة JSON\nمثال: 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "كل صف هو طيف واحد. يقبل الفاصلة أو التبويب أو الفاصلة المنقوطة كفواصل.",
+        invalid: "تعذّر تحليل البيانات الملصقة. تحقق من التنسيق.",
+      },
+      runPrediction: "تشغيل التنبؤ",
+      running: "جارٍ التنبؤ...",
+    },
+    results: {
+      title: "نتائج التنبؤ",
+      summary: "{{count}} تنبؤات باستخدام {{model}}",
+      newPrediction: "تنبؤ جديد",
+      tabs: {
+        table: "جدول",
+        chart: "رسم بياني",
+      },
+      table: {
+        sample: "عيّنة",
+        predicted: "متنبّأ",
+        actual: "فعلي",
+        residual: "بقايا",
+      },
+      metrics: {
+        title: "مقاييس الأداء",
+      },
+      export: {
+        csv: "تصدير CSV",
+      },
+    },
+    errors: {
+      noModel: "يرجى اختيار نموذج أولاً",
+      noData: "يرجى تقديم بيانات للتنبؤ",
+      predictionFailed: "فشل التنبؤ",
+      fileParseError: "تعذّر تحليل الملف المرفوع",
+    },
   },
 };
 

@@ -74,7 +74,7 @@ function WorkspaceItem({
     }
   };
 
-  const discovered = workspace.discovered;
+  const discovered = workspace.discovered ?? { runs_count: 0, datasets_count: 0, exports_count: 0, templates_count: 0 };
 
   return (
     <div
@@ -255,7 +255,7 @@ export function N4AWorkspaceList({
     try {
       setError(null);
       const result = await scanN4AWorkspace(id);
-      const d = result.discovered;
+      const d = result.discovered ?? { runs_count: 0, exports_count: 0 };
       setSuccessMessage("Scanned: " + d.runs_count + " runs, " + d.exports_count + " exports");
       queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
     } catch (err) {

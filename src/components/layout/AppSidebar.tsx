@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Wand2,
+  Zap,
   type LucideIcon,
   Volleyball,
   TableProperties,
@@ -57,6 +58,7 @@ const resultsNavItems: NavItem[] = [
   { titleKey: "nav.history", href: "/runs", icon: TvMinimalPlay },
   { titleKey: "nav.results", href: "/results", icon: Trophy },
   { titleKey: "nav.predictions", href: "/predictions", icon: TableProperties },
+  { titleKey: "nav.predict", href: "/predict", icon: Zap },
 ];
 
 export function AppSidebar() {
@@ -77,6 +79,9 @@ export function AppSidebar() {
     }
     if (href === "/results/aggregated") {
       return location.pathname === "/results/aggregated";
+    }
+    if (href === "/predict") {
+      return location.pathname === "/predict";
     }
     return location.pathname.startsWith(href);
   };

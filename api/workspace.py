@@ -1364,17 +1364,22 @@ def _prepare_predictions_instance(workspace_path: Path) -> tuple[Any, Any]:
     errors: list[str] = []
 
     Predictions = get_cached("Predictions")
-    if hasattr(Predictions, "from_workspace"):
-        try:
-            predictions_obj = Predictions.from_workspace(workspace_path)  # type: ignore[attr-defined]
-            return predictions_obj, store
-        except Exception as exc:
-            errors.append(str(exc))
 
+    # Prefer the store-backed constructor: maintenance operations (clean_dead_links,
+    # compact, remove_bottom, etc.) require a live store handle.
+    # Predictions.from_workspace() closes the store after loading, leaving a
+    # store-less in-memory instance that fails on _require_store().
     if STORE_AVAILABLE:
         try:
             store = get_cached("WorkspaceStore")(workspace_path)
             predictions_obj = get_cached("Predictions")(store=store)
+            return predictions_obj, store
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if hasattr(Predictions, "from_workspace"):
+        try:
+            predictions_obj = Predictions.from_workspace(workspace_path)  # type: ignore[attr-defined]
             return predictions_obj, store
         except Exception as exc:
             errors.append(str(exc))

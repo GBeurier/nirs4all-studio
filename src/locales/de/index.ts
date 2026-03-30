@@ -92,6 +92,7 @@ const de = {
     scores: "Ergebnisse",
     predictions: "Vorhersagen",
     aggregatedResults: "Aggregierte Ergebnisse",
+    predict: "Vorhersagen",
     lab: "Labor",
     settings: "Einstellungen",
   },
@@ -1091,6 +1092,73 @@ const de = {
     loading: "Wird geladen, bitte warten",
     expandSection: "Abschnitt erweitern",
     collapseSection: "Abschnitt reduzieren",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "Vorhersagen",
+    subtitle: "Ein trainiertes Modell auf neue Daten anwenden",
+    action: "Vorhersagen (neue Daten)",
+    model: {
+      title: "Modell auswählen",
+      description: "Wählen Sie ein trainiertes Modell für die Vorhersage",
+      search: "Modelle suchen...",
+      noModels: "Keine trainierten Modelle gefunden",
+      noModelsHint: "Trainieren Sie zuerst eine Pipeline und kommen Sie dann zurück",
+    },
+    data: {
+      title: "Daten bereitstellen",
+      description: "Wählen Sie, wie Sie Spektren für die Vorhersage bereitstellen",
+      tabs: {
+        dataset: "Datensatz",
+        upload: "Datei hochladen",
+        paste: "Daten einfügen",
+      },
+      dataset: {
+        select: "Datensatz auswählen",
+        partition: "Partition",
+        allPartitions: "Alle Partitionen",
+      },
+      upload: {
+        dropzone: "CSV- oder Excel-Datei hier ablegen",
+        browse: "oder klicken zum Durchsuchen",
+        formats: "Unterstützte Formate: .csv, .xlsx",
+      },
+      paste: {
+        placeholder: "Spektren als CSV-Zeilen oder JSON-Array einfügen\nz.B. 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "Jede Zeile ist ein Spektrum. Komma, Tab oder Semikolon als Trennzeichen.",
+        invalid: "Die eingefügten Daten konnten nicht analysiert werden.",
+      },
+      runPrediction: "Vorhersage starten",
+      running: "Vorhersage läuft...",
+    },
+    results: {
+      title: "Vorhersageergebnisse",
+      summary: "{{count}} Vorhersagen mit {{model}}",
+      newPrediction: "Neue Vorhersage",
+      tabs: {
+        table: "Tabelle",
+        chart: "Diagramm",
+      },
+      table: {
+        sample: "Probe",
+        predicted: "Vorhergesagt",
+        actual: "Tatsächlich",
+        residual: "Residuum",
+      },
+      metrics: {
+        title: "Leistungsmetriken",
+      },
+      export: {
+        csv: "CSV exportieren",
+      },
+    },
+    errors: {
+      noModel: "Bitte wählen Sie zuerst ein Modell",
+      noData: "Bitte stellen Sie Daten für die Vorhersage bereit",
+      predictionFailed: "Vorhersage fehlgeschlagen",
+      fileParseError: "Die hochgeladene Datei konnte nicht analysiert werden",
+    },
   },
 };
 

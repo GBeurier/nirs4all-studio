@@ -73,6 +73,22 @@ class BundleSummary(BaseModel):
     step_count: int = 0
 
 
+class AvailableModel(BaseModel):
+    """A model available for prediction (bundle or chain)."""
+
+    id: str
+    name: str
+    source: str  # "bundle" | "chain"
+    model_class: str
+    dataset_name: str | None = None
+    metric: str | None = None
+    best_score: float | None = None
+    created_at: str | None = None
+    file_size: int | None = None
+    preprocessing: str | None = None
+    bundle_path: str | None = None
+
+
 class CompareModelsRequest(BaseModel):
     """Request for comparing multiple models (.n4a bundles)."""
 
@@ -461,6 +477,111 @@ async def list_trained_models():
 
     # Sort by creation date
     models.sort(key=lambda m: m.created_at, reverse=True)
+
+    return {"models": models, "total": len(models)}
+
+
+@router.get("/models/available")
+async def list_available_models():
+    """List all models available for prediction.
+
+    Merges .n4a bundles from workspace/exports/ with chain summaries
+    from WorkspaceStore. Chains with final/refit scores are included
+    as they can be used for prediction via chain replay.
+    """
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
+
+    models: list[dict[str, Any]] = []
+    seen_pipeline_uids: set[str] = set()
+
+    # 1. Scan .n4a bundles from exports/
+    exports_dir = Path(workspace.path) / "workspace" / "exports"
+    if exports_dir.exists():
+        BundleLoader = get_cached("BundleLoader")
+        for n4a_file in exports_dir.rglob("*.n4a"):
+            try:
+                stat = n4a_file.stat()
+                dataset_name = n4a_file.parent.name if n4a_file.parent != exports_dir else None
+                preprocessing_chain = None
+                pipeline_uid = None
+                model_class = n4a_file.stem
+
+                if BundleLoader is not None:
+                    try:
+                        loader = BundleLoader(str(n4a_file))
+                        if loader.metadata:
+                            preprocessing_chain = loader.metadata.preprocessing_chain
+                            pipeline_uid = loader.metadata.pipeline_uid
+                            # Extract model class from preprocessing chain or stem
+                            if hasattr(loader, "get_step_info"):
+                                steps = loader.get_step_info()
+                                for s in steps:
+                                    if s.get("is_model"):
+                                        model_class = s.get("class_name", model_class)
+                                        break
+                    except Exception:
+                        pass
+
+                if pipeline_uid:
+                    seen_pipeline_uids.add(pipeline_uid)
+
+                models.append(AvailableModel(
+                    id=n4a_file.stem,
+                    name=n4a_file.stem,
+                    source="bundle",
+                    model_class=model_class,
+                    dataset_name=dataset_name,
+                    metric=None,
+                    best_score=None,
+                    created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    file_size=stat.st_size,
+                    preprocessing=preprocessing_chain,
+                    bundle_path=str(n4a_file),
+                ).model_dump())
+            except Exception as e:
+                logger.error("Error reading bundle %s: %s", n4a_file, e)
+
+    # 2. Query chain summaries from WorkspaceStore (chains with refit/final scores)
+    workspace_path = Path(workspace.path)
+    store_exists = (workspace_path / "store.sqlite").exists() or (workspace_path / "store.duckdb").exists()
+    if store_exists:
+        try:
+            WorkspaceStore = get_cached("WorkspaceStore")
+            if WorkspaceStore is not None:
+                store = WorkspaceStore(workspace_path)
+                df = store.query_chain_summaries()
+                for row in df.iter_rows(named=True):
+                    # Skip chains already covered by a bundle
+                    pid = row.get("pipeline_id", "")
+                    if pid and pid in seen_pipeline_uids:
+                        continue
+
+                    best_score = row.get("final_test_score") or row.get("cv_val_score")
+                    # Sanitize NaN
+                    import math
+                    if isinstance(best_score, float) and (math.isnan(best_score) or math.isinf(best_score)):
+                        best_score = None
+
+                    models.append(AvailableModel(
+                        id=row["chain_id"],
+                        name=row.get("model_name") or row.get("model_class", "Unknown"),
+                        source="chain",
+                        model_class=row.get("model_class", "Unknown"),
+                        dataset_name=row.get("dataset_name"),
+                        metric=row.get("metric"),
+                        best_score=best_score,
+                        created_at=None,
+                        file_size=None,
+                        preprocessing=row.get("preprocessings"),
+                        bundle_path=None,
+                    ).model_dump())
+        except Exception as e:
+            logger.error("Error querying chain summaries: %s", e)
+
+    # Sort: bundles first, then by score descending
+    models.sort(key=lambda m: (m["source"] != "bundle", -(m.get("best_score") or 0)))
 
     return {"models": models, "total": len(models)}
 

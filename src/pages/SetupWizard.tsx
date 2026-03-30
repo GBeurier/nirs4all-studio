@@ -43,7 +43,7 @@ import {
   useCompleteSetup,
   useSkipSetup,
 } from "@/hooks/useRecommendedConfig";
-import { alignConfig } from "@/api/client";
+import { alignConfig, getDependencies } from "@/api/client";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/client";
 
 const electronApi = (window as unknown as { electronApi?: { platform: string } }).electronApi;
@@ -72,6 +72,25 @@ export default function SetupWizard() {
   const { data: gpuInfo, isLoading: gpuLoading } = useGPUDetection();
   const completeSetupMutation = useCompleteSetup();
   const skipSetupMutation = useSkipSetup();
+
+  // Pre-check optional packages already installed in the environment
+  useEffect(() => {
+    if (!config || configLoading) return;
+    getDependencies().then((deps) => {
+      const installedNames = new Set(
+        deps.categories
+          .flatMap((cat) => cat.packages)
+          .filter((pkg) => pkg.is_installed)
+          .map((pkg) => pkg.name),
+      );
+      const preSelected = config.optional
+        .filter((pkg) => installedNames.has(pkg.name))
+        .map((pkg) => pkg.name);
+      if (preSelected.length > 0) {
+        setSelectedExtras(preSelected);
+      }
+    }).catch(() => { /* ignore — user can still manually select */ });
+  }, [config, configLoading]);
 
   // Auto-select recommended profile based on GPU detection
   useEffect(() => {

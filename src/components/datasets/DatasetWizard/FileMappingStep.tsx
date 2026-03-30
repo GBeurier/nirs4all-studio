@@ -72,10 +72,15 @@ interface FileRowProps {
   onUpdate: (updates: Partial<DetectedFile>) => void;
   onRemove: () => void;
   maxSource: number;
+  validatedShape?: { num_rows?: number; num_columns?: number; error?: string };
 }
 
-function FileRow({ file, index, onUpdate, onRemove, maxSource }: FileRowProps) {
+function FileRow({ file, index, onUpdate, onRemove, maxSource, validatedShape }: FileRowProps) {
   const [expanded, setExpanded] = useState(false);
+  // Use validated shape when available, fall back to detection values only if no validation was attempted
+  const hasValidationError = validatedShape?.error != null;
+  const numRows = validatedShape?.num_rows ?? (hasValidationError ? undefined : file.num_rows);
+  const numColumns = validatedShape?.num_columns ?? (hasValidationError ? undefined : file.num_columns);
 
   return (
     <div className="border-b last:border-0">
@@ -115,11 +120,23 @@ function FileRow({ file, index, onUpdate, onRemove, maxSource }: FileRowProps) {
                 {formatSize(file.size_bytes)}
               </span>
 
-              {file.num_rows != null && file.num_columns != null && (
+              {hasValidationError ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge variant="outline" className="text-xs font-mono text-destructive border-destructive/50">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Error
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>{validatedShape?.error}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : numRows != null && numColumns != null ? (
                 <Badge variant="outline" className="text-xs font-mono">
-                  {file.num_rows} × {file.num_columns}
+                  {numRows} × {numColumns}
                 </Badge>
-              )}
+              ) : null}
 
               <Button
                 variant="ghost"
@@ -499,6 +516,7 @@ export function FileMappingStep() {
                   onUpdate={(updates) => handleUpdateFile(idx, updates)}
                   onRemove={() => handleRemoveFile(idx)}
                   maxSource={maxSource}
+                  validatedShape={state.validatedShapes[file.path]}
                 />
               ))
             ) : (

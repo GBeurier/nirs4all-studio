@@ -73,12 +73,12 @@ class LinkedWorkspace:
             is_active=data.get("is_active", False),
             linked_at=data.get("linked_at", ""),
             last_scanned=data.get("last_scanned"),
-            discovered=data.get("discovered", {
+            discovered=data.get("discovered") or {
                 "runs_count": 0,
                 "datasets_count": 0,
                 "exports_count": 0,
                 "templates_count": 0,
-            }),
+            },
         )
 
 

@@ -92,6 +92,7 @@ const ja = {
     scores: "スコア",
     predictions: "予測",
     aggregatedResults: "集計結果",
+    predict: "予測",
     lab: "ラボ",
     settings: "設定",
   },
@@ -1092,6 +1093,73 @@ const ja = {
     loading: "読み込み中です。お待ちください",
     expandSection: "セクションを展開",
     collapseSection: "セクションを折りたたむ",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "予測",
+    subtitle: "学習済みモデルを新しいデータに適用する",
+    action: "予測（新しいデータ）",
+    model: {
+      title: "モデルを選択",
+      description: "予測に使用する学習済みモデルを選択してください",
+      search: "モデルを検索...",
+      noModels: "学習済みモデルが見つかりません",
+      noModelsHint: "まずパイプラインをトレーニングしてから、予測に戻ってください",
+    },
+    data: {
+      title: "データを提供",
+      description: "予測用のスペクトルの提供方法を選択してください",
+      tabs: {
+        dataset: "データセット",
+        upload: "ファイルをアップロード",
+        paste: "データを貼り付け",
+      },
+      dataset: {
+        select: "データセットを選択",
+        partition: "パーティション",
+        allPartitions: "すべてのパーティション",
+      },
+      upload: {
+        dropzone: "CSVまたはExcelファイルをここにドロップ",
+        browse: "またはクリックして参照",
+        formats: "対応形式: .csv, .xlsx",
+      },
+      paste: {
+        placeholder: "スペクトルをCSV行またはJSON配列として貼り付け\n例: 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "各行が1つのスペクトルです。カンマ、タブ、セミコロン区切りに対応。",
+        invalid: "貼り付けたデータを解析できませんでした。形式を確認してください。",
+      },
+      runPrediction: "予測を実行",
+      running: "予測中...",
+    },
+    results: {
+      title: "予測結果",
+      summary: "{{model}}による{{count}}件の予測",
+      newPrediction: "新しい予測",
+      tabs: {
+        table: "テーブル",
+        chart: "グラフ",
+      },
+      table: {
+        sample: "サンプル",
+        predicted: "予測値",
+        actual: "実測値",
+        residual: "残差",
+      },
+      metrics: {
+        title: "パフォーマンス指標",
+      },
+      export: {
+        csv: "CSVエクスポート",
+      },
+    },
+    errors: {
+      noModel: "まずモデルを選択してください",
+      noData: "予測用のデータを提供してください",
+      predictionFailed: "予測に失敗しました",
+      fileParseError: "アップロードされたファイルを解析できませんでした",
+    },
   },
 };
 

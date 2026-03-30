@@ -93,6 +93,7 @@ const en = {
     scores: "Scores",
     predictions: "Predictions",
     aggregatedResults: "Aggregated Results",
+    predict: "Predict",
     lab: "Lab",
     settings: "Settings",
   },
@@ -1093,6 +1094,73 @@ const en = {
     loading: "Loading, please wait",
     expandSection: "Expand section",
     collapseSection: "Collapse section",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "Predict",
+    subtitle: "Apply a trained model to new data",
+    action: "Predict (new data)",
+    model: {
+      title: "Select Model",
+      description: "Choose a trained model to use for prediction",
+      search: "Search models...",
+      noModels: "No trained models found",
+      noModelsHint: "Train a pipeline first, then come back to predict on new data",
+    },
+    data: {
+      title: "Provide Data",
+      description: "Choose how to provide spectra for prediction",
+      tabs: {
+        dataset: "Dataset",
+        upload: "Upload File",
+        paste: "Paste Data",
+      },
+      dataset: {
+        select: "Select a dataset",
+        partition: "Partition",
+        allPartitions: "All partitions",
+      },
+      upload: {
+        dropzone: "Drop a CSV or Excel file here",
+        browse: "or click to browse",
+        formats: "Supported formats: .csv, .xlsx",
+      },
+      paste: {
+        placeholder: "Paste spectra as CSV rows or JSON array\ne.g. 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "Each row is one spectrum. Accepts comma, tab, or semicolon separators.",
+        invalid: "Could not parse the pasted data. Check the format.",
+      },
+      runPrediction: "Run Prediction",
+      running: "Predicting...",
+    },
+    results: {
+      title: "Prediction Results",
+      summary: "{{count}} predictions from {{model}}",
+      newPrediction: "New Prediction",
+      tabs: {
+        table: "Table",
+        chart: "Chart",
+      },
+      table: {
+        sample: "Sample",
+        predicted: "Predicted",
+        actual: "Actual",
+        residual: "Residual",
+      },
+      metrics: {
+        title: "Performance Metrics",
+      },
+      export: {
+        csv: "Export CSV",
+      },
+    },
+    errors: {
+      noModel: "Please select a model first",
+      noData: "Please provide data for prediction",
+      predictionFailed: "Prediction failed",
+      fileParseError: "Could not parse the uploaded file",
+    },
   },
 };
 

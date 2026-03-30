@@ -52,7 +52,7 @@ async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
  * In Electron mode, this fetches the dynamic port from the main process.
  * In web mode, it returns "/api" (which Vite proxies to the backend).
  */
-async function getApiBaseUrl(): Promise<string> {
+export async function getApiBaseUrl(): Promise<string> {
   // Return cached URL if available
   if (resolvedBackendUrl !== null) {
     return resolvedBackendUrl;

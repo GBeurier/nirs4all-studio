@@ -406,6 +406,7 @@ async def detect_unified(request: DetectFilesRequest):
                         decimal_separator=parsing_options.get("decimal_separator", "."),
                         has_header=parsing_options.get("has_header", True),
                         data_type="metadata",
+                        na_policy="ignore",
                     )
                     metadata_columns = headers if headers else []
                 except Exception as e:
@@ -597,6 +598,7 @@ async def detect_files_list(request: DetectFilesListRequest):
                 decimal_separator=parsing_options.get("decimal_separator", "."),
                 has_header=parsing_options.get("has_header", True),
                 data_type="metadata",
+                na_policy="ignore",
             )
             metadata_columns = headers if headers else []
         except Exception as e:
@@ -801,8 +803,8 @@ async def validate_files(request: ValidateFilesRequest):
     per_file_overrides = request.per_file_overrides or {}
     shapes: dict[str, FileShapeInfo] = {}
 
-    # Filter to X and Y files only
-    files_to_validate = [f for f in request.files if f.type in ("X", "Y")]
+    # Filter to X, Y, and metadata files
+    files_to_validate = [f for f in request.files if f.type in ("X", "Y", "metadata")]
 
     for file_config in files_to_validate:
         file_path = Path(file_config.path)
@@ -824,12 +826,18 @@ async def validate_files(request: ValidateFilesRequest):
         if file_overrides:
             effective_parsing.update(file_overrides)
 
+        # Map file type to data_type for the loader
+        data_type_map = {"X": "x", "Y": "y", "metadata": "metadata"}
+        data_type = data_type_map.get(file_config.type, "x")
+
         try:
             data, _, _, _, _ = get_cached("load_file")(
                 str(file_path),
                 delimiter=effective_parsing.get("delimiter", ";"),
                 decimal_separator=effective_parsing.get("decimal_separator", "."),
                 has_header=effective_parsing.get("has_header", True),
+                data_type=data_type,
+                na_policy="ignore",  # Only need shapes, don't abort on NAs
             )
 
             if data is not None:
@@ -1718,6 +1726,7 @@ async def scan_folder(request: ScanFolderRequest):
                     decimal_separator=parsing_opts.get("decimal_separator", "."),
                     has_header=parsing_opts.get("has_header", True),
                     data_type="metadata",
+                    na_policy="ignore",
                 )
                 meta_cols = headers if headers else []
             except Exception:

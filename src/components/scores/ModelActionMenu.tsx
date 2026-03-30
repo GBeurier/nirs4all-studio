@@ -65,8 +65,10 @@ export function ModelActionMenu({
 
         {hasRefit && (
           <>
-            <DropdownMenuItem disabled>
-              <Zap className="h-4 w-4 mr-2" /> Predict (new data)
+            <DropdownMenuItem asChild>
+              <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
+                <Zap className="h-4 w-4 mr-2" /> Predict (new data)
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem disabled>
               <Lightbulb className="h-4 w-4 mr-2" /> Explain (SHAP)

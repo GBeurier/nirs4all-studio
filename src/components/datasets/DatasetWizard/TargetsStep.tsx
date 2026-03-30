@@ -603,9 +603,22 @@ export function TargetsStep() {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {(state.metadataColumns.length > 0 ? state.metadataColumns : state.targets.map((t) => t.column)).map((col) => (
-                            <SelectItem key={col} value={col}>{col}</SelectItem>
-                          ))}
+                          {state.targets.length > 0 && (
+                            <>
+                              <SelectItem disabled value="__y_header__" className="text-xs font-semibold text-muted-foreground">Y columns</SelectItem>
+                              {state.targets.map((t) => (
+                                <SelectItem key={`y:${t.column}`} value={t.column}>{t.column}</SelectItem>
+                              ))}
+                            </>
+                          )}
+                          {state.metadataColumns.length > 0 && (
+                            <>
+                              <SelectItem disabled value="__meta_header__" className="text-xs font-semibold text-muted-foreground">Metadata columns</SelectItem>
+                              {state.metadataColumns.map((col) => (
+                                <SelectItem key={`m:${col}`} value={col}>{col}</SelectItem>
+                              ))}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     ) : (

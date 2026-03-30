@@ -93,6 +93,7 @@ const it = {
     scores: "Punteggi",
     predictions: "Predizioni",
     aggregatedResults: "Risultati Aggregati",
+    predict: "Predire",
     lab: "Lab",
     settings: "Impostazioni",
   },
@@ -1093,6 +1094,73 @@ const it = {
     loading: "Caricamento, attendere",
     expandSection: "Espandi sezione",
     collapseSection: "Comprimi sezione",
+  },
+
+  // ============= Predict Page =============
+  predict: {
+    title: "Predire",
+    subtitle: "Applicare un modello addestrato a nuovi dati",
+    action: "Predire (nuovi dati)",
+    model: {
+      title: "Seleziona modello",
+      description: "Scegli un modello addestrato per la predizione",
+      search: "Cerca modelli...",
+      noModels: "Nessun modello addestrato trovato",
+      noModelsHint: "Addestra prima una pipeline, poi torna per predire",
+    },
+    data: {
+      title: "Fornire i dati",
+      description: "Scegli come fornire gli spettri per la predizione",
+      tabs: {
+        dataset: "Dataset",
+        upload: "Carica file",
+        paste: "Incolla dati",
+      },
+      dataset: {
+        select: "Seleziona un dataset",
+        partition: "Partizione",
+        allPartitions: "Tutte le partizioni",
+      },
+      upload: {
+        dropzone: "Trascina un file CSV o Excel qui",
+        browse: "o clicca per sfogliare",
+        formats: "Formati supportati: .csv, .xlsx",
+      },
+      paste: {
+        placeholder: "Incolla spettri come righe CSV o array JSON\nes. 1.2, 3.4, 5.6\n     7.8, 9.0, 1.2",
+        hint: "Ogni riga è uno spettro. Accetta separatori virgola, tabulazione o punto e virgola.",
+        invalid: "Impossibile analizzare i dati incollati. Controlla il formato.",
+      },
+      runPrediction: "Esegui predizione",
+      running: "Predizione in corso...",
+    },
+    results: {
+      title: "Risultati della predizione",
+      summary: "{{count}} predizioni con {{model}}",
+      newPrediction: "Nuova predizione",
+      tabs: {
+        table: "Tabella",
+        chart: "Grafico",
+      },
+      table: {
+        sample: "Campione",
+        predicted: "Predetto",
+        actual: "Reale",
+        residual: "Residuo",
+      },
+      metrics: {
+        title: "Metriche di prestazione",
+      },
+      export: {
+        csv: "Esporta CSV",
+      },
+    },
+    errors: {
+      noModel: "Seleziona prima un modello",
+      noData: "Fornisci i dati per la predizione",
+      predictionFailed: "Predizione fallita",
+      fileParseError: "Impossibile analizzare il file caricato",
+    },
   },
 };
 
