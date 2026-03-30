@@ -348,7 +348,7 @@ class TestWorkspaceScannerStore:
 
         is_valid, reason = scanner.is_valid_workspace()
         assert is_valid
-        assert "DuckDB" in reason
+        assert "store" in reason.lower()
 
 
 # ---------------------------------------------------------------------------

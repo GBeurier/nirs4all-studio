@@ -769,7 +769,7 @@ class TestErrorHandling:
             with TestClient(app) as c:
                 resp = c.get("/api/aggregated-predictions")
                 assert resp.status_code == 404
-                assert "No DuckDB store" in resp.json()["detail"]
+                assert "No store found" in resp.json()["detail"]
 
     def test_store_not_available(self):
         """501 when nirs4all library is not installed."""

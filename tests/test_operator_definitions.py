@@ -234,7 +234,7 @@ def test_preprocessing_params_accepted(name, op_def):
         effective_name = param_name
         if param_name not in normalized_names:
             # Check if normalize_params renamed this param
-            renamed = normalized_names - set(p["name"] for p in op_def.get("parameters", []))
+            renamed = normalized_names - {p["name"] for p in op_def.get("parameters", [])}
             if len(renamed) == 1:
                 effective_name = next(iter(renamed))
         # After normalization, _min/_max pairs become tuple params
