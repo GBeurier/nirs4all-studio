@@ -102,11 +102,10 @@ class TestDependenciesCoherenceConsistency:
         assert isinstance(data["categories"], list)
 
     def test_coherence_and_dependencies_venv_state_consistent(self, client):
-        """Both endpoints should agree on whether a custom venv is configured."""
+        """Both endpoints should agree on venv validity."""
         coherence = client.get("/api/system/env-coherence").json()
         deps = client.get("/api/updates/dependencies").json()
 
-        # In the default test env, neither should report a custom path
-        assert coherence["venv_manager"]["is_custom"] is False
-        # Dependencies endpoint should report venv as valid (default = sys.prefix)
+        # In the default test env, coherence should pass and venv should be valid
+        assert coherence["coherent"] is True
         assert deps["venv_valid"] is True

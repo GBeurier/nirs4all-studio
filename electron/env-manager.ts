@@ -67,8 +67,7 @@ export interface EnvInfo {
 const SETTINGS_FILE = "env-settings.json";
 
 interface EnvSettings {
-  customEnvPath?: string;
-  customPythonPath?: string;
+  pythonPath?: string;
   /** App version when the setup wizard was last completed */
   appVersion?: string;
   /** "Don't ask again" flag — skips wizard on subsequent launches (portable mode) */
@@ -86,9 +85,7 @@ export class EnvManager {
   private lastError: string | null = null;
   private envDir: string;
   private settingsPath: string;
-  private customEnvPath: string | null = null;
-  /** Direct path to the python executable (more reliable than folder-based detection) */
-  private customPythonPath: string | null = null;
+  private pythonPath: string | null = null;
   private savedAppVersion: string | null = null;
   private savedSkipWizard: boolean = false;
 
@@ -106,11 +103,26 @@ export class EnvManager {
   private loadSettings(): void {
     try {
       if (fs.existsSync(this.settingsPath)) {
-        const data = JSON.parse(fs.readFileSync(this.settingsPath, "utf-8")) as EnvSettings;
-        this.customEnvPath = data.customEnvPath ?? null;
-        this.customPythonPath = data.customPythonPath ?? null;
-        this.savedAppVersion = data.appVersion ?? null;
-        this.savedSkipWizard = data.skipWizardOnLaunch ?? false;
+        const data = JSON.parse(fs.readFileSync(this.settingsPath, "utf-8")) as Record<string, unknown>;
+        this.savedAppVersion = (data.appVersion as string) ?? null;
+        this.savedSkipWizard = (data.skipWizardOnLaunch as boolean) ?? false;
+
+        // Migration: convert legacy customPythonPath / customEnvPath to pythonPath
+        if (data.pythonPath) {
+          this.pythonPath = data.pythonPath as string;
+        } else if (data.customPythonPath) {
+          this.pythonPath = data.customPythonPath as string;
+          this.saveSettings();
+        } else if (data.customEnvPath) {
+          const envPath = data.customEnvPath as string;
+          const candidates = isWindows
+            ? [path.join(envPath, "Scripts", "python.exe"), path.join(envPath, "python.exe")]
+            : [path.join(envPath, "bin", "python"), path.join(envPath, "bin", "python3")];
+          for (const c of candidates) {
+            if (fs.existsSync(c)) { this.pythonPath = c; break; }
+          }
+          this.saveSettings();
+        }
       }
     } catch (error) {
       console.warn(`[EnvManager] Failed to load settings: ${error}`);
@@ -124,8 +136,7 @@ export class EnvManager {
         fs.mkdirSync(dir, { recursive: true });
       }
       const data: EnvSettings = {};
-      if (this.customEnvPath) data.customEnvPath = this.customEnvPath;
-      if (this.customPythonPath) data.customPythonPath = this.customPythonPath;
+      if (this.pythonPath) data.pythonPath = this.pythonPath;
       if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
       if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
       fs.writeFileSync(this.settingsPath, JSON.stringify(data, null, 2));
@@ -146,11 +157,12 @@ export class EnvManager {
 
   /** Check if the Python environment is ready to use */
   isReady(): boolean {
+    // For custom python path, trust the executable (validated at selection time)
+    if (this.pythonPath) return true;
+
+    // Managed env: check python exists and site-packages is present
     const pythonPath = this.getPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
-
-    // For direct python path selection, trust the executable (validated at selection time)
-    if (this.customPythonPath) return true;
 
     const sitePackages = this.getSitePackages();
     if (!sitePackages || !fs.existsSync(sitePackages)) return false;
@@ -160,23 +172,9 @@ export class EnvManager {
 
   /** Get the Python executable path */
   getPythonPath(): string | null {
-    // Direct python path (most reliable — user selected the exact executable)
-    if (this.customPythonPath) {
-      if (fs.existsSync(this.customPythonPath)) return this.customPythonPath;
-      return null;
-    }
-
-    // Custom env (folder-based, legacy)
-    if (this.customEnvPath) {
-      const p = isWindows
-        ? path.join(this.customEnvPath, "Scripts", "python.exe")
-        : path.join(this.customEnvPath, "bin", "python");
-      if (fs.existsSync(p)) return p;
-      // Also check if it's a base Python (not a venv)
-      const p2 = isWindows
-        ? path.join(this.customEnvPath, "python.exe")
-        : path.join(this.customEnvPath, "bin", "python3");
-      if (fs.existsSync(p2)) return p2;
+    // Custom python path (user-selected or custom-dir setup)
+    if (this.pythonPath) {
+      if (fs.existsSync(this.pythonPath)) return this.pythonPath;
       return null;
     }
 
@@ -192,14 +190,17 @@ export class EnvManager {
 
   /** Get the site-packages path */
   getSitePackages(): string | null {
-    // Custom env
-    if (this.customEnvPath) {
+    // Custom python path: derive env root from executable location
+    if (this.pythonPath) {
+      const dir = path.dirname(this.pythonPath);
+      const dirName = path.basename(dir).toLowerCase();
+      const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
+
       if (isWindows) {
-        const p = path.join(this.customEnvPath, "Lib", "site-packages");
+        const p = path.join(envRoot, "Lib", "site-packages");
         if (fs.existsSync(p)) return p;
       } else {
-        // Find pythonX.Y directory
-        const libDir = path.join(this.customEnvPath, "lib");
+        const libDir = path.join(envRoot, "lib");
         if (fs.existsSync(libDir)) {
           const pyDir = fs.readdirSync(libDir).find((e) => e.startsWith("python3."));
           if (pyDir) return path.join(libDir, pyDir, "site-packages");
@@ -237,7 +238,7 @@ export class EnvManager {
       pythonPath,
       sitePackages: this.getSitePackages(),
       pythonVersion,
-      isCustom: this.customEnvPath !== null,
+      isCustom: !!this.pythonPath,
       error: this.lastError ?? undefined,
     };
   }
@@ -297,11 +298,9 @@ export class EnvManager {
     console.warn(
       `[EnvManager] Portable path drift detected: Python not found at ${pythonPath}`,
     );
-    this.customEnvPath = null;
-    this.customPythonPath = null;
+    this.pythonPath = null;
     this.savedAppVersion = null;
     this.saveSettings();
-    this.clearBackendVenvSettings();
     this.status = "none";
     return false;
   }
@@ -505,12 +504,10 @@ export class EnvManager {
       return { success: false, message: "Python 3.11 or later is required" };
     }
 
-    // Save old values for rollback if install fails
-    const prevEnvPath = this.customEnvPath;
-    const prevPythonPath = this.customPythonPath;
+    // Save old value for rollback if install fails
+    const prevPythonPath = this.pythonPath;
 
-    this.customEnvPath = envPath;
-    this.customPythonPath = null;
+    this.pythonPath = pythonPath;
 
     // Install missing core packages (nirs4all, fastapi, etc.)
     if (!info.hasNirs4all) {
@@ -518,8 +515,7 @@ export class EnvManager {
         await this.installCorePackages(pythonPath);
       } catch (e) {
         // Rollback — don't persist a broken env
-        this.customEnvPath = prevEnvPath;
-        this.customPythonPath = prevPythonPath;
+        this.pythonPath = prevPythonPath;
         const msg = e instanceof Error ? e.message : String(e);
         return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
       }
@@ -527,7 +523,6 @@ export class EnvManager {
 
     // Persist only after successful validation/install
     this.saveSettings();
-    this.clearBackendVenvSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${envPath}`, info };
   }
@@ -546,17 +541,10 @@ export class EnvManager {
       return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
     }
 
-    // Derive the env root from the python path (parent of Scripts/ or bin/, or the directory itself)
-    const dir = path.dirname(pythonPath);
-    const dirName = path.basename(dir).toLowerCase();
-    const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
+    // Save old value for rollback if install fails
+    const prevPythonPath = this.pythonPath;
 
-    // Save old values for rollback if install fails
-    const prevPythonPath = this.customPythonPath;
-    const prevEnvPath = this.customEnvPath;
-
-    this.customPythonPath = pythonPath;
-    this.customEnvPath = envRoot;
+    this.pythonPath = pythonPath;
 
     // Install missing core packages (nirs4all, fastapi, etc.)
     if (!info.hasNirs4all) {
@@ -564,8 +552,7 @@ export class EnvManager {
         await this.installCorePackages(pythonPath);
       } catch (e) {
         // Rollback — don't persist a broken env
-        this.customPythonPath = prevPythonPath;
-        this.customEnvPath = prevEnvPath;
+        this.pythonPath = prevPythonPath;
         const msg = e instanceof Error ? e.message : String(e);
         return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
       }
@@ -573,7 +560,6 @@ export class EnvManager {
 
     // Persist only after successful validation/install
     this.saveSettings();
-    this.clearBackendVenvSettings();
     this.status = "ready";
     return { success: true, message: `Using Python ${info.pythonVersion} from ${pythonPath}`, info };
   }
@@ -600,7 +586,7 @@ export class EnvManager {
    * @param progress - Optional progress callback
    * @param targetDir - Optional custom directory. If provided, the env is created there
    *   instead of the default userData location. The venv python is then saved as
-   *   customPythonPath so getPythonPath() finds it.
+   *   pythonPath so getPythonPath() finds it.
    */
   async setup(progress?: ProgressCallback, targetDir?: string): Promise<void> {
     const report = progress ?? (() => {});
@@ -734,14 +720,11 @@ export class EnvManager {
       // 8. If custom directory, save it so getPythonPath() finds the new env.
       //    Otherwise clear custom paths so getPythonPath() falls through to the managed env.
       if (targetDir) {
-        this.customPythonPath = venvPython;
-        this.customEnvPath = venvDir;
+        this.pythonPath = venvPython;
       } else {
-        this.customPythonPath = null;
-        this.customEnvPath = null;
+        this.pythonPath = null;
       }
       this.saveSettings();
-      this.clearBackendVenvSettings();
 
       this.status = "ready";
       report(100, "ready", "Python environment is ready");
@@ -749,41 +732,6 @@ export class EnvManager {
       this.status = "error";
       this.lastError = error instanceof Error ? error.message : String(error);
       throw error;
-    }
-  }
-
-  /**
-   * Clear stale backend venv_settings.json on environment change.
-   * This prevents the backend VenvManager from loading a custom path
-   * that no longer matches the Electron-selected environment.
-   *
-   * The path mirrors `platformdirs.user_data_dir("nirs4all-webapp")` on each platform.
-   */
-  clearBackendVenvSettings(): void {
-    try {
-      const appName = "nirs4all-webapp";
-      let settingsDir: string;
-      switch (process.platform) {
-        case "win32":
-          settingsDir = path.join(process.env.LOCALAPPDATA || "", appName);
-          break;
-        case "darwin":
-          settingsDir = path.join(app.getPath("home"), "Library", "Application Support", appName);
-          break;
-        default: // linux, freebsd, etc.
-          settingsDir = path.join(
-            process.env.XDG_DATA_HOME || path.join(app.getPath("home"), ".local", "share"),
-            appName,
-          );
-          break;
-      }
-      const settingsPath = path.join(settingsDir, "venv_settings.json");
-      if (fs.existsSync(settingsPath)) {
-        fs.unlinkSync(settingsPath);
-        console.log(`[EnvManager] Cleared stale backend venv settings: ${settingsPath}`);
-      }
-    } catch (e) {
-      console.warn(`[EnvManager] Could not clear backend venv settings: ${e}`);
     }
   }
 

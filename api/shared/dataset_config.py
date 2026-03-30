@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-
 _FILE_TYPE_ALIASES = {
     "x": "X",
     "y": "Y",

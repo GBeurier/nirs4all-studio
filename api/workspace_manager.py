@@ -1879,7 +1879,7 @@ class WorkspaceManager:
         if workspace is None:
             return
 
-        from .lazy_imports import is_ml_ready, get_cached
+        from .lazy_imports import get_cached, is_ml_ready
 
         if is_ml_ready():
             _nirs4all_ws = get_cached("nirs4all_workspace", optional=True)

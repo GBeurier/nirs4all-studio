@@ -44,21 +44,29 @@ GITHUB_RAW_URL = "https://raw.githubusercontent.com/GBeurier/nirs4all-webapp/mai
 # ============= Data Models =============
 
 
+class ProfilePackageSpec(BaseModel):
+    """Version spec for a profile package (schema v1.2)."""
+    min: str  # e.g., ">=0.7.1"
+    recommended: str | None = None  # e.g., "0.7.1"
+
+
 class ProfileInfo(BaseModel):
     """A compute profile (e.g., cpu, gpu-cuda-torch)."""
     id: str
     label: str
     description: str
-    packages: dict[str, str]
+    packages: dict[str, ProfilePackageSpec]
     platforms: list[str] = []
 
 
 class OptionalPackageInfo(BaseModel):
     """An optional package from the recommended config."""
     name: str
-    version: str
+    min: str
+    recommended: str | None = None
     description: str
     category: str
+    note: str | None = None
 
 
 class RecommendedConfigResponse(BaseModel):
@@ -233,24 +241,44 @@ async def _fetch_remote_config() -> dict[str, Any] | None:
 
 
 def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse:
-    """Parse raw config dict into response model."""
+    """Parse raw config dict into response model.
+
+    Handles both schema v1.1 (string package specs) and v1.2 (dict with min/recommended).
+    """
     profiles = []
     for pid, pdata in raw.get("profiles", {}).items():
+        # Parse packages: v1.2 uses {"min": ">=0.7.1", "recommended": "0.7.1"},
+        # v1.1 uses plain strings like ">=0.7.1"
+        raw_packages = pdata.get("packages", {})
+        parsed_packages: dict[str, ProfilePackageSpec] = {}
+        for pkg_name, pkg_val in raw_packages.items():
+            if isinstance(pkg_val, dict):
+                parsed_packages[pkg_name] = ProfilePackageSpec(
+                    min=pkg_val.get("min", ""),
+                    recommended=pkg_val.get("recommended"),
+                )
+            else:
+                # v1.1 string format — treat as min spec with no recommended
+                parsed_packages[pkg_name] = ProfilePackageSpec(min=str(pkg_val), recommended=None)
         profiles.append(ProfileInfo(
             id=pid,
             label=pdata.get("label", pid),
             description=pdata.get("description", ""),
-            packages=pdata.get("packages", {}),
+            packages=parsed_packages,
             platforms=pdata.get("platforms", []),
         ))
 
     optional = []
     for name, odata in raw.get("optional", {}).items():
+        # v1.2 uses "min" field; v1.1 uses "version" field
+        min_spec = odata.get("min", odata.get("version", ""))
         optional.append(OptionalPackageInfo(
             name=name,
-            version=odata.get("version", ""),
+            min=min_spec,
+            recommended=odata.get("recommended"),
             description=odata.get("description", ""),
             category=odata.get("category", "other"),
+            note=odata.get("note"),
         ))
 
     return RecommendedConfigResponse(
@@ -343,9 +371,9 @@ def _detect_gpu() -> GPUDetectionResponse:
 
     # Build candidate list based on detected hardware
     if has_cuda:
-        candidates = ["gpu-cuda-torch", "gpu-cuda-tf", "cpu"]
+        candidates = ["gpu-cuda-torch", "cpu"]
     elif has_metal:
-        candidates = ["gpu-metal", "cpu"]
+        candidates = ["gpu-mps", "cpu"]
     else:
         candidates = ["cpu"]
 
@@ -441,7 +469,12 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
     misaligned_count = 0
     missing_count = 0
 
-    for pkg_name, version_spec in required_packages.items():
+    # Parse profile packages from raw config (may be v1.1 string or v1.2 dict)
+    for pkg_name, pkg_raw in required_packages.items():
+        if isinstance(pkg_raw, dict):
+            version_spec = pkg_raw.get("min", "")
+        else:
+            version_spec = str(pkg_raw)
         norm_name = _normalize_pkg_name(pkg_name)
         installed_ver = installed.get(norm_name)
 
@@ -481,7 +514,8 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
             installed_ver = installed.get(norm_name)
             if installed_ver is None:
                 continue  # Skip uninstalled optional packages
-            version_spec = opt_data.get("version", "")
+            # v1.2 uses "min", v1.1 uses "version"
+            version_spec = opt_data.get("min", opt_data.get("version", ""))
             if version_spec and not _version_satisfies(installed_ver, version_spec):
                 diffs.append(PackageDiff(
                     name=opt_name,
@@ -537,20 +571,36 @@ async def align_config(request: AlignConfigRequest):
     to_install: list[str] = []
     installed = _get_installed_packages()
 
-    for pkg_name, version_spec in required_packages.items():
+    for pkg_name, pkg_raw in required_packages.items():
+        # Parse v1.1 (string) or v1.2 (dict with min/recommended)
+        if isinstance(pkg_raw, dict):
+            min_spec = pkg_raw.get("min", "")
+            recommended_ver = pkg_raw.get("recommended")
+        else:
+            min_spec = str(pkg_raw)
+            recommended_ver = None
         norm_name = _normalize_pkg_name(pkg_name)
         installed_ver = installed.get(norm_name)
-        if installed_ver is None or not _version_satisfies(installed_ver, version_spec):
-            to_install.append(f"{pkg_name}{version_spec}")
+        if installed_ver is None or not _version_satisfies(installed_ver, min_spec):
+            # Prefer recommended (pinned) version; fall back to min spec
+            if recommended_ver:
+                to_install.append(f"{pkg_name}=={recommended_ver}")
+            else:
+                to_install.append(f"{pkg_name}{min_spec}")
 
     for opt_name in request.optional_packages:
         opt_data = optional_config.get(opt_name)
         if opt_data:
             norm_name = _normalize_pkg_name(opt_name)
             installed_ver = installed.get(norm_name)
-            version_spec = opt_data.get("version", "")
-            if installed_ver is None or version_spec and not _version_satisfies(installed_ver, version_spec):
-                to_install.append(f"{opt_name}{version_spec}")
+            # v1.2 uses "min", v1.1 uses "version"
+            min_spec = opt_data.get("min", opt_data.get("version", ""))
+            recommended_ver = opt_data.get("recommended")
+            if installed_ver is None or (min_spec and not _version_satisfies(installed_ver, min_spec)):
+                if recommended_ver:
+                    to_install.append(f"{opt_name}=={recommended_ver}")
+                else:
+                    to_install.append(f"{opt_name}{min_spec}")
 
     if request.dry_run:
         return AlignConfigResponse(

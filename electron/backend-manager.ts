@@ -362,6 +362,7 @@ export class BackendManager {
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
       NIRS4ALL_EXPECTED_PYTHON: pythonPath,
       NIRS4ALL_PID_FILE: this.getPidFilePath(),
+      KERAS_BACKEND: "torch",
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
       ...(process.env.PORTABLE_EXECUTABLE_FILE
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
@@ -443,6 +444,7 @@ export class BackendManager {
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
       NIRS4ALL_EXPECTED_PYTHON: pythonPathForEnv,
       NIRS4ALL_PID_FILE: this.getPidFilePath(),
+      KERAS_BACKEND: "torch",
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
       ...(process.env.PORTABLE_EXECUTABLE_FILE
         ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }

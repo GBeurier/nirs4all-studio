@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "app_version": "0.2.0",
   "nirs4all": "0.7.1",
   "profiles": {
@@ -8,7 +8,7 @@
       "description": "Core NIRS analysis with scikit-learn models. No GPU required.",
       "platforms": ["win32", "linux", "darwin"],
       "packages": {
-        "nirs4all": ">=0.7.1"
+        "nirs4all": { "min": ">=0.7.1", "recommended": "0.7.1" }
       }
     },
     "gpu-cuda-torch": {
@@ -16,30 +16,19 @@
       "description": "Deep learning with PyTorch on NVIDIA GPUs.",
       "platforms": ["win32", "linux"],
       "packages": {
-        "nirs4all": ">=0.7.1",
-        "torch": ">=2.1.0",
-        "keras": ">=3.0.0"
+        "nirs4all": { "min": ">=0.7.1", "recommended": "0.7.1" },
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
+        "keras": { "min": ">=3.0.0", "recommended": "3.8.0" }
       }
     },
-    "gpu-cuda-tf": {
-      "label": "GPU — CUDA + TensorFlow",
-      "description": "Deep learning with TensorFlow on NVIDIA GPUs.",
-      "platforms": ["win32", "linux"],
-      "packages": {
-        "nirs4all": ">=0.7.1",
-        "tensorflow": ">=2.14.0",
-        "keras": ">=3.0.0"
-      }
-    },
-    "gpu-metal": {
-      "label": "GPU — Apple Metal",
-      "description": "Deep learning with TensorFlow on Apple Silicon.",
+    "gpu-mps": {
+      "label": "GPU — Apple MPS",
+      "description": "Deep learning with PyTorch on Apple Silicon.",
       "platforms": ["darwin"],
       "packages": {
-        "nirs4all": ">=0.7.1",
-        "tensorflow-macos": ">=2.14.0",
-        "tensorflow-metal": ">=1.1.0",
-        "keras": ">=3.0.0"
+        "nirs4all": { "min": ">=0.7.1", "recommended": "0.7.1" },
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
+        "keras": { "min": ">=3.0.0", "recommended": "3.8.0" }
       }
     }
   },
@@ -82,118 +71,138 @@
     }
   },
   "optional": {
-    "tensorflow": {
-      "version": ">=2.14.0",
-      "description": "TensorFlow deep learning framework",
-      "category": "deep_learning"
-    },
     "torch": {
-      "version": ">=2.1.0",
+      "min": ">=2.1.0",
+      "recommended": "2.6.0",
       "description": "PyTorch deep learning framework",
       "category": "deep_learning"
     },
     "keras": {
-      "version": ">=3.0.0",
+      "min": ">=3.0.0",
+      "recommended": "3.8.0",
       "description": "High-level neural networks API",
       "category": "deep_learning"
     },
     "jax": {
-      "version": ">=0.4.20",
+      "min": ">=0.4.20",
+      "recommended": "0.4.38",
       "description": "JAX numerical computing library",
+      "note": "Optional GPU accelerator for PLS models. PyTorch is recommended for deep learning.",
       "category": "deep_learning"
     },
     "jaxlib": {
-      "version": ">=0.4.20",
+      "min": ">=0.4.20",
+      "recommended": "0.4.38",
       "description": "JAX backend library",
+      "note": "Optional GPU accelerator for PLS models. PyTorch is recommended for deep learning.",
       "category": "deep_learning"
     },
     "flax": {
-      "version": ">=0.8.0",
+      "min": ">=0.8.0",
+      "recommended": "0.10.4",
       "description": "Flax neural network library for JAX",
+      "note": "Optional GPU accelerator for PLS models. PyTorch is recommended for deep learning.",
       "category": "deep_learning"
     },
     "tabpfn": {
-      "version": ">=2.0.0",
+      "min": ">=2.0.0",
+      "recommended": "2.0.3",
       "description": "TabPFN tabular data model",
       "category": "deep_learning"
     },
     "ikpls": {
-      "version": ">=1.1.0",
+      "min": ">=1.1.0",
+      "recommended": "1.3.0",
       "description": "Improved kernel PLS algorithms",
       "category": "pls_variants"
     },
     "pyopls": {
-      "version": ">=20.0",
+      "min": ">=20.0",
+      "recommended": "20.0",
       "description": "Orthogonal PLS (OPLS)",
       "category": "pls_variants"
     },
     "trendfitter": {
-      "version": ">=0.0.6",
+      "min": ">=0.0.6",
+      "recommended": "0.0.6",
       "description": "PLS with trend analysis",
       "category": "pls_variants"
     },
     "autogluon": {
-      "version": ">=1.0.0",
+      "min": ">=1.0.0",
+      "recommended": "1.2.0",
       "description": "AutoGluon AutoML toolkit",
       "category": "automl"
     },
     "lightgbm": {
-      "version": ">=4.0.0",
+      "min": ">=4.0.0",
+      "recommended": "4.6.0",
       "description": "LightGBM gradient boosting framework",
       "category": "boosting"
     },
     "xgboost": {
-      "version": ">=2.0.0",
+      "min": ">=2.0.0",
+      "recommended": "3.0.0",
       "description": "XGBoost gradient boosting framework",
       "category": "boosting"
     },
     "catboost": {
-      "version": ">=1.2.0",
+      "min": ">=1.2.0",
+      "recommended": "1.2.7",
       "description": "CatBoost gradient boosting framework",
       "category": "boosting"
     },
     "shap": {
-      "version": ">=0.44",
+      "min": ">=0.44",
+      "recommended": "0.47.1",
       "description": "SHAP explanations for model interpretability",
       "category": "explainability"
     },
     "matplotlib": {
-      "version": ">=3.7.0",
+      "min": ">=3.7.0",
+      "recommended": "3.10.1",
       "description": "Core plotting library",
       "category": "visualization"
     },
     "seaborn": {
-      "version": ">=0.12.0",
+      "min": ">=0.12.0",
+      "recommended": "0.13.2",
       "description": "Statistical data visualization",
       "category": "visualization"
     },
     "plotly": {
-      "version": ">=5.0.0",
+      "min": ">=5.0.0",
+      "recommended": "6.0.1",
       "description": "Interactive plotting library",
       "category": "visualization"
     },
     "umap-learn": {
-      "version": ">=0.5.0",
+      "min": ">=0.5.0",
+      "recommended": "0.5.7",
       "description": "UMAP dimensionality reduction",
       "category": "dimensionality"
     },
     "pypandoc": {
-      "version": ">=1.12",
+      "min": ">=1.12",
+      "recommended": "1.12",
       "description": "Pandoc document conversion",
       "category": "reports"
     },
     "PyPDF2": {
-      "version": ">=3.0.0",
+      "min": ">=3.0.0",
+      "recommended": "3.0.1",
       "description": "PDF manipulation",
       "category": "reports"
     },
     "pdf2image": {
-      "version": ">=1.16.0",
+      "min": ">=1.16.0",
+      "recommended": "1.17.0",
       "description": "PDF to image conversion",
       "category": "reports"
     },
     "openpyxl": {
-      "version": ">=3.1.0",
+      "min": ">=3.1.0",
+      "recommended": "3.1.5",
       "description": "Excel file support",
       "category": "export"
     }

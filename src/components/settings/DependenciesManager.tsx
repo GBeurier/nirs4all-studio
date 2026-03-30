@@ -2,8 +2,8 @@
  * Dependencies Manager Component
  *
  * Displays nirs4all optional dependencies with installation status
- * and provides install/uninstall/update actions for each package.
- * Supports custom virtual environment paths and caches scan results.
+ * and provides install/uninstall/update/revert actions for each package.
+ * Shows version status relative to recommended versions.
  */
 
 import { useState, useEffect } from "react";
@@ -20,9 +20,10 @@ import {
   AlertCircle,
   Loader2,
   ExternalLink,
-  FolderOpen,
   RotateCcw,
   Clock,
+  Check,
+  ArrowDownCircle,
 } from "lucide-react";
 import {
   Card,
@@ -35,7 +36,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
 import {
   Collapsible,
   CollapsibleContent,
@@ -63,29 +63,24 @@ import {
   getDependencies,
   installDependency,
   uninstallDependency,
-  updateDependency,
   refreshDependencies,
-  getVenvPath,
-  setVenvPath,
   requestRestart,
   resetBackendUrl,
-  checkEnvCoherence,
   getBuildInfo,
-  resetVenvToRuntime,
+  revertDependency,
 } from "@/api/client";
-import { selectFolder } from "@/utils/fileDialogs";
 import type {
   DependenciesResponse,
   DependencyCategory,
   DependencyInfo,
-  EnvCoherence,
 } from "@/api/client";
 
 interface PackageRowProps {
   pkg: DependencyInfo;
   onInstall: (pkg: string) => Promise<void>;
   onUninstall: (pkg: string) => Promise<void>;
-  onUpdate: (pkg: string) => Promise<void>;
+  onUpdateToLatest: (pkg: string) => Promise<void>;
+  onRevertToRecommended: (pkg: string) => Promise<void>;
   isProcessing: string | null;
 }
 
@@ -93,56 +88,127 @@ function PackageRow({
   pkg,
   onInstall,
   onUninstall,
-  onUpdate,
+  onUpdateToLatest,
+  onRevertToRecommended,
   isProcessing,
 }: PackageRowProps) {
   const isCurrentlyProcessing = isProcessing === pkg.name;
+
+  // Determine version status
+  const isAtRecommended =
+    pkg.is_installed &&
+    pkg.recommended_version &&
+    !pkg.is_below_recommended &&
+    !pkg.is_above_recommended;
+  const isAtLatest =
+    pkg.is_installed &&
+    pkg.installed_version === pkg.latest_version;
+  const hasNewerLatest =
+    pkg.latest_version &&
+    pkg.recommended_version &&
+    pkg.latest_version !== pkg.recommended_version &&
+    pkg.is_outdated;
+
+  // Status icon
+  let statusIcon;
+  if (!pkg.is_installed) {
+    statusIcon = <XCircle className="h-5 w-5 text-muted-foreground" />;
+  } else if (pkg.is_below_recommended) {
+    statusIcon = <ArrowUpCircle className="h-5 w-5 text-amber-500" />;
+  } else if (pkg.is_above_recommended) {
+    statusIcon = <ArrowUpCircle className="h-5 w-5 text-blue-500" />;
+  } else if (isAtRecommended) {
+    statusIcon = <CheckCircle2 className="h-5 w-5 text-green-500" />;
+  } else {
+    statusIcon = <CheckCircle2 className="h-5 w-5 text-green-500" />;
+  }
+
+  // Version badge
+  let versionBadge;
+  if (!pkg.is_installed) {
+    versionBadge = (
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        Not installed
+      </Badge>
+    );
+  } else if (isAtRecommended) {
+    versionBadge = (
+      <Badge className="text-xs font-mono bg-green-600 hover:bg-green-600 text-white gap-1">
+        <Check className="h-3 w-3" />
+        v{pkg.installed_version} (recommended)
+      </Badge>
+    );
+  } else if (pkg.is_below_recommended) {
+    versionBadge = (
+      <Badge className="text-xs font-mono bg-amber-500 hover:bg-amber-500 text-white">
+        v{pkg.installed_version}
+      </Badge>
+    );
+  } else if (pkg.is_above_recommended) {
+    versionBadge = (
+      <Badge className="text-xs font-mono bg-blue-500 hover:bg-blue-500 text-white">
+        v{pkg.installed_version} (custom)
+      </Badge>
+    );
+  } else {
+    // Installed but no recommended_version
+    versionBadge = (
+      <Badge variant="secondary" className="text-xs font-mono">
+        v{pkg.installed_version}
+      </Badge>
+    );
+  }
 
   return (
     <div
       className={`flex items-center justify-between py-3 px-4 rounded-lg border transition-colors ${
         pkg.is_installed
-          ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900/50"
+          ? pkg.is_below_recommended
+            ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50"
+            : "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900/50"
           : "bg-muted/30 border-muted"
       }`}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {/* Status Icon */}
-        <div className="flex-shrink-0">
-          {pkg.is_installed ? (
-            pkg.is_outdated ? (
-              <ArrowUpCircle className="h-5 w-5 text-amber-500" />
-            ) : (
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-            )
-          ) : (
-            <XCircle className="h-5 w-5 text-muted-foreground" />
-          )}
-        </div>
+        <div className="flex-shrink-0">{statusIcon}</div>
 
         {/* Package Info */}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{pkg.name}</span>
-            {pkg.is_installed && pkg.installed_version && (
-              <Badge variant="secondary" className="text-xs font-mono">
-                v{pkg.installed_version}
-              </Badge>
-            )}
-            {pkg.is_outdated && pkg.latest_version && (
-              <Badge variant="warning" className="text-xs">
-                → {pkg.latest_version}
-              </Badge>
-            )}
+            {versionBadge}
           </div>
           <p className="text-xs text-muted-foreground truncate">
             {pkg.description}
           </p>
-          {!pkg.is_installed && (
-            <p className="text-xs text-muted-foreground">
-              Min version: {pkg.min_version}
-            </p>
-          )}
+          {/* Version details line */}
+          <div className="flex items-center gap-3 mt-0.5">
+            {pkg.is_installed &&
+              pkg.recommended_version &&
+              (pkg.is_below_recommended || pkg.is_above_recommended) && (
+                <span className="text-xs text-muted-foreground">
+                  Recommended: {pkg.recommended_version}
+                </span>
+              )}
+            {pkg.is_installed &&
+              pkg.latest_version &&
+              pkg.installed_version !== pkg.latest_version && (
+                <span className="text-xs text-muted-foreground">
+                  Latest: {pkg.latest_version}
+                </span>
+              )}
+            {!pkg.is_installed && pkg.recommended_version && (
+              <span className="text-xs text-muted-foreground">
+                Recommended: {pkg.recommended_version}
+              </span>
+            )}
+            {!pkg.is_installed && !pkg.recommended_version && (
+              <span className="text-xs text-muted-foreground">
+                Min version: {pkg.min_version}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -157,27 +223,89 @@ function PackageRow({
           <>
             {pkg.is_installed ? (
               <>
-                {pkg.is_outdated && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onUpdate(pkg.name)}
-                          disabled={!!isProcessing}
-                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/50"
-                        >
-                          <ArrowUpCircle className="h-4 w-4 mr-1" />
-                          Update
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Update to version {pkg.latest_version}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                {/* Below recommended: Update to Recommended */}
+                {pkg.is_below_recommended && pkg.recommended_version && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRevertToRecommended(pkg.name)}
+                    disabled={!!isProcessing}
+                    className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                  >
+                    <ArrowUpCircle className="h-4 w-4 mr-1" />
+                    Update to Recommended
+                  </Button>
                 )}
+
+                {/* Above recommended: Revert to Recommended */}
+                {pkg.is_above_recommended && pkg.recommended_version && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRevertToRecommended(pkg.name)}
+                    disabled={!!isProcessing}
+                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+                  >
+                    <ArrowDownCircle className="h-4 w-4 mr-1" />
+                    Revert to Recommended
+                  </Button>
+                )}
+
+                {/* Update to Latest (when latest > installed and latest != recommended) */}
+                {!isAtLatest && hasNewerLatest && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!!isProcessing}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <ArrowUpCircle className="h-4 w-4 mr-1" />
+                        Update to Latest
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Update {pkg.name} to latest?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Version {pkg.latest_version} is newer than the
+                          recommended {pkg.recommended_version}. This version
+                          has not been validated with the webapp. You can always
+                          revert to the recommended version.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => onUpdateToLatest(pkg.name)}
+                        >
+                          Update to {pkg.latest_version}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+
+                {/* Update to Latest (simple case: no recommended or latest == recommended) */}
+                {!isAtLatest &&
+                  !hasNewerLatest &&
+                  pkg.is_outdated && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onUpdateToLatest(pkg.name)}
+                      disabled={!!isProcessing}
+                      className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                    >
+                      <ArrowUpCircle className="h-4 w-4 mr-1" />
+                      Update
+                    </Button>
+                  )}
+
+                {/* Uninstall */}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
@@ -191,11 +319,13 @@ function PackageRow({
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Uninstall {pkg.name}?</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        Uninstall {pkg.name}?
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         This will remove {pkg.name} from the managed virtual
-                        environment. Some nirs4all features may not work without
-                        this package.
+                        environment. Some nirs4all features may not work
+                        without this package.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -233,7 +363,8 @@ interface CategorySectionProps {
   category: DependencyCategory;
   onInstall: (pkg: string) => Promise<void>;
   onUninstall: (pkg: string) => Promise<void>;
-  onUpdate: (pkg: string) => Promise<void>;
+  onUpdateToLatest: (pkg: string) => Promise<void>;
+  onRevertToRecommended: (pkg: string) => Promise<void>;
   isProcessing: string | null;
   defaultOpen?: boolean;
 }
@@ -242,7 +373,8 @@ function CategorySection({
   category,
   onInstall,
   onUninstall,
-  onUpdate,
+  onUpdateToLatest,
+  onRevertToRecommended,
   isProcessing,
   defaultOpen = false,
 }: CategorySectionProps) {
@@ -295,7 +427,8 @@ function CategorySection({
             pkg={pkg}
             onInstall={onInstall}
             onUninstall={onUninstall}
-            onUpdate={onUpdate}
+            onUpdateToLatest={onUpdateToLatest}
+            onRevertToRecommended={onRevertToRecommended}
             isProcessing={isProcessing}
           />
         ))}
@@ -316,20 +449,14 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processingPackage, setProcessingPackage] = useState<string | null>(null);
-  const [isChangingVenv, setIsChangingVenv] = useState(false);
   const [lastAction, setLastAction] = useState<{
-    type: "install" | "uninstall" | "update" | "venv";
+    type: "install" | "uninstall" | "update";
     package: string;
     success: boolean;
     message: string;
   } | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
-  const [coherence, setCoherence] = useState<EnvCoherence | null>(null);
   const [isFrozen, setIsFrozen] = useState(false);
-
-  const loadCoherence = () => {
-    checkEnvCoherence().then(setCoherence).catch(() => {});
-  };
 
   const loadDependencies = async (forceRefresh = false) => {
     try {
@@ -353,63 +480,11 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     await loadDependencies(true);
   };
 
-  const handleSelectVenv = async () => {
-    const path = await selectFolder();
-    if (path) {
-      try {
-        setIsChangingVenv(true);
-        const result = await setVenvPath(path);
-        if (result.requires_restart) {
-          setNeedsRestart(true);
-        }
-        setLastAction({
-          type: "venv",
-          package: "venv",
-          success: result.success,
-          message: result.message,
-        });
-        await loadDependencies(true);
-      } catch (err) {
-        setLastAction({
-          type: "venv",
-          package: "venv",
-          success: false,
-          message: err instanceof Error ? err.message : "Failed to set venv path",
-        });
-      } finally {
-        setIsChangingVenv(false);
-      }
-    }
-  };
-
-  const handleResetVenv = async () => {
-    try {
-      setIsChangingVenv(true);
-      const result = await setVenvPath(null);
-      setLastAction({
-        type: "venv",
-        package: "venv",
-        success: result.success,
-        message: result.message,
-      });
-      await loadDependencies(true);
-    } catch (err) {
-      setLastAction({
-        type: "venv",
-        package: "venv",
-        success: false,
-        message: err instanceof Error ? err.message : "Failed to reset venv path",
-      });
-    } finally {
-      setIsChangingVenv(false);
-    }
-  };
-
   const handleInstall = async (packageName: string) => {
     try {
       setProcessingPackage(packageName);
       setLastAction(null);
-      const result = await installDependency(packageName);
+      const result = await installDependency(packageName, undefined, false, "recommended");
       setLastAction({
         type: "install",
         package: packageName,
@@ -455,11 +530,11 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     }
   };
 
-  const handleUpdate = async (packageName: string) => {
+  const handleUpdateToLatest = async (packageName: string) => {
     try {
       setProcessingPackage(packageName);
       setLastAction(null);
-      const result = await updateDependency(packageName);
+      const result = await installDependency(packageName, undefined, true, "latest");
       setLastAction({
         type: "update",
         package: packageName,
@@ -480,6 +555,31 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     }
   };
 
+  const handleRevertToRecommended = async (packageName: string) => {
+    try {
+      setProcessingPackage(packageName);
+      setLastAction(null);
+      const result = await revertDependency(packageName);
+      setLastAction({
+        type: "update",
+        package: packageName,
+        success: result.success,
+        message: result.message,
+      });
+      if (result.requires_restart) setNeedsRestart(true);
+      await loadDependencies(true);
+    } catch (err) {
+      setLastAction({
+        type: "update",
+        package: packageName,
+        success: false,
+        message: err instanceof Error ? err.message : "Revert failed",
+      });
+    } finally {
+      setProcessingPackage(null);
+    }
+  };
+
   useEffect(() => {
     loadDependencies();
   }, []);
@@ -490,16 +590,14 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       // Backend just restarted — delay to let it warm up, then force refresh
       setTimeout(() => {
         loadDependencies(true);
-        loadCoherence();
       }, 2000);
     };
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
   }, []);
 
-  // Load environment coherence and build info on mount
+  // Load build info on mount
   useEffect(() => {
-    loadCoherence();
     getBuildInfo()
       .then((info) => setIsFrozen(info.is_frozen))
       .catch(() => {});
@@ -616,126 +714,6 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
           </Alert>
         )}
 
-        {/* Environment Mismatch Warning */}
-        {coherence && !coherence.coherent && !isFrozen && (
-          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-            <AlertCircle className="h-4 w-4 text-amber-600" />
-            <AlertDescription>
-              <div className="space-y-1">
-                <p className="font-medium">Environment mismatch detected</p>
-                <p className="text-sm">
-                  The package manager targets a different environment than the
-                  running backend. Packages shown may not match what&apos;s
-                  available at runtime.
-                </p>
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await resetVenvToRuntime();
-                        loadCoherence();
-                        await loadDependencies(true);
-                      } catch {
-                        // ignore
-                      }
-                    }}
-                  >
-                    Reset to Current Environment
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
-                      if (electronApi?.restartBackend) {
-                        const result = await electronApi.restartBackend();
-                        if (result.success) {
-                          resetBackendUrl();
-                          window.dispatchEvent(new CustomEvent("backend-restarted"));
-                        }
-                      } else {
-                        await requestRestart();
-                      }
-                    }}
-                  >
-                    <RotateCcw className="mr-2 h-3 w-3" />
-                    Restart Backend
-                  </Button>
-                </div>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Virtual Environment Path */}
-        {!isFrozen && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Python Environment</label>
-          <div className="flex gap-2">
-            <Input
-              value={dependencies.venv_path}
-              readOnly
-              className="flex-1 font-mono text-xs"
-            />
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleSelectVenv}
-                    disabled={isChangingVenv || !!processingPackage}
-                  >
-                    {isChangingVenv ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <FolderOpen className="h-4 w-4" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Select custom virtual environment
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {dependencies.venv_is_custom && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handleResetVenv}
-                      disabled={isChangingVenv || !!processingPackage}
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Reset to default managed environment
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={dependencies.venv_valid ? "default" : "destructive"}>
-              {dependencies.venv_valid ? "Valid" : "Invalid"}
-            </Badge>
-            {dependencies.venv_is_custom && (
-              <Badge variant="secondary">Custom</Badge>
-            )}
-          </div>
-          {coherence && (
-            <p className="text-xs text-muted-foreground font-mono">
-              Runtime: {coherence.runtime.python} (Python {coherence.runtime.version})
-            </p>
-          )}
-        </div>
-        )}
-
         {/* Summary Bar */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-4">
@@ -798,7 +776,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
             )}
             <span>
               {lastAction.success
-                ? (lastAction.type === "venv" ? lastAction.message : `Successfully ${lastAction.type}ed ${lastAction.package}`)
+                ? `Successfully ${lastAction.type}ed ${lastAction.package}`
                 : lastAction.message}
             </span>
             <Button
@@ -851,7 +829,8 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               category={category}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
-              onUpdate={handleUpdate}
+              onUpdateToLatest={handleUpdateToLatest}
+              onRevertToRecommended={handleRevertToRecommended}
               isProcessing={isFrozen ? "__frozen__" : processingPackage}
               defaultOpen={index === 0}
             />

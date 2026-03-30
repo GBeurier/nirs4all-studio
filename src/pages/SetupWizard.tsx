@@ -156,7 +156,7 @@ export default function SetupWizard() {
   };
 
   const profileIcon = (profileId: string) => {
-    if (profileId.includes("gpu") || profileId.includes("cuda") || profileId.includes("metal")) {
+    if (profileId.includes("gpu") || profileId.includes("cuda") || profileId.includes("mps")) {
       return <Gpu className="h-5 w-5" />;
     }
     return <Cpu className="h-5 w-5" />;
@@ -395,7 +395,7 @@ export default function SetupWizard() {
                         >
                           {pkg.name}
                           <Badge variant="outline" className="ml-2 text-xs">
-                            {pkg.version}
+                            {pkg.recommended || pkg.min}
                           </Badge>
                         </Label>
                         <p className="text-sm text-muted-foreground mt-0.5">

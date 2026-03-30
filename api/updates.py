@@ -91,12 +91,15 @@ def _load_optional_deps_from_config() -> dict[str, Any]:
                     "description": cat_meta.get("description", ""),
                     "packages": [],
                 }
-            version_spec = pkg_data.get("version", "")
+            # Handle both old format ("version": ">=2.1.0") and new format ("min": ">=2.1.0", "recommended": "2.6.0")
+            version_spec = pkg_data.get("min") or pkg_data.get("version", "")
             # Strip leading >= for min_version field
             min_version = version_spec.lstrip(">= ") if version_spec else ""
+            recommended_version = pkg_data.get("recommended")
             groups[cat_id]["packages"].append({
                 "name": pkg_name,
                 "min_version": min_version,
+                "recommended_version": recommended_version,
                 "description": pkg_data.get("description", ""),
             })
 
@@ -113,68 +116,67 @@ NIRS4ALL_OPTIONAL_DEPS: dict[str, Any] = _load_optional_deps_from_config() or {
         "name": "Deep Learning",
         "description": "Deep learning frameworks for neural network models",
         "packages": [
-            {"name": "tensorflow", "min_version": "2.14.0", "description": "TensorFlow deep learning framework"},
-            {"name": "torch", "min_version": "2.1.0", "description": "PyTorch deep learning framework"},
-            {"name": "keras", "min_version": "3.0.0", "description": "High-level neural networks API"},
-            {"name": "jax", "min_version": "0.4.20", "description": "JAX numerical computing library"},
-            {"name": "jaxlib", "min_version": "0.4.20", "description": "JAX backend library"},
-            {"name": "flax", "min_version": "0.8.0", "description": "Flax neural network library for JAX"},
-            {"name": "tabpfn", "min_version": "2.0.0", "description": "TabPFN tabular data model"},
+            {"name": "torch", "min_version": "2.1.0", "recommended_version": "2.6.0", "description": "PyTorch deep learning framework"},
+            {"name": "keras", "min_version": "3.0.0", "recommended_version": "3.8.0", "description": "High-level neural networks API"},
+            {"name": "jax", "min_version": "0.4.20", "recommended_version": "0.4.38", "description": "JAX numerical computing library"},
+            {"name": "jaxlib", "min_version": "0.4.20", "recommended_version": "0.4.38", "description": "JAX backend library"},
+            {"name": "flax", "min_version": "0.8.0", "recommended_version": "0.10.4", "description": "Flax neural network library for JAX"},
+            {"name": "tabpfn", "min_version": "2.0.0", "recommended_version": "2.0.3", "description": "TabPFN tabular data model"},
         ],
     },
     "pls_variants": {
         "name": "PLS Variants",
         "description": "Advanced Partial Least Squares implementations",
         "packages": [
-            {"name": "ikpls", "min_version": "1.1.0", "description": "Improved kernel PLS algorithms"},
-            {"name": "pyopls", "min_version": "20.0", "description": "Orthogonal PLS (OPLS)"},
-            {"name": "trendfitter", "min_version": "0.0.6", "description": "PLS with trend analysis"},
+            {"name": "ikpls", "min_version": "1.1.0", "recommended_version": "1.3.0", "description": "Improved kernel PLS algorithms"},
+            {"name": "pyopls", "min_version": "20.0", "recommended_version": "20.0", "description": "Orthogonal PLS (OPLS)"},
+            {"name": "trendfitter", "min_version": "0.0.6", "recommended_version": "0.0.6", "description": "PLS with trend analysis"},
         ],
     },
     "automl": {
         "name": "AutoML",
         "description": "Automated machine learning frameworks",
         "packages": [
-            {"name": "autogluon", "min_version": "1.0.0", "description": "AutoGluon AutoML toolkit"},
+            {"name": "autogluon", "min_version": "1.0.0", "recommended_version": "1.2.0", "description": "AutoGluon AutoML toolkit"},
         ],
     },
     "explainability": {
         "name": "Explainability",
         "description": "Model interpretability and explanation tools",
         "packages": [
-            {"name": "shap", "min_version": "0.44", "description": "SHAP explanations for model interpretability"},
+            {"name": "shap", "min_version": "0.44", "recommended_version": "0.47.1", "description": "SHAP explanations for model interpretability"},
         ],
     },
     "visualization": {
         "name": "Visualization",
         "description": "Plotting and visualization libraries",
         "packages": [
-            {"name": "matplotlib", "min_version": "3.7.0", "description": "Core plotting library"},
-            {"name": "seaborn", "min_version": "0.12.0", "description": "Statistical data visualization"},
-            {"name": "plotly", "min_version": "5.0.0", "description": "Interactive plotting library"},
+            {"name": "matplotlib", "min_version": "3.7.0", "recommended_version": "3.10.1", "description": "Core plotting library"},
+            {"name": "seaborn", "min_version": "0.12.0", "recommended_version": "0.13.2", "description": "Statistical data visualization"},
+            {"name": "plotly", "min_version": "5.0.0", "recommended_version": "6.0.1", "description": "Interactive plotting library"},
         ],
     },
     "dimensionality": {
         "name": "Dimensionality Reduction",
         "description": "Advanced dimensionality reduction methods",
         "packages": [
-            {"name": "umap-learn", "min_version": "0.5.0", "description": "UMAP dimensionality reduction"},
+            {"name": "umap-learn", "min_version": "0.5.0", "recommended_version": "0.5.7", "description": "UMAP dimensionality reduction"},
         ],
     },
     "reports": {
         "name": "Reports",
         "description": "Document and report generation",
         "packages": [
-            {"name": "pypandoc", "min_version": "1.12", "description": "Pandoc document conversion"},
-            {"name": "PyPDF2", "min_version": "3.0.0", "description": "PDF manipulation"},
-            {"name": "pdf2image", "min_version": "1.16.0", "description": "PDF to image conversion"},
+            {"name": "pypandoc", "min_version": "1.12", "recommended_version": "1.12", "description": "Pandoc document conversion"},
+            {"name": "PyPDF2", "min_version": "3.0.0", "recommended_version": "3.0.1", "description": "PDF manipulation"},
+            {"name": "pdf2image", "min_version": "1.16.0", "recommended_version": "1.17.0", "description": "PDF to image conversion"},
         ],
     },
     "export": {
         "name": "Export",
         "description": "Data export capabilities",
         "packages": [
-            {"name": "openpyxl", "min_version": "3.1.0", "description": "Excel file support"},
+            {"name": "openpyxl", "min_version": "3.1.0", "recommended_version": "3.1.5", "description": "Excel file support"},
         ],
     },
 }
@@ -187,10 +189,13 @@ class DependencyInfo(BaseModel):
     category_name: str
     description: str
     min_version: str
+    recommended_version: str | None = None
     installed_version: str | None = None
     latest_version: str | None = None
     is_installed: bool = False
     is_outdated: bool = False
+    is_below_recommended: bool = False
+    is_above_recommended: bool = False
     can_update: bool = False
 
 
@@ -209,7 +214,6 @@ class DependenciesResponse(BaseModel):
     categories: list[DependencyCategory]
     venv_valid: bool
     venv_path: str
-    venv_is_custom: bool
     nirs4all_installed: bool
     nirs4all_version: str | None = None
     total_installed: int = 0
@@ -222,16 +226,13 @@ class PackageInstallRequest(BaseModel):
     package: str
     version: str | None = None
     upgrade: bool = False
+    target: str | None = None  # "recommended" | "latest" | None (defaults to recommended)
 
 
 class PackageUninstallRequest(BaseModel):
     """Request to uninstall a package."""
     package: str
 
-
-class SetVenvPathRequest(BaseModel):
-    """Request to set custom venv path."""
-    path: str | None = None  # None to reset to default
 
 
 # App identification
@@ -1453,7 +1454,6 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
                 categories=[DependencyCategory(**cat) for cat in cached.get("categories", [])],
                 venv_valid=cached.get("venv_valid", False),
                 venv_path=venv_path,
-                venv_is_custom=venv_manager.is_custom_path,
                 nirs4all_installed=cached.get("nirs4all_installed", False),
                 nirs4all_version=cached.get("nirs4all_version"),
                 total_installed=cached.get("total_installed", 0),
@@ -1493,16 +1493,32 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
             latest_version = outdated_packages.get(pkg_name_lower) or outdated_packages.get(pkg_name_alt)
             is_outdated = latest_version is not None and is_installed
 
+            recommended = pkg_def.get("recommended_version")
+            is_below_recommended = False
+            is_above_recommended = False
+            if is_installed and recommended and installed_version:
+                try:
+                    from packaging import version as pkg_version
+                    installed_parsed = pkg_version.parse(installed_version)
+                    recommended_parsed = pkg_version.parse(recommended)
+                    is_below_recommended = installed_parsed < recommended_parsed
+                    is_above_recommended = installed_parsed > recommended_parsed
+                except Exception:
+                    pass
+
             dep_info = DependencyInfo(
                 name=pkg_name,
                 category=cat_id,
                 category_name=cat_data["name"],
                 description=pkg_def["description"],
                 min_version=pkg_def["min_version"],
+                recommended_version=recommended,
                 installed_version=installed_version,
                 latest_version=latest_version,
                 is_installed=is_installed,
                 is_outdated=is_outdated,
+                is_below_recommended=is_below_recommended,
+                is_above_recommended=is_above_recommended,
                 can_update=is_outdated,
             )
             packages.append(dep_info)
@@ -1540,7 +1556,6 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
         categories=categories,
         venv_valid=venv_info.is_valid,
         venv_path=venv_path,
-        venv_is_custom=venv_manager.is_custom_path,
         nirs4all_installed=nirs4all_installed,
         nirs4all_version=nirs4all_version,
         total_installed=total_installed,
@@ -1580,11 +1595,27 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
                 detail=f"Failed to create virtual environment: {message}"
             )
 
+    # Determine version to install based on target
+    install_version = request.version
+    install_upgrade = request.upgrade
+    if not install_version:
+        if request.target == "latest" or install_upgrade:
+            install_upgrade = True
+        elif request.target == "recommended" or request.target is None:
+            # Look up recommended version from NIRS4ALL_OPTIONAL_DEPS
+            for _cat_id, cat_data in NIRS4ALL_OPTIONAL_DEPS.items():
+                for pkg_def in cat_data.get("packages", []):
+                    if pkg_def["name"].lower() == request.package.lower():
+                        recommended = pkg_def.get("recommended_version")
+                        if recommended:
+                            install_version = recommended
+                        break
+
     # Install the package
     success, message, output = venv_manager.install_package(
         request.package,
-        version=request.version,
-        upgrade=request.upgrade,
+        version=install_version,
+        upgrade=install_upgrade,
     )
 
     if not success:
@@ -1638,6 +1669,43 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, An
         "message": message,
         "package": request.package,
         "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+    }
+
+
+@router.post("/dependencies/revert")
+async def revert_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
+    """Revert a package to its recommended version."""
+    _check_not_standalone()
+
+    pkg_info = None
+    for _cat_id, cat_data in NIRS4ALL_OPTIONAL_DEPS.items():
+        for pkg_def in cat_data.get("packages", []):
+            if pkg_def["name"].lower() == request.package.lower():
+                pkg_info = pkg_def
+                break
+        if pkg_info:
+            break
+
+    if not pkg_info:
+        raise HTTPException(status_code=404, detail=f"Unknown package: {request.package}")
+
+    recommended = pkg_info.get("recommended_version")
+    if not recommended:
+        raise HTTPException(status_code=400, detail=f"No recommended version for {request.package}")
+
+    success, message, output = venv_manager.install_package(request.package, version=recommended)
+    _dependencies_cache.invalidate()
+
+    new_version = venv_manager.get_package_version(request.package)
+    requires_restart = request.package.lower() in RESTART_REQUIRED_PACKAGES
+
+    return {
+        "success": success,
+        "message": message,
+        "package": request.package,
+        "version": new_version,
+        "output": output,
+        "requires_restart": requires_restart,
     }
 
 
@@ -1715,55 +1783,10 @@ async def get_venv_path() -> dict[str, Any]:
 
     return {
         "current_path": str(venv_manager.venv_path),
-        "default_path": str(venv_manager.default_path),
-        "is_custom": venv_manager.is_custom_path,
         "is_valid": venv_info.is_valid,
         "exists": venv_info.exists,
     }
 
-
-@router.post("/venv/path")
-async def set_venv_path(request: SetVenvPathRequest) -> dict[str, Any]:
-    """
-    Set a custom virtual environment path.
-
-    Pass path=null to reset to default.
-    The custom path takes effect after a backend restart (deferred activation).
-    """
-    _check_not_standalone()
-
-    success, message = venv_manager.set_custom_venv_path(request.path)
-
-    if not success:
-        raise HTTPException(status_code=400, detail=message)
-
-    # Invalidate dependencies cache when venv path changes
-    _dependencies_cache.invalidate()
-
-    venv_info = venv_manager.get_venv_info()
-    requires_restart = request.path is not None  # Reset (null) is immediate; set requires restart
-
-    return {
-        "success": True,
-        "message": message,
-        "current_path": str(venv_manager.venv_path),
-        "is_custom": venv_manager.is_custom_path,
-        "is_valid": venv_info.is_valid,
-        "requires_restart": requires_restart,
-    }
-
-
-@router.post("/venv/reset")
-async def reset_venv_to_runtime() -> dict[str, Any]:
-    """Reset the venv target to the running interpreter, clearing any custom path."""
-    _check_not_standalone()
-    success, message = venv_manager.reset_to_runtime()
-    _dependencies_cache.invalidate()
-    return {
-        "success": success,
-        "message": message,
-        "current_path": str(venv_manager.venv_path),
-    }
 
 
 # ============= Working Config Snapshot =============

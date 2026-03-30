@@ -1,9 +1,9 @@
 """
 Managed virtual environment manager for nirs4all webapp.
 
-This module handles creation and management of a dedicated Python virtual environment
-for nirs4all and its ML dependencies. This allows the library to be updated
-independently of the bundled webapp.
+This module provides pip/package operations targeting the running Python
+interpreter (sys.executable / sys.prefix).  No custom-path machinery —
+the webapp always operates on the environment it was launched with.
 """
 
 import json
@@ -13,9 +13,9 @@ import sys
 import venv
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .shared.logger import get_logger
 
@@ -53,7 +53,6 @@ class VenvInfo:
     path: str
     exists: bool
     is_valid: bool
-    is_custom: bool = False
     python_version: str | None = None
     pip_version: str | None = None
     created_at: str | None = None
@@ -79,178 +78,26 @@ class VenvManager:
     """
     Manages the Python environment for nirs4all dependencies.
 
-    By default, uses the CURRENT Python environment (the one running the webapp).
-    This means:
+    Always uses the CURRENT Python environment (the one running the webapp):
     - In dev mode: uses your activated venv (e.g., .venv in project root)
     - In production/bundled mode: uses the shipped Python environment
-
-    A custom path can be configured via set_custom_venv_path() for special cases.
     """
 
     METADATA_FILE = "venv_metadata.json"
-    SETTINGS_FILE = "venv_settings.json"
 
     def __init__(self):
         """Initialize the venv manager."""
         self._app_data_dir = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
-        self._settings_path = self._app_data_dir / self.SETTINGS_FILE
-        # Default: use the current Python environment
-        self._default_venv_path = Path(sys.prefix)
-        self._custom_venv_path: Path | None = None
-        self._pending_custom_path: str | None = None
-        self._settings_loaded = False
-
-    def _ensure_settings_loaded(self) -> None:
-        """Ensure settings are loaded (lazy initialization)."""
-        if not self._settings_loaded:
-            self._load_settings()
-            self._settings_loaded = True
-
-    def _load_settings(self) -> None:
-        """Load venv settings from file, validating custom path is still usable."""
-        if self._settings_path.exists():
-            try:
-                with open(self._settings_path, encoding="utf-8") as f:
-                    settings = json.load(f)
-                    custom_path = settings.get("custom_venv_path")
-                    if custom_path:
-                        p = Path(custom_path)
-                        if p.exists() and self._check_valid_python(p):
-                            self._custom_venv_path = p
-                        else:
-                            logger.warning(
-                                "Stale custom venv path %s (missing or invalid). Ignoring.",
-                                custom_path,
-                            )
-                            self._custom_venv_path = None
-                            self._save_settings()
-            except Exception as e:
-                logger.warning("Could not load venv settings: %s", e)
-
-    def _save_settings(self) -> None:
-        """Save venv settings to file."""
-        self._app_data_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            custom = self._pending_custom_path if self._pending_custom_path is not None else (str(self._custom_venv_path) if self._custom_venv_path else None)
-            settings = {
-                "custom_venv_path": custom,
-                "updated_at": datetime.now(UTC).isoformat(),
-            }
-            with open(self._settings_path, "w", encoding="utf-8") as f:
-                json.dump(settings, f, indent=2)
-        except Exception as e:
-            logger.warning("Could not save venv settings: %s", e)
-
-    def _check_valid_python(self, env_path: Path) -> bool:
-        """Quick check if an environment path has a working Python executable."""
-        if sys.platform == "win32":
-            python_exec = env_path / "Scripts" / "python.exe"
-        else:
-            python_exec = env_path / "bin" / "python"
-        if not python_exec.exists():
-            return False
-        try:
-            result = subprocess.run(
-                [str(python_exec), "-c", "print('ok')"],
-                capture_output=True, text=True, timeout=10,
-            )
-            return result.returncode == 0 and "ok" in result.stdout
-        except Exception:
-            return False
 
     @property
     def _venv_path(self) -> Path:
-        """Get the current venv path (custom or default)."""
-        self._ensure_settings_loaded()
-        return self._custom_venv_path if self._custom_venv_path else self._default_venv_path
+        """Get the current venv path (always sys.prefix)."""
+        return Path(sys.prefix)
 
     @property
     def _metadata_path(self) -> Path:
         """Get the metadata file path."""
         return self._venv_path / self.METADATA_FILE
-
-    @property
-    def is_custom_path(self) -> bool:
-        """Check if a custom venv path is configured."""
-        return self._custom_venv_path is not None
-
-    @property
-    def default_path(self) -> Path:
-        """Get the default venv path."""
-        return self._default_venv_path
-
-    def get_custom_path(self) -> str | None:
-        """Get the custom venv path if configured."""
-        return str(self._custom_venv_path) if self._custom_venv_path else None
-
-    def set_custom_venv_path(self, path: str | None) -> tuple[bool, str]:
-        """
-        Set a custom virtual environment path.
-
-        The new path is saved to settings but does NOT take effect in the running
-        process.  A backend restart is required to activate it.  This prevents
-        the "installed in wrong env" mismatch where pip targets one environment
-        but the running process imports from another.
-
-        Args:
-            path: The custom path, or None to reset to default
-
-        Returns:
-            Tuple of (success, message)
-        """
-        if path is None:
-            # Reset to default — takes effect immediately
-            self._custom_venv_path = None
-            self._pending_custom_path = None
-            self._save_settings()
-            return True, "Reset to default virtual environment path"
-
-        custom_path = Path(path)
-
-        # Validate path
-        if not custom_path.exists():
-            return False, f"Path does not exist: {path}"
-
-        # Check if it looks like a valid venv
-        python_exec = custom_path / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
-
-        if not python_exec.exists():
-            return False, f"Not a valid Python virtual environment: {path}"
-
-        # Test the Python executable
-        try:
-            result = subprocess.run(
-                [str(python_exec), "-c", "print('ok')"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0 or "ok" not in result.stdout:
-                return False, f"Python executable is not working in: {path}"
-        except Exception as e:
-            return False, f"Failed to verify Python executable: {e}"
-
-        # Save for next startup — do NOT activate in this process
-        self._pending_custom_path = str(custom_path)
-        self._save_settings()
-        return True, f"Custom path saved. Restart backend to apply: {path}"
-
-    def reset_to_runtime(self) -> tuple[bool, str]:
-        """Reset to the runtime interpreter environment, clearing any custom path."""
-        self._custom_venv_path = None
-        self._pending_custom_path = None
-        self._save_settings()
-        return True, f"Reset to runtime environment: {sys.prefix}"
-
-    @property
-    def has_pending_path_change(self) -> bool:
-        """Check if there's a pending custom path change requiring restart."""
-        return self._pending_custom_path is not None
-
-    @property
-    def settings_path(self) -> Path:
-        """Get the path to the venv settings file."""
-        return self._settings_path
 
     @property
     def venv_path(self) -> Path:
@@ -260,36 +107,24 @@ class VenvManager:
     @property
     def python_executable(self) -> Path:
         """Get the path to the Python executable."""
-        # If using current environment (no custom path), use sys.executable directly
-        if not self._custom_venv_path:
-            return Path(sys.executable)
-        # Custom venv path
-        if sys.platform == "win32":
-            return self._venv_path / "Scripts" / "python.exe"
-        return self._venv_path / "bin" / "python"
+        return Path(sys.executable)
 
     @property
     def pip_executable(self) -> Path:
         """Get the path to pip."""
-        # If using current environment, find pip relative to sys.executable
-        if not self._custom_venv_path:
-            python_dir = Path(sys.executable).parent
-            if sys.platform == "win32":
-                # In a venv, pip.exe is next to python.exe in Scripts/
-                direct = python_dir / "pip.exe"
-                if direct.exists():
-                    return direct
-                # For base Python installs where pip is in a Scripts subfolder
-                # (python_dir might be the root, not Scripts/)
-                parent_scripts = python_dir.parent / "Scripts" / "pip.exe"
-                if parent_scripts.exists():
-                    return parent_scripts
-                return direct  # Return expected path (better error than wrong path)
-            return python_dir / "pip"
-        # Custom venv path
+        python_dir = Path(sys.executable).parent
         if sys.platform == "win32":
-            return self._venv_path / "Scripts" / "pip.exe"
-        return self._venv_path / "bin" / "pip"
+            # In a venv, pip.exe is next to python.exe in Scripts/
+            direct = python_dir / "pip.exe"
+            if direct.exists():
+                return direct
+            # For base Python installs where pip is in a Scripts subfolder
+            # (python_dir might be the root, not Scripts/)
+            parent_scripts = python_dir.parent / "Scripts" / "pip.exe"
+            if parent_scripts.exists():
+                return parent_scripts
+            return direct  # Return expected path (better error than wrong path)
+        return python_dir / "pip"
 
     def get_venv_info(self) -> VenvInfo:
         """Get information about the managed venv."""
@@ -297,7 +132,6 @@ class VenvManager:
             path=str(self._venv_path),
             exists=self._venv_path.exists(),
             is_valid=self._is_valid_venv(),
-            is_custom=self.is_custom_path,
         )
 
         if info.is_valid:

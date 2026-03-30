@@ -1447,25 +1447,6 @@ export async function openFolderInExplorer(path: string): Promise<void> {
   }
 }
 
-// Environment coherence check
-export interface EnvCoherence {
-  coherent: boolean;
-  python_match: boolean;
-  prefix_match: boolean;
-  runtime: { python: string; prefix: string; version: string };
-  venv_manager: {
-    python: string;
-    prefix: string;
-    is_custom: boolean;
-    custom_path: string | null;
-    has_pending_change: boolean;
-  };
-}
-
-export async function checkEnvCoherence(): Promise<EnvCoherence> {
-  return api.get("/system/env-coherence");
-}
-
 // Build info (includes standalone/frozen detection)
 export interface BuildInfoResponse {
   build: { flavor: string; gpu_enabled: boolean };
@@ -2141,10 +2122,13 @@ export interface DependencyInfo {
   category_name: string;
   description: string;
   min_version: string;
+  recommended_version: string | null;
   installed_version: string | null;
   latest_version: string | null;
   is_installed: boolean;
   is_outdated: boolean;
+  is_below_recommended: boolean;
+  is_above_recommended: boolean;
   can_update: boolean;
 }
 
@@ -2161,7 +2145,6 @@ export interface DependenciesResponse {
   categories: DependencyCategory[];
   venv_valid: boolean;
   venv_path: string;
-  venv_is_custom: boolean;
   nirs4all_installed: boolean;
   nirs4all_version: string | null;
   total_installed: number;
@@ -2178,14 +2161,6 @@ export interface PackageActionResponse {
   requires_restart?: boolean;
 }
 
-export interface VenvPathInfo {
-  current_path: string;
-  default_path: string;
-  is_custom: boolean;
-  is_valid: boolean;
-  exists: boolean;
-}
-
 /**
  * Get all nirs4all optional dependencies with installation status
  */
@@ -2200,12 +2175,14 @@ export async function getDependencies(forceRefresh: boolean = false): Promise<De
 export async function installDependency(
   packageName: string,
   version?: string,
-  upgrade: boolean = false
+  upgrade: boolean = false,
+  target?: string  // "recommended" | "latest"
 ): Promise<PackageActionResponse> {
   return api.post("/updates/dependencies/install", {
     package: packageName,
     version,
     upgrade,
+    target,
   });
 }
 
@@ -2242,34 +2219,10 @@ export async function refreshDependencies(): Promise<{
 }
 
 /**
- * Get current venv path configuration
+ * Revert a dependency to its recommended version
  */
-export async function getVenvPath(): Promise<VenvPathInfo> {
-  return api.get("/updates/venv/path");
-}
-
-/**
- * Set custom venv path (pass null to reset to default)
- */
-export async function setVenvPath(path: string | null): Promise<{
-  success: boolean;
-  message: string;
-  current_path: string;
-  is_custom: boolean;
-  is_valid: boolean;
-  requires_restart: boolean;
-}> {
-  return api.post("/updates/venv/path", { path });
-}
-
-/**
- * Reset venv manager to match the currently running Python environment.
- */
-export async function resetVenvToRuntime(): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  return api.post("/updates/venv/reset");
+export async function revertDependency(packageName: string): Promise<PackageActionResponse> {
+  return api.post("/updates/dependencies/revert", { package: packageName });
 }
 
 // ============= Working Config Snapshots API =============
@@ -2500,19 +2453,26 @@ export async function deleteProject(projectId: string): Promise<{ success: boole
 
 // ============= Recommended Config API =============
 
+export interface ProfilePackageSpec {
+  min: string;
+  recommended: string | null;
+}
+
 export interface ProfileInfo {
   id: string;
   label: string;
   description: string;
-  packages: Record<string, string>;
+  packages: Record<string, ProfilePackageSpec>;
   platforms: string[];
 }
 
 export interface OptionalPackageInfo {
   name: string;
-  version: string;
+  min: string;
+  recommended: string | null;
   description: string;
   category: string;
+  note?: string | null;
 }
 
 export interface RecommendedConfigResponse {
