@@ -1,14 +1,14 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.2.0",
-  "nirs4all": "0.7.1",
+  "app_version": "0.3.0",
+  "nirs4all": "0.8.6",
   "profiles": {
     "cpu": {
       "label": "CPU Only",
       "description": "Core NIRS analysis with scikit-learn models. No GPU required.",
       "platforms": ["win32", "linux", "darwin"],
       "packages": {
-        "nirs4all": { "min": ">=0.7.1", "recommended": "0.7.1" }
+        "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" }
       }
     },
     "gpu-cuda-torch": {
@@ -16,7 +16,7 @@
       "description": "Deep learning with PyTorch on NVIDIA GPUs.",
       "platforms": ["win32", "linux"],
       "packages": {
-        "nirs4all": { "min": ">=0.7.1", "recommended": "0.7.1" },
+        "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" },
         "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
         "keras": { "min": ">=3.0.0", "recommended": "3.8.0" }
       }
@@ -26,7 +26,7 @@
       "description": "Deep learning with PyTorch on Apple Silicon.",
       "platforms": ["darwin"],
       "packages": {
-        "nirs4all": { "min": ">=0.7.1", "recommended": "0.7.1" },
+        "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" },
         "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
         "keras": { "min": ">=3.0.0", "recommended": "3.8.0" }
       }

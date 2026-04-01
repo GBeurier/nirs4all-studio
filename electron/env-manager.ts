@@ -39,7 +39,7 @@ const CORE_PACKAGES = [
   "packaging>=24.0",
   "platformdirs>=4.0.0",
   "sentry-sdk[fastapi]>=2.0.0",
-  "nirs4all>=0.7.1",
+  "nirs4all>=0.8.6",
 ];
 
 const isWindows = process.platform === "win32";

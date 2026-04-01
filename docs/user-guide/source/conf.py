@@ -8,8 +8,8 @@ from datetime import date
 project = 'nirs4all Studio'
 copyright = f'2025-{date.today().year}, Gregory Beurier'
 author = 'Gregory Beurier'
-release = '0.2.0'
-version = '0.2'
+release = '0.3.0'
+version = '0.3'
 
 # -- General configuration ------------------------------------------------
 
