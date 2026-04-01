@@ -57,6 +57,8 @@ const zh = {
     creating: "创建中...",
     saving: "保存中...",
     revertChanges: "撤销更改",
+    noResults: "未找到结果",
+    retry: "重试",
   },
 
   // ============= Time / Date =============
@@ -322,6 +324,7 @@ const zh = {
         },
       },
       autoDetect: "自动检测格式",
+      autoDetectDescription: "自动检测文件格式、分隔符和小数分隔符",
       save: "保存默认值",
       reset: "恢复默认值",
     },
@@ -514,6 +517,13 @@ const zh = {
       pinnedChains: "已固定链路",
       clearPins: "清除固定",
       savedSelections: "已保存选择",
+      colors: "颜色",
+    },
+    filter: {
+      runs: "运行记录",
+      datasets: "数据集",
+      models: "模型",
+      preprocessing: "预处理",
     },
     panels: {
       scatter: "预测值 vs 观测值",
@@ -794,6 +804,7 @@ const zh = {
     filters: {
       searchPlaceholder: "搜索数据集...",
     },
+    noResults: "未找到结果",
   },
 
   // ============= Predictions =============
@@ -898,6 +909,8 @@ const zh = {
     loadingModels: "正在加载模型...",
     noRuns: "未找到包含模型的已完成运行",
     noBundles: "未找到导出的模型包",
+    noModels: "未找到已训练的模型。请先运行实验。",
+    bundles: "导出的模型包",
     noResults: "暂无结果",
     instructions:
       '选择已训练的模型和数据集，然后点击"计算解释"，分析哪些波长对预测最重要。',
@@ -945,6 +958,11 @@ const zh = {
     },
     ranking: {
       description: "按平均绝对 SHAP 值排序的波长区间。",
+    },
+    binning: {
+      size: "分箱大小",
+      stride: "步长",
+      aggregation: "聚合",
     },
   },
 

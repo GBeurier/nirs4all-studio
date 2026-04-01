@@ -48,6 +48,8 @@ export interface EnrichedDatasetRun {
 export interface TopChainResult {
   chain_id: string;
   run_id?: string;
+  pipeline_id?: string;
+  pipeline_name?: string | null;
   model_name: string;
   model_class: string;
   preprocessings: string;
@@ -64,6 +66,7 @@ export interface TopChainResult {
   /** Can be flat `{rmse: 0.3}` or nested `{test: {rmse: 0.3}}` — use `extractScoreValue()` to read. */
   final_scores: Record<string, unknown>;
   best_params?: Record<string, unknown> | null;
+  variant_params?: Record<string, unknown> | null;
   is_refit_only?: boolean;
 }
 
@@ -95,10 +98,14 @@ export interface AllChainsResponse {
 /** One chain entry in the all-chains response. */
 export interface AllChainEntry {
   chain_id: string;
+  run_id?: string;
+  pipeline_id?: string;
+  pipeline_name?: string | null;
   model_name: string;
   model_class: string;
   preprocessings: string;
   best_params: Record<string, unknown> | null;
+  variant_params?: Record<string, unknown> | null;
   cv_val_score: number | null;
   cv_test_score: number | null;
   cv_train_score: number | null;

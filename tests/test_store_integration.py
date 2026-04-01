@@ -185,6 +185,64 @@ class TestStoreAdapter:
         assert result["total"] == 3
         assert result["has_more"] is True
 
+    def test_get_dataset_top_chains_keeps_best_final_outside_top_cv(self, mock_polars_df):
+        mock_store = MagicMock()
+        mock_store.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-cv-best",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "Model A",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_val_score": 0.12,
+                "cv_test_score": 0.15,
+                "cv_train_score": 0.1,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": 0.35,
+                "final_train_score": 0.09,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            },
+            {
+                "chain_id": "chain-final-best",
+                "run_id": "run-002",
+                "pipeline_id": "pipe-002",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "Model B",
+                "model_class": "PLSRegression",
+                "preprocessings": "MSC",
+                "cv_val_score": 0.2,
+                "cv_test_score": 0.22,
+                "cv_train_score": 0.18,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": 0.18,
+                "final_train_score": 0.11,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            },
+        ])
+
+        adapter = self._make_adapter(mock_store)
+        adapter._get_pipeline_metadata_map = MagicMock(return_value={})
+
+        result = adapter.get_dataset_top_chains(n=1)
+
+        assert len(result["datasets"]) == 1
+        top_chains = result["datasets"][0]["top_chains"]
+        assert {chain["chain_id"] for chain in top_chains} == {"chain-cv-best", "chain-final-best"}
+        best_final = next(chain for chain in top_chains if chain["chain_id"] == "chain-final-best")
+        assert best_final["final_test_score"] == 0.18
+
     def test_get_prediction_scatter(self):
         import numpy as np
 

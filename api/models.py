@@ -87,6 +87,10 @@ class AvailableModel(BaseModel):
     file_size: int | None = None
     preprocessing: str | None = None
     bundle_path: str | None = None
+    has_refit: bool = False
+    fold_artifacts: dict[str, str] | None = None
+    prediction_metric: str | None = None
+    prediction_score: float | None = None
 
 
 class CompareModelsRequest(BaseModel):
@@ -307,6 +311,87 @@ def _populate_nirs4all_models():
                     "n_components": {"type": "int", "default": 10, "min": 1, "max": 100},
                 },
             }
+
+
+def _coerce_json_object(value: Any) -> dict[str, Any]:
+    """Return a JSON object regardless of whether the input is a dict or JSON string."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            import json as _json
+
+            parsed = _json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _extract_partition_metric(
+    scores: dict[str, Any] | str | None,
+    metric: str | None,
+    *,
+    partition: str = "test",
+) -> float | None:
+    """Extract a metric value from flat or nested scores payloads."""
+    if not metric:
+        return None
+
+    metric_key = metric.lower()
+    payload = _coerce_json_object(scores)
+
+    flat_value = payload.get(metric_key)
+    if isinstance(flat_value, (int, float)):
+        return float(flat_value)
+
+    partition_scores = payload.get(partition)
+    if isinstance(partition_scores, dict):
+        nested_value = partition_scores.get(metric_key)
+        if isinstance(nested_value, (int, float)):
+            return float(nested_value)
+
+    return None
+
+
+def _prediction_metric_name(metric: str | None) -> str | None:
+    """Return the display metric name for live predictions."""
+    if not metric:
+        return None
+    normalized = metric.lower()
+    if normalized == "rmse":
+        return "rmsep"
+    return normalized
+
+
+def _available_model_visibility_key(model: dict[str, Any]) -> tuple[Any, ...]:
+    """Return the predict-page visible signature used to collapse duplicates.
+
+    Distinct chain ids can still represent the same visible prediction option when
+    the source, labels, preprocessing, and displayed prediction score are identical.
+    We deduplicate on the UI-facing fields rather than the storage identifiers.
+    """
+    prediction_score = model.get("prediction_score")
+    if isinstance(prediction_score, float):
+        prediction_score = round(prediction_score, 12)
+
+    best_score = model.get("best_score")
+    if isinstance(best_score, float):
+        best_score = round(best_score, 12)
+
+    return (
+        model.get("source"),
+        model.get("name"),
+        model.get("model_class"),
+        model.get("dataset_name"),
+        model.get("preprocessing"),
+        model.get("prediction_metric"),
+        prediction_score,
+        model.get("has_refit", False),
+        # Fallback for models without visible prediction score.
+        model.get("metric"),
+        best_score,
+    )
 
 
 # ============= Model Type Routes =============
@@ -543,47 +628,186 @@ async def list_available_models():
             except Exception as e:
                 logger.error("Error reading bundle %s: %s", n4a_file, e)
 
-    # 2. Query chain summaries from WorkspaceStore (chains with refit/final scores)
+    # 2. Query chain summaries from WorkspaceStore — only chains with saved artifacts
     workspace_path = Path(workspace.path)
     store_exists = (workspace_path / "store.sqlite").exists() or (workspace_path / "store.duckdb").exists()
     if store_exists:
         try:
+            import math
+
             WorkspaceStore = get_cached("WorkspaceStore")
             if WorkspaceStore is not None:
                 store = WorkspaceStore(workspace_path)
-                df = store.query_chain_summaries()
-                for row in df.iter_rows(named=True):
-                    # Skip chains already covered by a bundle
-                    pid = row.get("pipeline_id", "")
-                    if pid and pid in seen_pipeline_uids:
-                        continue
+                try:
+                    df = store.query_chain_summaries()
 
-                    best_score = row.get("final_test_score") or row.get("cv_val_score")
-                    # Sanitize NaN
-                    import math
-                    if isinstance(best_score, float) and (math.isnan(best_score) or math.isinf(best_score)):
-                        best_score = None
+                    # Batch-fetch fold_artifacts to filter chains with saved models
+                    chain_ids = [row["chain_id"] for row in df.iter_rows(named=True)]
+                    artifacts_map: dict[str, dict] = {}
+                    prediction_score_map: dict[str, tuple[str | None, float | None]] = {}
+                    if chain_ids:
+                        try:
+                            placeholders = ", ".join("?" for _ in chain_ids)
+                            fa_df = store._fetch_pl(
+                                f"SELECT chain_id, fold_artifacts FROM chains WHERE chain_id IN ({placeholders})",
+                                chain_ids,
+                            )
+                            for r in fa_df.iter_rows(named=True):
+                                raw = r.get("fold_artifacts")
+                                if raw:
+                                    fa = _coerce_json_object(raw)
+                                    if isinstance(fa, dict) and fa:
+                                        artifacts_map[r["chain_id"]] = fa
+                        except Exception:
+                            pass
 
-                    models.append(AvailableModel(
-                        id=row["chain_id"],
-                        name=row.get("model_name") or row.get("model_class", "Unknown"),
-                        source="chain",
-                        model_class=row.get("model_class", "Unknown"),
-                        dataset_name=row.get("dataset_name"),
-                        metric=row.get("metric"),
-                        best_score=best_score,
-                        created_at=None,
-                        file_size=None,
-                        preprocessing=row.get("preprocessings"),
-                        bundle_path=None,
-                    ).model_dump())
+                        try:
+                            score_df = store._fetch_pl(
+                                "SELECT chain_id, fold_id, test_score, scores "
+                                f"FROM predictions WHERE chain_id IN ({placeholders}) "
+                                "AND partition = 'test'",
+                                chain_ids,
+                            )
+                            prediction_rows: dict[str, dict[str, dict[str, Any]]] = {}
+                            for r in score_df.iter_rows(named=True):
+                                prediction_rows.setdefault(r["chain_id"], {})[str(r.get("fold_id"))] = dict(r)
+
+                            for row in df.iter_rows(named=True):
+                                chain_id = row["chain_id"]
+                                metric = (row.get("metric") or "").lower() or None
+                                fold_artifacts = artifacts_map.get(chain_id) or {}
+                                has_refit = bool(fold_artifacts.get("fold_final") or fold_artifacts.get("final"))
+
+                                final_metric = _extract_partition_metric(
+                                    row.get("final_scores"),
+                                    metric,
+                                    partition="test",
+                                )
+                                final_test_score = row.get("final_test_score")
+                                if isinstance(final_test_score, float) and (math.isnan(final_test_score) or math.isinf(final_test_score)):
+                                    final_test_score = None
+
+                                chosen_metric = None
+                                chosen_score = None
+                                row_scores = prediction_rows.get(chain_id, {})
+
+                                if has_refit:
+                                    chosen_metric = _prediction_metric_name(metric)
+                                    chosen_score = final_metric if final_metric is not None else final_test_score
+                                else:
+                                    avg_row = row_scores.get("avg") or row_scores.get("w_avg")
+                                    if avg_row is not None:
+                                        avg_metric = _extract_partition_metric(
+                                            avg_row.get("scores"),
+                                            metric,
+                                            partition="test",
+                                        )
+                                        avg_test_score = avg_row.get("test_score")
+                                        if isinstance(avg_test_score, float) and (math.isnan(avg_test_score) or math.isinf(avg_test_score)):
+                                            avg_test_score = None
+                                        chosen_metric = _prediction_metric_name(metric)
+                                        chosen_score = avg_metric if avg_metric is not None else avg_test_score
+                                    else:
+                                        fold_rows = [
+                                            value for fold_id, value in row_scores.items()
+                                            if fold_id not in {"final", "avg", "w_avg"}
+                                        ]
+                                        if len(fold_rows) == 1:
+                                            fold_row = fold_rows[0]
+                                            fold_metric = _extract_partition_metric(
+                                                fold_row.get("scores"),
+                                                metric,
+                                                partition="test",
+                                            )
+                                            fold_test_score = fold_row.get("test_score")
+                                            if isinstance(fold_test_score, float) and (math.isnan(fold_test_score) or math.isinf(fold_test_score)):
+                                                fold_test_score = None
+                                            chosen_metric = _prediction_metric_name(metric)
+                                            chosen_score = fold_metric if fold_metric is not None else fold_test_score
+
+                                if chosen_score is not None:
+                                    prediction_score_map[chain_id] = (chosen_metric, float(chosen_score))
+                        except Exception:
+                            pass
+
+                    for row in df.iter_rows(named=True):
+                        cid = row["chain_id"]
+                        # Skip chains already covered by a bundle
+                        pid = row.get("pipeline_id", "")
+                        if pid and pid in seen_pipeline_uids:
+                            continue
+
+                        # Only include chains that have at least one saved artifact
+                        fold_artifacts = artifacts_map.get(cid)
+                        if not fold_artifacts:
+                            continue
+
+                        # Prefer CV val score (consistent with Runs page).
+                        # Fall back to final_test only when CV is unavailable.
+                        # Use `is not None` to avoid treating 0.0 as missing.
+                        cv_val = row.get("cv_val_score")
+                        final_test = row.get("final_test_score")
+                        best_score = cv_val if cv_val is not None else final_test
+                        if isinstance(best_score, float) and (math.isnan(best_score) or math.isinf(best_score)):
+                            best_score = None
+
+                        has_refit = bool(fold_artifacts.get("fold_final") or fold_artifacts.get("final"))
+                        prediction_metric, prediction_score = prediction_score_map.get(cid, (None, None))
+
+                        models.append(AvailableModel(
+                            id=cid,
+                            name=row.get("model_name") or row.get("model_class", "Unknown"),
+                            source="chain",
+                            model_class=row.get("model_class", "Unknown"),
+                            dataset_name=row.get("dataset_name"),
+                            metric=row.get("metric"),
+                            best_score=best_score,
+                            created_at=None,
+                            file_size=None,
+                            preprocessing=row.get("preprocessings"),
+                            bundle_path=None,
+                            has_refit=has_refit,
+                            fold_artifacts=fold_artifacts,
+                            prediction_metric=prediction_metric,
+                            prediction_score=prediction_score,
+                        ).model_dump())
+                finally:
+                    store.close()
         except Exception as e:
             logger.error("Error querying chain summaries: %s", e)
 
-    # Sort: bundles first, then by score descending
-    models.sort(key=lambda m: (m["source"] != "bundle", -(m.get("best_score") or 0)))
+    # Sort by live prediction score first when available, then fall back to the
+    # chain selection score. Models without any score go to the bottom.
+    _LOWER_IS_BETTER = {
+        "rmse", "rmsecv", "rmsep", "mse", "mae", "mape", "bias", "sep",
+        "nrmse", "nmse", "nmae", "max_error", "median_ae",
+        "hamming_loss", "log_loss",
+    }
 
-    return {"models": models, "total": len(models)}
+    def _sort_key(m: dict) -> tuple:
+        score = m.get("prediction_score")
+        metric = (m.get("prediction_metric") or "").lower()
+        if score is None:
+            score = m.get("best_score")
+            metric = (m.get("metric") or "").lower()
+        if score is None:
+            return (1, m["source"] != "bundle", 0, str(m.get("id", "")))
+        # For lower-is-better metrics, sort ascending (smaller = better)
+        signed = score if metric in _LOWER_IS_BETTER else -score
+        return (0, m["source"] != "bundle", signed, str(m.get("id", "")))
+
+    models.sort(key=_sort_key)
+
+    deduped_models: list[dict[str, Any]] = []
+    seen_visible_models: set[tuple[Any, ...]] = set()
+    for model in models:
+        visible_key = _available_model_visibility_key(model)
+        if visible_key in seen_visible_models:
+            continue
+        seen_visible_models.add(visible_key)
+        deduped_models.append(model)
+
+    return {"models": deduped_models, "total": len(deduped_models)}
 
 
 @router.get("/models/trained/{model_id:path}/summary", response_model=BundleSummary)

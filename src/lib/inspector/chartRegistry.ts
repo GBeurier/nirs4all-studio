@@ -2,7 +2,7 @@
  * Inspector panel definitions registry.
  */
 
-import { ScatterChart, Table2, BarChart3, TrendingDown, Grid3X3, CandlestickChart, GitCompare, GitBranch, Activity, Grid2X2, Radar, BarChartHorizontal, Layers, SlidersHorizontal, Scale, TrendingUp, type LucideIcon } from 'lucide-react';
+import { ScatterChart, Table2, BarChart3, TrendingDown, Grid3X3, CandlestickChart, GitCompare, GitBranch, Activity, Grid2X2, Layers, SlidersHorizontal, Scale, type LucideIcon } from 'lucide-react';
 import type { InspectorPanelType } from '@/types/inspector';
 
 export interface InspectorPanelDefinition {
@@ -12,6 +12,7 @@ export interface InspectorPanelDefinition {
   icon: LucideIcon;
   defaultVisible: boolean;
   priority: number;
+  help: string;
 }
 
 export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
@@ -22,6 +23,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: Table2,
     defaultVisible: true,
     priority: 10,
+    help: 'Ranks chains for the active score column. Use this to identify the strongest candidates before drilling into diagnostics.',
   },
   {
     id: 'heatmap',
@@ -30,6 +32,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: Grid3X3,
     defaultVisible: true,
     priority: 15,
+    help: 'Summarizes score by the chosen grouping variables. It is useful for spotting interactions between models, preprocessings, and datasets.',
   },
   {
     id: 'histogram',
@@ -38,6 +41,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: BarChart3,
     defaultVisible: true,
     priority: 20,
+    help: 'Shows the empirical distribution of scores across the current scope. Use it to detect multimodality, skew, and outliers.',
   },
   {
     id: 'candlestick',
@@ -46,6 +50,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: CandlestickChart,
     defaultVisible: true,
     priority: 25,
+    help: 'Compares score spread within each category. This is the quickest view for stability, dispersion, and extreme values.',
   },
   {
     id: 'scatter',
@@ -54,6 +59,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: ScatterChart,
     defaultVisible: true,
     priority: 30,
+    help: 'Compares predicted values to ground truth. Deviations from the diagonal usually reveal bias, saturation, or a poor fit.',
   },
   {
     id: 'preprocessing_impact',
@@ -62,6 +68,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: Layers,
     defaultVisible: true,
     priority: 35,
+    help: 'Estimates whether a preprocessing step is associated with better or worse scores across the visible chains.',
   },
   {
     id: 'residuals',
@@ -70,6 +77,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: TrendingDown,
     defaultVisible: false,
     priority: 40,
+    help: 'Focuses on prediction error rather than raw score. Structure in the residual cloud indicates systematic modeling issues.',
   },
   {
     id: 'branch_comparison',
@@ -78,6 +86,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: GitCompare,
     defaultVisible: false,
     priority: 45,
+    help: 'Compares branch-level performance when a pipeline splits into several modeling paths. Use it to locate the branch that drives gains.',
   },
   {
     id: 'fold_stability',
@@ -86,6 +95,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: Activity,
     defaultVisible: false,
     priority: 50,
+    help: 'Shows how scores vary across folds for the focused chains. Large fold-to-fold spread suggests brittle generalization.',
   },
   {
     id: 'confusion',
@@ -94,6 +104,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: Grid2X2,
     defaultVisible: false,
     priority: 55,
+    help: 'Available for classification tasks. It exposes which classes are being confused instead of hiding the error behind a single metric.',
   },
   {
     id: 'branch_topology',
@@ -102,22 +113,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: GitBranch,
     defaultVisible: false,
     priority: 60,
-  },
-  {
-    id: 'robustness',
-    name: 'Robustness Radar',
-    shortName: 'Robustness',
-    icon: Radar,
-    defaultVisible: false,
-    priority: 65,
-  },
-  {
-    id: 'correlation',
-    name: 'Metric Correlation',
-    shortName: 'Correlation',
-    icon: BarChartHorizontal,
-    defaultVisible: false,
-    priority: 70,
+    help: 'Shows the structure of a single pipeline branch graph. This helps connect a performance pattern back to the underlying pipeline topology.',
   },
   {
     id: 'hyperparameter',
@@ -126,6 +122,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: SlidersHorizontal,
     defaultVisible: false,
     priority: 75,
+    help: 'Plots numeric hyperparameters against score. A visible trend suggests the tuned parameter carries signal; a cloud suggests weak sensitivity.',
   },
   {
     id: 'bias_variance',
@@ -134,14 +131,7 @@ export const INSPECTOR_PANELS: InspectorPanelDefinition[] = [
     icon: Scale,
     defaultVisible: false,
     priority: 80,
-  },
-  {
-    id: 'learning_curve',
-    name: 'Learning Curve',
-    shortName: 'Learning',
-    icon: TrendingUp,
-    defaultVisible: false,
-    priority: 85,
+    help: 'Separates error into bias and variance components for regression chains. Use it to determine whether the model is underfitting or unstable.',
   },
 ];
 

@@ -684,6 +684,7 @@ def _get_available_chains() -> list[DatasetChains]:
                 has_refit=c.get("chain_id", "") in refit_chains,
             )
             for c in chains[:20]
+            if c.get("chain_id", "") in refit_chains  # Only models with refit artifact
         ]
 
         result.append(DatasetChains(

@@ -1,90 +1,147 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
-import { Link } from "react-router-dom";
 import {
-  Target, Trash2, Download, Search, Database, GitBranch, Brain,
-  ArrowUpDown, BarChart3, Scissors, X, ChevronDown, Loader2,
-  RefreshCw, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  Award, Box,
+  ArrowUpDown, Brain, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  Database, Download, Loader2, RefreshCw, Search, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  Collapsible, CollapsibleContent, CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { NoWorkspaceState, EmptyState, LoadingState, ErrorState } from "@/components/ui/state-display";
+import { EmptyState, ErrorState, LoadingState, NoWorkspaceState } from "@/components/ui/state-display";
 import {
+  exportAggregatedPredictions,
   getLinkedWorkspaces,
   getN4AWorkspacePredictionsData,
-  getN4AWorkspacePredictionsSummary,
-  getAggregatedPredictions,
-  exportAggregatedPredictions,
 } from "@/api/client";
-import type {
-  PredictionRecord, LinkedWorkspace, PredictionSummaryResponse,
-} from "@/types/linked-workspaces";
-import type { ChainSummary } from "@/types/aggregated-predictions";
+import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspaces";
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
-import { AggregationToggle, type AggregationMode } from "@/components/scores/AggregationToggle";
-import { CVDetailTable } from "@/components/scores/CVDetailTable";
-import { ModelActionMenu } from "@/components/scores/ModelActionMenu";
-import {
-  formatMetricValue, formatScore, isLowerBetter, isBetterScore,
-  getMetricAbbreviation, extractScoreValue,
-} from "@/lib/scores";
+import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
+import { predictionRecordToRow } from "@/lib/score-adapters";
+import { FOLD_ORDER, isFinalFold, isAggFold, isNumberedFold } from "@/lib/fold-utils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { getMetricAbbreviation, isLowerBetter } from "@/lib/scores";
+import type { ScoreCardRow } from "@/types/score-cards";
 
-type SortField = "model_name" | "dataset_name" | "partition" | "val_score" | "test_score" | "n_samples";
+const FETCH_PAGE_SIZE = 1000;
+
+type SortField = "model_name" | "dataset_name" | "fold" | "val_score" | "test_score" | "n_samples";
 type SortOrder = "asc" | "desc";
-type AggSortField = "model_name" | "dataset_name" | "final" | "cv_val" | "cv_test" | "folds";
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "detail" in error) {
+    const detail = (error as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+  }
+  return fallback;
+}
+
+async function getAllPredictionRecords(workspaceId: string): Promise<PredictionRecord[]> {
+  const records: PredictionRecord[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await getN4AWorkspacePredictionsData(workspaceId, {
+      limit: FETCH_PAGE_SIZE,
+      offset,
+    });
+    records.push(...page.records);
+    if (!page.has_more || page.records.length === 0) break;
+    offset += page.records.length;
+  }
+
+  return records;
+}
+
+function predictionGroupKey(pred: PredictionRecord): string {
+  return [
+    pred.source_dataset || pred.dataset_name || "",
+    pred.trace_id || pred.pipeline_uid || pred.id,
+    pred.fold_id || "unknown",
+  ].join("::");
+}
+
+function foldSortValue(foldId?: string): number {
+  if (!foldId) return Number.MAX_SAFE_INTEGER;
+  if (foldId in FOLD_ORDER) return FOLD_ORDER[foldId];
+  const parsed = Number.parseInt(foldId, 10);
+  return Number.isFinite(parsed) ? 100 + parsed : 1000;
+}
+
+function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow[] {
+  const groups = new Map<string, PredictionRecord[]>();
+
+  for (const pred of predictions) {
+    const key = predictionGroupKey(pred);
+    const group = groups.get(key) ?? [];
+    group.push(pred);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()].map(group => {
+    const testPred = group.find(pred => pred.partition === "test");
+    const valPred = group.find(pred => pred.partition === "val");
+    const trainPred = group.find(pred => pred.partition === "train");
+    const primary = testPred ?? valPred ?? trainPred ?? group[0];
+
+    const row = predictionRecordToRow(primary);
+
+    if (valPred && valPred !== primary) {
+      const valRow = predictionRecordToRow(valPred);
+      Object.assign(row.valScores, valRow.valScores);
+      if (valRow.primaryValScore != null) row.primaryValScore = valRow.primaryValScore;
+    }
+    if (trainPred && trainPred !== primary) {
+      const trainRow = predictionRecordToRow(trainPred);
+      Object.assign(row.trainScores, trainRow.trainScores);
+      if (trainRow.primaryTrainScore != null) row.primaryTrainScore = trainRow.primaryTrainScore;
+    }
+    if (testPred && testPred !== primary) {
+      const testRow = predictionRecordToRow(testPred);
+      Object.assign(row.testScores, testRow.testScores);
+      if (testRow.primaryTestScore != null) row.primaryTestScore = testRow.primaryTestScore;
+    }
+
+    row.id = primary.id;
+    row.chainId = primary.trace_id || row.chainId;
+    row.datasetName = primary.source_dataset || primary.dataset_name || row.datasetName;
+    row.modelName = primary.model_name || row.modelName;
+    row.modelClass = primary.model_classname || row.modelClass;
+    row.preprocessings = primary.preprocessings || row.preprocessings;
+    row.bestParams = primary.best_params ?? valPred?.best_params ?? testPred?.best_params ?? trainPred?.best_params ?? row.bestParams;
+    row.foldId = primary.fold_id;
+    row.partition = undefined;
+    row.nSamplesEval = testPred?.n_samples ?? valPred?.n_samples ?? primary.n_samples ?? row.nSamplesEval;
+    row.nSamplesTrain = trainPred?.n_samples ?? null;
+    row.hasRefitArtifact = primary.fold_id === "final" && group.some(pred => !!pred.model_artifact_id);
+
+    return row;
+  });
+}
 
 export default function Predictions() {
   const { t } = useTranslation();
-
-  // Aggregation toggle
-  const [aggMode, setAggMode] = useState<AggregationMode>("aggregated");
-
-  // Metric selection (persisted)
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection("predictions", "regression");
-
-  // Two-phase loading for per-fold mode
-  const [summary, setSummary] = useState<PredictionSummaryResponse | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [predictions, setPredictions] = useState<PredictionRecord[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeWorkspace, setActiveWorkspace] = useState<LinkedWorkspace | null>(null);
-  const [filterDataset, setFilterDataset] = useState<string>("all");
-  const [filterModel, setFilterModel] = useState<string>("all");
-  const [filterPartition, setFilterPartition] = useState<string>("all");
-  const [filterTaskType, setFilterTaskType] = useState<string>("all");
-  const [sortField, setSortField] = useState<SortField>("val_score");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [filterDataset, setFilterDataset] = useState("all");
+  const [filterModel, setFilterModel] = useState("all");
+  const [filterTaskType, setFilterTaskType] = useState("all");
+  const [sortField, setSortField] = useState<SortField>("test_score");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [quickViewPrediction, setQuickViewPrediction] = useState<PredictionRecord | null>(null);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -92,254 +149,222 @@ export default function Predictions() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const [visibleFoldTypes, setVisibleFoldTypes] = useState<string[]>(["folds", "refits", "averages"]);
 
-  // Aggregated view state
-  const [aggSortField, setAggSortField] = useState<AggSortField>("final");
-  const [aggSortOrder, setAggSortOrder] = useState<SortOrder>("desc");
-  const [expandedChainId, setExpandedChainId] = useState<string | null>(null);
-
-  // Aggregated data (React Query)
   const {
-    data: aggData,
-    isLoading: aggLoading,
-    refetch: refetchAgg,
+    data: workspacesData,
+    isLoading: workspacesLoading,
+    error: workspacesError,
+    refetch: refetchWorkspaces,
   } = useQuery({
-    queryKey: ["aggregated-predictions", filterDataset, filterModel],
-    queryFn: () => getAggregatedPredictions({
-      dataset_name: filterDataset !== "all" ? filterDataset : undefined,
-      model_class: filterModel !== "all" ? filterModel : undefined,
-    }),
-    enabled: aggMode === "aggregated" && !!activeWorkspace,
+    queryKey: ["linked-workspaces"],
+    queryFn: getLinkedWorkspaces,
     staleTime: 30000,
   });
 
-  // Phase 1: Load summary on mount
-  useEffect(() => { loadSummary(); }, []);
+  const activeWorkspace: LinkedWorkspace | null = workspacesData?.workspaces.find(workspace => workspace.is_active) ?? null;
 
-  const loadSummary = async () => {
-    setSummaryLoading(true);
-    setError(null);
-    try {
-      const workspacesRes = await getLinkedWorkspaces();
-      const active = workspacesRes.workspaces.find((w) => w.is_active);
-      if (!active) {
-        setActiveWorkspace(null);
-        setSummary(null);
-        setTotalCount(0);
-        return;
-      }
-      setActiveWorkspace(active);
-      const summaryRes = await getN4AWorkspacePredictionsSummary(active.id);
-      setSummary(summaryRes);
-      setTotalCount(summaryRes.total_predictions);
-      if (aggMode === "per-fold") await loadDetails(active.id, 0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("predictions.errorLoad"));
-    } finally {
-      setSummaryLoading(false);
+  const {
+    data: rawPredictions = [],
+    isLoading: predictionsLoading,
+    error: predictionsError,
+    refetch: refetchPredictions,
+  } = useQuery({
+    queryKey: ["workspace-prediction-records", activeWorkspace?.id],
+    queryFn: () => getAllPredictionRecords(activeWorkspace!.id),
+    enabled: !!activeWorkspace,
+    staleTime: 30000,
+  });
+
+  const allRows = useMemo<ScoreCardRow[]>(() => buildPredictionModelRows(rawPredictions), [rawPredictions]);
+
+  const datasets = useMemo(
+    () => [...new Set(allRows.map(row => row.datasetName).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
+    [allRows],
+  );
+
+  const models = useMemo(
+    () => [...new Set(allRows.map(row => row.modelName).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [allRows],
+  );
+
+  const taskTypes = useMemo(
+    () => [...new Set(allRows.map(row => row.taskType).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
+    [allRows],
+  );
+
+  const pipelinesCount = useMemo(
+    () => new Set(rawPredictions.map(pred => pred.trace_id || pred.pipeline_uid || pred.id).filter(Boolean)).size,
+    [rawPredictions],
+  );
+
+  const stats = useMemo(() => ({
+    total: allRows.length,
+    datasets: new Set(allRows.map(row => row.datasetName).filter(Boolean)).size,
+    models: new Set(allRows.map(row => row.modelName).filter(Boolean)).size,
+    pipelines: pipelinesCount,
+  }), [allRows, pipelinesCount]);
+
+  const filteredRows = useMemo(() => {
+    let rows = allRows;
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      rows = rows.filter(row =>
+        row.modelName.toLowerCase().includes(query)
+        || (row.datasetName || "").toLowerCase().includes(query)
+        || (row.preprocessings || "").toLowerCase().includes(query)
+      );
     }
-  };
 
-  const loadDetails = async (workspaceId: string, offset: number) => {
-    setIsLoading(true);
-    try {
-      const res = await getN4AWorkspacePredictionsData(workspaceId, {
-        limit: pageSize, offset,
-        dataset: filterDataset !== "all" ? filterDataset : undefined,
+    if (filterDataset !== "all") rows = rows.filter(row => row.datasetName === filterDataset);
+    if (filterModel !== "all") rows = rows.filter(row => row.modelName === filterModel || row.modelClass === filterModel);
+    if (filterTaskType !== "all") rows = rows.filter(row => row.taskType === filterTaskType);
+
+    if (visibleFoldTypes.length < 3) {
+      rows = rows.filter(row => {
+        const fid = row.foldId || "";
+        if (isFinalFold(fid)) return visibleFoldTypes.includes("refits");
+        if (isAggFold(fid)) return visibleFoldTypes.includes("averages");
+        if (isNumberedFold(fid)) return visibleFoldTypes.includes("folds");
+        return true;
       });
-      setPredictions(res.records);
-      setTotalCount(res.total);
-    } catch (err) {
-      console.error("Failed to load details:", err);
-    } finally {
-      setIsLoading(false);
     }
-  };
 
-  useEffect(() => {
-    if (activeWorkspace && aggMode === "per-fold") {
-      const offset = (currentPage - 1) * pageSize;
-      loadDetails(activeWorkspace.id, offset);
-    }
-  }, [currentPage, pageSize, filterDataset, aggMode]);
+    const referenceMetric = rows.find(row => row.metric)?.metric || "rmse";
+    const naturalScoreOrder: SortOrder = isLowerBetter(referenceMetric) ? "asc" : "desc";
 
-  // Derived data
-  const datasets = useMemo(() => {
-    if (summary?.datasets) return summary.datasets.map((d) => d.dataset);
-    return [...new Set(predictions.map((p) => p.source_dataset || p.dataset_name))];
-  }, [summary, predictions]);
-
-  const models = useMemo(() => {
-    if (summary?.models) return summary.models.map((m) => m.name);
-    return [...new Set(predictions.map((p) => p.model_name).filter(Boolean))];
-  }, [summary, predictions]);
-
-  const partitions = useMemo(() => [...new Set(predictions.map((p) => p.partition).filter(Boolean))], [predictions]);
-  const taskTypes = useMemo(() => [...new Set(predictions.map((p) => p.task_type).filter(Boolean))], [predictions]);
-
-  const stats = useMemo(() => {
-    if (summary) {
-      return {
-        total: summary.total_predictions,
-        datasets: summary.total_datasets,
-        models: summary.models.length,
-        pipelines: (summary.datasets ?? []).reduce((acc, d) => acc + (d.facets?.n_pipelines || 0), 0),
-      };
-    }
-    return {
-      total: predictions.length,
-      datasets: new Set(predictions.map((p) => p.source_dataset || p.dataset_name)).size,
-      models: new Set(predictions.map((p) => p.model_name).filter(Boolean)).size,
-      pipelines: new Set(predictions.map((p) => p.pipeline_uid).filter(Boolean)).size,
-    };
-  }, [summary, predictions]);
-
-  // Aggregated view: filter + sort chains
-  const filteredChains = useMemo(() => {
-    if (!aggData?.predictions) return [];
-    let chains = aggData.predictions;
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      chains = chains.filter(c =>
-        c.model_name?.toLowerCase().includes(q) ||
-        c.dataset_name?.toLowerCase().includes(q) ||
-        c.preprocessings?.toLowerCase().includes(q)
-      );
-    }
-    if (filterDataset !== "all") chains = chains.filter(c => c.dataset_name === filterDataset);
-    if (filterModel !== "all") chains = chains.filter(c => c.model_name === filterModel || c.model_class === filterModel);
-
-    // Sort: refit first, then by score
-    chains = [...chains].sort((a, b) => {
-      const aRefit = a.final_test_score != null ? 0 : 1;
-      const bRefit = b.final_test_score != null ? 0 : 1;
-      if (aRefit !== bRefit) return aRefit - bRefit;
-
+    return [...rows].sort((a, b) => {
       let cmp = 0;
-      switch (aggSortField) {
-        case "final": cmp = (a.final_test_score ?? 999) - (b.final_test_score ?? 999); break;
-        case "cv_val": cmp = (a.cv_val_score ?? 999) - (b.cv_val_score ?? 999); break;
-        case "cv_test": cmp = (a.cv_test_score ?? 999) - (b.cv_test_score ?? 999); break;
-        case "folds": cmp = a.cv_fold_count - b.cv_fold_count; break;
-        case "model_name": cmp = (a.model_name || "").localeCompare(b.model_name || ""); break;
-        case "dataset_name": cmp = (a.dataset_name || "").localeCompare(b.dataset_name || ""); break;
-      }
-      // For error metrics (lower is better), ascending is "best first"
-      const metric = a.metric || "rmse";
-      const naturalAsc = isLowerBetter(metric);
-      if (aggSortField === "final" || aggSortField === "cv_val" || aggSortField === "cv_test") {
-        return naturalAsc ? cmp : -cmp;
-      }
-      return aggSortOrder === "asc" ? cmp : -cmp;
-    });
-    return chains;
-  }, [aggData, searchQuery, filterDataset, filterModel, aggSortField, aggSortOrder]);
 
-  // Per-fold view: filter + sort
-  const filteredPredictions = useMemo(() => {
-    let result = predictions;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(p =>
-        p.model_name?.toLowerCase().includes(q) ||
-        p.dataset_name?.toLowerCase().includes(q) ||
-        p.source_dataset?.toLowerCase().includes(q) ||
-        p.preprocessings?.toLowerCase().includes(q)
-      );
-    }
-    if (filterDataset !== "all") result = result.filter(p => (p.source_dataset || p.dataset_name) === filterDataset);
-    if (filterModel !== "all") result = result.filter(p => p.model_name === filterModel);
-    if (filterPartition !== "all") result = result.filter(p => p.partition === filterPartition);
-    if (filterTaskType !== "all") result = result.filter(p => p.task_type === filterTaskType);
-
-    result = [...result].sort((a, b) => {
-      let cmp = 0;
       switch (sortField) {
-        case "val_score": cmp = (a.val_score ?? 0) - (b.val_score ?? 0); break;
-        case "test_score": cmp = (a.test_score ?? 0) - (b.test_score ?? 0); break;
-        case "n_samples": cmp = (a.n_samples ?? 0) - (b.n_samples ?? 0); break;
-        case "model_name": cmp = (a.model_name || "").localeCompare(b.model_name || ""); break;
-        case "dataset_name": cmp = (a.source_dataset || a.dataset_name || "").localeCompare(b.source_dataset || b.dataset_name || ""); break;
-        case "partition": cmp = (a.partition || "").localeCompare(b.partition || ""); break;
+        case "test_score":
+          cmp = (a.primaryTestScore ?? Number.POSITIVE_INFINITY) - (b.primaryTestScore ?? Number.POSITIVE_INFINITY);
+          break;
+        case "val_score":
+          cmp = (a.primaryValScore ?? Number.POSITIVE_INFINITY) - (b.primaryValScore ?? Number.POSITIVE_INFINITY);
+          break;
+        case "n_samples":
+          cmp = (a.nSamplesEval ?? 0) - (b.nSamplesEval ?? 0);
+          break;
+        case "fold":
+          cmp = foldSortValue(a.foldId) - foldSortValue(b.foldId);
+          break;
+        case "model_name":
+          cmp = a.modelName.localeCompare(b.modelName);
+          break;
+        case "dataset_name":
+          cmp = (a.datasetName || "").localeCompare(b.datasetName || "");
+          break;
+      }
+
+      if ((sortField === "test_score" || sortField === "val_score") && sortOrder !== naturalScoreOrder) {
+        return -cmp;
       }
       return sortOrder === "asc" ? cmp : -cmp;
     });
-    return result;
-  }, [predictions, searchQuery, filterDataset, filterModel, filterPartition, filterTaskType, sortField, sortOrder]);
+  }, [allRows, filterDataset, filterModel, filterTaskType, visibleFoldTypes, searchQuery, sortField, sortOrder]);
 
-  // Helpers
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filteredPredictions.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filteredPredictions.map(p => p.id)));
+  const totalCount = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalCount);
+  const pageRows = useMemo(
+    () => filteredRows.slice(startIndex, startIndex + pageSize),
+    [filteredRows, pageSize, startIndex],
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterDataset, filterModel, filterTaskType, visibleFoldTypes, sortField, sortOrder]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const handleSort = (field: SortField) => {
+    const referenceMetric = filteredRows.find(row => row.metric)?.metric || "rmse";
+    const naturalScoreOrder: SortOrder = isLowerBetter(referenceMetric) ? "asc" : "desc";
+
+    if (sortField === field) {
+      setSortOrder(prev => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setSortField(field);
+    setSortOrder(field === "test_score" || field === "val_score" ? naturalScoreOrder : "asc");
   };
-  const toggleSelect = (id: string) => {
-    const s = new Set(selectedIds);
-    if (s.has(id)) s.delete(id); else s.add(id);
-    setSelectedIds(s);
+
+  const handleQuickView = (predictionId: string) => {
+    const prediction = rawPredictions.find(record => record.id === predictionId);
+    if (!prediction) return;
+    setQuickViewPrediction(prediction);
+    setQuickViewOpen(true);
   };
-  const handleDeleteSelected = () => toast.error("Deleting predictions is not yet supported.");
+
+  const clearFilters = () => {
+    setFilterDataset("all");
+    setFilterModel("all");
+    setFilterTaskType("all");
+    setSearchQuery("");
+    setVisibleFoldTypes(["folds", "refits", "averages"]);
+  };
+
+  const hasActiveFilters = filterDataset !== "all" || filterModel !== "all" || filterTaskType !== "all" || !!searchQuery || visibleFoldTypes.length < 3;
+
   const openExportDialog = (names?: string[]) => {
     setExportSelection(new Set(names && names.length > 0 ? names : datasets));
     setExportDialogOpen(true);
   };
-  const toggleExportDataset = (d: string) => {
-    const s = new Set(exportSelection);
-    if (s.has(d)) s.delete(d); else s.add(d);
-    setExportSelection(s);
+
+  const toggleExportDataset = (datasetName: string) => {
+    const next = new Set(exportSelection);
+    if (next.has(datasetName)) next.delete(datasetName);
+    else next.add(datasetName);
+    setExportSelection(next);
   };
+
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     URL.revokeObjectURL(url);
   };
+
   const handleExportPredictions = async () => {
-    const names = Array.from(exportSelection);
-    if (names.length === 0) { toast.error("Select at least one dataset"); return; }
+    const datasetNames = Array.from(exportSelection);
+    if (datasetNames.length === 0) {
+      toast.error("Select at least one dataset");
+      return;
+    }
+
     setIsExporting(true);
     try {
-      const format = names.length === 1 ? "parquet" : "zip";
-      const blob = await exportAggregatedPredictions({ dataset_names: names, format });
-      downloadBlob(blob, format === "parquet" ? `${names[0]}.parquet` : `predictions_export_${new Date().toISOString().slice(0, 10)}.zip`);
+      const format = datasetNames.length === 1 ? "parquet" : "zip";
+      const blob = await exportAggregatedPredictions({ dataset_names: datasetNames, format });
+      downloadBlob(
+        blob,
+        format === "parquet"
+          ? `${datasetNames[0]}.parquet`
+          : `predictions_export_${new Date().toISOString().slice(0, 10)}.zip`,
+      );
       toast.success("Export ready");
       setExportDialogOpen(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Export failed");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Export failed"));
     } finally {
       setIsExporting(false);
     }
   };
-  const handleExportSelected = () => {
-    const names = Array.from(new Set(filteredPredictions.filter(p => selectedIds.has(p.id)).map(p => p.source_dataset || p.dataset_name).filter(Boolean) as string[]));
-    if (names.length === 0) { toast.info("No datasets resolved"); return; }
-    openExportDialog(names);
-  };
-  const handleQuickView = (pred: PredictionRecord, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setQuickViewPrediction(pred);
-    setQuickViewOpen(true);
-  };
-  const handleSort = (field: SortField) => {
-    if (sortField === field) setSortOrder(p => p === "asc" ? "desc" : "asc");
-    else { setSortField(field); setSortOrder("desc"); }
-  };
-  const handleAggSort = (field: AggSortField) => {
-    if (aggSortField === field) setAggSortOrder(p => p === "asc" ? "desc" : "asc");
-    else { setAggSortField(field); setAggSortOrder("desc"); }
-  };
-  const clearFilters = () => {
-    setFilterDataset("all"); setFilterModel("all"); setFilterPartition("all");
-    setFilterTaskType("all"); setSearchQuery("");
-  };
-  const hasActiveFilters = filterDataset !== "all" || filterModel !== "all" || filterPartition !== "all" || filterTaskType !== "all";
 
-  const totalPages = Math.ceil(totalCount / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalCount);
-
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, filterDataset, filterModel, filterPartition, filterTaskType, sortField, sortOrder]);
+  const handleRefresh = () => {
+    refetchWorkspaces();
+    refetchPredictions();
+  };
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <TableHead className="cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort(field)}>
@@ -350,412 +375,272 @@ export default function Predictions() {
     </TableHead>
   );
 
-  const AggSortableHeader = ({ field, children }: { field: AggSortField; children: React.ReactNode }) => (
-    <TableHead className="cursor-pointer hover:text-foreground transition-colors" onClick={() => handleAggSort(field)}>
-      <div className="flex items-center gap-1">
-        {children}
-        {aggSortField === field && <ArrowUpDown className={cn("h-3 w-3", aggSortOrder === "asc" && "rotate-180")} />}
-      </div>
-    </TableHead>
-  );
+  if (workspacesLoading) {
+    return <LoadingState message={t("predictions.loading")} className="min-h-[400px]" />;
+  }
 
-  // Loading / error / empty states
-  if (summaryLoading) return <LoadingState message={t("predictions.loading")} className="min-h-[400px]" />;
-  if (error) return <ErrorState title={t("predictions.error")} message={error} onRetry={loadSummary} retryLabel={t("common.refresh")} />;
-  if (!activeWorkspace) return (
-    <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
-        <p className="mt-1 text-muted-foreground">{t("predictions.subtitle")}</p>
-      </div>
-      <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace in Settings to view prediction records." />
-    </motion.div>
-  );
-  if (predictions.length === 0 && !aggData?.predictions?.length) return (
-    <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
-        <p className="mt-1 text-muted-foreground">Workspace: {activeWorkspace.name}</p>
-      </div>
-      <EmptyState icon={Target} title="No predictions yet" description="Run nirs4all.run() to generate predictions." action={{ label: t("common.refresh"), onClick: loadSummary }} />
-    </motion.div>
-  );
+  if (workspacesError) {
+    return (
+      <ErrorState
+        title={t("predictions.error")}
+        message={getErrorMessage(workspacesError, t("predictions.errorLoad"))}
+        onRetry={() => refetchWorkspaces()}
+        retryLabel={t("common.refresh")}
+      />
+    );
+  }
+
+  if (!activeWorkspace) {
+    return (
+      <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
+          <p className="mt-1 text-muted-foreground">{t("predictions.subtitle")}</p>
+        </div>
+        <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace in Settings to view prediction records." />
+      </motion.div>
+    );
+  }
+
+  if (predictionsLoading) {
+    return <LoadingState message={t("predictions.loading")} className="min-h-[400px]" />;
+  }
+
+  if (predictionsError) {
+    return (
+      <ErrorState
+        title={t("predictions.error")}
+        message={getErrorMessage(predictionsError, t("predictions.errorLoad"))}
+        onRetry={() => refetchPredictions()}
+        retryLabel={t("common.refresh")}
+      />
+    );
+  }
+
+  if (allRows.length === 0) {
+    return (
+      <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
+          <p className="mt-1 text-muted-foreground">Workspace: {activeWorkspace.name}</p>
+        </div>
+        <EmptyState icon={Target} title="No predictions yet" description="Run nirs4all.run() to generate predictions." action={{ label: t("common.refresh"), onClick: handleRefresh }} />
+      </motion.div>
+    );
+  }
 
   return (
     <MlLoadingOverlay>
-    <motion.div className="space-y-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
-          <p className="mt-1 text-muted-foreground">
-            {stats.total.toLocaleString()} predictions · {activeWorkspace.name}
-            {(isLoading || aggLoading) && <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />}
-          </p>
+      <motion.div className="space-y-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
+            <p className="mt-1 text-muted-foreground">
+              {stats.total.toLocaleString()} scored models · {activeWorkspace.name}
+              {predictionsLoading && <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <MetricSelector taskType="regression" selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
+            <Button variant="outline" onClick={handleRefresh} size="sm">
+              <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => openExportDialog()} disabled={datasets.length === 0}>
+              <Download className="h-4 w-4 mr-1" /> Export
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <MetricSelector taskType="regression" selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
-          <Button variant="outline" onClick={() => { loadSummary(); refetchAgg(); }} size="sm">
-            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => openExportDialog()} disabled={datasets.length === 0}>
-            <Download className="h-4 w-4 mr-1" /> Export
-          </Button>
-        </div>
-      </div>
 
-      {/* Stats + Toggle */}
-      <div className="flex items-center gap-4">
-        <div className="grid gap-3 grid-cols-4 flex-1">
-          <Card className="glass-card"><CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-medium">Total</p>
-            <p className="text-xl font-bold">{stats.total.toLocaleString()}</p>
-          </CardContent></Card>
-          <Card className="glass-card"><CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-medium">Datasets</p>
-            <p className="text-xl font-bold">{stats.datasets}</p>
-          </CardContent></Card>
-          <Card className="glass-card"><CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-medium">Models</p>
-            <p className="text-xl font-bold">{stats.models}</p>
-          </CardContent></Card>
-          <Card className="glass-card"><CardContent className="p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-medium">Pipelines</p>
-            <p className="text-xl font-bold">{stats.pipelines}</p>
-          </CardContent></Card>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Card className="glass-card">
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium">Total</p>
+              <p className="text-xl font-bold">{stats.total.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="glass-card">
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium">Datasets</p>
+              <p className="text-xl font-bold">{stats.datasets}</p>
+            </CardContent>
+          </Card>
+          <Card className="glass-card">
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium">Models</p>
+              <p className="text-xl font-bold">{stats.models}</p>
+            </CardContent>
+          </Card>
+          <Card className="glass-card">
+            <CardContent className="p-3">
+              <p className="text-[10px] text-muted-foreground uppercase font-medium">Pipelines</p>
+              <p className="text-xl font-bold">{stats.pipelines}</p>
+            </CardContent>
+          </Card>
         </div>
-        <AggregationToggle value={aggMode} onChange={setAggMode} />
-      </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search models, datasets..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 h-8 bg-muted/50 text-sm" />
-        </div>
-        <Select value={filterDataset} onValueChange={setFilterDataset}>
-          <SelectTrigger className="w-[150px] h-8 bg-muted/50 text-xs"><Database className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Dataset" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Datasets</SelectItem>
-            {datasets.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filterModel} onValueChange={setFilterModel}>
-          <SelectTrigger className="w-[140px] h-8 bg-muted/50 text-xs"><Brain className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Model" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Models</SelectItem>
-            {models.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        {aggMode === "per-fold" && (
-          <Select value={filterPartition} onValueChange={setFilterPartition}>
-            <SelectTrigger className="w-[130px] h-8 bg-muted/50 text-xs"><Scissors className="h-3.5 w-3.5 mr-1" /><SelectValue placeholder="Partition" /></SelectTrigger>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search models, datasets..."
+              value={searchQuery}
+              onChange={event => setSearchQuery(event.target.value)}
+              className="pl-9 h-8 bg-muted/50 text-sm"
+            />
+          </div>
+          <Select value={filterDataset} onValueChange={setFilterDataset}>
+            <SelectTrigger className="w-[170px] h-8 bg-muted/50 text-xs">
+              <Database className="h-3.5 w-3.5 mr-1" />
+              <SelectValue placeholder="Dataset" />
+            </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {partitions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              <SelectItem value="all">All Datasets</SelectItem>
+              {datasets.map(datasetName => <SelectItem key={datasetName} value={datasetName}>{datasetName}</SelectItem>)}
             </SelectContent>
           </Select>
-        )}
-        {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-1 text-muted-foreground text-xs">
-            <X className="h-3 w-3" /> Clear
-          </Button>
-        )}
-      </div>
+          <Select value={filterModel} onValueChange={setFilterModel}>
+            <SelectTrigger className="w-[160px] h-8 bg-muted/50 text-xs">
+              <Brain className="h-3.5 w-3.5 mr-1" />
+              <SelectValue placeholder="Model" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Models</SelectItem>
+              {models.map(modelName => <SelectItem key={modelName} value={modelName}>{modelName}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+            <SelectTrigger className="w-[140px] h-8 bg-muted/50 text-xs">
+              <SelectValue placeholder="Task" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Tasks</SelectItem>
+              {taskTypes.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <ToggleGroup
+            type="multiple"
+            value={visibleFoldTypes}
+            onValueChange={value => { if (value.length > 0) setVisibleFoldTypes(value); }}
+            variant="outline"
+            size="sm"
+            className="h-8"
+          >
+            <ToggleGroupItem value="folds" className="h-7 px-2 text-[11px]">Folds</ToggleGroupItem>
+            <ToggleGroupItem value="refits" className="h-7 px-2 text-[11px]">Refits</ToggleGroupItem>
+            <ToggleGroupItem value="averages" className="h-7 px-2 text-[11px]">Averages</ToggleGroupItem>
+          </ToggleGroup>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground">
+              Clear
+            </Button>
+          )}
+        </div>
 
-      {/* ============================================================ */}
-      {/* AGGREGATED VIEW */}
-      {/* ============================================================ */}
-      {aggMode === "aggregated" && (
         <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent text-[11px]">
                   <TableHead className="w-8">#</TableHead>
-                  <AggSortableHeader field="model_name">Model</AggSortableHeader>
-                  <AggSortableHeader field="dataset_name">Dataset</AggSortableHeader>
+                  <TableHead className="w-16">Type</TableHead>
+                  <SortableHeader field="model_name">Model</SortableHeader>
+                  <SortableHeader field="dataset_name">Dataset</SortableHeader>
                   <TableHead>Preproc</TableHead>
-                  <AggSortableHeader field="final">Final</AggSortableHeader>
-                  <AggSortableHeader field="cv_val">CV Val</AggSortableHeader>
-                  <AggSortableHeader field="cv_test">CV Test</AggSortableHeader>
-                  <AggSortableHeader field="folds">Folds</AggSortableHeader>
-                  {selectedMetrics.slice(0, 4).map(k => (
-                    <TableHead key={k} className="text-right text-[10px]">{getMetricAbbreviation(k)}</TableHead>
+                  <SortableHeader field="test_score">RMSEP</SortableHeader>
+                  <SortableHeader field="val_score">Val</SortableHeader>
+                  <SortableHeader field="fold">Fold</SortableHeader>
+                  {selectedMetrics.slice(0, 4).map(metric => (
+                    <TableHead key={metric} className="text-right text-[10px]">{getMetricAbbreviation(metric)}</TableHead>
                   ))}
                   <TableHead className="w-8"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(aggLoading ? [] : filteredChains).map((chain, idx) => {
-                  const hasFinal = chain.final_test_score != null;
-                  const isExpanded = expandedChainId === chain.chain_id;
-                  const rank = idx + 1;
-                  const metric = chain.metric || "rmse";
-
-                  return (
-                    <Collapsible key={chain.chain_id} open={isExpanded} onOpenChange={() => setExpandedChainId(isExpanded ? null : chain.chain_id)}>
-                      <CollapsibleTrigger asChild>
-                        <TableRow className={cn(
-                          "cursor-pointer text-xs",
-                          hasFinal && rank <= 3 && "bg-emerald-500/5",
-                          isExpanded && "bg-primary/5",
-                        )}>
-                          <TableCell>
-                            <span className={cn(
-                              "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold",
-                              rank === 1 ? (hasFinal ? "bg-emerald-500/20 text-emerald-500" : "bg-chart-1/20 text-chart-1") : "bg-muted text-muted-foreground",
-                            )}>{rank}</span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              {hasFinal && <Award className="h-3 w-3 text-emerald-500 shrink-0" />}
-                              <Badge variant="outline" className={cn("text-[10px] font-mono", hasFinal && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400")}>
-                                <Box className="h-2.5 w-2.5 mr-0.5" />{chain.model_name}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{chain.dataset_name}</TableCell>
-                          <TableCell>
-                            <span className="text-[10px] text-muted-foreground truncate max-w-[120px] block">{chain.preprocessings || "—"}</span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {hasFinal
-                              ? <span className="font-mono font-semibold text-emerald-500">{formatMetricValue(chain.final_test_score, metric)}</span>
-                              : <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-chart-1">{formatMetricValue(chain.cv_val_score, metric)}</TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">{formatMetricValue(chain.cv_test_score, metric)}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{chain.cv_fold_count}</TableCell>
-                          {selectedMetrics.slice(0, 4).map(k => {
-                            const scores = chain.cv_scores as Record<string, Record<string, number>> | null;
-                            const val = hasFinal
-                              ? extractScoreValue(chain.final_scores as Record<string, unknown> | null, k, "test")
-                              : scores?.val?.[k] ?? null;
-                            return (
-                              <TableCell key={k} className="text-right font-mono text-[11px] text-muted-foreground">
-                                {val != null ? formatMetricValue(val, k) : "—"}
-                              </TableCell>
-                            );
-                          })}
-                          <TableCell onClick={e => e.stopPropagation()}>
-                            <ModelActionMenu
-                              chainId={chain.chain_id}
-                              modelName={chain.model_name || ""}
-                              datasetName={chain.dataset_name || ""}
-                              runId={chain.run_id}
-                              pipelineId={chain.pipeline_id}
-                              hasRefit={hasFinal}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent asChild>
-                        <tr>
-                          <td colSpan={8 + Math.min(selectedMetrics.length, 4) + 1} className="p-0">
-                            <div className="border-t bg-muted/10 p-3">
-                              <div className="flex items-center gap-3 mb-3 flex-wrap">
-                                {[
-                                  { label: isLowerBetter(metric) ? "RMSEP" : "Final", value: chain.final_test_score, cls: "text-emerald-500" },
-                                  { label: isLowerBetter(metric) ? "RMSECV" : "CV", value: chain.cv_val_score, cls: "text-chart-1" },
-                                  { label: "Ens_Test", value: chain.cv_test_score, cls: "text-muted-foreground" },
-                                ].filter(i => i.value != null).map(item => (
-                                  <div key={item.label} className="text-center">
-                                    <div className="text-muted-foreground uppercase text-[9px] font-medium">{item.label}</div>
-                                    <div className={cn("font-mono text-sm font-bold", item.cls)}>{formatMetricValue(item.value, metric)}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              <CVDetailTable chainId={chain.chain_id} selectedMetrics={selectedMetrics} metric={metric} />
-                            </div>
-                          </td>
-                        </tr>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  );
-                })}
+                {pageRows.length === 0 ? (
+                  <TableRow>
+                    <td colSpan={100} className="text-center py-8 text-muted-foreground text-sm">
+                      No models match your filters
+                    </td>
+                  </TableRow>
+                ) : (
+                  pageRows.map((row, index) => (
+                    <ScoreCardRowView
+                      key={`${row.chainId}-${row.foldId}-${row.id}`}
+                      row={row}
+                      selectedMetrics={selectedMetrics}
+                      rank={startIndex + index + 1}
+                      variant="table-row"
+                      onViewPrediction={handleQuickView}
+                    />
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
-          {aggLoading && (
-            <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading aggregated predictions...
-            </div>
-          )}
-          {!aggLoading && filteredChains.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground text-sm">No chains match your filters</div>
-          )}
         </div>
-      )}
 
-      {/* ============================================================ */}
-      {/* PER-FOLD VIEW */}
-      {/* ============================================================ */}
-      {aggMode === "per-fold" && (
-        <>
-          {/* Selection Actions */}
-          {selectedIds.size > 0 && (
-            <div className="flex items-center gap-3 p-2 glass-card text-sm">
-              <span className="font-medium">{selectedIds.size} selected</span>
-              <div className="flex-1" />
-              <Button variant="outline" size="sm" onClick={() => toast.info(`Analyzing ${selectedIds.size} predictions`)} className="h-7 gap-1 text-xs">
-                <BarChart3 className="h-3 w-3" /> Analyze
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportSelected} className="h-7 gap-1 text-xs">
-                <Download className="h-3 w-3" /> Export
-              </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1 text-xs text-destructive hover:text-destructive">
-                    <Trash2 className="h-3 w-3" /> Delete
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete {selectedIds.size} predictions?</AlertDialogTitle>
-                    <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteSelected} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+        {totalCount > 0 && (
+          <div className="flex items-center justify-between px-1 text-xs">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span>Showing {startIndex + 1}-{endIndex} of {totalCount}</span>
+              <Select value={String(pageSize)} onValueChange={value => { setPageSize(Number(value)); setCurrentPage(1); }}>
+                <SelectTrigger className="w-[85px] h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[25, 50, 100, 200].map(size => <SelectItem key={size} value={String(size)}>{size}/page</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-          )}
-
-          <div className="glass-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent text-[11px]">
-                    <TableHead className="w-10">
-                      <Checkbox checked={selectedIds.size === filteredPredictions.length && filteredPredictions.length > 0} onCheckedChange={toggleSelectAll} />
-                    </TableHead>
-                    <SortableHeader field="dataset_name">Dataset</SortableHeader>
-                    <SortableHeader field="model_name">Model</SortableHeader>
-                    <TableHead>Fold</TableHead>
-                    <SortableHeader field="partition">Partition</SortableHeader>
-                    <TableHead>Preproc</TableHead>
-                    <SortableHeader field="val_score">Val</SortableHeader>
-                    <SortableHeader field="test_score">Test</SortableHeader>
-                    {selectedMetrics.slice(0, 4).map(k => (
-                      <TableHead key={k} className="text-right text-[10px]">{getMetricAbbreviation(k)}</TableHead>
-                    ))}
-                    <SortableHeader field="n_samples">N</SortableHeader>
-                    <TableHead className="w-8"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPredictions.map(pred => {
-                    const isFinal = pred.fold_id === "final";
-                    const isAvg = pred.fold_id === "avg" || pred.fold_id === "w_avg";
-                    return (
-                      <TableRow
-                        key={pred.id}
-                        className={cn("text-xs cursor-pointer", selectedIds.has(pred.id) && "bg-primary/5", isFinal && "bg-emerald-500/5")}
-                        onClick={() => toggleSelect(pred.id)}
-                      >
-                        <TableCell onClick={e => e.stopPropagation()}>
-                          <Checkbox checked={selectedIds.has(pred.id)} onCheckedChange={() => toggleSelect(pred.id)} />
-                        </TableCell>
-                        <TableCell>
-                          <span className="truncate max-w-[100px] block">{pred.source_dataset || pred.dataset_name}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Brain className="h-3 w-3 text-primary shrink-0" />
-                            <span>{pred.model_name || "—"}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {isFinal ? <Badge variant="outline" className="text-[9px] border-emerald-500/30 text-emerald-500">Final</Badge>
-                            : isAvg ? <Badge variant="outline" className="text-[9px] border-chart-1/30 text-chart-1">{pred.fold_id === "avg" ? "Avg" : "W-Avg"}</Badge>
-                            : <span className="text-muted-foreground">{pred.fold_id ?? "—"}</span>}
-                        </TableCell>
-                        <TableCell><Badge variant="secondary" className="text-[9px]">{pred.partition || "—"}</Badge></TableCell>
-                        <TableCell><span className="text-[10px] text-muted-foreground truncate max-w-[120px] block">{pred.preprocessings || "—"}</span></TableCell>
-                        <TableCell className="text-right font-mono text-chart-1">{formatScore(pred.val_score)}</TableCell>
-                        <TableCell className="text-right font-mono text-muted-foreground">{formatScore(pred.test_score)}</TableCell>
-                        {selectedMetrics.slice(0, 4).map(k => {
-                          const scores = pred.scores as Record<string, Record<string, number>> | undefined;
-                          const val = scores?.val?.[k] ?? scores?.test?.[k];
-                          return (
-                            <TableCell key={k} className="text-right font-mono text-[11px] text-muted-foreground">
-                              {val != null ? formatMetricValue(val, k) : "—"}
-                            </TableCell>
-                          );
-                        })}
-                        <TableCell className="text-right text-muted-foreground">{pred.n_samples ?? "—"}</TableCell>
-                        <TableCell onClick={e => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={e => handleQuickView(pred, e)}>
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+            <div className="flex items-center gap-0.5">
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="px-2 text-muted-foreground">Page {currentPage} of {totalPages}</span>
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
+                <ChevronsRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
+        )}
 
-          {/* Pagination */}
-          {totalCount > 0 && (
-            <div className="flex items-center justify-between px-1 text-xs">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <span>Showing {startIndex + 1}-{endIndex} of {totalCount}</span>
-                <Select value={String(pageSize)} onValueChange={v => { setPageSize(Number(v)); setCurrentPage(1); }}>
-                  <SelectTrigger className="w-[85px] h-7 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {[25, 50, 100, 200].map(n => <SelectItem key={n} value={String(n)}>{n}/page</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-0.5">
-                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}><ChevronsLeft className="h-3.5 w-3.5" /></Button>
-                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}><ChevronLeft className="h-3.5 w-3.5" /></Button>
-                <span className="px-2 text-muted-foreground">Page {currentPage} of {totalPages}</span>
-                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}><ChevronRight className="h-3.5 w-3.5" /></Button>
-                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}><ChevronsRight className="h-3.5 w-3.5" /></Button>
-              </div>
+        <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Export Predictions</DialogTitle>
+              <DialogDescription>Select datasets to export (.parquet or .zip).</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 max-h-60 overflow-auto">
+              {datasets.map(datasetName => (
+                <label key={datasetName} className="flex items-center gap-2 text-sm">
+                  <Checkbox checked={exportSelection.has(datasetName)} onCheckedChange={() => toggleExportDataset(datasetName)} />
+                  <span>{datasetName}</span>
+                </label>
+              ))}
             </div>
-          )}
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set(datasets))} disabled={isExporting}>All</Button>
+              <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set())} disabled={isExporting}>None</Button>
+              <Button onClick={handleExportPredictions} disabled={isExporting}>
+                {isExporting ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Exporting...</> : "Download"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-          {filteredPredictions.length === 0 && predictions.length > 0 && (
-            <div className="text-center py-8 text-muted-foreground text-sm">No predictions match your filters</div>
-          )}
-        </>
-      )}
-
-      {/* Export Dialog */}
-      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Export Predictions</DialogTitle>
-            <DialogDescription>Select datasets to export (.parquet or .zip).</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-auto">
-            {datasets.map(d => (
-              <label key={d} className="flex items-center gap-2 text-sm">
-                <Checkbox checked={exportSelection.has(d)} onCheckedChange={() => toggleExportDataset(d)} />
-                <span>{d}</span>
-              </label>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set(datasets))} disabled={isExporting}>All</Button>
-            <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set())} disabled={isExporting}>None</Button>
-            <Button onClick={handleExportPredictions} disabled={isExporting}>
-              {isExporting ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Exporting...</> : "Download"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Quick View */}
-      <PredictionQuickView prediction={quickViewPrediction} open={quickViewOpen} onOpenChange={setQuickViewOpen} workspaceId={activeWorkspace?.id} />
-    </motion.div>
+        <PredictionQuickView
+          prediction={quickViewPrediction}
+          open={quickViewOpen}
+          onOpenChange={setQuickViewOpen}
+          workspaceId={activeWorkspace.id}
+        />
+      </motion.div>
     </MlLoadingOverlay>
   );
 }

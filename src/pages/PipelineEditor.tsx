@@ -26,7 +26,7 @@ import {
   Settings,
   Workflow,
 } from "lucide-react";
-import { savePipeline } from "@/api/client";
+import { savePipeline, getChainPipelineSteps } from "@/api/client";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -255,6 +255,32 @@ export default function PipelineEditor() {
       // Clean up URL params
       navigate(`/pipelines/${pipelineId}`, { replace: true });
     }
+  }, [searchParams, loadFromNirs4all, setPipelineName, navigate, pipelineId]);
+
+  // Handle import from chain (edit pipeline from predictions)
+  useEffect(() => {
+    const chainId = searchParams.get('chainId');
+    if (!chainId) return;
+
+    (async () => {
+      try {
+        const result = await getChainPipelineSteps(chainId);
+        if (result.pipeline && Array.isArray(result.pipeline)) {
+          loadFromNirs4all({ pipeline: result.pipeline, name: result.name });
+          setPipelineName(result.name || 'Chain Pipeline');
+
+          toast.success('Pipeline loaded from chain', {
+            description: `${result.pipeline.length} steps loaded`,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load chain pipeline:', e);
+        toast.error('Failed to load pipeline from chain');
+      }
+
+      // Clean up URL params
+      navigate(`/pipelines/${pipelineId}`, { replace: true });
+    })();
   }, [searchParams, loadFromNirs4all, setPipelineName, navigate, pipelineId]);
 
   // Load samples on first dropdown open

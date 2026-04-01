@@ -30,6 +30,7 @@ import {
   Database,
   Layers,
   BarChart3,
+  Box,
   Download,
   FileCode,
   Terminal,
@@ -318,33 +319,48 @@ function PipelineProgress({
             </div>
             <div>
               <h4 className="font-medium">{pipeline.pipeline_name}</h4>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="text-[10px]">{pipeline.model}</Badge>
-                <span>•</span>
-                <span>{pipeline.preprocessing}</span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                <Badge className="text-[10px] bg-teal-500/15 text-teal-600 border-teal-500/30 hover:bg-teal-500/20" variant="outline">
+                  <Box className="h-3 w-3 mr-0.5" />{pipeline.model}
+                </Badge>
+                {pipeline.preprocessing && pipeline.preprocessing !== "None" && (
+                  <span className="text-muted-foreground">{pipeline.preprocessing}</span>
+                )}
                 {/* Show model count breakdown */}
                 {pipeline.model_count_breakdown && (
-                  <>
-                    <span>•</span>
-                    <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-500">
-                      {pipeline.model_count_breakdown}
-                    </Badge>
-                  </>
+                  <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-500">
+                    {pipeline.model_count_breakdown}
+                  </Badge>
                 )}
                 {/* Show variant count badge (fallback) */}
                 {!pipeline.model_count_breakdown && hasVariants && (
-                  <>
-                    <span>•</span>
-                    <Badge variant="secondary" className="text-[10px] bg-purple-500/10 text-purple-500">
-                      {pipeline.tested_variants !== undefined
-                        ? `${pipeline.tested_variants} variants tested`
-                        : pipeline.estimated_variants !== undefined
-                          ? `~${pipeline.estimated_variants} variants`
-                          : "sweep"}
-                    </Badge>
-                  </>
+                  <Badge variant="secondary" className="text-[10px] bg-purple-500/10 text-purple-500">
+                    {pipeline.tested_variants !== undefined
+                      ? `${pipeline.tested_variants} variants tested`
+                      : pipeline.estimated_variants !== undefined
+                        ? `~${pipeline.estimated_variants} variants`
+                        : "sweep"}
+                  </Badge>
                 )}
               </div>
+              {/* Sweep parameters for expanded variants */}
+              {pipeline.variant_choices && Object.keys(pipeline.variant_choices).length > 0 && (
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {Object.entries(pipeline.variant_choices).map(([key, value]) => (
+                    <Badge key={key} variant="outline" className="text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30 font-mono">
+                      {key}={String(value)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {/* Fallback: variant description when no structured choices */}
+              {!pipeline.variant_choices && pipeline.variant_description && (
+                <div className="mt-1">
+                  <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30 font-mono">
+                    {pipeline.variant_description}
+                  </Badge>
+                </div>
+              )}
             </div>
           </div>
           <StatusBadge status={pipeline.status} />

@@ -161,6 +161,53 @@ export function isBetterScore(a: number, b: number, metric: string | null | unde
   return isLowerBetter(metric) ? a < b : a > b;
 }
 
+type ScoreBearingEntry = {
+  final_test_score?: number | null;
+  avg_val_score?: number | null;
+};
+
+function isFiniteScore(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Pick the best refit/final-scored entry for a metric.
+ */
+export function getBestFinalEntry<T extends ScoreBearingEntry>(
+  entries: readonly T[] | null | undefined,
+  metric: string | null | undefined,
+): T | null {
+  let best: T | null = null;
+
+  for (const entry of entries ?? []) {
+    if (!isFiniteScore(entry.final_test_score)) continue;
+    if (!best || !isFiniteScore(best.final_test_score) || isBetterScore(entry.final_test_score, best.final_test_score, metric)) {
+      best = entry;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Pick the best cross-validation entry for a metric.
+ */
+export function getBestCvEntry<T extends ScoreBearingEntry>(
+  entries: readonly T[] | null | undefined,
+  metric: string | null | undefined,
+): T | null {
+  let best: T | null = null;
+
+  for (const entry of entries ?? []) {
+    if (!isFiniteScore(entry.avg_val_score)) continue;
+    if (!best || !isFiniteScore(best.avg_val_score) || isBetterScore(entry.avg_val_score, best.avg_val_score, metric)) {
+      best = entry;
+    }
+  }
+
+  return best;
+}
+
 /**
  * Format a score value to 4 decimal places (or 3 for error metrics).
  */
@@ -174,11 +221,11 @@ export function formatScore(value: number | string | undefined | null): string {
 /**
  * Format a metric-specific value (3 decimals for error metrics, 4 for others).
  */
-export function formatMetricValue(value: number | string | undefined | null, metric: string): string {
+export function formatMetricValue(value: number | string | undefined | null, metric?: string): string {
   if (value == null) return "-";
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (!Number.isFinite(num)) return "-";
-  if (LOWER_IS_BETTER.has(metric.toLowerCase())) return num.toFixed(3);
+  if (metric && LOWER_IS_BETTER.has(metric.toLowerCase())) return num.toFixed(3);
   return num.toFixed(4);
 }
 

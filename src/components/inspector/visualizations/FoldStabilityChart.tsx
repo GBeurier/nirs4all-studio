@@ -139,10 +139,12 @@ export function FoldStabilityChart({ data, groups, isLoading }: FoldStabilityCha
     );
   }
 
-  if (lines.length === 0) {
+  const renderableLines = lines.filter(l => l.points.length >= 2);
+
+  if (lines.length === 0 || renderableLines.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No fold stability data available. Select chains to visualize.
+        No fold stability data available. Select chains with multiple folds.
       </div>
     );
   }

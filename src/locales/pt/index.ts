@@ -55,6 +55,8 @@ const pt = {
     creating: "Criando...",
     saving: "Salvando...",
     revertChanges: "Reverter alterações",
+    noResults: "Nenhum resultado encontrado",
+    retry: "Tentar novamente",
   },
 
   // ============= Time / Date =============
@@ -323,6 +325,7 @@ const pt = {
         },
       },
       autoDetect: "Detectar formato automaticamente",
+      autoDetectDescription: "Detectar automaticamente o formato, o delimitador e o separador decimal",
       save: "Salvar padrões",
       reset: "Redefinir para padrões",
     },
@@ -515,6 +518,13 @@ const pt = {
       pinnedChains: "Cadeias Fixadas",
       clearPins: "Limpar Fixações",
       savedSelections: "Seleções Salvas",
+      colors: "Cores",
+    },
+    filter: {
+      runs: "Execuções",
+      datasets: "Conjuntos de dados",
+      models: "Modelos",
+      preprocessing: "Pré-processamento",
     },
     panels: {
       scatter: "Pred vs Obs",
@@ -795,6 +805,7 @@ const pt = {
     filters: {
       searchPlaceholder: "Pesquisar conjuntos de dados...",
     },
+    noResults: "Nenhum resultado encontrado",
   },
 
   // ============= Predictions =============
@@ -898,6 +909,8 @@ const pt = {
     loadingModels: "Carregando modelos...",
     noRuns: "Nenhuma execução concluída com modelos encontrada",
     noBundles: "Nenhum pacote exportado encontrado",
+    noModels: "Nenhum modelo treinado encontrado. Execute um experimento primeiro.",
+    bundles: "Bundles exportados",
     noResults: "Sem Resultados Ainda",
     instructions: "Selecione um modelo treinado e conjunto de dados, depois clique em \"Calcular Explicações\" para analisar quais comprimentos de onda são mais importantes para as predições.",
     features: {
@@ -944,6 +957,11 @@ const pt = {
     },
     ranking: {
       description: "Principais regiões de comprimento de onda classificadas pelo valor SHAP absoluto médio.",
+    },
+    binning: {
+      size: "Tamanho do bin",
+      stride: "Passo",
+      aggregation: "Agregação",
     },
   },
 

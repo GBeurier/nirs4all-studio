@@ -115,6 +115,22 @@ const SAMPLE_STACKING: Nirs4allPipeline = {
   ],
 };
 
+const SAMPLE_SAVED_CHAIN_STEPS: Nirs4allStep[] = [
+  {
+    class: "StandardNormalVariate",
+  },
+  {
+    class: "KennardStoneSplitter",
+    params: { test_size: 0.2, metric: "euclidean" },
+  },
+  {
+    model: {
+      class: "PLSRegression",
+      params: { n_components: 8 },
+    },
+  },
+];
+
 describe("pipelineConverter", () => {
   describe("importFromNirs4all", () => {
     it("should import basic regression pipeline", () => {
@@ -166,6 +182,40 @@ describe("pipelineConverter", () => {
     it("should handle array-only pipeline", () => {
       const steps = importFromNirs4all(SAMPLE_BASIC_REGRESSION.pipeline);
       expect(steps).toHaveLength(4);
+    });
+
+    it("should resolve saved chain short class names to editor nodes", () => {
+      const steps = importFromNirs4all(SAMPLE_SAVED_CHAIN_STEPS);
+
+      expect(steps).toHaveLength(3);
+      expect(steps[0].name).toBe("SNV");
+      expect(steps[0].type).toBe("preprocessing");
+      expect(steps[0].classPath).toBe("nirs4all.operators.transforms.StandardNormalVariate");
+
+      expect(steps[1].name).toBe("KennardStone");
+      expect(steps[1].type).toBe("splitting");
+      expect(steps[1].classPath).toBe("nirs4all.operators.splitters.KennardStoneSplitter");
+
+      expect(steps[2].name).toBe("PLSRegression");
+      expect(steps[2].type).toBe("model");
+      expect(steps[2].classPath).toBe("sklearn.cross_decomposition.PLSRegression");
+    });
+
+    it("should resolve legacy full import paths to editor aliases", () => {
+      const steps = importFromNirs4all([
+        {
+          class: "nirs4all.operators.transforms.scalers.StandardNormalVariate",
+        },
+        {
+          class: "nirs4all.operators.splitters.splitters.KennardStoneSplitter",
+          params: { test_size: 0.2 },
+        },
+      ]);
+
+      expect(steps[0].name).toBe("SNV");
+      expect(steps[0].type).toBe("preprocessing");
+      expect(steps[1].name).toBe("KennardStone");
+      expect(steps[1].type).toBe("splitting");
     });
   });
 

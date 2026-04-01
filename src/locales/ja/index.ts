@@ -57,6 +57,8 @@ const ja = {
     creating: "作成中...",
     saving: "保存中...",
     revertChanges: "変更を元に戻す",
+    noResults: "結果が見つかりません",
+    retry: "再試行",
   },
 
   // ============= Time / Date =============
@@ -322,6 +324,7 @@ const ja = {
         },
       },
       autoDetect: "フォーマットの自動検出",
+      autoDetectDescription: "ファイル形式、区切り文字、小数点記号を自動検出",
       save: "既定値を保存",
       reset: "既定値にリセット",
     },
@@ -515,6 +518,13 @@ const ja = {
       pinnedChains: "ピン留めチェーン",
       clearPins: "ピン留めを解除",
       savedSelections: "保存済み選択",
+      colors: "カラー",
+    },
+    filter: {
+      runs: "実行",
+      datasets: "データセット",
+      models: "モデル",
+      preprocessing: "前処理",
     },
     panels: {
       scatter: "予測値 vs 観測値",
@@ -795,6 +805,7 @@ const ja = {
     filters: {
       searchPlaceholder: "データセットを検索...",
     },
+    noResults: "結果が見つかりません",
   },
 
   // ============= Predictions =============
@@ -899,6 +910,8 @@ const ja = {
     loadingModels: "モデルを読み込み中...",
     noRuns: "モデルを含む完了済みの実行が見つかりません",
     noBundles: "エクスポートされたバンドルが見つかりません",
+    noModels: "学習済みモデルが見つかりません。先に実験を実行してください。",
+    bundles: "エクスポートされたバンドル",
     noResults: "結果がまだありません",
     instructions:
       "訓練済みモデルとデータセットを選択し、「説明を計算」をクリックして、予測に最も重要な波長を分析します。",
@@ -946,6 +959,11 @@ const ja = {
     },
     ranking: {
       description: "平均絶対SHAP値でランク付けされた波長領域です。",
+    },
+    binning: {
+      size: "ビンサイズ",
+      stride: "ストライド",
+      aggregation: "集約",
     },
   },
 

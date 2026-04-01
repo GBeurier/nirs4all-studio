@@ -21,18 +21,12 @@ import type {
   FoldStabilityResponse,
   ConfusionMatrixRequest,
   ConfusionMatrixResponse,
-  RobustnessRequest,
-  RobustnessResponse,
-  MetricCorrelationRequest,
-  MetricCorrelationResponse,
   PreprocessingImpactRequest,
   PreprocessingImpactResponse,
   HyperparameterRequest,
   HyperparameterResponse,
   BiasVarianceRequest,
   BiasVarianceResponse,
-  LearningCurveRequest,
-  LearningCurveResponse,
 } from '@/types/inspector';
 
 /**
@@ -175,23 +169,6 @@ export async function getConfusionMatrixData(
   return api.post<ConfusionMatrixResponse>('/inspector/confusion', request);
 }
 
-/**
- * Get robustness radar data (multi-dimensional robustness profile).
- */
-export async function getRobustnessData(
-  request: RobustnessRequest
-): Promise<RobustnessResponse> {
-  return api.post<RobustnessResponse>('/inspector/robustness', request);
-}
-
-/**
- * Get metric correlation matrix.
- */
-export async function getMetricCorrelationData(
-  request: MetricCorrelationRequest
-): Promise<MetricCorrelationResponse> {
-  return api.post<MetricCorrelationResponse>('/inspector/correlation', request);
-}
 
 /**
  * Get preprocessing step impact analysis.
@@ -220,11 +197,3 @@ export async function getBiasVarianceData(
   return api.post<BiasVarianceResponse>('/inspector/bias-variance', request);
 }
 
-/**
- * Get learning curve data by training set size.
- */
-export async function getLearningCurveData(
-  request: LearningCurveRequest
-): Promise<LearningCurveResponse> {
-  return api.post<LearningCurveResponse>('/inspector/learning-curve', request);
-}

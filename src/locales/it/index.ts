@@ -58,6 +58,8 @@ const it = {
     creating: "Creazione...",
     saving: "Salvataggio...",
     revertChanges: "Ripristina modifiche",
+    noResults: "Nessun risultato trovato",
+    retry: "Riprova",
   },
 
   // ============= Time / Date =============
@@ -326,6 +328,7 @@ const it = {
         },
       },
       autoDetect: "Auto-rileva formato",
+      autoDetectDescription: "Rileva automaticamente il formato, il delimitatore e il separatore decimale",
       save: "Salva predefiniti",
       reset: "Ripristina predefiniti",
     },
@@ -518,6 +521,13 @@ const it = {
       pinnedChains: "Catene fissate",
       clearPins: "Rimuovi fissaggi",
       savedSelections: "Selezioni salvate",
+      colors: "Colori",
+    },
+    filter: {
+      runs: "Esecuzioni",
+      datasets: "Dataset",
+      models: "Modelli",
+      preprocessing: "Preelaborazione",
     },
     panels: {
       scatter: "Pred vs Obs",
@@ -798,6 +808,7 @@ const it = {
     filters: {
       searchPlaceholder: "Cerca dataset...",
     },
+    noResults: "Nessun risultato trovato",
   },
 
   // ============= Predictions =============
@@ -901,6 +912,8 @@ const it = {
     loadingModels: "Caricamento modelli...",
     noRuns: "Nessuna esecuzione completata con modelli trovata",
     noBundles: "Nessun bundle esportato trovato",
+    noModels: "Nessun modello addestrato trovato. Eseguire prima un esperimento.",
+    bundles: "Bundle esportati",
     noResults: "Nessun risultato",
     instructions: "Seleziona un modello addestrato e un dataset, poi clicca \"Calcola spiegazioni\" per analizzare quali lunghezze d'onda sono più importanti per le predizioni.",
     features: {
@@ -947,6 +960,11 @@ const it = {
     },
     ranking: {
       description: "Principali regioni di lunghezza d'onda ordinate per valore SHAP medio assoluto.",
+    },
+    binning: {
+      size: "Dimensione del bin",
+      stride: "Passo",
+      aggregation: "Aggregazione",
     },
   },
 

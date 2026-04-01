@@ -18,7 +18,14 @@
 
 import type { PipelineStep as EditorPipelineStep, StepType, StepSubType, FinetuneParamConfig, FinetuneParamType } from "@/components/pipeline-editor/types";
 import type { PipelineStep as ApiPipelineStep } from "@/types/pipelines";
-import { generateStepId } from "@/components/pipeline-editor/types";
+import { generateStepId, stepOptions } from "@/components/pipeline-editor/types";
+import preprocessingNodes from "@/data/nodes/definitions/preprocessing";
+import splittingNodes from "@/data/nodes/definitions/splitting";
+import modelNodes from "@/data/nodes/definitions/models";
+import yProcessingNodes from "@/data/nodes/definitions/y-processing";
+import filterNodes from "@/data/nodes/definitions/filters";
+import augmentationNodes from "@/data/nodes/definitions/augmentation";
+import type { NodeDefinition } from "@/data/nodes/types";
 
 // ============================================================================
 // Type Definitions
@@ -311,6 +318,23 @@ const NAME_TO_CLASS_PATH: Record<string, string> = {
   "filter:SpectralQualityFilter": "nirs4all.operators.filters.SpectralQualityFilter",
 };
 
+const SUPPORTED_OPERATOR_NODES: NodeDefinition[] = [
+  ...preprocessingNodes,
+  ...splittingNodes,
+  ...modelNodes,
+  ...yProcessingNodes,
+  ...filterNodes,
+  ...augmentationNodes,
+];
+
+interface ResolvedClassInfo {
+  name: string;
+  type: StepType;
+  classPath?: string;
+}
+
+const CLASS_REFERENCE_LOOKUP = buildClassReferenceLookup();
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -324,39 +348,121 @@ function getClassNameFromPath(classPath: string): string {
   return parts[parts.length - 1];
 }
 
+function buildClassReferenceLookup(): Map<string, ResolvedClassInfo> {
+  const lookup = new Map<string, ResolvedClassInfo>();
+
+  const register = (
+    key: string | undefined,
+    value: ResolvedClassInfo,
+    overwrite = false
+  ) => {
+    if (!key) return;
+    const normalized = key.trim().toLowerCase();
+    if (!normalized) return;
+    if (!overwrite && lookup.has(normalized)) return;
+    lookup.set(normalized, value);
+  };
+
+  const optionLookup = new Map<string, ResolvedClassInfo>();
+  for (const type of Object.keys(stepOptions) as StepType[]) {
+    const options = stepOptions[type];
+    for (const option of options) {
+      const key = option.name.toLowerCase();
+      if (optionLookup.has(key)) continue;
+      optionLookup.set(key, {
+        name: option.name,
+        type,
+        classPath: NAME_TO_CLASS_PATH[`${type}:${option.name}`],
+      });
+    }
+  }
+
+  for (const node of SUPPORTED_OPERATOR_NODES) {
+    const type = node.type as StepType;
+    const preferredOption = optionLookup.get(node.name.toLowerCase());
+    const preferredAlias = (node.aliases || [])
+      .map(alias => optionLookup.get(alias.toLowerCase()))
+      .find(Boolean);
+    const preferred = preferredOption || preferredAlias;
+
+    const resolved: ResolvedClassInfo = {
+      name: preferred?.name || node.name,
+      type: preferred?.type || type,
+      classPath: node.classPath,
+    };
+
+    register(node.name, resolved);
+    register(node.classPath, resolved);
+    register(getClassNameFromPath(node.classPath || ""), resolved);
+
+    for (const alias of node.aliases || []) {
+      register(alias, resolved);
+    }
+    for (const legacyPath of node.legacyClassPaths || []) {
+      register(legacyPath, resolved);
+      register(getClassNameFromPath(legacyPath), resolved);
+    }
+  }
+
+  for (const [key, classPath] of Object.entries(NAME_TO_CLASS_PATH)) {
+    const [type, name] = key.split(":") as [StepType, string];
+    const resolved: ResolvedClassInfo = { name, type, classPath };
+    register(name, resolved);
+    register(classPath, resolved);
+    register(getClassNameFromPath(classPath), resolved);
+  }
+
+  return lookup;
+}
+
 /**
  * Get step type and display name from a class path.
  */
-function resolveClassPath(classPath: string): { name: string; type: StepType } {
+function resolveClassPath(classPath: string): ResolvedClassInfo {
   // Check direct mapping first
   if (CLASS_PATH_MAPPINGS[classPath]) {
-    return CLASS_PATH_MAPPINGS[classPath];
+    return { ...CLASS_PATH_MAPPINGS[classPath], classPath };
+  }
+
+  const directLookup = CLASS_REFERENCE_LOOKUP.get(classPath.trim().toLowerCase());
+  if (directLookup) {
+    return {
+      ...directLookup,
+      classPath: classPath.includes(".") ? classPath : directLookup.classPath,
+    };
   }
 
   // Try to infer from path
   const className = getClassNameFromPath(classPath);
+  const classNameLookup = CLASS_REFERENCE_LOOKUP.get(className.toLowerCase());
+  if (classNameLookup) {
+    return {
+      ...classNameLookup,
+      classPath: classPath.includes(".") ? classPath : classNameLookup.classPath,
+    };
+  }
 
   if (classPath.includes("model_selection") || classPath.includes("splitters")) {
-    return { name: className, type: "splitting" };
+    return { name: className, type: "splitting", classPath };
   }
   if (classPath.includes("cross_decomposition") || classPath.includes("ensemble") ||
       classPath.includes("linear_model") || classPath.includes("svm") ||
       classPath.includes("models")) {
-    return { name: className, type: "model" };
+    return { name: className, type: "model", classPath };
   }
   if (classPath.includes("preprocessing") || classPath.includes("decomposition") ||
       classPath.includes("transforms")) {
-    return { name: className, type: "preprocessing" };
+    return { name: className, type: "preprocessing", classPath };
   }
   if (classPath.includes("augmentation")) {
-    return { name: className, type: "augmentation" };
+    return { name: className, type: "augmentation", classPath };
   }
   if (classPath.includes("filters")) {
-    return { name: className, type: "filter" };
+    return { name: className, type: "filter", classPath };
   }
 
   // Default to preprocessing
-  return { name: className, type: "preprocessing" };
+  return { name: className, type: "preprocessing", classPath: classPath.includes(".") ? classPath : undefined };
 }
 
 /**
@@ -437,13 +543,13 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
       };
     }
 
-    const { name, type } = resolveClassPath(step);
+    const { name, type, classPath } = resolveClassPath(step);
     return {
       id: generateStepId(),
       type,
       name,
       params: {},
-      classPath: step,
+      classPath: classPath || step,
     };
   }
 
@@ -503,11 +609,17 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
   if ("preprocessing" in step) {
     const preprocessingValue = (step as { preprocessing: string | Nirs4allClassStep }).preprocessing;
     if (typeof preprocessingValue === "string") {
-      const { name, type } = resolveClassPath(preprocessingValue);
-      return { id: generateStepId(), type, name, params: {}, classPath: preprocessingValue };
+      const { name, type, classPath } = resolveClassPath(preprocessingValue);
+      return { id: generateStepId(), type, name, params: {}, classPath: classPath || preprocessingValue };
     } else {
-      const { name, type } = resolveClassPath(preprocessingValue.class);
-      return { id: generateStepId(), type, name, params: castParams(preprocessingValue.params), classPath: preprocessingValue.class };
+      const { name, type, classPath } = resolveClassPath(preprocessingValue.class);
+      return {
+        id: generateStepId(),
+        type,
+        name,
+        params: castParams(preprocessingValue.params),
+        classPath: classPath || preprocessingValue.class,
+      };
     }
   }
 
@@ -540,13 +652,13 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
   // Handle class-based step
   if ("class" in step) {
     const classStep = step as Nirs4allClassStep;
-    const { name, type } = resolveClassPath(classStep.class);
+    const { name, type, classPath } = resolveClassPath(classStep.class);
     return {
       id: generateStepId(),
       type,
       name,
       params: castParams(classStep.params),
-      classPath: classStep.class,
+      classPath: classPath || classStep.class,
     };
   }
 
@@ -570,12 +682,12 @@ function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelineStep {
   if (typeof step.model === "string") {
     const resolved = resolveClassPath(step.model);
     name = resolved.name;
-    classPath = step.model;
+    classPath = resolved.classPath || step.model;
   } else if ("class" in step.model) {
     const resolved = resolveClassPath(step.model.class);
     name = resolved.name;
     params = castParams(step.model.params);
-    classPath = step.model.class;
+    classPath = resolved.classPath || step.model.class;
   } else if ("function" in step.model) {
     // Function-based models like nicon
     functionPath = step.model.function;
@@ -720,21 +832,23 @@ function convertYProcessingToEditor(step: Nirs4allYProcessingStep): EditorPipeli
   const yProc = step.y_processing;
 
   if (typeof yProc === "string") {
-    const { name } = resolveClassPath(yProc);
+    const { name, classPath } = resolveClassPath(yProc);
     return {
       id: generateStepId(),
       type: "y_processing",
       name,
       params: {},
+      classPath: classPath || yProc,
     };
   }
 
-  const { name } = resolveClassPath(yProc.class);
+  const { name, classPath } = resolveClassPath(yProc.class);
   return {
     id: generateStepId(),
     type: "y_processing",
     name,
     params: castParams(yProc.params),
+    classPath: classPath || yProc.class,
   };
 }
 

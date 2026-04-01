@@ -17,8 +17,8 @@ import type { ContinuousPalette, CategoricalPalette } from '@/lib/playground/col
 export type InspectorPanelType =
   | 'scatter' | 'residuals' | 'rankings' | 'histogram' | 'heatmap' | 'candlestick'
   | 'branch_comparison' | 'branch_topology' | 'fold_stability'
-  | 'confusion' | 'robustness' | 'correlation'
-  | 'preprocessing_impact' | 'hyperparameter' | 'bias_variance' | 'learning_curve';
+  | 'confusion'
+  | 'preprocessing_impact' | 'hyperparameter' | 'bias_variance';
 
 export type InspectorViewState = 'visible' | 'hidden' | 'maximized' | 'minimized';
 
@@ -40,15 +40,18 @@ export interface InspectorChainSummary {
   chain_id: string;
   run_id: string;
   pipeline_id: string;
+  pipeline_name: string | null;
   model_class: string;
   model_name: string | null;
   preprocessings: string | null;
+  preprocessing_steps: string[];
   branch_path: unknown;
   source_index: number | null;
   metric: string | null;
   task_type: string | null;
   dataset_name: string | null;
   best_params: Record<string, unknown> | null;
+  variant_params: Record<string, unknown> | null;
   cv_val_score: number | null;
   cv_test_score: number | null;
   cv_train_score: number | null;
@@ -398,59 +401,9 @@ export interface ConfusionMatrixResponse {
   total_samples: number;
   partition: string;
   normalize: string;
+  reason?: string | null;
 }
 
-// ============= Robustness Radar (Phase 4) =============
-
-export interface RobustnessRequest {
-  chain_ids: string[];
-  score_column: string;
-  partition: string;
-}
-
-export interface RobustnessAxis {
-  name: string;
-  label: string;
-  value: number;
-  raw_value: number;
-  description: string;
-}
-
-export interface RobustnessEntry {
-  chain_id: string;
-  model_class: string;
-  preprocessings: string | null;
-  axes: RobustnessAxis[];
-}
-
-export interface RobustnessResponse {
-  entries: RobustnessEntry[];
-  axis_names: string[];
-  score_column: string;
-}
-
-// ============= Metric Correlation (Phase 4) =============
-
-export interface MetricCorrelationRequest {
-  run_id?: string[];
-  dataset_name?: string[];
-  metrics?: string[];
-  method?: 'pearson' | 'spearman';
-}
-
-export interface CorrelationCell {
-  metric_x: string;
-  metric_y: string;
-  coefficient: number | null;
-  count: number;
-}
-
-export interface MetricCorrelationResponse {
-  cells: CorrelationCell[];
-  metrics: string[];
-  method: string;
-  total_chains: number;
-}
 
 // ============= Expression-Based Grouping (Phase 5) =============
 
@@ -525,6 +478,7 @@ export interface HyperparameterResponse {
   param_name: string;
   score_column: string;
   available_params: string[];
+  reason?: string | null;
 }
 
 // ============= Bias-Variance Decomposition (Phase 5) =============
@@ -550,28 +504,6 @@ export interface BiasVarianceResponse {
   entries: BiasVarianceEntry[];
   score_column: string;
   group_by: string;
+  reason?: string | null;
 }
 
-// ============= Learning Curve (Phase 5) =============
-
-export interface LearningCurveRequest {
-  run_id?: string[];
-  dataset_name?: string[];
-  score_column: string;
-  model_class?: string;
-}
-
-export interface LearningCurvePoint {
-  train_size: number;
-  train_mean: number;
-  train_std: number;
-  val_mean: number;
-  val_std: number;
-  count: number;
-}
-
-export interface LearningCurveResponse {
-  points: LearningCurvePoint[];
-  score_column: string;
-  has_multiple_sizes: boolean;
-}

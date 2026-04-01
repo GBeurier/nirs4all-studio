@@ -32,6 +32,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   BarChart3,
   Database,
   Layers,
@@ -42,6 +45,7 @@ import {
   Eye,
   Download,
   Box,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -51,7 +55,7 @@ import {
   runAggregatedPredictionsQuery,
 } from "@/api/client";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
-import type { ChainSummary } from "@/types/aggregated-predictions";
+import type { ChainSummary, PartitionPrediction } from "@/types/aggregated-predictions";
 import {
   NoWorkspaceState,
   ErrorState,
@@ -59,6 +63,9 @@ import {
   EmptyState,
 } from "@/components/ui/state-display";
 import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
+import { ModelTreeView } from "@/components/scores/ModelTreeView";
+import { ModelActionMenu } from "@/components/scores/ModelActionMenu";
+import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -111,6 +118,9 @@ export default function AggregatedResults() {
   const [sortAsc, setSortAsc] = useState(true);
   const [selectedPrediction, setSelectedPrediction] = useState<ChainSummary | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [expandedChainId, setExpandedChainId] = useState<string | null>(null);
+  const [quickViewPred, setQuickViewPred] = useState<PartitionPrediction | null>(null);
+  const [quickViewOpen, setQuickViewOpen] = useState(false);
   const [sql, setSql] = useState("SELECT dataset_name, COUNT(*) AS predictions FROM predictions GROUP BY 1 ORDER BY 2 DESC");
   const [sqlLoading, setSqlLoading] = useState(false);
   const [sqlError, setSqlError] = useState<string | null>(null);
@@ -237,6 +247,18 @@ export default function AggregatedResults() {
 
     return sorted;
   }, [predictions, search, datasetFilter, modelClassFilter, metricFilter, sortKey, sortAsc]);
+
+  // Split into refit / CV sections
+  const { refitFiltered, cvFiltered } = useMemo(() => {
+    const refit = filtered.filter(p => p.final_test_score != null);
+    const cv = filtered.filter(p => p.final_test_score == null);
+    return { refitFiltered: refit, cvFiltered: cv };
+  }, [filtered]);
+
+  const handleViewPrediction = (_predictionId: string, prediction: PartitionPrediction) => {
+    setQuickViewPred(prediction);
+    setQuickViewOpen(true);
+  };
 
   // Stats
   const stats = useMemo(() => ({
@@ -542,66 +564,104 @@ export default function AggregatedResults() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((pred) => {
-                    const lowerIsBetter = isLowerBetter(pred.metric ?? "");
-                    const hasFinal = pred.final_test_score != null;
+                  {/* Refit section */}
+                  {refitFiltered.length > 0 && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={8} className="py-1.5 px-3">
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <Award className="h-3 w-3 text-emerald-500" />
+                          <span className="font-medium uppercase tracking-wide text-emerald-600">Refit models</span>
+                          <div className="flex-1 border-t border-emerald-500/20" />
+                          <span className="text-muted-foreground">{refitFiltered.length}</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {refitFiltered.map((pred) => {
+                    const isExpanded = expandedChainId === pred.chain_id;
                     return (
-                      <TableRow
-                        key={`${pred.chain_id}-${pred.metric}-${pred.dataset_name}`}
-                        className="cursor-pointer hover:bg-accent/50"
-                        onClick={() => {
-                          setSelectedPrediction(pred);
-                          setSheetOpen(true);
-                        }}
-                      >
-                        <TableCell>
-                          <div>
-                            <div className="font-medium text-sm">{pred.model_name ?? "—"}</div>
-                            <div className="text-xs text-muted-foreground">{pred.preprocessings || "—"}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">{pred.dataset_name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{pred.metric}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          <span className={cn(
-                            pred.cv_val_score != null && "font-medium",
-                            pred.cv_val_score != null && !lowerIsBetter && pred.cv_val_score > 0.9 && "text-green-600 dark:text-green-400",
-                            pred.cv_val_score != null && lowerIsBetter && pred.cv_val_score < 0.1 && "text-green-600 dark:text-green-400",
-                          )}>
-                            {formatScore(pred.cv_val_score)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {formatScore(pred.cv_test_score)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {hasFinal ? (
-                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                              {formatScore(pred.final_test_score)}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center text-sm">{pred.cv_fold_count}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={(e) => pred.dataset_name && handleDownloadDataset(pred.dataset_name, e)}
-                              disabled={!pred.dataset_name}
-                              title="Download parquet"
-                            >
-                              <Download className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                            <Eye className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                      <Collapsible key={`${pred.chain_id}-${pred.metric}-${pred.dataset_name}`} open={isExpanded} onOpenChange={() => setExpandedChainId(isExpanded ? null : pred.chain_id)}>
+                        <CollapsibleTrigger asChild>
+                          <TableRow className={cn("cursor-pointer hover:bg-accent/50 text-sm", isExpanded && "bg-primary/5")}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium flex items-center gap-1.5">
+                                  <Award className="h-3 w-3 text-emerald-500 shrink-0" />
+                                  {pred.model_name ?? "\u2014"}
+                                </div>
+                                <div className="text-xs text-muted-foreground">{pred.preprocessings || "\u2014"}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{pred.dataset_name}</TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{pred.metric}</Badge></TableCell>
+                            <TableCell className="text-right tabular-nums font-medium">{formatScore(pred.cv_val_score)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatScore(pred.cv_test_score)}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              <span className="font-medium text-emerald-600 dark:text-emerald-400">{formatScore(pred.final_test_score)}</span>
+                            </TableCell>
+                            <TableCell className="text-center">{pred.cv_fold_count}</TableCell>
+                            <TableCell onClick={e => e.stopPropagation()}>
+                              <ModelActionMenu chainId={pred.chain_id} modelName={pred.model_name || ""} datasetName={pred.dataset_name || ""} runId={pred.run_id} hasRefit />
+                            </TableCell>
+                          </TableRow>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent asChild>
+                          <tr>
+                            <td colSpan={8} className="p-0">
+                              <div className="border-t bg-muted/10 p-3">
+                                <ModelTreeView chainId={pred.chain_id} selectedMetrics={[pred.metric || "rmse"]} metric={pred.metric || null} foldArtifacts={pred.fold_artifacts} onViewPrediction={handleViewPrediction} />
+                              </div>
+                            </td>
+                          </tr>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                  {/* CV section */}
+                  {cvFiltered.length > 0 && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={8} className="py-1.5 px-3">
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="font-medium uppercase tracking-wide text-muted-foreground">CV models</span>
+                          <div className="flex-1 border-t border-border/40" />
+                          <span className="text-muted-foreground">{cvFiltered.length}</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {cvFiltered.map((pred) => {
+                    const isExpanded = expandedChainId === pred.chain_id;
+                    return (
+                      <Collapsible key={`${pred.chain_id}-${pred.metric}-${pred.dataset_name}`} open={isExpanded} onOpenChange={() => setExpandedChainId(isExpanded ? null : pred.chain_id)}>
+                        <CollapsibleTrigger asChild>
+                          <TableRow className={cn("cursor-pointer hover:bg-accent/50 text-sm", isExpanded && "bg-primary/5")}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{pred.model_name ?? "\u2014"}</div>
+                                <div className="text-xs text-muted-foreground">{pred.preprocessings || "\u2014"}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{pred.dataset_name}</TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{pred.metric}</Badge></TableCell>
+                            <TableCell className="text-right tabular-nums font-medium">{formatScore(pred.cv_val_score)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{formatScore(pred.cv_test_score)}</TableCell>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">{"\u2014"}</TableCell>
+                            <TableCell className="text-center">{pred.cv_fold_count}</TableCell>
+                            <TableCell onClick={e => e.stopPropagation()}>
+                              <ModelActionMenu chainId={pred.chain_id} modelName={pred.model_name || ""} datasetName={pred.dataset_name || ""} runId={pred.run_id} hasRefit={false} />
+                            </TableCell>
+                          </TableRow>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent asChild>
+                          <tr>
+                            <td colSpan={8} className="p-0">
+                              <div className="border-t bg-muted/10 p-3">
+                                <ModelTreeView chainId={pred.chain_id} selectedMetrics={[pred.metric || "rmse"]} metric={pred.metric || null} foldArtifacts={pred.fold_artifacts} onViewPrediction={handleViewPrediction} />
+                              </div>
+                            </td>
+                          </tr>
+                        </CollapsibleContent>
+                      </Collapsible>
                     );
                   })}
                 </TableBody>
@@ -627,6 +687,13 @@ export default function AggregatedResults() {
         prediction={selectedPrediction}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+      />
+
+      {/* Prediction quick view from tree */}
+      <PredictionQuickView
+        partitionPrediction={quickViewPred}
+        open={quickViewOpen}
+        onOpenChange={setQuickViewOpen}
       />
     </motion.div>
     </MlLoadingOverlay>

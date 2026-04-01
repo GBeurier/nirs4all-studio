@@ -11,13 +11,14 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  CircleHelp,
   X,
   ChevronUp,
   Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { InspectorPanelType, InspectorViewState } from '@/types/inspector';
 import { PANEL_MAP } from '@/lib/inspector/chartRegistry';
 import { useInspectorExport } from '@/hooks/useInspectorExport';
@@ -89,6 +90,7 @@ function PanelHeader({
   const def = PANEL_MAP.get(panelType);
   const Icon = def?.icon;
   const label = def?.name ?? panelType;
+  const help = def?.help;
 
   const handleDoubleClick = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -103,6 +105,24 @@ function PanelHeader({
       <div className="flex items-center gap-1.5 flex-1 min-w-0">
         {Icon && <Icon className="w-4 h-4 text-muted-foreground shrink-0" />}
         <span className="text-sm font-medium text-foreground truncate">{label}</span>
+        {help && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Help for ${label}`}
+              >
+                <CircleHelp className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs text-xs leading-5">
+              {help}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {headerContent && <div className="flex items-center gap-1">{headerContent}</div>}
@@ -230,50 +250,52 @@ export const InspectorPanel = forwardRef<HTMLDivElement, InspectorPanelProps>(
     if (isHidden) return null;
 
     return (
-      <div
-        ref={ref}
-        className={cn(
-          'bg-card rounded-lg border border-border relative flex flex-col select-none',
-          'transition-all duration-200 ease-in-out',
-          isMaximized && 'col-span-full row-span-full z-10',
-          isMinimized && 'min-h-0',
-          className,
-        )}
-        style={{ minHeight: isMinimized ? 'auto' : minHeight }}
-        data-panel-type={panelType}
-        data-view-state={viewState}
-      >
-        {/* Header — always shown */}
-        <div className="p-3 pb-0">
-          <PanelHeader
-            panelType={panelType}
-            isMaximized={isMaximized}
-            isMinimized={isMinimized}
-            onMaximize={onMaximize}
-            onMinimize={onMinimize}
-            onRestore={onRestore}
-            onHide={onHide}
-            onExportPng={handleExportPng}
-            onDoubleClick={handleHeaderDoubleClick}
-            headerContent={headerContent}
-          />
+      <TooltipProvider delayDuration={200}>
+        <div
+          ref={ref}
+          className={cn(
+            'bg-card rounded-lg border border-border relative flex flex-col select-none',
+            'transition-all duration-200 ease-in-out',
+            isMaximized && 'col-span-full row-span-full z-10',
+            isMinimized && 'min-h-0',
+            className,
+          )}
+          style={{ minHeight: isMinimized ? 'auto' : minHeight }}
+          data-panel-type={panelType}
+          data-view-state={viewState}
+        >
+          {/* Header — always shown */}
+          <div className="p-3 pb-0">
+            <PanelHeader
+              panelType={panelType}
+              isMaximized={isMaximized}
+              isMinimized={isMinimized}
+              onMaximize={onMaximize}
+              onMinimize={onMinimize}
+              onRestore={onRestore}
+              onHide={onHide}
+              onExportPng={handleExportPng}
+              onDoubleClick={handleHeaderDoubleClick}
+              headerContent={headerContent}
+            />
+          </div>
+
+          {/* Content */}
+          {!isMinimized && (
+            <div className="flex-1 p-3 flex flex-col min-h-0 relative animate-in fade-in duration-150">
+              <PanelLoadingOverlay visible={isLoading} />
+              <div className="flex-1 min-h-0">{children}</div>
+            </div>
+          )}
+
+          {/* Footer */}
+          {!isMinimized && (itemCount !== undefined || selectedCount !== undefined) && (
+            <div className="px-3 pb-2">
+              <PanelFooter itemCount={itemCount} selectedCount={selectedCount} />
+            </div>
+          )}
         </div>
-
-        {/* Content */}
-        {!isMinimized && (
-          <div className="flex-1 p-3 flex flex-col min-h-0 relative animate-in fade-in duration-150">
-            <PanelLoadingOverlay visible={isLoading} />
-            <div className="flex-1 min-h-0">{children}</div>
-          </div>
-        )}
-
-        {/* Footer */}
-        {!isMinimized && (itemCount !== undefined || selectedCount !== undefined) && (
-          <div className="px-3 pb-2">
-            <PanelFooter itemCount={itemCount} selectedCount={selectedCount} />
-          </div>
-        )}
-      </div>
+      </TooltipProvider>
     );
   },
 );

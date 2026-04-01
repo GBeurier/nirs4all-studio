@@ -23,6 +23,7 @@ All data is read from the workspace's SQLite store via WorkspaceStore.
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import UTC, datetime, timezone
 from pathlib import Path
@@ -51,15 +52,18 @@ class InspectorChainSummary(BaseModel):
     chain_id: str
     run_id: str
     pipeline_id: str
+    pipeline_name: str | None = None
     model_class: str
     model_name: str | None = None
     preprocessings: str | None = None
+    preprocessing_steps: list[str] = []
     branch_path: Any | None = None
     source_index: int | None = None
     metric: str | None = None
     task_type: str | None = None
     dataset_name: str | None = None
     best_params: Any | None = None
+    variant_params: Any | None = None
     cv_val_score: float | None = None
     cv_test_score: float | None = None
     cv_train_score: float | None = None
@@ -268,6 +272,189 @@ def _sanitize_dict(d: dict) -> dict:
     return out
 
 
+def _parse_json_like(value: Any) -> Any:
+    """Parse JSON-encoded strings commonly returned by chain summary views."""
+    if not isinstance(value, str):
+        return value
+
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "[{":
+        return value
+
+    try:
+        return json.loads(stripped)
+    except Exception:
+        return value
+
+
+def _split_preprocessing_steps(value: Any) -> list[str]:
+    """Split the serialized preprocessing string into stable step labels."""
+    if value is None:
+        return []
+
+    steps: list[str] = []
+    for segment in str(value).split(" | "):
+        step = segment.strip()
+        if step and step not in steps:
+            steps.append(step)
+    return steps
+
+
+def _extract_model_params_from_expanded_config(
+    expanded_config: Any,
+    model_step_idx: Any,
+) -> dict[str, Any] | None:
+    """Extract model params from a serialized expanded pipeline config."""
+    steps = _parse_json_like(expanded_config)
+    if not isinstance(steps, list):
+        return None
+
+    try:
+        idx = int(model_step_idx) - 1
+    except Exception:
+        return None
+
+    if idx < 0 or idx >= len(steps):
+        return None
+
+    step = steps[idx]
+
+    if isinstance(step, dict) and "model" in step:
+        model_spec = step.get("model")
+        if isinstance(model_spec, dict):
+            params = model_spec.get("params")
+            if isinstance(params, dict):
+                return params
+        return None
+
+    if isinstance(step, dict):
+        params = step.get("params")
+        if isinstance(params, dict):
+            return params
+
+    return None
+
+
+def _merge_variant_params(
+    step_params: dict[str, Any] | None,
+    best_params: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Merge static pipeline params with best_params into a single view."""
+    merged: dict[str, Any] = {}
+    if isinstance(step_params, dict):
+        merged.update(step_params)
+    if isinstance(best_params, dict):
+        merged.update(best_params)
+    return merged or None
+
+
+def _load_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Load pipeline metadata needed to enrich chain summaries."""
+    pipeline_map: dict[str, dict[str, Any]] = {}
+    get_pipeline = getattr(store, "get_pipeline", None)
+    if not callable(get_pipeline):
+        return pipeline_map
+
+    for pipeline_id in {pid for pid in pipeline_ids if pid}:
+        try:
+            pipeline = get_pipeline(pipeline_id)
+        except Exception:
+            pipeline = None
+        if isinstance(pipeline, dict):
+            pipeline_map[pipeline_id] = pipeline
+
+    return pipeline_map
+
+
+def _normalize_chain_record(
+    raw: dict[str, Any],
+    pipeline_map: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Normalize a chain-summary row for frontend consumption."""
+    pipeline_map = pipeline_map or {}
+    record = _sanitize_dict(dict(raw))
+    for json_field in ("best_params", "branch_path"):
+        record[json_field] = _parse_json_like(record.get(json_field))
+    pipeline_id = str(record.get("pipeline_id") or "")
+    pipeline = pipeline_map.get(pipeline_id, {})
+    step_params = _extract_model_params_from_expanded_config(
+        pipeline.get("expanded_config"),
+        record.get("model_step_idx"),
+    )
+    best_params = record.get("best_params")
+    best_params = best_params if isinstance(best_params, dict) else None
+    record["best_params"] = best_params
+    record["variant_params"] = _merge_variant_params(step_params, best_params)
+    record["pipeline_name"] = pipeline.get("name")
+    record["preprocessing_steps"] = _split_preprocessing_steps(record.get("preprocessings"))
+    return record
+
+
+def _normalize_chain_rows(df: Any) -> list[dict[str, Any]]:
+    """Normalize all rows from a chain-summary style dataframe."""
+    rows = [dict(row) for row in df.iter_rows(named=True)]
+    pipeline_map = _load_pipeline_metadata_map(
+        getattr(df, "_store", None),
+        [],
+    )
+    # WorkspaceStore dataframes do not carry a back-reference to the store.
+    # Callers that need pipeline enrichment should pass rows through
+    # ``_normalize_chain_records`` instead.
+    return [_normalize_chain_record(row, pipeline_map) for row in rows]
+
+
+def _normalize_chain_records(store: Any, df: Any) -> list[dict[str, Any]]:
+    """Normalize chain rows and enrich them with pipeline-derived metadata."""
+    rows = [dict(row) for row in df.iter_rows(named=True)]
+    pipeline_map = _load_pipeline_metadata_map(
+        store,
+        [str(row.get("pipeline_id") or "") for row in rows],
+    )
+    return [_normalize_chain_record(row, pipeline_map) for row in rows]
+
+
+def _matches_task_type_filter(raw_task_type: Any, expected: str | None) -> bool:
+    """Match broad frontend task filters against backend task variants."""
+    if not expected:
+        return True
+
+    actual = str(raw_task_type or "").strip().lower()
+    if not actual:
+        return False
+
+    expected_norm = expected.strip().lower()
+    if expected_norm == "classification":
+        return "classification" in actual
+    if expected_norm == "regression":
+        return "regression" in actual
+    return actual == expected_norm
+
+
+def _is_classification_task(task_type: Any) -> bool:
+    """Return True for classification-like task types."""
+    return "classification" in str(task_type or "").strip().lower()
+
+
+def _flatten_numeric_params(params: Any, prefix: str = "") -> dict[str, float]:
+    """Flatten numeric hyperparameters, preserving nested keys with dot notation."""
+    flattened: dict[str, float] = {}
+    if not isinstance(params, dict):
+        return flattened
+
+    for key, value in params.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            flattened.update(_flatten_numeric_params(value, name))
+            continue
+
+        if isinstance(value, (int, float)) and not (
+            isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+        ):
+            flattened[name] = float(value)
+
+    return flattened
+
+
 def _get_store():
     """Get a WorkspaceStore for the current workspace."""
     if not STORE_AVAILABLE:
@@ -288,6 +475,62 @@ def _get_store():
         )
 
     return get_cached("WorkspaceStore")(workspace_path)
+
+
+def _get_arrays(store: Any, prediction_id: str) -> dict[str, Any] | None:
+    """Get prediction arrays with fallback for stores without get_prediction_arrays."""
+    get_arrays = getattr(store, "get_prediction_arrays", None)
+    if callable(get_arrays):
+        return get_arrays(prediction_id)
+    prediction = store.get_prediction(prediction_id, load_arrays=True)
+    return prediction
+
+
+def _coerce_vector(values: Any) -> list[Any] | None:
+    """Coerce a scalar, list, or ndarray into a flat Python list."""
+    if values is None:
+        return None
+    try:
+        import numpy as np
+
+        array = np.asarray(values, dtype=object)
+        if array.ndim == 0:
+            return [array.item()]
+        return array.reshape(-1).tolist()
+    except Exception:
+        if isinstance(values, (list, tuple)):
+            return list(values)
+        return None
+
+
+def _coerce_numeric_vector(values: Any) -> list[float] | None:
+    """Coerce values into a flat list of floats."""
+    vector = _coerce_vector(values)
+    if vector is None:
+        return None
+
+    numeric: list[float] = []
+    for value in vector:
+        try:
+            numeric.append(float(value))
+        except (TypeError, ValueError):
+            return None
+    return numeric
+
+
+def _coerce_index_vector(values: Any) -> list[int] | None:
+    """Coerce values into a flat list of integer sample indices."""
+    vector = _coerce_vector(values)
+    if vector is None:
+        return None
+
+    indices: list[int] = []
+    for value in vector:
+        try:
+            indices.append(int(value))
+        except (TypeError, ValueError):
+            return None
+    return indices
 
 
 _LOWER_BETTER_METRICS = {"rmse", "mse", "mae", "rmsecv", "rmsep", "secv", "sep", "bias"}
@@ -331,17 +574,23 @@ async def get_inspector_data(
             run_id=_run_id,
             dataset_name=_dataset_name,
             model_class=_model_class,
-            task_type=task_type,
             metric=metric,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
+
+        if task_type:
+            records = [
+                record for record in records
+                if _matches_task_type_filter(record.get("task_type"), task_type)
+            ]
 
         # Post-filter by preprocessing steps (substring match)
         if preprocessings:
             filtered = []
             for r in records:
                 preps = r.get("preprocessings") or ""
-                if any(p in preps for p in preprocessings):
+                steps = {str(step) for step in (r.get("preprocessing_steps") or [])}
+                if any(p in preps or p in steps for p in preprocessings):
                     filtered.append(r)
             records = filtered
 
@@ -354,12 +603,8 @@ async def get_inspector_data(
         # Extract unique preprocessing step names (split by " | ")
         prep_steps: set[str] = set()
         for r in records:
-            preps = r.get("preprocessings")
-            if preps:
-                for segment in str(preps).split(" | "):
-                    step = segment.strip()
-                    if step:
-                        prep_steps.add(step)
+            for step in (r.get("preprocessing_steps") or []):
+                prep_steps.add(str(step))
 
         return InspectorDataResponse(
             chains=records,
@@ -382,7 +627,6 @@ async def get_scatter_data(request: ScatterRequest):
     For each chain_id, loads the fold-level predictions matching the
     requested partition and concatenates the arrays.
     """
-    import numpy as np
     if not request.chain_ids:
         return ScatterResponse(points=[], partition=request.partition, total_samples=0)
 
@@ -390,6 +634,11 @@ async def get_scatter_data(request: ScatterRequest):
     try:
         points: list[dict] = []
         total_samples = 0
+        score_field = {
+            "val": "val_score",
+            "test": "test_score",
+            "train": "train_score",
+        }.get(request.partition, "val_score")
 
         for chain_id in request.chain_ids:
             pred_df = store.get_chain_predictions(
@@ -406,7 +655,7 @@ async def get_scatter_data(request: ScatterRequest):
             all_y_true: list[float] = []
             all_y_pred: list[float] = []
             all_indices: list[int] = []
-            score = _sanitize_float(first_row.get("val_score") if request.partition == "val" else first_row.get("test_score"))
+            score = _sanitize_float(first_row.get(score_field))
 
             for row in pred_df.iter_rows(named=True):
                 row_dict = dict(row)
@@ -414,20 +663,27 @@ async def get_scatter_data(request: ScatterRequest):
                 if not prediction_id:
                     continue
 
-                arrays = store.get_prediction_arrays(prediction_id)
+                arrays = _get_arrays(store, prediction_id)
                 if arrays is None:
                     continue
 
-                y_true = arrays.get("y_true")
-                y_pred = arrays.get("y_pred")
-                if y_true is not None and isinstance(y_true, np.ndarray):
-                    all_y_true.extend(y_true.tolist())
-                if y_pred is not None and isinstance(y_pred, np.ndarray):
-                    all_y_pred.extend(y_pred.tolist())
+                y_true_values = _coerce_numeric_vector(arrays.get("y_true"))
+                y_pred_values = _coerce_numeric_vector(arrays.get("y_pred"))
+                if not y_true_values or not y_pred_values:
+                    continue
 
-                sample_indices = arrays.get("sample_indices")
-                if sample_indices is not None and isinstance(sample_indices, np.ndarray):
-                    all_indices.extend(sample_indices.tolist())
+                sample_indices = _coerce_index_vector(arrays.get("sample_indices"))
+                pair_count = min(len(y_true_values), len(y_pred_values))
+                for index in range(pair_count):
+                    yt = y_true_values[index]
+                    yp = y_pred_values[index]
+                    if math.isnan(yt) or math.isnan(yp) or math.isinf(yt) or math.isinf(yp):
+                        continue
+
+                    all_y_true.append(yt)
+                    all_y_pred.append(yp)
+                    if sample_indices is not None and index < len(sample_indices):
+                        all_indices.append(sample_indices[index])
 
             if all_y_true and all_y_pred:
                 total_samples += len(all_y_true)
@@ -471,7 +727,7 @@ async def get_histogram_data(
             run_id=run_id or None,
             dataset_name=dataset_name or None,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         # Extract scores and chain_ids
         scores: list[float] = []
@@ -542,7 +798,7 @@ async def get_rankings_data(
             run_id=run_id or None,
             dataset_name=dataset_name or None,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         # Auto-detect sort direction from metric if not specified
         if sort_ascending is None:
@@ -610,7 +866,7 @@ async def get_heatmap_data(request: HeatmapRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         # Group by (x_variable, y_variable)
         grid: dict[tuple[str, str], list[dict]] = {}
@@ -693,7 +949,7 @@ async def get_candlestick_data(request: CandlestickRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         # Group by category_variable
         buckets: dict[str, list[dict]] = {}
@@ -862,7 +1118,7 @@ async def get_branch_comparison(request: BranchComparisonRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         # Group by branch_path
         buckets: dict[str, list[dict]] = {}
@@ -960,7 +1216,7 @@ async def get_branch_topology(
 
                 # Get chain summaries for metrics lookup
                 df = store.query_chain_summaries(pipeline_id=pipeline_id)
-                chain_records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+                chain_records = _normalize_chain_records(store, df)
 
                 # Build flat node list from model_nodes
                 for i, mn in enumerate(topology.model_nodes):
@@ -1000,7 +1256,7 @@ async def get_branch_topology(
         # Fallback: if no topology analysis, build minimal from chain summaries
         if not nodes:
             df = store.query_chain_summaries(pipeline_id=pipeline_id)
-            chain_records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+            chain_records = _normalize_chain_records(store, df)
 
             # Group by model_class to create simple nodes
             model_groups: dict[str, list[dict]] = {}
@@ -1146,6 +1402,7 @@ class ConfusionMatrixResponse(BaseModel):
     total_samples: int
     partition: str
     normalize: str
+    reason: str | None = None
 
 
 class RobustnessRequest(BaseModel):
@@ -1218,7 +1475,6 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
     selected chains and computes the confusion matrix with optional
     normalization (by row=recall, column=precision, or all).
     """
-    import numpy as np
     if not request.chain_ids:
         return ConfusionMatrixResponse(
             cells=[], labels=[], total_samples=0,
@@ -1227,10 +1483,31 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
 
     store = _get_store()
     try:
+        df = store.query_chain_summaries()
+        chain_records = {
+            record["chain_id"]: record
+            for record in _normalize_chain_records(store, df)
+        }
+        eligible_chain_ids = [
+            chain_id
+            for chain_id in request.chain_ids
+            if _is_classification_task(chain_records.get(chain_id, {}).get("task_type"))
+        ]
+
+        if not eligible_chain_ids:
+            return ConfusionMatrixResponse(
+                cells=[],
+                labels=[],
+                total_samples=0,
+                partition=request.partition,
+                normalize=request.normalize,
+                reason="Confusion matrix is only available for classification chains.",
+            )
+
         all_y_true: list[Any] = []
         all_y_pred: list[Any] = []
 
-        for chain_id in request.chain_ids:
+        for chain_id in eligible_chain_ids:
             pred_df = store.get_chain_predictions(
                 chain_id=chain_id,
                 partition=request.partition,
@@ -1244,21 +1521,28 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
                 if not prediction_id:
                     continue
 
-                arrays = store.get_prediction_arrays(prediction_id)
+                arrays = _get_arrays(store, prediction_id)
                 if arrays is None:
                     continue
 
-                y_true = arrays.get("y_true")
-                y_pred = arrays.get("y_pred")
-                if y_true is not None and isinstance(y_true, np.ndarray):
-                    all_y_true.extend(y_true.tolist())
-                if y_pred is not None and isinstance(y_pred, np.ndarray):
-                    all_y_pred.extend(y_pred.tolist())
+                y_true_values = _coerce_vector(arrays.get("y_true"))
+                y_pred_values = _coerce_vector(arrays.get("y_pred"))
+                if not y_true_values or not y_pred_values:
+                    continue
+
+                for yt, yp in zip(y_true_values, y_pred_values):
+                    if isinstance(yt, float) and (math.isnan(yt) or math.isinf(yt)):
+                        continue
+                    if isinstance(yp, float) and (math.isnan(yp) or math.isinf(yp)):
+                        continue
+                    all_y_true.append(yt)
+                    all_y_pred.append(yp)
 
         if not all_y_true or not all_y_pred:
             return ConfusionMatrixResponse(
                 cells=[], labels=[], total_samples=0,
                 partition=request.partition, normalize=request.normalize,
+                reason="Selected classification chains do not have prediction arrays for this partition.",
             )
 
         # Convert to strings for classification labels
@@ -1267,6 +1551,16 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
 
         # Get unique sorted labels
         labels = sorted(set(y_true_labels) | set(y_pred_labels))
+
+        if len(labels) > 24:
+            return ConfusionMatrixResponse(
+                cells=[],
+                labels=[],
+                total_samples=0,
+                partition=request.partition,
+                normalize=request.normalize,
+                reason=f"Too many class labels ({len(labels)}) to render a meaningful confusion matrix.",
+            )
 
         # Build raw counts matrix
         counts: dict[tuple[str, str], int] = {}
@@ -1309,6 +1603,7 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
             total_samples=total_samples,
             partition=request.partition,
             normalize=request.normalize,
+            reason=None,
         )
     finally:
         store.close()
@@ -1336,7 +1631,7 @@ async def get_robustness_data(request: RobustnessRequest):
     try:
         # Get chain summaries
         df = store.query_chain_summaries()
-        all_records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        all_records = _normalize_chain_records(store, df)
         chain_map = {r["chain_id"]: r for r in all_records}
 
         # Score field mapping
@@ -1492,7 +1787,7 @@ async def get_metric_correlation(request: MetricCorrelationRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         if not records:
             return MetricCorrelationResponse(
@@ -1631,6 +1926,7 @@ class HyperparameterResponse(BaseModel):
     param_name: str
     score_column: str
     available_params: list[str]
+    reason: str | None = None
 
 
 class BiasVarianceRequest(BaseModel):
@@ -1660,6 +1956,7 @@ class BiasVarianceResponse(BaseModel):
     entries: list[dict[str, Any]]
     score_column: str
     group_by: str
+    reason: str | None = None
 
 
 class LearningCurveRequest(BaseModel):
@@ -1710,7 +2007,7 @@ async def get_preprocessing_impact(request: PreprocessingImpactRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         if not records:
             return PreprocessingImpactResponse(
@@ -1720,14 +2017,8 @@ async def get_preprocessing_impact(request: PreprocessingImpactRequest):
         # Extract unique preprocessing step names
         step_chains: dict[str, list[int]] = {}  # step_name → list of record indices
         for i, r in enumerate(records):
-            preps = r.get("preprocessings")
-            if not preps:
-                continue
-            # Split by " | " (pipeline separator) and ", " (within-step separator)
-            for segment in str(preps).split(" | "):
-                step = segment.strip()
-                if step:
-                    step_chains.setdefault(step, []).append(i)
+            for step in (r.get("preprocessing_steps") or []):
+                step_chains.setdefault(str(step), []).append(i)
 
         # Detect metric direction
         first_metric = next((r.get("metric") for r in records if r.get("metric")), None)
@@ -1786,7 +2077,7 @@ async def get_hyperparameter_data(request: HyperparameterRequest):
     """Get hyperparameter value vs score scatter data.
 
     Extracts numeric values of the requested param_name from each chain's
-    best_params, paired with the chain's score.
+    variant params, paired with the chain's score.
     """
     store = _get_store()
     try:
@@ -1794,43 +2085,58 @@ async def get_hyperparameter_data(request: HyperparameterRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         if not records:
             return HyperparameterResponse(
                 points=[], param_name=request.param_name,
                 score_column=request.score_column, available_params=[],
+                reason="No chains match the current filters.",
             )
 
         # Discover all numeric parameter names across chains
         param_counts: dict[str, int] = {}
+        param_values: dict[str, set[float]] = {}
         for r in records:
-            bp = r.get("best_params")
-            if not isinstance(bp, dict):
-                continue
-            for k, v in bp.items():
-                if isinstance(v, (int, float)) and not (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
-                    param_counts[k] = param_counts.get(k, 0) + 1
+            params = _flatten_numeric_params(r.get("variant_params") or r.get("best_params"))
+            for key, value in params.items():
+                param_counts[key] = param_counts.get(key, 0) + 1
+                param_values.setdefault(key, set()).add(value)
 
-        available_params = sorted(k for k, c in param_counts.items() if c >= 2)
+        available_params = sorted(
+            key
+            for key, count in param_counts.items()
+            if count >= 2 and len(param_values.get(key, set())) >= 2
+        )
+
+        if request.param_name not in available_params:
+            reason = (
+                "No numeric model parameters with enough variation are available "
+                "for the current filter set."
+                if not available_params
+                else f"Parameter '{request.param_name}' is not available for the current filter set."
+            )
+            return HyperparameterResponse(
+                points=[],
+                param_name=request.param_name,
+                score_column=request.score_column,
+                available_params=available_params,
+                reason=reason,
+            )
 
         # Build scatter points for the requested param
         points: list[dict] = []
         for r in records:
-            bp = r.get("best_params")
-            if not isinstance(bp, dict):
-                continue
-            val = bp.get(request.param_name)
+            params = _flatten_numeric_params(r.get("variant_params") or r.get("best_params"))
+            val = params.get(request.param_name)
             score = r.get(request.score_column)
             if (
                 val is not None
-                and isinstance(val, (int, float))
-                and not (isinstance(val, float) and (math.isnan(val) or math.isinf(val)))
                 and score is not None
             ):
                 points.append(HyperparameterPoint(
                     chain_id=r["chain_id"],
-                    param_value=float(val),
+                    param_value=val,
                     score=float(score),
                     model_class=r.get("model_class", "Unknown"),
                 ).model_dump())
@@ -1840,6 +2146,7 @@ async def get_hyperparameter_data(request: HyperparameterRequest):
             param_name=request.param_name,
             score_column=request.score_column,
             available_params=available_params,
+            reason=None if points else f"No chains expose '{request.param_name}' with a valid score.",
         )
     finally:
         store.close()
@@ -1859,6 +2166,7 @@ async def get_bias_variance(request: BiasVarianceRequest):
     if not request.chain_ids:
         return BiasVarianceResponse(
             entries=[], score_column=request.score_column, group_by=request.group_by,
+            reason="Select at least one chain to compare bias and variance.",
         )
 
     store = _get_store()
@@ -1866,8 +2174,8 @@ async def get_bias_variance(request: BiasVarianceRequest):
         # Get chain summaries for grouping
         df = store.query_chain_summaries()
         records = {
-            dict(row)["chain_id"]: _sanitize_dict(dict(row))
-            for row in df.iter_rows(named=True)
+            record["chain_id"]: record
+            for record in _normalize_chain_records(store, df)
         }
 
         # Group chains by the requested field
@@ -1879,14 +2187,24 @@ async def get_bias_variance(request: BiasVarianceRequest):
             label = str(r.get(request.group_by, "Unknown") or "Unknown")
             groups.setdefault(label, []).append(cid)
 
+        if not groups:
+            return BiasVarianceResponse(
+                entries=[],
+                score_column=request.score_column,
+                group_by=request.group_by,
+                reason="No eligible chains were found for the requested comparison.",
+            )
+
         entries: list[dict] = []
 
         for label, chain_ids in groups.items():
-            # Collect fold-level predictions: sample_idx → list of (y_true, y_pred)
-            sample_preds: dict[int, list[tuple[float, float]]] = {}
+            # Collect fold-level predictions: (dataset, sample_idx) → list of (y_true, y_pred)
+            sample_preds: dict[tuple[str, int], list[tuple[float, float]]] = {}
             total_folds = 0
 
             for cid in chain_ids:
+                record = records.get(cid, {})
+                dataset_name = str(record.get("dataset_name") or "unknown")
                 pred_df = store.get_chain_predictions(chain_id=cid, partition="val")
                 if len(pred_df) == 0:
                     continue
@@ -1898,34 +2216,29 @@ async def get_bias_variance(request: BiasVarianceRequest):
                         continue
                     total_folds += 1
 
-                    arrays = store.get_prediction_arrays(pid)
+                    arrays = _get_arrays(store, pid)
                     if arrays is None:
                         continue
-                    y_true = arrays.get("y_true")
-                    y_pred = arrays.get("y_pred")
-                    if y_true is None or y_pred is None:
+                    y_true_values = _coerce_numeric_vector(arrays.get("y_true"))
+                    y_pred_values = _coerce_numeric_vector(arrays.get("y_pred"))
+                    if not y_true_values or not y_pred_values:
                         continue
 
-                    y_true_arr = np.asarray(y_true, dtype=float)
-                    y_pred_arr = np.asarray(y_pred, dtype=float)
-
-                    indices = arrays.get("sample_indices")
-                    if indices is not None:
-                        idx_arr = list(np.asarray(indices, dtype=int))
-                    else:
-                        idx_arr = list(range(len(y_true_arr)))
-
-                    for j, idx in enumerate(idx_arr):
-                        if j < len(y_true_arr) and j < len(y_pred_arr):
-                            yt = float(y_true_arr[j])
-                            yp = float(y_pred_arr[j])
-                            if not (math.isnan(yt) or math.isnan(yp)):
-                                sample_preds.setdefault(int(idx), []).append((yt, yp))
+                    indices = _coerce_index_vector(arrays.get("sample_indices"))
+                    pair_count = min(len(y_true_values), len(y_pred_values))
+                    for j in range(pair_count):
+                        yt = y_true_values[j]
+                        yp = y_pred_values[j]
+                        if math.isnan(yt) or math.isnan(yp) or math.isinf(yt) or math.isinf(yp):
+                            continue
+                        sample_idx = indices[j] if indices is not None and j < len(indices) else j
+                        sample_key = (dataset_name, int(sample_idx))
+                        sample_preds.setdefault(sample_key, []).append((yt, yp))
 
             # Compute bias² and variance per sample with 2+ predictions
             biases_sq: list[float] = []
             variances: list[float] = []
-            for _idx, pairs in sample_preds.items():
+            for _sample_key, pairs in sample_preds.items():
                 if len(pairs) < 2:
                     continue
                 y_true_val = pairs[0][0]  # All should be the same y_true
@@ -1957,6 +2270,11 @@ async def get_bias_variance(request: BiasVarianceRequest):
             entries=entries,
             score_column=request.score_column,
             group_by=request.group_by,
+            reason=(
+                None
+                if entries
+                else "Bias-variance needs repeated validation predictions for the same samples across at least two comparable chains."
+            ),
         )
     finally:
         store.close()
@@ -1976,7 +2294,7 @@ async def get_learning_curve(request: LearningCurveRequest):
             run_id=request.run_id,
             dataset_name=request.dataset_name,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = _normalize_chain_records(store, df)
 
         if request.model_class:
             records = [r for r in records if r.get("model_class") == request.model_class]
@@ -2005,9 +2323,10 @@ async def get_learning_curve(request: LearningCurveRequest):
                     first_row = dict(pred_df.row(0, named=True))
                     pid = first_row.get("prediction_id")
                     if pid:
-                        arrays = store.get_prediction_arrays(pid)
-                        if arrays and arrays.get("y_true") is not None:
-                            train_size = len(np.asarray(arrays["y_true"]))
+                        arrays = _get_arrays(store, pid)
+                        y_true_values = _coerce_vector(arrays.get("y_true")) if arrays else None
+                        if y_true_values:
+                            train_size = len(y_true_values)
             except Exception:
                 pass
 
@@ -2019,9 +2338,10 @@ async def get_learning_curve(request: LearningCurveRequest):
                         first_row = dict(pred_df.row(0, named=True))
                         pid = first_row.get("prediction_id")
                         if pid:
-                            arrays = store.get_prediction_arrays(pid)
-                            if arrays and arrays.get("y_true") is not None:
-                                val_size = len(np.asarray(arrays["y_true"]))
+                            arrays = _get_arrays(store, pid)
+                            y_true_values = _coerce_vector(arrays.get("y_true")) if arrays else None
+                            if y_true_values:
+                                val_size = len(y_true_values)
                                 fold_count = r.get("cv_fold_count", 5) or 5
                                 # Approximate: train_size ≈ total - val_size
                                 total_approx = int(val_size * fold_count / max(1, fold_count - 1))

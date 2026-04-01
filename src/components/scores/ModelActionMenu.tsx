@@ -10,7 +10,7 @@ import {
 import {
   MoreVertical, Eye, ScatterChart, BarChart3, Zap, Lightbulb,
   RefreshCw, Play, Download, FileSpreadsheet, Package, ExternalLink,
-  Database, Star, Trash2,
+  Database, Star, Trash2, Pencil,
 } from "lucide-react";
 
 interface ModelActionMenuProps {
@@ -18,7 +18,6 @@ interface ModelActionMenuProps {
   modelName: string;
   datasetName?: string;
   runId?: string;
-  pipelineId?: string;
   hasRefit: boolean;
   onViewDetails?: () => void;
   onExport?: () => void;
@@ -28,7 +27,7 @@ interface ModelActionMenuProps {
 }
 
 export function ModelActionMenu({
-  chainId, modelName, datasetName, runId, pipelineId,
+  chainId, modelName, datasetName, runId,
   hasRefit, onViewDetails, onExport, onRetrain, onDelete, onPin,
 }: ModelActionMenuProps) {
   const predictionsUrl = `/predictions?${new URLSearchParams({
@@ -36,6 +35,7 @@ export function ModelActionMenu({
     ...(datasetName ? { dataset: datasetName } : {}),
     model: modelName,
   }).toString()}`;
+  const pipelineEditorUrl = chainId ? `/pipelines/new?chainId=${encodeURIComponent(chainId)}` : null;
 
   return (
     <DropdownMenu>
@@ -102,10 +102,17 @@ export function ModelActionMenu({
 
         <DropdownMenuSeparator />
 
-        {pipelineId && (
+        {pipelineEditorUrl && (
           <DropdownMenuItem asChild>
-            <Link to={`/editor?pipeline_id=${encodeURIComponent(pipelineId)}`}>
+            <Link to={pipelineEditorUrl}>
               <ExternalLink className="h-4 w-4 mr-2" /> Goto pipeline
+            </Link>
+          </DropdownMenuItem>
+        )}
+        {pipelineEditorUrl && (
+          <DropdownMenuItem asChild>
+            <Link to={pipelineEditorUrl}>
+              <Pencil className="h-4 w-4 mr-2" /> Edit pipeline
             </Link>
           </DropdownMenuItem>
         )}

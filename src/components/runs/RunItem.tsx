@@ -156,6 +156,23 @@ export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["r
                         <span className="flex items-center gap-0.5"><Layers className="h-3 w-3 rotate-90" />{run.total_folds}</span>
                       </TooltipTrigger><TooltipContent>Total folds</TooltipContent></Tooltip>
                     </TooltipProvider>
+                    {/* Model classes trained */}
+                    {run.model_classes && run.model_classes.length > 0 && (
+                      <>
+                        <span className="text-muted-foreground/40">|</span>
+                        <TooltipProvider>
+                          <Tooltip><TooltipTrigger asChild>
+                            <span className="flex items-center gap-1">
+                              {run.model_classes.map((mc) => (
+                                <Badge key={mc.name} variant="outline" className="text-[10px] bg-teal-500/10 text-teal-600 border-teal-500/30 py-0 h-4">
+                                  {mc.name}{mc.count > 1 ? ` ×${mc.count}` : ""}
+                                </Badge>
+                              ))}
+                            </span>
+                          </TooltipTrigger><TooltipContent>Trained model classes</TooltipContent></Tooltip>
+                        </TooltipProvider>
+                      </>
+                    )}
                     {/* Inline best score when collapsed */}
                     {!expanded && bestDataset && (bestDataset.best_final_score ?? bestDataset.best_avg_val_score) != null && (
                       <>

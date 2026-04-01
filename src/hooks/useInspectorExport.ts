@@ -8,6 +8,7 @@
 import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { useInspectorData } from '@/context/InspectorDataContext';
+import { useInspectorFilter } from '@/context/InspectorFilterContext';
 import { useInspectorView } from '@/context/InspectorViewContext';
 import { INSPECTOR_PANELS } from '@/lib/inspector/chartRegistry';
 import type { InspectorPanelType } from '@/types/inspector';
@@ -63,7 +64,8 @@ async function elementToCanvas(element: HTMLElement, scale = 2): Promise<HTMLCan
 }
 
 export function useInspectorExport() {
-  const { chains, scoreColumn, filters } = useInspectorData();
+  const { filters } = useInspectorData();
+  const { filteredChains } = useInspectorFilter();
   const { isPanelVisible } = useInspectorView();
 
   const exportPanelAsPng = useCallback(async (panelType: InspectorPanelType) => {
@@ -114,7 +116,7 @@ export function useInspectorExport() {
   }, [isPanelVisible]);
 
   const exportDataAsCsv = useCallback(() => {
-    if (chains.length === 0) {
+    if (filteredChains.length === 0) {
       toast.error('No chain data to export.');
       return;
     }
@@ -127,7 +129,7 @@ export function useInspectorExport() {
     ];
 
     const header = columns.join(',');
-    const rows = chains.map(chain =>
+    const rows = filteredChains.map(chain =>
       columns.map(col => {
         const val = chain[col as keyof typeof chain];
         if (val == null) return '';
@@ -142,8 +144,8 @@ export function useInspectorExport() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const prefix = filters.run_ids?.length ? `run-${filters.run_ids[0]}` : 'inspector';
     downloadBlob(blob, `${prefix}-chains-${timestampStr()}.csv`);
-    toast.success(`Exported ${chains.length} chains as CSV`);
-  }, [chains, filters]);
+    toast.success(`Exported ${filteredChains.length} chains as CSV`);
+  }, [filteredChains, filters]);
 
   return {
     exportPanelAsPng,

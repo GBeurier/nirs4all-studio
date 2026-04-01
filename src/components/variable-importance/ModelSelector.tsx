@@ -124,16 +124,9 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
                     {chain.preprocessings ? `${chain.preprocessings} → ` : ''}
                     {shortModelClass(chain.model_class)}
                   </span>
-                  {chain.has_refit && (
-                    <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0">
-                      refit
-                    </Badge>
-                  )}
-                  {!chain.has_refit && (
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
-                      CV
-                    </Badge>
-                  )}
+                  <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
+                    refit
+                  </Badge>
                   {formatScore(chain.cv_val_score) && (
                     <span className="text-xs text-muted-foreground shrink-0">
                       {formatScore(chain.cv_val_score)}

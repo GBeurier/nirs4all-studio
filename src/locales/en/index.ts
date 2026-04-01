@@ -58,6 +58,8 @@ const en = {
     creating: "Creating...",
     saving: "Saving...",
     revertChanges: "Revert changes",
+    noResults: "No results found",
+    retry: "Retry",
   },
 
   // ============= Time / Date =============
@@ -326,6 +328,7 @@ const en = {
         },
       },
       autoDetect: "Auto-detect format",
+      autoDetectDescription: "Automatically detect file format, delimiter, and decimal separator",
       save: "Save defaults",
       reset: "Reset to defaults",
     },
@@ -518,6 +521,13 @@ const en = {
       pinnedChains: "Pinned Chains",
       clearPins: "Clear Pins",
       savedSelections: "Saved Selections",
+      colors: "Colors",
+    },
+    filter: {
+      runs: "Runs",
+      datasets: "Datasets",
+      models: "Models",
+      preprocessing: "Preprocessing",
     },
     panels: {
       scatter: "Pred vs Obs",
@@ -798,6 +808,7 @@ const en = {
     filters: {
       searchPlaceholder: "Search datasets...",
     },
+    noResults: "No results found",
   },
 
   // ============= Predictions =============
@@ -901,6 +912,8 @@ const en = {
     loadingModels: "Loading models...",
     noRuns: "No completed runs with models found",
     noBundles: "No exported bundles found",
+    noModels: "No trained models found. Run an experiment first.",
+    bundles: "Exported Bundles",
     noResults: "No Results Yet",
     instructions: "Select a trained model and dataset, then click \"Compute Explanations\" to analyze which wavelengths are most important for predictions.",
     features: {
@@ -947,6 +960,11 @@ const en = {
     },
     ranking: {
       description: "Top wavelength regions ranked by mean absolute SHAP value.",
+    },
+    binning: {
+      size: "Bin Size",
+      stride: "Stride",
+      aggregation: "Aggregation",
     },
   },
 

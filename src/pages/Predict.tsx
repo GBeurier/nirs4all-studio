@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
 import { Zap } from "lucide-react";
 import { toast } from "sonner";
@@ -50,6 +50,8 @@ export default function Predict() {
         file_size: null,
         preprocessing: null,
         bundle_path: null,
+        prediction_metric: null,
+        prediction_score: null,
       });
       setPreselected(true);
     }
@@ -122,34 +124,41 @@ export default function Predict() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">{t("predict.title")}</h1>
-              <p className="text-sm text-muted-foreground">{t("predict.subtitle")}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("predict.subtitle")}
+              </p>
             </div>
           </div>
         </motion.div>
 
-        {/* Step 1: Model Selection */}
         <motion.div variants={itemVariants}>
-          <ModelSelector
-            selectedModel={selectedModel}
-            onSelect={handleModelSelect}
-          />
+          <div className="grid gap-6 xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
+            <div className="xl:sticky xl:top-6 xl:self-start">
+              <ModelSelector
+                selectedModel={selectedModel}
+                onSelect={handleModelSelect}
+              />
+            </div>
+
+            <div className="space-y-6">
+              <DataInput
+                model={selectedModel}
+                isLoading={predictMutation.isPending}
+                onRunPrediction={handleRunPrediction}
+              />
+
+              {result && (
+                <PredictResults result={result} onReset={handleReset} />
+              )}
+            </div>
+          </div>
         </motion.div>
 
-        {/* Step 2: Data Input (shown after model is selected) */}
-        {selectedModel && !result && (
+        {!selectedModel && (
           <motion.div variants={itemVariants}>
-            <DataInput
-              model={selectedModel}
-              isLoading={predictMutation.isPending}
-              onRunPrediction={handleRunPrediction}
-            />
-          </motion.div>
-        )}
-
-        {/* Step 3: Results (shown after prediction completes) */}
-        {result && (
-          <motion.div variants={itemVariants}>
-            <PredictResults result={result} onReset={handleReset} />
+            <p className="text-sm text-muted-foreground">
+              Choose a trained model to unlock dataset replay, file upload, or pasted spectra.
+            </p>
           </motion.div>
         )}
       </motion.div>

@@ -48,7 +48,7 @@ router = APIRouter(prefix="/aggregated-predictions", tags=["aggregated-predictio
 
 
 class ChainSummary(BaseModel):
-    """One row of the v_chain_summary view."""
+    """One row of the v_chain_summary view, enriched with artifact info."""
 
     run_id: str
     pipeline_id: str
@@ -75,6 +75,8 @@ class ChainSummary(BaseModel):
     final_scores: Any | None = None
     # Pipeline status from JOIN
     pipeline_status: str | None = None
+    # Artifact info (enriched from chains table)
+    fold_artifacts: dict[str, str] | None = None
 
 
 # Deprecated alias
@@ -250,6 +252,43 @@ def _is_read_only_sql(sql: str) -> bool:
     return forbidden.search(normalized) is None
 
 
+def _fetch_fold_artifacts(store: Any, chain_ids: list[str]) -> dict[str, dict[str, str]]:
+    """Fetch fold_artifacts for a batch of chains in a single query.
+
+    Returns a mapping from chain_id -> fold_artifacts dict.
+    """
+    import json as _json
+
+    if not chain_ids:
+        return {}
+    try:
+        placeholders = ", ".join("?" for _ in chain_ids)
+        fa_df = store._fetch_pl(
+            f"SELECT chain_id, fold_artifacts FROM chains WHERE chain_id IN ({placeholders})",
+            chain_ids,
+        )
+        result: dict[str, dict[str, str]] = {}
+        for row in fa_df.iter_rows(named=True):
+            cid = row["chain_id"]
+            raw = row.get("fold_artifacts")
+            if raw:
+                fa = _json.loads(raw) if isinstance(raw, str) else raw
+                if isinstance(fa, dict) and fa:
+                    result[cid] = fa
+        return result
+    except Exception:
+        return {}
+
+
+def _enrich_with_fold_artifacts(records: list[dict], store: Any) -> list[dict]:
+    """Add fold_artifacts to chain summary records."""
+    chain_ids = [r["chain_id"] for r in records if r.get("chain_id")]
+    artifacts_map = _fetch_fold_artifacts(store, chain_ids)
+    for record in records:
+        record["fold_artifacts"] = artifacts_map.get(record.get("chain_id", ""))
+    return records
+
+
 def _list_array_datasets(workspace_path: Path) -> dict[str, Path]:
     """Map dataset name -> parquet file path under arrays/."""
     arrays_dir = workspace_path / "arrays"
@@ -291,6 +330,7 @@ async def get_aggregated_predictions(
             metric=metric,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        _enrich_with_fold_artifacts(records, store)
         return ChainSummariesResponse(
             predictions=records,
             total=len(records),
@@ -327,6 +367,7 @@ async def get_top_aggregated_predictions(
             model_class=model_class,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        _enrich_with_fold_artifacts(records, store)
         return {
             "predictions": records,
             "total": len(records),
@@ -361,6 +402,7 @@ async def get_chain_detail(
         summary = None
         if len(agg_df) > 0:
             summary = _sanitize_dict(dict(agg_df.row(0, named=True)))
+            _enrich_with_fold_artifacts([summary], store)
 
         # Get individual prediction rows
         pred_df = store.get_chain_predictions(chain_id)
@@ -391,6 +433,77 @@ async def get_chain_detail(
             predictions=predictions,
             pipeline=pipeline_info,
         )
+    finally:
+        store.close()
+
+
+@router.get("/chain/{chain_id}/pipeline-steps")
+async def get_chain_pipeline_steps(chain_id: str):
+    """Return the nirs4all-canonical pipeline steps for a specific chain.
+
+    Converts the chain's stored steps (operator_class + params) into the
+    nirs4all canonical format (``{"class": ...}`` / ``{"model": ...}``)
+    understood by the frontend ``importFromNirs4all`` converter.
+
+    Other model steps from the same pipeline are excluded so the editor
+    shows only the preprocessing chain + this chain's model.
+    """
+    store = _get_store()
+    try:
+        chain = store.get_chain(chain_id)
+        if chain is None:
+            raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found")
+
+        chain_steps = chain.get("steps") or []
+        model_step_idx = chain.get("model_step_idx")
+
+        # Find model step indices of OTHER chains in the same pipeline
+        # so we can exclude them from the output.
+        other_model_indices: set[int] = set()
+        sibling_chains_df = store.get_chains_for_pipeline(chain["pipeline_id"])
+        if len(sibling_chains_df) > 0:
+            for row in sibling_chains_df.iter_rows(named=True):
+                idx = row.get("model_step_idx")
+                if idx is not None and idx != model_step_idx:
+                    other_model_indices.add(idx)
+
+        # Convert chain steps to nirs4all canonical format
+        canonical_steps: list[dict] = []
+        for step in chain_steps:
+            step_idx = step.get("step_idx")
+            operator_class = step.get("operator_class", "")
+            params = step.get("params") or {}
+
+            # Skip steps that are model steps of other chains
+            if step_idx in other_model_indices:
+                continue
+
+            # Skip internal refit splitters (not user-visible)
+            if "_FullTrainFoldSplitter" in operator_class:
+                continue
+
+            # Skip repr-style operator classes (e.g. "<ClassName object at 0x...>")
+            if " object at 0x" in operator_class:
+                continue
+
+            if step_idx == model_step_idx:
+                canonical_steps.append({"model": {"class": operator_class, "params": params}})
+            else:
+                canonical_steps.append({"class": operator_class, "params": params})
+
+        # Derive a human-readable name
+        preprocessings = chain.get("preprocessings") or ""
+        model_name = chain.get("model_name") or chain.get("model_class", "").rsplit(".", 1)[-1]
+        if preprocessings:
+            name = f"{preprocessings} → {model_name}"
+        else:
+            name = model_name
+
+        return {
+            "chain_id": chain_id,
+            "name": name,
+            "pipeline": canonical_steps,
+        }
     finally:
         store.close()
 

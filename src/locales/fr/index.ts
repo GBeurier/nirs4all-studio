@@ -57,6 +57,8 @@ const fr = {
     creating: "Création...",
     saving: "Enregistrement...",
     revertChanges: "Annuler les modifications",
+    noResults: "Aucun résultat trouvé",
+    retry: "Réessayer",
   },
 
   // ============= Time / Date =============
@@ -326,6 +328,7 @@ const fr = {
         },
       },
       autoDetect: "Détecter automatiquement le format",
+      autoDetectDescription: "Détecter automatiquement le format, le délimiteur et le séparateur décimal",
       save: "Enregistrer les paramètres par défaut",
       reset: "Réinitialiser aux valeurs par défaut",
     },
@@ -518,6 +521,13 @@ const fr = {
       pinnedChains: "Chaînes épinglées",
       clearPins: "Effacer les épingles",
       savedSelections: "Sélections sauvegardées",
+      colors: "Couleurs",
+    },
+    filter: {
+      runs: "Exécutions",
+      datasets: "Jeux de données",
+      models: "Modèles",
+      preprocessing: "Prétraitement",
     },
     panels: {
       scatter: "Préd vs Obs",
@@ -798,6 +808,7 @@ const fr = {
     filters: {
       searchPlaceholder: "Rechercher des jeux de données...",
     },
+    noResults: "Aucun résultat trouvé",
   },
 
   // ============= Predictions =============
@@ -901,6 +912,8 @@ const fr = {
     loadingModels: "Chargement des modèles...",
     noRuns: "Aucune exécution terminée avec des modèles trouvée",
     noBundles: "Aucun bundle exporté trouvé",
+    noModels: "Aucun modèle entraîné trouvé. Lancez d'abord une expérience.",
+    bundles: "Bundles exportés",
     noResults: "Aucun résultat",
     instructions: "Sélectionnez un modèle entraîné et un jeu de données, puis cliquez sur \"Calculer les explications\" pour analyser quelles longueurs d'onde sont les plus importantes pour les prédictions.",
     features: {
@@ -947,6 +960,11 @@ const fr = {
     },
     ranking: {
       description: "Principales régions de longueurs d'onde classées par valeur SHAP absolue moyenne.",
+    },
+    binning: {
+      size: "Taille du bin",
+      stride: "Pas",
+      aggregation: "Agrégation",
     },
   },
 

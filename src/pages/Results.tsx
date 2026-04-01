@@ -11,7 +11,13 @@ import {
   RefreshCw, Database, Box, Search, BarChart3, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isBetterScore, formatScore, formatMetricName } from "@/lib/scores";
+import {
+  isBetterScore,
+  formatScore,
+  formatMetricName,
+  getBestCvEntry,
+  getBestFinalEntry,
+} from "@/lib/scores";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import { getLinkedWorkspaces, getWorkspaceResultsSummary } from "@/api/client";
 import type { DatasetTopChains } from "@/types/runs";
@@ -30,12 +36,13 @@ const itemVariants = {
 
 /** Adapt DatasetTopChains to the EnrichedDatasetRun shape expected by DatasetResultCard. */
 function adaptToEnrichedDataset(d: DatasetTopChains): EnrichedDatasetRun {
-  const refitChain = d.top_chains.find(c => c.final_test_score != null);
+  const bestFinalChain = getBestFinalEntry(d.top_chains, d.metric);
+  const bestCvChain = getBestCvEntry(d.top_chains, d.metric);
   return {
     dataset_name: d.dataset_name,
-    best_avg_val_score: d.top_chains[0]?.avg_val_score ?? null,
-    best_avg_test_score: d.top_chains[0]?.avg_test_score ?? null,
-    best_final_score: refitChain?.final_test_score ?? null,
+    best_avg_val_score: bestCvChain?.avg_val_score ?? null,
+    best_avg_test_score: bestCvChain?.avg_test_score ?? null,
+    best_final_score: bestFinalChain?.final_test_score ?? null,
     metric: d.metric,
     task_type: d.task_type,
     gain_from_previous_best: null,
@@ -213,6 +220,7 @@ export default function Results() {
               <DatasetResultCard
                 dataset={adaptToEnrichedDataset(dataset)}
                 selectedMetrics={selectedMetrics}
+                workspaceId={activeWorkspace.id}
                 defaultExpanded={idx === 0}
               />
             </motion.div>

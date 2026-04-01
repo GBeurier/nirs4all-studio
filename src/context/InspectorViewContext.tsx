@@ -60,7 +60,7 @@ export interface InspectorViewContextValue extends InspectorViewStateValue {
 
 // ============= Constants =============
 
-const ALL_PANELS: InspectorPanelType[] = ['scatter', 'residuals', 'rankings', 'heatmap', 'histogram', 'candlestick', 'branch_comparison', 'branch_topology', 'fold_stability', 'confusion', 'robustness', 'correlation', 'preprocessing_impact', 'hyperparameter', 'bias_variance', 'learning_curve'];
+const ALL_PANELS: InspectorPanelType[] = ['scatter', 'residuals', 'rankings', 'heatmap', 'histogram', 'candlestick', 'branch_comparison', 'branch_topology', 'fold_stability', 'confusion', 'preprocessing_impact', 'hyperparameter', 'bias_variance'];
 const DEFAULT_VISIBLE: InspectorPanelType[] = ['rankings', 'heatmap', 'histogram', 'candlestick', 'scatter', 'preprocessing_impact'];
 
 // ============= Initial State =============

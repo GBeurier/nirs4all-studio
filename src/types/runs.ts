@@ -74,6 +74,9 @@ export interface PipelineRun {
   estimated_variants?: number; // Number of pipeline variants to test
   tested_variants?: number; // Actual variants tested after completion
   has_generators?: boolean; // True if pipeline has sweeps/finetuning
+  is_expanded_variant?: boolean; // True if this is an expanded variant from a sweep
+  variant_description?: string; // Human-readable: "n_components=10 | StandardScaler"
+  variant_choices?: Record<string, unknown>; // Raw generator choices for this variant
   // Model count breakdown (folds × branches × variants)
   fold_count?: number; // Number of CV folds
   branch_count?: number; // Number of pipeline branches

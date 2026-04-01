@@ -58,6 +58,8 @@ const es = {
     creating: "Creando...",
     saving: "Guardando...",
     revertChanges: "Revertir cambios",
+    noResults: "No se encontraron resultados",
+    retry: "Reintentar",
   },
 
   // ============= Time / Date =============
@@ -326,6 +328,7 @@ const es = {
         },
       },
       autoDetect: "Detección automática de formato",
+      autoDetectDescription: "Detectar automáticamente el formato, el delimitador y el separador decimal",
       save: "Guardar valores predeterminados",
       reset: "Restablecer valores predeterminados",
     },
@@ -518,6 +521,13 @@ const es = {
       pinnedChains: "Cadenas fijadas",
       clearPins: "Limpiar fijaciones",
       savedSelections: "Selecciones guardadas",
+      colors: "Colores",
+    },
+    filter: {
+      runs: "Ejecuciones",
+      datasets: "Conjuntos de datos",
+      models: "Modelos",
+      preprocessing: "Preprocesamiento",
     },
     panels: {
       scatter: "Pred vs Obs",
@@ -798,6 +808,7 @@ const es = {
     filters: {
       searchPlaceholder: "Buscar conjuntos de datos...",
     },
+    noResults: "No se encontraron resultados",
   },
 
   // ============= Predictions =============
@@ -901,6 +912,8 @@ const es = {
     loadingModels: "Cargando modelos...",
     noRuns: "No se encontraron ejecuciones completadas con modelos",
     noBundles: "No se encontraron paquetes exportados",
+    noModels: "No se encontraron modelos entrenados. Ejecute primero un experimento.",
+    bundles: "Bundles exportados",
     noResults: "Sin resultados aún",
     instructions: "Seleccione un modelo entrenado y un conjunto de datos, luego haga clic en \"Calcular explicaciones\" para analizar qué longitudes de onda son más importantes para las predicciones.",
     features: {
@@ -947,6 +960,11 @@ const es = {
     },
     ranking: {
       description: "Principales regiones de longitud de onda clasificadas por valor SHAP absoluto medio.",
+    },
+    binning: {
+      size: "Tamaño del bin",
+      stride: "Paso",
+      aggregation: "Agregación",
     },
   },
 

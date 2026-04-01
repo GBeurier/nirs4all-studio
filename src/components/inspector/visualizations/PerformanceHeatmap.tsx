@@ -1,11 +1,11 @@
 /**
  * PerformanceHeatmap — Color-coded grid of score at intersection of two variables.
  *
- * Renders a custom SVG heatmap within ResponsiveContainer.
+ * Renders a custom SVG heatmap with ResizeObserver for dynamic sizing.
  * Cells colored by score value using continuous palette.
  */
 
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useInspectorSelection } from '@/context/InspectorSelectionContext';
 import { useInspectorColor } from '@/context/InspectorColorContext';
@@ -31,6 +31,17 @@ export function PerformanceHeatmap({ data, isLoading }: PerformanceHeatmapProps)
   const { config } = useInspectorColor();
   const containerRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<HoveredCell | null>(null);
+  const [dims, setDims] = useState({ width: 600, height: 400 });
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const obs = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (entry) setDims({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
 
   // Build cell lookup
   const cellMap = useMemo(() => {
@@ -76,106 +87,100 @@ export function PerformanceHeatmap({ data, isLoading }: PerformanceHeatmapProps)
   const labelMarginBottom = 60;
   const headerHeight = 20;
 
+  const svgW = dims.width;
+  const svgH = dims.height;
+  const gridW = Math.max(0, svgW - labelMarginLeft - 10);
+  const gridH = Math.max(0, svgH - labelMarginBottom - headerHeight);
+  const cellW = x_labels.length > 0 ? gridW / x_labels.length : 0;
+  const cellH = y_labels.length > 0 ? gridH / y_labels.length : 0;
+
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden">
-      <svg width="100%" height="100%" className="select-none">
-        {/* Render grid */}
-        {(() => {
-          // Compute dimensions dynamically
-          const svgW = containerRef.current?.clientWidth ?? 600;
-          const svgH = containerRef.current?.clientHeight ?? 400;
-          const gridW = svgW - labelMarginLeft - 10;
-          const gridH = svgH - labelMarginBottom - headerHeight;
-          const cellW = x_labels.length > 0 ? gridW / x_labels.length : 0;
-          const cellH = y_labels.length > 0 ? gridH / y_labels.length : 0;
+      <svg width={svgW} height={svgH} className="select-none">
+        <g transform={`translate(${labelMarginLeft}, ${headerHeight})`}>
+          {/* Y-axis labels */}
+          {y_labels.map((yLabel, yi) => (
+            <text
+              key={`y-${yi}`}
+              x={-4}
+              y={yi * cellH + cellH / 2}
+              textAnchor="end"
+              dominantBaseline="middle"
+              className="fill-muted-foreground"
+              fontSize={10}
+            >
+              {yLabel.length > 14 ? yLabel.slice(0, 12) + '…' : yLabel}
+            </text>
+          ))}
 
-          return (
-            <g transform={`translate(${labelMarginLeft}, ${headerHeight})`}>
-              {/* Y-axis labels */}
-              {y_labels.map((yLabel, yi) => (
-                <text
-                  key={`y-${yi}`}
-                  x={-4}
-                  y={yi * cellH + cellH / 2}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  className="fill-muted-foreground"
-                  fontSize={10}
-                >
-                  {yLabel.length > 14 ? yLabel.slice(0, 12) + '…' : yLabel}
-                </text>
-              ))}
+          {/* X-axis labels */}
+          {x_labels.map((xLabel, xi) => (
+            <text
+              key={`x-${xi}`}
+              x={xi * cellW + cellW / 2}
+              y={gridH + 12}
+              textAnchor="end"
+              dominantBaseline="hanging"
+              className="fill-muted-foreground"
+              fontSize={10}
+              transform={`rotate(-45, ${xi * cellW + cellW / 2}, ${gridH + 12})`}
+            >
+              {xLabel.length > 14 ? xLabel.slice(0, 12) + '…' : xLabel}
+            </text>
+          ))}
 
-              {/* X-axis labels */}
-              {x_labels.map((xLabel, xi) => (
-                <text
-                  key={`x-${xi}`}
-                  x={xi * cellW + cellW / 2}
-                  y={gridH + 12}
-                  textAnchor="end"
-                  dominantBaseline="hanging"
-                  className="fill-muted-foreground"
-                  fontSize={10}
-                  transform={`rotate(-45, ${xi * cellW + cellW / 2}, ${gridH + 12})`}
-                >
-                  {xLabel.length > 14 ? xLabel.slice(0, 12) + '…' : xLabel}
-                </text>
-              ))}
+          {/* Cells */}
+          {x_labels.map((xLabel, xi) =>
+            y_labels.map((yLabel, yi) => {
+              const cell = cellMap.get(`${xLabel}|${yLabel}`);
+              const value = cell?.value ?? null;
+              const color = getCellColor(value);
+              const isHovered = hovered?.x_label === xLabel && hovered?.y_label === yLabel;
 
-              {/* Cells */}
-              {x_labels.map((xLabel, xi) =>
-                y_labels.map((yLabel, yi) => {
-                  const cell = cellMap.get(`${xLabel}|${yLabel}`);
-                  const value = cell?.value ?? null;
-                  const color = getCellColor(value);
-                  const isHovered = hovered?.x_label === xLabel && hovered?.y_label === yLabel;
-
-                  return (
-                    <g key={`${xi}-${yi}`}>
-                      <rect
-                        x={xi * cellW + 0.5}
-                        y={yi * cellH + 0.5}
-                        width={Math.max(0, cellW - 1)}
-                        height={Math.max(0, cellH - 1)}
-                        fill={color}
-                        opacity={isHovered ? 1 : 0.85}
-                        rx={2}
-                        cursor="pointer"
-                        stroke={isHovered ? '#fff' : 'transparent'}
-                        strokeWidth={isHovered ? 2 : 0}
-                        onClick={() => cell && handleCellClick(cell.chain_ids)}
-                        onMouseEnter={(e) => setHovered({
-                          x_label: xLabel,
-                          y_label: yLabel,
-                          value,
-                          count: cell?.count ?? 0,
-                          mouseX: e.clientX,
-                          mouseY: e.clientY,
-                        })}
-                        onMouseLeave={() => setHovered(null)}
-                      />
-                      {/* Value annotation */}
-                      {value !== null && cellW > 30 && cellH > 16 && (
-                        <text
-                          x={xi * cellW + cellW / 2}
-                          y={yi * cellH + cellH / 2}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fill="#fff"
-                          fontSize={Math.min(10, cellH * 0.5)}
-                          pointerEvents="none"
-                          fontWeight={500}
-                        >
-                          {value.toFixed(3)}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })
-              )}
-            </g>
-          );
-        })()}
+              return (
+                <g key={`${xi}-${yi}`}>
+                  <rect
+                    x={xi * cellW + 0.5}
+                    y={yi * cellH + 0.5}
+                    width={Math.max(0, cellW - 1)}
+                    height={Math.max(0, cellH - 1)}
+                    fill={color}
+                    opacity={isHovered ? 1 : 0.85}
+                    rx={2}
+                    cursor="pointer"
+                    stroke={isHovered ? '#fff' : 'transparent'}
+                    strokeWidth={isHovered ? 2 : 0}
+                    onClick={() => cell && handleCellClick(cell.chain_ids)}
+                    onMouseEnter={(e) => setHovered({
+                      x_label: xLabel,
+                      y_label: yLabel,
+                      value,
+                      count: cell?.count ?? 0,
+                      mouseX: e.clientX,
+                      mouseY: e.clientY,
+                    })}
+                    onMouseLeave={() => setHovered(null)}
+                  />
+                  {/* Value annotation */}
+                  {value !== null && cellW > 30 && cellH > 16 && (
+                    <text
+                      x={xi * cellW + cellW / 2}
+                      y={yi * cellH + cellH / 2}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="#fff"
+                      fontSize={Math.min(10, cellH * 0.5)}
+                      pointerEvents="none"
+                      fontWeight={500}
+                    >
+                      {value.toFixed(3)}
+                    </text>
+                  )}
+                </g>
+              );
+            })
+          )}
+        </g>
       </svg>
 
       {/* Tooltip */}

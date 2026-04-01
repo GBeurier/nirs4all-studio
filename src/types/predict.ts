@@ -14,6 +14,10 @@ export interface AvailableModel {
   file_size: number | null;
   preprocessing: string | null;
   bundle_path: string | null;
+  has_refit?: boolean;
+  fold_artifacts?: Record<string, string> | null;
+  prediction_metric?: string | null;
+  prediction_score?: number | null;
 }
 
 export interface AvailableModelsResponse {

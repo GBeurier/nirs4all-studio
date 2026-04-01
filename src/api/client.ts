@@ -2362,6 +2362,15 @@ export async function getChainPartitionDetail(
 }
 
 /**
+ * Get nirs4all-canonical pipeline steps for a chain (preprocessing + model).
+ */
+export async function getChainPipelineSteps(
+  chainId: string
+): Promise<{ chain_id: string; name: string; pipeline: unknown[] }> {
+  return api.get(`/aggregated-predictions/chain/${chainId}/pipeline-steps`);
+}
+
+/**
  * Get prediction arrays (y_true, y_pred, etc.) for a single prediction.
  */
 export async function getPredictionArrays(
@@ -2429,6 +2438,10 @@ export async function getScoreDistribution(workspaceId: string, runId: string, d
 
 export async function getAllChainsForDataset(workspaceId: string, runId: string, datasetName: string): Promise<AllChainsResponse> {
   return api.get(`/workspaces/${workspaceId}/runs/${runId}/datasets/${encodeURIComponent(datasetName)}/chains`);
+}
+
+export async function getAllChainsForResultsDataset(workspaceId: string, datasetName: string): Promise<AllChainsResponse> {
+  return api.get(`/workspaces/${workspaceId}/results/datasets/${encodeURIComponent(datasetName)}/chains`);
 }
 
 // ============================================================================

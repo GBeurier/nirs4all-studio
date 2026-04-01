@@ -69,7 +69,9 @@ import {
   detectFilesList,
   getWorkspaceResultsSummary,
 } from "@/api/client";
+import { getBestCvEntry, getBestFinalEntry } from "@/lib/scores";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
+import type { DatasetTopChains } from "@/types/runs";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -85,6 +87,31 @@ const itemVariants = {
 };
 
 type FilterGroup = "all" | string;
+
+function getDatasetBestScore(dataset: DatasetTopChains): DatasetScoreInfo | null {
+  const bestFinalChain = getBestFinalEntry(dataset.top_chains, dataset.metric);
+  if (bestFinalChain?.final_test_score != null) {
+    return {
+      score: bestFinalChain.final_test_score,
+      metric: dataset.metric ?? "score",
+      model: bestFinalChain.model_name,
+      isFinal: true,
+      cvScore: bestFinalChain.avg_val_score ?? undefined,
+    };
+  }
+
+  const bestCvChain = getBestCvEntry(dataset.top_chains, dataset.metric);
+  if (bestCvChain?.avg_val_score != null) {
+    return {
+      score: bestCvChain.avg_val_score,
+      metric: dataset.metric ?? "score",
+      model: bestCvChain.model_name,
+      isFinal: false,
+    };
+  }
+
+  return null;
+}
 
 export default function Datasets() {
   const { t } = useTranslation();
@@ -333,33 +360,11 @@ export default function Datasets() {
         const summary = await getWorkspaceResultsSummary(active.id);
         const scores = new Map<string, DatasetScoreInfo>();
         for (const ds of summary.datasets || []) {
-          const chains = ds.top_chains || [];
           // Use linked_dataset_id (resolved by backend) for matching
           const matchKey = ds.linked_dataset_id || ds.dataset_name;
-          if (!chains.length || !ds.metric || !matchKey) continue;
-
-          // Prefer chains with final (refit) scores
-          const finalChain = chains.find(c => c.final_test_score != null);
-          if (finalChain) {
-            scores.set(matchKey, {
-              score: finalChain.final_test_score!,
-              metric: ds.metric,
-              model: finalChain.model_name,
-              isFinal: true,
-              cvScore: finalChain.avg_val_score ?? undefined,
-            });
-          } else {
-            // Fall back to best CV chain
-            const cvChain = chains[0];
-            if (cvChain?.avg_val_score != null) {
-              scores.set(matchKey, {
-                score: cvChain.avg_val_score,
-                metric: ds.metric,
-                model: cvChain.model_name,
-                isFinal: false,
-              });
-            }
-          }
+          const bestScore = getDatasetBestScore(ds);
+          if (!matchKey || !bestScore) continue;
+          scores.set(matchKey, bestScore);
         }
         setDatasetScores(scores);
       } catch {

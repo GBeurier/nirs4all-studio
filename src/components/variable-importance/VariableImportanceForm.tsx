@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { Info } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Info, Zap } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -43,9 +45,18 @@ export function VariableImportanceForm({
     <div className="space-y-4">
       {/* Model Selection (chain-based, grouped by dataset) */}
       <div className="space-y-2">
-        <Label className="text-sm font-medium">
-          {t('shap.form.model', 'Model')}
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">
+            {t('shap.form.model', 'Model')}
+          </Label>
+          {chainId && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-emerald-600" asChild>
+              <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
+                <Zap className="h-3 w-3" /> Predict
+              </Link>
+            </Button>
+          )}
+        </div>
         <ModelSelector
           selectedChainId={chainId}
           onChainSelect={onChainSelect}

@@ -6,13 +6,13 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getScatterData, getHistogramData, getRankingsData, getHeatmapData, getCandlestickData,
   getBranchComparisonData, getBranchTopologyData, getFoldStabilityData,
-  getConfusionMatrixData, getRobustnessData, getMetricCorrelationData,
-  getPreprocessingImpactData, getHyperparameterData, getBiasVarianceData, getLearningCurveData,
+  getConfusionMatrixData,
+  getPreprocessingImpactData, getHyperparameterData, getBiasVarianceData,
 } from '@/api/inspector';
 import type {
   ScatterRequest, HeatmapRequest, CandlestickRequest, BranchComparisonRequest, FoldStabilityRequest,
-  ConfusionMatrixRequest, RobustnessRequest, MetricCorrelationRequest,
-  PreprocessingImpactRequest, HyperparameterRequest, BiasVarianceRequest, LearningCurveRequest,
+  ConfusionMatrixRequest,
+  PreprocessingImpactRequest, HyperparameterRequest, BiasVarianceRequest,
 } from '@/types/inspector';
 
 /**
@@ -24,6 +24,7 @@ export function useInspectorScatter(request: ScatterRequest | null) {
     queryFn: () => getScatterData(request!),
     enabled: !!request && request.chain_ids.length > 0,
     staleTime: 60_000,
+    retry: 1,
   });
 }
 
@@ -41,6 +42,7 @@ export function useInspectorHistogram(params: {
     queryFn: () => getHistogramData(params!),
     enabled: !!params,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -60,6 +62,7 @@ export function useInspectorRankings(params: {
     queryFn: () => getRankingsData(params!),
     enabled: !!params,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -72,6 +75,7 @@ export function useInspectorHeatmap(request: HeatmapRequest | null) {
     queryFn: () => getHeatmapData(request!),
     enabled: !!request,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -84,6 +88,7 @@ export function useInspectorCandlestick(request: CandlestickRequest | null) {
     queryFn: () => getCandlestickData(request!),
     enabled: !!request,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -96,6 +101,7 @@ export function useInspectorBranchComparison(request: BranchComparisonRequest | 
     queryFn: () => getBranchComparisonData(request!),
     enabled: !!request,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -108,6 +114,7 @@ export function useInspectorBranchTopology(params: { pipeline_id: string; score_
     queryFn: () => getBranchTopologyData(params!),
     enabled: !!params,
     staleTime: 60_000,
+    retry: 1,
   });
 }
 
@@ -120,6 +127,7 @@ export function useInspectorFoldStability(request: FoldStabilityRequest | null) 
     queryFn: () => getFoldStabilityData(request!),
     enabled: !!request && request.chain_ids.length > 0,
     staleTime: 60_000,
+    retry: 1,
   });
 }
 
@@ -132,32 +140,10 @@ export function useInspectorConfusionMatrix(request: ConfusionMatrixRequest | nu
     queryFn: () => getConfusionMatrixData(request!),
     enabled: !!request && request.chain_ids.length > 0,
     staleTime: 60_000,
+    retry: 1,
   });
 }
 
-/**
- * Fetch robustness radar data (multi-dimensional robustness profile).
- */
-export function useInspectorRobustness(request: RobustnessRequest | null) {
-  return useQuery({
-    queryKey: ['inspector', 'robustness', request],
-    queryFn: () => getRobustnessData(request!),
-    enabled: !!request && request.chain_ids.length > 0,
-    staleTime: 60_000,
-  });
-}
-
-/**
- * Fetch metric correlation matrix.
- */
-export function useInspectorMetricCorrelation(request: MetricCorrelationRequest | null) {
-  return useQuery({
-    queryKey: ['inspector', 'correlation', request],
-    queryFn: () => getMetricCorrelationData(request!),
-    enabled: !!request,
-    staleTime: 30_000,
-  });
-}
 
 /**
  * Fetch preprocessing impact analysis.
@@ -168,6 +154,7 @@ export function useInspectorPreprocessingImpact(request: PreprocessingImpactRequ
     queryFn: () => getPreprocessingImpactData(request!),
     enabled: !!request,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -180,6 +167,7 @@ export function useInspectorHyperparameter(request: HyperparameterRequest | null
     queryFn: () => getHyperparameterData(request!),
     enabled: !!request,
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
@@ -192,17 +180,7 @@ export function useInspectorBiasVariance(request: BiasVarianceRequest | null) {
     queryFn: () => getBiasVarianceData(request!),
     enabled: !!request && request.chain_ids.length > 0,
     staleTime: 60_000,
+    retry: 1,
   });
 }
 
-/**
- * Fetch learning curve data by training set size.
- */
-export function useInspectorLearningCurve(request: LearningCurveRequest | null) {
-  return useQuery({
-    queryKey: ['inspector', 'learning-curve', request],
-    queryFn: () => getLearningCurveData(request!),
-    enabled: !!request,
-    staleTime: 30_000,
-  });
-}

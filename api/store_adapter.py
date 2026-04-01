@@ -41,6 +41,63 @@ def _sanitize_dict(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _parse_json_maybe(value: Any) -> Any:
+    """Parse JSON strings, otherwise return the input unchanged."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return value
+    return value
+
+
+def _extract_model_params_from_expanded_config(
+    expanded_config: Any,
+    model_step_idx: Any,
+) -> dict[str, Any] | None:
+    """Extract concrete params for the model step from an expanded pipeline config."""
+    steps = _parse_json_maybe(expanded_config)
+    if not isinstance(steps, list):
+        return None
+
+    try:
+        idx = int(model_step_idx) - 1
+    except Exception:
+        return None
+
+    if idx < 0 or idx >= len(steps):
+        return None
+
+    step = steps[idx]
+    if isinstance(step, dict) and "model" in step:
+        model_spec = step.get("model")
+        if isinstance(model_spec, dict):
+            params = model_spec.get("params")
+            if isinstance(params, dict):
+                return params
+        return None
+
+    if isinstance(step, dict):
+        params = step.get("params")
+        if isinstance(params, dict):
+            return params
+
+    return None
+
+
+def _merge_variant_params(
+    step_params: dict[str, Any] | None,
+    best_params: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Merge concrete step params with finetuned best_params for display."""
+    merged: dict[str, Any] = {}
+    if isinstance(step_params, dict):
+        merged.update(step_params)
+    if isinstance(best_params, dict):
+        merged.update(best_params)
+    return merged or None
+
+
 class StoreAdapter:
     """Wraps ``WorkspaceStore`` for webapp-specific operations.
 
@@ -54,6 +111,7 @@ class StoreAdapter:
     def __init__(self, workspace_path: Path) -> None:
         if not STORE_AVAILABLE:
             raise RuntimeError("nirs4all library is required for StoreAdapter")
+        self._workspace_path = Path(workspace_path)
         self._store = get_cached("WorkspaceStore")(workspace_path)
 
     def __enter__(self) -> StoreAdapter:
@@ -288,18 +346,33 @@ class StoreAdapter:
         Returns:
             Dict with ``records``, ``total``, ``limit``, ``offset``, ``has_more``.
         """
-        # Fetch the requested page.
-        df = self._store.query_predictions(
-            dataset_name=dataset_name, model_class=model_class, partition=partition,
-            limit=limit, offset=offset,
-        )
-        records = []
-        for row in df.iter_rows(named=True):
-            d = _sanitize_dict(dict(row))
-            # Rename prediction_id → id for frontend compatibility
-            if "prediction_id" in d and "id" not in d:
-                d["id"] = d.pop("prediction_id")
-            records.append(d)
+        try:
+            # Fetch the requested page.
+            df = self._store.query_predictions(
+                dataset_name=dataset_name, model_class=model_class, partition=partition,
+                limit=limit, offset=offset,
+            )
+            records = []
+            for row in df.iter_rows(named=True):
+                d = _sanitize_dict(dict(row))
+                # Rename prediction_id → id for frontend compatibility
+                if "prediction_id" in d and "id" not in d:
+                    d["id"] = d.pop("prediction_id")
+                records.append(d)
+
+            # Total count (without limit) for the frontend pagination display.
+            total_df = self._store.query_predictions(
+                dataset_name=dataset_name, model_class=model_class, partition=partition,
+            )
+            total = len(total_df)
+        except Exception:
+            records, total = self._get_predictions_page_fallback(
+                dataset_name=dataset_name,
+                model_class=model_class,
+                partition=partition,
+                limit=limit,
+                offset=offset,
+            )
 
         # Enrich refit predictions: set val_score from chain summary
         refit_chain_ids = list({
@@ -326,12 +399,6 @@ class StoreAdapter:
             except Exception:
                 pass
 
-        # Total count (without limit) for the frontend pagination display.
-        total_df = self._store.query_predictions(
-            dataset_name=dataset_name, model_class=model_class, partition=partition,
-        )
-        total = len(total_df)
-
         return {
             "records": records,
             "total": total,
@@ -339,6 +406,115 @@ class StoreAdapter:
             "offset": offset,
             "has_more": offset + limit < total,
         }
+
+    def _get_predictions_page_fallback(
+        self,
+        dataset_name: str | None = None,
+        model_class: str | None = None,
+        partition: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Fallback reader for predictions when store.query_predictions() cannot infer schema."""
+        where_clauses = ["1=1"]
+        params: list[Any] = []
+
+        if dataset_name:
+            where_clauses.append("p.dataset_name = ?")
+            params.append(dataset_name)
+        if model_class:
+            where_clauses.append("p.model_class = ?")
+            params.append(model_class)
+        if partition:
+            where_clauses.append("p.partition = ?")
+            params.append(partition)
+
+        where_sql = " AND ".join(where_clauses)
+        select_sql = f"""
+            SELECT
+                p.prediction_id,
+                p.pipeline_id,
+                p.chain_id,
+                p.dataset_name,
+                p.model_name,
+                p.model_class,
+                p.fold_id,
+                p.partition,
+                p.val_score,
+                p.test_score,
+                p.train_score,
+                p.metric,
+                p.task_type,
+                p.n_samples,
+                p.n_features,
+                p.scores,
+                p.best_params,
+                p.preprocessings,
+                p.branch_id,
+                p.branch_name,
+                p.exclusion_count,
+                p.exclusion_rate,
+                CAST(p.refit_context AS TEXT) AS refit_context,
+                p.created_at
+            FROM predictions p
+            WHERE {where_sql}
+            ORDER BY p.created_at DESC, p.prediction_id DESC
+            LIMIT ? OFFSET ?
+        """
+        count_sql = f"SELECT COUNT(*) FROM predictions p WHERE {where_sql}"
+
+        def normalize_record(raw: dict[str, Any]) -> dict[str, Any]:
+            record = _sanitize_dict(dict(raw))
+
+            if "prediction_id" in record and "id" not in record:
+                record["id"] = record.pop("prediction_id")
+
+            for json_field in ("best_params", "scores"):
+                value = record.get(json_field)
+                if isinstance(value, str):
+                    try:
+                        record[json_field] = json.loads(value)
+                    except Exception:
+                        pass
+
+            record["source_dataset"] = record.get("dataset_name")
+            record["source_file"] = ""
+            record["pipeline_uid"] = record.get("pipeline_id")
+            record["model_classname"] = record.get("model_class")
+            record["trace_id"] = record.get("chain_id")
+            record.setdefault("config_name", None)
+            record.setdefault("step_idx", None)
+            record.setdefault("op_counter", None)
+            record.setdefault("model_artifact_id", None)
+            return record
+
+        sqlite_path = self._workspace_path / "store.sqlite"
+        if sqlite_path.exists():
+            import sqlite3
+
+            con = sqlite3.connect(sqlite_path)
+            con.row_factory = sqlite3.Row
+            try:
+                rows = con.execute(select_sql, [*params, limit, offset]).fetchall()
+                total = int(con.execute(count_sql, params).fetchone()[0])
+                return [normalize_record(dict(row)) for row in rows], total
+            finally:
+                con.close()
+
+        duckdb_path = self._workspace_path / "store.duckdb"
+        if duckdb_path.exists():
+            import duckdb
+
+            con = duckdb.connect(str(duckdb_path), read_only=True)
+            try:
+                rows = con.execute(select_sql, [*params, limit, offset]).fetchall()
+                columns = [desc[0] for desc in con.description]
+                total = int(con.execute(count_sql, params).fetchone()[0])
+                return [normalize_record(dict(zip(columns, row, strict=False))) for row in rows], total
+            finally:
+                con.close()
+
+        raise RuntimeError("No store database found for prediction fallback")
 
     def get_prediction_scatter(self, prediction_id: str) -> dict[str, Any] | None:
         """Get scatter plot data for a prediction.
@@ -965,6 +1141,68 @@ class StoreAdapter:
     # All chains for a run + dataset (lazy-loaded by frontend)
     # ------------------------------------------------------------------
 
+    def _get_pipeline_metadata_map(self, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Load pipeline metadata needed to enrich chain display rows."""
+        if not pipeline_ids:
+            return {}
+
+        try:
+            placeholders = ", ".join(f"${i + 1}" for i in range(len(pipeline_ids)))
+            pipelines_df = self._store._fetch_pl(
+                f"SELECT pipeline_id, name, expanded_config, generator_choices "
+                f"FROM pipelines WHERE pipeline_id IN ({placeholders})",
+                pipeline_ids,
+            )
+            return {
+                prow.get("pipeline_id", ""): dict(prow)
+                for prow in pipelines_df.iter_rows(named=True)
+            }
+        except Exception:
+            return {}
+
+    def _serialize_chain_summary_row(
+        self,
+        entry: dict[str, Any],
+        pipeline_map: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Convert one v_chain_summary row to the frontend chain payload."""
+        pipeline_map = pipeline_map or {}
+        pipeline_id = entry.get("pipeline_id", "")
+        pipeline_row = pipeline_map.get(pipeline_id, {})
+        cv_scores_raw = entry.get("cv_scores")
+        cv_scores = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
+        final_scores_raw = entry.get("final_scores")
+        final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+        bp_raw = entry.get("best_params")
+        best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
+        step_params = _extract_model_params_from_expanded_config(
+            pipeline_row.get("expanded_config"),
+            entry.get("model_step_idx"),
+        )
+        variant_params = _merge_variant_params(step_params, best_params)
+
+        return _sanitize_dict({
+            "chain_id": entry.get("chain_id", ""),
+            "run_id": entry.get("run_id", ""),
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_row.get("name"),
+            "model_name": entry.get("model_name", ""),
+            "model_class": entry.get("model_class", ""),
+            "preprocessings": entry.get("preprocessings", ""),
+            "best_params": best_params,
+            "variant_params": variant_params,
+            "cv_val_score": _sanitize_float(entry.get("cv_val_score")),
+            "cv_test_score": _sanitize_float(entry.get("cv_test_score")),
+            "cv_train_score": _sanitize_float(entry.get("cv_train_score")),
+            "cv_fold_count": entry.get("cv_fold_count", 0),
+            "cv_scores": cv_scores,
+            "final_test_score": _sanitize_float(entry.get("final_test_score")),
+            "final_train_score": _sanitize_float(entry.get("final_train_score")),
+            "final_scores": final_scores,
+            "metric": entry.get("metric"),
+            "task_type": entry.get("task_type"),
+        })
+
     def get_all_chains_for_dataset(self, run_id: str, dataset_name: str) -> dict[str, Any]:
         """Get ALL chain summaries for a run+dataset, sorted by primary metric.
 
@@ -980,8 +1218,10 @@ class StoreAdapter:
         if len(df) == 0:
             return {"chains": [], "total": 0, "metric": None}
 
-        rows = list(df.iter_rows(named=True))
+        rows = [dict(row) for row in df.iter_rows(named=True)]
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
+        pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
+        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
 
         from nirs4all.pipeline.run import get_metric_info
         metric_info = get_metric_info(metric)
@@ -994,31 +1234,35 @@ class StoreAdapter:
 
         chains = []
         for entry in scored + unscored:
-            cv_scores_raw = entry.get("cv_scores")
-            cv_scores = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
-            final_scores_raw = entry.get("final_scores")
-            final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
-            bp_raw = entry.get("best_params")
-            best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
+            chains.append(self._serialize_chain_summary_row(entry, pipeline_map))
 
-            chains.append(_sanitize_dict({
-                "chain_id": entry.get("chain_id", ""),
-                "model_name": entry.get("model_name", ""),
-                "model_class": entry.get("model_class", ""),
-                "preprocessings": entry.get("preprocessings", ""),
-                "best_params": best_params,
-                "cv_val_score": _sanitize_float(entry.get("cv_val_score")),
-                "cv_test_score": _sanitize_float(entry.get("cv_test_score")),
-                "cv_train_score": _sanitize_float(entry.get("cv_train_score")),
-                "cv_fold_count": entry.get("cv_fold_count", 0),
-                "cv_scores": cv_scores,
-                "final_test_score": _sanitize_float(entry.get("final_test_score")),
-                "final_train_score": _sanitize_float(entry.get("final_train_score")),
-                "final_scores": final_scores,
-                "metric": entry.get("metric"),
-                "task_type": entry.get("task_type"),
-            }))
+        return {"chains": chains, "total": len(chains), "metric": metric}
 
+    def get_all_chains_for_results_dataset(self, dataset_name: str) -> dict[str, Any]:
+        """Get ALL chain summaries for one dataset across all runs."""
+        store = self._store
+        try:
+            df = store.query_chain_summaries(dataset_name=dataset_name)
+        except Exception:
+            return {"chains": [], "total": 0, "metric": None}
+
+        if len(df) == 0:
+            return {"chains": [], "total": 0, "metric": None}
+
+        rows = [dict(row) for row in df.iter_rows(named=True)]
+        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
+        pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
+        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
+
+        from nirs4all.pipeline.run import get_metric_info
+        metric_info = get_metric_info(metric)
+        higher_is_better = metric_info.get("higher_is_better", True)
+
+        scored = [r for r in rows if r.get("cv_val_score") is not None]
+        unscored = [r for r in rows if r.get("cv_val_score") is None]
+        scored.sort(key=lambda x: x.get("cv_val_score", 0), reverse=higher_is_better)
+
+        chains = [self._serialize_chain_summary_row(entry, pipeline_map) for entry in scored + unscored]
         return {"chains": chains, "total": len(chains), "metric": metric}
 
     # ------------------------------------------------------------------
@@ -1029,7 +1273,10 @@ class StoreAdapter:
         """Get top N models per dataset across all runs, with final scores.
 
         Uses the ``v_chain_summary`` view which has both CV averages and
-        final/refit scores pre-computed on each chain row.
+        final/refit scores pre-computed on each chain row. The returned
+        ``top_chains`` list always includes the best refit/final chain
+        when one exists, even if that chain falls outside the top ``n``
+        cross-validation ranks.
 
         Returns:
             ``{"datasets": [{"dataset_name", "metric", "task_type", "top_chains": [...]}]}``
@@ -1045,14 +1292,25 @@ class StoreAdapter:
 
         from nirs4all.pipeline.run import get_metric_info
 
+        def _coerce_score(value: Any) -> float | None:
+            value = _sanitize_float(value)
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except Exception:
+                return None
+
         # Group chains by dataset
         datasets_result: list[dict[str, Any]] = []
-        rows = list(all_df.iter_rows(named=True))
+        rows = [dict(row) for row in all_df.iter_rows(named=True)]
+        pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
+        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
         datasets: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             ds = row.get("dataset_name") or ""
             if ds:
-                datasets.setdefault(ds, []).append(dict(row))
+                datasets.setdefault(ds, []).append(row)
 
         for ds_name in sorted(datasets):
             ds_chains = datasets[ds_name]
@@ -1064,6 +1322,15 @@ class StoreAdapter:
             # Separate CV chains (have cv_fold_count > 0) and refit-only
             cv_chains = [c for c in ds_chains if (c.get("cv_fold_count") or 0) > 0]
             refit_only = [c for c in ds_chains if (c.get("cv_fold_count") or 0) == 0 and c.get("final_test_score") is not None]
+            best_final_entry = None
+            best_final_score = None
+            for entry in ds_chains:
+                final_score = _coerce_score(entry.get("final_test_score"))
+                if final_score is None:
+                    continue
+                if best_final_score is None or (higher_is_better and final_score > best_final_score) or (not higher_is_better and final_score < best_final_score):
+                    best_final_score = final_score
+                    best_final_entry = entry
 
             # Sort CV chains by cv_val_score
             cv_chains.sort(
@@ -1075,51 +1342,79 @@ class StoreAdapter:
             cv_chain_ids: set[str] = set()
 
             for entry in cv_chains[:n]:
-                chain_id = entry.get("chain_id", "")
+                chain = self._serialize_chain_summary_row(entry, pipeline_map)
+                chain_id = chain.get("chain_id", "")
                 cv_chain_ids.add(chain_id)
-                cv_scores_raw = entry.get("cv_scores")
-                cv_scores = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
-                final_scores_raw = entry.get("final_scores")
-                final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
                 top_chains.append(_sanitize_dict({
                     "chain_id": chain_id,
-                    "run_id": entry.get("run_id", ""),
-                    "model_name": entry.get("model_name", ""),
-                    "model_class": entry.get("model_class", ""),
-                    "preprocessings": entry.get("preprocessings", ""),
-                    "avg_val_score": entry.get("cv_val_score"),
-                    "avg_test_score": entry.get("cv_test_score"),
-                    "avg_train_score": entry.get("cv_train_score"),
-                    "fold_count": entry.get("cv_fold_count", 0),
-                    "scores": cv_scores,
-                    "final_test_score": entry.get("final_test_score"),
-                    "final_train_score": entry.get("final_train_score"),
-                    "final_scores": final_scores,
+                    "run_id": chain.get("run_id", ""),
+                    "pipeline_id": chain.get("pipeline_id"),
+                    "pipeline_name": chain.get("pipeline_name"),
+                    "model_name": chain.get("model_name", ""),
+                    "model_class": chain.get("model_class", ""),
+                    "preprocessings": chain.get("preprocessings", ""),
+                    "avg_val_score": chain.get("cv_val_score"),
+                    "avg_test_score": chain.get("cv_test_score"),
+                    "avg_train_score": chain.get("cv_train_score"),
+                    "fold_count": chain.get("cv_fold_count", 0),
+                    "scores": chain.get("cv_scores", {}),
+                    "final_test_score": chain.get("final_test_score"),
+                    "final_train_score": chain.get("final_train_score"),
+                    "final_scores": chain.get("final_scores", {}),
+                    "best_params": chain.get("best_params"),
+                    "variant_params": chain.get("variant_params"),
                 }))
 
             # Add refit-only chains
             for entry in refit_only:
-                chain_id = entry.get("chain_id", "")
+                chain = self._serialize_chain_summary_row(entry, pipeline_map)
+                chain_id = chain.get("chain_id", "")
                 if chain_id in cv_chain_ids:
                     continue
-                final_scores_raw = entry.get("final_scores")
-                final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
                 top_chains.append(_sanitize_dict({
                     "chain_id": chain_id,
-                    "run_id": entry.get("run_id", ""),
-                    "model_name": entry.get("model_name", ""),
-                    "model_class": entry.get("model_class", ""),
-                    "preprocessings": entry.get("preprocessings", ""),
-                    "avg_val_score": None,
-                    "avg_test_score": None,
-                    "avg_train_score": None,
-                    "fold_count": 0,
-                    "scores": {},
-                    "final_test_score": entry.get("final_test_score"),
-                    "final_train_score": entry.get("final_train_score"),
-                    "final_scores": final_scores,
+                    "run_id": chain.get("run_id", ""),
+                    "pipeline_id": chain.get("pipeline_id"),
+                    "pipeline_name": chain.get("pipeline_name"),
+                    "model_name": chain.get("model_name", ""),
+                    "model_class": chain.get("model_class", ""),
+                    "preprocessings": chain.get("preprocessings", ""),
+                    "avg_val_score": chain.get("cv_val_score"),
+                    "avg_test_score": chain.get("cv_test_score"),
+                    "avg_train_score": chain.get("cv_train_score"),
+                    "fold_count": chain.get("cv_fold_count", 0),
+                    "scores": chain.get("cv_scores", {}),
+                    "final_test_score": chain.get("final_test_score"),
+                    "final_train_score": chain.get("final_train_score"),
+                    "final_scores": chain.get("final_scores", {}),
+                    "best_params": chain.get("best_params"),
+                    "variant_params": chain.get("variant_params"),
                     "is_refit_only": True,
                 }))
+
+            if best_final_entry is not None:
+                chain = self._serialize_chain_summary_row(best_final_entry, pipeline_map)
+                chain_id = chain.get("chain_id", "")
+                if chain_id and all(existing.get("chain_id") != chain_id for existing in top_chains):
+                    top_chains.append(_sanitize_dict({
+                        "chain_id": chain_id,
+                        "run_id": chain.get("run_id", ""),
+                        "pipeline_id": chain.get("pipeline_id"),
+                        "pipeline_name": chain.get("pipeline_name"),
+                        "model_name": chain.get("model_name", ""),
+                        "model_class": chain.get("model_class", ""),
+                        "preprocessings": chain.get("preprocessings", ""),
+                        "avg_val_score": chain.get("cv_val_score"),
+                        "avg_test_score": chain.get("cv_test_score"),
+                        "avg_train_score": chain.get("cv_train_score"),
+                        "fold_count": chain.get("cv_fold_count", 0),
+                        "scores": chain.get("cv_scores", {}),
+                        "final_test_score": chain.get("final_test_score"),
+                        "final_train_score": chain.get("final_train_score"),
+                        "final_scores": chain.get("final_scores", {}),
+                        "best_params": chain.get("best_params"),
+                        "variant_params": chain.get("variant_params"),
+                    }))
 
             if not top_chains:
                 continue

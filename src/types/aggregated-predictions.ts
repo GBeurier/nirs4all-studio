@@ -33,6 +33,8 @@ export interface ChainSummary {
   final_scores: unknown | null;
   // Pipeline status from JOIN
   pipeline_status: string | null;
+  // Artifact info (enriched from chains table)
+  fold_artifacts: Record<string, string> | null;
 }
 
 /** @deprecated Use ChainSummary instead. */

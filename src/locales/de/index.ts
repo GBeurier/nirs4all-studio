@@ -57,6 +57,8 @@ const de = {
     creating: "Wird erstellt...",
     saving: "Wird gespeichert...",
     revertChanges: "Änderungen rückgängig machen",
+    noResults: "Keine Ergebnisse gefunden",
+    retry: "Erneut versuchen",
   },
 
   // ============= Time / Date =============
@@ -324,6 +326,7 @@ const de = {
         },
       },
       autoDetect: "Format automatisch erkennen",
+      autoDetectDescription: "Dateiformat, Trennzeichen und Dezimaltrennzeichen automatisch erkennen",
       save: "Standards speichern",
       reset: "Auf Standards zurücksetzen",
     },
@@ -516,6 +519,13 @@ const de = {
       pinnedChains: "Angeheftete Ketten",
       clearPins: "Anheftungen löschen",
       savedSelections: "Gespeicherte Auswahlen",
+      colors: "Farben",
+    },
+    filter: {
+      runs: "Ausführungen",
+      datasets: "Datensätze",
+      models: "Modelle",
+      preprocessing: "Vorverarbeitung",
     },
     panels: {
       scatter: "Vorh. vs Beob.",
@@ -796,6 +806,7 @@ const de = {
     filters: {
       searchPlaceholder: "Datensätze suchen...",
     },
+    noResults: "Keine Ergebnisse gefunden",
   },
 
   // ============= Predictions =============
@@ -899,6 +910,8 @@ const de = {
     loadingModels: "Modelle werden geladen...",
     noRuns: "Keine abgeschlossenen Ausführungen mit Modellen gefunden",
     noBundles: "Keine exportierten Bundles gefunden",
+    noModels: "Keine trainierten Modelle gefunden. Führen Sie zuerst ein Experiment durch.",
+    bundles: "Exportierte Bundles",
     noResults: "Noch keine Ergebnisse",
     instructions: "Wählen Sie ein trainiertes Modell und einen Datensatz, dann klicken Sie auf \"Erklärungen berechnen\", um zu analysieren, welche Wellenlängen für Vorhersagen am wichtigsten sind.",
     features: {
@@ -945,6 +958,11 @@ const de = {
     },
     ranking: {
       description: "Top-Wellenlängenbereiche, sortiert nach mittlerem absolutem SHAP-Wert.",
+    },
+    binning: {
+      size: "Bin-Größe",
+      stride: "Schrittweite",
+      aggregation: "Aggregation",
     },
   },
 

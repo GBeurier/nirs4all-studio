@@ -1,532 +1,808 @@
-/**
- * InspectorCanvas — Main visualization area with responsive grid of panels.
- *
- * Manages data fetching for panels and renders the grid layout.
- * Residuals panel shares scatter data. All other panels fetch lazily when visible.
- */
-
-import { useMemo, useState } from 'react';
-import { cn } from '@/lib/utils';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useInspectorView } from '@/context/InspectorViewContext';
-import { useInspectorData } from '@/context/InspectorDataContext';
-import { useInspectorSelection } from '@/context/InspectorSelectionContext';
-import { useInspectorFilter } from '@/context/InspectorFilterContext';
+import { useMemo, useState } from "react";
+import { AlertTriangle, Pin, Target } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState, ErrorState, InlineError, LoadingState } from "@/components/ui/state-display";
+import { useInspectorData } from "@/context/InspectorDataContext";
+import { useInspectorFilter } from "@/context/InspectorFilterContext";
+import { useInspectorSelection } from "@/context/InspectorSelectionContext";
+import { useInspectorView } from "@/context/InspectorViewContext";
 import {
-  useInspectorScatter,
-  useInspectorHistogram,
-  useInspectorRankings,
-  useInspectorHeatmap,
-  useInspectorCandlestick,
-  useInspectorBranchComparison,
-  useInspectorBranchTopology,
-  useInspectorFoldStability,
-  useInspectorConfusionMatrix,
-  useInspectorRobustness,
-  useInspectorMetricCorrelation,
-  useInspectorPreprocessingImpact,
-  useInspectorHyperparameter,
   useInspectorBiasVariance,
-  useInspectorLearningCurve,
-} from '@/hooks/useInspectorData';
-import { InspectorPanel } from './InspectorPanel';
-import { InspectorToolbar } from './InspectorToolbar';
-import { PredVsObsChart } from './visualizations/PredVsObsChart';
-import { ResidualsChart } from './visualizations/ResidualsChart';
-import { ScoreHistogram } from './visualizations/ScoreHistogram';
-import { RankingsTable } from './visualizations/RankingsTable';
-import { PerformanceHeatmap } from './visualizations/PerformanceHeatmap';
-import { CandlestickChart } from './visualizations/CandlestickChart';
-import { BranchComparisonChart } from './visualizations/BranchComparisonChart';
-import { BranchTopologyDiagram } from './visualizations/BranchTopologyDiagram';
-import { FoldStabilityChart } from './visualizations/FoldStabilityChart';
-import { ConfusionMatrixChart } from './visualizations/ConfusionMatrixChart';
-import { RobustnessRadar } from './visualizations/RobustnessRadar';
-import { MetricCorrelation } from './visualizations/MetricCorrelation';
-import { PreprocessingImpact } from './visualizations/PreprocessingImpact';
-import { HyperparameterSensitivity } from './visualizations/HyperparameterSensitivity';
-import { BiasVariance } from './visualizations/BiasVariance';
-import { LearningCurve } from './visualizations/LearningCurve';
-import type { InspectorPanelType } from '@/types/inspector';
+  useInspectorBranchTopology,
+  useInspectorConfusionMatrix,
+  useInspectorFoldStability,
+  useInspectorScatter,
+} from "@/hooks/useInspectorData";
+import {
+  buildBranchComparisonData,
+  buildCandlestickData,
+  buildHeatmapData,
+  buildHistogramData,
+  buildHyperparameterData,
+  buildOverviewStats,
+  buildPreprocessingImpactData,
+  buildRankingsData,
+  chooseCandlestickField,
+  chooseHeatmapAxes,
+  getAvailableHyperparameters,
+  sortChainsByScore,
+} from "@/lib/inspector/analytics";
+import { PANEL_MAP } from "@/lib/inspector/chartRegistry";
+import { cn } from "@/lib/utils";
+import { formatMetricValue } from "@/lib/scores";
+import type { InspectorGroup, InspectorPanelType } from "@/types/inspector";
+import { BranchComparisonChart } from "./visualizations/BranchComparisonChart";
+import { BranchTopologyDiagram } from "./visualizations/BranchTopologyDiagram";
+import { BiasVariance } from "./visualizations/BiasVariance";
+import { CandlestickChart } from "./visualizations/CandlestickChart";
+import { ConfusionMatrixChart } from "./visualizations/ConfusionMatrixChart";
+import { FoldStabilityChart } from "./visualizations/FoldStabilityChart";
+import { HyperparameterSensitivity } from "./visualizations/HyperparameterSensitivity";
+import { PerformanceHeatmap } from "./visualizations/PerformanceHeatmap";
+import { PredVsObsChart } from "./visualizations/PredVsObsChart";
+import { PreprocessingImpact } from "./visualizations/PreprocessingImpact";
+import { RankingsTable } from "./visualizations/RankingsTable";
+import { ResidualsChart } from "./visualizations/ResidualsChart";
+import { ScoreHistogram } from "./visualizations/ScoreHistogram";
+import { InspectorPanel } from "./InspectorPanel";
+import { InspectorSelectionActionsBar } from "./InspectorSelectionTools";
+import { InspectorToolbar } from "./InspectorToolbar";
+
+const FOCUS_LIMIT = 8;
+
+const BIAS_VARIANCE_GROUP_OPTIONS = [
+  { value: "model_class", label: "Model" },
+  { value: "preprocessings", label: "Preprocessing" },
+  { value: "dataset_name", label: "Dataset" },
+] as const;
+
+const FIELD_LABELS = {
+  model_class: "Model family",
+  model_name: "Model",
+  preprocessings: "Preprocessing",
+  dataset_name: "Dataset",
+  run_id: "Run",
+  task_type: "Task",
+  pipeline_id: "Pipeline",
+} as const;
+
+function isClassificationTask(taskType: string | null | undefined): boolean {
+  return taskType === "classification" || taskType === "binary_classification" || taskType === "multiclass_classification";
+}
+
+function intersectGroups(groups: InspectorGroup[], visibleIds: Set<string>): InspectorGroup[] {
+  return groups
+    .map(group => ({
+      ...group,
+      chain_ids: group.chain_ids.filter(chainId => visibleIds.has(chainId)),
+    }))
+    .filter(group => group.chain_ids.length > 0);
+}
+
+function getQueryErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "detail" in error) {
+    const detail = (error as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+  }
+  return fallback;
+}
+
+function PanelNotice({
+  title,
+  body,
+  tone = "default",
+}: {
+  title: string;
+  body: string;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-full items-center justify-center rounded-lg border px-4 py-6 text-center",
+        tone === "warning"
+          ? "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+          : "border-border/60 bg-muted/20 text-muted-foreground",
+      )}
+    >
+      <div className="max-w-sm space-y-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className={cn("text-xs leading-5", tone === "warning" ? "text-amber-900 dark:text-amber-100" : "text-muted-foreground")}>
+          {body}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceStrip({
+  bestScoreLabel,
+  bestChainLabel,
+  focusChains,
+  focusMode,
+  filteredCount,
+  totalCount,
+  modelCount,
+  datasetCount,
+  activeFilterCount,
+  pinnedCount,
+  mixedMetrics,
+  mixedTaskTypes,
+  selectionBar,
+}: {
+  bestScoreLabel: string | null;
+  bestChainLabel: string | null;
+  focusChains: Array<{ chain_id: string; label: string }>;
+  focusMode: "selection" | "pinned" | "top";
+  filteredCount: number;
+  totalCount: number;
+  modelCount: number;
+  datasetCount: number;
+  activeFilterCount: number;
+  pinnedCount: number;
+  mixedMetrics: boolean;
+  mixedTaskTypes: boolean;
+  selectionBar: React.ReactNode;
+}) {
+  const focusLabel = focusMode === "selection" ? "selection focus" : focusMode === "pinned" ? "pinned focus" : "auto focus";
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/60 px-4 py-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{filteredCount}/{totalCount} visible</Badge>
+        <Badge variant="outline">{modelCount} models</Badge>
+        <Badge variant="outline">{datasetCount} datasets</Badge>
+        <Badge variant={focusMode === "top" ? "outline" : "secondary"}>{focusLabel}</Badge>
+        {activeFilterCount > 0 ? <Badge variant="outline">{activeFilterCount} local filters</Badge> : null}
+        {pinnedCount > 0 ? (
+          <Badge variant="outline" className="gap-1">
+            <Pin className="h-3 w-3" />
+            {pinnedCount} pinned
+          </Badge>
+        ) : null}
+        {bestScoreLabel ? <Badge variant="secondary">best {bestScoreLabel}</Badge> : null}
+        {bestChainLabel ? (
+          <span className="truncate text-xs text-muted-foreground">leader: {bestChainLabel}</span>
+        ) : null}
+        {mixedMetrics || mixedTaskTypes ? (
+          <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            mixed scope
+          </Badge>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Current Focus
+        </span>
+        {focusChains.length > 0 ? (
+          focusChains.map(chain => (
+            <Badge key={chain.chain_id} variant="secondary" className="max-w-[220px] truncate">
+              {chain.label}
+            </Badge>
+          ))
+        ) : (
+          <span className="text-xs text-muted-foreground">No chains in scope.</span>
+        )}
+      </div>
+
+      {selectionBar ? <div className="mt-3">{selectionBar}</div> : null}
+    </div>
+  );
+}
 
 export function InspectorCanvas() {
+  const { groups, scoreColumn, partition, refresh, chains, isLoading, error, totalChains } = useInspectorData();
+  const { filteredChains, filteredChainIds, activeFilterCount, hasActiveFilters, clearAllFilters } = useInspectorFilter();
+  const {
+    selectedChains,
+    selectedCount,
+    hasSelection,
+    pinnedChains,
+    pinnedCount,
+  } = useInspectorSelection();
   const {
     panelStates,
     maximizedPanel,
-    isPanelVisible,
-    maximizePanel,
+    hasMaximized,
+    layoutMode,
+    showAll,
+    togglePanel,
     minimizePanel,
     restorePanel,
-    togglePanel,
-    visibleCount,
+    toggleMaximize,
+    isPanelVisible,
   } = useInspectorView();
 
-  const {
-    chains,
-    groups,
-    filters,
-    scoreColumn,
-    partition,
-    totalChains,
-  } = useInspectorData();
+  const [selectedHyperParam, setSelectedHyperParam] = useState("");
+  const [biasVarianceGroupBy, setBiasVarianceGroupBy] = useState("model_class");
 
-  const { selectedChains, selectedCount } = useInspectorSelection();
-  const { filteredChainIds } = useInspectorFilter();
+  const visibleGroups = useMemo(
+    () => intersectGroups(groups, filteredChainIds),
+    [filteredChainIds, groups],
+  );
+  const chainMap = useMemo(
+    () => new Map(filteredChains.map(chain => [chain.chain_id, chain])),
+    [filteredChains],
+  );
+  const sortedChains = useMemo(
+    () => sortChainsByScore(filteredChains, scoreColumn),
+    [filteredChains, scoreColumn],
+  );
+  const orderedVisibleIds = useMemo(
+    () => sortedChains.map(chain => chain.chain_id),
+    [sortedChains],
+  );
+  const selectedVisibleIds = useMemo(
+    () => orderedVisibleIds.filter(chainId => selectedChains.has(chainId)).slice(0, FOCUS_LIMIT),
+    [orderedVisibleIds, selectedChains],
+  );
+  const pinnedVisibleIds = useMemo(
+    () => orderedVisibleIds.filter(chainId => pinnedChains.has(chainId) && !selectedChains.has(chainId)).slice(0, FOCUS_LIMIT),
+    [orderedVisibleIds, pinnedChains, selectedChains],
+  );
 
-  // Hyperparameter panel state
-  const [selectedHyperParam, setSelectedHyperParam] = useState<string>('');
-
-  // Determine which chains to show scatter data for
-  const scatterChainIds = useMemo(() => {
-    if (selectedChains.size > 0) {
-      // Intersect selection with filtered chains
-      const ids: string[] = [];
-      for (const id of selectedChains) {
-        if (filteredChainIds.has(id)) ids.push(id);
-      }
-      return ids;
+  const focus = useMemo(() => {
+    if (selectedVisibleIds.length > 0) {
+      return { chainIds: selectedVisibleIds, mode: "selection" as const };
     }
-    // If no selection, show top 10 filtered chains by default
-    const arr = Array.from(filteredChainIds);
-    return arr.slice(0, 10);
-  }, [selectedChains, filteredChainIds]);
-
-  // Scatter data (POST with chain_ids) — shared by scatter + residuals panels
-  const scatterRequest = useMemo(() => {
-    const needsScatter = isPanelVisible('scatter') || isPanelVisible('residuals');
-    if (!needsScatter || scatterChainIds.length === 0) return null;
-    return { chain_ids: scatterChainIds, partition };
-  }, [isPanelVisible, scatterChainIds, partition]);
-
-  const { data: scatterData, isLoading: scatterLoading } = useInspectorScatter(scatterRequest);
-
-  // Histogram data
-  const histogramParams = useMemo(() => {
-    if (!isPanelVisible('histogram') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
-
-  const { data: histogramData, isLoading: histogramLoading } = useInspectorHistogram(histogramParams);
-
-  // Rankings data
-  const rankingsParams = useMemo(() => {
-    if (!isPanelVisible('rankings') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
-
-  const { data: rankingsData, isLoading: rankingsLoading } = useInspectorRankings(rankingsParams);
-
-  // Heatmap data (lazy: only when panel visible)
-  const heatmapParams = useMemo(() => {
-    if (!isPanelVisible('heatmap') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      x_variable: 'model_class',
-      y_variable: 'preprocessings',
-      score_column: scoreColumn,
-      aggregate: 'best' as const,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
-
-  const { data: heatmapData, isLoading: heatmapLoading } = useInspectorHeatmap(heatmapParams);
-
-  // Candlestick data (lazy: only when panel visible)
-  const candlestickParams = useMemo(() => {
-    if (!isPanelVisible('candlestick') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      category_variable: 'model_class',
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
-
-  const { data: candlestickData, isLoading: candlestickLoading } = useInspectorCandlestick(candlestickParams);
-
-  // Branch comparison data (lazy)
-  const branchComparisonParams = useMemo(() => {
-    if (!isPanelVisible('branch_comparison') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
-
-  const { data: branchComparisonData, isLoading: branchComparisonLoading } = useInspectorBranchComparison(branchComparisonParams);
-
-  // Branch topology data (lazy — uses first chain's pipeline_id)
-  const branchTopologyParams = useMemo(() => {
-    if (!isPanelVisible('branch_topology') || chains.length === 0) return null;
-    const pipelineId = chains[0]?.pipeline_id;
-    if (!pipelineId) return null;
-    return {
-      pipeline_id: pipelineId,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains, scoreColumn]);
-
-  const { data: branchTopologyData, isLoading: branchTopologyLoading } = useInspectorBranchTopology(branchTopologyParams);
-
-  // Fold stability data (lazy — uses same chain selection as scatter)
-  const foldStabilityParams = useMemo(() => {
-    if (!isPanelVisible('fold_stability') || scatterChainIds.length === 0) return null;
-    return {
-      chain_ids: scatterChainIds,
-      score_column: scoreColumn,
-      partition,
-    };
-  }, [isPanelVisible, scatterChainIds, scoreColumn, partition]);
-
-  const { data: foldStabilityData, isLoading: foldStabilityLoading } = useInspectorFoldStability(foldStabilityParams);
-
-  // Confusion matrix data (lazy — classification only, uses same chain selection)
-  const confusionParams = useMemo(() => {
-    if (!isPanelVisible('confusion') || scatterChainIds.length === 0) return null;
-    return {
-      chain_ids: scatterChainIds,
-      partition,
-    };
-  }, [isPanelVisible, scatterChainIds, partition]);
-
-  const { data: confusionData, isLoading: confusionLoading } = useInspectorConfusionMatrix(confusionParams);
-
-  // Robustness radar data (lazy — uses same chain selection)
-  const robustnessParams = useMemo(() => {
-    if (!isPanelVisible('robustness') || scatterChainIds.length === 0) return null;
-    return {
-      chain_ids: scatterChainIds,
-      score_column: scoreColumn,
-      partition,
-    };
-  }, [isPanelVisible, scatterChainIds, scoreColumn, partition]);
-
-  const { data: robustnessData, isLoading: robustnessLoading } = useInspectorRobustness(robustnessParams);
-
-  // Metric correlation data (lazy)
-  const correlationParams = useMemo(() => {
-    if (!isPanelVisible('correlation') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-    };
-  }, [isPanelVisible, chains.length, filters]);
-
-  const { data: correlationData, isLoading: correlationLoading } = useInspectorMetricCorrelation(correlationParams);
-
-  // ---- Phase 5 panels ----
-
-  // Preprocessing impact data (lazy)
-  const preprocImpactParams = useMemo(() => {
-    if (!isPanelVisible('preprocessing_impact') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
-
-  const { data: preprocImpactData, isLoading: preprocImpactLoading } = useInspectorPreprocessingImpact(preprocImpactParams);
-
-  // Discover available hyperparameters client-side from chain summaries
-  const availableHyperParams = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const c of chains) {
-      if (!c.best_params || typeof c.best_params !== 'object') continue;
-      for (const [k, v] of Object.entries(c.best_params)) {
-        if (typeof v === 'number' && isFinite(v)) {
-          counts.set(k, (counts.get(k) ?? 0) + 1);
-        }
-      }
+    if (pinnedVisibleIds.length > 0) {
+      return { chainIds: pinnedVisibleIds, mode: "pinned" as const };
     }
-    return [...counts.entries()]
-      .filter(([, cnt]) => cnt >= 2)
-      .sort((a, b) => b[1] - a[1])
-      .map(([k]) => k);
-  }, [chains]);
-
-  // Auto-select first param if none selected
-  const activeHyperParam = selectedHyperParam || availableHyperParams[0] || '';
-
-  // Hyperparameter sensitivity data (lazy)
-  const hyperparamParams = useMemo(() => {
-    if (!isPanelVisible('hyperparameter') || chains.length === 0 || !activeHyperParam) return null;
     return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      param_name: activeHyperParam,
-      score_column: scoreColumn,
+      chainIds: sortedChains.slice(0, FOCUS_LIMIT).map(chain => chain.chain_id),
+      mode: "top" as const,
     };
-  }, [isPanelVisible, chains.length, filters, scoreColumn, activeHyperParam]);
+  }, [selectedVisibleIds, pinnedVisibleIds, sortedChains]);
 
-  const { data: hyperparamData, isLoading: hyperparamLoading } = useInspectorHyperparameter(hyperparamParams);
+  const focusedChains = useMemo(
+    () => focus.chainIds.map(chainId => chainMap.get(chainId)).filter((chain): chain is NonNullable<typeof chain> => Boolean(chain)),
+    [focus.chainIds, chainMap],
+  );
+  const focusClassificationCount = focusedChains.filter(chain => isClassificationTask(chain.task_type)).length;
+  const focusTask =
+    focusedChains.length === 0
+      ? "none"
+      : focusClassificationCount === focusedChains.length
+        ? "classification"
+        : focusClassificationCount === 0
+          ? "regression"
+          : "mixed";
+  const focusPipelineIds = [...new Set(focusedChains.map(chain => chain.pipeline_id).filter(Boolean))];
+  const topologyPipelineId = focusPipelineIds.length === 1 ? focusPipelineIds[0] : null;
 
-  // Bias-variance data (lazy — uses same chain selection)
-  const biasVarianceParams = useMemo(() => {
-    if (!isPanelVisible('bias_variance') || scatterChainIds.length === 0) return null;
-    return {
-      chain_ids: scatterChainIds,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, scatterChainIds, scoreColumn]);
+  const overviewStats = useMemo(
+    () => buildOverviewStats(filteredChains, scoreColumn),
+    [filteredChains, scoreColumn],
+  );
+  const rankingsData = useMemo(
+    () => buildRankingsData(filteredChains, scoreColumn, 80),
+    [filteredChains, scoreColumn],
+  );
+  const histogramData = useMemo(
+    () => buildHistogramData(filteredChains, scoreColumn),
+    [filteredChains, scoreColumn],
+  );
+  const heatmapAxes = useMemo(
+    () => chooseHeatmapAxes(filteredChains),
+    [filteredChains],
+  );
+  const heatmapData = useMemo(
+    () => buildHeatmapData(filteredChains, scoreColumn, heatmapAxes.xVariable, heatmapAxes.yVariable, "median"),
+    [filteredChains, scoreColumn, heatmapAxes],
+  );
+  const candlestickField = useMemo(
+    () => chooseCandlestickField(filteredChains),
+    [filteredChains],
+  );
+  const candlestickData = useMemo(
+    () => buildCandlestickData(filteredChains, scoreColumn, candlestickField),
+    [filteredChains, scoreColumn, candlestickField],
+  );
+  const preprocessingImpactData = useMemo(
+    () => buildPreprocessingImpactData(filteredChains, scoreColumn),
+    [filteredChains, scoreColumn],
+  );
+  const availableHyperParams = useMemo(
+    () => getAvailableHyperparameters(filteredChains),
+    [filteredChains],
+  );
+  const activeHyperParam = useMemo(
+    () => (selectedHyperParam && availableHyperParams.includes(selectedHyperParam) ? selectedHyperParam : availableHyperParams[0] || ""),
+    [availableHyperParams, selectedHyperParam],
+  );
+  const hyperparameterData = useMemo(
+    () => buildHyperparameterData(filteredChains, scoreColumn, activeHyperParam),
+    [filteredChains, scoreColumn, activeHyperParam],
+  );
+  const branchComparisonData = useMemo(
+    () => buildBranchComparisonData(filteredChains, scoreColumn),
+    [filteredChains, scoreColumn],
+  );
 
-  const { data: biasVarianceData, isLoading: biasVarianceLoading } = useInspectorBiasVariance(biasVarianceParams);
+  const isPanelActive = (panel: InspectorPanelType) => {
+    if (hasMaximized) return maximizedPanel === panel;
+    return isPanelVisible(panel);
+  };
 
-  // Learning curve data (lazy)
-  const learningCurveParams = useMemo(() => {
-    if (!isPanelVisible('learning_curve') || chains.length === 0) return null;
-    return {
-      run_id: filters.run_ids,
-      dataset_name: filters.dataset_names,
-      score_column: scoreColumn,
-    };
-  }, [isPanelVisible, chains.length, filters, scoreColumn]);
+  const scatterQuery = useInspectorScatter(
+    (isPanelActive("scatter") || isPanelActive("residuals")) && focusTask === "regression" && focus.chainIds.length > 0
+      ? { chain_ids: focus.chainIds, partition }
+      : null,
+  );
+  const foldStabilityQuery = useInspectorFoldStability(
+    isPanelActive("fold_stability") && focusTask === "regression" && focus.chainIds.length > 0
+      ? { chain_ids: focus.chainIds, score_column: scoreColumn, partition }
+      : null,
+  );
+  const confusionQuery = useInspectorConfusionMatrix(
+    isPanelActive("confusion") && focusTask === "classification" && focus.chainIds.length > 0
+      ? { chain_ids: focus.chainIds, partition }
+      : null,
+  );
+  const biasVarianceQuery = useInspectorBiasVariance(
+    isPanelActive("bias_variance") && focusTask === "regression" && focus.chainIds.length > 0
+      ? { chain_ids: focus.chainIds, score_column: scoreColumn, group_by: biasVarianceGroupBy }
+      : null,
+  );
+  const topologyQuery = useInspectorBranchTopology(
+    isPanelActive("branch_topology") && topologyPipelineId
+      ? { pipeline_id: topologyPipelineId, score_column: scoreColumn }
+      : null,
+  );
 
-  const { data: learningCurveData, isLoading: learningCurveLoading } = useInspectorLearningCurve(learningCurveParams);
+  const panelIdsToRender = useMemo(() => {
+    if (hasMaximized && maximizedPanel) return [maximizedPanel];
+    const visible = Object.entries(panelStates)
+      .filter(([, state]) => state !== "hidden")
+      .map(([panel]) => panel as InspectorPanelType);
+    return visible.sort((left, right) => {
+      const leftPriority = PANEL_MAP.get(left)?.priority ?? 0;
+      const rightPriority = PANEL_MAP.get(right)?.priority ?? 0;
+      return leftPriority - rightPriority;
+    });
+  }, [hasMaximized, maximizedPanel, panelStates]);
 
-  // Grid layout computation
   const gridClassName = useMemo(() => {
-    if (maximizedPanel) return 'grid grid-cols-1 grid-rows-1';
-    if (visibleCount <= 1) return 'grid grid-cols-1';
-    if (visibleCount <= 2) return 'grid grid-cols-2';
-    if (visibleCount <= 4) return 'grid grid-cols-2';
-    return 'grid grid-cols-3'; // 5+ panels → 3-column grid
-  }, [visibleCount, maximizedPanel]);
+    if (hasMaximized) return "grid grid-cols-1";
+    if (layoutMode === "single-column") return "grid grid-cols-1 gap-4";
+    if (layoutMode === "grid-2") return "grid grid-cols-1 gap-4 xl:grid-cols-2";
+    if (layoutMode === "grid-3") return "grid grid-cols-1 gap-4 xl:grid-cols-3";
+    return "grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3";
+  }, [hasMaximized, layoutMode]);
 
-  // Panel rendering order
-  const panelOrder: InspectorPanelType[] = [
-    'rankings', 'heatmap', 'histogram', 'candlestick', 'scatter', 'preprocessing_impact',
-    'residuals', 'branch_comparison', 'fold_stability', 'confusion',
-    'branch_topology', 'robustness', 'correlation',
-    'hyperparameter', 'bias_variance', 'learning_curve',
-  ];
+  const bestScoreLabel = overviewStats.bestScore != null
+    ? formatMetricValue(overviewStats.bestScore, overviewStats.bestChain?.metric ?? undefined)
+    : null;
+  const bestChainLabel = overviewStats.bestChain?.model_name ?? overviewStats.bestChain?.model_class ?? null;
+  const focusLabelChains = focusedChains.map(chain => ({
+    chain_id: chain.chain_id,
+    label: chain.model_name ?? chain.model_class,
+  }));
 
-  // Common panel props builder
-  const getPanelProps = (panelType: InspectorPanelType) => ({
-    panelType,
-    viewState: panelStates[panelType],
-    isMaximized: maximizedPanel === panelType,
-    onMaximize: () => maximizePanel(panelType),
-    onMinimize: () => minimizePanel(panelType),
-    onRestore: () => restorePanel(panelType),
-    onHide: () => togglePanel(panelType),
-    itemCount: totalChains,
-    selectedCount,
-  });
+  const selectionBar = hasSelection ? (
+    <InspectorSelectionActionsBar
+      totalCount={filteredChains.length}
+      allChainIds={filteredChains.map(chain => chain.chain_id)}
+    />
+  ) : null;
 
-  // Hyperparameter panel header: param selector
-  const hyperparamHeader = availableHyperParams.length > 0 ? (
-    <Select value={activeHyperParam} onValueChange={setSelectedHyperParam}>
-      <SelectTrigger className="h-5 text-[10px] w-32">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {availableHyperParams.map(p => (
-          <SelectItem key={p} value={p}>{p}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  ) : undefined;
+  const renderRegressionPanelState = (panelName: string) => {
+    if (focus.chainIds.length === 0) {
+      return (
+        <PanelNotice
+          title={`${panelName} unavailable`}
+          body="No chains are available in the current scope."
+        />
+      );
+    }
+    if (focusTask === "classification") {
+      return (
+        <PanelNotice
+          title={`${panelName} requires regression`}
+          body="Current focus is classification. Select or pin regression chains to populate this panel."
+          tone="warning"
+        />
+      );
+    }
+    if (focusTask === "mixed") {
+      return (
+        <PanelNotice
+          title={`${panelName} needs a coherent focus`}
+          body="Selected chains mix regression and classification. Narrow the shared selection or rely on auto focus."
+          tone="warning"
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderClassificationPanelState = (panelName: string) => {
+    if (focus.chainIds.length === 0) {
+      return (
+        <PanelNotice
+          title={`${panelName} unavailable`}
+          body="No chains are available in the current scope."
+        />
+      );
+    }
+    if (focusTask === "regression") {
+      return (
+        <PanelNotice
+          title={`${panelName} requires classification`}
+          body="Current focus is regression. Select or pin classification chains to populate this panel."
+          tone="warning"
+        />
+      );
+    }
+    if (focusTask === "mixed") {
+      return (
+        <PanelNotice
+          title={`${panelName} needs a coherent focus`}
+          body="Selected chains mix regression and classification. Narrow the shared selection or rely on auto focus."
+          tone="warning"
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderPanel = (panelType: InspectorPanelType) => {
+    const commonProps = {
+      key: panelType,
+      panelType,
+      viewState: panelStates[panelType],
+      isMaximized: maximizedPanel === panelType,
+      onMaximize: () => toggleMaximize(panelType),
+      onMinimize: () => minimizePanel(panelType),
+      onRestore: () => restorePanel(panelType),
+      onHide: () => togglePanel(panelType),
+      selectedCount,
+    };
+
+    switch (panelType) {
+      case "rankings":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={filteredChains.length}
+            headerContent={<Badge variant="outline">{rankingsData.rankings.length} rows</Badge>}
+          >
+            <RankingsTable data={rankingsData} groups={visibleGroups} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "heatmap":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={filteredChains.length}
+            headerContent={<Badge variant="outline">{FIELD_LABELS[heatmapAxes.xVariable]} × {FIELD_LABELS[heatmapAxes.yVariable]}</Badge>}
+          >
+            <PerformanceHeatmap data={heatmapData} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "histogram":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="360px"
+            itemCount={filteredChains.length}
+          >
+            <ScoreHistogram data={histogramData} groups={visibleGroups} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "candlestick":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="360px"
+            itemCount={filteredChains.length}
+            headerContent={<Badge variant="outline">{FIELD_LABELS[candlestickField]}</Badge>}
+          >
+            <CandlestickChart data={candlestickData} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "preprocessing_impact":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="360px"
+            itemCount={filteredChains.length}
+          >
+            <PreprocessingImpact data={preprocessingImpactData} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "hyperparameter":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={filteredChains.length}
+            headerContent={availableHyperParams.length > 0 ? (
+              <Select value={activeHyperParam} onValueChange={setSelectedHyperParam}>
+                <SelectTrigger className="h-8 w-[190px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableHyperParams.map(param => (
+                    <SelectItem key={param} value={param}>
+                      {param}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : undefined}
+          >
+            <HyperparameterSensitivity data={hyperparameterData} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "branch_comparison":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="360px"
+            itemCount={filteredChains.length}
+          >
+            <BranchComparisonChart data={branchComparisonData} isLoading={false} />
+          </InspectorPanel>
+        );
+
+      case "branch_topology":
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={focusedChains.length}
+            headerContent={topologyPipelineId ? (
+              <Badge variant="outline" className="max-w-[220px] truncate">{topologyPipelineId}</Badge>
+            ) : undefined}
+            isLoading={topologyQuery.isLoading}
+          >
+            {!topologyPipelineId ? (
+              <PanelNotice
+                title="Topology needs one pipeline"
+                body="Select or pin chains from a single pipeline to inspect topology."
+                tone="warning"
+              />
+            ) : topologyQuery.error ? (
+              <InlineError message={getQueryErrorMessage(topologyQuery.error, "Failed to load topology.")} />
+            ) : (
+              <BranchTopologyDiagram data={topologyQuery.data} isLoading={topologyQuery.isLoading} />
+            )}
+          </InspectorPanel>
+        );
+
+      case "scatter": {
+        const state = renderRegressionPanelState("Predicted vs observed");
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={focusedChains.length}
+            headerContent={<Badge variant={focus.mode === "top" ? "outline" : "secondary"}>{focus.mode}</Badge>}
+            isLoading={scatterQuery.isLoading}
+          >
+            {state ? (
+              state
+            ) : scatterQuery.error ? (
+              <InlineError message={getQueryErrorMessage(scatterQuery.error, "Failed to load scatter data.")} />
+            ) : (
+              <PredVsObsChart data={scatterQuery.data} groups={visibleGroups} isLoading={scatterQuery.isLoading} />
+            )}
+          </InspectorPanel>
+        );
+      }
+
+      case "residuals": {
+        const state = renderRegressionPanelState("Residuals");
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={focusedChains.length}
+            headerContent={<Badge variant={focus.mode === "top" ? "outline" : "secondary"}>{focus.mode}</Badge>}
+            isLoading={scatterQuery.isLoading}
+          >
+            {state ? (
+              state
+            ) : scatterQuery.error ? (
+              <InlineError message={getQueryErrorMessage(scatterQuery.error, "Failed to load residual data.")} />
+            ) : (
+              <ResidualsChart data={scatterQuery.data} isLoading={scatterQuery.isLoading} />
+            )}
+          </InspectorPanel>
+        );
+      }
+
+      case "fold_stability": {
+        const state = renderRegressionPanelState("Fold stability");
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="360px"
+            itemCount={focusedChains.length}
+            headerContent={<Badge variant={focus.mode === "top" ? "outline" : "secondary"}>{partition}</Badge>}
+            isLoading={foldStabilityQuery.isLoading}
+          >
+            {state ? (
+              state
+            ) : foldStabilityQuery.error ? (
+              <InlineError message={getQueryErrorMessage(foldStabilityQuery.error, "Failed to load fold stability.")} />
+            ) : (
+              <FoldStabilityChart data={foldStabilityQuery.data} groups={visibleGroups} isLoading={foldStabilityQuery.isLoading} />
+            )}
+          </InspectorPanel>
+        );
+      }
+
+      case "confusion": {
+        const state = renderClassificationPanelState("Confusion matrix");
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="420px"
+            itemCount={focusedChains.length}
+            headerContent={<Badge variant={focus.mode === "top" ? "outline" : "secondary"}>{partition}</Badge>}
+            isLoading={confusionQuery.isLoading}
+          >
+            {state ? (
+              state
+            ) : confusionQuery.error ? (
+              <InlineError message={getQueryErrorMessage(confusionQuery.error, "Failed to load confusion matrix.")} />
+            ) : (
+              <ConfusionMatrixChart data={confusionQuery.data} isLoading={confusionQuery.isLoading} />
+            )}
+          </InspectorPanel>
+        );
+      }
+
+      case "bias_variance": {
+        const state = renderRegressionPanelState("Bias-variance");
+        return (
+          <InspectorPanel
+            {...commonProps}
+            minHeight="360px"
+            itemCount={focusedChains.length}
+            headerContent={
+              <Select value={biasVarianceGroupBy} onValueChange={setBiasVarianceGroupBy}>
+                <SelectTrigger className="h-8 w-[170px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BIAS_VARIANCE_GROUP_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+            isLoading={biasVarianceQuery.isLoading}
+          >
+            {state ? (
+              state
+            ) : biasVarianceQuery.error ? (
+              <InlineError message={getQueryErrorMessage(biasVarianceQuery.error, "Failed to load bias-variance data.")} />
+            ) : (
+              <BiasVariance data={biasVarianceQuery.data} isLoading={biasVarianceQuery.isLoading} />
+            )}
+          </InspectorPanel>
+        );
+      }
+
+      default:
+        return null;
+    }
+  };
+
+  if (isLoading && chains.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <InspectorToolbar />
+        <div className="p-4">
+          <LoadingState message="Loading predictions inspector..." className="min-h-[420px]" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error && chains.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <InspectorToolbar />
+        <div className="p-4">
+          <ErrorState
+            title="Inspector unavailable"
+            message={error}
+            onRetry={refresh}
+            retryLabel="Reload inspector"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (chains.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <InspectorToolbar />
+        <div className="p-4">
+          <EmptyState
+            icon={Target}
+            title="No predictions to inspect"
+            description="Run or import predictions first, then reopen the inspector."
+            action={{ label: "Refresh", onClick: refresh }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (filteredChains.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <InspectorToolbar />
+        <div className="p-4">
+          <EmptyState
+            icon={AlertTriangle}
+            title="No chains match the current scope"
+            description={hasActiveFilters
+              ? "Clear local inspector filters to bring chains back into view."
+              : "Adjust source filters to broaden the comparison scope."
+            }
+            action={hasActiveFilters ? { label: "Clear local filters", onClick: clearAllFilters } : { label: "Refresh", onClick: refresh }}
+            secondaryAction={hasActiveFilters ? { label: "Refresh", onClick: refresh } : undefined}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-background">
-      {/* Toolbar */}
+    <div className="flex min-w-0 flex-1 flex-col bg-background">
       <InspectorToolbar />
 
-      {/* Panels grid */}
-      <div className={cn('flex-1 p-3 gap-3 overflow-auto', gridClassName)}>
-        {panelOrder.map(panelType => {
-          const state = panelStates[panelType];
-          if (state === 'hidden') return null;
-          if (maximizedPanel && maximizedPanel !== panelType) return null;
+      <div className="flex-1 overflow-auto">
+        <div className="space-y-4 p-4">
+          <WorkspaceStrip
+            bestScoreLabel={bestScoreLabel}
+            bestChainLabel={bestChainLabel}
+            focusChains={focusLabelChains}
+            focusMode={focus.mode}
+            filteredCount={filteredChains.length}
+            totalCount={totalChains}
+            modelCount={overviewStats.modelCount}
+            datasetCount={overviewStats.datasetCount}
+            activeFilterCount={activeFilterCount}
+            pinnedCount={pinnedCount}
+            mixedMetrics={overviewStats.mixedMetrics}
+            mixedTaskTypes={overviewStats.mixedTaskTypes}
+            selectionBar={selectionBar}
+          />
 
-          const props = getPanelProps(panelType);
-
-          switch (panelType) {
-            case 'scatter':
-              return (
-                <InspectorPanel key="scatter" {...props} isLoading={scatterLoading}>
-                  <PredVsObsChart
-                    data={scatterData}
-                    groups={groups}
-                    isLoading={scatterLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'residuals':
-              return (
-                <InspectorPanel key="residuals" {...props} isLoading={scatterLoading}>
-                  <ResidualsChart
-                    data={scatterData}
-                    isLoading={scatterLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'rankings':
-              return (
-                <InspectorPanel key="rankings" {...props} isLoading={rankingsLoading}>
-                  <RankingsTable
-                    data={rankingsData}
-                    groups={groups}
-                    isLoading={rankingsLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'histogram':
-              return (
-                <InspectorPanel key="histogram" {...props} isLoading={histogramLoading}>
-                  <ScoreHistogram
-                    data={histogramData}
-                    groups={groups}
-                    isLoading={histogramLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'heatmap':
-              return (
-                <InspectorPanel key="heatmap" {...props} isLoading={heatmapLoading}>
-                  <PerformanceHeatmap
-                    data={heatmapData}
-                    isLoading={heatmapLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'candlestick':
-              return (
-                <InspectorPanel key="candlestick" {...props} isLoading={candlestickLoading}>
-                  <CandlestickChart
-                    data={candlestickData}
-                    isLoading={candlestickLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'branch_comparison':
-              return (
-                <InspectorPanel key="branch_comparison" {...props} isLoading={branchComparisonLoading}>
-                  <BranchComparisonChart
-                    data={branchComparisonData}
-                    isLoading={branchComparisonLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'branch_topology':
-              return (
-                <InspectorPanel key="branch_topology" {...props} isLoading={branchTopologyLoading}>
-                  <BranchTopologyDiagram
-                    data={branchTopologyData}
-                    isLoading={branchTopologyLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'fold_stability':
-              return (
-                <InspectorPanel key="fold_stability" {...props} isLoading={foldStabilityLoading}>
-                  <FoldStabilityChart
-                    data={foldStabilityData}
-                    groups={groups}
-                    isLoading={foldStabilityLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'confusion':
-              return (
-                <InspectorPanel key="confusion" {...props} isLoading={confusionLoading}>
-                  <ConfusionMatrixChart
-                    data={confusionData}
-                    isLoading={confusionLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'robustness':
-              return (
-                <InspectorPanel key="robustness" {...props} isLoading={robustnessLoading}>
-                  <RobustnessRadar
-                    data={robustnessData}
-                    isLoading={robustnessLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'correlation':
-              return (
-                <InspectorPanel key="correlation" {...props} isLoading={correlationLoading}>
-                  <MetricCorrelation
-                    data={correlationData}
-                    isLoading={correlationLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'preprocessing_impact':
-              return (
-                <InspectorPanel key="preprocessing_impact" {...props} isLoading={preprocImpactLoading}>
-                  <PreprocessingImpact
-                    data={preprocImpactData}
-                    isLoading={preprocImpactLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'hyperparameter':
-              return (
-                <InspectorPanel key="hyperparameter" {...props} isLoading={hyperparamLoading} headerContent={hyperparamHeader}>
-                  <HyperparameterSensitivity
-                    data={hyperparamData}
-                    isLoading={hyperparamLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'bias_variance':
-              return (
-                <InspectorPanel key="bias_variance" {...props} isLoading={biasVarianceLoading}>
-                  <BiasVariance
-                    data={biasVarianceData}
-                    isLoading={biasVarianceLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            case 'learning_curve':
-              return (
-                <InspectorPanel key="learning_curve" {...props} isLoading={learningCurveLoading}>
-                  <LearningCurve
-                    data={learningCurveData}
-                    isLoading={learningCurveLoading}
-                  />
-                </InspectorPanel>
-              );
-
-            default:
-              return null;
-          }
-        })}
-
-        {/* Empty state */}
-        {visibleCount === 0 && (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm col-span-full">
-            All panels are hidden. Use the toolbar to show them.
-          </div>
-        )}
+          {panelIdsToRender.length === 0 ? (
+            <EmptyState
+              icon={Target}
+              title="No panels open"
+              description="Use the Panels control in the toolbar to reopen views, or restore the default workspace."
+              action={{ label: "Show all panels", onClick: showAll }}
+            />
+          ) : (
+            <div className={gridClassName}>
+              {panelIdsToRender.map(panelType => renderPanel(panelType))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
