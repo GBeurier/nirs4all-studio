@@ -3,6 +3,16 @@
 const electron = require("electron") as typeof import("electron");
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 
+import path from "node:path";
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+import { BackendManager } from "./backend-manager";
+import { EnvManager } from "./env-manager";
+import { initLogger, getLogFilePath, getLogDir } from "./logger";
+import { applyPortablePathOverrides } from "./portable-paths";
+
+const portableLayout = applyPortablePathOverrides(app);
+
 // Initialize Sentry crash reporting (must be as early as possible).
 const SENTRY_DSN_DEFAULT = "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
 const SentryMain = (() => {
@@ -23,13 +33,6 @@ const SentryMain = (() => {
   }
 })();
 
-import path from "node:path";
-import fs from "node:fs";
-import { pathToFileURL } from "node:url";
-import { BackendManager } from "./backend-manager";
-import { EnvManager } from "./env-manager";
-import { initLogger, getLogFilePath, getLogDir } from "./logger";
-
 // WSL2/WSLg fixes - must be set before app is ready
 if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
   // Force X11 backend which has better cursor support in WSLg
@@ -41,6 +44,9 @@ app.commandLine.appendSwitch("disable-features", "Autofill,AutofillServerCommuni
 
 // Initialize persistent file logging (writes to {userData}/logs/)
 initLogger();
+if (portableLayout) {
+  console.log(`Portable mode state root: ${portableLayout.portableRoot}`);
+}
 if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 
 const envManager = new EnvManager();
@@ -428,10 +434,10 @@ app.whenReady().then(async () => {
   } else if (envManager.isReady()) {
     // Python env exists: ensure backend packages are installed (fixes portable
     // mode where the env may exist but uvicorn/fastapi are missing), then spawn
-    // the backend non-blocking. The React app handles "connecting to backend"
-    // state via MlReadinessContext.
+    // the backend non-blocking. Use a short repair timeout here so a stale env
+    // falls back into the setup UI instead of hanging on the splash forever.
     try {
-      await envManager.ensureBackendPackages();
+      await envManager.ensureBackendPackages({ timeoutMs: 30_000 });
       const port = await backendManager.startNonBlocking();
       console.log(`Backend spawned on port ${port} (health check in background)`);
     } catch (error) {

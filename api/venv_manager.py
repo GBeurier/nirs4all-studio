@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .shared.logger import get_logger
+from .shared.runtime_paths import get_portable_backend_data_dir
 
 logger = get_logger(__name__)
 
@@ -35,6 +36,10 @@ APP_AUTHOR = "nirs4all"
 
 def _user_data_dir(app_name: str, app_author: str | None = None) -> str:
     """Get user data directory, with fallback if platformdirs is missing."""
+    portable_dir = get_portable_backend_data_dir(app_name)
+    if portable_dir is not None:
+        return str(portable_dir)
+
     if platformdirs is not None:
         return platformdirs.user_data_dir(app_name, app_author)
     # Minimal fallback
@@ -559,7 +564,31 @@ class VenvManager:
             return None
 
         code, stdout, stderr = self.run_in_venv(
-            "import nirs4all; print(nirs4all.__version__)"
+            """
+import os
+import sys
+
+cwd = os.getcwd()
+sys.path = [entry for entry in sys.path if entry not in ("", cwd)]
+
+version = None
+
+try:
+    import nirs4all
+    version = getattr(nirs4all, "__version__", None)
+except Exception:
+    version = None
+
+if not version:
+    try:
+        from importlib import metadata
+        version = metadata.version("nirs4all")
+    except Exception:
+        version = None
+
+if version:
+    print(version)
+"""
         )
         if code == 0 and stdout.strip():
             return stdout.strip()

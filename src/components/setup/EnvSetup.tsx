@@ -216,7 +216,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   // --- Transition to post-backend steps ---
 
   /** Fetch recommended config with retries + exponential backoff (backend may still be warming up) */
-  const fetchConfig = useCallback(async (retries = 5): Promise<RecommendedConfigResponse | null> => {
+  const fetchConfig = useCallback(async (retries = 6): Promise<RecommendedConfigResponse | null> => {
     for (let i = 0; i < retries; i++) {
       try {
         return await getRecommendedConfig();
@@ -237,11 +237,11 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     // Give the backend a moment to fully initialize its routes after startup
     await new Promise((r) => setTimeout(r, 500));
 
-    // Fetch GPU info, config, and dependencies in parallel — failures are independent
-    const [gpuResult, configResult, depsResult] = await Promise.all([
+    // Fetch GPU info and config first. Dependency scanning can be noticeably
+    // slower, so don't block profile selection on it.
+    const [gpuResult, configResult] = await Promise.all([
       detectGPU().catch((err) => { console.warn("GPU detection failed:", err); return null; }),
       fetchConfig(),
-      getDependencies().catch((err) => { console.warn("Dependencies fetch failed:", err); return null; }),
     ]);
 
     if (gpuResult) {
@@ -251,9 +251,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     }
     if (configResult) {
       setConfig(configResult);
-
-      // Pre-check optional packages that are already installed in the environment
-      if (depsResult) {
+      void getDependencies().then((depsResult) => {
         const installedNames = new Set(
           depsResult.categories
             .flatMap((cat) => cat.packages)
@@ -266,7 +264,9 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
         if (preSelected.length > 0) {
           setSelectedExtras(preSelected);
         }
-      }
+      }).catch((err) => {
+        console.warn("Dependencies fetch failed:", err);
+      });
     }
 
     // Brief pause to show GPU info, then advance to profile
@@ -728,9 +728,8 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                     <div className="flex flex-col items-center justify-center gap-3 py-8">
                       <AlertCircle className="h-6 w-6 text-muted-foreground" />
                       <p className="text-sm text-muted-foreground">{t("setupWizard.profile.loadFailed")}</p>
-                      <Button variant="outline" size="sm" onClick={async () => {
-                        const result = await fetchConfig();
-                        if (result) setConfig(result);
+                      <Button variant="outline" size="sm" onClick={() => {
+                        void transitionToPostBackend();
                       }}>
                         <RefreshCw className="mr-2 h-4 w-4" />
                         {t("common.retry")}

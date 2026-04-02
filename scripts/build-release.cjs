@@ -86,7 +86,31 @@ function syncVersionFromGitTag() {
   }
 }
 
+function getGitCommitShort() {
+  try {
+    return execSync("git rev-parse --short HEAD", {
+      cwd: projectRoot,
+      encoding: "utf-8",
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function syncVersionJsonFromPackage() {
+  const pkgPath = path.join(projectRoot, "package.json");
+  const versionPath = path.join(projectRoot, "version.json");
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  const versionData = {
+    version: pkg.version,
+    build_date: new Date().toISOString(),
+    commit: getGitCommitShort(),
+  };
+  fs.writeFileSync(versionPath, `${JSON.stringify(versionData, null, 2)}\n`);
+}
+
 syncVersionFromGitTag();
+syncVersionJsonFromPackage();
 
 console.log("========================================");
 console.log("  nirs4all Release Build");

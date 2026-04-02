@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from .shared.gpu_detection import detect_gpu_hardware
 from .shared.logger import get_logger
 from .venv_manager import _user_data_dir, venv_manager
 
@@ -131,6 +132,10 @@ class GPUDetectionResponse(BaseModel):
     has_metal: bool = False
     cuda_version: str | None = None
     gpu_name: str | None = None
+    driver_version: str | None = None
+    torch_cuda_available: bool = False
+    torch_version: str | None = None
+    detection_source: str | None = None
     recommended_profiles: list[str]
 
 
@@ -295,8 +300,11 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
 def _get_installed_packages() -> dict[str, str]:
     """Get dict of installed package names → versions from the venv."""
     try:
-        packages = venv_manager.get_installed_packages()
-        return {pkg.name.lower().replace("-", "_"): pkg.version for pkg in packages}
+        packages = {pkg.name.lower().replace("-", "_"): pkg.version for pkg in venv_manager.get_installed_packages()}
+        runtime_nirs4all = venv_manager.get_nirs4all_version()
+        if runtime_nirs4all:
+            packages["nirs4all"] = runtime_nirs4all
+        return packages
     except Exception as e:
         logger.warning("Could not list installed packages: %s", e)
         return {}
@@ -343,36 +351,12 @@ def _compare_versions(v1: str, v2: str) -> int:
 
 def _detect_gpu() -> GPUDetectionResponse:
     """Detect available GPU hardware and recommend platform-compatible profiles."""
-    has_cuda = False
-    has_metal = False
-    cuda_version = None
-    gpu_name = None
-
-    # Check CUDA via nvidia-smi (single query for both name and driver version)
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            parts = result.stdout.strip().split(",")
-            gpu_name = parts[0].strip()
-            has_cuda = True
-            if len(parts) > 1:
-                cuda_version = parts[1].strip()
-    except Exception:
-        pass
-
-    # Check Metal (macOS)
-    if sys.platform == "darwin":
-        import platform as plat
-        if plat.machine() == "arm64":
-            has_metal = True
+    gpu_info = detect_gpu_hardware()
 
     # Build candidate list based on detected hardware
-    if has_cuda:
+    if gpu_info.has_cuda:
         candidates = ["gpu-cuda-torch", "cpu"]
-    elif has_metal:
+    elif gpu_info.has_metal:
         candidates = ["gpu-mps", "cpu"]
     else:
         candidates = ["cpu"]
@@ -395,10 +379,14 @@ def _detect_gpu() -> GPUDetectionResponse:
         recommended = candidates  # Fallback to unfiltered if config unavailable
 
     return GPUDetectionResponse(
-        has_cuda=has_cuda,
-        has_metal=has_metal,
-        cuda_version=cuda_version,
-        gpu_name=gpu_name,
+        has_cuda=gpu_info.has_cuda,
+        has_metal=gpu_info.has_metal,
+        cuda_version=gpu_info.cuda_version,
+        gpu_name=gpu_info.gpu_name,
+        driver_version=gpu_info.driver_version,
+        torch_cuda_available=gpu_info.torch_cuda_available,
+        torch_version=gpu_info.torch_version,
+        detection_source=gpu_info.detection_source,
         recommended_profiles=recommended,
     )
 
@@ -410,20 +398,32 @@ def _detect_gpu() -> GPUDetectionResponse:
 async def get_recommended_config(force_refresh: bool = False):
     """Get the recommended configuration.
 
-    Returns bundled config, optionally refreshed from GitHub.
+    Normal startup should return immediately from local state:
+    cached remote config if available, otherwise the bundled config shipped with
+    the app. Remote refresh is only attempted for explicit force-refresh calls
+    or by the background cache task at startup.
     """
     if not force_refresh:
         cached = _config_cache.get_cached_config()
         if cached:
             return _parse_config(cached, "remote")
+        try:
+            bundled = _load_bundled_config()
+            return _parse_config(bundled, "bundled")
+        except FileNotFoundError:
+            pass
 
-    # Try remote first
+    # Explicit refresh path: try remote first, then fall back to any local data.
     remote = await _fetch_remote_config()
     if remote:
         _config_cache.set_cached_config(remote)
         return _parse_config(remote, "remote")
 
-    # Fall back to bundled
+    cached = _config_cache.get_cached_config()
+    if cached:
+        return _parse_config(cached, "remote")
+
+    # Final fallback: bundled config packaged with the app
     try:
         bundled = _load_bundled_config()
         return _parse_config(bundled, "bundled")

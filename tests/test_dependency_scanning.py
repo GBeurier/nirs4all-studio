@@ -262,6 +262,31 @@ class TestDependencyScanningCache:
         call_args = mock_cache.set.call_args
         assert call_args[0][0] == "/cached/venv"  # First positional arg is venv_path
 
+    @patch("api.updates._dependencies_cache")
+    @patch("api.updates.venv_manager")
+    def test_cache_hit_refreshes_runtime_nirs4all_version(self, mock_vm, mock_cache):
+        """Cached dependency scans should still report the current runtime nirs4all version."""
+        mock_vm.get_venv_info.return_value = FakeVenvInfo(
+            path="/cached/venv", exists=True, is_valid=True,
+        )
+        mock_vm.get_nirs4all_version.return_value = "0.8.6"
+        mock_cache.get.return_value = {
+            "categories": [],
+            "venv_valid": True,
+            "nirs4all_installed": True,
+            "nirs4all_version": "0.8.2",
+            "total_installed": 12,
+            "total_packages": 23,
+            "cached_at": "2026-04-01T00:00:00",
+        }
+
+        response = client.get("/api/updates/dependencies")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["nirs4all_installed"] is True
+        assert data["nirs4all_version"] == "0.8.6"
+
 
 class TestDependencyScanningPackageNormalization:
     """Verify package name normalization (hyphen vs underscore)."""

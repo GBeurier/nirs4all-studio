@@ -2543,6 +2543,10 @@ export interface GPUDetectionResponse {
   has_metal: boolean;
   cuda_version: string | null;
   gpu_name: string | null;
+  driver_version: string | null;
+  torch_cuda_available: boolean;
+  torch_version: string | null;
+  detection_source: string | null;
   recommended_profiles: string[];
 }
 

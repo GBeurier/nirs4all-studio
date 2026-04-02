@@ -251,6 +251,7 @@ class DependenciesCache:
     """Cache for dependencies scan results."""
 
     CACHE_FILE = "dependencies_cache.json"
+    CACHE_TTL_HOURS = 6
 
     def __init__(self):
         self._app_data_dir = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
@@ -281,6 +282,15 @@ class DependenciesCache:
         if not self._cache:
             return None
         if self._cache.get("venv_path") != venv_path:
+            return None
+        try:
+            cached_at_raw = self._cache.get("cached_at")
+            if not cached_at_raw:
+                return None
+            cached_at = datetime.fromisoformat(cached_at_raw)
+            if datetime.now() - cached_at > timedelta(hours=self.CACHE_TTL_HOURS):
+                return None
+        except Exception:
             return None
         return self._cache
 
@@ -464,6 +474,19 @@ class UpdateManager:
 
     def get_webapp_version(self) -> str:
         """Get the current webapp version."""
+        env_version = os.environ.get("NIRS4ALL_APP_VERSION")
+        if env_version:
+            return env_version
+
+        package_json = Path(__file__).parent.parent / "package.json"
+        if not getattr(sys, "_MEIPASS", None) and package_json.exists():
+            try:
+                with open(package_json, encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("version", "unknown")
+            except Exception:
+                pass
+
         # Try to find version.json in app directory
         version_paths = [
             Path(__file__).parent.parent / self.VERSION_FILE,
@@ -481,7 +504,6 @@ class UpdateManager:
                     continue
 
         # Fallback to package.json if available
-        package_json = Path(__file__).parent.parent / "package.json"
         if package_json.exists():
             try:
                 with open(package_json, encoding="utf-8") as f:
@@ -1449,13 +1471,17 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     if not force_refresh:
         cached = _dependencies_cache.get(venv_path)
         if cached:
+            current_nirs4all_version = venv_manager.get_nirs4all_version()
+            if not isinstance(current_nirs4all_version, str):
+                current_nirs4all_version = cached.get("nirs4all_version")
+            current_nirs4all_installed = current_nirs4all_version is not None
             # Return cached data
             return DependenciesResponse(
                 categories=[DependencyCategory(**cat) for cat in cached.get("categories", [])],
-                venv_valid=cached.get("venv_valid", False),
+                venv_valid=venv_info.is_valid,
                 venv_path=venv_path,
-                nirs4all_installed=cached.get("nirs4all_installed", False),
-                nirs4all_version=cached.get("nirs4all_version"),
+                nirs4all_installed=current_nirs4all_installed,
+                nirs4all_version=current_nirs4all_version,
                 total_installed=cached.get("total_installed", 0),
                 total_packages=cached.get("total_packages", 0),
                 cached_at=cached.get("cached_at"),

@@ -23,13 +23,40 @@ from pathlib import Path
 
 import platformdirs
 
+from api.shared.runtime_paths import (
+    get_portable_backend_data_dir,
+    get_portable_backend_log_dir,
+)
+
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
 
 
+def _get_update_state_dir() -> Path:
+    portable_dir = get_portable_backend_data_dir(APP_NAME)
+    if portable_dir is not None:
+        portable_dir.mkdir(parents=True, exist_ok=True)
+        return portable_dir
+
+    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    app_data.mkdir(parents=True, exist_ok=True)
+    return app_data
+
+
+def _get_update_log_dir() -> Path:
+    portable_dir = get_portable_backend_log_dir(APP_NAME)
+    if portable_dir is not None:
+        portable_dir.mkdir(parents=True, exist_ok=True)
+        return portable_dir
+
+    log_dir = Path(platformdirs.user_log_dir(APP_NAME, APP_AUTHOR))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+
 def get_update_cache_dir() -> Path:
     """Get the directory for caching downloaded updates."""
-    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    app_data = _get_update_state_dir()
     cache_dir = app_data / "update_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
@@ -37,7 +64,7 @@ def get_update_cache_dir() -> Path:
 
 def get_staging_dir() -> Path:
     """Get the directory for staging updates before apply."""
-    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    app_data = _get_update_state_dir()
     staging_dir = app_data / "update_staging"
     staging_dir.mkdir(parents=True, exist_ok=True)
     return staging_dir
@@ -45,7 +72,7 @@ def get_staging_dir() -> Path:
 
 def get_backup_dir() -> Path:
     """Get the directory for backing up current version before update."""
-    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    app_data = _get_update_state_dir()
     backup_dir = app_data / "update_backup"
     backup_dir.mkdir(parents=True, exist_ok=True)
     return backup_dir
@@ -429,8 +456,7 @@ def create_updater_script(
         app_dir = get_app_directory()
 
     backup_dir = get_backup_dir()
-    log_dir = Path(platformdirs.user_log_dir(APP_NAME, APP_AUTHOR))
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir = _get_update_log_dir()
     log_file = log_dir / "update.log"
 
     # When running under Electron, wait for the Electron process (our parent)

@@ -11,7 +11,7 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 30_000,
     teardownTimeout: 10_000,
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "electron/**/*.test.ts"],
     exclude: ["node_modules", "dist", "dist-electron", "e2e"],
   },
 });

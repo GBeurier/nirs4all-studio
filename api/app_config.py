@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .shared.logger import get_logger
+from .shared.runtime_paths import get_portable_config_dir
 
 logger = get_logger(__name__)
 
@@ -129,22 +130,28 @@ class AppConfigManager:
 
         Priority:
         1. NIRS4ALL_CONFIG environment variable
-        2. Standalone/portable mode (config next to exe)
-        3. Redirect file pointing to custom path
-        4. Default platform-specific location
+        2. Portable Electron mode (.nirs4all/config next to the portable exe)
+        3. Standalone/portable mode (config next to exe)
+        4. Redirect file pointing to custom path
+        5. Default platform-specific location
         """
         # 1. Environment variable override
         env_config = os.environ.get("NIRS4ALL_CONFIG")
         if env_config:
             return Path(env_config)
 
-        # 2. Standalone/portable mode (config next to exe)
+        # 2. Portable Electron mode (portable exe path is passed via env var)
+        portable_root_config = get_portable_config_dir()
+        if portable_root_config is not None:
+            return portable_root_config
+
+        # 3. Standalone/portable mode (config next to exe)
         exe_path = Path(sys.executable).parent
         portable_config = exe_path / ".nirs4all"
         if portable_config.exists():
             return portable_config
 
-        # 3. Check redirect file in default location
+        # 4. Check redirect file in default location
         default_path = self._get_default_config_dir()
         redirect_file = default_path / _REDIRECT_FILE_NAME
         if redirect_file.exists():
@@ -155,7 +162,7 @@ class AppConfigManager:
             except Exception:
                 pass  # Fall back to default
 
-        # 4. Default platform-specific location
+        # 5. Default platform-specific location
         return default_path
 
     def _get_default_config_dir(self) -> Path:

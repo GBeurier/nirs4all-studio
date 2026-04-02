@@ -43,6 +43,9 @@ const CORE_PACKAGES = [
 ];
 
 const isWindows = process.platform === "win32";
+const ENSUREPIP_TIMEOUT_MS = 60_000;
+const PIP_INSTALL_TIMEOUT_MS = 180_000;
+const COMPILEALL_TIMEOUT_MS = 180_000;
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 
@@ -78,6 +81,15 @@ export interface EnvSummary {
   pythonPath: string;
   envPath: string;
   version: string;
+}
+
+interface EnsureBackendPackagesOptions {
+  timeoutMs?: number;
+}
+
+interface CommandOptions {
+  retries?: number;
+  timeoutMs?: number;
 }
 
 export class EnvManager {
@@ -257,6 +269,11 @@ export class EnvManager {
    *   (ensureBackendPackages covers package updates at startup).
    */
   shouldShowWizard(): boolean {
+    // Startup validation failed (for example a timed-out repair on a stale env)
+    // — route the user back through the setup flow instead of leaving them on
+    // the backend-connecting screen forever.
+    if (this.status === "error") return true;
+
     // Env not configured at all → must show wizard
     if (!this.isReady()) return true;
 
@@ -357,15 +374,25 @@ export class EnvManager {
    * Called before starting the backend to fix the portable-mode issue
    * where the env exists but is missing backend dependencies.
    */
-  async ensureBackendPackages(): Promise<void> {
+  async ensureBackendPackages(options?: EnsureBackendPackagesOptions): Promise<void> {
     const pythonPath = this.getPythonPath();
     if (!pythonPath) return;
 
-    const hasPackages = await this.verifyBackendPackages();
-    if (!hasPackages) {
-      console.log("Backend packages missing, installing core packages...");
-      await this.installCorePackages(pythonPath);
-      console.log("Core packages installed successfully");
+    try {
+      const hasPackages = await this.verifyBackendPackages();
+      if (!hasPackages) {
+        console.log("Backend packages missing, installing core packages...");
+        await this.installCorePackages(pythonPath, {
+          timeoutMs: options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS,
+        });
+        console.log("Core packages installed successfully");
+      }
+      this.lastError = null;
+      this.status = "ready";
+    } catch (error) {
+      this.status = "error";
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
     }
   }
 
@@ -568,16 +595,27 @@ export class EnvManager {
    * Install core packages into a Python environment using `python -m pip`.
    * Used when user selects an existing Python that's missing nirs4all.
    */
-  private async installCorePackages(pythonPath: string): Promise<void> {
+  private async installCorePackages(
+    pythonPath: string,
+    options?: EnsureBackendPackagesOptions,
+  ): Promise<void> {
+    const timeoutMs = options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS;
+
     // Ensure pip is available
     try {
-      await this.runCommand(pythonPath, ["-m", "ensurepip", "--upgrade"], { retries: 1 });
+      await this.runCommand(pythonPath, ["-m", "ensurepip", "--upgrade"], {
+        retries: 1,
+        timeoutMs: Math.min(timeoutMs, ENSUREPIP_TIMEOUT_MS),
+      });
     } catch {
       // ensurepip may fail if pip is already installed — non-fatal
     }
 
     // Install all core packages in a single pip call
-    await this.runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...CORE_PACKAGES], { retries: 2 });
+    await this.runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...CORE_PACKAGES], {
+      retries: 2,
+      timeoutMs,
+    });
   }
 
   /**
@@ -650,7 +688,9 @@ export class EnvManager {
         fs.rmSync(venvDir, { recursive: true, force: true });
       }
 
-      await this.runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"]);
+      await this.runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"], {
+        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+      });
 
       const venvPython = isWindows
         ? path.join(venvDir, "Scripts", "python.exe")
@@ -661,8 +701,14 @@ export class EnvManager {
       }
 
       report(35, "creating_venv", "Bootstrapping pip...");
-      await this.runCommand(venvPython, ["-m", "ensurepip", "--upgrade"], { retries: 2 });
-      await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", "--upgrade", "pip"], { retries: 2 });
+      await this.runCommand(venvPython, ["-m", "ensurepip", "--upgrade"], {
+        retries: 2,
+        timeoutMs: ENSUREPIP_TIMEOUT_MS,
+      });
+      await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", "--upgrade", "pip"], {
+        retries: 2,
+        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+      });
       report(40, "creating_venv", "Virtual environment ready");
 
       // 5. Install core packages
@@ -677,7 +723,10 @@ export class EnvManager {
         const pkgName = pkg.split(">=")[0].split("[")[0];
         const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
         report(progressPercent, "installing", `Installing ${pkgName}...`);
-        await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", pkg], { retries: 2 });
+        await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", pkg], {
+          retries: 2,
+          timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+        });
       }
 
       report(90, "installing", "All packages installed");
@@ -701,7 +750,9 @@ export class EnvManager {
 
       if (compileTargets.length > 0) {
         try {
-          await this.runCommand(venvPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets]);
+          await this.runCommand(venvPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets], {
+            timeoutMs: COMPILEALL_TIMEOUT_MS,
+          });
         } catch {
           // Non-fatal: bytecode compilation failure doesn't prevent running
         }
@@ -826,8 +877,9 @@ export class EnvManager {
   }
 
   /** Run a command and wait for it to complete */
-  private runCommand(command: string, args: string[], options?: { retries?: number }): Promise<void> {
+  private runCommand(command: string, args: string[], options?: CommandOptions): Promise<void> {
     const maxRetries = options?.retries ?? 0;
+    const timeoutMs = options?.timeoutMs ?? 0;
 
     const exec = (): Promise<void> => new Promise((resolve, reject) => {
       const proc = spawn(command, args, {
@@ -836,14 +888,40 @@ export class EnvManager {
       });
 
       let stderr = "";
+      let finished = false;
+      let timeoutHandle: NodeJS.Timeout | null = null;
+
+      const complete = (error?: Error) => {
+        if (finished) return;
+        finished = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (error) reject(error);
+        else resolve();
+      };
+
       proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
 
+      if (timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          const timeoutError = new Error(
+            `Command "${command} ${args.join(" ")}" timed out after ${Math.round(timeoutMs / 1000)}s`,
+          );
+          if (isWindows && proc.pid) {
+            spawn("taskkill", ["/pid", proc.pid.toString(), "/t", "/f"]);
+          } else {
+            proc.kill("SIGKILL");
+          }
+          complete(timeoutError);
+        }, timeoutMs);
+      }
+
       proc.on("close", (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Command "${command} ${args.join(" ")}" failed (code ${code}): ${stderr.slice(0, 500)}`));
+        if (finished) return;
+        if (code === 0) complete();
+        else complete(new Error(`Command "${command} ${args.join(" ")}" failed (code ${code}): ${stderr.slice(0, 500)}`));
       });
 
-      proc.on("error", reject);
+      proc.on("error", (error) => complete(error));
     });
 
     if (maxRetries <= 0) return exec();

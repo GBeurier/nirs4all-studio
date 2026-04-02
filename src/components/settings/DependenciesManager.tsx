@@ -726,19 +726,14 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
                 </span>
               </span>
             </div>
-            {dependencies.nirs4all_installed && dependencies.nirs4all_version && (
-              <Badge variant="default" className="font-mono">
-                nirs4all v{dependencies.nirs4all_version}
-              </Badge>
-            )}
-            {!dependencies.nirs4all_installed && (
-              <Badge variant="destructive">nirs4all not installed</Badge>
-            )}
+            <span className="text-xs text-muted-foreground">
+              Base nirs4all version is managed in the Updates section above.
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {outdatedCount > 0 && (
               <Badge variant="warning">
-                {outdatedCount} update{outdatedCount > 1 ? "s" : ""} available
+                {outdatedCount} optional update{outdatedCount > 1 ? "s" : ""} available
               </Badge>
             )}
             {!dependencies.venv_valid && (

@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from .shared.gpu_detection import detect_gpu_hardware
 from .venv_manager import venv_manager
 from .workspace_manager import workspace_manager
 
@@ -221,37 +222,37 @@ def _get_build_info() -> dict[str, Any]:
 
 def _get_gpu_info() -> dict[str, Any]:
     """Get detailed GPU information."""
-    is_macos = platform.system() == "Darwin"
-
+    detected = detect_gpu_hardware()
     gpu_info: dict[str, Any] = {
-        "cuda_available": False,
-        "mps_available": False,
-        "metal_available": False,
-        "device_name": None,
-        "device_count": 0,
+        "cuda_available": detected.has_cuda,
+        "mps_available": detected.has_metal,
+        "metal_available": detected.has_metal,
+        "device_name": detected.gpu_name,
+        "device_count": 1 if detected.gpu_name else 0,
+        "cuda_version": detected.cuda_version,
+        "driver_version": detected.driver_version,
+        "torch_cuda_available": detected.torch_cuda_available,
+        "torch_version": detected.torch_version,
+        "detection_source": detected.detection_source,
         "backends": {},
     }
 
-    # Check PyTorch CUDA
-    try:
-        import torch
-        if torch.cuda.is_available():
-            gpu_info["cuda_available"] = True
-            gpu_info["device_count"] = torch.cuda.device_count()
-            if gpu_info["device_count"] > 0:
-                gpu_info["device_name"] = torch.cuda.get_device_name(0)
-            gpu_info["backends"]["pytorch_cuda"] = {
-                "available": True,
-                "device_name": gpu_info["device_name"],
-                "device_count": gpu_info["device_count"],
-            }
-        # Check MPS (Apple Silicon)
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            gpu_info["mps_available"] = True
-            gpu_info["metal_available"] = is_macos
-            gpu_info["backends"]["pytorch_mps"] = {"available": True}
-    except ImportError:
-        pass
+    if detected.has_cuda:
+        gpu_info["backends"]["cuda_hardware"] = {
+            "available": True,
+            "device_name": detected.gpu_name,
+            "driver_version": detected.driver_version,
+        }
+
+    if detected.torch_cuda_available:
+        gpu_info["backends"]["pytorch_cuda"] = {
+            "available": True,
+            "device_name": detected.gpu_name,
+            "cuda_version": detected.cuda_version,
+        }
+
+    if detected.has_metal:
+        gpu_info["backends"]["pytorch_mps"] = {"available": True}
 
     return gpu_info
 

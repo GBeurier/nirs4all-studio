@@ -67,6 +67,7 @@ import {
   useStagedUpdate,
   formatBytes,
 } from "@/hooks/useUpdates";
+import { useGPUDetection } from "@/hooks/useRecommendedConfig";
 import {
   listSnapshots,
   createSnapshot,
@@ -84,6 +85,7 @@ export function UpdatesSection() {
   const { data: status, isLoading: statusLoading, error: statusError } = useUpdateStatus();
   const { data: settings, isLoading: settingsLoading } = useUpdateSettings();
   const { data: venvStatus, isLoading: venvLoading } = useVenvStatus();
+  const { data: gpuInfo, isLoading: gpuLoading } = useGPUDetection();
 
   const checkMutation = useCheckForUpdates();
   const settingsMutation = useUpdateUpdateSettings();
@@ -404,6 +406,41 @@ export function UpdatesSection() {
                   <span className="text-muted-foreground">Python:</span>
                   <span className="font-mono">{venvStatus.venv.python_version}</span>
                 </div>
+                <div className="flex justify-between items-start gap-4">
+                  <span className="text-muted-foreground">Detected GPU:</span>
+                  <span className="text-right max-w-[60%]">
+                    {gpuLoading ? (
+                      <span className="text-muted-foreground">Detecting...</span>
+                    ) : gpuInfo?.has_cuda ? (
+                      <>
+                        {gpuInfo.gpu_name || "NVIDIA GPU"}
+                        {gpuInfo.cuda_version
+                          ? ` (CUDA ${gpuInfo.cuda_version})`
+                          : gpuInfo.driver_version
+                            ? ` (Driver ${gpuInfo.driver_version})`
+                            : ""}
+                      </>
+                    ) : gpuInfo?.has_metal ? (
+                      "Apple Metal"
+                    ) : (
+                      <span className="text-muted-foreground">CPU only</span>
+                    )}
+                  </span>
+                </div>
+                {gpuInfo && (
+                  <div className="flex justify-between items-start gap-4">
+                    <span className="text-muted-foreground">Torch runtime:</span>
+                    <span className="text-right max-w-[60%]">
+                      {gpuInfo.torch_version ? (
+                        gpuInfo.torch_cuda_available
+                          ? `${gpuInfo.torch_version} (CUDA ready)`
+                          : `${gpuInfo.torch_version} (CUDA unavailable)`
+                      ) : (
+                        <span className="text-muted-foreground">Not installed</span>
+                      )}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Size:</span>
                   <span>{formatBytes(venvStatus.venv.size_bytes)}</span>
