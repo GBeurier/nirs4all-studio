@@ -6,6 +6,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## 0.3.1 — 2026-04-02
+
+### Added
+
+- **Portable Mode**: Run nirs4all Studio entirely from a USB drive or self-contained folder — no system-wide installation required. Legacy data is automatically migrated.
+- **GPU Detection**: Richer GPU diagnostics in Settings, including driver version and detection source.
+
+### Improved
+
+- **Environment Manager**: Better logging and error handling during Python environment setup.
+- **Update System**: More reliable version detection for portable deployments.
+
+---
+
+## 0.3.0 — 2026-04-01
+
+### Changed
+
+- **nirs4all dependency**: Updated to nirs4all 0.8.6 (from 0.7.1). All compute profiles (CPU, GPU-CUDA, GPU-MPS) now require >=0.8.6.
+
+### Added
+
+- **Predictions**: New prediction feature with model selection and data input.
+- **Dependencies Manager**: Enhanced with version status indicators and revert actions.
+- **Playground**: New augmentation methods and updated category configurations.
+- **Results & Runs**: Metric selection, best_params display, and improved UI.
+- **Dataset Wizard**: Refactored to support effective parsing parameters and improved data handling.
+- **Preprocessing**: Enhanced operators with comprehensive operator definitions.
+- **Chain Summaries**: New endpoint for retrieving all chain summaries for a dataset.
+- **Translations**: Added Chinese (Simplified) translations.
+
+### Improved
+
+- **Storage**: Migrated from DuckDB to SQLite for hybrid storage.
+- **Environment Management**: Refactored Python environment setup, improved wizard and app readiness checks.
+- **Crash Reporting**: Integrated Sentry across all layers (frontend, backend, Electron).
+- **Update System**: Refactored and improved update process and test coverage.
+- **App Settings**: Atomic JSON writes for reliability.
+
+---
+
 ## 0.1.0 — Initial Release (2026-02-24)
 
 ### Added

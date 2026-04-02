@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.3.1] — 2026-04-02
+
+### Added
+
+- **Portable Mode**: Full portable deployment support — the app can run entirely from a USB drive or self-contained folder with no system-wide installation. Includes automatic migration of legacy data layouts.
+- **GPU Detection**: New shared GPU hardware detection module (`gpu_detection.py`) with nvidia-smi, Windows WMI, and PyTorch runtime probes. The `/system` endpoint now returns richer GPU diagnostics (driver version, detection source).
+- **Runtime Paths**: Centralized runtime path resolution (`runtime_paths.py`) for consistent directory handling across installed and portable modes.
+- **Build Versioning**: Release build scripts now embed version info from `package.json` automatically.
+- **Smoke Test Script**: PowerShell script (`smoke-portable-isolation.ps1`) for validating portable-mode isolation.
+
+### Improved
+
+- **Environment Manager**: Refactored Electron env-manager to support portable backend directories and improved logging/error handling for package management.
+- **Update System**: Updater now prefers runtime-detected version over cached data; portable-aware backend directory resolution.
+- **Dependencies Manager UI**: Updated to reflect base version management.
+- **Recommended Config**: Refactored configuration endpoint with improved GPU info response fields.
+
+---
+
 ## [0.3.0] — 2026-04-01
 
 ### Changed
