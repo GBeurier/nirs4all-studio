@@ -707,7 +707,7 @@ export class EnvManager {
       report(15, "extracting", "Extracting Python runtime...");
       const pythonDir = path.join(baseDir, "python");
       if (fs.existsSync(pythonDir)) {
-        fs.rmSync(pythonDir, { recursive: true, force: true });
+        await this.rmWithRetry(pythonDir);
       }
 
       await this.extractTarball(cachedTarball, baseDir);
@@ -739,7 +739,7 @@ export class EnvManager {
       report(25, "creating_venv", "Creating virtual environment...");
       const venvDir = path.join(baseDir, "venv");
       if (fs.existsSync(venvDir)) {
-        fs.rmSync(venvDir, { recursive: true, force: true });
+        await this.rmWithRetry(venvDir);
       }
 
       await this.runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"], {
@@ -1026,5 +1026,40 @@ export class EnvManager {
       }
       throw lastError;
     })();
+  }
+
+  /**
+   * Remove a directory with retry + exponential backoff.
+   *
+   * On Windows, antivirus (Defender) can temporarily lock freshly extracted
+   * files for 10–30 s.  A bare `fs.rmSync` fails instantly with EPERM/EBUSY.
+   * This wrapper retries with increasing delays so the AV scan has time to
+   * finish before we give up.
+   */
+  private async rmWithRetry(dirPath: string, retries = 5, baseDelayMs = 2000): Promise<void> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        return;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        const retryable = code === "EPERM" || code === "EBUSY" || code === "EACCES";
+
+        if (!retryable || attempt === retries) {
+          // Annotate the final error with a likely cause on Windows
+          if (isWindows && err instanceof Error && retryable) {
+            err.message += " — this is usually caused by antivirus software locking newly extracted files. "
+              + "Try temporarily adding the install directory to your antivirus exclusions and retrying.";
+          }
+          throw err;
+        }
+
+        const delayMs = baseDelayMs * Math.pow(2, attempt);
+        console.warn(
+          `[EnvManager] rmSync "${dirPath}" failed (attempt ${attempt + 1}/${retries + 1}, ${code}), retrying in ${delayMs / 1000}s...`,
+        );
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
   }
 }
