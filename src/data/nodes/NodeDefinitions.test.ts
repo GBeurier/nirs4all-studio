@@ -22,6 +22,7 @@ const VALID_PARAM_TYPES = [
   "range",
   "array",
   "object",
+  "metadata_column",
 ];
 const VALID_FINETUNE_TYPES = ["int", "float", "log_float", "categorical"];
 
