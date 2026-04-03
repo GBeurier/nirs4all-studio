@@ -102,11 +102,10 @@ export interface ContainerChildItemProps {
   index: number;
   parentStep: PipelineStep;
   parentPath: string[];
-  childLabel: string;
+  path: string[];
   isSelected: boolean;
   onSelect: () => void;
   onRemove: () => void;
-  colors: StepColors;
 }
 
 /**

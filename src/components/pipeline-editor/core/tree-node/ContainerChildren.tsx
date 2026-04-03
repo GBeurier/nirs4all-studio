@@ -28,17 +28,15 @@ export function ContainerChildrenNode({
   onAddChild,
   colors,
 }: ContainerChildrenNodeProps) {
-  const { dropIndicator } = usePipelineDnd();
   const childrenPath = [...parentPath, "children"];
 
-  // Drop zone for adding new children at end
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `container-${parentStep.id}-children`,
+  const { setNodeRef: setEmptyDropRef, isOver: isOverEmpty } = useDroppable({
+    id: `container-${parentStep.id}-children-empty`,
     data: {
       type: "container-drop-zone",
       path: childrenPath,
       parentStepId: parentStep.id,
-      index: children.length,
+      index: 0,
       position: "inside",
       accepts: ["preprocessing", "y_processing", "filter", "augmentation"],
     },
@@ -48,48 +46,45 @@ export function ContainerChildrenNode({
     <div className={`border-l border-dashed ${colors.border} ml-1.5 pl-3`}>
       {children.length === 0 ? (
         <div
-          ref={setDropRef}
+          ref={setEmptyDropRef}
           className={`
             py-2 px-3 text-xs text-muted-foreground rounded border border-dashed transition-all cursor-pointer
-            ${isOver ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30"}
+            ${isOverEmpty ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30"}
           `}
           onClick={() => onAddChild?.(parentStep.id, parentPath)}
         >
-          {isOver
+          {isOverEmpty
             ? "Drop transformer here"
             : `No ${childLabel}s - click to add or drop here`}
         </div>
       ) : (
         <div className="space-y-1">
+          <ContainerInsertDropZone
+            id={`container-${parentStep.id}-before-0`}
+            path={childrenPath}
+            index={0}
+            childLabel={childLabel}
+          />
           {children.map((child, idx) => (
-            <ContainerChildItem
-              key={child.id}
-              child={child}
-              index={idx}
-              parentStep={parentStep}
-              parentPath={parentPath}
-              childLabel={childLabel}
-              isSelected={selectedStepId === child.id}
-              onSelect={() => onSelectStep(child.id)}
-              onRemove={() => onRemoveChild?.(parentStep.id, child.id, parentPath)}
-              colors={colors}
-            />
+            <div key={child.id}>
+              <ContainerChildItem
+                child={child}
+                index={idx}
+                parentStep={parentStep}
+                parentPath={parentPath}
+                path={childrenPath}
+                isSelected={selectedStepId === child.id}
+                onSelect={() => onSelectStep(child.id)}
+                onRemove={() => onRemoveChild?.(parentStep.id, child.id, parentPath)}
+              />
+              <ContainerInsertDropZone
+                id={`container-${parentStep.id}-after-${child.id}`}
+                path={childrenPath}
+                index={idx + 1}
+                childLabel={childLabel}
+              />
+            </div>
           ))}
-          {/* Drop zone at the end - only visible when dragging over */}
-          <div
-            ref={setDropRef}
-            className={`
-              rounded border border-dashed transition-all flex items-center justify-center
-              ${isOver ? "h-8 border-primary bg-primary/10" : "h-1 border-transparent"}
-            `}
-          >
-            {isOver && (
-              <>
-                <Plus className="h-3 w-3 text-primary mr-1" />
-                <span className="text-[10px] text-primary">Drop {childLabel}</span>
-              </>
-            )}
-          </div>
         </div>
       )}
     </div>
@@ -104,11 +99,10 @@ export function ContainerChildItem({
   index,
   parentStep,
   parentPath,
-  childLabel,
+  path,
   isSelected,
   onSelect,
   onRemove,
-  colors,
 }: ContainerChildItemProps) {
   const Icon = getStepIcon(child);
   const childColors = getStepColor(child);
@@ -128,6 +122,17 @@ export function ContainerChildItem({
     },
   });
 
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `drop-child-${child.id}`,
+    data: {
+      type: "step-item",
+      stepId: child.id,
+      path,
+      index,
+      parentStepId: parentStep.id,
+    },
+  });
+
   // Format child parameters
   const paramEntries = Object.entries(child.params);
   const displayParams = paramEntries
@@ -137,7 +142,10 @@ export function ContainerChildItem({
 
   return (
     <div
-      ref={setDragRef}
+      ref={(node) => {
+        setDragRef(node);
+        setDropRef(node);
+      }}
       className={`
         group flex items-center gap-2 px-2 py-1.5 rounded text-xs cursor-pointer transition-all
         ${isBeingDragged ? "opacity-30" : "opacity-100"}
@@ -146,6 +154,7 @@ export function ContainerChildItem({
             ? `${childColors.bg} ${childColors.border} border ring-1 ${childColors.active || "ring-primary"}`
             : "hover:bg-muted/50 border border-transparent"
         }
+        ${isOver && !isBeingDragged ? "ring-1 ring-primary/50 border-primary/40" : ""}
       `}
       onClick={onSelect}
     >
@@ -186,6 +195,51 @@ export function ContainerChildItem({
         >
           <Trash2 className="h-3 w-3" />
         </Button>
+      )}
+    </div>
+  );
+}
+
+function ContainerInsertDropZone({
+  id,
+  path,
+  index,
+  childLabel,
+}: {
+  id: string;
+  path: string[];
+  index: number;
+  childLabel: string;
+}) {
+  const { dropIndicator } = usePipelineDnd();
+  const { setNodeRef, isOver } = useDroppable({
+    id,
+    data: {
+      type: "container-drop-zone",
+      path,
+      index,
+      position: "before",
+      accepts: ["preprocessing", "y_processing", "filter", "augmentation"],
+    },
+  });
+
+  const isActive =
+    dropIndicator?.path.length === path.length &&
+    dropIndicator.path.every((segment, segmentIndex) => segment === path[segmentIndex]) &&
+    dropIndicator.index === index;
+
+  const showIndicator = isOver || isActive;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`transition-all duration-100 ${showIndicator ? "py-0.5" : "h-1.5"}`}
+    >
+      {showIndicator && (
+        <div className="h-8 rounded-lg border-2 border-dashed border-primary bg-primary/5 flex items-center justify-center gap-1">
+          <Plus className="h-3 w-3 text-primary" />
+          <span className="text-[10px] font-medium text-primary">Drop {childLabel}</span>
+        </div>
       )}
     </div>
   );

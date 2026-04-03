@@ -9,6 +9,7 @@ import type {
   DropIndicator
 } from "../components/pipeline-editor/types";
 import { createStepFromOption, cloneStep } from "../components/pipeline-editor/types";
+import { getAdjustedInsertIndex } from "../components/pipeline-editor/dnd-utils";
 import { importFromNirs4all, exportToNirs4all as exportToNirs4allFormat } from "../utils/pipelineConverter";
 
 // Storage key for persisting pipeline editor state
@@ -705,8 +706,13 @@ export function usePipelineEditor(
       if (data.type === "palette-item" && data.stepType && data.option) {
         addStepAtPath(data.stepType, data.option, indicator.path, indicator.index);
       } else if (data.type === "pipeline-step" && data.stepId && data.step) {
-        // Moving an existing step
-        const newStep = cloneStep(data.step);
+        if (indicator.path.includes(data.stepId)) {
+          return;
+        }
+
+        const sourcePath = data.sourcePath ?? [];
+        const sourceIndex = getStepsAtPath(steps, sourcePath).findIndex((step) => step.id === data.stepId);
+        const insertIndex = getAdjustedInsertIndex(sourcePath, sourceIndex, indicator.path, indicator.index);
 
         // First remove from old location
         let newSteps = removeStepById(steps, data.stepId);
@@ -714,7 +720,7 @@ export function usePipelineEditor(
         // Then add at new location
         newSteps = updateStepsAtPath(newSteps, indicator.path, (targetSteps) => {
           const result = [...targetSteps];
-          result.splice(indicator.index, 0, { ...data.step!, id: data.stepId! });
+          result.splice(insertIndex, 0, { ...data.step, id: data.stepId });
           return result;
         });
 

@@ -22,7 +22,7 @@ describe("portable path helpers", () => {
     expect(resolvePortableLayout({})).toBeNull();
   });
 
-  it("derives a stable portable layout from the portable executable", () => {
+  it.skipIf(process.platform !== "win32")("derives a stable portable layout from the portable executable", () => {
     const layout = resolvePortableLayout({
       PORTABLE_EXECUTABLE_FILE: "C:\\portable\\nirs4all Studio.exe",
     });

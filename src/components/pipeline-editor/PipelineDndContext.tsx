@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import type { PipelineStep, StepType, LegacyStepType, StepOption, DragData, DropIndicator } from "./types";
 import { stepColors, getStepColor } from "./types";
+import { getStepItemDropIndicator } from "./dnd-utils";
 
 // Icons for step types
 const stepIcons: Record<LegacyStepType, typeof Waves> = {
@@ -84,16 +85,25 @@ interface PipelineDndProviderProps {
 
 // Custom collision detection that prioritizes drop zones
 const customCollisionDetection: CollisionDetection = (args) => {
+  const prioritizeDropZones = (collisions: ReturnType<typeof pointerWithin>) => {
+    const dropZoneCollisions = collisions.filter((collision) => {
+      const type = collision.data?.droppableContainer?.data.current?.type;
+      return type === "drop-zone" || type === "container-drop-zone";
+    });
+
+    return dropZoneCollisions.length > 0 ? dropZoneCollisions : collisions;
+  };
+
   // First check for pointer within (more precise for nested structures)
   const pointerCollisions = pointerWithin(args);
   if (pointerCollisions.length > 0) {
-    return pointerCollisions;
+    return prioritizeDropZones(pointerCollisions);
   }
 
   // Fall back to rect intersection
   const rectCollisions = rectIntersection(args);
   if (rectCollisions.length > 0) {
-    return rectCollisions;
+    return prioritizeDropZones(rectCollisions);
   }
 
   // Finally try closest center
@@ -132,13 +142,14 @@ export function PipelineDndProvider({ children, onDrop, onReorder }: PipelineDnd
   }, []);
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { over } = event;
+    const { active, over } = event;
 
     if (!over) {
       setDropIndicator(null);
       return;
     }
 
+    const data = active.data.current as DragData | undefined;
     const overData = over.data.current as {
       type: string;
       path?: string[];
@@ -155,12 +166,18 @@ export function PipelineDndProvider({ children, onDrop, onReorder }: PipelineDnd
         position: overData.position || "after",
       });
     } else if (overData?.type === "step-item") {
-      // Dropping on a step - figure out before/after based on position
-      setDropIndicator({
-        path: overData.path || [],
-        index: overData.index ?? 0,
-        position: "after",
-      });
+      if (data?.type === "pipeline-step" && overData.stepId === data.stepId) {
+        setDropIndicator(null);
+        return;
+      }
+
+      setDropIndicator(
+        getStepItemDropIndicator(
+          overData,
+          over.rect,
+          active.rect.current.translated ?? active.rect.current.initial
+        )
+      );
     } else {
       setDropIndicator(null);
     }
@@ -191,10 +208,32 @@ export function PipelineDndProvider({ children, onDrop, onReorder }: PipelineDnd
           position: overData.position || "after",
         };
         onDrop(data, indicator);
-      } else if (overData?.type === "step-item" && data.type === "pipeline-step") {
-        // Reordering within the pipeline
-        if (data.stepId && overData.stepId && data.stepId !== overData.stepId) {
+      } else if (overData?.type === "step-item") {
+        if (data.type === "pipeline-step" && data.stepId && overData.stepId && data.stepId === overData.stepId) {
+          setActiveData(null);
+          setDropIndicator(null);
+          setActiveId(null);
+          return;
+        }
+
+        const indicator = getStepItemDropIndicator(
+          overData,
+          over.rect,
+          active.rect.current.translated ?? active.rect.current.initial
+        );
+
+        const activeRect = active.rect.current.translated ?? active.rect.current.initial;
+
+        if (
+          data.type === "pipeline-step" &&
+          data.stepId &&
+          overData.stepId &&
+          data.stepId !== overData.stepId &&
+          !activeRect
+        ) {
           onReorder(data.stepId, overData.stepId, data);
+        } else {
+          onDrop(data, indicator);
         }
       }
     }
