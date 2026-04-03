@@ -24,6 +24,8 @@ import {
   Lightbulb,
   Layers,
   Zap,
+  Box,
+  RefreshCw,
 } from "lucide-react";
 import {
   Collapsible,
@@ -54,9 +56,13 @@ export interface ExecutionBreakdown {
   finetuningTrials: number;
   cvFolds: number;
   totalFits: number;
+  totalPipelines: number;
+  totalModels: number;
   modelsWithFinetuning: number;
   modelsWithSweeps: number;
   modelsWithGenerators: number;
+  modelsWithRefit: number;
+  modelCount: number;
 }
 
 export interface ExecutionPreviewPanelProps {
@@ -76,6 +82,8 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
   let modelsWithFinetuning = 0;
   let modelsWithSweeps = 0;
   let modelsWithGenerators = 0;
+  let modelsWithRefit = 0;
+  let modelCount = 0;
 
   function processSteps(stepList: PipelineStep[]) {
     for (const step of stepList) {
@@ -113,10 +121,18 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
         }
       }
 
-      // Check for finetuning
-      if (step.type === "model" && step.finetuneConfig?.enabled) {
-        finetuningTrials += step.finetuneConfig.n_trials ?? 50;
-        modelsWithFinetuning++;
+      // Count models and their configurations
+      if (step.type === "model") {
+        modelCount++;
+        // Refit is on by default
+        if (step.refitConfig?.enabled ?? true) {
+          modelsWithRefit++;
+        }
+        // Finetuning
+        if (step.finetuneConfig?.enabled) {
+          finetuningTrials += step.finetuneConfig.n_trials ?? 50;
+          modelsWithFinetuning++;
+        }
       }
 
       // Process nested branches (non-generator)
@@ -130,9 +146,15 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
 
   processSteps(steps);
 
-  // Calculate total fits
-  // Formula: sweepVariants × generatorVariants × (finetuningTrials if any, else 1) × cvFolds
-  const totalFits = sweepVariants * generatorVariants * Math.max(1, finetuningTrials) * cvFolds;
+  // Total distinct pipeline configurations
+  const totalPipelines = sweepVariants * generatorVariants;
+
+  // Total fits = pipelines × (finetuning trials or 1) × CV folds
+  const totalFits = totalPipelines * Math.max(1, finetuningTrials) * cvFolds;
+
+  // Total trained models = CV fits + refit models (1 per pipeline if refit enabled)
+  const refitModels = modelsWithRefit > 0 ? totalPipelines : 0;
+  const totalModels = totalFits + refitModels;
 
   return {
     sweepVariants,
@@ -140,9 +162,13 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
     finetuningTrials,
     cvFolds,
     totalFits,
+    totalPipelines,
+    totalModels,
     modelsWithFinetuning,
     modelsWithSweeps,
     modelsWithGenerators,
+    modelsWithRefit,
+    modelCount,
   };
 }
 
@@ -459,7 +485,22 @@ export function ExecutionPreviewPanel({
   );
 }
 
-// Compact version for header/inline use
+// Build the formula string for total models
+function buildFormulaString(breakdown: ExecutionBreakdown): string {
+  const parts: string[] = [];
+  if (breakdown.totalPipelines > 1) {
+    const pipelineParts: string[] = [];
+    if (breakdown.sweepVariants > 1) pipelineParts.push(`${breakdown.sweepVariants} sweeps`);
+    if (breakdown.generatorVariants > 1) pipelineParts.push(`${breakdown.generatorVariants} generators`);
+    parts.push(pipelineParts.length > 0 ? pipelineParts.join(" × ") : `${breakdown.totalPipelines}`);
+  }
+  if (breakdown.finetuningTrials > 0) parts.push(`${breakdown.finetuningTrials} trials`);
+  parts.push(`${breakdown.cvFolds} folds`);
+  if (breakdown.modelsWithRefit > 0) parts.push("refit");
+  return parts.join(" × ");
+}
+
+// Compact version for header/inline use — two capsules: "X models" + "Y fits"
 export function ExecutionPreviewCompact({
   steps,
   variantCount,
@@ -469,56 +510,56 @@ export function ExecutionPreviewCompact({
 }) {
   const breakdown = useMemo(() => analyzeExecution(steps), [steps]);
   const severity = getFitsSeverity(breakdown.totalFits);
-  const severityColor = getSeverityColor(severity);
 
   if (steps.length === 0) return null;
 
+  const severityClass =
+    severity === "low" ? "border-emerald-500/30 text-emerald-500"
+    : severity === "medium" ? "border-amber-500/30 text-amber-500"
+    : severity === "high" ? "border-orange-500/30 text-orange-500"
+    : "border-red-500/30 text-red-500";
+
   return (
     <div className="flex items-center gap-2 text-xs">
+      {/* Capsule 1: Total trained models */}
       <Popover>
         <PopoverTrigger asChild>
           <Badge
             variant="outline"
-            className={`gap-1 cursor-pointer transition-colors hover:bg-accent ${
-              severity === "low"
-                ? "border-emerald-500/30 text-emerald-500"
-                : severity === "medium"
-                ? "border-amber-500/30 text-amber-500"
-                : severity === "high"
-                ? "border-orange-500/30 text-orange-500"
-                : "border-red-500/30 text-red-500"
-            }`}
+            className={`gap-1 cursor-pointer transition-colors hover:bg-accent ${severityClass}`}
           >
-            <Calculator className="h-3 w-3" />
-            <span>{formatVariantCount(breakdown.totalFits)} fits</span>
+            <Box className="h-3 w-3" />
+            <span>{formatVariantCount(breakdown.totalModels)} model{breakdown.totalModels !== 1 ? "s" : ""} trained</span>
           </Badge>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 bg-popover">
+        <PopoverContent align="start" className="w-80 bg-popover">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">Execution Summary</h4>
-              <span className={`text-lg font-bold ${severityColor}`}>
-                {breakdown.totalFits.toLocaleString()}
+              <h4 className="text-sm font-medium">Training Summary</h4>
+              <span className={`text-lg font-bold ${getSeverityColor(severity)}`}>
+                {breakdown.totalModels.toLocaleString()}
               </span>
             </div>
 
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Breakdown:</p>
-              {breakdown.sweepVariants > 1 && (
+              {breakdown.totalPipelines > 1 && (
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Repeat className="h-3 w-3" />
-                    Sweep Variants
+                    Pipeline configurations
                   </span>
+                  <span className="font-mono">{breakdown.totalPipelines.toLocaleString()}</span>
+                </div>
+              )}
+              {breakdown.sweepVariants > 1 && (
+                <div className="flex items-center justify-between text-xs pl-4">
+                  <span className="text-muted-foreground">Sweep variants</span>
                   <span className="font-mono">{breakdown.sweepVariants.toLocaleString()}</span>
                 </div>
               )}
               {breakdown.generatorVariants > 1 && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Sparkles className="h-3 w-3 text-orange-500" />
-                    Generator Variants
-                  </span>
+                <div className="flex items-center justify-between text-xs pl-4">
+                  <span className="text-muted-foreground">Generator variants</span>
                   <span className="font-mono">{breakdown.generatorVariants.toLocaleString()}</span>
                 </div>
               )}
@@ -526,7 +567,7 @@ export function ExecutionPreviewCompact({
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Sparkles className="h-3 w-3 text-purple-500" />
-                    Finetuning Trials
+                    Finetuning trials
                   </span>
                   <span className="font-mono">{breakdown.finetuningTrials.toLocaleString()}</span>
                 </div>
@@ -534,18 +575,80 @@ export function ExecutionPreviewCompact({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-1.5">
                   <Layers className="h-3 w-3" />
-                  CV Folds
+                  CV folds
                 </span>
                 <span className="font-mono">{breakdown.cvFolds}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Calculator className="h-3 w-3" />
+                  CV fits
+                </span>
+                <span className="font-mono">{breakdown.totalFits.toLocaleString()}</span>
+              </div>
+              {breakdown.modelsWithRefit > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <RefreshCw className="h-3 w-3 text-teal-500" />
+                    Refit models
+                  </span>
+                  <span className="font-mono">+{breakdown.totalPipelines.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-border space-y-1">
+              <p className="text-[11px] text-muted-foreground font-mono">
+                {buildFormulaString(breakdown)} = {breakdown.totalModels.toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Total model training operations when you run this pipeline.
+              </p>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Capsule 2: Total fits (CV training operations) */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Badge
+            variant="outline"
+            className={`gap-1 cursor-pointer transition-colors hover:bg-accent ${severityClass}`}
+          >
+            <Calculator className="h-3 w-3" />
+            <span>{formatVariantCount(breakdown.totalFits)} fit{breakdown.totalFits !== 1 ? "s" : ""}</span>
+          </Badge>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 bg-popover">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">CV Fits Breakdown</h4>
+              <span className={`text-lg font-bold ${getSeverityColor(severity)}`}>
+                {breakdown.totalFits.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Pipelines</span>
+                <span className="font-mono">{breakdown.totalPipelines.toLocaleString()}</span>
+              </div>
+              {breakdown.finetuningTrials > 0 && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Finetuning trials</span>
+                  <span className="font-mono">×{breakdown.finetuningTrials}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">CV folds</span>
+                <span className="font-mono">×{breakdown.cvFolds}</span>
               </div>
             </div>
 
             <div className="pt-2 border-t border-border">
-              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-                <Calculator className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                <span>
-                  Total model training operations when you run this pipeline.
-                </span>
+              <p className="text-xs text-muted-foreground">
+                Cross-validation training operations (excludes refit).
               </p>
             </div>
           </div>

@@ -18,6 +18,16 @@
     "source": "nirs4all",
     "parameters": [
       {
+        "name": "filter_mode",
+        "type": "select",
+        "default": "remove",
+        "options": [
+          { "value": "remove", "label": "Remove samples" },
+          { "value": "tag", "label": "Tag as outliers" }
+        ],
+        "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization."
+      },
+      {
         "name": "method",
         "type": "select",
         "default": "iqr",
@@ -95,6 +105,16 @@
     ],
     "source": "nirs4all",
     "parameters": [
+      {
+        "name": "filter_mode",
+        "type": "select",
+        "default": "remove",
+        "options": [
+          { "value": "remove", "label": "Remove samples" },
+          { "value": "tag", "label": "Tag as outliers" }
+        ],
+        "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization."
+      },
       {
         "name": "method",
         "type": "select",
@@ -198,6 +218,16 @@
     "source": "nirs4all",
     "parameters": [
       {
+        "name": "filter_mode",
+        "type": "select",
+        "default": "remove",
+        "options": [
+          { "value": "remove", "label": "Remove samples" },
+          { "value": "tag", "label": "Tag as outliers" }
+        ],
+        "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization."
+      },
+      {
         "name": "max_nan_ratio",
         "type": "float",
         "default": 0.1,
@@ -264,6 +294,16 @@
     ],
     "source": "nirs4all",
     "parameters": [
+      {
+        "name": "filter_mode",
+        "type": "select",
+        "default": "remove",
+        "options": [
+          { "value": "remove", "label": "Remove samples" },
+          { "value": "tag", "label": "Tag as outliers" }
+        ],
+        "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization."
+      },
       {
         "name": "method",
         "type": "select",
@@ -338,8 +378,18 @@
     "source": "nirs4all",
     "parameters": [
       {
+        "name": "filter_mode",
+        "type": "select",
+        "default": "remove",
+        "options": [
+          { "value": "remove", "label": "Remove samples" },
+          { "value": "tag", "label": "Tag as outliers" }
+        ],
+        "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization."
+      },
+      {
         "name": "column",
-        "type": "string",
+        "type": "metadata_column",
         "default": "",
         "required": true,
         "description": "Name of the metadata column to filter on"
@@ -348,13 +398,15 @@
         "name": "values_to_exclude",
         "type": "array",
         "default": null,
-        "description": "List of values to exclude. Samples with these values are removed."
+        "description": "List of values to exclude. Samples with these values are removed.",
+        "dynamicSource": "metadata_values"
       },
       {
         "name": "values_to_keep",
         "type": "array",
         "default": null,
-        "description": "List of values to keep. Only samples with these values are retained."
+        "description": "List of values to keep. Only samples with these values are retained.",
+        "dynamicSource": "metadata_values"
       },
       {
         "name": "exclude_missing",

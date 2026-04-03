@@ -1,13 +1,24 @@
 import fs from "node:fs";
+import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const childProcessMocks = vi.hoisted(() => ({
+  execFile: vi.fn(),
+  spawn: vi.fn(),
+}));
+
 const fakeApp = {
   getPath: vi.fn(),
   getVersion: vi.fn(() => "0.3.1"),
 };
+
+vi.mock("node:child_process", () => ({
+  execFile: childProcessMocks.execFile,
+  spawn: childProcessMocks.spawn,
+}));
 
 vi.mock("electron", () => ({
   default: {
@@ -29,6 +40,8 @@ function makeUserDataDir(): string {
 
 afterEach(() => {
   vi.resetModules();
+  childProcessMocks.execFile.mockReset();
+  childProcessMocks.spawn.mockReset();
   fakeApp.getPath.mockReset();
   fakeApp.getVersion.mockReset();
   fakeApp.getVersion.mockReturnValue("0.3.1");
@@ -80,5 +93,60 @@ describe("EnvManager", () => {
     await expect(manager.ensureBackendPackages()).rejects.toThrow(
       "Python environment is not configured or is missing",
     );
+  });
+
+  it("repairs missing packages without routing pip installs through a shell", async () => {
+    const userDataDir = makeUserDataDir();
+    const settingsPath = path.join(userDataDir, "env-settings.json");
+    const pythonPath = path.join(userDataDir, "runtime", "python.exe");
+
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        pythonPath,
+        appVersion: "0.3.1",
+      }),
+    );
+
+    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (error: Error | null) => void;
+      callback(new Error("missing packages"));
+    });
+
+    childProcessMocks.spawn.mockImplementation(() => {
+      const proc = new EventEmitter() as EventEmitter & {
+        pid: number;
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
+      proc.pid = 1234;
+      proc.stderr = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      process.nextTick(() => proc.emit("close", 0));
+      return proc;
+    });
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    await expect(manager.ensureBackendPackages({ timeoutMs: 1000 })).resolves.toBeUndefined();
+
+    const spawnCalls = childProcessMocks.spawn.mock.calls;
+    expect(spawnCalls.length).toBeGreaterThanOrEqual(2);
+    expect(
+      spawnCalls.some(
+        ([command, args]) =>
+          command === pythonPath &&
+          Array.isArray(args) &&
+          args.includes("pip") &&
+          args.includes("install"),
+      ),
+    ).toBe(true);
+
+    for (const [, , options] of spawnCalls) {
+      expect(options).toMatchObject({ shell: false });
+    }
   });
 });

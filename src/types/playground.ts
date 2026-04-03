@@ -227,6 +227,7 @@ export interface FilterResult {
   name: string;
   removed_count: number;
   reason?: string;
+  mode?: 'remove' | 'tag';
 }
 
 /**
@@ -236,6 +237,10 @@ export interface FilterInfo {
   filters_applied: FilterResult[];
   total_removed: number;
   final_mask: boolean[];
+  /** Indices of samples tagged (not removed) by each filter in tag mode */
+  tagged_samples?: Record<string, number[]>;
+  /** Union mask of all tagged samples (True = tagged) */
+  tag_mask?: boolean[];
 }
 
 /**
@@ -484,6 +489,8 @@ export interface OperatorParamInfo {
   description?: string;
   /** Whether this is an advanced parameter (hidden by default) */
   isAdvanced?: boolean;
+  /** Dynamic data source for runtime-populated options (e.g., "metadata_values") */
+  dynamicSource?: string;
 }
 
 /**

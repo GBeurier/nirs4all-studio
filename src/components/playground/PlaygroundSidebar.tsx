@@ -244,6 +244,7 @@ export function PlaygroundSidebar({
               isProcessing={isProcessing || isFetching}
               stepErrors={stepErrors}
               filterInfo={filterInfo}
+              datasetId={currentDatasetInfo?.datasetId}
               onUpdate={onUpdateOperator}
               onUpdateParams={onUpdateOperatorParams}
               onRemove={onRemoveOperator}

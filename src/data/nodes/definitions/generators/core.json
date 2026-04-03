@@ -55,7 +55,6 @@
         "name": "count",
         "type": "int",
         "description": "Maximum number of generated variants (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 5
@@ -109,7 +108,6 @@
         "name": "count",
         "type": "int",
         "description": "Maximum number of generated variants (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 3
@@ -147,7 +145,6 @@
         "name": "count",
         "type": "int",
         "description": "Maximum number of generated variants (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 1
@@ -185,7 +182,6 @@
         "name": "count",
         "type": "int",
         "description": "Maximum number of generated variants (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 1
@@ -223,7 +219,6 @@
         "name": "count",
         "type": "int",
         "description": "Limit to first N items (or random N if seed is set, 0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 1
@@ -323,7 +318,6 @@
         "name": "count",
         "type": "int",
         "description": "Maximum number of results (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 7
@@ -384,7 +378,6 @@
         "name": "count",
         "type": "int",
         "description": "Limit to N random samples (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 4
@@ -457,7 +450,6 @@
         "name": "count",
         "type": "int",
         "description": "Limit to N random samples (0 = no limit).",
-        "default": 0,
         "min": 0,
         "group": "limits",
         "order": 5

@@ -532,13 +532,14 @@ export function SpectraChartV2({
     return 'hsl(var(--muted-foreground))';
   }, [globalColorConfig, computedColorContext]);
 
-  // Get color for a sample based on color config (including selection)
+  // Get color for a sample based on color config (including selection and outliers)
   const getColor = useCallback((displayIdx: number, isOriginal: boolean) => {
     const sampleIdx = displayIndices[displayIdx];
     const isSelected = selectedSamples.has(sampleIdx);
     const isHovered = hoveredSample === sampleIdx;
     const isPinned = pinnedSamples.has(sampleIdx);
     const hasSelection = selectedSamples.size > 0;
+    const isOutlier = computedColorContext.outlierIndices?.has(sampleIdx) ?? false;
 
     // In "selected_only" mode, don't apply selection overlay - keep global coloration
     // The samples shown are already filtered to selected ones
@@ -552,6 +553,16 @@ export function SpectraChartV2({
     } else {
       // In selected_only mode, only show hover highlight (not selection color)
       if (isHovered) return HIGHLIGHT_COLORS.hovered;
+    }
+
+    // Outlier color mode: red for outliers, grey for rest
+    if (globalColorConfig?.mode === 'outlier') {
+      return isOutlier ? HIGHLIGHT_COLORS.outlier : HIGHLIGHT_COLORS.unselected;
+    }
+
+    // Outlier overlay in other color modes: show outliers as red
+    if (isOutlier && globalColorConfig?.showOutlierOverlay !== false) {
+      return HIGHLIGHT_COLORS.outlier;
     }
 
     const baseColor = getBaseColor(sampleIdx);
@@ -570,7 +581,7 @@ export function SpectraChartV2({
     }
 
     return baseColor;
-  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor]);
+  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor, computedColorContext.outlierIndices, globalColorConfig]);
 
   // Compute sample colors for WebGL to match Canvas coloring
   // Uses getWebGLSampleColor which includes selection/outlier mode handling

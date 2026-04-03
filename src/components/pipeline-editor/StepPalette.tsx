@@ -366,6 +366,9 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         {registryContext?.error && (
           <div className="text-[10px] text-destructive">{registryContext.error.message}</div>
         )}
+        {registryContext?.extendedError && (
+          <div className="text-[10px] text-amber-600 dark:text-amber-400">Extended operators unavailable</div>
+        )}
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

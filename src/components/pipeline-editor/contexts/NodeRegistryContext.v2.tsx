@@ -127,8 +127,10 @@ export interface NodeRegistryContextValue {
   getCategoryConfig: (type: StepType) => CategoryConfig | undefined;
   /** Check if registry is loading */
   isLoading: boolean;
-  /** Any loading errors */
+  /** Fatal loading error (base registry failed — no operators available) */
   error: Error | null;
+  /** Non-fatal error loading extended registry (base operators still available) */
+  extendedError: Error | null;
   /** Whether using JSON registry (true) or legacy stepOptions (false) */
   isJsonRegistry: boolean;
   /** Registry version info */
@@ -414,7 +416,8 @@ export function NodeRegistryProvider({
           registry.getCategoryConfig(type as NodeType),
 
         isLoading: isLoading || isLoadingExtended,
-        error: error ?? (extendedMode ? extendedError : null),
+        error: error ?? null,
+        extendedError: extendedMode ? extendedError : null,
         isJsonRegistry: true,
         version: {
           registry: registry.version,
@@ -500,6 +503,7 @@ export function NodeRegistryProvider({
 
       isLoading: false,
       error: null,
+      extendedError: null,
       isJsonRegistry: false,
       version: {
         registry: "1.0.0-legacy",

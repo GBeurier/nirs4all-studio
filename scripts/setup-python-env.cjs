@@ -113,7 +113,7 @@ function copyDirSync(src, dest, excludePatterns = ["__pycache__"]) {
 
 function isGnuTar() {
   return new Promise((resolve) => {
-    execFile("tar", ["--version"], { shell: isWindows }, (err, stdout) => {
+    execFile("tar", ["--version"], { windowsHide: isWindows }, (err, stdout) => {
       resolve(!err && stdout.includes("GNU tar"));
     });
   });
@@ -124,7 +124,8 @@ function runCommand(command, args, options = {}) {
     console.log(`  Running: ${command} ${args.join(" ")}`);
     const proc = spawn(command, args, {
       stdio: "inherit",
-      shell: isWindows,
+      shell: false,
+      windowsHide: isWindows,
       cwd: projectRoot,
       ...options,
     });

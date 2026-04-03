@@ -6,7 +6,8 @@
  * Shows filter statistics ("N samples removed") for filter operators.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle, Trash2, Filter, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -23,7 +24,9 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useSliderWithCommit, useCommittedInput } from '@/lib/playground/debounce';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { UnifiedOperator, OperatorParamInfo, FilterResult } from '@/types/playground';
+import { fetchMetadataColumns, type MetadataColumnInfo } from '@/api/playground';
 
 interface UnifiedOperatorCardProps {
   operator: UnifiedOperator;
@@ -31,7 +34,9 @@ interface UnifiedOperatorCardProps {
   paramDefs?: Record<string, OperatorParamInfo>;
   description?: string;
   /** Filter statistics from execution result - name is optional since we key by operator name externally */
-  filterStats?: { removed_count: number; reason?: string };
+  filterStats?: { removed_count: number; reason?: string; mode?: 'remove' | 'tag' };
+  /** Current dataset ID for dynamic parameter fetching (e.g., MetadataFilter) */
+  datasetId?: string;
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
   onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
@@ -48,6 +53,7 @@ export function UnifiedOperatorCard({
   paramDefs,
   description,
   filterStats,
+  datasetId,
   onUpdate,
   onUpdateParams,
   onRemove,
@@ -128,7 +134,25 @@ export function UnifiedOperatorCard({
                 </Tooltip>
               )}
               {/* Filter statistics badge */}
-              {hasFilterStats && (
+              {hasFilterStats && filterStats.mode === 'tag' ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className="h-4 px-1.5 text-[10px] font-medium gap-0.5 cursor-help border-amber-500/50 text-amber-600 dark:text-amber-400"
+                    >
+                      <AlertCircle className="w-2.5 h-2.5" />
+                      {filterStats.removed_count} tagged
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    <p className="text-xs">
+                      {filterStats.removed_count} sample{filterStats.removed_count !== 1 ? 's' : ''} tagged as outliers (visible in charts)
+                      {filterStats.reason && `: ${filterStats.reason}`}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : hasFilterStats ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Badge
@@ -146,7 +170,7 @@ export function UnifiedOperatorCard({
                     </p>
                   </TooltipContent>
                 </Tooltip>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -214,6 +238,8 @@ export function UnifiedOperatorCard({
             <DynamicParamRenderer
               params={operator.params}
               paramDefs={paramDefs}
+              operatorName={operator.name}
+              datasetId={datasetId}
               onUpdate={(key, value) => onUpdateParams(operator.id, { [key]: value })}
             />
           </div>
@@ -227,10 +253,12 @@ export function UnifiedOperatorCard({
 interface DynamicParamRendererProps {
   params: Record<string, unknown>;
   paramDefs: Record<string, OperatorParamInfo>;
+  operatorName?: string;
+  datasetId?: string;
   onUpdate: (key: string, value: unknown) => void;
 }
 
-function DynamicParamRenderer({ params, paramDefs, onUpdate }: DynamicParamRendererProps) {
+function DynamicParamRenderer({ params, paramDefs, operatorName, datasetId, onUpdate }: DynamicParamRendererProps) {
   // Filter out internal and advanced params, render user-facing ones
   const visibleParams = Object.entries(paramDefs).filter(([key, info]) => {
     if (key.startsWith('_')) return false;
@@ -250,6 +278,9 @@ function DynamicParamRenderer({ params, paramDefs, onUpdate }: DynamicParamRende
           paramKey={key}
           paramInfo={info}
           value={params[key] ?? info.default}
+          operatorName={operatorName}
+          datasetId={datasetId}
+          allParams={params}
           onUpdate={onUpdate}
         />
       ))}
@@ -262,13 +293,41 @@ interface ParamInputProps {
   paramKey: string;
   paramInfo: OperatorParamInfo;
   value: unknown;
+  operatorName?: string;
+  datasetId?: string;
+  allParams?: Record<string, unknown>;
   onUpdate: (key: string, value: unknown) => void;
 }
 
-function ParamInput({ paramKey, paramInfo, value, onUpdate }: ParamInputProps) {
-  const displayName = paramInfo.description
-    ? paramKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    : paramKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+function ParamInput({ paramKey, paramInfo, value, operatorName, datasetId, allParams, onUpdate }: ParamInputProps) {
+  const displayName = paramKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  // Metadata column selector (for MetadataFilter)
+  if (paramInfo.type === 'metadata_column') {
+    return (
+      <MetadataColumnSelect
+        paramKey={paramKey}
+        displayName={displayName}
+        value={String(value ?? '')}
+        datasetId={datasetId}
+        onUpdate={onUpdate}
+      />
+    );
+  }
+
+  // Dynamic array with metadata values (for MetadataFilter values_to_exclude/values_to_keep)
+  if (paramInfo.type === 'array' && paramInfo.dynamicSource === 'metadata_values') {
+    return (
+      <MetadataValueSelect
+        paramKey={paramKey}
+        displayName={displayName}
+        value={value as (string | number | boolean | null)[] | null}
+        datasetId={datasetId}
+        column={String(allParams?.column ?? '')}
+        onUpdate={onUpdate}
+      />
+    );
+  }
 
   // Determine input type
   if (paramInfo.type === 'bool' || typeof value === 'boolean') {
@@ -455,6 +514,151 @@ function NumericParamInput({
         step={step}
         className="mt-2"
       />
+    </div>
+  );
+}
+
+// MetadataFilter: dynamic column selector
+function MetadataColumnSelect({
+  paramKey,
+  displayName,
+  value,
+  datasetId,
+  onUpdate,
+}: {
+  paramKey: string;
+  displayName: string;
+  value: string;
+  datasetId?: string;
+  onUpdate: (key: string, value: unknown) => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['metadata-columns', datasetId],
+    queryFn: ({ signal }) => fetchMetadataColumns(datasetId!, signal),
+    enabled: !!datasetId,
+    staleTime: 60_000,
+  });
+
+  const columns = data?.columns ?? [];
+
+  if (!datasetId) {
+    return (
+      <div>
+        <Label className="text-xs text-muted-foreground">{displayName}</Label>
+        <p className="text-xs text-muted-foreground mt-1">Load a dataset to see available columns</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <Label className="text-xs text-muted-foreground">{displayName}</Label>
+      <Select
+        value={value || undefined}
+        onValueChange={(v) => onUpdate(paramKey, v)}
+      >
+        <SelectTrigger className="h-8 text-xs mt-1">
+          <SelectValue placeholder={isLoading ? 'Loading...' : 'Select column'} />
+        </SelectTrigger>
+        <SelectContent>
+          {columns.length === 0 && !isLoading && (
+            <SelectItem value="__none__" disabled className="text-xs text-muted-foreground">
+              No metadata columns available
+            </SelectItem>
+          )}
+          {columns.map((col) => (
+            <SelectItem key={col.name} value={col.name} className="text-xs">
+              {col.name} ({col.n_unique} values)
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+// MetadataFilter: dynamic value multi-select
+function MetadataValueSelect({
+  paramKey,
+  displayName,
+  value,
+  datasetId,
+  column,
+  onUpdate,
+}: {
+  paramKey: string;
+  displayName: string;
+  value: (string | number | boolean | null)[] | null;
+  datasetId?: string;
+  column: string;
+  onUpdate: (key: string, value: unknown) => void;
+}) {
+  const { data } = useQuery({
+    queryKey: ['metadata-columns', datasetId],
+    queryFn: ({ signal }) => fetchMetadataColumns(datasetId!, signal),
+    enabled: !!datasetId,
+    staleTime: 60_000,
+  });
+
+  const columnInfo = useMemo(
+    () => data?.columns?.find((c) => c.name === column),
+    [data?.columns, column]
+  );
+
+  const uniqueValues = columnInfo?.unique_values ?? [];
+  const selectedValues = value ?? [];
+
+  if (!column) {
+    return (
+      <div>
+        <Label className="text-xs text-muted-foreground">{displayName}</Label>
+        <p className="text-xs text-muted-foreground mt-1">Select a column first</p>
+      </div>
+    );
+  }
+
+  if (uniqueValues.length === 0) {
+    return (
+      <div>
+        <Label className="text-xs text-muted-foreground">{displayName}</Label>
+        <p className="text-xs text-muted-foreground mt-1">No values found</p>
+      </div>
+    );
+  }
+
+  const toggleValue = (val: string | number | boolean | null) => {
+    const isSelected = selectedValues.includes(val);
+    const newValues = isSelected
+      ? selectedValues.filter((v) => v !== val)
+      : [...selectedValues, val];
+    onUpdate(paramKey, newValues.length > 0 ? newValues : null);
+  };
+
+  return (
+    <div>
+      <Label className="text-xs text-muted-foreground">
+        {displayName} {selectedValues.length > 0 && `(${selectedValues.length})`}
+      </Label>
+      <div className="mt-1 max-h-32 overflow-y-auto space-y-1 rounded border border-border p-1.5">
+        {uniqueValues.map((val) => {
+          const strVal = String(val ?? 'null');
+          return (
+            <label key={strVal} className="flex items-center gap-2 cursor-pointer text-xs hover:bg-accent/50 rounded px-1 py-0.5">
+              <Checkbox
+                checked={selectedValues.includes(val)}
+                onCheckedChange={() => toggleValue(val)}
+                className="h-3.5 w-3.5"
+              />
+              <span className="truncate">{strVal}</span>
+            </label>
+          );
+        })}
+        {columnInfo && columnInfo.n_unique > uniqueValues.length && (
+          <p className="text-[10px] text-muted-foreground px-1">
+            Showing {uniqueValues.length} of {columnInfo.n_unique} values
+          </p>
+        )}
+      </div>
     </div>
   );
 }

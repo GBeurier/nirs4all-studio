@@ -60,6 +60,7 @@ import {
   type FilterDataContext,
 } from '@/context/FilterContext';
 import { useReferenceDatasetOptional } from '@/context/ReferenceDatasetContext';
+import { useOutliers } from '@/context/OutliersContext';
 import {
   useRenderOptimizer,
   type RenderMode,
@@ -556,12 +557,15 @@ export function MainCanvas({
     return null;
   }, [rawData?.metadata]);
 
-  // Memoize outlier indices separately - these only depend on outlier result, not selections
+  // Merge outlier indices from explicit detection AND from OutliersContext (filter tag mode)
+  const { allOutliers: contextOutliers } = useOutliers();
   const outlierIndicesSet = useMemo(() => {
-    return lastOutlierResult
-      ? new Set(lastOutlierResult.outlier_indices)
-      : undefined;
-  }, [lastOutlierResult]);
+    const fromDetection = lastOutlierResult ? lastOutlierResult.outlier_indices : [];
+    if (fromDetection.length === 0 && contextOutliers.size === 0) return undefined;
+    const merged = new Set(fromDetection);
+    for (const idx of contextOutliers) merged.add(idx);
+    return merged;
+  }, [lastOutlierResult, contextOutliers]);
 
   // Convert metadata format
   const columnMetadata = useMemo((): Record<string, unknown[]> | undefined => {

@@ -456,7 +456,13 @@ export function GeneratorRenderer({
   onRemove,
   onDuplicate,
 }: StepRendererProps) {
-  const generatorKind = (step.generatorKind || "or") as string;
+  const generatorKind = (() => {
+    if (step.generatorKind) return step.generatorKind as string;
+    console.warn(
+      `[GeneratorRenderer] step "${step.id}" (${step.name}) missing generatorKind, defaulting to "or"`
+    );
+    return "or";
+  })();
   const meta = getKindMeta(generatorKind);
   const Icon = meta.icon;
 

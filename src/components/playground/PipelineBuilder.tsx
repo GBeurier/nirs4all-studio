@@ -28,6 +28,8 @@ interface PipelineBuilderProps {
   stepErrors?: StepError[];
   /** Filter statistics from execution result */
   filterInfo?: FilterInfo;
+  /** Current dataset ID for dynamic parameter fetching (e.g., MetadataFilter) */
+  datasetId?: string;
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
   onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
@@ -64,6 +66,7 @@ function nodeParamsToOperatorParams(node: NodeDefinition | undefined): Record<st
       options: param.options as OperatorParamInfo['options'],
       description: param.description,
       isAdvanced: param.isAdvanced,
+      dynamicSource: (param as Record<string, unknown>).dynamicSource as string | undefined,
     };
   }
   return result;
@@ -74,6 +77,7 @@ export function PipelineBuilder({
   isProcessing = false,
   stepErrors = [],
   filterInfo,
+  datasetId,
   onUpdate,
   onUpdateParams,
   onRemove,
@@ -113,12 +117,13 @@ export function PipelineBuilder({
 
   // Build filter stats map by operator name
   const filterStatsMap = useMemo(() => {
-    const map = new Map<string, { removed_count: number; reason?: string }>();
+    const map = new Map<string, { removed_count: number; reason?: string; mode?: 'remove' | 'tag' }>();
     if (filterInfo?.filters_applied) {
       for (const filter of filterInfo.filters_applied) {
         map.set(filter.name, {
           removed_count: filter.removed_count,
           reason: filter.reason,
+          mode: filter.mode,
         });
       }
     }
@@ -250,6 +255,7 @@ export function PipelineBuilder({
                 paramDefs={paramDefs}
                 description={nodeDef?.description}
                 filterStats={filterStats}
+                datasetId={datasetId}
                 onUpdate={onUpdate}
                 onUpdateParams={onUpdateParams}
                 onRemove={onRemove}

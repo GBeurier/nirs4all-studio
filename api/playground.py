@@ -232,6 +232,7 @@ class PlaygroundExecutor:
         X_np=None,
         y_np=None,
         wavelengths_np: list[float] | None = None,
+        metadata_np: dict[str, Any] | None = None,
     ) -> ExecuteResponse:
         """Execute pipeline on data.
 
@@ -243,6 +244,7 @@ class PlaygroundExecutor:
             X_np: Pre-converted numpy X array (avoids list→numpy conversion)
             y_np: Pre-converted numpy y array (avoids list→numpy conversion)
             wavelengths_np: Pre-extracted wavelength list (avoids re-extraction)
+            metadata_np: Pre-converted metadata dict of numpy arrays
 
         Returns:
             ExecuteResponse with results and traces
@@ -264,7 +266,9 @@ class PlaygroundExecutor:
 
         # Convert metadata to numpy arrays if provided
         metadata = None
-        if data.metadata:
+        if metadata_np is not None:
+            metadata = metadata_np
+        elif data.metadata:
             metadata = {k: np.array(v) for k, v in data.metadata.items()}
 
         # Subset mode: when 'visible', select a representative subset BEFORE processing
@@ -397,18 +401,40 @@ class PlaygroundExecutor:
                         step, X_processed, y_sampled, metadata_sampled
                     )
                     removed_count = int(np.sum(~step_mask))
-                    total_filtered += removed_count
+                    filter_mode = filter_result.get("filter_mode", "remove")
 
-                    # Update original-length mask for response (maps back to X_sampled indices)
-                    filter_mask[kept_indices[~step_mask]] = False
-                    kept_indices = kept_indices[step_mask]
+                    # Initialize filter_info if needed
+                    if filter_info is None:
+                        filter_info = {
+                            "filters_applied": [],
+                            "total_removed": 0,
+                            "final_mask": filter_mask.tolist(),
+                            "tagged_samples": {},
+                            "tag_mask": [False] * len(filter_mask),
+                        }
+                    if "tagged_samples" not in filter_info:
+                        filter_info["tagged_samples"] = {}
+                        filter_info["tag_mask"] = [False] * len(filter_mask)
 
-                    # Actually filter the data
-                    X_processed = X_processed[step_mask]
-                    if y_sampled is not None:
-                        y_sampled = y_sampled[step_mask]
-                    if metadata_sampled is not None:
-                        metadata_sampled = {k: v[step_mask] for k, v in metadata_sampled.items()}
+                    if filter_mode == "tag":
+                        # Non-destructive: record tagged indices but keep all samples
+                        original_tagged = kept_indices[~step_mask].tolist()
+                        filter_info["tagged_samples"][step.name] = original_tagged
+                        # Update tag_mask (union of all tagged)
+                        tag_mask = filter_info["tag_mask"]
+                        for idx in original_tagged:
+                            tag_mask[idx] = True
+                        filter_info["tag_mask"] = tag_mask
+                    else:
+                        # Destructive: remove samples from arrays
+                        total_filtered += removed_count
+                        filter_mask[kept_indices[~step_mask]] = False
+                        kept_indices = kept_indices[step_mask]
+                        X_processed = X_processed[step_mask]
+                        if y_sampled is not None:
+                            y_sampled = y_sampled[step_mask]
+                        if metadata_sampled is not None:
+                            metadata_sampled = {k: v[step_mask] for k, v in metadata_sampled.items()}
 
                     trace = StepTrace(
                         step_id=step.id,
@@ -418,17 +444,11 @@ class PlaygroundExecutor:
                         output_shape=list(X_processed.shape)
                     )
 
-                    # Store filter info
-                    if filter_info is None:
-                        filter_info = {
-                            "filters_applied": [],
-                            "total_removed": 0,
-                            "final_mask": filter_mask.tolist(),
-                        }
                     filter_info["filters_applied"].append({
                         "name": step.name,
                         "removed_count": removed_count,
                         "reason": filter_result.get("reason", "Filtered"),
+                        "mode": filter_mode,
                     })
                     filter_info["total_removed"] = total_filtered
                     filter_info["final_mask"] = filter_mask.tolist()
@@ -519,8 +539,15 @@ class PlaygroundExecutor:
 
         # Compute statistics
         compute_stats = options.get("compute_statistics", True)
-        original_stats = self._compute_statistics(X_sampled) if compute_stats else None
-        processed_stats = self._compute_statistics(X_processed) if compute_stats else None
+        original_stats = None
+        processed_stats = None
+        if compute_stats:
+            try:
+                original_stats = self._compute_statistics(X_sampled)
+                processed_stats = self._compute_statistics(X_processed)
+            except Exception as e:
+                original_stats = {"error": str(e)}
+                processed_stats = {"error": str(e)}
 
         # Compute PCA
         compute_pca = options.get("compute_pca", True)
@@ -787,14 +814,18 @@ class PlaygroundExecutor:
             Tuple of (boolean mask, filter result info)
         """
         import numpy as np
-        filter_op = instantiate_filter(step.name, step.params)
+        # Strip filter_mode from params before passing to nirs4all filter
+        params = dict(step.params)
+        filter_mode = params.pop("filter_mode", "remove")
+
+        filter_op = instantiate_filter(step.name, params)
         if filter_op is None:
             raise ValueError(f"Unknown filter operator: {step.name}")
 
         mask = filter_op.fit_predict(X, y, metadata)
         reason = filter_op.get_removal_reason()
 
-        return mask, {"reason": reason, "kept": int(np.sum(mask)), "removed": int(np.sum(~mask))}
+        return mask, {"reason": reason, "kept": int(np.sum(mask)), "removed": int(np.sum(~mask)), "filter_mode": filter_mode}
 
     def _execute_splitter(
         self,
@@ -1748,6 +1779,16 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
                 wavelengths = list(range(X.shape[1]))
         except Exception:
             wavelengths = list(range(X.shape[1]))
+
+        # Load metadata for MetadataFilter support
+        metadata_np = None
+        try:
+            meta_df = dataset.metadata({"partition": "train"})
+            if meta_df is not None and len(meta_df) > 0:
+                raw_dict = meta_df.to_dict(as_series=False)
+                metadata_np = {k: np.array(v) for k, v in raw_dict.items()}
+        except Exception:
+            pass
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -1808,6 +1849,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
             X_np=X,
             y_np=y_array,
             wavelengths_np=wavelengths,
+            metadata_np=metadata_np,
         )
     except Exception as e:
         raise HTTPException(
@@ -1820,6 +1862,54 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
         _set_cached(cache_key, result)
 
     return _negotiate_response(result, http_request)
+
+
+# ============= Metadata Columns Endpoint =============
+
+
+@router.get("/metadata-columns/{dataset_id}")
+async def get_metadata_columns(dataset_id: str):
+    """Get available metadata columns and their unique values for a dataset.
+
+    Used by MetadataFilter to populate dynamic column/value selectors.
+    """
+    if not NIRS4ALL_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library not available."
+        )
+
+    from .spectra import _load_dataset
+
+    dataset = _load_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dataset '{dataset_id}' not found"
+        )
+
+    try:
+        meta_df = dataset.metadata({"partition": "train"})
+        if meta_df is None or len(meta_df) == 0:
+            return {"columns": []}
+
+        columns = []
+        for col in meta_df.columns:
+            series = meta_df[col]
+            unique_raw = series.drop_nulls().unique().to_list()
+            # Cap unique values at 200
+            columns.append({
+                "name": col,
+                "dtype": str(series.dtype),
+                "unique_values": unique_raw[:200],
+                "n_unique": len(unique_raw),
+            })
+        return {"columns": columns}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get metadata columns: {str(e)}"
+        )
 
 
 # ============= Parallel Chart Endpoints =============

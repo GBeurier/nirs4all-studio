@@ -23,8 +23,6 @@ import { FilterProvider } from '@/context/FilterContext';
 import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
 import { OutliersProvider } from '@/context/OutliersContext';
 import {
-  PlaygroundSessionProvider,
-  usePlaygroundSession,
   serializeOperators,
   type PlaygroundSessionState,
 } from '@/context/PlaygroundSessionContext';
@@ -40,7 +38,11 @@ import {
   getPlaygroundExportData,
   clearPlaygroundExportData,
 } from '@/lib/playground/operatorFormat';
+import { hasPersistedPlaygroundPipelineState } from '@/lib/playground/sessionRestore';
 import type { OperatorDefinition } from '@/types/playground';
+
+const PLAYGROUND_SESSION_STORAGE_KEY = 'playground-session-state';
+const PLAYGROUND_PIPELINE_STORAGE_KEY = 'playground-pipeline-state';
 
 export default function Playground() {
   const navigate = useNavigate();
@@ -325,15 +327,18 @@ export default function Playground() {
   useEffect(() => {
     if (sessionRestoredRef.current) return;
 
-    const stored = sessionStorage.getItem('playground-session-state');
+    const stored = sessionStorage.getItem(PLAYGROUND_SESSION_STORAGE_KEY);
     if (!stored) return;
 
     try {
       const session: PlaygroundSessionState = JSON.parse(stored);
+      const hasDedicatedPipelineState = hasPersistedPlaygroundPipelineState(
+        sessionStorage.getItem(PLAYGROUND_PIPELINE_STORAGE_KEY)
+      );
 
       // Check if session is still valid (not older than 24 hours)
       if (Date.now() - session.savedAt > 24 * 60 * 60 * 1000) {
-        sessionStorage.removeItem('playground-session-state');
+        sessionStorage.removeItem(PLAYGROUND_SESSION_STORAGE_KEY);
         return;
       }
 
@@ -361,7 +366,7 @@ export default function Playground() {
       }
 
       // Restore operators (after a small delay to ensure data is loaded)
-      if (session.operators && session.operators.length > 0) {
+      if (!hasDedicatedPipelineState && session.operators && session.operators.length > 0) {
         setTimeout(() => {
           session.operators.forEach(op => {
             addOperatorByName(op.name, op.type, op.params);
@@ -370,7 +375,7 @@ export default function Playground() {
       }
     } catch (e) {
       console.warn('Failed to restore playground session:', e);
-      sessionStorage.removeItem('playground-session-state');
+      sessionStorage.removeItem(PLAYGROUND_SESSION_STORAGE_KEY);
     }
   }, [loadFromWorkspace, loadDemoData, addOperatorByName, setStepComparisonEnabled, setActiveStep]);
 
@@ -388,7 +393,7 @@ export default function Playground() {
         activeStep,
         savedAt: Date.now(),
       };
-      sessionStorage.setItem('playground-session-state', JSON.stringify(session));
+      sessionStorage.setItem(PLAYGROUND_SESSION_STORAGE_KEY, JSON.stringify(session));
     }, 500);
 
     return () => clearTimeout(timeout);
@@ -623,7 +628,18 @@ function PlaygroundContent({
   setSelectedSample,
 }: PlaygroundContentProps) {
   // Phase 8: Outliers context for mark-as-outliers functionality
-  const { toggleOutliers } = useOutliers();
+  const { toggleOutliers, setDetectedOutliers, clearDetectedOutliers } = useOutliers();
+
+  // Feed tagged samples from filter "tag" mode into OutliersContext
+  useEffect(() => {
+    const taggedSamples = result?.filterInfo?.tagged_samples;
+    if (taggedSamples && Object.keys(taggedSamples).length > 0) {
+      const allTagged = Object.values(taggedSamples).flat();
+      setDetectedOutliers(allTagged);
+    } else {
+      clearDetectedOutliers();
+    }
+  }, [result?.filterInfo?.tagged_samples, setDetectedOutliers, clearDetectedOutliers]);
 
   // Phase 8: Playground reset hook
   const { resetPlayground, hasStateToReset } = usePlaygroundReset({

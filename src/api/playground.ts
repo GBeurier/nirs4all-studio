@@ -493,3 +493,27 @@ export async function computeRepetitionVariance(
     { signal }
   );
 }
+
+// ============= Metadata Columns =============
+
+export interface MetadataColumnInfo {
+  name: string;
+  dtype: string;
+  unique_values: (string | number | boolean | null)[];
+  n_unique: number;
+}
+
+export interface MetadataColumnsResponse {
+  columns: MetadataColumnInfo[];
+}
+
+/**
+ * Fetch available metadata columns and their unique values for a dataset.
+ * Used by MetadataFilter to populate dynamic column/value selectors.
+ */
+export async function fetchMetadataColumns(
+  datasetId: string,
+  signal?: AbortSignal
+): Promise<MetadataColumnsResponse> {
+  return api.get<MetadataColumnsResponse>(`/playground/metadata-columns/${datasetId}`, { signal });
+}

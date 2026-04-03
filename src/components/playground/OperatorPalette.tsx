@@ -312,6 +312,7 @@ export function OperatorPalette({
   const isLoading = registryContext?.isLoading ?? false;
   const isError = !!registryContext?.error;
   const error = registryContext?.error;
+  const extendedError = registryContext?.extendedError ?? null;
 
   const totalCount = preprocessing.length + augmentation.length + splitting.length + filter.length;
 
@@ -405,6 +406,12 @@ export function OperatorPalette({
 
   return (
     <div className="p-4 space-y-3">
+      {extendedError && (
+        <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded px-2 py-1.5">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span className="text-xs">Extended operators could not be loaded. Showing base operators only.</span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Operators

@@ -114,7 +114,8 @@ export type ParameterType =
   | "select"
   | "range"
   | "array"
-  | "object";
+  | "object"
+  | "metadata_column";
 
 /**
  * Finetune parameter types for Optuna optimization.

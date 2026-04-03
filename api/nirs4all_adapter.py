@@ -31,7 +31,10 @@ NIRS4ALL_AVAILABLE = True
 
 PREPROCESSING_ALIASES = {
     "SNV": "StandardNormalVariate",
+    "RobustSNV": "RobustStandardNormalVariate",
+    "LocalSNV": "LocalStandardNormalVariate",
     "MSC": "MultiplicativeScatterCorrection",
+    "EMSC": "ExtendedMultiplicativeScatterCorrection",
     "MovingAverage": "SavitzkyGolay",
     "BaselineCorrection": "Baseline",
     "Trim": "CropTransformer",
@@ -542,44 +545,106 @@ def _build_generator_step(
     branches: list[list[dict[str, Any]]],
     generator_kind: str,
     generator_options: dict[str, Any],
+    params: dict[str, Any] | None = None,
+    branch_metadata: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a generator step (OR or Cartesian) from branches.
+    """Build a generator step from branches.
 
-    Handles both legacy type="generator" and consolidated type="utility" subType="generator".
+    Handles all generator kinds: or, cartesian, grid, zip, chain, sample.
+    Works with both legacy type="generator" and consolidated type="flow" subType="generator".
     """
     generator_options = generator_options or {}
+    params = params or {}
+    branch_metadata = branch_metadata or []
 
-    if generator_kind == "cartesian":
-        # Cartesian product of stages
+    def _add_modifiers(result: dict[str, Any]) -> None:
+        """Add shared count/seed modifiers."""
+        count = generator_options.get("count") or params.get("count")
+        if count and int(count) > 0:
+            result["count"] = count
+        seed = params.get("_seed_")
+        if seed is not None:
+            result["_seed_"] = seed
+
+    def _build_branches_flat() -> list[Any]:
+        """Build branches where each branch is a single alternative."""
+        alternatives = []
+        for branch in branches:
+            if len(branch) == 1:
+                built = build_full_step(branch[0])
+                alternatives.append(built)
+            else:
+                alternatives.append([build_full_step(s) for s in branch])
+        return alternatives
+
+    def _build_branches_as_stages() -> list[list[Any]]:
+        """Build branches where each branch is a list of options (stage)."""
         stages = []
         for branch in branches:
-            stage = []
-            for s in branch:
-                built = build_full_step(s)
-                if built is not None:
-                    stage.append(built)
-            stages.append(stage)
-        return {"_cartesian_": stages}
+            stage = [build_full_step(s) for s in branch]
+            stages.append([s for s in stage if s is not None])
+        return stages
+
+    if generator_kind == "cartesian":
+        result: dict[str, Any] = {"_cartesian_": _build_branches_as_stages()}
+        if generator_options.get("pick"):
+            result["pick"] = generator_options["pick"]
+        if generator_options.get("arrange"):
+            result["arrange"] = generator_options["arrange"]
+        _add_modifiers(result)
+        return result
+
+    if generator_kind == "grid":
+        grid: dict[str, list[Any]] = {}
+        for idx, branch in enumerate(branches):
+            param_name = (
+                branch_metadata[idx].get("name")
+                if idx < len(branch_metadata) and isinstance(branch_metadata[idx], dict)
+                else f"param_{idx}"
+            )
+            grid[param_name] = [build_full_step(s) for s in branch if build_full_step(s) is not None]
+        result = {"_grid_": grid}
+        _add_modifiers(result)
+        return result
+
+    if generator_kind == "zip":
+        zip_data: dict[str, list[Any]] = {}
+        for idx, branch in enumerate(branches):
+            param_name = (
+                branch_metadata[idx].get("name")
+                if idx < len(branch_metadata) and isinstance(branch_metadata[idx], dict)
+                else f"param_{idx}"
+            )
+            zip_data[param_name] = [build_full_step(s) for s in branch if build_full_step(s) is not None]
+        result = {"_zip_": zip_data}
+        _add_modifiers(result)
+        return result
+
+    if generator_kind == "chain":
+        result = {"_chain_": _build_branches_flat()}
+        _add_modifiers(result)
+        return result
+
+    if generator_kind == "sample":
+        sample_config: dict[str, Any] = {}
+        for key in ("distribution", "from", "to", "mean", "std", "num"):
+            if params.get(key) is not None:
+                sample_config[key] = params[key]
+        result = {"_sample_": sample_config}
+        _add_modifiers(result)
+        return result
 
     # Default: OR generator
-    alternatives = []
-    for branch in branches:
-        if len(branch) == 1:
-            built = build_full_step(branch[0])
-            alternatives.append(built)
-        else:
-            alternatives.append([build_full_step(s) for s in branch])
-    result: dict[str, Any] = {"_or_": alternatives}
+    result = {"_or_": _build_branches_flat()}
     if generator_options.get("pick"):
         result["pick"] = generator_options["pick"]
     if generator_options.get("arrange"):
         result["arrange"] = generator_options["arrange"]
-    if generator_options.get("count"):
-        result["count"] = generator_options["count"]
     if generator_options.get("then_pick"):
         result["then_pick"] = generator_options["then_pick"]
     if generator_options.get("then_arrange"):
         result["then_arrange"] = generator_options["then_arrange"]
+    _add_modifiers(result)
     return result
 
 
@@ -644,6 +709,11 @@ def build_full_step(step: dict[str, Any]) -> Any:
         if sub_type == "sequential" and children:
             built = [build_full_step(c) for c in children]
             return [b for b in built if b is not None] or None
+        if sub_type == "generator":
+            return _build_generator_step(
+                branches, generator_kind, generator_options, params,
+                step.get("branchMetadata"),
+            )
         # Unknown flow subType — skip
         return None
 

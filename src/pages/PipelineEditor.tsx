@@ -606,61 +606,88 @@ export default function PipelineEditor() {
                     />
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    {stepCounts.preprocessing > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-blue-500/30 text-blue-500"
-                      >
-                        {stepCounts.preprocessing} preprocessing
-                      </Badge>
-                    )}
-                    {stepCounts.splitting > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-purple-500/30 text-purple-500"
-                      >
-                        {stepCounts.splitting} splitting
-                      </Badge>
-                    )}
-                    {stepCounts.model > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-primary/30 text-primary"
-                      >
-                        {stepCounts.model} model
-                      </Badge>
-                    )}
-                    {stepCounts.augmentation > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-indigo-500/30 text-indigo-500"
-                      >
-                        {stepCounts.augmentation} augmentation
-                      </Badge>
-                    )}
-                    {stepCounts.branch > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-slate-500/30 text-slate-500"
-                      >
-                        {stepCounts.branch} branches
-                      </Badge>
-                    )}
-                    {stepCounts.merge > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-slate-500/30 text-slate-500"
-                      >
-                        {stepCounts.merge} merges
-                      </Badge>
-                    )}
-                    {/* Variant Count Display */}
+                    {/* Aggregated step summary */}
                     {totalSteps > 0 && (
                       <Popover>
                         <PopoverTrigger asChild>
                           <Badge
                             variant="outline"
-                            className={`text-xs cursor-pointer transition-colors ${
+                            className="text-xs cursor-pointer transition-colors hover:bg-accent border-muted-foreground/30 text-muted-foreground"
+                          >
+                            {totalSteps} step{totalSteps !== 1 ? "s" : ""}
+                            {stepCounts.model > 0 && <span className="text-primary ml-1">({stepCounts.model} model{stepCounts.model !== 1 ? "s" : ""})</span>}
+                          </Badge>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-64 bg-popover">
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-medium">Step Breakdown</h4>
+                            <div className="space-y-1">
+                              {stepCounts.preprocessing > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-blue-500">Preprocessing</span>
+                                  <span className="font-mono">{stepCounts.preprocessing}</span>
+                                </div>
+                              )}
+                              {stepCounts.y_processing > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-amber-500">Y-Processing</span>
+                                  <span className="font-mono">{stepCounts.y_processing}</span>
+                                </div>
+                              )}
+                              {stepCounts.filter > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-rose-500">Filters</span>
+                                  <span className="font-mono">{stepCounts.filter}</span>
+                                </div>
+                              )}
+                              {stepCounts.augmentation > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-indigo-500">Augmentation</span>
+                                  <span className="font-mono">{stepCounts.augmentation}</span>
+                                </div>
+                              )}
+                              {stepCounts.splitting > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-purple-500">Splitting</span>
+                                  <span className="font-mono">{stepCounts.splitting}</span>
+                                </div>
+                              )}
+                              {stepCounts.model > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-primary">Models</span>
+                                  <span className="font-mono">{stepCounts.model}</span>
+                                </div>
+                              )}
+                              {stepCounts.branch > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-slate-500">Branches</span>
+                                  <span className="font-mono">{stepCounts.branch}</span>
+                                </div>
+                              )}
+                              {stepCounts.merge > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-slate-500">Merges</span>
+                                  <span className="font-mono">{stepCounts.merge}</span>
+                                </div>
+                              )}
+                              {stepCounts.generator > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-orange-500">Generators</span>
+                                  <span className="font-mono">{stepCounts.generator}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    {/* Variant Count Display */}
+                    {totalSteps > 0 && variantCount > 1 && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs cursor-pointer transition-colors hover:bg-accent ${
                               variantSeverity === "low"
                                 ? "border-emerald-500/30 text-emerald-500"
                                 : variantSeverity === "medium"
@@ -736,7 +763,7 @@ export default function PipelineEditor() {
                         </PopoverContent>
                       </Popover>
                     )}
-                    {/* Execution Preview - compact inline */}
+                    {/* Execution Preview — models trained + fits */}
                     {totalSteps > 0 && (
                       <ExecutionPreviewCompact
                         steps={steps}

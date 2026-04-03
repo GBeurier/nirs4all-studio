@@ -1176,6 +1176,70 @@ function inferSubType(type: StepType, optionName: string): StepSubType | undefin
   return undefined;
 }
 
+/**
+ * Infer generatorKind from step name for generator subType steps.
+ * Used to backfill steps loaded from persistence/API that lack generatorKind.
+ */
+const GENERATOR_NAME_MAP: Record<string, GeneratorKind> = {
+  "Or": "or",
+  "Cartesian": "cartesian",
+  "Grid": "grid",
+  "Zip": "zip",
+  "Chain": "chain",
+  "Sample": "sample",
+  "Range": "range",
+  "LogRange": "log_range",
+};
+
+export function inferGeneratorKind(stepName: string): GeneratorKind | undefined {
+  return GENERATOR_NAME_MAP[stepName];
+}
+
+/**
+ * Migrate a step to fill in missing fields (generatorKind, subType).
+ * Called when loading steps from persistence or API to ensure
+ * all required fields are present.
+ */
+export function migrateStep(step: PipelineStep): PipelineStep {
+  let migrated = step;
+
+  // Backfill missing subType
+  if (!migrated.subType && migrated.type) {
+    const subType = inferSubType(migrated.type, migrated.name);
+    if (subType) {
+      migrated = { ...migrated, subType };
+    }
+  }
+
+  // Backfill missing generatorKind for generator steps
+  if (migrated.subType === "generator" && !migrated.generatorKind) {
+    const kind = inferGeneratorKind(migrated.name);
+    if (kind) {
+      migrated = { ...migrated, generatorKind: kind };
+    }
+  }
+
+  // Recursively migrate branches
+  if (migrated.branches) {
+    const migratedBranches = migrated.branches.map(branch =>
+      branch.map(s => migrateStep(s))
+    );
+    if (migratedBranches !== migrated.branches) {
+      migrated = { ...migrated, branches: migratedBranches };
+    }
+  }
+
+  // Recursively migrate children
+  if (migrated.children) {
+    const migratedChildren = migrated.children.map(c => migrateStep(c));
+    if (migratedChildren !== migrated.children) {
+      migrated = { ...migrated, children: migratedChildren };
+    }
+  }
+
+  return migrated;
+}
+
 // Utility to create a step from an option
 export function createStepFromOption(type: StepType, option: StepOption): PipelineStep {
   const subType = inferSubType(type, option.name);

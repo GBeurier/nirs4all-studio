@@ -253,6 +253,8 @@ function convertFlowStepToNative(step: EditorPipelineStep): NativePipelineStep |
       return convertSampleFilterToNative(step);
     case "concat_transform":
       return convertConcatTransformToNative(step);
+    case "generator":
+      return convertGeneratorToNative(step);
     case "sequential":
       // Sequential containers inline their children
       if (step.children?.length) {
@@ -433,7 +435,8 @@ function convertGeneratorToNative(step: EditorPipelineStep): NativePipelineStep 
 
   // Helper to add shared modifiers (count, seed)
   function addModifiers(result: Record<string, unknown>) {
-    if (opts.count && opts.count > 0) result.count = opts.count;
+    const count = opts.count || (step.params as Record<string, unknown>)?.count;
+    if (count && (count as number) > 0) result.count = count;
     const seed = (step.params as Record<string, unknown>)?._seed_;
     if (seed !== undefined) result._seed_ = seed;
   }
@@ -476,6 +479,18 @@ function convertGeneratorToNative(step: EditorPipelineStep): NativePipelineStep 
       branch.length === 1 ? convertStepToNative(branch[0]) : toNativeFormat(branch)
     );
     const result: Record<string, unknown> = { _chain_: configs };
+    addModifiers(result);
+    return result;
+  }
+
+  // _sample_ generator (parameter-based, no branches)
+  if (step.generatorKind === "sample") {
+    const sampleConfig: Record<string, unknown> = {};
+    const p = step.params as Record<string, unknown>;
+    for (const key of ["distribution", "from", "to", "mean", "std", "num"]) {
+      if (p[key] !== undefined) sampleConfig[key] = p[key];
+    }
+    const result: Record<string, unknown> = { _sample_: sampleConfig };
     addModifiers(result);
     return result;
   }
@@ -750,6 +765,15 @@ function convertNativeToEditor(step: NativePipelineStep): EditorPipelineStep {
   }
   if ("_grid_" in step) {
     return convertNativeGridToEditor(step as Record<string, unknown>);
+  }
+  if ("_zip_" in step) {
+    return convertNativeZipToEditor(step as Record<string, unknown>);
+  }
+  if ("_chain_" in step) {
+    return convertNativeChainToEditor(step as Record<string, unknown>);
+  }
+  if ("_sample_" in step) {
+    return convertNativeSampleToEditor(step as Record<string, unknown>);
   }
 
   // Chart keywords
@@ -1072,13 +1096,14 @@ function convertNativeCartesianToEditor(step: Record<string, unknown>): EditorPi
 
 function convertNativeGridToEditor(step: Record<string, unknown>): EditorPipelineStep {
   const grid = step._grid_ as Record<string, unknown[]>;
-  const paramSweeps: EditorPipelineStep["paramSweeps"] = {};
+  const branches: EditorPipelineStep[][] = [];
+  const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
 
   for (const [paramName, values] of Object.entries(grid)) {
-    paramSweeps[paramName] = {
-      type: "or",
-      choices: values as (string | number | boolean)[],
-    };
+    branches.push(
+      (values as NativePipelineStep[]).map((s) => convertNativeToEditor(s))
+    );
+    branchMetadata.push({ name: paramName });
   }
 
   return {
@@ -1087,8 +1112,85 @@ function convertNativeGridToEditor(step: Record<string, unknown>): EditorPipelin
     subType: "generator",
     name: "Grid",
     params: {},
+    branches,
+    branchMetadata,
     generatorKind: "grid",
-    paramSweeps,
+    generatorOptions: {
+      count: step.count as number,
+    },
+  };
+}
+
+function convertNativeZipToEditor(step: Record<string, unknown>): EditorPipelineStep {
+  const zipData = step._zip_ as Record<string, unknown[]>;
+  const branches: EditorPipelineStep[][] = [];
+  const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
+
+  for (const [paramName, values] of Object.entries(zipData)) {
+    branches.push(
+      (values as NativePipelineStep[]).map((s) => convertNativeToEditor(s))
+    );
+    branchMetadata.push({ name: paramName });
+  }
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Zip",
+    params: {},
+    branches,
+    branchMetadata,
+    generatorKind: "zip",
+    generatorOptions: {
+      count: step.count as number,
+    },
+  };
+}
+
+function convertNativeChainToEditor(step: Record<string, unknown>): EditorPipelineStep {
+  const configs = (step._chain_ as unknown[]) || [];
+  const branches = configs.map((cfg) => {
+    if (Array.isArray(cfg)) {
+      return fromNativeFormat(cfg as NativePipelineStep[]);
+    }
+    return [convertNativeToEditor(cfg as NativePipelineStep)];
+  });
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Chain",
+    params: {},
+    branches,
+    generatorKind: "chain",
+    generatorOptions: {
+      count: step.count as number,
+    },
+  };
+}
+
+function convertNativeSampleToEditor(step: Record<string, unknown>): EditorPipelineStep {
+  const sampleConfig = step._sample_ as Record<string, unknown>;
+  const params: Record<string, string | number | boolean> = {};
+
+  for (const key of ["distribution", "from", "to", "mean", "std", "num"]) {
+    if (sampleConfig[key] !== undefined) {
+      params[key] = sampleConfig[key] as string | number | boolean;
+    }
+  }
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Sample",
+    params,
+    generatorKind: "sample",
+    generatorOptions: {
+      count: step.count as number,
+    },
   };
 }
 

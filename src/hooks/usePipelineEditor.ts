@@ -8,7 +8,7 @@ import type {
   DragData,
   DropIndicator
 } from "../components/pipeline-editor/types";
-import { createStepFromOption, cloneStep } from "../components/pipeline-editor/types";
+import { createStepFromOption, cloneStep, migrateStep } from "../components/pipeline-editor/types";
 import { getAdjustedInsertIndex } from "../components/pipeline-editor/dnd-utils";
 import { importFromNirs4all, exportToNirs4all as exportToNirs4allFormat } from "../utils/pipelineConverter";
 
@@ -42,7 +42,12 @@ function loadPersistedState(pipelineId: string): PersistedPipelineState | null {
     const key = getPersistenceKey(pipelineId);
     const stored = localStorage.getItem(key);
     if (stored) {
-      return JSON.parse(stored);
+      const state = JSON.parse(stored) as PersistedPipelineState;
+      // Migrate steps to backfill missing fields (generatorKind, subType, etc.)
+      if (state.steps) {
+        state.steps = state.steps.map(migrateStep);
+      }
+      return state;
     }
   } catch (e) {
     console.warn("Failed to load persisted pipeline state:", e);
@@ -240,8 +245,10 @@ function countStepsRecursive(steps: PipelineStep[]): Record<LegacyStepType, numb
   };
 
   for (const step of steps) {
-    if (counts[step.type] !== undefined) {
-      counts[step.type]++;
+    // For flow/utility steps, count by subType to get accurate branch/merge/generator/chart/etc. counts
+    const countKey = (step.subType ?? step.type) as LegacyStepType;
+    if (counts[countKey] !== undefined) {
+      counts[countKey]++;
     }
     if (step.branches) {
       for (const branch of step.branches) {
@@ -313,7 +320,8 @@ export function usePipelineEditor(
   }, [pipelineId, persistState]);
 
   // Determine initial values (prefer persisted over provided)
-  const resolvedInitialSteps = persistedState?.steps ?? initialSteps;
+  // Migrate initialSteps to backfill missing fields (generatorKind, subType)
+  const resolvedInitialSteps = persistedState?.steps ?? initialSteps.map(migrateStep);
   const resolvedInitialName = persistedState?.pipelineName ?? initialName;
   const resolvedInitialFavorite = persistedState?.isFavorite ?? false;
   const resolvedInitialConfig = persistedState?.config ?? initialConfig;
@@ -765,8 +773,9 @@ export function usePipelineEditor(
   // Load pipeline
   const loadPipeline = useCallback(
     (newSteps: PipelineStep[], name?: string) => {
-      setSteps(newSteps);
-      setHistory([newSteps]);
+      const migrated = newSteps.map(migrateStep);
+      setSteps(migrated);
+      setHistory([migrated]);
       setHistoryIndex(0);
       setSelectedStepId(null);
       setIsDirty(false);
