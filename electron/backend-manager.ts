@@ -761,7 +761,13 @@ export class BackendManager {
   private notifyRenderer(): void {
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
-      win.webContents.send("backend:statusChanged", this.getInfo());
+      try {
+        if (!win.isDestroyed()) {
+          win.webContents.send("backend:statusChanged", this.getInfo());
+        }
+      } catch {
+        // Window may be closing during shutdown — ignore
+      }
     }
   }
 }

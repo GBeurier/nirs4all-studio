@@ -101,6 +101,8 @@ interface EnsureBackendPackagesOptions {
 
 interface CommandOptions {
   retries?: number;
+  /** Base delay (ms) for exponential backoff between retries. Default 2000. */
+  retryBaseMs?: number;
   timeoutMs?: number;
 }
 
@@ -722,8 +724,15 @@ export class EnvManager {
       // Remove macOS Gatekeeper quarantine attribute from downloaded Python
       await this.removeQuarantine(pythonDir);
 
-      // Clean up tarball to save space
-      try { fs.unlinkSync(cachedTarball); } catch { /* ignore */ }
+      // Warm up: run a lightweight command so the OS / antivirus finishes
+      // scanning the freshly extracted binary before we attempt heavier work.
+      // On Windows, Defender can lock new executables for 10–30 s after extraction.
+      await this.runCommand(embeddedPython, ["--version"], {
+        retries: 5,
+        retryBaseMs: 3000,
+        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+      });
+      report(28, "extracting", "Python runtime verified");
 
       // 4. Create venv
       this.status = "creating_venv";
@@ -734,6 +743,9 @@ export class EnvManager {
       }
 
       await this.runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"], {
+        // The freshly extracted runtime can still be scanned or briefly locked
+        // by the OS/AV layer right after extraction.
+        retries: 3,
         timeoutMs: PIP_INSTALL_TIMEOUT_MS,
       });
 
@@ -812,6 +824,11 @@ export class EnvManager {
         created_at: new Date().toISOString(),
       };
       fs.writeFileSync(path.join(baseDir, "build_info.json"), JSON.stringify(buildInfo, null, 2));
+
+      // Clean up the downloaded archive only after the bootstrap has completed.
+      // If setup fails earlier, keeping the tarball avoids forcing another full
+      // download on the next retry.
+      try { fs.unlinkSync(cachedTarball); } catch { /* ignore */ }
 
       // 8. If custom directory, save it so getPythonPath() finds the new env.
       //    Otherwise clear custom paths so getPythonPath() falls through to the managed env.
@@ -909,7 +926,9 @@ export class EnvManager {
     // Windows built-in bsdtar doesn't support --force-local but handles paths natively.
     if (isWindows && await this.isGnuTar()) args.push("--force-local");
 
-    return this.runCommand("tar", args);
+    return this.runCommand("tar", args, {
+      retries: 1,
+    });
   }
 
   /** Check if the system tar is GNU tar (vs Windows built-in bsdtar) */
@@ -925,6 +944,7 @@ export class EnvManager {
   private runCommand(command: string, args: string[], options?: CommandOptions): Promise<void> {
     const maxRetries = options?.retries ?? 0;
     const timeoutMs = options?.timeoutMs ?? 0;
+    const commandLabel = `${command} ${args.join(" ")}`.trim();
 
     const exec = (): Promise<void> => new Promise((resolve, reject) => {
       const proc = spawn(command, args, {
@@ -950,7 +970,7 @@ export class EnvManager {
       if (timeoutMs > 0) {
         timeoutHandle = setTimeout(() => {
           const timeoutError = new Error(
-            `Command "${command} ${args.join(" ")}" timed out after ${Math.round(timeoutMs / 1000)}s`,
+            `Command "${commandLabel}" timed out after ${Math.round(timeoutMs / 1000)}s`,
           );
           if (isWindows && proc.pid) {
             spawn("taskkill", ["/pid", proc.pid.toString(), "/t", "/f"]);
@@ -964,10 +984,17 @@ export class EnvManager {
       proc.on("close", (code) => {
         if (finished) return;
         if (code === 0) complete();
-        else complete(new Error(`Command "${command} ${args.join(" ")}" failed (code ${code}): ${stderr.slice(0, 500)}`));
+        else complete(new Error(`Command "${commandLabel}" failed (code ${code}): ${stderr.slice(0, 500)}`));
       });
 
-      proc.on("error", (error) => complete(error));
+      proc.on("error", (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        const wrapped = new Error(`Failed to start command "${commandLabel}": ${message}`);
+        if (error && typeof error === "object" && "code" in error) {
+          Object.assign(wrapped, { code: (error as NodeJS.ErrnoException).code });
+        }
+        complete(wrapped);
+      });
     });
 
     if (maxRetries <= 0) return exec();
@@ -977,14 +1004,25 @@ export class EnvManager {
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           if (attempt > 0) {
-            // Exponential backoff: 2s, 4s, 8s — gives antivirus time to release file locks
-            await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+            // Exponential backoff — gives antivirus time to release file locks.
+            // Default base 2 s (2, 4, 8 s).  Callers can raise the base for
+            // operations where AV scanning is expected to take longer.
+            const baseMs = options?.retryBaseMs ?? 2000;
+            await new Promise((r) => setTimeout(r, baseMs * Math.pow(2, attempt - 1)));
           }
           await exec();
           return;
         } catch (e) {
           lastError = e instanceof Error ? e : new Error(String(e));
+          if (attempt < maxRetries) {
+            console.warn(`[EnvManager] Command "${commandLabel}" failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying: ${lastError.message}`);
+          }
         }
+      }
+      // Annotate EPERM errors with a likely cause on Windows
+      if (isWindows && lastError && "code" in lastError && (lastError as NodeJS.ErrnoException).code === "EPERM") {
+        lastError.message += " — this is usually caused by antivirus software blocking newly extracted files. "
+          + "Try temporarily adding the install directory to your antivirus exclusions and retrying.";
       }
       throw lastError;
     })();

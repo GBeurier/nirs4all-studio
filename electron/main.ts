@@ -171,6 +171,12 @@ ipcMain.handle("app:quitForUpdate", () => {
   backendManager.setQuittingForUpdate();
   // Small delay so the IPC response reaches the renderer before we exit
   setTimeout(() => app.quit(), 500);
+  // Hard deadline: if the normal quit flow gets stuck (before-quit handler,
+  // backend stop, window close), force-exit so the updater script can proceed.
+  setTimeout(() => {
+    console.error("Force exiting — normal quit did not complete within 10 s");
+    process.exit(0);
+  }, 10_000);
   return { success: true };
 });
 
@@ -506,6 +512,12 @@ app.on("before-quit", (event) => {
   backendManager.stop().finally(() => {
     app.quit(); // Re-enters before-quit with isQuitting=true, then proceeds
   });
+  // Hard deadline: if stop() never resolves (stuck process, missing exit event),
+  // force the quit after 5 seconds so the app doesn't hang indefinitely.
+  setTimeout(() => {
+    console.error("before-quit: backend stop did not complete within 5 s, forcing quit");
+    app.exit(0);
+  }, 5000);
 });
 
 // Safety net: force-exit after 2 seconds if pending async operations keep
