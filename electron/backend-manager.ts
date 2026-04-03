@@ -30,6 +30,8 @@ export class BackendManager {
   private status: BackendStatus = "stopped";
   private restartCount: number = 0;
   private healthMonitorInterval: NodeJS.Timeout | null = null;
+  private isCheckingHealth: boolean = false;
+  private isRecovering: boolean = false;
   private isShuttingDown: boolean = false;
   private lastError: string | null = null;
   private envManager: EnvManager | null = null;
@@ -523,6 +525,75 @@ export class BackendManager {
   }
 
   /**
+   * Terminate the tracked backend process and wait for it to exit.
+   * Used by both normal shutdown and crash recovery so we do not leave a
+   * previous backend alive on the same port while starting the replacement.
+   */
+  private async terminateProcess(treeKill: boolean = true): Promise<void> {
+    if (!this.process) {
+      return;
+    }
+
+    const proc = this.process;
+    const pid = proc.pid;
+
+    // The process is going away; avoid firing the normal exit/error handlers
+    // while we explicitly control shutdown/restart.
+    proc.removeAllListeners("exit");
+    proc.removeAllListeners("error");
+
+    await new Promise<void>((resolve) => {
+      let finished = false;
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        if (this.process === proc) {
+          this.process = null;
+        }
+        resolve();
+      };
+
+      const timeout = setTimeout(() => {
+        console.warn("Backend did not stop gracefully, force killing...");
+        if (process.platform === "win32") {
+          if (pid) {
+            spawn("taskkill", ["/pid", pid.toString(), "/t", "/f"]);
+          }
+        } else {
+          proc.kill("SIGKILL");
+        }
+        setTimeout(finish, 250);
+      }, 2000);
+
+      proc.once("exit", () => {
+        clearTimeout(timeout);
+        finish();
+      });
+
+      proc.once("error", () => {
+        clearTimeout(timeout);
+        finish();
+      });
+
+      if (process.platform === "win32") {
+        if (!pid) {
+          clearTimeout(timeout);
+          finish();
+          return;
+        }
+
+        const args = treeKill
+          ? ["/pid", pid.toString(), "/t", "/f"]
+          : ["/pid", pid.toString(), "/f"];
+        spawn("taskkill", args);
+      } else {
+        proc.kill("SIGTERM");
+      }
+    });
+  }
+
+  /**
    * Stop the Python backend gracefully
    */
   async stop(): Promise<void> {
@@ -536,41 +607,11 @@ export class BackendManager {
     }
 
     console.log("Stopping backend...");
+    await this.terminateProcess(!this._quittingForUpdate);
 
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        // Force kill if graceful shutdown takes too long
-        console.warn("Backend did not stop gracefully, force killing...");
-        this.process?.kill("SIGKILL");
-        this.process = null;
-        this.status = "stopped";
-        this.notifyRenderer();
-        resolve();
-      }, 2000);
-
-      this.process!.once("exit", () => {
-        clearTimeout(timeout);
-        this.process = null;
-        this.status = "stopped";
-        this.notifyRenderer();
-        console.log("Backend stopped");
-        resolve();
-      });
-
-      // Terminate the backend process
-      if (process.platform === "win32") {
-        // Use /f (force) because console apps don't handle WM_CLOSE from
-        // plain taskkill, causing a 5-second hang until the timeout fires.
-        // When quitting for update, skip /t (tree kill) so the updater
-        // script (a child of the backend) survives to apply the update.
-        const args = this._quittingForUpdate
-          ? ["/pid", this.process!.pid!.toString(), "/f"]
-          : ["/pid", this.process!.pid!.toString(), "/t", "/f"];
-        spawn("taskkill", args);
-      } else {
-        this.process!.kill("SIGTERM");
-      }
-    });
+    this.status = "stopped";
+    this.notifyRenderer();
+    console.log("Backend stopped");
 
     this.cleanupPidFile();
   }
@@ -634,9 +675,16 @@ export class BackendManager {
     }
 
     this.healthMonitorInterval = setInterval(async () => {
-      if (this.isShuttingDown || this.status !== "running") {
+      if (
+        this.isShuttingDown ||
+        this.status !== "running" ||
+        this.isCheckingHealth ||
+        this.isRecovering
+      ) {
         return;
       }
+
+      this.isCheckingHealth = true;
 
       try {
         const response = await fetch(`http://127.0.0.1:${this.port}/api/health`, {
@@ -651,7 +699,13 @@ export class BackendManager {
         // Backend might have crashed, attempt restart
         if (!this.isShuttingDown && this.restartCount < MAX_RESTART_ATTEMPTS) {
           await this.handleCrash();
+        } else if (!this.isShuttingDown) {
+          this.status = "error";
+          this.lastError = "Maximum restart attempts exceeded";
+          this.notifyRenderer();
         }
+      } finally {
+        this.isCheckingHealth = false;
       }
     }, HEALTH_MONITOR_INTERVAL);
   }
@@ -670,32 +724,34 @@ export class BackendManager {
    * Handle a backend crash - attempt to restart
    */
   private async handleCrash(): Promise<void> {
-    if (this.isShuttingDown) {
+    if (this.isShuttingDown || this.isRecovering) {
       return;
     }
 
+    this.isRecovering = true;
     console.log(`Backend crashed, attempting restart (${this.restartCount + 1}/${MAX_RESTART_ATTEMPTS})...`);
     this.status = "restarting";
     this.restartCount++;
     this.notifyRenderer();
 
-    // Clean up the old process
-    if (this.process) {
-      this.process.removeAllListeners();
-      this.process = null;
-    }
-
-    // Wait before restarting
-    await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY));
-
     try {
+      // Make sure the previous backend is actually gone before we reuse the port.
+      await this.terminateProcess();
+      this.cleanupPidFile();
+
+      // Wait before restarting
+      await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY));
+
       await this.startInternal();
+      this.lastError = null;
       console.log("Backend restarted successfully");
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
       this.status = "error";
       this.notifyRenderer();
       console.error("Failed to restart backend:", error);
+    } finally {
+      this.isRecovering = false;
     }
   }
 

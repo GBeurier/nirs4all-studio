@@ -56,6 +56,30 @@ backendManager.setEnvManager(envManager);
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 
+// The desktop app is single-window today. Prevent a second Electron process
+// from racing the first one during startup and trying to launch another backend.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+app.on("second-instance", () => {
+  const windowToFocus = mainWindow && !mainWindow.isDestroyed()
+    ? mainWindow
+    : splashWindow && !splashWindow.isDestroyed()
+      ? splashWindow
+      : null;
+
+  if (!windowToFocus) {
+    return;
+  }
+
+  if (windowToFocus.isMinimized()) {
+    windowToFocus.restore();
+  }
+  windowToFocus.focus();
+});
+
 // VITE_DEV_SERVER_URL is set by vite-plugin-electron in dev mode
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const DIST_PATH = path.join(__dirname, "../dist");
@@ -411,6 +435,10 @@ ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
 
 // App lifecycle
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
+
   // Remove application menu in production mode (keep it for dev/debug)
   if (!devMode) {
     Menu.setApplicationMenu(null);
