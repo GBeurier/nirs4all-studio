@@ -372,7 +372,10 @@ export function PipelineNode({
           depth={depth}
           onAddBranch={onAddBranch}
           onRemoveBranch={onRemoveBranch}
-          branchLabel={step.generatorKind === "cartesian" ? "Stage" : "Option"}
+          branchLabel={step.generatorKind === "cartesian" ? "Stage"
+                    : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
+                    : step.generatorKind === "chain" ? "Config"
+                    : "Option"}
           isGenerator
         />
       )}

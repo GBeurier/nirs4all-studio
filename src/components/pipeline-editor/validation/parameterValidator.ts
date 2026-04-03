@@ -450,9 +450,14 @@ export function validateStepParameters(
     // Check for conditional visibility
     if (def.dependsOn) {
       const dependentValue = step.params[def.dependsOn];
-      if (def.dependsOnValue !== undefined && dependentValue !== def.dependsOnValue) {
-        // This parameter is conditionally hidden, skip validation
-        continue;
+      if (def.dependsOnValue !== undefined) {
+        const matches = Array.isArray(def.dependsOnValue)
+          ? (def.dependsOnValue as unknown[]).includes(dependentValue)
+          : dependentValue === def.dependsOnValue;
+        if (!matches) {
+          // This parameter is conditionally hidden, skip validation
+          continue;
+        }
       }
     }
 

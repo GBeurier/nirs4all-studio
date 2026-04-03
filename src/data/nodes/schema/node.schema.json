@@ -153,12 +153,12 @@
     },
     "generatorKind": {
       "type": "string",
-      "enum": ["or", "cartesian"],
+      "enum": ["or", "cartesian", "grid", "zip", "chain", "sample", "range", "log_range"],
       "description": "For generator nodes, the kind of generator"
     },
     "generatorType": {
       "type": "string",
-      "description": "Generator subtype used by some generator definitions (e.g. choose_one, cartesian)."
+      "description": "Generator subtype used by some generator definitions (e.g. or, cartesian, grid)."
     },
 
     "acceptsChildren": {

@@ -243,6 +243,115 @@ APP_AUTHOR = "nirs4all"
 DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-webapp"
 DEFAULT_PYPI_PACKAGE = "nirs4all"
 DEFAULT_CHECK_INTERVAL_HOURS = 24
+STAGED_UPDATE_METADATA_FILE = ".nirs4all-staged-update.json"
+
+
+def _is_portable_runtime() -> bool:
+    """Return True when running from the portable desktop build."""
+    return bool(
+        os.environ.get("NIRS4ALL_PORTABLE_EXE")
+        or os.environ.get("NIRS4ALL_PORTABLE_ROOT")
+    )
+
+
+def _expected_update_mode() -> str:
+    """Return the updater mode that matches the current runtime layout."""
+    if _is_portable_runtime():
+        return "portable"
+    if platform.system().lower() == "darwin":
+        return "bundle"
+    return "directory"
+
+
+def _staging_entries(staging_dir: Path) -> list[Path]:
+    """List staged entries, excluding the internal metadata file."""
+    return [
+        entry
+        for entry in staging_dir.iterdir()
+        if entry.name != STAGED_UPDATE_METADATA_FILE
+    ]
+
+
+def _resolve_staged_content_dir(staging_dir: Path) -> Path | None:
+    """Resolve the actual staged content root from the staging wrapper dir."""
+    if not staging_dir.exists():
+        return None
+
+    entries = _staging_entries(staging_dir)
+    if not entries:
+        return None
+
+    if len(entries) == 1 and entries[0].is_dir():
+        return entries[0]
+
+    return staging_dir
+
+
+def _write_staged_update_metadata(staging_dir: Path, **metadata: Any) -> None:
+    """Persist lightweight metadata for a staged update."""
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        **metadata,
+        "staged_at": datetime.now().isoformat(),
+    }
+    with open(staging_dir / STAGED_UPDATE_METADATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _read_staged_update_metadata(staging_dir: Path) -> dict[str, Any] | None:
+    """Read staged update metadata if available."""
+    metadata_path = staging_dir / STAGED_UPDATE_METADATA_FILE
+    if not metadata_path.exists():
+        return None
+
+    try:
+        with open(metadata_path, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    return None
+
+
+def _validate_staged_update_layout(staging_dir: Path) -> tuple[Path, str]:
+    """Validate the staged update layout for the current runtime mode."""
+    from updater import get_executable_name
+
+    content_dir = _resolve_staged_content_dir(staging_dir)
+    if content_dir is None:
+        raise HTTPException(status_code=400, detail="No staged update found. Download an update first.")
+
+    update_mode = _expected_update_mode()
+    expected_executable = os.environ.get("NIRS4ALL_APP_EXE") or get_executable_name()
+
+    if update_mode == "portable":
+        executable_path = content_dir / expected_executable
+        if not executable_path.is_file():
+            raise HTTPException(
+                status_code=400,
+                detail="The staged update is not a portable executable for this installation.",
+            )
+        return content_dir, update_mode
+
+    if update_mode == "bundle":
+        if content_dir.suffix != ".app" or not (content_dir / "Contents" / "MacOS").exists():
+            raise HTTPException(
+                status_code=400,
+                detail="The staged update is not a valid macOS app bundle.",
+            )
+        return content_dir, update_mode
+
+    executable_path = content_dir / expected_executable
+    resources_dir = content_dir / "resources"
+    if not executable_path.is_file() or not resources_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="The staged update does not match the installed desktop app layout.",
+        )
+
+    return content_dir, update_mode
 
 
 # ============= Dependencies Cache =============
@@ -697,11 +806,12 @@ class UpdateManager:
         """
         system = platform.system().lower()
         machine = platform.machine().lower()
+        portable_runtime = _is_portable_runtime()
 
         # Supported extensions per platform (ordered by preference).
         # Only formats that update_downloader can extract.
         platform_extensions: dict[str, list[str]] = {
-            "windows": [".exe", ".zip"],
+            "windows": [".exe"] if portable_runtime else [".zip"],
             "darwin": [".zip", ".tar.gz", ".tgz"],
             "linux": [".tar.gz", ".tgz", ".zip"],
         }
@@ -722,19 +832,32 @@ class UpdateManager:
         elif machine in ("aarch64", "arm64"):
             arch_keywords = ["arm64", "aarch64"]
 
+        def _matches_asset(asset: dict[str, Any], extension: str, require_arch: bool) -> bool:
+            name = asset.get("name", "").lower()
+            if not name.endswith(extension):
+                return False
+            if not any(kw in name for kw in os_keywords):
+                return False
+            if require_arch and arch_keywords and not any(ak in name for ak in arch_keywords):
+                return False
+            if system == "windows":
+                has_portable_marker = "portable" in name
+                if portable_runtime and extension == ".exe":
+                    return has_portable_marker
+                if not portable_runtime and extension == ".exe":
+                    return False
+            return True
+
         # First pass: match platform + architecture
-        if arch_keywords:
-            for ext in extensions:
-                for asset in assets:
-                    name = asset.get("name", "").lower()
-                    if name.endswith(ext) and any(kw in name for kw in os_keywords) and any(ak in name for ak in arch_keywords):
-                        return asset
+        for ext in extensions:
+            for asset in assets:
+                if _matches_asset(asset, ext, require_arch=True):
+                    return asset
 
         # Second pass: match platform without arch constraint
         for ext in extensions:
             for asset in assets:
-                name = asset.get("name", "").lower()
-                if name.endswith(ext) and any(kw in name for kw in os_keywords):
+                if _matches_asset(asset, ext, require_arch=False):
                     return asset
 
         return None
@@ -1149,6 +1272,7 @@ async def start_webapp_download() -> dict[str, Any]:
 def _execute_download_job(job: "Job", progress_callback: Callable[[float, str], None]) -> dict[str, Any]:
     """Execute the download job (runs in thread pool)."""
     from api.update_downloader import download_and_stage_update
+    from updater import get_staging_dir
 
     def _progress_wrapper(progress: float, message: str) -> bool:
         """Wrap progress callback to check for cancellation."""
@@ -1179,6 +1303,13 @@ def _execute_download_job(job: "Job", progress_callback: Callable[[float, str], 
         if job.cancellation_requested:
             return {"cancelled": True, "message": message}
         raise Exception(message)
+
+    _write_staged_update_metadata(
+        get_staging_dir(),
+        version=job.config["version"],
+        asset_name=job.config.get("asset_name"),
+        update_mode=_expected_update_mode(),
+    )
 
     return {
         "staging_path": str(staging_path) if staging_path else None,
@@ -1258,20 +1389,7 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Update not confirmed")
 
     staging_dir = get_staging_dir()
-    if not staging_dir.exists() or not any(staging_dir.iterdir()):
-        raise HTTPException(
-            status_code=400,
-            detail="No staged update found. Download an update first.",
-        )
-
-    # Resolve content directory: archives often have a single root folder
-    # (e.g. staging/nirs4all-Studio-1.0.0-win-x64/) — we need to pass the
-    # inner folder to the updater script, not the wrapper.
-    contents = list(staging_dir.iterdir())
-    if len(contents) == 1 and contents[0].is_dir():
-        content_dir = contents[0]
-    else:
-        content_dir = staging_dir
+    content_dir, update_mode = _validate_staged_update_layout(staging_dir)
 
     try:
         # Create the updater script
@@ -1288,7 +1406,7 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
 
         return {
             "success": True,
-            "message": "Update will be applied after app restart. Please close the application.",
+            "message": f"Update will be applied after app restart ({update_mode} mode). Please close the application.",
             "restart_required": True,
         }
 
@@ -1308,29 +1426,33 @@ async def get_staged_update_info() -> dict[str, Any]:
 
     staging_dir = get_staging_dir()
 
-    if not staging_dir.exists() or not any(staging_dir.iterdir()):
+    if not staging_dir.exists() or not _staging_entries(staging_dir):
         return {
             "has_staged_update": False,
         }
 
+    metadata = _read_staged_update_metadata(staging_dir) or {}
+
     # Try to find version info in staged update
     version_file = None
-    for item in staging_dir.iterdir():
-        if item.is_dir():
-            possible_version = item / "version.json"
-            if possible_version.exists():
-                version_file = possible_version
-                break
-        elif item.name == "version.json":
-            version_file = item
-            break
+    content_dir = _resolve_staged_content_dir(staging_dir)
+    if content_dir is not None:
+        if content_dir.is_dir():
+            for candidate in [
+                content_dir / "version.json",
+                content_dir / "resources" / "version.json",
+                content_dir / "Contents" / "Resources" / "version.json",
+            ]:
+                if candidate.exists():
+                    version_file = candidate
+                    break
 
-    version = None
+    version = metadata.get("version")
     if version_file and version_file.exists():
         try:
             with open(version_file, encoding="utf-8") as f:
                 data = json.load(f)
-                version = data.get("version")
+                version = data.get("version") or version
         except Exception:
             pass
 
@@ -1338,6 +1460,8 @@ async def get_staged_update_info() -> dict[str, Any]:
         "has_staged_update": True,
         "staging_path": str(staging_dir),
         "version": version,
+        "asset_name": metadata.get("asset_name"),
+        "update_mode": metadata.get("update_mode"),
     }
 
 

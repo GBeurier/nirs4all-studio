@@ -110,7 +110,10 @@ export function isBranchableStep(step: PipelineStep): boolean {
  */
 export function getBranchLabel(step: PipelineStep): string {
   if (step.subType === "generator") {
-    return step.generatorKind === "cartesian" ? "Stage" : "Option";
+    return step.generatorKind === "cartesian" ? "Stage"
+      : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
+      : step.generatorKind === "chain" ? "Config"
+      : "Option";
   }
   return "Branch";
 }
@@ -265,6 +268,16 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
   } else if (generatorKind === "cartesian") {
     // Cartesian: product of steps in each stage
     variantCount = branches.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
+  } else if (generatorKind === "grid") {
+    // Grid: Cartesian product of param value lists
+    variantCount = branches.reduce((acc, branch) => acc * Math.max(1, branch.length), 1);
+  } else if (generatorKind === "zip") {
+    // Zip: min of branch sizes (parallel pairing)
+    const sizes = branches.map(b => b.length).filter(l => l > 0);
+    variantCount = sizes.length > 0 ? Math.min(...sizes) : 0;
+  } else if (generatorKind === "chain") {
+    // Chain: flat count of configs
+    variantCount = optionCount;
   }
 
   // Build selection summary
@@ -298,7 +311,12 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
     optionCount,
     variantCount,
     hasPickArrange,
-    selectionSummary: summaryParts.join(" -> ") || (generatorKind === "cartesian" ? "all combinations" : "try each"),
+    selectionSummary: summaryParts.join(" -> ") || (
+      generatorKind === "cartesian" || generatorKind === "grid" ? "all combinations"
+        : generatorKind === "zip" ? "parallel pairs"
+        : generatorKind === "chain" ? "ordered sequence"
+        : "try each"
+    ),
     optionNames,
   };
 }
@@ -369,7 +387,10 @@ export function getFoldLabel(step: PipelineStep, childLabel: string): string {
   if (isBranchable) {
     const count = step.branches?.length ?? 0;
     const label = step.subType === "generator"
-      ? (step.generatorKind === "cartesian" ? "stages" : "options")
+      ? (step.generatorKind === "cartesian" ? "stages"
+        : step.generatorKind === "grid" || step.generatorKind === "zip" ? "params"
+        : step.generatorKind === "chain" ? "configs"
+        : "options")
       : "branches";
     return `${count} ${label}`;
   }

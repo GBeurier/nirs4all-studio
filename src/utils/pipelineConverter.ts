@@ -1150,9 +1150,9 @@ function convertOrGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipeline
 
   return {
     id: generateStepId(),
-    type: "utility",
+    type: "flow",
     subType: "generator",
-    name: "Choose",
+    name: "Or",
     params: {},
     branches: alternatives.map(alt => [convertStepToEditor(alt)]),
     generatorKind: "or",
@@ -1784,37 +1784,82 @@ function convertEditorChartToNirs4all(step: EditorPipelineStep): Nirs4allStep {
 }
 
 function convertEditorGeneratorToNirs4all(step: EditorPipelineStep): Nirs4allStep {
-  if (!step.branches || step.branches.length === 0) {
-    return { _or_: [] };
+  const branches = step.branches || [];
+  const opts = step.generatorOptions || {};
+
+  function addModifiers(result: Record<string, unknown>) {
+    if (opts.count && opts.count > 0) result.count = opts.count;
+    const seed = (step.params as Record<string, unknown>)?._seed_;
+    if (seed !== undefined) result._seed_ = seed;
   }
 
-  const alternatives = step.branches.map(branch =>
+  // _cartesian_
+  if (step.generatorKind === "cartesian") {
+    const stages = branches.map(stage =>
+      stage.map(s => convertEditorStepToNirs4all(s))
+    );
+    const result: Record<string, unknown> = { _cartesian_: stages };
+    if (opts.pick) result.pick = opts.pick;
+    if (opts.arrange) result.arrange = opts.arrange;
+    addModifiers(result);
+    return result as unknown as Nirs4allStep;
+  }
+
+  // _grid_
+  if (step.generatorKind === "grid") {
+    const grid: Record<string, unknown[]> = {};
+    branches.forEach((branch, idx) => {
+      const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
+      grid[paramName] = branch.map(s => convertEditorStepToNirs4all(s));
+    });
+    const result: Record<string, unknown> = { _grid_: grid };
+    addModifiers(result);
+    return result as unknown as Nirs4allStep;
+  }
+
+  // _zip_
+  if (step.generatorKind === "zip") {
+    const zipData: Record<string, unknown[]> = {};
+    branches.forEach((branch, idx) => {
+      const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
+      zipData[paramName] = branch.map(s => convertEditorStepToNirs4all(s));
+    });
+    const result: Record<string, unknown> = { _zip_: zipData };
+    addModifiers(result);
+    return result as unknown as Nirs4allStep;
+  }
+
+  // _chain_
+  if (step.generatorKind === "chain") {
+    const configs = branches.map(branch =>
+      branch.length === 1
+        ? convertEditorStepToNirs4all(branch[0])
+        : branch.map(s => convertEditorStepToNirs4all(s))
+    );
+    const result: Record<string, unknown> = { _chain_: configs };
+    addModifiers(result);
+    return result as unknown as Nirs4allStep;
+  }
+
+  // Default: _or_
+  if (branches.length === 0) {
+    return { _or_: [] } as unknown as Nirs4allStep;
+  }
+
+  const alternatives = branches.map(branch =>
     branch.length === 1
       ? convertEditorStepToNirs4all(branch[0])
       : branch.map(s => convertEditorStepToNirs4all(s))
   );
 
-  const result: Nirs4allGeneratorStep = {
-    _or_: alternatives as Nirs4allStep[],
-  };
+  const result: Record<string, unknown> = { _or_: alternatives };
+  if (opts.pick) result.pick = opts.pick;
+  if (opts.arrange) result.arrange = opts.arrange;
+  if (opts.then_pick) result.then_pick = opts.then_pick;
+  if (opts.then_arrange) result.then_arrange = opts.then_arrange;
+  addModifiers(result);
 
-  if (step.generatorOptions?.pick) {
-    result.pick = step.generatorOptions.pick;
-  }
-  if (step.generatorOptions?.arrange) {
-    result.arrange = step.generatorOptions.arrange;
-  }
-  if (step.generatorOptions?.then_pick) {
-    result.then_pick = step.generatorOptions.then_pick;
-  }
-  if (step.generatorOptions?.then_arrange) {
-    result.then_arrange = step.generatorOptions.then_arrange;
-  }
-  if (step.generatorOptions?.count) {
-    result.count = step.generatorOptions.count;
-  }
-
-  return result;
+  return result as unknown as Nirs4allStep;
 }
 
 function convertEditorAugmentationToNirs4all(step: EditorPipelineStep): Nirs4allStep {

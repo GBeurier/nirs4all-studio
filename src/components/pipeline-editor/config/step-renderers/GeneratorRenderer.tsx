@@ -1,18 +1,16 @@
 /**
  * GeneratorRenderer - Generator step configuration renderer
  *
- * Provides UI for configuring generator steps with:
- * - Selection mode (choose with pick/arrange)
+ * Provides UI for configuring generator steps (_or_, _cartesian_, _grid_,
+ * _zip_, _chain_, _sample_, _range_, _log_range_) with:
+ * - Selection mode (pick/arrange) for _or_ and _cartesian_
  * - Pick/Arrange as single value OR range [from, to]
- * - Second-order selection (then_pick, then_arrange) also as single value OR range
- * - Count limiter
- * - Variant preview
- *
- * Phase 3 Implementation - Component Refactoring
- * @see docs/_internals/implementation_roadmap.md
+ * - Second-order selection (then_pick, then_arrange) for _or_
+ * - Count limiter and seed
+ * - Variant count preview
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   Sparkles,
   Info,
@@ -20,8 +18,13 @@ import {
   Layers,
   ArrowRight,
   Settings2,
+  Hash,
+  Link2,
+  ListOrdered,
+  BarChart3,
+  GitBranch,
+  Ruler,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -44,27 +47,133 @@ import { StepActions } from "./StepActions";
 import type { StepRendererProps } from "./types";
 import type { PipelineStep, GeneratorKind } from "../../types";
 
-// Selection mode types - simplified to just pick/arrange with optional range
+// ---------------------------------------------------------------------------
+// Selection types
+// ---------------------------------------------------------------------------
+
 type PrimarySelectionMode = "none" | "pick" | "arrange";
 type SecondarySelectionMode = "none" | "then_pick" | "then_arrange";
-
-// Value can be a single number or a range [from, to]
 type SelectionValue = number | [number, number];
 
 interface SelectionConfig {
   primaryMode: PrimarySelectionMode;
-  primaryValue?: SelectionValue;  // Single value or [from, to] range
+  primaryValue?: SelectionValue;
   secondaryMode: SecondarySelectionMode;
-  secondaryValue?: SelectionValue;  // Single value or [from, to] range
+  secondaryValue?: SelectionValue;
   count?: number;
+  seed?: number;
 }
 
-// Check if value is a range
+// ---------------------------------------------------------------------------
+// Generator kind metadata
+// ---------------------------------------------------------------------------
+
+interface GeneratorKindMeta {
+  label: string;
+  keyword: string;
+  icon: typeof Sparkles;
+  description: string;
+  supportsPickArrange: boolean;
+  supportsSecondOrder: boolean;
+  variantLabel: string;
+  branchLabel: string;
+}
+
+const GENERATOR_KINDS: Record<string, GeneratorKindMeta> = {
+  or: {
+    label: "Or (Choose)",
+    keyword: "_or_",
+    icon: Sparkles,
+    description: "Choose from alternatives — each branch is one option",
+    supportsPickArrange: true,
+    supportsSecondOrder: true,
+    variantLabel: "variant",
+    branchLabel: "option",
+  },
+  cartesian: {
+    label: "Cartesian Product",
+    keyword: "_cartesian_",
+    icon: Layers,
+    description: "Cross all stages — each branch is a stage",
+    supportsPickArrange: true,
+    supportsSecondOrder: false,
+    variantLabel: "combination",
+    branchLabel: "stage",
+  },
+  grid: {
+    label: "Grid Search",
+    keyword: "_grid_",
+    icon: Hash,
+    description: "Cartesian product of parameter values",
+    supportsPickArrange: false,
+    supportsSecondOrder: false,
+    variantLabel: "combination",
+    branchLabel: "param",
+  },
+  zip: {
+    label: "Zip",
+    keyword: "_zip_",
+    icon: Link2,
+    description: "Pair parameter values by position",
+    supportsPickArrange: false,
+    supportsSecondOrder: false,
+    variantLabel: "pair",
+    branchLabel: "param",
+  },
+  chain: {
+    label: "Chain",
+    keyword: "_chain_",
+    icon: ListOrdered,
+    description: "Ordered sequence of configurations",
+    supportsPickArrange: false,
+    supportsSecondOrder: false,
+    variantLabel: "config",
+    branchLabel: "config",
+  },
+  sample: {
+    label: "Sample",
+    keyword: "_sample_",
+    icon: BarChart3,
+    description: "Random samples from a distribution",
+    supportsPickArrange: false,
+    supportsSecondOrder: false,
+    variantLabel: "sample",
+    branchLabel: "sample",
+  },
+  range: {
+    label: "Range",
+    keyword: "_range_",
+    icon: Ruler,
+    description: "Linear numeric sequence",
+    supportsPickArrange: false,
+    supportsSecondOrder: false,
+    variantLabel: "value",
+    branchLabel: "value",
+  },
+  log_range: {
+    label: "Log Range",
+    keyword: "_log_range_",
+    icon: GitBranch,
+    description: "Logarithmically-spaced values",
+    supportsPickArrange: false,
+    supportsSecondOrder: false,
+    variantLabel: "value",
+    branchLabel: "value",
+  },
+};
+
+function getKindMeta(kind: string): GeneratorKindMeta {
+  return GENERATOR_KINDS[kind] ?? GENERATOR_KINDS.or;
+}
+
+// ---------------------------------------------------------------------------
+// Combinatorics helpers
+// ---------------------------------------------------------------------------
+
 function isRange(value: SelectionValue | undefined): value is [number, number] {
   return Array.isArray(value) && value.length === 2;
 }
 
-// Calculate combinations C(n, k)
 function combinations(n: number, k: number): number {
   if (k < 0 || k > n) return 0;
   if (k === 0 || k === n) return 1;
@@ -75,7 +184,6 @@ function combinations(n: number, k: number): number {
   return Math.round(result);
 }
 
-// Calculate permutations P(n, k)
 function permutations(n: number, k: number): number {
   if (k < 0 || k > n) return 0;
   let result = 1;
@@ -85,42 +193,60 @@ function permutations(n: number, k: number): number {
   return result;
 }
 
-// Calculate variants for a selection value (single or range)
 function calculateVariantsForValue(
   optionCount: number,
   mode: "pick" | "arrange",
   value: SelectionValue
 ): number {
   if (isRange(value)) {
-    // Range [from, to]: sum of all variants from 'from' to 'to'
     const [from, to] = value;
     let total = 0;
     for (let k = from; k <= to; k++) {
-      if (mode === "pick") {
-        total += combinations(optionCount, k);
-      } else {
-        total += permutations(optionCount, k);
-      }
+      total += mode === "pick" ? combinations(optionCount, k) : permutations(optionCount, k);
     }
     return total;
-  } else {
-    // Single value
-    if (mode === "pick") {
-      return combinations(optionCount, value);
-    } else {
-      return permutations(optionCount, value);
-    }
   }
+  return mode === "pick" ? combinations(optionCount, value) : permutations(optionCount, value);
 }
 
-// Calculate variant count based on selection config
-function calculateVariants(optionCount: number, config: SelectionConfig): number {
+// ---------------------------------------------------------------------------
+// Variant count calculator
+// ---------------------------------------------------------------------------
+
+function calculateVariants(optionCount: number, config: SelectionConfig, kind: string): number {
+  // For grid: Cartesian product of branch sizes (would need branch info — approximate with optionCount)
+  if (kind === "grid") {
+    // Each branch is a param dimension; total = product of branch sizes
+    // Since we don't have individual branch sizes, use optionCount as a proxy
+    return applyCountLimit(optionCount, config.count);
+  }
+
+  // For zip: min of branch sizes — approximate with optionCount
+  if (kind === "zip") {
+    return applyCountLimit(optionCount, config.count);
+  }
+
+  // For chain: flat count of branches
+  if (kind === "chain") {
+    return applyCountLimit(optionCount, config.count);
+  }
+
+  // For sample/range/log_range: driven by their own params, not branches
+  if (kind === "sample" || kind === "range" || kind === "log_range") {
+    return applyCountLimit(optionCount, config.count);
+  }
+
+  // For or/cartesian: use pick/arrange logic
   let primary: number;
 
   switch (config.primaryMode) {
     case "none":
-      // No pick/arrange = try each option (pick 1)
-      primary = optionCount;
+      if (kind === "cartesian") {
+        // Cartesian = product of options per stage. Without per-stage sizes, show branch count
+        primary = optionCount;
+      } else {
+        primary = optionCount; // or: try each
+      }
       break;
     case "pick":
       primary = calculateVariantsForValue(optionCount, "pick", config.primaryValue || 1);
@@ -132,31 +258,35 @@ function calculateVariants(optionCount: number, config: SelectionConfig): number
       primary = optionCount;
   }
 
-  if (config.secondaryMode === "none") {
-    return config.count ? Math.min(primary, config.count) : primary;
+  if (config.secondaryMode !== "none") {
+    let secondary: number;
+    switch (config.secondaryMode) {
+      case "then_pick":
+        secondary = calculateVariantsForValue(primary, "pick", config.secondaryValue || 2);
+        break;
+      case "then_arrange":
+        secondary = calculateVariantsForValue(primary, "arrange", config.secondaryValue || 2);
+        break;
+      default:
+        secondary = primary;
+    }
+    return applyCountLimit(secondary, config.count);
   }
 
-  // Second-order calculation
-  let secondary: number;
-  switch (config.secondaryMode) {
-    case "then_pick":
-      secondary = calculateVariantsForValue(primary, "pick", config.secondaryValue || 2);
-      break;
-    case "then_arrange":
-      secondary = calculateVariantsForValue(primary, "arrange", config.secondaryValue || 2);
-      break;
-    default:
-      secondary = primary;
-  }
-
-  return config.count ? Math.min(secondary, config.count) : secondary;
+  return applyCountLimit(primary, config.count);
 }
 
-// Extract config from step's generatorOptions
+function applyCountLimit(total: number, count?: number): number {
+  return count && count > 0 ? Math.min(total, count) : total;
+}
+
+// ---------------------------------------------------------------------------
+// Config extraction / serialization
+// ---------------------------------------------------------------------------
+
 function extractConfig(step: PipelineStep): SelectionConfig {
   const opts = step.generatorOptions || {};
 
-  // Determine primary mode
   let primaryMode: PrimarySelectionMode = "none";
   let primaryValue: SelectionValue | undefined;
 
@@ -168,7 +298,6 @@ function extractConfig(step: PipelineStep): SelectionConfig {
     primaryValue = opts.pick;
   }
 
-  // Determine secondary mode
   let secondaryMode: SecondarySelectionMode = "none";
   let secondaryValue: SelectionValue | undefined;
 
@@ -186,10 +315,10 @@ function extractConfig(step: PipelineStep): SelectionConfig {
     secondaryMode,
     secondaryValue,
     count: opts.count,
+    seed: (step.params as Record<string, unknown>)?._seed_ as number | undefined,
   };
 }
 
-// Convert config back to generatorOptions
 function configToOptions(config: SelectionConfig): PipelineStep["generatorOptions"] {
   const opts: PipelineStep["generatorOptions"] = {};
 
@@ -198,7 +327,6 @@ function configToOptions(config: SelectionConfig): PipelineStep["generatorOption
   } else if (config.primaryMode === "arrange" && config.primaryValue !== undefined) {
     opts.arrange = config.primaryValue;
   }
-  // "none" mode means no pick/arrange - each option is tried individually
 
   if (config.secondaryMode === "then_pick" && config.secondaryValue !== undefined) {
     opts.then_pick = config.secondaryValue;
@@ -207,55 +335,33 @@ function configToOptions(config: SelectionConfig): PipelineStep["generatorOption
     opts.then_arrange = config.secondaryValue;
   }
 
-  if (config.count) {
+  if (config.count && config.count > 0) {
     opts.count = config.count;
   }
 
   return opts;
 }
 
+// ---------------------------------------------------------------------------
+// Selection mode options
+// ---------------------------------------------------------------------------
+
 const PRIMARY_MODE_OPTIONS: { value: PrimarySelectionMode; label: string; description: string; icon: typeof Sparkles }[] = [
-  {
-    value: "none",
-    label: "Try Each",
-    description: "Test each option individually",
-    icon: Sparkles,
-  },
-  {
-    value: "pick",
-    label: "Pick",
-    description: "Combinations (order ignored)",
-    icon: Layers,
-  },
-  {
-    value: "arrange",
-    label: "Arrange",
-    description: "Permutations (order matters)",
-    icon: Shuffle,
-  },
+  { value: "none", label: "Try Each", description: "Test each option individually", icon: Sparkles },
+  { value: "pick", label: "Pick", description: "Combinations (order ignored)", icon: Layers },
+  { value: "arrange", label: "Arrange", description: "Permutations (order matters)", icon: Shuffle },
 ];
 
 const SECONDARY_MODE_OPTIONS: { value: SecondarySelectionMode; label: string; description: string }[] = [
-  {
-    value: "none",
-    label: "None",
-    description: "No second-order selection",
-  },
-  {
-    value: "then_pick",
-    label: "Then Pick",
-    description: "Combinations from results",
-  },
-  {
-    value: "then_arrange",
-    label: "Then Arrange",
-    description: "Permutations from results",
-  },
+  { value: "none", label: "None", description: "No second-order selection" },
+  { value: "then_pick", label: "Then Pick", description: "Combinations from results" },
+  { value: "then_arrange", label: "Then Arrange", description: "Permutations from results" },
 ];
 
-/**
- * RangeValueInput - Input for a value that can be a single number or a range [from, to]
- */
+// ---------------------------------------------------------------------------
+// RangeValueInput
+// ---------------------------------------------------------------------------
+
 interface RangeValueInputProps {
   value: SelectionValue | undefined;
   onChange: (value: SelectionValue) => void;
@@ -272,10 +378,8 @@ function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: Range
 
   const handleToggleRange = useCallback(() => {
     if (isRangeMode) {
-      // Switch to single value (use the 'to' value)
       onChange(value[1] ?? 2);
     } else {
-      // Switch to range [1, current value or max]
       onChange([1, singleValue ?? Math.min(2, maxValue)]);
     }
   }, [isRangeMode, value, singleValue, maxValue, onChange]);
@@ -342,53 +446,43 @@ function RangeValueInput({ value, onChange, maxValue, label, rangeLabel }: Range
   );
 }
 
-/**
- * GeneratorRenderer - Configuration UI for generator steps
- */
+// ---------------------------------------------------------------------------
+// GeneratorRenderer
+// ---------------------------------------------------------------------------
+
 export function GeneratorRenderer({
   step,
   onUpdate,
   onRemove,
   onDuplicate,
 }: StepRendererProps) {
-  // Get generator kind for display
-  const generatorKind = step.generatorKind || "or";
-  const isCartesian = generatorKind === "cartesian";
-  const generatorLabel = step.name === "Grid"
-    ? "Grid Search"
-    : isCartesian
-      ? "Cartesian Product"
-      : "Choose";
-  const generatorKeyword = step.name === "Grid"
-    ? "_grid_"
-    : isCartesian
-      ? "_cartesian_"
-      : "_or_";
+  const generatorKind = (step.generatorKind || "or") as string;
+  const meta = getKindMeta(generatorKind);
+  const Icon = meta.icon;
 
-  // Get option count from branches
   const optionCount = step.branches?.length || 0;
-
-  // Extract current config
   const config = useMemo(() => extractConfig(step), [step]);
 
-  // Calculate variants
   const variantCount = useMemo(
-    () => calculateVariants(optionCount, config),
-    [optionCount, config]
+    () => calculateVariants(optionCount, config, generatorKind),
+    [optionCount, config, generatorKind]
   );
 
-  // Update config
   const handleConfigChange = useCallback(
     (updates: Partial<SelectionConfig>) => {
       const newConfig = { ...config, ...updates };
-      onUpdate(step.id, {
+      const updatePayload: Record<string, unknown> = {
         generatorOptions: configToOptions(newConfig),
-      });
+      };
+      // Persist seed in params
+      if (updates.seed !== undefined) {
+        updatePayload.params = { ...step.params, _seed_: updates.seed || undefined };
+      }
+      onUpdate(step.id, updatePayload);
     },
-    [config, onUpdate, step.id]
+    [config, onUpdate, step.id, step.params]
   );
 
-  // Handle primary mode change
   const handlePrimaryModeChange = useCallback(
     (mode: PrimarySelectionMode) => {
       handleConfigChange({
@@ -399,7 +493,6 @@ export function GeneratorRenderer({
     [handleConfigChange, config.primaryValue]
   );
 
-  // Handle secondary mode change
   const handleSecondaryModeChange = useCallback(
     (mode: SecondarySelectionMode) => {
       handleConfigChange({
@@ -410,15 +503,12 @@ export function GeneratorRenderer({
     [handleConfigChange, config.secondaryValue]
   );
 
-  const hasSecondarySelection = config.secondaryMode !== "none";
   const hasPrimarySelection = config.primaryMode !== "none";
+  const hasSecondarySelection = config.secondaryMode !== "none";
 
-  // Format value for display
   const formatValue = (value: SelectionValue | undefined): string => {
     if (value === undefined) return "";
-    if (isRange(value)) {
-      return `${value[0]} to ${value[1]}`;
-    }
+    if (isRange(value)) return `${value[0]} to ${value[1]}`;
     return String(value);
   };
 
@@ -428,138 +518,148 @@ export function GeneratorRenderer({
         <div className="p-4 space-y-4">
           {/* Generator Type Header */}
           <div className="flex items-center gap-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
-            <Sparkles className="h-5 w-5 text-orange-500 flex-shrink-0" />
+            <Icon className="h-5 w-5 text-orange-500 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-sm">{generatorLabel}</span>
+                <span className="font-medium text-sm">{meta.label}</span>
                 <Badge variant="outline" className="text-xs font-mono border-orange-500/50 text-orange-600">
-                  {generatorKeyword}
+                  {meta.keyword}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {optionCount} option{optionCount !== 1 ? "s" : ""} → {variantCount} variant{variantCount !== 1 ? "s" : ""}
+                {meta.description}
               </p>
+              {optionCount > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {optionCount} {meta.branchLabel}{optionCount !== 1 ? "s" : ""} {" \u2192 "} {variantCount} {meta.variantLabel}{variantCount !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
           </div>
 
-          <Separator />
-
-          {/* Selection Mode */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Selection Mode</Label>
-            <Select
-              value={config.primaryMode}
-              onValueChange={(v) => handlePrimaryModeChange(v as PrimarySelectionMode)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                {PRIMARY_MODE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    <span className="font-medium">{opt.label}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      – {opt.description}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Pick/Arrange value - supports single value or range */}
-            {hasPrimarySelection && (
-              <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                <RangeValueInput
-                  value={config.primaryValue}
-                  onChange={(value) => handleConfigChange({ primaryValue: value })}
-                  maxValue={optionCount}
-                  label={config.primaryMode === "pick" ? "Pick" : "Arrange"}
-                />
-                <div className="text-xs text-muted-foreground">
-                  {isRange(config.primaryValue)
-                    ? `All ${config.primaryMode === "pick" ? "combinations" : "permutations"} from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
-                    : config.primaryMode === "pick"
-                      ? `C(${optionCount}, ${config.primaryValue || 1}) = ${combinations(optionCount, (config.primaryValue as number) || 1)} combinations`
-                      : `P(${optionCount}, ${config.primaryValue || 1}) = ${permutations(optionCount, (config.primaryValue as number) || 1)} permutations`
-                  }
-                </div>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Second-Order Selection */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium">Second-Order</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-48">
-                    Apply a second selection on the primary results.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Switch
-                checked={hasSecondarySelection}
-                onCheckedChange={(checked) =>
-                  handleSecondaryModeChange(checked ? "then_pick" : "none")
-                }
-              />
-            </div>
-
-            {hasSecondarySelection && (
-              <div className="p-3 rounded-lg border border-dashed border-orange-500/30 bg-orange-500/5 space-y-3">
+          {/* Selection Mode — only for _or_ and _cartesian_ */}
+          {meta.supportsPickArrange && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Selection Mode</Label>
                 <Select
-                  value={config.secondaryMode}
-                  onValueChange={(v) => handleSecondaryModeChange(v as SecondarySelectionMode)}
+                  value={config.primaryMode}
+                  onValueChange={(v) => handlePrimaryModeChange(v as PrimarySelectionMode)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
-                    {SECONDARY_MODE_OPTIONS.filter((opt) => opt.value !== "none").map((opt) => (
+                    {PRIMARY_MODE_OPTIONS.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
                         <span className="font-medium">{opt.label}</span>
                         <span className="text-xs text-muted-foreground ml-2">
-                          – {opt.description}
+                          {" \u2013 "}{opt.description}
                         </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
 
-                <div className="flex items-center gap-2">
-                  <ArrowRight className="h-4 w-4 text-orange-500 flex-shrink-0" />
-                </div>
-                <RangeValueInput
-                  value={config.secondaryValue}
-                  onChange={(value) => handleConfigChange({ secondaryValue: value })}
-                  maxValue={variantCount}
-                  label={config.secondaryMode === "then_pick" ? "Then Pick" : "Then Arrange"}
-                />
+                {hasPrimarySelection && (
+                  <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                    <RangeValueInput
+                      value={config.primaryValue}
+                      onChange={(value) => handleConfigChange({ primaryValue: value })}
+                      maxValue={optionCount}
+                      label={config.primaryMode === "pick" ? "Pick" : "Arrange"}
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      {isRange(config.primaryValue)
+                        ? `All ${config.primaryMode === "pick" ? "combinations" : "permutations"} from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
+                        : config.primaryMode === "pick"
+                          ? `C(${optionCount}, ${config.primaryValue || 1}) = ${combinations(optionCount, (config.primaryValue as number) || 1)} combinations`
+                          : `P(${optionCount}, ${config.primaryValue || 1}) = ${permutations(optionCount, (config.primaryValue as number) || 1)} permutations`
+                      }
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
+
+          {/* Second-Order Selection — only for _or_ */}
+          {meta.supportsSecondOrder && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium">Second-Order</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-48">
+                        Apply a second selection (then_pick / then_arrange) on the primary results.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Switch
+                    checked={hasSecondarySelection}
+                    onCheckedChange={(checked) =>
+                      handleSecondaryModeChange(checked ? "then_pick" : "none")
+                    }
+                  />
+                </div>
+
+                {hasSecondarySelection && (
+                  <div className="p-3 rounded-lg border border-dashed border-orange-500/30 bg-orange-500/5 space-y-3">
+                    <Select
+                      value={config.secondaryMode}
+                      onValueChange={(v) => handleSecondaryModeChange(v as SecondarySelectionMode)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover">
+                        {SECONDARY_MODE_OPTIONS.filter((opt) => opt.value !== "none").map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <span className="font-medium">{opt.label}</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {" \u2013 "}{opt.description}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <div className="flex items-center gap-2">
+                      <ArrowRight className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                    </div>
+                    <RangeValueInput
+                      value={config.secondaryValue}
+                      onChange={(value) => handleConfigChange({ secondaryValue: value })}
+                      maxValue={variantCount}
+                      label={config.secondaryMode === "then_pick" ? "Then Pick" : "Then Arrange"}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <Separator />
 
-          {/* Limit Variants */}
+          {/* Limit Variants (count) — available for all generator kinds */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">Limit Variants</Label>
               <Switch
-                checked={!!config.count}
+                checked={!!config.count && config.count > 0}
                 onCheckedChange={(checked) =>
                   handleConfigChange({ count: checked ? Math.min(10, variantCount) : undefined })
                 }
               />
             </div>
 
-            {config.count !== undefined && (
+            {config.count !== undefined && config.count > 0 && (
               <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
                 <Label className="text-sm text-muted-foreground">Max</Label>
                 <Input
@@ -582,33 +682,87 @@ export function GeneratorRenderer({
 
           <Separator />
 
+          {/* Seed — available for all generator kinds */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-medium">Seed</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-48">
+                    Set a seed for deterministic, reproducible generation.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Switch
+                checked={config.seed !== undefined}
+                onCheckedChange={(checked) =>
+                  handleConfigChange({ seed: checked ? 42 : undefined })
+                }
+              />
+            </div>
+
+            {config.seed !== undefined && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+                <Label className="text-sm text-muted-foreground">_seed_</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={config.seed}
+                  onChange={(e) =>
+                    handleConfigChange({
+                      seed: Math.max(0, parseInt(e.target.value) || 0),
+                    })
+                  }
+                  className="w-24 h-8"
+                />
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
           {/* Summary */}
           <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
             <Settings2 className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
             <div className="text-sm min-w-0">
-              <p className="font-medium">
-                {config.primaryMode === "none" && "Each option tested individually"}
-                {config.primaryMode === "pick" && (
-                  isRange(config.primaryValue)
-                    ? `All combinations from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
-                    : `All ${config.primaryValue}-combinations`
-                )}
-                {config.primaryMode === "arrange" && (
-                  isRange(config.primaryValue)
-                    ? `All permutations from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
-                    : `All ${config.primaryValue}-permutations`
-                )}
-              </p>
+              {meta.supportsPickArrange && (
+                <p className="font-medium">
+                  {config.primaryMode === "none" && (
+                    generatorKind === "cartesian"
+                      ? "All stage combinations"
+                      : "Each option tested individually"
+                  )}
+                  {config.primaryMode === "pick" && (
+                    isRange(config.primaryValue)
+                      ? `All combinations from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
+                      : `All ${config.primaryValue}-combinations`
+                  )}
+                  {config.primaryMode === "arrange" && (
+                    isRange(config.primaryValue)
+                      ? `All permutations from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
+                      : `All ${config.primaryValue}-permutations`
+                  )}
+                </p>
+              )}
+              {!meta.supportsPickArrange && (
+                <p className="font-medium">
+                  {meta.description}
+                </p>
+              )}
               {hasSecondarySelection && (
                 <p className="text-xs text-muted-foreground mt-1">
                   {config.secondaryMode === "then_pick" &&
-                    `→ Then pick ${formatValue(config.secondaryValue)} from results`}
+                    `\u2192 Then pick ${formatValue(config.secondaryValue)} from results`}
                   {config.secondaryMode === "then_arrange" &&
-                    `→ Then arrange ${formatValue(config.secondaryValue)} from results`}
+                    `\u2192 Then arrange ${formatValue(config.secondaryValue)} from results`}
                 </p>
               )}
               <p className="text-xs text-orange-600 mt-1">
-                Total: {config.count ? Math.min(config.count, variantCount) : variantCount} variant{(config.count ? Math.min(config.count, variantCount) : variantCount) !== 1 ? "s" : ""}
+                Total: {applyCountLimit(variantCount, config.count)} {meta.variantLabel}{applyCountLimit(variantCount, config.count) !== 1 ? "s" : ""}
+                {config.seed !== undefined && ` (seed: ${config.seed})`}
               </p>
             </div>
           </div>

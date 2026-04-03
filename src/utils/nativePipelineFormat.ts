@@ -425,36 +425,76 @@ function convertConcatTransformToNative(step: EditorPipelineStep): NativePipelin
 }
 
 /**
- * Convert a generator step (_or_, _cartesian_).
+ * Convert a generator step (_or_, _cartesian_, _grid_, _zip_, _chain_).
  */
 function convertGeneratorToNative(step: EditorPipelineStep): NativePipelineStep {
-  if (step.generatorKind === "cartesian" && step.branches?.length) {
-    // Cartesian: each branch is a "stage" with alternatives
-    const stages = step.branches.map((stage) =>
+  const opts = step.generatorOptions || {};
+  const branches = step.branches || [];
+
+  // Helper to add shared modifiers (count, seed)
+  function addModifiers(result: Record<string, unknown>) {
+    if (opts.count && opts.count > 0) result.count = opts.count;
+    const seed = (step.params as Record<string, unknown>)?._seed_;
+    if (seed !== undefined) result._seed_ = seed;
+  }
+
+  if (step.generatorKind === "cartesian" && branches.length) {
+    const stages = branches.map((stage) =>
       stage.map((s) => convertStepToNative(s)).filter(Boolean)
     );
     const result: Record<string, unknown> = { _cartesian_: stages };
-    if (step.generatorOptions?.pick) result.pick = step.generatorOptions.pick;
-    if (step.generatorOptions?.arrange) result.arrange = step.generatorOptions.arrange;
-    if (step.generatorOptions?.count) result.count = step.generatorOptions.count;
+    if (opts.pick) result.pick = opts.pick;
+    if (opts.arrange) result.arrange = opts.arrange;
+    addModifiers(result);
+    return result;
+  }
+
+  if (step.generatorKind === "grid" && branches.length) {
+    const grid: Record<string, unknown[]> = {};
+    branches.forEach((branch, idx) => {
+      const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
+      grid[paramName] = branch.map((s) => convertStepToNative(s)).filter(Boolean);
+    });
+    const result: Record<string, unknown> = { _grid_: grid };
+    addModifiers(result);
+    return result;
+  }
+
+  if (step.generatorKind === "zip" && branches.length) {
+    const zipData: Record<string, unknown[]> = {};
+    branches.forEach((branch, idx) => {
+      const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
+      zipData[paramName] = branch.map((s) => convertStepToNative(s)).filter(Boolean);
+    });
+    const result: Record<string, unknown> = { _zip_: zipData };
+    addModifiers(result);
+    return result;
+  }
+
+  if (step.generatorKind === "chain" && branches.length) {
+    const configs = branches.map((branch) =>
+      branch.length === 1 ? convertStepToNative(branch[0]) : toNativeFormat(branch)
+    );
+    const result: Record<string, unknown> = { _chain_: configs };
+    addModifiers(result);
     return result;
   }
 
   // Default: _or_ generator
-  if (!step.branches || step.branches.length === 0) {
+  if (branches.length === 0) {
     return { _or_: [] };
   }
 
-  const alternatives = step.branches.map((branch) =>
+  const alternatives = branches.map((branch) =>
     branch.length === 1 ? convertStepToNative(branch[0]) : toNativeFormat(branch)
   );
 
   const result: Record<string, unknown> = { _or_: alternatives };
-  if (step.generatorOptions?.pick) result.pick = step.generatorOptions.pick;
-  if (step.generatorOptions?.arrange) result.arrange = step.generatorOptions.arrange;
-  if (step.generatorOptions?.then_pick) result.then_pick = step.generatorOptions.then_pick;
-  if (step.generatorOptions?.then_arrange) result.then_arrange = step.generatorOptions.then_arrange;
-  if (step.generatorOptions?.count) result.count = step.generatorOptions.count;
+  if (opts.pick) result.pick = opts.pick;
+  if (opts.arrange) result.arrange = opts.arrange;
+  if (opts.then_pick) result.then_pick = opts.then_pick;
+  if (opts.then_arrange) result.then_arrange = opts.then_arrange;
+  addModifiers(result);
 
   return result;
 }
@@ -972,9 +1012,9 @@ function convertNativeOrToEditor(step: Record<string, unknown>): EditorPipelineS
 
   return {
     id: generateStepId(),
-    type: "utility",
+    type: "flow",
     subType: "generator",
-    name: "Choose",
+    name: "Or",
     params: {},
     branches,
     generatorKind: "or",
@@ -994,10 +1034,11 @@ function convertNativeRangeToEditor(step: Record<string, unknown>, keyword: "_ra
 
   return {
     id: generateStepId(),
-    type: "utility",
+    type: "flow",
     subType: "generator",
-    name: "Choose",
+    name: keyword === "_log_range_" ? "LogRange" : "Range",
     params: {},
+    generatorKind: keyword === "_log_range_" ? "log_range" : "range",
     stepGenerator: {
       type: keyword,
       values,
@@ -1015,7 +1056,7 @@ function convertNativeCartesianToEditor(step: Record<string, unknown>): EditorPi
 
   return {
     id: generateStepId(),
-    type: "utility",
+    type: "flow",
     subType: "generator",
     name: "Cartesian",
     params: {},
@@ -1042,10 +1083,11 @@ function convertNativeGridToEditor(step: Record<string, unknown>): EditorPipelin
 
   return {
     id: generateStepId(),
-    type: "utility",
+    type: "flow",
     subType: "generator",
     name: "Grid",
     params: {},
+    generatorKind: "grid",
     paramSweeps,
   };
 }

@@ -194,7 +194,11 @@ export function CommandPalette({
 
         if (step.branches) {
           for (let i = 0; i < step.branches.length; i++) {
-            const branchLabel = step.generatorKind === "cartesian" ? `Stage ${i + 1}` : `Branch ${i + 1}`;
+            const branchLabel = step.generatorKind === "cartesian" ? `Stage ${i + 1}`
+              : step.generatorKind === "grid" || step.generatorKind === "zip" ? `Param ${i + 1}`
+              : step.generatorKind === "chain" ? `Config ${i + 1}`
+              : step.subType === "generator" ? `Option ${i + 1}`
+              : `Branch ${i + 1}`;
             flatten(step.branches[i], `${path} → ${branchLabel}`);
           }
         }

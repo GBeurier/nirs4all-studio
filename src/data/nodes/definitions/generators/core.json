@@ -1,92 +1,86 @@
 [
   {
-    "id": "generator.choose_one",
-    "name": "ChooseOne",
-    "type": "utility",
+    "id": "generator.or",
+    "name": "Or",
+    "type": "flow",
     "subType": "generator",
     "classPath": "_or_",
-    "description": "Generator: try one item from a list",
-    "longDescription": "Pipeline generator that creates variants by trying each item from a list one at a time.",
+    "description": "Generator: choose from alternatives",
+    "longDescription": "Pipeline generator that creates variants from a list of alternatives. Each branch is one option. Use pick/arrange to select combinations or permutations instead of trying each individually.",
     "category": "Selection",
-    "tags": [
-      "generator",
-      "choice",
-      "variants",
-      "sweep"
-    ],
+    "tags": ["generator", "choice", "variants", "or", "pick", "arrange", "combinations", "permutations"],
     "source": "nirs4all",
     "isGenerator": true,
     "isContainer": true,
     "containerType": "branches",
-    "generatorType": "choose_one",
+    "generatorType": "or",
     "generatorKind": "or",
     "defaultBranches": 3,
     "parameters": [
       {
-        "name": "items",
-        "type": "array",
-        "default": [],
-        "description": "List of items to choose from (preprocessing steps, models, etc.)",
-        "required": true
+        "name": "pick",
+        "type": "int",
+        "description": "Unordered selection size (combinations). Single int or [from, to] range.",
+        "min": 1,
+        "group": "selection",
+        "order": 1
+      },
+      {
+        "name": "arrange",
+        "type": "int",
+        "description": "Ordered selection size (permutations). Single int or [from, to] range.",
+        "min": 1,
+        "group": "selection",
+        "order": 2
+      },
+      {
+        "name": "then_pick",
+        "type": "int",
+        "description": "Second-order combination selection on primary results.",
+        "min": 1,
+        "isAdvanced": true,
+        "group": "selection",
+        "order": 3
+      },
+      {
+        "name": "then_arrange",
+        "type": "int",
+        "description": "Second-order permutation selection on primary results.",
+        "min": 1,
+        "isAdvanced": true,
+        "group": "selection",
+        "order": 4
+      },
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Maximum number of generated variants (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 5
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic/reproducible generation.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 6
       }
     ],
     "tier": "core"
   },
   {
-    "id": "generator.choose_n",
-    "name": "ChooseN",
-    "type": "utility",
-    "subType": "generator",
-    "classPath": "_and_",
-    "description": "Generator: choose N items from a list",
-    "longDescription": "Pipeline generator that creates variants by selecting N items from a list.",
-    "category": "Selection",
-    "tags": [
-      "generator",
-      "choice",
-      "combination",
-      "variants"
-    ],
-    "source": "nirs4all",
-    "isGenerator": true,
-    "isContainer": true,
-    "containerType": "branches",
-    "generatorType": "choose_n",
-    "generatorKind": "or",
-    "defaultBranches": 3,
-    "parameters": [
-      {
-        "name": "items",
-        "type": "array",
-        "default": [],
-        "description": "List of items to choose from"
-      },
-      {
-        "name": "n",
-        "type": "int",
-        "default": 2,
-        "min": 1,
-        "max": 10,
-        "description": "Number of items to select"
-      }
-    ],
-    "tier": "standard"
-  },
-  {
     "id": "generator.cartesian",
     "name": "Cartesian",
-    "type": "utility",
+    "type": "flow",
     "subType": "generator",
     "classPath": "_cartesian_",
-    "description": "Generator: Cartesian product of options",
-    "longDescription": "Creates all combinations from multiple lists (Cartesian product).",
+    "description": "Generator: Cartesian product of stages",
+    "longDescription": "Creates all combinations by crossing multiple stages. Each branch is a stage containing options. The Cartesian product of all stages generates the full set of pipeline variants.",
     "category": "Combination",
-    "tags": [
-      "generator",
-      "cartesian",
-      "product",
-      "combinations"
-    ],
+    "tags": ["generator", "cartesian", "product", "combinations", "stages", "cross"],
     "source": "nirs4all",
     "isGenerator": true,
     "isContainer": true,
@@ -94,53 +88,387 @@
     "generatorType": "cartesian",
     "generatorKind": "cartesian",
     "defaultBranches": 2,
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "pick",
+        "type": "int",
+        "description": "Select combinations from the generated complete pipelines.",
+        "min": 1,
+        "group": "selection",
+        "order": 1
+      },
+      {
+        "name": "arrange",
+        "type": "int",
+        "description": "Select permutations from the generated complete pipelines.",
+        "min": 1,
+        "group": "selection",
+        "order": 2
+      },
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Maximum number of generated variants (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 3
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic/reproducible generation.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 4
+      }
+    ],
     "tier": "core"
+  },
+  {
+    "id": "generator.grid",
+    "name": "Grid",
+    "type": "flow",
+    "subType": "generator",
+    "classPath": "_grid_",
+    "description": "Generator: grid search over parameter values",
+    "longDescription": "Generates all combinations (Cartesian product) of parameter values. Each branch maps a parameter name to a list of values to try. Produces one variant per combination.",
+    "category": "Parameters",
+    "tags": ["generator", "grid", "search", "parameters", "hyperparameters", "cartesian"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "isContainer": true,
+    "containerType": "branches",
+    "generatorType": "grid",
+    "generatorKind": "grid",
+    "defaultBranches": 2,
+    "parameters": [
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Maximum number of generated variants (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 1
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic/reproducible sampling when count is set.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 2
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "generator.zip",
+    "name": "Zip",
+    "type": "flow",
+    "subType": "generator",
+    "classPath": "_zip_",
+    "description": "Generator: parallel parameter iteration",
+    "longDescription": "Pairs values from multiple parameter lists by position (like Python's zip). Each branch maps a parameter name to a list of values. Stops at the shortest list.",
+    "category": "Parameters",
+    "tags": ["generator", "zip", "parallel", "parameters", "paired"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "isContainer": true,
+    "containerType": "branches",
+    "generatorType": "zip",
+    "generatorKind": "zip",
+    "defaultBranches": 2,
+    "parameters": [
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Maximum number of generated variants (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 1
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic/reproducible sampling when count is set.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 2
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "generator.chain",
+    "name": "Chain",
+    "type": "flow",
+    "subType": "generator",
+    "classPath": "_chain_",
+    "description": "Generator: ordered sequence of configurations",
+    "longDescription": "Expands configurations sequentially in order. Each branch is a configuration variant. Unlike _or_ which may randomize selection, _chain_ preserves the defined order.",
+    "category": "Selection",
+    "tags": ["generator", "chain", "sequence", "ordered", "sequential"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "isContainer": true,
+    "containerType": "branches",
+    "generatorType": "chain",
+    "generatorKind": "chain",
+    "defaultBranches": 3,
+    "parameters": [
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Limit to first N items (or random N if seed is set, 0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 1
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for random sampling instead of taking first N.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 2
+      }
+    ],
+    "tier": "standard"
+  },
+  {
+    "id": "generator.sample",
+    "name": "Sample",
+    "type": "flow",
+    "subType": "generator",
+    "classPath": "_sample_",
+    "description": "Generator: statistical sampling from distributions",
+    "longDescription": "Generates random parameter values from a specified statistical distribution (uniform, log_uniform, normal/gaussian, choice).",
+    "category": "Parameters",
+    "tags": ["generator", "sample", "random", "distribution", "uniform", "normal", "gaussian"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "generatorType": "sample",
+    "generatorKind": "sample",
+    "parameters": [
+      {
+        "name": "distribution",
+        "type": "select",
+        "default": "uniform",
+        "description": "Statistical distribution to sample from.",
+        "required": true,
+        "options": [
+          { "value": "uniform", "label": "Uniform", "description": "Uniform distribution between from and to" },
+          { "value": "log_uniform", "label": "Log-Uniform", "description": "Log-uniform distribution (for orders of magnitude)" },
+          { "value": "normal", "label": "Normal", "description": "Normal (Gaussian) distribution" },
+          { "value": "choice", "label": "Choice", "description": "Random selection from a list of values" }
+        ],
+        "group": "distribution",
+        "order": 1
+      },
+      {
+        "name": "from",
+        "type": "float",
+        "default": 0,
+        "description": "Lower bound (uniform/log_uniform).",
+        "dependsOn": "distribution",
+        "dependsOnValue": "uniform",
+        "group": "distribution",
+        "order": 2
+      },
+      {
+        "name": "to",
+        "type": "float",
+        "default": 1,
+        "description": "Upper bound (uniform/log_uniform).",
+        "dependsOn": "distribution",
+        "dependsOnValue": "uniform",
+        "group": "distribution",
+        "order": 3
+      },
+      {
+        "name": "mean",
+        "type": "float",
+        "default": 0,
+        "description": "Mean value (normal/gaussian).",
+        "dependsOn": "distribution",
+        "dependsOnValue": "normal",
+        "group": "distribution",
+        "order": 4
+      },
+      {
+        "name": "std",
+        "type": "float",
+        "default": 1,
+        "min": 0,
+        "description": "Standard deviation (normal/gaussian).",
+        "dependsOn": "distribution",
+        "dependsOnValue": "normal",
+        "group": "distribution",
+        "order": 5
+      },
+      {
+        "name": "num",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "description": "Number of samples to generate.",
+        "group": "limits",
+        "order": 6
+      },
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Maximum number of results (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 7
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic/reproducible sampling.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 8
+      }
+    ],
+    "tier": "standard"
   },
   {
     "id": "generator.range",
     "name": "Range",
-    "type": "utility",
+    "type": "flow",
     "subType": "generator",
     "classPath": "_range_",
-    "description": "Generator: parameter range sweep",
-    "longDescription": "Generates values over a range for parameter sweeping.",
+    "description": "Generator: linear parameter sweep",
+    "longDescription": "Generates a numeric sequence from start to end (inclusive) with optional step. Use for linear parameter sweeping.",
     "category": "Parameters",
-    "tags": [
-      "generator",
-      "range",
-      "sweep",
-      "parameters"
-    ],
+    "tags": ["generator", "range", "sweep", "parameters", "linear"],
     "source": "nirs4all",
     "isGenerator": true,
     "generatorType": "range",
+    "generatorKind": "range",
     "parameters": [
       {
         "name": "from",
         "type": "float",
         "default": 1,
-        "description": "Start value",
-        "required": true
+        "description": "Start value (inclusive).",
+        "required": true,
+        "group": "range",
+        "order": 1
       },
       {
         "name": "to",
         "type": "float",
         "default": 10,
-        "description": "End value",
-        "required": true
+        "description": "End value (inclusive).",
+        "required": true,
+        "group": "range",
+        "order": 2
       },
       {
         "name": "step",
         "type": "float",
         "default": 1,
-        "description": "Step size"
+        "description": "Step size between values.",
+        "group": "range",
+        "order": 3
       },
       {
-        "name": "param",
-        "type": "string",
-        "default": "n_components",
-        "description": "Parameter name to sweep"
+        "name": "count",
+        "type": "int",
+        "description": "Limit to N random samples (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 4
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic sampling when count is set.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 5
+      }
+    ],
+    "tier": "core"
+  },
+  {
+    "id": "generator.log_range",
+    "name": "LogRange",
+    "type": "flow",
+    "subType": "generator",
+    "classPath": "_log_range_",
+    "description": "Generator: logarithmic parameter sweep",
+    "longDescription": "Generates logarithmically-spaced values between start and end. Essential for hyperparameter grids spanning multiple orders of magnitude (e.g. learning rates).",
+    "category": "Parameters",
+    "tags": ["generator", "log_range", "sweep", "parameters", "logarithmic", "hyperparameters"],
+    "source": "nirs4all",
+    "isGenerator": true,
+    "generatorType": "log_range",
+    "generatorKind": "log_range",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "float",
+        "default": 0.001,
+        "description": "Start value (positive).",
+        "required": true,
+        "min": 0,
+        "group": "range",
+        "order": 1
+      },
+      {
+        "name": "to",
+        "type": "float",
+        "default": 1,
+        "description": "End value (positive).",
+        "required": true,
+        "min": 0,
+        "group": "range",
+        "order": 2
+      },
+      {
+        "name": "num",
+        "type": "int",
+        "default": 10,
+        "min": 1,
+        "description": "Number of log-spaced values to generate.",
+        "group": "range",
+        "order": 3
+      },
+      {
+        "name": "base",
+        "type": "float",
+        "default": 10,
+        "description": "Logarithm base (must be > 0 and != 1).",
+        "isAdvanced": true,
+        "group": "range",
+        "order": 4
+      },
+      {
+        "name": "count",
+        "type": "int",
+        "description": "Limit to N random samples (0 = no limit).",
+        "default": 0,
+        "min": 0,
+        "group": "limits",
+        "order": 5
+      },
+      {
+        "name": "_seed_",
+        "type": "int",
+        "description": "Seed for deterministic sampling when count is set.",
+        "isAdvanced": true,
+        "group": "limits",
+        "order": 6
       }
     ],
     "tier": "core"

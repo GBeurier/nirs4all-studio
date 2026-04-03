@@ -186,7 +186,12 @@ export function NodeHeader({
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-medium flex items-center gap-1.5">
                     <Sparkles className="h-4 w-4 text-orange-500" />
-                    {generatorKind === "cartesian" ? "Cartesian Product" : "Choose"}
+                    {generatorKind === "cartesian" ? "Cartesian Product"
+                      : generatorKind === "grid" ? "Grid Search"
+                      : generatorKind === "zip" ? "Zip"
+                      : generatorKind === "chain" ? "Chain"
+                      : generatorKind === "sample" ? "Sample"
+                      : "Or (Choose)"}
                   </h4>
                   <Badge variant="secondary" className="text-xs">
                     {generatorVariantCount} variant{generatorVariantCount !== 1 ? "s" : ""}
@@ -198,7 +203,10 @@ export function NodeHeader({
                 {generatorOptionNames && generatorOptionNames.length > 0 && (
                   <div className="space-y-1 pt-2 border-t">
                     <p className="text-xs font-medium text-muted-foreground">
-                      {generatorKind === "cartesian" ? "Stages:" : "Options:"}
+                      {generatorKind === "cartesian" ? "Stages:"
+                        : generatorKind === "grid" || generatorKind === "zip" ? "Params:"
+                        : generatorKind === "chain" ? "Configs:"
+                        : "Options:"}
                     </p>
                     {generatorOptionNames.slice(0, 8).map((name, idx) => (
                       <div key={idx} className="flex items-center gap-2 text-xs">

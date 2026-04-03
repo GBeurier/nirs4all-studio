@@ -13,8 +13,20 @@ import https from "node:https";
 import http from "node:http";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const electron = require("electron") as typeof import("electron");
-const { app } = electron;
+type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
+const electronModule = require("electron") as typeof import("electron") | string;
+const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
+const { app } = typeof electronModule === "string"
+  ? {
+      // In non-Electron contexts (for example Vitest), require("electron")
+      // resolves to the binary path string. Fall back to an injected test app,
+      // or a minimal cwd-based stub so the module can still be exercised.
+      app: testApp ?? {
+        getPath: (_name: string) => process.cwd(),
+        getVersion: () => "0.0.0-test",
+      },
+    }
+  : electronModule;
 
 // --- Constants (shared with scripts/setup-python-env.cjs) ---
 const PYTHON_VERSION = "3.11.13";
@@ -169,10 +181,6 @@ export class EnvManager {
 
   /** Check if the Python environment is ready to use */
   isReady(): boolean {
-    // For custom python path, trust the executable (validated at selection time)
-    if (this.pythonPath) return true;
-
-    // Managed env: check python exists and site-packages is present
     const pythonPath = this.getPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
@@ -261,6 +269,46 @@ export class EnvManager {
   }
 
   /**
+   * Validate the currently configured Python path.
+   *
+   * This catches stale custom paths and half-missing managed envs before the
+   * app tries to reuse them on startup.
+   *
+   * @returns `true` if the configured runtime is still reachable.
+   */
+  validateConfiguredState(): boolean {
+    if (this.pythonPath && !fs.existsSync(this.pythonPath)) {
+      console.warn(
+        `[EnvManager] Configured Python not found at ${this.pythonPath} (clearing saved custom path)`,
+      );
+      this.pythonPath = null;
+      this.savedAppVersion = null;
+      this.saveSettings();
+      this.status = "none";
+      this.lastError = null;
+      return false;
+    }
+
+    const pythonPath = this.getPythonPath();
+    if (!pythonPath) {
+      this.status = "none";
+      return false;
+    }
+
+    if (fs.existsSync(pythonPath)) {
+      return true;
+    }
+
+    console.warn(
+      `[EnvManager] Configured Python not found at ${pythonPath}`,
+    );
+
+    this.status = "none";
+    this.lastError = null;
+    return false;
+  }
+
+  /**
    * Single decision point for whether the setup wizard should be shown.
    *
    * - Shows when the environment is not ready (first launch, broken env).
@@ -269,6 +317,8 @@ export class EnvManager {
    *   (ensureBackendPackages covers package updates at startup).
    */
   shouldShowWizard(): boolean {
+    this.validateConfiguredState();
+
     // Startup validation failed (for example a timed-out repair on a stale env)
     // — route the user back through the setup flow instead of leaving them on
     // the backend-connecting screen forever.
@@ -304,22 +354,7 @@ export class EnvManager {
    * @returns `true` if state is valid (or non-portable), `false` if settings were cleared.
    */
   validatePortableState(): boolean {
-    if (!this.isPortable()) return true;
-
-    const pythonPath = this.getPythonPath();
-    if (!pythonPath) return true; // No settings to validate
-
-    if (fs.existsSync(pythonPath)) return true; // Still valid
-
-    // Path drift detected — clear stale settings
-    console.warn(
-      `[EnvManager] Portable path drift detected: Python not found at ${pythonPath}`,
-    );
-    this.pythonPath = null;
-    this.savedAppVersion = null;
-    this.saveSettings();
-    this.status = "none";
-    return false;
+    return this.validateConfiguredState();
   }
 
   /**
@@ -375,8 +410,18 @@ export class EnvManager {
    * where the env exists but is missing backend dependencies.
    */
   async ensureBackendPackages(options?: EnsureBackendPackagesOptions): Promise<void> {
+    if (!this.validateConfiguredState()) {
+      this.status = "error";
+      this.lastError = "Python environment is not configured or is missing";
+      throw new Error(this.lastError);
+    }
+
     const pythonPath = this.getPythonPath();
-    if (!pythonPath) return;
+    if (!pythonPath || !fs.existsSync(pythonPath)) {
+      this.status = "error";
+      this.lastError = "Python executable not found";
+      throw new Error(this.lastError);
+    }
 
     try {
       const hasPackages = await this.verifyBackendPackages();
@@ -870,7 +915,7 @@ export class EnvManager {
   /** Check if the system tar is GNU tar (vs Windows built-in bsdtar) */
   private isGnuTar(): Promise<boolean> {
     return new Promise((resolve) => {
-      execFile("tar", ["--version"], { shell: isWindows }, (err, stdout) => {
+      execFile("tar", ["--version"], { windowsHide: isWindows }, (err, stdout) => {
         resolve(!err && stdout.includes("GNU tar"));
       });
     });
@@ -884,7 +929,8 @@ export class EnvManager {
     const exec = (): Promise<void> => new Promise((resolve, reject) => {
       const proc = spawn(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        shell: isWindows,
+        shell: false,
+        windowsHide: isWindows,
       });
 
       let stderr = "";

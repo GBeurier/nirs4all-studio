@@ -72,9 +72,9 @@ export interface BranchMetadata {
 function getDefaultBranchName(type: "branch" | "generator", generatorKind?: string, index?: number): string {
   const idx = (index ?? 0) + 1;
   if (type === "generator") {
-    if (generatorKind === "cartesian") {
-      return `Stage ${idx}`;
-    }
+    if (generatorKind === "cartesian") return `Stage ${idx}`;
+    if (generatorKind === "grid" || generatorKind === "zip") return `Param ${idx}`;
+    if (generatorKind === "chain") return `Config ${idx}`;
     return `Option ${idx}`;
   }
   return `Branch ${idx}`;
@@ -354,9 +354,10 @@ export function BranchSummary({
   }, [branches]);
 
   const label = isGenerator
-    ? generatorKind === "cartesian"
-      ? "stages"
-      : "options"
+    ? (generatorKind === "cartesian" ? "stages"
+      : generatorKind === "grid" || generatorKind === "zip" ? "params"
+      : generatorKind === "chain" ? "configs"
+      : "options")
     : "branches";
 
   return (
@@ -546,9 +547,10 @@ export function AddBranchButton({
   className,
 }: AddBranchButtonProps) {
   const label = isGenerator
-    ? generatorKind === "cartesian"
-      ? "Add Stage"
-      : "Add Option"
+    ? (generatorKind === "cartesian" ? "Add Stage"
+      : generatorKind === "grid" || generatorKind === "zip" ? "Add Param"
+      : generatorKind === "chain" ? "Add Config"
+      : "Add Option")
     : "Add Branch";
 
   const color = isGenerator

@@ -155,13 +155,25 @@
         "step": 0.01,
         "description": "Expected proportion of outliers (used by isolation_forest and lof methods)",
         "dependsOn": "method",
-        "dependsOnValue": "isolation_forest"
+        "dependsOnValue": ["isolation_forest", "lof"]
       },
       {
         "name": "random_state",
         "type": "int",
         "default": null,
         "description": "Random state for reproducibility (used by isolation_forest and robust_mahalanobis)",
+        "isAdvanced": true
+      },
+      {
+        "name": "support_fraction",
+        "type": "float",
+        "default": null,
+        "min": 0.1,
+        "max": 0.5,
+        "step": 0.01,
+        "description": "Fraction of data for robust covariance estimation (MinCovDet). Null uses sklearn default.",
+        "dependsOn": "method",
+        "dependsOnValue": "robust_mahalanobis",
         "isAdvanced": true
       }
     ],

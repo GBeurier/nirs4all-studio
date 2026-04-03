@@ -419,8 +419,10 @@ app.whenReady().then(async () => {
   // Show splash screen immediately (gives visual feedback during startup)
   splashWindow = createSplashWindow();
 
-  // Validate portable mode state (clears stale paths if .exe was relocated)
-  envManager.validatePortableState();
+  // Validate persisted runtime state before we decide whether startup can reuse
+  // it. This clears stale custom/portable paths instead of failing later in a
+  // less obvious backend-start step.
+  envManager.validateConfiguredState();
 
   if (isDev) {
     // Dev mode: start backend non-blocking, show window immediately
@@ -437,7 +439,7 @@ app.whenReady().then(async () => {
     // the backend non-blocking. Use a short repair timeout here so a stale env
     // falls back into the setup UI instead of hanging on the splash forever.
     try {
-      await envManager.ensureBackendPackages({ timeoutMs: 30_000 });
+      await envManager.ensureBackendPackages({ timeoutMs: 90_000 });
       const port = await backendManager.startNonBlocking();
       console.log(`Backend spawned on port ${port} (health check in background)`);
     } catch (error) {

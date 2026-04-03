@@ -337,6 +337,7 @@ class PlaygroundExecutor:
         splitter_applied = False
         total_filtered = 0
         filter_mask = np.ones(X_sampled.shape[0], dtype=bool)
+        kept_indices = np.arange(X_sampled.shape[0])
 
         # Step-level prefix cache: find longest cached prefix to skip steps
         data_fp = _compute_data_fingerprint(X_sampled)
@@ -354,6 +355,10 @@ class PlaygroundExecutor:
                     filter_info = cached_state.get("filter_info")
                     augmentation_info = cached_state.get("augmentation_info")
                     filter_mask = cached_state.get("filter_mask", np.ones(X_sampled.shape[0], dtype=bool)).copy()
+                    kept_indices = cached_state.get("kept_indices", np.arange(X_sampled.shape[0])).copy()
+                    cached_meta = cached_state.get("metadata")
+                    if cached_meta is not None:
+                        metadata_sampled = {k: v.copy() for k, v in cached_meta.items()}
                     execution_trace = list(cached_state.get("trace", []))
                     step_errors = list(cached_state.get("errors", []))
                     splitter_applied = cached_state.get("splitter_applied", False)
@@ -391,16 +396,26 @@ class PlaygroundExecutor:
                     step_mask, filter_result = self._execute_filter(
                         step, X_processed, y_sampled, metadata_sampled
                     )
-                    filter_mask &= step_mask
                     removed_count = int(np.sum(~step_mask))
                     total_filtered += removed_count
+
+                    # Update original-length mask for response (maps back to X_sampled indices)
+                    filter_mask[kept_indices[~step_mask]] = False
+                    kept_indices = kept_indices[step_mask]
+
+                    # Actually filter the data
+                    X_processed = X_processed[step_mask]
+                    if y_sampled is not None:
+                        y_sampled = y_sampled[step_mask]
+                    if metadata_sampled is not None:
+                        metadata_sampled = {k: v[step_mask] for k, v in metadata_sampled.items()}
 
                     trace = StepTrace(
                         step_id=step.id,
                         name=step.name,
                         duration_ms=(time.perf_counter() - step_start) * 1000,
                         success=True,
-                        output_shape=[int(np.sum(step_mask)), X_processed.shape[1]]
+                        output_shape=list(X_processed.shape)
                     )
 
                     # Store filter info
@@ -415,12 +430,29 @@ class PlaygroundExecutor:
                         "removed_count": removed_count,
                         "reason": filter_result.get("reason", "Filtered"),
                     })
+                    filter_info["total_removed"] = total_filtered
+                    filter_info["final_mask"] = filter_mask.tolist()
                 elif step.type == "augmentation":
                     # Handle augmentation operators — generate new samples
                     n_copies = step.params.get("n_augmented_copies", 1)
                     X_processed, y_sampled, aug_meta = self._execute_augmentation(
                         step, X_processed, y_sampled, n_augmented_copies=n_copies
                     )
+                    # Extend metadata to match augmented sample count
+                    if metadata_sampled is not None:
+                        n_orig_meta = next(iter(metadata_sampled.values())).shape[0]
+                        n_new = X_processed.shape[0] - n_orig_meta
+                        if n_new > 0:
+                            metadata_sampled = {
+                                k: np.concatenate([v, np.full(n_new, np.nan)])
+                                for k, v in metadata_sampled.items()
+                            }
+                    # Extend filter_mask and kept_indices for augmented samples
+                    old_len = filter_mask.shape[0]
+                    new_len = X_processed.shape[0]
+                    if new_len > old_len:
+                        filter_mask = np.concatenate([filter_mask, np.ones(new_len - old_len, dtype=bool)])
+                        kept_indices = np.arange(new_len)
                     if augmentation_info is None:
                         augmentation_info = {
                             "steps": [],
@@ -457,10 +489,12 @@ class PlaygroundExecutor:
                 _step_cache.put(prefix_key, {
                     "X": X_processed.copy(),
                     "y": y_sampled.copy() if y_sampled is not None else None,
+                    "metadata": {k: v.copy() for k, v in metadata_sampled.items()} if metadata_sampled else None,
                     "fold_info": fold_info,
                     "filter_info": filter_info,
                     "augmentation_info": augmentation_info,
                     "filter_mask": filter_mask.copy(),
+                    "kept_indices": kept_indices.copy(),
                     "trace": list(execution_trace),
                     "errors": list(step_errors),
                     "splitter_applied": splitter_applied,

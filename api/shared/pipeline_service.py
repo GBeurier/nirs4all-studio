@@ -321,7 +321,7 @@ def convert_frontend_step(frontend_step: dict[str, Any]) -> dict[str, Any]:
     Frontend format:
         {
             "id": "step_123",
-            "type": "preprocessing" | "splitting",
+            "type": "preprocessing" | "splitting" | "filter" | "augmentation",
             "name": "StandardNormalVariate",
             "params": {"window_length": 11},
             "enabled": true
@@ -330,6 +330,8 @@ def convert_frontend_step(frontend_step: dict[str, Any]) -> dict[str, Any]:
     nirs4all format:
         {"preprocessing": "StandardNormalVariate", "window_length": 11}
         {"split": "KFold", "n_splits": 5}
+        {"exclude": YOutlierFilter(method="iqr", threshold=1.5)}
+        {"augmentation": "GaussianNoise", ...}
 
     Args:
         frontend_step: Step configuration from frontend
@@ -343,6 +345,15 @@ def convert_frontend_step(frontend_step: dict[str, Any]) -> dict[str, Any]:
 
     if step_type == "splitting":
         nirs4all_step = {"split": name}
+    elif step_type == "filter":
+        # Filters use the exclude keyword with an instantiated filter object
+        from .filter_operators import instantiate_filter
+        filter_instance = instantiate_filter(name, params)
+        if filter_instance is not None and hasattr(filter_instance, '_filter'):
+            return {"exclude": filter_instance._filter}
+        return {"exclude": name}
+    elif step_type == "augmentation":
+        nirs4all_step = {"augmentation": name}
     else:
         nirs4all_step = {"preprocessing": name}
 

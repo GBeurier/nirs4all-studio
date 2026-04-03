@@ -32,6 +32,9 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: zip
+      arch:
+        - x64
     - target: portable
       arch:
         - x64
@@ -82,6 +85,9 @@ dmg:
 
 linux:
   target:
+    - target: tar.gz
+      arch:
+        - x64
     - target: AppImage
       arch:
         - x64

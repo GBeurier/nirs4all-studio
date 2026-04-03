@@ -8,7 +8,7 @@ import type { EnvManager } from "./env-manager";
 const electron = require("electron") as typeof import("electron");
 const { BrowserWindow } = electron;
 
-const HEALTH_CHECK_TIMEOUT = 30000; // 30 seconds (only waits for core_ready now, not ML)
+const HEALTH_CHECK_TIMEOUT = 90000; // 90 seconds (first launch may need pip installs)
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
 const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health checks
 const MAX_RESTART_ATTEMPTS = 3;
@@ -112,6 +112,7 @@ export class BackendManager {
   private getBackendPath(): { command: string; args: string[]; cwd?: string; env?: Record<string, string> } {
     const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
     const forceVenv = process.env.NIRS4ALL_USE_VENV === "true";
+    const isPackaged = electron.app?.isPackaged ?? !isDev;
 
     // 1. Dev mode or forced venv: use the development .venv
     if (isDev || forceVenv) {
@@ -163,7 +164,13 @@ export class BackendManager {
       };
     }
 
-    // 4. Fallback: dev venv (for local prod testing)
+    // 4. Fallback: dev venv (for local prod testing only)
+    if (isPackaged) {
+      throw new Error(
+        "No usable backend found: Python environment is missing and no bundled backend is available.",
+      );
+    }
+
     console.log("Bundled backend not found, falling back to dev venv");
     return this.getDevBackendPath();
   }
@@ -335,7 +342,14 @@ export class BackendManager {
     this.port = await this.findFreePort();
 
     // Spawn the process and run health check in background
-    this.startInternalNonBlocking();
+    try {
+      this.startInternalNonBlocking();
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      this.status = "error";
+      this.notifyRenderer();
+      throw error;
+    }
 
     return this.port;
   }

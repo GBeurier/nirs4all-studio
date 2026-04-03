@@ -95,7 +95,28 @@ def verify_checksum(file_path: Path, expected_sha256: str) -> bool:
 
 def is_portable_mode() -> bool:
     """Check if running as an electron-builder portable executable."""
-    return bool(os.environ.get("NIRS4ALL_PORTABLE_EXE"))
+    return bool(
+        os.environ.get("NIRS4ALL_PORTABLE_EXE")
+        or os.environ.get("NIRS4ALL_PORTABLE_ROOT")
+    )
+
+
+def _resolve_macos_bundle_root(path_value: str | None) -> Path | None:
+    """Resolve a macOS ``.app`` bundle root from an executable directory/path."""
+    if not path_value:
+        return None
+
+    candidate = Path(path_value).resolve()
+    if candidate.suffix == ".app":
+        return candidate
+
+    if candidate.name == "MacOS" and candidate.parent.name == "Contents" and candidate.parent.parent.suffix == ".app":
+        return candidate.parent.parent
+
+    if candidate.name == "Contents" and candidate.parent.suffix == ".app":
+        return candidate.parent
+
+    return None
 
 
 def get_app_directory() -> Path:
@@ -112,8 +133,14 @@ def get_app_directory() -> Path:
         return Path(portable_exe).parent
     electron_app_dir = os.environ.get("NIRS4ALL_APP_DIR")
     if electron_app_dir:
+        mac_bundle = _resolve_macos_bundle_root(electron_app_dir)
+        if mac_bundle is not None:
+            return mac_bundle
         return Path(electron_app_dir)
     if getattr(sys, "frozen", False):
+        mac_bundle = _resolve_macos_bundle_root(Path(sys.executable).parent.as_posix())
+        if mac_bundle is not None:
+            return mac_bundle
         return Path(sys.executable).parent
     return Path(__file__).parent.parent
 
@@ -378,10 +405,13 @@ UNIX_UPDATER_TEMPLATE = '''#!/bin/bash
 
 APP_PID="{app_pid}"
 APP_DIR="{app_dir}"
+APP_PARENT="{app_parent}"
+APP_BUNDLE_NAME="{app_bundle_name}"
 STAGING_DIR="{staging_dir}"
 BACKUP_DIR="{backup_dir}"
 EXECUTABLE="{executable}"
 LOG_FILE="{log_file}"
+UPDATE_MODE="{update_mode}"
 
 log() {{
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -406,32 +436,53 @@ log "Application exited, proceeding with update"
 # Small delay to ensure file handles are released
 sleep 2
 
-# Backup current version
-log "Creating backup..."
-rm -rf "$BACKUP_DIR"
-mkdir -p "$BACKUP_DIR"
-cp -R "$APP_DIR"/* "$BACKUP_DIR/" 2>> "$LOG_FILE"
+if [ "$UPDATE_MODE" = "bundle" ]; then
+    # macOS app bundle mode
+    log "Creating backup of app bundle..."
+    rm -rf "$BACKUP_DIR"
+    mkdir -p "$BACKUP_DIR"
+    cp -a "$APP_DIR" "$BACKUP_DIR/" 2>> "$LOG_FILE"
 
-# Copy new files
-log "Installing update..."
-cp -R "$STAGING_DIR"/* "$APP_DIR/" 2>> "$LOG_FILE"
+    log "Installing updated app bundle..."
+    rm -rf "$APP_DIR"
+    cp -a "$STAGING_DIR" "$APP_PARENT/" 2>> "$LOG_FILE"
 
-if [ $? -ne 0 ]; then
-    log "Update failed, restoring backup..."
-    cp -R "$BACKUP_DIR"/* "$APP_DIR/" 2>> "$LOG_FILE"
+    if [ $? -ne 0 ]; then
+        log "Update failed, restoring backup..."
+        rm -rf "$APP_DIR"
+        cp -a "$BACKUP_DIR/$APP_BUNDLE_NAME" "$APP_PARENT/" 2>> "$LOG_FILE"
+    else
+        log "Update completed successfully"
+    fi
 else
-    log "Update completed successfully"
+    # Standard directory mode
+    log "Creating backup..."
+    rm -rf "$BACKUP_DIR"
+    mkdir -p "$BACKUP_DIR"
+    cp -a "$APP_DIR"/. "$BACKUP_DIR/" 2>> "$LOG_FILE"
+
+    log "Installing update..."
+    cp -a "$STAGING_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
+
+    if [ $? -ne 0 ]; then
+        log "Update failed, restoring backup..."
+        cp -a "$BACKUP_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
+    else
+        log "Update completed successfully"
+    fi
 fi
 
 # Clean up staging directory
 rm -rf "$STAGING_DIR"
 
-# Make executable
-chmod +x "$APP_DIR/$EXECUTABLE"
-
 # Launch the updated application
 log "Launching updated application..."
-nohup "$APP_DIR/$EXECUTABLE" > /dev/null 2>&1 &
+if [ "$UPDATE_MODE" = "bundle" ]; then
+    open -n "$APP_DIR"
+else
+    chmod +x "$APP_DIR/$EXECUTABLE"
+    nohup "$APP_DIR/$EXECUTABLE" > /dev/null 2>&1 &
+fi
 
 # Self-delete this script
 rm -f "$0"
@@ -468,11 +519,13 @@ def create_updater_script(
         app_pid = os.getpid()   # Python backend (web/standalone mode)
     executable = get_executable_name()
     portable = is_portable_mode()
+    bundle_mode = sys.platform == "darwin" and app_dir.suffix == ".app"
+    update_mode = "portable" if portable else "bundle" if bundle_mode else "directory"
 
-    print(f"[Updater] app_dir={app_dir}, executable={executable}, app_pid={app_pid}, portable={portable}")
+    print(f"[Updater] app_dir={app_dir}, executable={executable}, app_pid={app_pid}, portable={portable}, mode={update_mode}")
     print(f"[Updater] staging_dir={staging_dir}, backup_dir={backup_dir}")
 
-    script_dir = Path(tempfile.gettempdir())
+    script_dir = Path(tempfile.mkdtemp(prefix="nirs4all-updater-"))
 
     if sys.platform == "win32":
         # Write the progress HTA file alongside the batch script
@@ -488,17 +541,20 @@ def create_updater_script(
             executable=executable,
             log_file=str(log_file),
             progress_hta=str(hta_path),
-            update_mode="portable" if portable else "directory",
+            update_mode=update_mode,
         )
         script_name = "nirs4all_updater.bat"
     else:
         script_content = UNIX_UPDATER_TEMPLATE.format(
             app_pid=app_pid,
             app_dir=str(app_dir),
+            app_parent=str(app_dir.parent),
+            app_bundle_name=app_dir.name,
             staging_dir=str(staging_dir),
             backup_dir=str(backup_dir),
             executable=executable,
             log_file=str(log_file),
+            update_mode=update_mode,
         )
         script_name = "nirs4all_updater.sh"
 

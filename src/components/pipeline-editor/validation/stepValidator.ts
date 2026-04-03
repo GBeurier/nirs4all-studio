@@ -243,7 +243,7 @@ function validateGeneratorStep(
         "warning",
         `Generator "${step.name}" has no kind specified`,
         location,
-        { suggestion: 'Set generator kind to "or" or "cartesian"' }
+        { suggestion: 'Set generator kind (or, cartesian, grid, zip, chain, sample)' }
       )
     );
   }
@@ -273,6 +273,36 @@ function validateGeneratorStep(
           "Cartesian generator should have at least 2 stages",
           location,
           { suggestion: "Add more stages to generate combinations" }
+        )
+      );
+    }
+  }
+
+  // Grid generators need at least 1 param dimension
+  if (step.generatorKind === "grid" && step.branches) {
+    if (step.branches.length < 1) {
+      issues.push(
+        createStepIssue(
+          "STEP_EMPTY_BRANCHES",
+          "warning",
+          "Grid generator should have at least 1 parameter dimension",
+          location,
+          { suggestion: "Add parameter value lists to search over" }
+        )
+      );
+    }
+  }
+
+  // Zip generators need at least 2 param lists
+  if (step.generatorKind === "zip" && step.branches) {
+    if (step.branches.length < 2) {
+      issues.push(
+        createStepIssue(
+          "STEP_EMPTY_BRANCHES",
+          "warning",
+          "Zip generator should have at least 2 parameter lists to pair",
+          location,
+          { suggestion: "Add more parameter lists for parallel iteration" }
         )
       );
     }

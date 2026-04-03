@@ -64,7 +64,7 @@ export type UtilitySubType =
 /**
  * Generator kinds for generator nodes.
  */
-export type GeneratorKind = "or" | "cartesian";
+export type GeneratorKind = "or" | "cartesian" | "grid" | "zip" | "chain" | "sample" | "range" | "log_range";
 
 /**
  * Container organization types.
@@ -354,7 +354,7 @@ export interface NodeDefinition {
   /** For generator nodes */
   generatorKind?: GeneratorKind;
 
-  /** Generator subtype used by some generator definitions (e.g. choose_one, cartesian). */
+  /** Generator subtype used by some generator definitions (e.g. or, cartesian, grid). */
   generatorType?: string;
 
   /** Whether this container accepts child steps in the editor. */

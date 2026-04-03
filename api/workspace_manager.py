@@ -9,7 +9,7 @@ Phase 8 Implementation:
 - Workspace (local): Runs, predictions, artifacts, pipelines, exports
 - WorkspaceScanner for auto-discovery of runs, exports, predictions
 - LinkedWorkspace management for multiple nirs4all workspaces
-- Default workspace auto-creation in current directory
+- Default workspace auto-creation in a stable user-writable location
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .app_config import app_config
 from .shared.logger import get_logger
+from .shared.runtime_paths import get_portable_root
 
 logger = get_logger(__name__)
 
@@ -1896,8 +1897,9 @@ class WorkspaceManager:
         """Create and link a default workspace if none exists.
 
         This is called on first launch to ensure users have a workspace
-        ready to use. The default workspace is created in the current
-        working directory as ./workspace.
+        ready to use. Desktop builds use a stable per-user location instead
+        of the current working directory so launch behavior does not depend on
+        installer location, shell cwd, or OS launcher quirks.
 
         Returns:
             The active LinkedWorkspace, or None if creation fails
@@ -1913,7 +1915,7 @@ class WorkspaceManager:
             return self.activate_workspace(workspaces[0].id)
 
         # No workspaces linked - create default workspace
-        default_path = Path.cwd() / "workspace"
+        default_path = self._get_default_workspace_path()
 
         try:
             # Create workspace directory structure
@@ -1941,6 +1943,17 @@ class WorkspaceManager:
         except Exception as e:
             logger.error("Failed to create default workspace: %s", e)
             return None
+
+    def _get_default_workspace_path(self) -> Path:
+        """Return the default workspace path for the current runtime mode."""
+        portable_root = get_portable_root()
+        if portable_root is not None:
+            return portable_root / "workspace"
+
+        if os.environ.get("NIRS4ALL_DESKTOP") == "true" or getattr(sys, "frozen", False):
+            return Path.home() / "Documents" / "nirs4all Studio" / "workspace"
+
+        return Path.cwd() / "workspace"
 
     def link_workspace_internal(
         self, path: str, name: str, is_new: bool = False

@@ -69,7 +69,7 @@ export type LegacyStepType =
   | "comment";
 
 // Generator types for step-level generators
-export type GeneratorKind = "or" | "cartesian";
+export type GeneratorKind = "or" | "cartesian" | "grid" | "zip" | "chain" | "sample" | "range" | "log_range";
 
 // Parameter sweep types for parameter-level generators
 export type SweepType = "range" | "log_range" | "grid" | "or";
@@ -502,6 +502,15 @@ export function calculateStepVariants(step: PipelineStep): number {
   } else if (step.generatorKind === "cartesian" && step.branches) {
     // Cartesian: product of all stage options
     variants *= step.branches.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
+  } else if (step.generatorKind === "grid" && step.branches) {
+    // Grid: Cartesian product of param value lists
+    variants *= step.branches.reduce((acc, branch) => acc * Math.max(1, branch.length), 1);
+  } else if (step.generatorKind === "zip" && step.branches) {
+    // Zip: min of branch sizes (parallel pairing)
+    variants *= Math.min(...step.branches.map(b => b.length).filter(l => l > 0)) || 1;
+  } else if (step.generatorKind === "chain" && step.branches) {
+    // Chain: flat count of configs
+    variants *= step.branches.length;
   }
 
   return variants;
@@ -644,7 +653,11 @@ export function getVariantBreakdown(steps: PipelineStep[]): VariantBreakdown[] {
         breakdown.children = step.branches.flatMap((branch, idx) =>
           getVariantBreakdown(branch).map(b => ({
             ...b,
-            stepName: `${step.generatorKind === "cartesian" ? "Stage" : "Branch"} ${idx + 1}: ${b.stepName}`
+            stepName: `${step.generatorKind === "cartesian" ? "Stage"
+              : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
+              : step.generatorKind === "chain" ? "Config"
+              : step.subType === "generator" ? "Option"
+              : "Branch"} ${idx + 1}: ${b.stepName}`
           }))
         );
       }
@@ -844,13 +857,10 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     { name: "ConcatTransform", description: "Concatenate features from multiple transformation branches", defaultParams: {}, category: "Feature Concatenation" },
     // Sequential
     { name: "Sequential", description: "Group steps to execute in sequence (equivalent to [...] in nirs4all)", defaultParams: {}, category: "Sequential" },
-  ],
-
-  utility: [
     // Generators
     {
-      name: "Choose",
-      description: "Choose step alternatives with pick/arrange (_or_)",
+      name: "Or",
+      description: "Choose from alternatives with pick/arrange (_or_)",
       defaultParams: {},
       defaultBranches: [[], [], []],
       generatorKind: "or",
@@ -858,7 +868,7 @@ export const stepOptions: Record<StepType, StepOption[]> = {
     },
     {
       name: "Cartesian",
-      description: "All combinations of stages (_cartesian_)",
+      description: "Cartesian product of stages (_cartesian_)",
       defaultParams: {},
       defaultBranches: [[], []],
       generatorKind: "cartesian",
@@ -869,9 +879,28 @@ export const stepOptions: Record<StepType, StepOption[]> = {
       description: "Grid search over parameter values (_grid_)",
       defaultParams: {},
       defaultBranches: [[], []],
-      generatorKind: "cartesian",
+      generatorKind: "grid",
       category: "Generators"
     },
+    {
+      name: "Zip",
+      description: "Parallel parameter iteration (_zip_)",
+      defaultParams: {},
+      defaultBranches: [[], []],
+      generatorKind: "zip",
+      category: "Generators"
+    },
+    {
+      name: "Chain",
+      description: "Ordered sequence of configurations (_chain_)",
+      defaultParams: {},
+      defaultBranches: [[], [], []],
+      generatorKind: "chain",
+      category: "Generators"
+    },
+  ],
+
+  utility: [
     // Charts
     { name: "chart_2d", description: "2D spectrum visualization", defaultParams: {}, category: "Visualization" },
     { name: "chart_y", description: "Y distribution visualization", defaultParams: {}, category: "Visualization" },
@@ -1127,14 +1156,17 @@ function inferSubType(type: StepType, optionName: string): StepSubType | undefin
       "SampleFilter": "sample_filter",
       "ConcatTransform": "concat_transform",
       "Sequential": "sequential",
+      "Or": "generator",
+      "Cartesian": "generator",
+      "Grid": "generator",
+      "Zip": "generator",
+      "Chain": "generator",
+      "Sample": "generator",
     };
     return flowNameMap[optionName];
   }
   if (type === "utility") {
     const utilityNameMap: Record<string, StepSubType> = {
-      "Choose": "generator",
-      "Cartesian": "generator",
-      "Grid": "generator",
       "chart_2d": "chart",
       "chart_y": "chart",
       "Comment": "comment",
