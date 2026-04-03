@@ -73,6 +73,8 @@ void main() {
 const FRAGMENT_SHADER_3D = `#version 300 es
 precision highp float;
 
+uniform float u_hasSelection;
+
 in vec4 v_color;
 in float v_selected;
 in float v_hovered;
@@ -95,6 +97,11 @@ void main() {
   // Dark stroke for selected/hovered (better visibility on light and dark backgrounds)
   if ((v_selected > 0.5 || v_hovered > 0.5) && dist > 0.35) {
     color = vec4(0.1, 0.1, 0.1, 1.0);
+  }
+
+  // Dim non-selected points when there is an active selection
+  if (u_hasSelection > 0.5 && v_selected < 0.5 && v_hovered < 0.5) {
+    alpha *= 0.3;
   }
 
   fragColor = vec4(color.rgb, color.a * alpha);
@@ -487,7 +494,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
       VERTEX_SHADER_3D,
       FRAGMENT_SHADER_3D,
       ['a_position', 'a_color', 'a_size', 'a_selected', 'a_hovered'],
-      ['u_projection', 'u_view', 'u_model', 'u_pointScale', 'u_resolution']
+      ['u_projection', 'u_view', 'u_model', 'u_pointScale', 'u_resolution', 'u_hasSelection']
     );
 
     pickProgramRef.current = createProgram(
@@ -792,6 +799,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
       gl.uniformMatrix4fv(mainProgram.uniforms.u_model, false, modelMatrix);
       gl.uniform1f(mainProgram.uniforms.u_pointScale, dpr);
       gl.uniform2f(mainProgram.uniforms.u_resolution, width, height);
+      gl.uniform1f(mainProgram.uniforms.u_hasSelection, selectedSamples.size > 0 ? 1.0 : 0.0);
 
       gl.bindVertexArray(vao);
       gl.drawArrays(gl.POINTS, 0, n);
@@ -800,7 +808,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
     gl.bindVertexArray(null);
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
-  }, [points, showGrid, showAxes]);
+  }, [points, showGrid, showAxes, selectedSamples]);
 
   // Animation loop
   useEffect(() => {

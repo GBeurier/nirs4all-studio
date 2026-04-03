@@ -548,7 +548,8 @@ export function SpectraChartV2({
     // Highlighted states take priority - use distinctive colors (except in selected_only mode)
     if (!isSelectedOnlyMode) {
       if (isHovered) return HIGHLIGHT_COLORS.hovered; // Primary color
-      if (isSelected) return config.colorConfig.selectionColor ?? HIGHLIGHT_COLORS.selected; // Configurable selection color
+      // Only override selected color when selectionOverride is enabled; otherwise selected samples keep their base color
+      if (isSelected && config.colorConfig.selectionOverride) return config.colorConfig.selectionColor ?? HIGHLIGHT_COLORS.selected;
       if (isPinned && config.colorConfig.highlightPinned) return HIGHLIGHT_COLORS.pinned; // Gold for pinned
     } else {
       // In selected_only mode, only show hover highlight (not selection color)
@@ -581,7 +582,7 @@ export function SpectraChartV2({
     }
 
     return baseColor;
-  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor, computedColorContext.outlierIndices, globalColorConfig]);
+  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.selectionOverride, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor, computedColorContext.outlierIndices, globalColorConfig]);
 
   // Compute sample colors for WebGL to match Canvas coloring
   // Uses getWebGLSampleColor which includes selection/outlier mode handling
@@ -1314,6 +1315,7 @@ export function SpectraChartV2({
                 useSelectionContext={config.displayMode !== 'aggregated' && config.displayMode !== 'grouped' && useSelectionContext}
                 selectedColor={config.colorConfig.selectionColor}
                 applySelectionColoring={config.displayMode !== 'selected_only'}
+                unselectedOpacity={config.colorConfig.unselectedOpacity}
                 enableHover={config.enableHover}
                 showHoverTooltip={config.enableHover}
                 isLoading={isLoading}

@@ -1197,12 +1197,14 @@ export function DimensionReductionChart({
             const isHovered = hoveredSample === entry.index;
             const isPinned = pinnedSamples.has(entry.index);
             const highlighted = isSelected || isHovered || isPinned;
+            const hasSelection = selectedSamples.size > 0;
             const pointColor = getPointColor(entry);
 
             return (
               <Cell
                 key={`cell-${entry.index}`}
                 fill={pointColor}
+                fillOpacity={hasSelection && !highlighted ? 0.3 : 1}
                 stroke={highlighted ? 'hsl(var(--foreground))' : undefined}
                 strokeWidth={highlighted ? 2 : 0}
               />

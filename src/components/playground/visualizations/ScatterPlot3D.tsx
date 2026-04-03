@@ -201,33 +201,38 @@ function SimpleLine({ points, color, opacity = 1 }: SimpleLineProps) {
 /**
  * Individual point mesh - simpler but more reliable than instanced mesh
  */
+/** Muted grey for non-selected points (avoids transparent material which is slow in Three.js) */
+const DIMMED_COLOR = '#9ca3af';
+
 interface PointMeshProps {
   position: [number, number, number];
   color: string;
   radius: number;
+  dimmed?: boolean;
   onClick?: () => void;
   onPointerOver?: () => void;
   onPointerOut?: () => void;
 }
 
-function PointMesh({ position, color, radius, onClick, onPointerOver, onPointerOut }: PointMeshProps) {
+function PointMesh({ position, color, radius, dimmed = false, onClick, onPointerOver, onPointerOut }: PointMeshProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // Parse the HSL color to a concrete color value
+  // Parse the HSL/HSLA color to a concrete color value
   const parsedColor = useMemo(() => {
-    const hslMatch = color.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
+    if (dimmed) return DIMMED_COLOR;
+    // Match both hsl() and hsla()
+    const hslMatch = color.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/);
     if (hslMatch) {
       const h = parseFloat(hslMatch[1]);
       const s = parseFloat(hslMatch[2]);
       const l = parseFloat(hslMatch[3]);
-      // Convert HSL to hex for Three.js
       const c = new THREE.Color();
       c.setHSL(h / 360, s / 100, l / 100);
       return '#' + c.getHexString();
     }
     if (color.startsWith('#')) return color;
     return '#6366f1'; // Fallback indigo
-  }, [color]);
+  }, [color, dimmed]);
 
   return (
     <mesh
@@ -283,6 +288,7 @@ function InstancedPoints({
       {normalized.slice(0, maxPoints).map((point) => {
         const isSelected = selectedSamples.has(point.index);
         const isHovered = hoveredSample === point.index;
+        const hasSelection = selectedSamples.size > 0;
         const radius = isHovered ? HOVERED_RADIUS :
                        isSelected ? SELECTED_RADIUS : POINT_RADIUS;
         // Use point.index to look up original data (handles filtered points correctly)
@@ -295,6 +301,7 @@ function InstancedPoints({
             position={[point.x, point.y, point.z ?? 0]}
             color={color}
             radius={radius}
+            dimmed={hasSelection && !isSelected && !isHovered}
             onClick={() => onSelect?.(originalPoint)}
             onPointerOver={() => {
               onHover?.(point.index);

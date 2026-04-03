@@ -102,14 +102,14 @@ export interface SpectraWebGLProps {
   showQualityControls?: boolean;
   /** Show grid lines */
   showGrid?: boolean;
+  /** Opacity for non-selected lines when there's a selection (0-1) */
+  unselectedOpacity?: number;
 }
 
 interface LineData {
   points: Float32Array; // Flat array: x1,y1,x2,y2,... for LINE_STRIP
   color: THREE.Color;
   index: number;
-  isSelected: boolean;
-  isPinned: boolean;
   isOriginal: boolean;
   pointCount: number;
 }
@@ -454,7 +454,7 @@ function BatchedLines({ lines, lineWidth, opacity }: BatchedLinesProps) {
           <primitive object={geometry} attach="geometry" />
           <lineBasicMaterial
             color={color}
-            transparent={opacity < 1.0}
+            transparent
             opacity={opacity}
             linewidth={lineWidth}
           />
@@ -470,9 +470,11 @@ function BatchedLines({ lines, lineWidth, opacity }: BatchedLinesProps) {
 interface HighlightedLinesProps {
   lines: LineData[];
   lineWidth: number;
+  /** Z-order for layering (pinned lines render above selected) */
+  zOrder?: number;
 }
 
-function HighlightedLines({ lines, lineWidth }: HighlightedLinesProps) {
+function HighlightedLines({ lines, lineWidth, zOrder = 0.01 }: HighlightedLinesProps) {
   if (lines.length === 0) return null;
 
   return (
@@ -482,7 +484,7 @@ function HighlightedLines({ lines, lineWidth }: HighlightedLinesProps) {
         for (let i = 0; i < line.pointCount; i++) {
           positions[i * 3] = line.points[i * 2];
           positions[i * 3 + 1] = line.points[i * 2 + 1];
-          positions[i * 3 + 2] = line.isPinned ? 0.02 : 0.01; // z-order
+          positions[i * 3 + 2] = zOrder;
         }
 
         return (
@@ -759,10 +761,17 @@ interface SpectraLinesProps {
   lines: LineData[];
   qualityConfig: QualityConfig;
   hoveredIdx?: number | null;
+  /** Opacity multiplier for non-selected/non-pinned lines when there's a selection */
+  unselectedOpacity?: number;
+  /** Selected sample indices (for line grouping without rebuilding LineData) */
+  selectedIndices?: Set<number>;
+  /** Pinned sample indices (for line grouping without rebuilding LineData) */
+  pinnedIndices?: Set<number>;
 }
 
-function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
+function SpectraLines({ lines, qualityConfig, hoveredIdx, unselectedOpacity, selectedIndices, pinnedIndices }: SpectraLinesProps) {
   // Separate lines by type for layered rendering
+  // Selection state is read here (not baked into LineData) to avoid expensive LineData rebuilds on selection toggle
   const { normalLines, originalLines, selectedLines, pinnedLines } = useMemo(() => {
     const normal: LineData[] = [];
     const original: LineData[] = [];
@@ -770,9 +779,11 @@ function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
     const pinned: LineData[] = [];
 
     for (const line of lines) {
-      if (line.isPinned) {
+      const isPinned = pinnedIndices?.has(line.index) ?? false;
+      const isSelected = selectedIndices?.has(line.index) ?? false;
+      if (isPinned) {
         pinned.push(line);
-      } else if (line.isSelected) {
+      } else if (isSelected) {
         selected.push(line);
       } else if (line.isOriginal) {
         original.push(line);
@@ -782,7 +793,7 @@ function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
     }
 
     return { normalLines: normal, originalLines: original, selectedLines: selected, pinnedLines: pinned };
-  }, [lines]);
+  }, [lines, selectedIndices, pinnedIndices]);
 
   return (
     <group>
@@ -791,7 +802,7 @@ function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
         <BatchedLines
           lines={originalLines}
           lineWidth={qualityConfig.normalLineWidth}
-          opacity={qualityConfig.normalOpacity * 0.6}
+          opacity={(unselectedOpacity ?? qualityConfig.normalOpacity) * 0.6}
         />
       )}
 
@@ -800,7 +811,7 @@ function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
         <BatchedLines
           lines={normalLines}
           lineWidth={qualityConfig.normalLineWidth}
-          opacity={qualityConfig.normalOpacity}
+          opacity={unselectedOpacity ?? qualityConfig.normalOpacity}
         />
       )}
 
@@ -808,12 +819,14 @@ function SpectraLines({ lines, qualityConfig, hoveredIdx }: SpectraLinesProps) {
       <HighlightedLines
         lines={selectedLines}
         lineWidth={qualityConfig.selectedLineWidth}
+        zOrder={0.01}
       />
 
       {/* Pinned lines - render on top */}
       <HighlightedLines
         lines={pinnedLines}
         lineWidth={qualityConfig.selectedLineWidth + 0.5}
+        zOrder={0.02}
       />
 
       {/* Hovered line - render on very top */}
@@ -1253,6 +1266,12 @@ interface SpectraSceneProps {
     }>;
     colors: string[];
   };
+  /** Opacity for non-selected lines when there's a selection */
+  unselectedOpacity?: number;
+  /** Selected sample indices for line grouping */
+  selectedIndices?: Set<number>;
+  /** Pinned sample indices for line grouping */
+  pinnedIndices?: Set<number>;
 }
 
 /**
@@ -1306,7 +1325,7 @@ function ResponsiveCamera() {
   return null;
 }
 
-function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx, aggregatedStats, groupedStats }: SpectraSceneProps) {
+function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx, aggregatedStats, groupedStats, unselectedOpacity, selectedIndices, pinnedIndices }: SpectraSceneProps) {
   const { camera } = useThree();
 
   // Setup orthographic camera on mount
@@ -1356,7 +1375,7 @@ function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, q
 
       {/* Render individual lines when not in aggregated/grouped mode */}
       {!aggregatedStats && !groupedStats && (
-        <SpectraLines lines={lines} qualityConfig={qualityConfig} hoveredIdx={hoveredIdx} />
+        <SpectraLines lines={lines} qualityConfig={qualityConfig} hoveredIdx={hoveredIdx} unselectedOpacity={unselectedOpacity} selectedIndices={selectedIndices} pinnedIndices={pinnedIndices} />
       )}
     </>
   );
@@ -1408,6 +1427,7 @@ export function SpectraWebGL({
   maxSamples = 0,
   showQualityControls = true,
   showGrid = true,
+  unselectedOpacity: propUnselectedOpacity,
 }: SpectraWebGLProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
@@ -1481,6 +1501,12 @@ export function SpectraWebGL({
     if (useSelectionContext) return contextPinnedSamples;
     return new Set(manualPinnedIndices ?? []);
   }, [useSelectionContext, contextPinnedSamples, manualPinnedIndices]);
+
+  // Compute effective unselected opacity: only dim when there's an active selection
+  const hasSelection = selectedIndicesSet.size > 0;
+  const effectiveUnselectedOpacity = hasSelection && applySelectionColoring
+    ? propUnselectedOpacity
+    : undefined; // undefined = use default full opacity
 
   // Check WebGL support
   const capabilities = useMemo(() => detectDeviceCapabilities(), []);
@@ -1671,32 +1697,25 @@ export function SpectraWebGL({
   );
 
   // Build LineData from decimation result + color assignments (cheap, runs on main thread)
-  // IMPORTANT: hoveredSampleIdx is NOT in deps to avoid recomputation on every hover
+  // IMPORTANT: Selection state (selectedIndicesSet, pinnedIndicesSet) is NOT in deps —
+  // SpectraLines sorts lines by selection state on each render without rebuilding LineData.
+  // This avoids recreating thousands of THREE.Color + Float32Array objects on every selection toggle.
   const lines = useMemo<LineData[]>(() => {
     if (!decimation || decimation.metadata.length === 0) return [];
 
     const { allPoints, metadata } = decimation;
     const baseCol = parseColor(baseColor);
     const origCol = originalColor ? parseColor(originalColor) : null;
-    const selectedCol = parseColor(selectedColor ?? SELECTION_COLORS.selected);
-    const pinnedCol = parseColor(pinnedColor);
 
     return metadata.map(({ index, isOriginal, pointCount, offset }) => {
-      const isSelected = selectedIndicesSet.has(index);
-      const isPinned = pinnedIndicesSet.has(index);
-
-      // Color assignment (same logic as before, separated from decimation)
+      // Color assignment: use unified color system (sampleColors) or fall back to target coloring
       let color: THREE.Color;
       if (!isOriginal) {
-        if (applySelectionColoring && isPinned) color = pinnedCol;
-        else if (applySelectionColoring && isSelected) color = selectedCol;
-        else if (sampleColors?.[index]) color = parseColor(sampleColors[index]);
+        if (sampleColors?.[index]) color = parseColor(sampleColors[index]);
         else if (y?.[index] !== undefined) color = getTargetColor(y[index], yTargetMin, yTargetMax);
         else color = baseCol;
       } else {
         if (origCol) color = origCol;
-        else if (isPinned) color = pinnedCol;
-        else if (isSelected) color = selectedCol;
         else if (sampleColors?.[index]) color = parseColor(sampleColors[index]);
         else if (y?.[index] !== undefined) color = getTargetColor(y[index], yTargetMin, yTargetMax);
         else color = baseCol;
@@ -1705,11 +1724,11 @@ export function SpectraWebGL({
       // Extract points from the combined buffer
       const points = allPoints.slice(offset, offset + pointCount * 2);
 
-      return { points, color, index, isSelected, isPinned, isOriginal, pointCount };
+      return { points, color, index, isOriginal, pointCount };
     });
   }, [
-    decimation, selectedIndicesSet, pinnedIndicesSet, y, yTargetMin, yTargetMax,
-    baseColor, originalColor, selectedColor, pinnedColor, sampleColors, applySelectionColoring,
+    decimation, y, yTargetMin, yTargetMax,
+    baseColor, originalColor, sampleColors,
   ]);
 
   // Debounce ref for zoom updates
@@ -1812,6 +1831,9 @@ export function SpectraWebGL({
             groups: groupedStats,
             colors: sampleColors ?? [],
           } : undefined}
+          unselectedOpacity={effectiveUnselectedOpacity}
+          selectedIndices={selectedIndicesSet}
+          pinnedIndices={pinnedIndicesSet}
         />
       </Canvas>
 

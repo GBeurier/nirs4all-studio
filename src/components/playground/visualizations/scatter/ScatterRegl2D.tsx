@@ -29,6 +29,7 @@ interface PointUniforms {
   transform: Float32Array;
   pointScale: number;
   resolution: [number, number];
+  hasSelection: number;
 }
 
 interface PointAttributes {
@@ -314,6 +315,7 @@ export function ScatterRegl2D({
         varying vec4 vColor;
         varying float vSelected;
         varying float vHovered;
+        uniform float u_hasSelection;
 
         void main() {
           vec2 coord = gl_PointCoord - 0.5;
@@ -326,6 +328,10 @@ export function ScatterRegl2D({
 
           if ((vSelected > 0.5 || vHovered > 0.5) && dist > 0.35) {
             color = vec4(0.1, 0.1, 0.1, 1.0);
+          }
+
+          if (u_hasSelection > 0.5 && vSelected < 0.5 && vHovered < 0.5) {
+            alpha *= 0.3;
           }
 
           gl_FragColor = vec4(color.rgb, color.a * alpha);
@@ -342,6 +348,7 @@ export function ScatterRegl2D({
         transform: regl.prop<PointUniforms, 'transform'>('transform'),
         pointScale: regl.prop<PointUniforms, 'pointScale'>('pointScale'),
         resolution: regl.prop<PointUniforms, 'resolution'>('resolution'),
+        u_hasSelection: regl.prop<PointUniforms, 'hasSelection'>('hasSelection'),
       },
       count: regl.prop<{ count: number }, 'count'>('count'),
       primitive: 'points',
@@ -600,9 +607,10 @@ export function ScatterRegl2D({
       transform,
       pointScale: dpr,
       resolution: [width, height],
+      hasSelection: selectedSamples.size > 0 ? 1.0 : 0.0,
       count: bufferData.count,
     });
-  }, [bufferData, selectionData, bounds, gridData, preserveAspectRatio]);
+  }, [bufferData, selectionData, bounds, gridData, preserveAspectRatio, selectedSamples]);
 
   // Animation loop
   useEffect(() => {

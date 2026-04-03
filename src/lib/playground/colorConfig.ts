@@ -155,9 +155,9 @@ export const DEFAULT_GLOBAL_COLOR_CONFIG: GlobalColorConfig = {
   mode: 'target',
   continuousPalette: 'blue_red',
   categoricalPalette: 'default',
-  unselectedOpacity: 0.25,
+  unselectedOpacity: 0.3,
   highlightPinned: true,
-  selectionOverride: true,
+  selectionOverride: false,
   showOutlierOverlay: true,
 };
 
@@ -739,8 +739,6 @@ export function getWebGLSampleColor(
   // Get base color by mode
   const baseColor = getBaseColor(sampleIndex, config, context);
 
-  // For dimmed unselected samples, we can't easily apply opacity in WebGL color strings
-  // So we return the base color and let the renderer handle opacity if needed
   return baseColor;
 }
 
