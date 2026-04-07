@@ -26,6 +26,13 @@ interface MlReadiness {
   mlReady: boolean;
   mlLoading: boolean;
   mlError: string | null;
+  /**
+   * True once nirs4all has finished restoring the active workspace at startup.
+   * `mlReady` flips slightly earlier (as soon as the imports complete), so the
+   * UI uses this flag to show a non-blocking "Loading workspace…" indicator
+   * while datasets/runs/predictions endpoints are still empty.
+   */
+  workspaceReady: boolean;
 }
 
 const MlReadinessContext = createContext<MlReadiness>({
@@ -33,6 +40,7 @@ const MlReadinessContext = createContext<MlReadiness>({
   mlReady: false,
   mlLoading: true,
   mlError: null,
+  workspaceReady: false,
 });
 
 export function useMlReadiness() {
@@ -48,6 +56,7 @@ const electronApi = (
         ml_loading: boolean;
         ml_error: string | null;
         core_ready: boolean;
+        workspace_ready?: boolean;
       }>;
       onMlReady?: (
         cb: (info: { ready: boolean; error?: string }) => void
@@ -65,9 +74,11 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     mlReady: false,
     mlLoading: true,
     mlError: null,
+    workspaceReady: false,
   });
   const queryClient = useQueryClient();
   const coreReadyFired = useRef(false);
+  const workspaceReadyFired = useRef(false);
 
   // Invalidate all queries when core becomes ready (backend first reachable)
   useEffect(() => {
@@ -84,9 +95,19 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     }
   }, [state.mlReady, queryClient]);
 
+  // Invalidate once more when the workspace finishes restoring — until this
+  // point, datasets/runs/predictions endpoints return empty results that
+  // would otherwise be cached as "no data".
+  useEffect(() => {
+    if (state.workspaceReady && !workspaceReadyFired.current) {
+      workspaceReadyFired.current = true;
+      queryClient.invalidateQueries();
+    }
+  }, [state.workspaceReady, queryClient]);
+
   // In Electron: listen for IPC notifications
   useEffect(() => {
-    if (state.mlReady) return;
+    if (state.workspaceReady) return;
 
     // Listen for backend status changes (core_ready)
     const cleanupStatus = electronApi?.onBackendStatusChanged?.((info) => {
@@ -95,10 +116,19 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Listen for ML ready notification
+    // Listen for ML ready notification. Note: this fires when ML imports
+    // finish, which is *before* the workspace has been restored. We do not
+    // flip `workspaceReady` here — the polling effect below picks that up
+    // from `/api/system/readiness`.
     const cleanupMl = electronApi?.onMlReady?.((info) => {
       if (info.ready) {
-        setState({ coreReady: true, mlReady: true, mlLoading: false, mlError: null });
+        setState((prev) => ({
+          ...prev,
+          coreReady: true,
+          mlReady: true,
+          mlLoading: false,
+          mlError: null,
+        }));
       } else if (info.error) {
         setState((prev) => ({ ...prev, mlLoading: false, mlError: info.error ?? null }));
       }
@@ -108,57 +138,61 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       cleanupStatus?.();
       cleanupMl?.();
     };
-  }, [state.mlReady]);
+  }, [state.workspaceReady]);
 
-  // Poll /api/system/readiness (works in both web and Electron mode)
+  // Poll /api/system/readiness (works in both web and Electron mode).
+  // Polls until `workspace_ready` is true — that is the last phase of the
+  // backend startup, after which datasets/runs/predictions endpoints are
+  // authoritative.
   useEffect(() => {
-    if (state.mlReady) return;
+    if (state.workspaceReady) return;
+
+    const apply = (status: {
+      core_ready?: boolean;
+      ml_ready?: boolean;
+      ml_loading?: boolean;
+      ml_error?: string | null;
+      workspace_ready?: boolean;
+    }) => {
+      // Backwards compatibility: a backend that does not expose
+      // `workspace_ready` (older builds) is considered ready as soon as
+      // `ml_ready` is true — same semantics as before this flag existed.
+      const workspaceReady =
+        status.workspace_ready ??
+        (status.ml_ready ? true : false);
+      setState((prev) => ({
+        coreReady: status.core_ready ?? prev.coreReady,
+        mlReady: status.ml_ready ?? prev.mlReady,
+        mlLoading: status.ml_ready ? false : status.ml_loading ?? prev.mlLoading,
+        mlError: status.ml_error ?? prev.mlError,
+        workspaceReady: workspaceReady || prev.workspaceReady,
+      }));
+      return workspaceReady;
+    };
 
     const check = async () => {
       try {
         if (electronApi?.getMlStatus) {
           const status = await electronApi.getMlStatus();
-          if (status.core_ready) {
-            setState((prev) => ({ ...prev, coreReady: true }));
-          }
-          if (status.ml_ready) {
-            setState({ coreReady: true, mlReady: true, mlLoading: false, mlError: null });
-            return true;
-          }
-          if (status.core_ready) {
-            setState((prev) => ({
-              ...prev,
-              coreReady: true,
-              mlLoading: status.ml_loading ?? true,
-              mlError: status.ml_error ?? null,
-            }));
-          }
-        } else {
-          const data = await api.get<{
-            ml_ready: boolean;
-            ml_loading: boolean;
-            ml_error: string | null;
-            core_ready?: boolean;
-          }>("/system/readiness");
-          // If we got a response, core is ready
-          setState((prev) => ({ ...prev, coreReady: true }));
-          if (data.ml_ready) {
-            setState({ coreReady: true, mlReady: true, mlLoading: false, mlError: null });
-            return true;
-          }
-          setState((prev) => ({
-            ...prev,
-            coreReady: true,
-            mlLoading: data.ml_loading ?? true,
-            mlError: data.ml_error ?? null,
-          }));
+          // The IPC handler proxies /api/system/readiness — if we got a
+          // response at all, core is ready.
+          return apply({ ...status, core_ready: true });
         }
+        const data = await api.get<{
+          ml_ready: boolean;
+          ml_loading: boolean;
+          ml_error: string | null;
+          core_ready?: boolean;
+          workspace_ready?: boolean;
+        }>("/system/readiness");
+        return apply({ ...data, core_ready: true });
       } catch {
         // Backend not available yet, keep polling
+        return false;
       }
-      return false;
     };
 
+    let cleanupRef: (() => void) | null = null;
     check().then((ready) => {
       if (ready) return;
 
@@ -170,9 +204,8 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       cleanupRef = () => clearInterval(interval);
     });
 
-    let cleanupRef: (() => void) | null = null;
     return () => cleanupRef?.();
-  }, [state.mlReady]);
+  }, [state.workspaceReady]);
 
   return (
     <MlReadinessContext.Provider value={state}>

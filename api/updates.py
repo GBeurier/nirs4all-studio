@@ -1769,7 +1769,21 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     )
 
     if not success:
-        raise HTTPException(status_code=500, detail=message)
+        # Add an actionable hint when installing JAX-stack packages on Windows:
+        # jaxlib has no official Windows wheels, so flax/jax/jaxlib installs
+        # routinely fail at dependency resolution.
+        detail = message
+        if sys.platform == "win32" and request.package.lower() in {"jax", "jaxlib", "flax"}:
+            joined = "\n".join(output).lower() if output else ""
+            if "jaxlib" in joined or "could not find a version" in joined or "no matching distribution" in joined:
+                detail = (
+                    f"{message}\n\n"
+                    "Hint: jaxlib has no official Windows wheels. Installing "
+                    "jax/jaxlib/flax on native Windows is not supported by upstream. "
+                    "Use WSL2, or skip the JAX backend (PyTorch and TensorFlow work natively)."
+                )
+        logger.error("Install of %s failed: %s", request.package, detail)
+        raise HTTPException(status_code=500, detail=detail)
 
     # Invalidate cache after install
     _dependencies_cache.invalidate()

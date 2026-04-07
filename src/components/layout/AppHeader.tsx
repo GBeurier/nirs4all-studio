@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Moon, Sun, Monitor, Search, Command } from "lucide-react";
+import { Moon, Sun, Monitor, Search, Command, Loader2 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
+import { useMlReadiness } from "@/context/MlReadinessContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,8 +35,22 @@ export function AppHeader() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+  const { coreReady, workspaceReady, mlLoading, mlError } = useMlReadiness();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
+
+  // Show a small non-blocking indicator while the backend is still finishing
+  // its startup (loading nirs4all + restoring the active workspace). The UI
+  // remains fully interactive — this badge just tells the user that empty
+  // dataset/result lists are due to loading, not an actual empty workspace.
+  const showLoadingBadge = coreReady && !workspaceReady && !mlError;
+  const loadingLabel = mlLoading
+    ? t("layout.header.loadingMl", "Loading ML engine…")
+    : t("layout.header.loadingWorkspace", "Loading workspace…");
+  const loadingTooltip = t(
+    "layout.header.loadingTooltip",
+    "The backend is still initializing. Datasets, runs and results will appear once loading is complete."
+  );
 
   const filteredItems = searchQuery.trim()
     ? searchItems.filter((item) => {
@@ -77,6 +92,21 @@ export function AppHeader() {
         <div className="hidden md:block">
           <Breadcrumbs />
         </div>
+
+        {/* Backend loading indicator — non-blocking, shown until the
+            workspace finishes restoring at startup. */}
+        {showLoadingBadge && (
+          <div
+            role="status"
+            aria-live="polite"
+            title={loadingTooltip}
+            className="flex items-center gap-1.5 rounded-full border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-xs font-medium text-teal-700 dark:text-teal-300"
+          >
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="hidden sm:inline">{loadingLabel}</span>
+            <span className="sr-only sm:hidden">{loadingLabel}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">

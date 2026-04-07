@@ -379,7 +379,20 @@ class VenvManager:
             process.wait(timeout=600)
 
             if process.returncode != 0:
-                return False, f"pip install failed with code {process.returncode}", output_lines
+                # Surface the real pip error: log full output and include the
+                # tail in the returned message so the caller can show it.
+                logger.error(
+                    "pip install %s failed with code %s. Output:\n%s",
+                    pkg_spec,
+                    process.returncode,
+                    "\n".join(output_lines),
+                )
+                tail = "\n".join(output_lines[-15:]) if output_lines else "(no output captured)"
+                return (
+                    False,
+                    f"pip install failed with code {process.returncode}:\n{tail}",
+                    output_lines,
+                )
 
         except subprocess.TimeoutExpired:
             process.kill()

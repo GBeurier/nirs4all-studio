@@ -5,30 +5,29 @@
   "profiles": {
     "cpu": {
       "label": "CPU Only",
-      "description": "Core NIRS analysis with scikit-learn models. No GPU required.",
+      "description": "Core NIRS analysis with scikit-learn and PyTorch (CPU). TensorFlow and JAX are not installed by default.",
       "platforms": ["win32", "linux", "darwin"],
       "packages": {
-        "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" }
+        "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" },
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" }
       }
     },
     "gpu-cuda-torch": {
       "label": "GPU — CUDA + PyTorch",
-      "description": "Deep learning with PyTorch on NVIDIA GPUs.",
+      "description": "Deep learning with PyTorch on NVIDIA GPUs. TensorFlow and JAX are not installed by default.",
       "platforms": ["win32", "linux"],
       "packages": {
         "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "keras": { "min": ">=3.0.0", "recommended": "3.8.0" }
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" }
       }
     },
     "gpu-mps": {
       "label": "GPU — Apple MPS",
-      "description": "Deep learning with PyTorch on Apple Silicon.",
+      "description": "Deep learning with PyTorch on Apple Silicon. TensorFlow and JAX are not installed by default.",
       "platforms": ["darwin"],
       "packages": {
         "nirs4all": { "min": ">=0.8.6", "recommended": "0.8.6" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "keras": { "min": ">=3.0.0", "recommended": "3.8.0" }
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" }
       }
     }
   },

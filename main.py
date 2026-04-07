@@ -346,7 +346,7 @@ async def _wait_for_ml_ready():
     import asyncio
     import time
 
-    from api.lazy_imports import get_cached, is_ml_ready
+    from api.lazy_imports import get_cached, is_ml_ready, set_workspace_ready
 
     max_wait = 120  # 2 minutes
     start = time.time()
@@ -356,7 +356,10 @@ async def _wait_for_ml_ready():
             break
         await asyncio.sleep(0.5)
 
-    # Now that nirs4all is loaded, restore workspace properly
+    # Now that nirs4all is loaded, restore workspace properly.
+    # `workspace_ready` stays False until this finishes so the frontend can
+    # show a non-blocking "Loading workspace…" indicator instead of pretending
+    # the (still empty) datasets/runs/predictions tables are authoritative.
     try:
         from api.workspace_manager import workspace_manager
         active_ws = workspace_manager.get_active_workspace()
@@ -367,8 +370,13 @@ async def _wait_for_ml_ready():
                 logger.info("Workspace restored with nirs4all: %s", active_ws.path)
     except Exception as e:
         logger.error("Failed to restore workspace post-ML-load: %s", e)
+    finally:
+        # Always flip the flag so the UI indicator clears even if restoration
+        # failed or there is no active workspace — the backend is otherwise
+        # fully initialized at this point.
+        set_workspace_ready(True)
 
-    logger.info("Phase 2 startup complete — ML ready")
+    logger.info("Phase 2 startup complete — ML ready, workspace restored")
 
     # Notify via WebSocket
     try:

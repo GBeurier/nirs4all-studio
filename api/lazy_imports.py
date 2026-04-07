@@ -27,6 +27,12 @@ _ml_ready = False
 _ml_loading = False
 _ml_error: str | None = None
 _ml_load_start_time: float | None = None
+# Set to True once `_wait_for_ml_ready()` has finished restoring the active
+# workspace via `nirs4all.workspace.set_active_workspace()`. Until this flips,
+# data endpoints (datasets/runs/predictions) may return empty even though
+# `ml_ready` is already True, so the frontend uses this signal to render a
+# non-blocking "Loading workspace…" indicator.
+_workspace_ready = False
 _lock = threading.Lock()
 
 # --- Cached imports (populated by background loader) ---
@@ -36,6 +42,17 @@ _cache: dict[str, Any] = {}
 def is_ml_ready() -> bool:
     """Return True once all ML dependencies have been loaded."""
     return _ml_ready
+
+
+def is_workspace_ready() -> bool:
+    """Return True once the active workspace has been restored on nirs4all."""
+    return _workspace_ready
+
+
+def set_workspace_ready(value: bool = True) -> None:
+    """Mark the workspace as ready (or reset) — called from the startup task."""
+    global _workspace_ready
+    _workspace_ready = value
 
 
 def get_ml_status() -> dict:
@@ -48,6 +65,7 @@ def get_ml_status() -> dict:
         "ml_loading": _ml_loading,
         "ml_error": _ml_error,
         "elapsed_seconds": elapsed,
+        "workspace_ready": _workspace_ready,
     }
 
 
