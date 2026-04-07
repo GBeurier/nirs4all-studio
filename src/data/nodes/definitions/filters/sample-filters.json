@@ -368,6 +368,10 @@
     "description": "Filter samples based on metadata column values",
     "longDescription": "Excludes samples based on metadata criteria. Supports excluding specific values, keeping only specific values, or applying a custom condition function to a metadata column.",
     "category": "Selection",
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires user-provided `column` argument; no sensible default."
+    },
     "tags": [
       "filter",
       "metadata",

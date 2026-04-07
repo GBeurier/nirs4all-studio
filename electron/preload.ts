@@ -85,8 +85,14 @@ const electronApi = {
     core_ready: boolean;
   }> => ipcRenderer.invoke("backend:getMlStatus"),
 
-  /** Listen for ML ready notification */
-  onMlReady: (callback: (info: { ready: boolean; error?: string }) => void) => {
+  /**
+   * Listen for ML ready notification.
+   * `workspaceReady` distinguishes the two backend startup phases:
+   * - first event: `ready=true, workspaceReady=false` → ML imports loaded
+   * - second event: `ready=true, workspaceReady=true` → active workspace restored
+   * Pages that depend on dataset/run/prediction lists must wait for the second.
+   */
+  onMlReady: (callback: (info: { ready: boolean; error?: string; workspaceReady?: boolean }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
       callback(info as Parameters<typeof callback>[0]);
     ipcRenderer.on("backend:mlReady", handler);

@@ -25,53 +25,11 @@
         "type": "string",
         "isAdvanced": true
       }
-    ]
-  },
-  {
-    "id": "preprocessing.gaussian_random_projection",
-    "name": "GaussianRandomProjection",
-    "type": "preprocessing",
-    "classPath": "sklearn.random_projection.GaussianRandomProjection",
-    "description": "Reduce dimensionality through Gaussian random projection.",
-    "category": "scikit-kernel-projection",
-    "tags": [
-      "sklearn",
-      "transformer",
-      "random_projection"
     ],
-    "source": "sklearn",
-    "tier": "advanced",
-    "parameters": [
-      {
-        "name": "n_components",
-        "type": "string",
-        "default": "auto",
-        "finetunable": true,
-        "finetuneType": "int",
-        "finetuneRange": [
-          1,
-          30
-        ]
-      },
-      {
-        "name": "eps",
-        "type": "float",
-        "default": 0.1,
-        "isAdvanced": true
-      },
-      {
-        "name": "compute_inverse_components",
-        "type": "bool",
-        "default": false,
-        "isAdvanced": true
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true
-      }
-    ],
-    "supportsFinetuning": true
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Not applicable to dense float spectra in playground audit."
+    }
   },
   {
     "id": "preprocessing.nystroem",
@@ -300,64 +258,10 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
-  },
-  {
-    "id": "preprocessing.sparse_random_projection",
-    "name": "SparseRandomProjection",
-    "type": "preprocessing",
-    "classPath": "sklearn.random_projection.SparseRandomProjection",
-    "description": "Reduce dimensionality through sparse random projection.",
-    "category": "scikit-kernel-projection",
-    "tags": [
-      "sklearn",
-      "transformer",
-      "random_projection"
-    ],
-    "source": "sklearn",
-    "tier": "advanced",
-    "parameters": [
-      {
-        "name": "n_components",
-        "type": "string",
-        "default": "auto",
-        "finetunable": true,
-        "finetuneType": "int",
-        "finetuneRange": [
-          1,
-          30
-        ]
-      },
-      {
-        "name": "density",
-        "type": "string",
-        "default": "auto",
-        "isAdvanced": true
-      },
-      {
-        "name": "eps",
-        "type": "float",
-        "default": 0.1,
-        "isAdvanced": true
-      },
-      {
-        "name": "dense_output",
-        "type": "bool",
-        "default": false,
-        "isAdvanced": true
-      },
-      {
-        "name": "compute_inverse_components",
-        "type": "bool",
-        "default": false,
-        "isAdvanced": true
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true
-      }
-    ],
-    "supportsFinetuning": true
+    "supportsParameterSweeps": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Not applicable to dense float spectra in playground audit."
+    }
   }
 ]

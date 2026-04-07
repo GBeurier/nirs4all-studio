@@ -378,11 +378,13 @@ async def _wait_for_ml_ready():
 
     logger.info("Phase 2 startup complete — ML ready, workspace restored")
 
-    # Notify via WebSocket
+    # Notify via WebSocket. We broadcast `workspace_ready` alongside `ml_ready`
+    # so the frontend can flip its `workspaceReady` flag immediately on this
+    # event instead of waiting for the next /api/system/readiness poll tick.
     try:
         await ws_manager.broadcast("system", {
             "type": "ML_READY",
-            "data": {"ml_ready": True},
+            "data": {"ml_ready": True, "workspace_ready": True},
         })
     except Exception:
         pass

@@ -50,6 +50,7 @@ import {
 import type { DatasetScoreInfo } from "@/components/datasets/DatasetCard";
 import type { WizardInitialState } from "@/components/datasets/DatasetWizard";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
+import { useMlReadiness } from "@/context/MlReadinessContext";
 import {
   listDatasets,
   linkDataset,
@@ -119,6 +120,11 @@ export default function Datasets() {
 
   // Developer mode
   const isDeveloperMode = useIsDeveloperMode();
+
+  // Backend readiness — used to refetch dataset scores once the active
+  // nirs4all workspace has finished restoring. Until then, the results
+  // summary endpoint returns empty data even though the FastAPI layer is up.
+  const { workspaceReady } = useMlReadiness();
 
   // Data state
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -347,11 +353,18 @@ export default function Datasets() {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    // Re-run after workspace_ready flips: the first call (right after backend
+    // start) gets fresh global dataset state, but the second is needed to pick
+    // up workspace-scoped data once nirs4all has finished restoring.
+  }, [loadData, workspaceReady]);
 
   // Best scores per dataset (from results summary) — keyed by linked_dataset_id
   const [datasetScores, setDatasetScores] = useState<Map<string, DatasetScoreInfo>>(new Map());
   useEffect(() => {
+    // Scores come from the SQLite store via StoreAdapter, which requires the
+    // active nirs4all workspace to be restored. Skip the call until then to
+    // avoid caching an empty result that sticks around forever.
+    if (!workspaceReady) return;
     (async () => {
       try {
         const linkedRes = await getLinkedWorkspaces();
@@ -371,7 +384,7 @@ export default function Datasets() {
         // Scores are optional, ignore errors
       }
     })();
-  }, [datasets.length]);
+  }, [datasets.length, workspaceReady]);
 
   // Normalize datasets to ensure they have required fields
   const normalizedDatasets = datasets.map((ds, index) => {

@@ -47,6 +47,8 @@ def _build_preprocessing_cache() -> dict[str, type]:
     # Maps lowercase alias -> full class name (also lowercase)
     common_aliases = {
         "snv": "standardnormalvariate",
+        "robustsnv": "robuststandardnormalvariate",
+        "localsnv": "localstandardnormalvariate",
         "msc": "multiplicativescattercorrection",
         "savgol": "savitzkygolay",
         "movingaverage": "savitzkygolay",
@@ -83,6 +85,21 @@ def _build_preprocessing_cache() -> dict[str, type]:
     sklearn_modules = [
         "sklearn.preprocessing",
         "sklearn.decomposition",
+        "sklearn.cluster",
+        "sklearn.neighbors",
+        "sklearn.manifold",
+        "sklearn.cross_decomposition",
+        "sklearn.feature_selection",
+        "sklearn.feature_extraction",
+        "sklearn.feature_extraction.text",
+        "sklearn.feature_extraction.image",
+        "sklearn.impute",
+        "sklearn.kernel_approximation",
+        "sklearn.random_projection",
+        "sklearn.neural_network",
+        "sklearn.compose",
+        "sklearn.pipeline",
+        "sklearn.ensemble",
     ]
 
     for module_path in sklearn_modules:
@@ -135,6 +152,10 @@ def _build_splitter_cache() -> dict[str, tuple[str, str]]:
             key = name.lower().replace("_", "")
             cache[key] = ("nirs4all.operators.splitters", name)
 
+    # Short-name aliases for nirs4all splitters
+    cache["kennardstone"] = ("nirs4all.operators.splitters", "KennardStoneSplitter")
+    cache["spxy"] = ("nirs4all.operators.splitters", "SPXYSplitter")
+
     return cache
 
 
@@ -180,7 +201,7 @@ def _build_augmentation_cache() -> dict[str, type]:
                 continue
 
             # Skip base classes
-            if name in ("Augmenter", "BaseEstimator", "TransformerMixin"):
+            if name in ("Augmenter", "BaseEstimator", "TransformerMixin", "SpectraTransformerMixin"):
                 continue
 
             cache[name.lower()] = obj
@@ -410,6 +431,65 @@ def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
     if name == "Resampler" and "n_points" in normalized:
         normalized.pop("n_points")
 
+    # MinMaxScaler / RobustScaler: coerce list-form range params to tuple.
+    # The JSON node defs serialize ranges as lists (e.g. [0, 1]); sklearn requires
+    # tuples. Also handle string forms like "(0, 1)" emitted by some playground paths.
+    def _coerce_range(value: Any) -> Any:
+        if isinstance(value, tuple):
+            return value
+        if isinstance(value, list):
+            return tuple(value)
+        if isinstance(value, str):
+            import ast
+            try:
+                parsed = ast.literal_eval(value)
+                if isinstance(parsed, (list, tuple)):
+                    return tuple(parsed)
+            except (ValueError, SyntaxError):
+                pass
+        return value
+
+    if name == "MinMaxScaler" and "feature_range" in normalized:
+        normalized["feature_range"] = _coerce_range(normalized["feature_range"])
+    if name == "RobustScaler" and "quantile_range" in normalized:
+        normalized["quantile_range"] = _coerce_range(normalized["quantile_range"])
+
+    # sklearn meta-estimators need a nested estimator that the JSON doesn't supply.
+    # Inject sensible defaults so the constructor doesn't raise.
+    name_lower = name.lower()
+    _regression_estimator_meta = {
+        "rfe", "rfecv", "selectfrommodel", "sequentialfeatureselector",
+        "multioutputregressor",
+    }
+    _classification_estimator_meta = {
+        "multioutputclassifier", "onevsoneclassifier", "onevsrestclassifier",
+        "outputcodeclassifier", "fixedthresholdclassifier",
+        "tunedthresholdclassifiercv",
+    }
+    _stacking_voting_regression = {"stackingregressor", "votingregressor"}
+    _stacking_voting_classification = {"stackingclassifier", "votingclassifier"}
+
+    needs_estimator = name_lower in _regression_estimator_meta or name_lower in _classification_estimator_meta
+    needs_estimators_list = name_lower in _stacking_voting_regression or name_lower in _stacking_voting_classification
+    is_metamodel = name_lower == "metamodel"
+
+    if needs_estimator or needs_estimators_list or is_metamodel:
+        has_nested = any(
+            k in normalized for k in ("estimator", "estimators", "transformers", "transformer_list", "dictionary")
+        )
+        if not has_nested:
+            from sklearn.linear_model import Ridge, LogisticRegression  # lazy import
+            if name_lower in _regression_estimator_meta:
+                normalized["estimator"] = Ridge()
+            elif name_lower in _classification_estimator_meta:
+                normalized["estimator"] = LogisticRegression()
+            elif name_lower in _stacking_voting_regression:
+                normalized["estimators"] = [("ridge", Ridge())]
+            elif name_lower in _stacking_voting_classification:
+                normalized["estimators"] = [("lr", LogisticRegression())]
+            elif is_metamodel:
+                normalized["model"] = Ridge()
+
     return normalized
 
 
@@ -546,11 +626,17 @@ def get_preprocessing_methods() -> list[dict[str, Any]]:
     methods = []
     seen_names = set()
 
+    # Operators that fundamentally cannot be defaulted in the playground:
+    # EPO needs an external `d` reference matrix.
+    _PLAYGROUND_DENYLIST = {"EPO"}
+
     # Scan nirs4all.operators.transforms using __all__ exports
     exported_names = getattr(transforms, "__all__", [])
 
     for name in exported_names:
         if name.startswith("_"):
+            continue
+        if name in _PLAYGROUND_DENYLIST:
             continue
 
         obj = getattr(transforms, name, None)
@@ -691,7 +777,7 @@ def get_augmentation_methods() -> list[dict[str, Any]]:
                 continue
 
             # Skip base classes and constants
-            if name in ("Augmenter", "BaseEstimator", "TransformerMixin"):
+            if name in ("Augmenter", "BaseEstimator", "TransformerMixin", "SpectraTransformerMixin"):
                 continue
 
             seen_names.add(name)

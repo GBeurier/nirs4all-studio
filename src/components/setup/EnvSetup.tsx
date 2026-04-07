@@ -286,11 +286,14 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     if (backendResult.success) {
       // Backend restarted on a new port — clear cached URL so API client re-resolves
       resetBackendUrl();
-      // Get previous profile, then actually verify packages are installed
+      // Get previous profile, then actually verify packages are installed.
+      // Both endpoints are file/disk-based and do not need ML imports, so they
+      // are safe to call right after restartBackend() returns. Any error here
+      // is logged (not silently swallowed) so the fall-through to the full
+      // setup flow is debuggable.
       try {
         const setupStatus = await getSetupStatus();
         if (setupStatus.selected_profile) {
-          // Dry-run: check if the env already has the right packages
           const dryRun = await alignConfig({
             profile: setupStatus.selected_profile,
             dry_run: true,
@@ -302,7 +305,9 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
             return;
           }
         }
-      } catch { /* fall through to normal flow */ }
+      } catch (err) {
+        console.warn("[EnvSetup] Fast-path setup check failed, falling back to full flow:", err);
+      }
 
       await transitionToPostBackend();
     } else {
@@ -434,10 +439,14 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   const handleSkip = useCallback(async () => {
     try {
       await skipSetup();
-      electronApi?.markWizardComplete(false);
+      // Stamp the wizard as completed for the current app version so it does
+      // not re-appear on the next launch. The "Don't ask again" preference
+      // (skipNextTime) is forwarded too, in case the user toggled it on the
+      // final step before clicking the install-skip button.
+      electronApi?.markWizardComplete(skipNextTime);
     } catch { /* best effort */ }
     onComplete();
-  }, [onComplete]);
+  }, [onComplete, skipNextTime]);
 
   const handleReconfigure = useCallback(() => {
     transitionToPostBackend();

@@ -385,7 +385,7 @@ class PlaygroundExecutor:
                 if step.type == "splitting":
                     # Handle splitter
                     fold_info = self._execute_splitter(
-                        step, X_processed, y_sampled, options
+                        step, X_processed, y_sampled, options, metadata_sampled
                     )
                     splitter_applied = True
                     trace = StepTrace(
@@ -456,7 +456,7 @@ class PlaygroundExecutor:
                     # Handle augmentation operators — generate new samples
                     n_copies = step.params.get("n_augmented_copies", 1)
                     X_processed, y_sampled, aug_meta = self._execute_augmentation(
-                        step, X_processed, y_sampled, n_augmented_copies=n_copies
+                        step, X_processed, y_sampled, wavelengths, n_augmented_copies=n_copies
                     )
                     # Extend metadata to match augmented sample count
                     if metadata_sampled is not None:
@@ -493,7 +493,7 @@ class PlaygroundExecutor:
                     )
                 else:
                     # Handle preprocessing
-                    X_processed = self._execute_preprocessing(step, X_processed, wavelengths)
+                    X_processed = self._execute_preprocessing(step, X_processed, wavelengths, y_sampled)
                     trace = StepTrace(
                         step_id=step.id,
                         name=step.name,
@@ -706,6 +706,7 @@ class PlaygroundExecutor:
         step: PlaygroundStep,
         X,
         wavelengths=None,
+        y=None,
     ):
         """Execute a preprocessing step.
 
@@ -713,10 +714,13 @@ class PlaygroundExecutor:
             step: Step configuration
             X: Input data
             wavelengths: Wavelength array (passed to operators that need it)
+            y: Target values (forwarded to operators whose fit_transform accepts `y`,
+               e.g. CARS, MCUVE, OSC, TargetEncoder)
 
         Returns:
             Transformed data
         """
+        import inspect
         import numpy as np
 
         params = dict(step.params)
@@ -731,21 +735,40 @@ class PlaygroundExecutor:
         if operator is None:
             raise ValueError(f"Unknown preprocessing operator: {step.name}")
 
-        # Pass wavelengths to operators that need them:
-        # - SpectraTransformerMixin subclasses (have _requires_wavelengths)
-        # - Resampler (needs wavelengths in fit() but doesn't use the mixin)
+        # Build fit_transform kwargs dynamically:
+        # - wavelengths for SpectraTransformerMixin subclasses / Resampler
+        # - y for operators whose fit_transform signature declares it
         requires_wl = getattr(operator, "_requires_wavelengths", False)
         needs_wl = requires_wl or step.name == "Resampler"
-        if needs_wl and wavelengths is not None:
-            return operator.fit_transform(X, wavelengths=wavelengths)
 
-        return operator.fit_transform(X)
+        ft_kwargs = {}
+        try:
+            sig = inspect.signature(operator.fit_transform)
+            if "y" in sig.parameters and y is not None:
+                ft_kwargs["y"] = y
+        except (TypeError, ValueError):
+            pass
+
+        if needs_wl and wavelengths is not None:
+            ft_kwargs["wavelengths"] = wavelengths
+
+        result = operator.fit_transform(X, **ft_kwargs)
+
+        # Some sklearn transformers (e.g. text/encoder-like operators) return
+        # scipy sparse matrices. The rest of the playground pipeline assumes a
+        # dense numpy array (uses .tolist(), slicing, np.mean, etc.), so densify
+        # eagerly here.
+        if hasattr(result, "toarray") and not isinstance(result, np.ndarray):
+            result = result.toarray()
+
+        return result
 
     def _execute_augmentation(
         self,
         step: PlaygroundStep,
         X,
         y,
+        wavelengths=None,
         n_augmented_copies: int = 1,
     ):
         """Execute an augmentation step, generating new augmented samples.
@@ -759,6 +782,7 @@ class PlaygroundExecutor:
             step: Step configuration
             X: Input data (n_samples, n_features)
             y: Target values (n_samples,) or None
+            wavelengths: Wavelength array (passed to wavelength-aware operators)
             n_augmented_copies: Number of augmented copies per original sample
 
         Returns:
@@ -777,10 +801,17 @@ class PlaygroundExecutor:
 
         original_count = X.shape[0]
 
+        # Wavelength-aware operators (SpectraTransformerMixin subclasses) need
+        # wavelengths forwarded as a kwarg, otherwise they raise ValueError.
+        needs_wl = bool(getattr(operator, "_requires_wavelengths", False))
+        fit_kwargs: dict[str, Any] = {}
+        if needs_wl and wavelengths is not None:
+            fit_kwargs["wavelengths"] = np.asarray(wavelengths, dtype=float)
+
         # Generate augmented copies
         augmented_copies = []
         for _ in range(n_augmented_copies):
-            X_aug = operator.fit_transform(X)
+            X_aug = operator.fit_transform(X, **fit_kwargs)
             augmented_copies.append(X_aug)
 
         # Concatenate original + augmented
@@ -832,7 +863,8 @@ class PlaygroundExecutor:
         step: PlaygroundStep,
         X,
         y,
-        options: dict[str, Any]
+        options: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute a splitter step.
 
@@ -841,6 +873,8 @@ class PlaygroundExecutor:
             X: Input data
             y: Target values (may be required by some splitters)
             options: Execution options (split_index for ShuffleSplit-like)
+            metadata: Optional metadata columns; the first column is used as
+                the group vector for group-aware splitters when present.
 
         Returns:
             Fold information dict
@@ -852,24 +886,56 @@ class PlaygroundExecutor:
 
         # Prepare arguments for split()
         kwargs = {}
-        if y is not None:
-            # Check if splitter needs y
-            import inspect
-            sig = inspect.signature(operator.split)
-            if "y" in sig.parameters:
-                # For stratified splitters with continuous y, bin into classes
-                if "Stratified" in step.name and y is not None:
-                    # Bin continuous y into quantile-based classes
-                    n_bins = min(5, len(np.unique(y)))
-                    if n_bins > 1:
-                        y_binned = np.digitize(
-                            y, np.percentile(y, np.linspace(0, 100, n_bins + 1)[1:-1])
-                        )
-                        kwargs["y"] = y_binned
-                    else:
-                        kwargs["y"] = y
+        import inspect
+        sig = inspect.signature(operator.split)
+
+        if y is not None and "y" in sig.parameters:
+            # For stratified splitters with continuous y, bin into classes
+            if "Stratified" in step.name:
+                # Bin continuous y into quantile-based classes
+                n_bins = min(5, len(np.unique(y)))
+                if n_bins > 1:
+                    y_binned = np.digitize(
+                        y, np.percentile(y, np.linspace(0, 100, n_bins + 1)[1:-1])
+                    )
+                    kwargs["y"] = y_binned
                 else:
                     kwargs["y"] = y
+            else:
+                kwargs["y"] = y
+
+        # Group-aware splitters require a `groups` array. Derive it from the
+        # first available metadata column; fall back to a quantile-binned y so
+        # the playground can preview the splitter without user configuration.
+        # Detect group-aware splitters by name (sklearn's KFold/ShuffleSplit
+        # also accept a `groups` kwarg but ignore it with a warning).
+        is_group_aware = (
+            "Group" in step.name
+            or "LeavePGroupsOut" in step.name
+            or "LeaveOneGroupOut" in step.name
+        )
+        if is_group_aware and "groups" in sig.parameters:
+            groups = None
+            if metadata:
+                first_key = next(iter(metadata.keys()), None)
+                if first_key is not None:
+                    groups = np.asarray(metadata[first_key])
+                    if groups.shape[0] != X.shape[0]:
+                        groups = None
+            if groups is None and y is not None:
+                n_bins = min(5, len(np.unique(y)))
+                if n_bins > 1:
+                    groups = np.digitize(
+                        y, np.percentile(y, np.linspace(0, 100, n_bins + 1)[1:-1])
+                    )
+                else:
+                    groups = np.zeros(X.shape[0], dtype=int)
+            if groups is None:
+                # No metadata, no y — synthesize a balanced group label so the
+                # splitter can still produce folds for visualization.
+                n_groups = max(2, min(5, X.shape[0]))
+                groups = np.arange(X.shape[0]) % n_groups
+            kwargs["groups"] = groups
 
         # Generate folds
         folds_list = list(operator.split(X, **kwargs))

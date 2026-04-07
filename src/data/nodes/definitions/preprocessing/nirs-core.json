@@ -228,35 +228,6 @@
     "tier": "standard"
   },
   {
-    "id": "preprocessing.epo",
-    "name": "EPO",
-    "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.EPO",
-    "description": "External Parameter Orthogonalization",
-    "longDescription": "Removes variation in X correlated with external parameters (temperature, humidity, batch effects) without using target Y.",
-    "category": "NIRS Core",
-    "tags": [
-      "orthogonalization",
-      "scatter",
-      "correction",
-      "external",
-      "transfer"
-    ],
-    "source": "nirs4all",
-    "parameters": [
-      {
-        "name": "scale",
-        "type": "bool",
-        "default": true,
-        "description": "Scale data before orthogonalization",
-        "isAdvanced": true
-      }
-    ],
-    "supportsParameterSweeps": false,
-    "supportsStepGenerator": true,
-    "tier": "standard"
-  },
-  {
     "id": "preprocessing.osc",
     "name": "OSC",
     "type": "preprocessing",

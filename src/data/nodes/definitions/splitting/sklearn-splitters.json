@@ -311,7 +311,9 @@
     "parameters": [
       {
         "name": "n_groups",
-        "type": "string"
+        "type": "int",
+        "default": 2,
+        "min": 1
       }
     ]
   },
@@ -332,7 +334,9 @@
     "parameters": [
       {
         "name": "p",
-        "type": "string"
+        "type": "int",
+        "default": 1,
+        "min": 1
       }
     ]
   },
@@ -349,6 +353,10 @@
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires user-provided test_fold array; no sensible default."
+    },
     "tier": "advanced",
     "parameters": [
       {

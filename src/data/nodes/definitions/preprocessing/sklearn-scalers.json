@@ -86,23 +86,6 @@
     ]
   },
   {
-    "id": "preprocessing.kernel_centerer",
-    "name": "KernelCenterer",
-    "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._data.KernelCenterer",
-    "description": "Center an arbitrary kernel matrix :math:`K`.",
-    "category": "scikit-scalers",
-    "tags": [
-      "sklearn",
-      "transformer",
-      "preprocessing",
-      "_data"
-    ],
-    "source": "sklearn",
-    "tier": "advanced",
-    "parameters": []
-  },
-  {
     "id": "preprocessing.normalizer",
     "name": "Normalizer",
     "type": "preprocessing",

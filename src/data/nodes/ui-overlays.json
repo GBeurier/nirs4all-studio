@@ -415,13 +415,6 @@
       "learning_rate_init": { "type": "log_float", "range": [0.0001, 0.01] }
     }
   },
-  "model.lstm": {
-    "displayOrder": 63,
-    "longDescription": "LSTM recurrent neural network for sequence modeling.",
-    "finetuneRanges": {
-      "learning_rate": { "type": "log_float", "range": [0.0001, 0.01] }
-    }
-  },
   "model.transformer": {
     "displayOrder": 64,
     "longDescription": "Attention-based transformer architecture for spectral data.",

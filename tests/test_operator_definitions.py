@@ -81,41 +81,29 @@ SKIP_FIT_TRANSFORM = {
     "SequentialFeatureSelector", "RFE", "RFECV", "SelectFromModel",
     # CARS/MCUVE/VIP require y and model-based selection
     "CARS", "MCUVE", "VIP",
-    # Sklearn operators that require specific input formats
-    "LabelEncoder", "OrdinalEncoder", "LabelBinarizer", "MultiLabelBinarizer",
-    "OneHotEncoder", "TargetEncoder",
+    # Sklearn encoders that require specific input formats
+    "OrdinalEncoder", "OneHotEncoder", "TargetEncoder",
     "KBinsDiscretizer",
     # Imputers need NaN data to be meaningful
     "SimpleImputer", "KNNImputer", "IterativeImputer", "MissingIndicator",
-    # Kernel approximation may need specific params
-    "Nystroem",
     # Clustering-based operators
     "KMeans", "MiniBatchKMeans", "DBSCAN", "AgglomerativeClustering",
     "SpectralClustering", "Birch", "BisectingKMeans",
-    # Neighbors-based operators
+    # Neighbors-based operators (graph transformers)
     "NearestNeighbors", "KNeighborsTransformer", "RadiusNeighborsTransformer",
-    "NeighborhoodComponentsAnalysis",
-    # Feature extraction (different API)
-    "DictVectorizer", "FeatureHasher", "HashingVectorizer",
-    "PatchExtractor", "TfidfTransformer",
     # Misc sklearn that need specific input
-    "FunctionTransformer", "ColumnTransformer", "FeatureUnion",
-    "SplineTransformer", "BernoulliRBM", "RandomTreesEmbedding",
-    # Operators that need specific data (non-negative, etc.)
-    "LatentDirichletAllocation", "NMF", "MiniBatchNMF",
-    "SparseCoder", "DictionaryLearning", "MiniBatchDictionaryLearning",
+    "FunctionTransformer", "SplineTransformer",
+    "BernoulliRBM", "RandomTreesEmbedding",
+    # Dictionary learning needs specific data shapes
+    "DictionaryLearning", "MiniBatchDictionaryLearning",
     # CropTransformer needs wavelengths context
     "CropTransformer",
     # Resampler requires target_wavelengths (no default)
     "Resampler",
     # PLSSVD requires y
     "PLSSVD",
-    # Random projection needs more samples than features for default eps
-    "GaussianRandomProjection", "SparseRandomProjection",
     # TSNE perplexity must be < n_samples
     "TSNE",
-    # KernelCenterer expects a square kernel matrix
-    "KernelCenterer",
 }
 
 # Operators whose classPath may not be directly importable but work via aliases

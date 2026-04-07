@@ -313,10 +313,18 @@ export class EnvManager {
   /**
    * Single decision point for whether the setup wizard should be shown.
    *
-   * - Shows when the environment is not ready (first launch, broken env).
-   * - Portable version: shows every launch unless "don't ask again" was checked.
-   * - Version changes are handled silently when the env is already functional
-   *   (ensureBackendPackages covers package updates at startup).
+   * Rules:
+   * - Env not configured / broken → always show.
+   * - Wizard never completed before → show (savedAppVersion is null on a
+   *   fresh install or after `validateConfiguredState` cleared a stale path).
+   * - Wizard completed for the current app version → skip silently. This is
+   *   the common case, including portable mode: once a portable user has
+   *   gone through the wizard once on a given .exe + version, we don't nag
+   *   them again. Moving the .exe to a different folder is handled by
+   *   `validateConfiguredState`, which clears `savedAppVersion` if the saved
+   *   custom python path no longer exists.
+   * - App version bump → show once, unless `savedSkipWizard` was set via the
+   *   "Don't ask again" checkbox in the wizard's final step.
    */
   shouldShowWizard(): boolean {
     this.validateConfiguredState();
@@ -329,17 +337,24 @@ export class EnvManager {
     // Env not configured at all → must show wizard
     if (!this.isReady()) return true;
 
-    // Portable mode: show every time unless user opted out
-    if (this.isPortable() && !this.savedSkipWizard) return true;
-
-    // Env is ready — silently stamp current version so portable opt-out stays valid
     const currentVersion = app.getVersion();
-    if (this.savedAppVersion !== currentVersion) {
-      this.savedAppVersion = currentVersion;
-      this.saveSettings();
+
+    // Env ready and the wizard was already completed for this version → skip.
+    if (this.savedAppVersion === currentVersion) {
+      return false;
     }
 
-    return false;
+    // Env ready but version bumped (or this is the first run after a manual
+    // settings file). The "Don't ask again" opt-out from a previous run still
+    // applies — refresh the saved version so we stop asking on subsequent
+    // launches.
+    if (this.savedAppVersion && this.savedSkipWizard) {
+      this.savedAppVersion = currentVersion;
+      this.saveSettings();
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -723,16 +738,6 @@ export class EnvManager {
 
       // Remove macOS Gatekeeper quarantine attribute from downloaded Python
       await this.removeQuarantine(pythonDir);
-
-      // Warm up: run a lightweight command so the OS / antivirus finishes
-      // scanning the freshly extracted binary before we attempt heavier work.
-      // On Windows, Defender can lock new executables for 10–30 s after extraction.
-      await this.runCommand(embeddedPython, ["--version"], {
-        retries: 5,
-        retryBaseMs: 3000,
-        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-      });
-      report(28, "extracting", "Python runtime verified");
 
       // 4. Create venv
       this.status = "creating_venv";

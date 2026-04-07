@@ -55,6 +55,7 @@ import {
   runAggregatedPredictionsQuery,
 } from "@/api/client";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
+import { useMlReadiness } from "@/context/MlReadinessContext";
 import type { ChainSummary, PartitionPrediction } from "@/types/aggregated-predictions";
 import {
   NoWorkspaceState,
@@ -105,6 +106,10 @@ type SortKey = "model" | "cv_val" | "cv_test" | "final_test" | "dataset" | "metr
 export default function AggregatedResults() {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
+  // Aggregated predictions are read from the SQLite store via store_adapter,
+  // which only returns authoritative data once the active nirs4all workspace
+  // has finished restoring. Re-fetch when that flips.
+  const { workspaceReady } = useMlReadiness();
 
   // State
   const [predictions, setPredictions] = useState<ChainSummary[]>([]);
@@ -142,7 +147,9 @@ export default function AggregatedResults() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    // Re-run after workspace_ready flips to replace any empty initial result
+    // (the first call may race the backend's workspace restoration phase).
+  }, [workspaceReady]);
 
   const handleDownloadDataset = async (datasetName: string, event: React.MouseEvent) => {
     event.stopPropagation();

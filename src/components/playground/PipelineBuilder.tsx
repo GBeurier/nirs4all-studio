@@ -9,9 +9,8 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Layers, Trash2, Loader2, AlertTriangle } from 'lucide-react';
+import { Layers, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Tooltip,
   TooltipContent,
@@ -225,47 +224,34 @@ export function PipelineBuilder({
           </Tooltip>
         </div>
 
-      {/* Step errors alert */}
-      {stepErrors.length > 0 && (
-        <Alert variant="destructive" className="mb-3 py-2">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription className="text-xs">
-            {stepErrors.length} step{stepErrors.length > 1 ? 's' : ''} failed
-          </AlertDescription>
-        </Alert>
-      )}
-
       <div className="space-y-2">
         {operators.map((operator, index) => {
           const nodeDef = getOperatorDefinition(operator.name, operator.type as PlaygroundType);
           const paramDefs = nodeParamsToOperatorParams(nodeDef);
-          const hasError = errorMap.has(operator.id);
+          const errorMessage = errorMap.get(operator.id);
           const filterStats = operator.type === 'filter'
             ? filterStatsMap.get(operator.name)
             : undefined;
 
           return (
-            <div key={operator.id} className="relative">
-              {hasError && (
-                <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-4 bg-destructive rounded-full" />
-              )}
-              <UnifiedOperatorCard
-                operator={operator}
-                index={index}
-                paramDefs={paramDefs}
-                description={nodeDef?.description}
-                filterStats={filterStats}
-                datasetId={datasetId}
-                onUpdate={onUpdate}
-                onUpdateParams={onUpdateParams}
-                onRemove={onRemove}
-                onToggle={onToggle}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
-                isDragging={dragIndex === index}
-              />
-            </div>
+            <UnifiedOperatorCard
+              key={operator.id}
+              operator={operator}
+              index={index}
+              paramDefs={paramDefs}
+              description={nodeDef?.description}
+              filterStats={filterStats}
+              errorMessage={errorMessage}
+              datasetId={datasetId}
+              onUpdate={onUpdate}
+              onUpdateParams={onUpdateParams}
+              onRemove={onRemove}
+              onToggle={onToggle}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              isDragging={dragIndex === index}
+            />
           );
         })}
       </div>

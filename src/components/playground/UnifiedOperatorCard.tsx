@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle, Trash2, Filter, AlertCircle } from 'lucide-react';
+import { GripVertical, X, ChevronDown, ChevronUp, Eye, EyeOff, Grid3X3, HelpCircle, Trash2, Filter, AlertCircle, AlertTriangle, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -22,6 +22,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSliderWithCommit, useCommittedInput } from '@/lib/playground/debounce';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -35,6 +44,8 @@ interface UnifiedOperatorCardProps {
   description?: string;
   /** Filter statistics from execution result - name is optional since we key by operator name externally */
   filterStats?: { removed_count: number; reason?: string; mode?: 'remove' | 'tag' };
+  /** Error message if this operator failed during execution */
+  errorMessage?: string;
   /** Current dataset ID for dynamic parameter fetching (e.g., MetadataFilter) */
   datasetId?: string;
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
@@ -53,6 +64,7 @@ export function UnifiedOperatorCard({
   paramDefs,
   description,
   filterStats,
+  errorMessage,
   datasetId,
   onUpdate,
   onUpdateParams,
@@ -64,11 +76,13 @@ export function UnifiedOperatorCard({
   isDragging,
 }: UnifiedOperatorCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
 
   const isSplitter = operator.type === 'splitting';
   const isFilter = operator.type === 'filter';
   const isAugmentation = operator.type === 'augmentation';
   const hasParams = paramDefs && Object.keys(paramDefs).length > 0;
+  const hasError = !!errorMessage;
 
   // Filter statistics display
   const hasFilterStats = isFilter && filterStats && filterStats.removed_count > 0;
@@ -79,13 +93,22 @@ export function UnifiedOperatorCard({
     .replace(/^./, str => str.toUpperCase())
     .trim();
 
-  // Get border color based on type
+  // Get border color based on type (failed operators take precedence)
   const getBorderColor = () => {
+    if (hasError) return 'border-destructive/70';
     if (isFilter) return 'border-red-500/50';
     if (isSplitter) return 'border-orange-500/50';
     if (isAugmentation) return 'border-blue-500/50';
     return 'border-border';
   };
+
+  const handleCopyError = useCallback(() => {
+    if (!errorMessage) return;
+    navigator.clipboard.writeText(errorMessage).then(
+      () => toast.success('Error copied to clipboard'),
+      () => toast.error('Failed to copy error')
+    );
+  }, [errorMessage]);
 
   return (
     <TooltipProvider>
@@ -130,6 +153,27 @@ export function UnifiedOperatorCard({
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
                     <p className="text-xs">{description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {/* Failure badge - opens dialog with full error log */}
+              {hasError && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowErrorDialog(true);
+                      }}
+                      className="inline-flex items-center gap-0.5 h-4 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-medium leading-none hover:bg-destructive/90 focus:outline-none focus:ring-1 focus:ring-destructive/40 cursor-pointer flex-shrink-0"
+                    >
+                      <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                      <span>Failed</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    <p className="text-xs">Click to view error log</p>
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -245,6 +289,42 @@ export function UnifiedOperatorCard({
           </div>
         )}
       </div>
+
+      {/* Error log dialog */}
+      <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+        <DialogContent className="max-w-2xl bg-card border-border shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              {displayName} failed
+            </DialogTitle>
+            <DialogDescription>
+              The operator threw an error during pipeline execution. Copy the log
+              below when filing an issue.
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-[50vh] overflow-auto rounded border border-destructive/30 bg-destructive/5 p-3 text-[11px] leading-relaxed font-mono text-destructive whitespace-pre-wrap break-words">
+            {errorMessage}
+          </pre>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyError}
+              className="gap-2"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Copy error
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setShowErrorDialog(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

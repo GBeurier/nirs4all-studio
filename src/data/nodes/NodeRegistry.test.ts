@@ -17,7 +17,7 @@ describe("NodeRegistry - Initialization", () => {
 
   it("loads all curated nodes", () => {
     expect(registry.size).toBe(allNodes.length);
-    expect(registry.size).toBeGreaterThanOrEqual(340);
+    expect(registry.size).toBeGreaterThanOrEqual(320);
   });
 
   it("creates an empty registry", () => {

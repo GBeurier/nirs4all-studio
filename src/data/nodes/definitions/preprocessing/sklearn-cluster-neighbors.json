@@ -435,63 +435,6 @@
     "supportsParameterSweeps": true
   },
   {
-    "id": "preprocessing.neighborhood_components_analysis",
-    "name": "NeighborhoodComponentsAnalysis",
-    "type": "preprocessing",
-    "classPath": "sklearn.neighbors._nca.NeighborhoodComponentsAnalysis",
-    "description": "Neighborhood Components Analysis.",
-    "category": "scikit-cluster-neighbors",
-    "tags": [
-      "sklearn",
-      "transformer",
-      "neighbors",
-      "_nca"
-    ],
-    "source": "sklearn",
-    "tier": "advanced",
-    "parameters": [
-      {
-        "name": "n_components",
-        "type": "string",
-        "finetunable": true,
-        "finetuneType": "int",
-        "finetuneRange": [
-          1,
-          30
-        ]
-      },
-      {
-        "name": "init",
-        "type": "string",
-        "default": "auto",
-        "isAdvanced": true
-      },
-      {
-        "name": "max_iter",
-        "type": "int",
-        "default": 50,
-        "isAdvanced": true
-      },
-      {
-        "name": "tol",
-        "type": "float",
-        "default": 0.00001,
-        "isAdvanced": true
-      },
-      {
-        "name": "callback",
-        "type": "string",
-        "isAdvanced": true
-      },
-      {
-        "name": "random_state",
-        "type": "string",
-        "isAdvanced": true
-      }
-    ],
-    "supportsFinetuning": true
-  },
-  {
     "id": "preprocessing.radius_neighbors_transformer",
     "name": "RadiusNeighborsTransformer",
     "type": "preprocessing",

@@ -35,8 +35,8 @@ const KNOWN_PARAMETERLESS = new Set([
 ]);
 
 describe("Node Definitions - Structural validation", () => {
-  it("has at least 340 curated nodes", () => {
-    expect(allNodes.length).toBeGreaterThanOrEqual(340);
+  it("has at least 320 curated nodes", () => {
+    expect(allNodes.length).toBeGreaterThanOrEqual(320);
   });
 
   it.each(allNodes.map((n) => [n.id, n]))(

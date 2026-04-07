@@ -59,7 +59,7 @@ const electronApi = (
         workspace_ready?: boolean;
       }>;
       onMlReady?: (
-        cb: (info: { ready: boolean; error?: string }) => void
+        cb: (info: { ready: boolean; error?: string; workspaceReady?: boolean }) => void
       ) => () => void;
       onBackendStatusChanged?: (
         cb: (info: { status: string }) => void
@@ -116,10 +116,11 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Listen for ML ready notification. Note: this fires when ML imports
-    // finish, which is *before* the workspace has been restored. We do not
-    // flip `workspaceReady` here — the polling effect below picks that up
-    // from `/api/system/readiness`.
+    // Listen for ML ready notification. The backend-manager fires this twice:
+    //   1. ML imports finished (`workspaceReady=false`) — flip `mlReady`
+    //   2. Active workspace restored (`workspaceReady=true`) — flip `workspaceReady`
+    // Pages that depend on dataset/run/prediction lists must wait for #2 to
+    // observe authoritative data.
     const cleanupMl = electronApi?.onMlReady?.((info) => {
       if (info.ready) {
         setState((prev) => ({
@@ -128,6 +129,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           mlReady: true,
           mlLoading: false,
           mlError: null,
+          workspaceReady: info.workspaceReady ? true : prev.workspaceReady,
         }));
       } else if (info.error) {
         setState((prev) => ({ ...prev, mlLoading: false, mlError: info.error ?? null }));

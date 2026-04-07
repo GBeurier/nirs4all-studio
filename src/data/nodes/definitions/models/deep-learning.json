@@ -3,7 +3,7 @@
     "id": "model.nicon",
     "name": "NICoN",
     "type": "model",
-    "classPath": "nirs4all.operators.models.nicon",
+    "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
     "description": "NICoN (NIRS Convolutional Network) — PyTorch-based",
     "longDescription": "PyTorch-based deep convolutional neural network designed specifically for NIR spectroscopy. Requires PyTorch.",
     "requires": ["torch"],
@@ -60,7 +60,8 @@
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
-      "nirs4all.operators.models.deep.nicon"
+      "nirs4all.operators.models.deep.nicon",
+      "nirs4all.operators.models.nicon"
     ],
     "tier": "advanced"
   },
@@ -68,9 +69,9 @@
     "id": "model.cnn1d",
     "name": "CNN1D",
     "type": "model",
-    "classPath": "nirs4all.operators.models.CNN1D",
+    "classPath": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
     "description": "1D Convolutional Neural Network — PyTorch-based",
-    "longDescription": "PyTorch-based generic 1D CNN architecture for spectral data. Requires PyTorch.",
+    "longDescription": "PyTorch-based customizable 1D CNN architecture (NICoN family) for spectral data. Requires PyTorch.",
     "requires": ["torch"],
     "category": "Deep Learning",
     "tags": [
@@ -153,7 +154,8 @@
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
-      "nirs4all.operators.models.deep.CNN1D"
+      "nirs4all.operators.models.deep.CNN1D",
+      "nirs4all.operators.models.CNN1D"
     ],
     "tier": "advanced"
   },
@@ -256,95 +258,12 @@
     "tier": "advanced"
   },
   {
-    "id": "model.lstm",
-    "name": "LSTM",
-    "type": "model",
-    "classPath": "nirs4all.operators.models.LSTM",
-    "description": "Long Short-Term Memory Network — PyTorch-based",
-    "longDescription": "PyTorch-based LSTM recurrent neural network for sequence modeling. Requires PyTorch.",
-    "requires": ["torch"],
-    "category": "Deep Learning",
-    "tags": [
-      "deep-learning",
-      "lstm",
-      "rnn",
-      "recurrent"
-    ],
-    "source": "nirs4all",
-    "isDeepLearning": true,
-    "parameters": [
-      {
-        "name": "epochs",
-        "type": "int",
-        "default": 100,
-        "min": 10,
-        "max": 1000,
-        "description": "Number of training epochs",
-        "sweepable": true,
-        "finetunable": true,
-        "finetuneType": "int",
-        "finetuneRange": [
-          50,
-          500
-        ]
-      },
-      {
-        "name": "hidden_size",
-        "type": "int",
-        "default": 64,
-        "min": 8,
-        "max": 512,
-        "description": "LSTM hidden layer size",
-        "sweepable": true
-      },
-      {
-        "name": "num_layers",
-        "type": "int",
-        "default": 2,
-        "min": 1,
-        "max": 8,
-        "description": "Number of LSTM layers",
-        "sweepable": true
-      },
-      {
-        "name": "learning_rate",
-        "type": "float",
-        "default": 0.001,
-        "min": 0.00001,
-        "max": 0.1,
-        "description": "Learning rate",
-        "sweepable": true,
-        "finetunable": true,
-        "finetuneType": "log_float",
-        "finetuneRange": [
-          0.0001,
-          0.01
-        ]
-      },
-      {
-        "name": "batch_size",
-        "type": "int",
-        "default": 32,
-        "min": 8,
-        "max": 256,
-        "description": "Training batch size",
-        "isAdvanced": true
-      }
-    ],
-    "supportsParameterSweeps": true,
-    "supportsFinetuning": true,
-    "legacyClassPaths": [
-      "nirs4all.operators.models.deep.LSTM"
-    ],
-    "tier": "advanced"
-  },
-  {
     "id": "model.transformer",
     "name": "Transformer",
     "type": "model",
-    "classPath": "nirs4all.operators.models.Transformer",
-    "description": "Transformer Model — PyTorch-based",
-    "longDescription": "PyTorch-based attention-based transformer architecture for spectral data. Requires PyTorch.",
+    "classPath": "nirs4all.operators.models.pytorch.spectral_transformer.spectral_transformer",
+    "description": "Spectral Transformer — PyTorch-based",
+    "longDescription": "PyTorch-based attention-based transformer architecture (SpectralTransformer) for spectral data. Requires PyTorch.",
     "requires": ["torch"],
     "category": "Deep Learning",
     "tags": [
@@ -436,7 +355,8 @@
     "supportsParameterSweeps": true,
     "supportsFinetuning": true,
     "legacyClassPaths": [
-      "nirs4all.operators.models.deep.Transformer"
+      "nirs4all.operators.models.deep.Transformer",
+      "nirs4all.operators.models.Transformer"
     ],
     "tier": "advanced"
   },
@@ -444,9 +364,10 @@
     "id": "model.tabpfn",
     "name": "TabPFN",
     "type": "model",
-    "classPath": "nirs4all.operators.models.TabPFN",
+    "classPath": "tabpfn.TabPFNRegressor",
     "description": "TabPFN (Prior-Data Fitted Network)",
     "longDescription": "Pre-trained transformer for tabular data - no hyperparameter tuning needed.",
+    "requires": ["tabpfn"],
     "category": "Deep Learning",
     "tags": [
       "deep-learning",
@@ -454,7 +375,10 @@
       "transformer",
       "pretrained"
     ],
-    "source": "nirs4all",
+    "source": "tabpfn",
+    "legacyClassPaths": [
+      "nirs4all.operators.models.TabPFN"
+    ],
     "isDeepLearning": true,
     "parameters": [],
     "supportsParameterSweeps": false,

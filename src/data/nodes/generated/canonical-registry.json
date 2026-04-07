@@ -5297,7 +5297,11 @@
       "conditional",
       "sample-selection",
       "filtering"
-    ]
+    ],
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires user-provided column argument; no sensible default."
+    }
   },
   {
     "id": "filter.spectral_quality_filter",
@@ -13429,7 +13433,11 @@
       "transformer",
       "kernel_approximation"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires non-negative input."
+    }
   },
   {
     "id": "preprocessing.bernoulli_rbm",
@@ -13740,7 +13748,11 @@
       "feature_extraction",
       "_dict_vectorizer"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Expects list-of-dicts input, not numpy spectra."
+    }
   },
   {
     "id": "preprocessing.dictionary_learning",
@@ -14128,7 +14140,11 @@
       "feature_extraction",
       "_hash"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Expects list-of-dicts input, not numpy spectra."
+    }
   },
   {
     "id": "preprocessing.feature_union",
@@ -14282,7 +14298,11 @@
       "transformer",
       "random_projection"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Default eps too aggressive for playground sample size; needs explicit n_components."
+    }
   },
   {
     "id": "preprocessing.generic_univariate_select",
@@ -14433,7 +14453,11 @@
       "feature_extraction",
       "text"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Text vectorizer; expects iterable of strings."
+    }
   },
   {
     "id": "preprocessing.incremental_pca",
@@ -14780,7 +14804,11 @@
       "preprocessing",
       "_data"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires a square kernel matrix as input."
+    }
   },
   {
     "id": "preprocessing.kernel_pca",
@@ -14989,7 +15017,11 @@
       "preprocessing",
       "_label"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Operates on y labels, not X."
+    }
   },
   {
     "id": "preprocessing.label_encoder",
@@ -15006,7 +15038,11 @@
       "preprocessing",
       "_label"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Operates on y labels, not X."
+    }
   },
   {
     "id": "preprocessing.latent_dirichlet_allocation",
@@ -15120,7 +15156,11 @@
       "decomposition",
       "_lda"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires non-negative input."
+    }
   },
   {
     "id": "preprocessing.locally_linear_embedding",
@@ -15621,7 +15661,11 @@
       "decomposition",
       "_nmf"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires non-negative input."
+    }
   },
   {
     "id": "preprocessing.mini_batch_sparse_pca",
@@ -15788,7 +15832,11 @@
       "preprocessing",
       "_label"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Operates on y labels, not X."
+    }
   },
   {
     "id": "preprocessing.neighborhood_components_analysis",
@@ -15854,7 +15902,11 @@
       "neighbors",
       "_nca"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires discrete class labels."
+    }
   },
   {
     "id": "preprocessing.nmf",
@@ -15944,7 +15996,11 @@
       "decomposition",
       "_nmf"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires non-negative input."
+    }
   },
   {
     "id": "preprocessing.normalizer",
@@ -16198,7 +16254,11 @@
       "feature_extraction",
       "image"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Expects 3-D image arrays."
+    }
   },
   {
     "id": "preprocessing.plssvd",
@@ -16234,7 +16294,11 @@
       "cross_decomposition",
       "_pls"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires explicit n_components and a Y signal incompatible with playground synthetic regression target."
+    }
   },
   {
     "id": "preprocessing.polynomial_count_sketch",
@@ -17065,7 +17129,11 @@
       "transformer",
       "kernel_approximation"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Requires positive (>0) input."
+    }
   },
   {
     "id": "preprocessing.sparse_coder",
@@ -17268,7 +17336,11 @@
       "transformer",
       "random_projection"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Default eps too aggressive for playground sample size; needs explicit n_components."
+    }
   },
   {
     "id": "preprocessing.spline_transformer",
@@ -17430,7 +17502,11 @@
       "feature_extraction",
       "text"
     ],
-    "isAdvanced": true
+    "isAdvanced": true,
+    "_webapp_meta": {
+      "skipAudit": true,
+      "skipReason": "Operates on count matrices, not float spectra."
+    }
   },
   {
     "id": "preprocessing.tsne",

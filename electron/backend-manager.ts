@@ -241,14 +241,21 @@ export class BackendManager {
   }
 
   /**
-   * Poll for ML readiness and notify renderer when ready.
+   * Poll for ML + workspace readiness and notify renderer when ready.
    * Called non-blocking after startInternal() succeeds.
+   *
+   * Sends two notifications: one when `ml_ready` flips (UI can flip
+   * `mlReady`), then a final one when `workspace_ready` flips (UI can flip
+   * `workspaceReady` and refetch dataset/run/prediction lists). The frontend
+   * MUST not assume that workspace data is authoritative until the second
+   * notification arrives — see api/lazy_imports.py and main._wait_for_ml_ready.
    */
   private async pollMlReadiness(): Promise<void> {
     const url = `http://127.0.0.1:${this.port}/api/system/readiness`;
     const pollInterval = 1000;
     const maxWait = 120000; // 2 minutes
     const startTime = Date.now();
+    let mlNotified = false;
 
     while (Date.now() - startTime < maxWait) {
       if (this.isShuttingDown) return;
@@ -259,10 +266,15 @@ export class BackendManager {
           signal: AbortSignal.timeout(5000),
         });
         if (response.ok) {
-          const data = await response.json() as { ml_ready?: boolean };
-          if (data.ml_ready) {
+          const data = await response.json() as { ml_ready?: boolean; workspace_ready?: boolean };
+          if (data.ml_ready && !mlNotified) {
             console.log("ML dependencies loaded, notifying renderer");
-            this.notifyMlReady(true);
+            this.notifyMlReady(true, undefined, false);
+            mlNotified = true;
+          }
+          if (data.workspace_ready) {
+            console.log("Workspace restored, notifying renderer");
+            this.notifyMlReady(true, undefined, true);
             return;
           }
         }
@@ -273,16 +285,18 @@ export class BackendManager {
     }
 
     console.warn("ML readiness polling timed out after 2 minutes");
-    this.notifyMlReady(false, "ML loading timed out");
+    this.notifyMlReady(false, "ML loading timed out", false);
   }
 
   /**
-   * Notify renderer windows of ML readiness state change
+   * Notify renderer windows of ML readiness state change.
+   * `workspaceReady` is true once the active nirs4all workspace has been
+   * fully restored — frontend pages should refetch their data when it flips.
    */
-  private notifyMlReady(ready: boolean, error?: string): void {
+  private notifyMlReady(ready: boolean, error?: string, workspaceReady: boolean = false): void {
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
-      win.webContents.send("backend:mlReady", { ready, error });
+      win.webContents.send("backend:mlReady", { ready, error, workspaceReady });
     }
   }
 
