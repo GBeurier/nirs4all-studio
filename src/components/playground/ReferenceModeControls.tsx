@@ -10,7 +10,7 @@
  * - Alignment mode selector
  */
 
-import { useState, useEffect, memo, useMemo } from 'react';
+import { useState, memo, useMemo } from 'react';
 import {
   GitCompare,
   Database,
@@ -43,7 +43,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { getWorkspace, type DatasetInfo } from '@/api/client';
+import type { Dataset } from '@/types/datasets';
+import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
 import { useReferenceDatasetOptional, type ReferenceMode, type AlignmentMode } from '@/context/ReferenceDatasetContext';
 
 interface ReferenceModeControlsProps {
@@ -68,28 +69,18 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
 }: ReferenceModeControlsProps) {
   const referenceCtx = useReferenceDatasetOptional();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
-  const [datasetsLoading, setDatasetsLoading] = useState(false);
-  const [datasetsError, setDatasetsError] = useState<string | null>(null);
 
+  // Shared dataset cache (see src/hooks/useDatasetQueries.ts) — instant on
+  // every picker open after the first navigation, persisted to localStorage.
   // Hooks must be called before early return (Rules of Hooks).
-
-  // Load datasets when picker opens
-  useEffect(() => {
-    if (!referenceCtx) return;
-    if (pickerOpen && datasets.length === 0 && !datasetsLoading) {
-      setDatasetsLoading(true);
-      getWorkspace()
-        .then(response => {
-          setDatasets(response.datasets || []);
-          setDatasetsLoading(false);
-        })
-        .catch(err => {
-          setDatasetsError(err.message || 'Failed to load datasets');
-          setDatasetsLoading(false);
-        });
-    }
-  }, [referenceCtx, pickerOpen, datasets.length, datasetsLoading]);
+  const datasetsQuery = useDatasetsQuery();
+  const datasets: Dataset[] = datasetsQuery.data?.datasets ?? [];
+  const datasetsLoading = datasetsQuery.isLoading && !datasetsQuery.data;
+  const datasetsError = datasetsQuery.error
+    ? datasetsQuery.error instanceof Error
+      ? datasetsQuery.error.message
+      : 'Failed to load datasets'
+    : null;
 
   // Filter out current dataset from picker
   const availableDatasets = useMemo(() => {
@@ -129,7 +120,7 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
   };
 
   // Handle dataset selection
-  const handleDatasetSelect = (dataset: DatasetInfo) => {
+  const handleDatasetSelect = (dataset: Dataset) => {
     onInteractionStart?.();
     loadReferenceDataset(dataset.id, dataset.name);
     setPickerOpen(false);
@@ -239,11 +230,11 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                           )}
                         >
                           <div className="font-medium truncate">{dataset.name}</div>
-                          {(dataset.samples || dataset.features) && (
+                          {(dataset.num_samples || dataset.num_features) && (
                             <div className="text-[10px] text-muted-foreground">
-                              {dataset.samples && `${dataset.samples} samples`}
-                              {dataset.samples && dataset.features && ' · '}
-                              {dataset.features && `${dataset.features} features`}
+                              {dataset.num_samples && `${dataset.num_samples} samples`}
+                              {dataset.num_samples && dataset.num_features && ' · '}
+                              {dataset.num_features && `${dataset.num_features} features`}
                             </div>
                           )}
                         </button>

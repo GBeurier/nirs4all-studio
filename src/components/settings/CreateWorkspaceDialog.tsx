@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { selectFolder } from "@/utils/fileDialogs";
 import { createWorkspace, selectWorkspace, getLinkedWorkspaces, activateN4AWorkspace } from "@/api/client";
+import { datasetQueryKeys, useInvalidateDatasets } from "@/hooks/useDatasetQueries";
 import type { WorkspaceInfo } from "@/types/settings";
 
 export interface CreateWorkspaceDialogProps {
@@ -64,6 +65,7 @@ export function CreateWorkspaceDialog({
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [createStructure, setCreateStructure] = useState(true);
+  const invalidateDatasets = useInvalidateDatasets();
 
   const resetForm = () => {
     setName("");
@@ -122,14 +124,22 @@ export function CreateWorkspaceDialog({
       });
 
       setSuccess(workspace);
-      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
+      // Drop the shared dataset/workspace caches (in-memory + localStorage) so
+      // every other page picks up the new workspace immediately.
+      await invalidateDatasets();
 
       // Auto-switch to the new workspace
       if (autoSwitch) {
         try {
           // The backend already linked this workspace via _link_workspace_internal.
-          // Find it in the linked workspaces list and activate it.
-          const linked = await getLinkedWorkspaces();
+          // Find it in the linked workspaces list and activate it. We use
+          // `fetchQuery` so this read goes through the same shared cache as
+          // `useLinkedWorkspacesQuery` — the in-flight result will populate
+          // the cache for any consumer that mounts immediately after.
+          const linked = await queryClient.fetchQuery({
+            queryKey: datasetQueryKeys.linkedWorkspaces(),
+            queryFn: () => getLinkedWorkspaces(),
+          });
           const match = linked.workspaces.find(
             (ws) => ws.path === workspace.path
           );

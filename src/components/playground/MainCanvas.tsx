@@ -399,10 +399,15 @@ export function MainCanvas({
     return hasMetadataPartition;
   }, [result?.source_partitions, result?.folds, hasMetadataPartition]);
 
-  // CV folds are available only when a splitter has produced multiple folds
-  // beyond the initial train/test split (kind="cv_folds" with n_folds > 1).
+  // Fold coloring is available whenever the backend returned real fold
+  // assignments. Do not rely only on kind, because some responses omit it
+  // even though fold_labels/n_folds clearly indicate CV structure.
   const hasFolds = useMemo(() => {
-    return !!(result?.folds && result.folds.kind === 'cv_folds' && result.folds.n_folds > 1);
+    const folds = result?.folds;
+    if (!folds) return false;
+    const distinctFoldLabels = new Set((folds.fold_labels ?? []).filter((label) => label >= 0));
+    if (distinctFoldLabels.size > 1) return true;
+    return folds.n_folds > 1;
   }, [result?.folds]);
 
   const hasRawRepetitions = useMemo(() => {
@@ -662,6 +667,29 @@ export function MainCanvas({
   const effectiveFolds = useMemo(() => {
     // If we have folds from splitter, use them
     if (result?.folds && result.folds.n_folds > 0) {
+      const totalResultSamples = rawData?.spectra?.length ?? rawData?.y?.length ?? 0;
+      const distinctFoldLabels = new Set((result.folds.fold_labels ?? []).filter((label) => label >= 0));
+
+      if (result.folds.n_folds <= 1 || (result.folds.fold_labels && distinctFoldLabels.size > 1)) {
+        return result.folds;
+      }
+
+      if (result.folds.n_folds > 1 && totalResultSamples > 0) {
+        const synthesizedFoldLabels = Array.from({ length: totalResultSamples }, () => -1);
+        result.folds.folds.forEach((fold) => {
+          fold.test_indices.forEach((sampleIdx) => {
+            if (sampleIdx >= 0 && sampleIdx < synthesizedFoldLabels.length) {
+              synthesizedFoldLabels[sampleIdx] = fold.fold_index;
+            }
+          });
+        });
+
+        return {
+          ...result.folds,
+          fold_labels: synthesizedFoldLabels,
+        };
+      }
+
       return result.folds;
     }
 
@@ -764,19 +792,37 @@ export function MainCanvas({
     }
 
     return null;
-  }, [result?.folds, result?.source_partitions, metadataPartition, rawData?.y]);
+  }, [result?.folds, result?.source_partitions, metadataPartition, rawData?.spectra?.length, rawData?.y]);
 
-  // Derive train/test indices from effectiveFolds for consistent coloring
-  // Uses first fold only to ensure disjoint sets (K-fold has overlapping samples across folds)
+  // Derive train/test indices for partition coloring. Prefer explicit source
+  // partitions over fold data so held-out test samples stay visible when CV
+  // folds are generated only on the training subset. Do not treat the first CV
+  // fold as a global train/test partition.
   const { trainIndices, testIndices } = useMemo(() => {
-    if (effectiveFolds?.folds && effectiveFolds.folds.length > 0) {
+    if (metadataPartition) {
+      return {
+        trainIndices: metadataPartition.trainIndices,
+        testIndices: metadataPartition.testIndices,
+      };
+    }
+
+    const sp = result?.source_partitions;
+    if (sp?.has_test && sp.n_train + sp.n_test > 0) {
+      const train = new Set<number>();
+      const test = new Set<number>();
+      for (let i = 0; i < sp.n_train; i++) train.add(i);
+      for (let i = 0; i < sp.n_test; i++) test.add(sp.n_train + i);
+      return { trainIndices: train, testIndices: test };
+    }
+
+    if (effectiveFolds?.folds && effectiveFolds.folds.length === 1) {
       const firstFold = effectiveFolds.folds[0];
       const train = new Set<number>(firstFold.train_indices ?? []);
       const test = new Set<number>(firstFold.test_indices ?? []);
       return { trainIndices: train, testIndices: test };
     }
     return { trainIndices: undefined, testIndices: undefined };
-  }, [effectiveFolds]);
+  }, [metadataPartition, result?.source_partitions, effectiveFolds]);
 
   // Total sample count
   const totalSamples = useMemo(() => {
@@ -834,6 +880,8 @@ export function MainCanvas({
       trainIndices,
       testIndices,
       foldLabels: effectiveFolds?.fold_labels,
+      foldKind: effectiveFolds?.kind,
+      foldCount: effectiveFolds?.n_folds,
       metadata: columnMetadata,
       outlierIndices: outlierIndicesSet,
       totalSamples,
@@ -846,7 +894,7 @@ export function MainCanvas({
       classLabels,
       classLabelMap,
     };
-  }, [yValues, yMin, yMax, trainIndices, testIndices, effectiveFolds?.fold_labels, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
+  }, [yValues, yMin, yMax, trainIndices, testIndices, effectiveFolds?.fold_labels, effectiveFolds?.kind, effectiveFolds?.n_folds, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
 
   // Compute grid layout
   const hasMaximized = maximizedChart !== null;
@@ -1091,11 +1139,13 @@ export function MainCanvas({
                   spectra: rawData.spectra,
                   wavelengths: rawData.wavelengths,
                   shape: [rawData.spectra.length, rawData.wavelengths.length],
+                  header_unit: rawData.wavelengthUnit,
                 }}
                 processed={{
                   spectra: rawData.spectra,
                   wavelengths: rawData.wavelengths,
                   shape: [rawData.spectra.length, rawData.wavelengths.length],
+                  header_unit: rawData.wavelengthUnit,
                 }}
                 y={yValues}
                 sampleIds={rawData.sampleIds}

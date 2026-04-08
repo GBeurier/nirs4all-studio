@@ -16,12 +16,17 @@ import {
   ReferenceArea,
 } from 'recharts';
 import {
-  CHART_THEME,
-  CHART_MARGINS,
   ANIMATION_CONFIG,
+  CHART_MARGINS,
+  CHART_THEME,
   formatYValue,
 } from '../chartConfig';
-import { PARTITION_COLORS } from '@/lib/playground/colorConfig';
+import {
+  getPartitionRoleColor,
+  getPartitionRoleLabel,
+  getPresentPartitionRoles,
+  getSamplePartitionRole,
+} from '@/lib/playground/colorConfig';
 import { extractModifiers } from '@/lib/playground/selectionUtils';
 import {
   computeStackedBarAction,
@@ -48,11 +53,34 @@ export default function HistogramByPartition({
   lastMouseEventRef,
   colorContext,
 }: HistogramChartProps) {
+  const stackSegments = useMemo(() => (
+    colorContext
+      ? getPresentPartitionRoles(colorContext).map((role) => ({
+          key: role,
+          label: getPartitionRoleLabel(role),
+          color: getPartitionRoleColor(role),
+        }))
+      : []
+  ), [colorContext]);
+
   // Transform data for partition stacking
   const stackedData = useMemo(() =>
     histogramData.map(bin => {
-      const trainSamples = bin.samples.filter(s => colorContext?.trainIndices?.has(s));
-      const testSamples = bin.samples.filter(s => colorContext?.testIndices?.has(s));
+      const trainSamples: number[] = [];
+      const valSamples: number[] = [];
+      const testSamples: number[] = [];
+
+      bin.samples.forEach((sampleIdx) => {
+        const role = colorContext ? getSamplePartitionRole(sampleIdx, colorContext) : 'unknown';
+        if (role === 'train') {
+          trainSamples.push(sampleIdx);
+        } else if (role === 'val') {
+          valSamples.push(sampleIdx);
+        } else if (role === 'test') {
+          testSamples.push(sampleIdx);
+        }
+      });
+
       return {
         binCenter: bin.binCenter,
         binStart: bin.binStart,
@@ -60,10 +88,13 @@ export default function HistogramByPartition({
         samples: bin.samples,
         label: bin.label,
         train: getYValue(trainSamples.length),
+        val: getYValue(valSamples.length),
         test: getYValue(testSamples.length),
         trainCount: trainSamples.length,
+        valCount: valSamples.length,
         testCount: testSamples.length,
         trainSamples,
+        valSamples,
         testSamples,
       };
     }),
@@ -107,9 +138,10 @@ export default function HistogramByPartition({
     const barRect = findBarRect(e, target);
     const clickedFill = barRect?.getAttribute('fill') || '';
 
-    const segmentSamples = clickedFill === PARTITION_COLORS.test
-      ? entry.testSamples
-      : entry.trainSamples;
+    const segment = stackSegments.find(item => item.color === clickedFill) ?? stackSegments[0];
+    const segmentSamples = segment
+      ? (entry[`${segment.key}Samples` as const] as number[] | undefined) ?? []
+      : entry.samples;
 
     // 5. Apply 3-click selection logic
     const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
@@ -119,7 +151,7 @@ export default function HistogramByPartition({
       modifiers
     );
     executeSelectionAction(selectionCtx, action);
-  }, [stackedData, handleDragSelection, selectionCtx, lastMouseEventRef, setRangeSelection]);
+  }, [stackSegments, stackedData, handleDragSelection, selectionCtx, lastMouseEventRef, setRangeSelection]);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -169,18 +201,16 @@ export default function HistogramByPartition({
             return (
               <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
                 <p className="font-medium">{data.label}</p>
-                {data.trainCount > 0 && (
-                  <p className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: PARTITION_COLORS.train }} />
-                    Train: {data.trainCount}
-                  </p>
-                )}
-                {data.testCount > 0 && (
-                  <p className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: PARTITION_COLORS.test }} />
-                    Test: {data.testCount}
-                  </p>
-                )}
+                {stackSegments.map((segment) => {
+                  const count = (data[`${segment.key}Count`] as number | undefined) ?? 0;
+                  if (count === 0) return null;
+                  return (
+                    <p key={segment.key} className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: segment.color }} />
+                      {segment.label}: {count}
+                    </p>
+                  );
+                })}
               </div>
             );
           }}
@@ -190,49 +220,32 @@ export default function HistogramByPartition({
           height={24}
           iconSize={10}
         />
-        <Bar
-          dataKey="train"
-          name="Train"
-          stackId="partition"
-          fill={PARTITION_COLORS.train}
-          cursor="pointer"
-          {...ANIMATION_CONFIG}
-        >
-          {stackedData.map((entry, index) => {
-            const hasSelectedInSegment = entry.trainSamples.some(s => selectedSamples.has(s));
-            const isHovered = hoveredBin === index;
-            return (
-              <Cell
-                key={`train-${index}`}
-                fill={PARTITION_COLORS.train}
-                stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
-              />
-            );
-          })}
-        </Bar>
-        <Bar
-          dataKey="test"
-          name="Test"
-          stackId="partition"
-          fill={PARTITION_COLORS.test}
-          radius={[2, 2, 0, 0]}
-          cursor="pointer"
-          {...ANIMATION_CONFIG}
-        >
-          {stackedData.map((entry, index) => {
-            const hasSelectedInSegment = entry.testSamples.some(s => selectedSamples.has(s));
-            const isHovered = hoveredBin === index;
-            return (
-              <Cell
-                key={`test-${index}`}
-                fill={PARTITION_COLORS.test}
-                stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
-                strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
-              />
-            );
-          })}
-        </Bar>
+        {stackSegments.map((segment, segmentIdx) => (
+          <Bar
+            key={segment.key}
+            dataKey={segment.key}
+            name={segment.label}
+            stackId="partition"
+            fill={segment.color}
+            radius={segmentIdx === stackSegments.length - 1 ? [2, 2, 0, 0] : undefined}
+            cursor="pointer"
+            {...ANIMATION_CONFIG}
+          >
+            {stackedData.map((entry, index) => {
+              const segmentSamples = (entry[`${segment.key}Samples` as const] as number[] | undefined) ?? [];
+              const hasSelectedInSegment = segmentSamples.some(s => selectedSamples.has(s));
+              const isHovered = hoveredBin === index;
+              return (
+                <Cell
+                  key={`${segment.key}-${index}`}
+                  fill={segment.color}
+                  stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
+                  strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
+                />
+              );
+            })}
+          </Bar>
+        ))}
         {/* Range selection overlay */}
         {rangeSelectionBounds && (
           <ReferenceArea

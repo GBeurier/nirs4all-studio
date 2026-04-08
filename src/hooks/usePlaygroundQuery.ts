@@ -246,6 +246,7 @@ export function usePlaygroundQuery(
         const request = buildExecuteRequest({
           spectra: data.spectra,
           wavelengths: data.wavelengths,
+          wavelengthUnit: data.wavelengthUnit,
           y: data.y,
           sampleIds: data.sampleIds,
           metadata,

@@ -36,7 +36,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { listDatasets, listPipelines, createRun, runPreflight } from "@/api/client";
+import { listPipelines, createRun, runPreflight } from "@/api/client";
+import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 import type { Dataset } from "@/types/datasets";
 import type { PipelineInfo } from "@/api/client";
 import type { ExperimentConfig } from "@/types/runs";
@@ -90,14 +91,15 @@ export default function NewExperiment() {
     isDirty: boolean;
   } | null>(null);
 
-  // Fetch datasets from API
-  const { data: datasetsData, isLoading: loadingDatasets, error: datasetsError } = useQuery({
-    queryKey: ["datasets"],
-    queryFn: async () => {
-      const response = await listDatasets();
-      return response;
-    },
-  });
+  // Fetch datasets via the shared cache (see src/hooks/useDatasetQueries.ts).
+  // This is the same persisted source the Datasets page and every other
+  // dataset-list consumer use, so /experiments/new opens with the picker
+  // already populated on cold start.
+  const {
+    data: datasetsData,
+    isLoading: loadingDatasets,
+    error: datasetsError,
+  } = useDatasetsQuery();
 
   // Fetch pipelines from API
   const { data: pipelinesData, isLoading: loadingPipelines, error: pipelinesError } = useQuery({

@@ -16,9 +16,9 @@ import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSe
 import type { EnrichedRun } from "@/types/enriched-runs";
 import {
   listRuns,
-  getLinkedWorkspaces,
   getEnrichedRuns,
 } from "@/api/client";
+import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 export default function Runs() {
   const { t } = useTranslation();
@@ -29,11 +29,7 @@ export default function Runs() {
   // Metric selection (persisted)
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection("runs", "regression");
 
-  const { data: workspacesData } = useQuery({
-    queryKey: ["linked-workspaces"],
-    queryFn: getLinkedWorkspaces,
-    staleTime: 30000,
-  });
+  const { data: workspacesData } = useLinkedWorkspacesQuery();
 
   const activeWorkspaceId = workspacesData?.active_workspace_id;
 

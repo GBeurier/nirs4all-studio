@@ -65,6 +65,54 @@ export interface PartitionSelectorProps {
 
 // ============= Helper Functions =============
 
+function getFoldMembership(
+  folds: FoldsInfo | null,
+  totalSamples: number
+): {
+  allTrainIndices: Set<number>;
+  allTestIndices: Set<number>;
+  allFoldIndices: Set<number>;
+  heldOutTestIndices: number[];
+} {
+  const allTrainIndices = new Set<number>();
+  const allTestIndices = new Set<number>();
+  const allFoldIndices = new Set<number>();
+
+  if (!folds || !folds.folds || folds.folds.length === 0) {
+    return {
+      allTrainIndices,
+      allTestIndices,
+      allFoldIndices,
+      heldOutTestIndices: [],
+    };
+  }
+
+  folds.folds.forEach((fold) => {
+    fold.train_indices.forEach((i) => {
+      allTrainIndices.add(i);
+      allFoldIndices.add(i);
+    });
+    fold.test_indices.forEach((i) => {
+      allTestIndices.add(i);
+      allFoldIndices.add(i);
+    });
+  });
+
+  const heldOutTestIndices: number[] = [];
+  for (let i = 0; i < totalSamples; i++) {
+    if (!allFoldIndices.has(i)) {
+      heldOutTestIndices.push(i);
+    }
+  }
+
+  return {
+    allTrainIndices,
+    allTestIndices,
+    allFoldIndices,
+    heldOutTestIndices,
+  };
+}
+
 /**
  * Calculate sample counts for each partition option
  */
@@ -88,9 +136,12 @@ function calculatePartitionCounts(
   // The "train" count is cumulative across folds (may double-count)
   // But for display purposes, we show the per-fold or total unique counts
 
-  // Collect unique train and test indices across all folds
-  const allTrainIndices = new Set<number>();
-  const allTestIndices = new Set<number>();
+  const {
+    allTrainIndices,
+    allTestIndices,
+    allFoldIndices,
+    heldOutTestIndices,
+  } = getFoldMembership(folds, totalSamples);
 
   folds.folds.forEach((fold) => {
     // Per-fold counts
@@ -99,10 +150,6 @@ function calculatePartitionCounts(
       test: fold.test_count,
       total: fold.train_count + fold.test_count,
     };
-
-    // Aggregate unique indices
-    fold.train_indices.forEach(i => allTrainIndices.add(i));
-    fold.test_indices.forEach(i => allTestIndices.add(i));
   });
 
   // For simple train/test split (1 fold), use direct counts
@@ -110,11 +157,16 @@ function calculatePartitionCounts(
     counts.train = folds.folds[0].train_count;
     counts.test = folds.folds[0].test_count;
   } else {
-    // For k-fold CV, "train" samples are all samples that appear in any train set
-    // and "test" (OOF) samples are all samples that appear in any test set
-    // In k-fold, every sample appears exactly once in test
-    counts.train = allTrainIndices.size;
-    counts.test = allTestIndices.size;
+    // When a dataset already has a held-out test partition, CV folds only cover
+    // the train subset. Keep that held-out partition mapped to "test" and expose
+    // fold validation samples through "oof".
+    if (heldOutTestIndices.length > 0) {
+      counts.train = allFoldIndices.size;
+      counts.test = heldOutTestIndices.length;
+    } else {
+      counts.train = allTrainIndices.size;
+      counts.test = allTestIndices.size;
+    }
     counts.oof = allTestIndices.size;
   }
 
@@ -134,43 +186,39 @@ export function getPartitionIndices(
     return Array.from({ length: totalSamples }, (_, i) => i);
   }
 
+  const {
+    allTrainIndices,
+    allTestIndices,
+    allFoldIndices,
+    heldOutTestIndices,
+  } = getFoldMembership(folds, totalSamples);
+
   switch (partition) {
     case 'all':
       return Array.from({ length: totalSamples }, (_, i) => i);
 
     case 'train': {
-      const trainIndices = new Set<number>();
-      folds.folds.forEach(fold => {
-        fold.train_indices.forEach(i => trainIndices.add(i));
-      });
-      return Array.from(trainIndices).sort((a, b) => a - b);
+      if (folds.n_folds > 1 && heldOutTestIndices.length > 0) {
+        return Array.from(allFoldIndices).sort((a, b) => a - b);
+      }
+      return Array.from(allTrainIndices).sort((a, b) => a - b);
     }
 
     case 'test': {
-      const testIndices = new Set<number>();
-      folds.folds.forEach(fold => {
-        fold.test_indices.forEach(i => testIndices.add(i));
-      });
-      return Array.from(testIndices).sort((a, b) => a - b);
+      if (folds.n_folds > 1 && heldOutTestIndices.length > 0) {
+        return heldOutTestIndices;
+      }
+      return Array.from(allTestIndices).sort((a, b) => a - b);
     }
 
     case 'train-test': {
-      // All samples that are in either train or test
-      const indices = new Set<number>();
-      folds.folds.forEach(fold => {
-        fold.train_indices.forEach(i => indices.add(i));
-        fold.test_indices.forEach(i => indices.add(i));
-      });
+      const indices = new Set<number>(allFoldIndices);
+      heldOutTestIndices.forEach((i) => indices.add(i));
       return Array.from(indices).sort((a, b) => a - b);
     }
 
     case 'oof': {
-      // OOF = samples that appear in test sets (same as 'test' for k-fold)
-      const oofIndices = new Set<number>();
-      folds.folds.forEach(fold => {
-        fold.test_indices.forEach(i => oofIndices.add(i));
-      });
-      return Array.from(oofIndices).sort((a, b) => a - b);
+      return Array.from(allTestIndices).sort((a, b) => a - b);
     }
 
     default: {

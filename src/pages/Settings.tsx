@@ -13,7 +13,7 @@
  * Phase 6 Implementation: Localization (i18n)
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
@@ -91,10 +91,13 @@ import { PythonEnvPicker } from "@/components/settings/PythonEnvPicker";
 import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
 import {
   getWorkspace,
-  getLinkedWorkspaces,
   requestRestart,
   resetBackendUrl,
 } from "@/api/client";
+import {
+  useLinkedWorkspacesQuery,
+  useInvalidateDatasets,
+} from "@/hooks/useDatasetQueries";
 import type { UIDensity, UIZoomLevel } from "@/types/settings";
 import type { LinkedWorkspace } from "@/types/linked-workspaces";
 
@@ -120,14 +123,22 @@ export default function Settings() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
-  const [activeN4AWorkspaceId, setActiveN4AWorkspaceId] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState<string>("...");
   const [isRestarting, setIsRestarting] = useState(false);
+
+  // Linked workspaces come from the shared cache so the active id is the same
+  // value the rest of the app sees. `loadN4AWorkspaces` is now a thin
+  // invalidate-and-refetch call so child components keep working unchanged.
+  const linkedWorkspacesQuery = useLinkedWorkspacesQuery();
+  const activeN4AWorkspaceId = linkedWorkspacesQuery.data?.active_workspace_id ?? null;
+  const invalidateDatasets = useInvalidateDatasets();
+  const loadN4AWorkspaces = useCallback(() => {
+    void invalidateDatasets();
+  }, [invalidateDatasets]);
 
   // Load workspace info on mount
   useEffect(() => {
     loadWorkspace();
-    loadN4AWorkspaces();
   }, []);
 
   // Resolve actual backend URL (dynamic port in Electron mode)
@@ -139,15 +150,6 @@ export default function Settings() {
       setBackendUrl(window.location.origin);
     }
   }, []);
-
-  const loadN4AWorkspaces = async () => {
-    try {
-      const response = await getLinkedWorkspaces();
-      setActiveN4AWorkspaceId(response.active_workspace_id);
-    } catch (error) {
-      console.error("Failed to load N4A workspaces:", error);
-    }
-  };
 
   const loadWorkspace = async () => {
     try {
@@ -399,13 +401,19 @@ export default function Settings() {
                 <Separator />
 
                 {/* Linked Workspaces List */}
-                <N4AWorkspaceList onWorkspaceChange={loadN4AWorkspaces} />
+                <N4AWorkspaceList
+                  onWorkspaceChange={() => {
+                    loadN4AWorkspaces();
+                    loadWorkspace();
+                  }}
+                />
               </CardContent>
             </Card>
 
-            {/* Workspace Statistics */}
-            {workspacePath && <WorkspaceStats />}
-            {workspacePath && <StorageHealthWidget />}
+            {/* Workspace Statistics — keyed by active workspace id so they
+                remount (and refetch) whenever the user switches workspaces. */}
+            {workspacePath && <WorkspaceStats key={activeN4AWorkspaceId ?? "none"} />}
+            {workspacePath && <StorageHealthWidget key={activeN4AWorkspaceId ?? "none"} />}
 
             {/* Discovery Panel */}
             {activeN4AWorkspaceId && (

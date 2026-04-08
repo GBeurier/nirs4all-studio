@@ -34,6 +34,9 @@ import {
   CHART_MARGINS,
   ANIMATION_CONFIG,
   formatWavelength,
+  formatWavelengthUnit,
+  getWavelengthAxisLabel,
+  getWavelengthAxisName,
 } from './chartConfig';
 import {
   type GlobalColorConfig,
@@ -208,6 +211,17 @@ export function SpectraChartV2({
     }
     return processed.wavelengths.length > 0 ? processed.wavelengths : original.wavelengths;
   }, [config.viewMode, processed.wavelengths, original.wavelengths]);
+
+  // Wavelength axis unit (e.g. "nm", "cm-1") forwarded by the backend on the
+  // DataSection. Used to label the X axis correctly so cm⁻¹ datasets render
+  // as "Wavenumber (cm⁻¹)" instead of being mislabelled as "Wavelength (nm)".
+  // Prefer processed (which the user actually sees in most modes); fall back
+  // to original.
+  const headerUnit = processed.header_unit ?? original.header_unit;
+  const wavelengthAxisName = getWavelengthAxisName(headerUnit);
+  const wavelengthAxisLabel = getWavelengthAxisLabel(headerUnit);
+  const wavelengthUnitSymbol = formatWavelengthUnit(headerUnit);
+  const wavelengthUnitSuffix = wavelengthUnitSymbol ? ` ${wavelengthUnitSymbol}` : '';
 
   // Compute wavelength range for picker
   const wavelengthRange: [number, number] = useMemo(() => {
@@ -505,12 +519,12 @@ export function SpectraChartV2({
     // Otherwise build from local props
     const yValues = y ?? [];
 
-    // Get train/test indices from first fold only to ensure disjoint sets
-    // In K-fold CV, the same sample can be train in one fold and test in another
+    // Only treat a single split as a train/test partition. Multi-fold CV does
+    // not define a single global train/test membership for per-sample coloring.
     let trainIndices: Set<number> | undefined;
     let testIndices: Set<number> | undefined;
 
-    if (folds?.folds && folds.folds.length > 0) {
+    if (folds?.folds && folds.folds.length === 1) {
       const firstFold = folds.folds[0];
       trainIndices = new Set<number>(firstFold.train_indices ?? []);
       testIndices = new Set<number>(firstFold.test_indices ?? []);
@@ -523,6 +537,8 @@ export function SpectraChartV2({
       trainIndices,
       testIndices,
       foldLabels: folds?.fold_labels,
+      foldKind: folds?.kind,
+      foldCount: folds?.n_folds,
       metadata,
       outlierIndices: outlierSamples.size > 0 ? outlierSamples : undefined,
     };
@@ -1252,6 +1268,7 @@ export function SpectraChartV2({
         metadataColumns={metadataColumns}
         wavelengthRange={wavelengthRange}
         wavelengthCount={baseWavelengths.length}
+        wavelengthUnitSuffix={wavelengthUnitSuffix}
         renderMode={displayRenderMode ?? renderMode}
         effectiveRenderMode={renderMode}
         onRenderModeChange={onRenderModeChange}
@@ -1297,6 +1314,7 @@ export function SpectraChartV2({
                 WebGL
               </div>
               <SpectraWebGL
+                xLabel={wavelengthAxisLabel}
                 spectra={
                   // For aggregated/grouped mode, pass empty spectra (we use aggregatedStats/groupedStats instead)
                   config.displayMode === 'aggregated' || config.displayMode === 'grouped'
@@ -1573,7 +1591,7 @@ export function SpectraChartV2({
                       <div className="text-muted-foreground">Fold: {foldLabel + 1}</div>
                     )}
                     {wavelength !== undefined && (
-                      <div className="text-muted-foreground">λ: <span className="font-mono">{wavelength.toFixed(1)} nm</span></div>
+                      <div className="text-muted-foreground">{wavelengthAxisName === 'Wavenumber' ? 'ν' : 'λ'}: <span className="font-mono">{wavelength.toFixed(1)}{wavelengthUnitSuffix}</span></div>
                     )}
                     {spectrumValue !== undefined && (
                       <div className="text-muted-foreground">A: <span className="font-mono">{spectrumValue.toFixed(4)}</span></div>
@@ -1625,7 +1643,7 @@ export function SpectraChartV2({
           )}
           {brushDomain && (
             <span>
-              Zoom: {brushDomain[0].toFixed(0)} - {brushDomain[1].toFixed(0)} nm
+              Zoom: {brushDomain[0].toFixed(0)} - {brushDomain[1].toFixed(0)}{wavelengthUnitSuffix}
             </span>
           )}
         </div>

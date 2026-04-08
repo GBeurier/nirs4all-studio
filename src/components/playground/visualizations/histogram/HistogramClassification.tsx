@@ -25,10 +25,16 @@ import {
 import {
   getCategoricalColor,
   getContinuousColor,
-  normalizeValue,
   detectMetadataType,
-  PARTITION_COLORS,
   HIGHLIGHT_COLORS,
+  getHeldOutTestColor,
+  getPartitionRoleColor,
+  getPartitionRoleLabel,
+  getPresentPartitionRoles,
+  getSamplePartitionRole,
+  hasHeldOutTestSamples,
+  isHeldOutTestSample,
+  normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { extractModifiers } from '@/lib/playground/selectionUtils';
 import {
@@ -98,31 +104,32 @@ export default function HistogramClassification({
   const stackSegments = useMemo<StackSegment[]>(() => {
     switch (globalColorConfig?.mode) {
       case 'partition':
-        if (colorContext?.trainIndices && colorContext?.testIndices) {
-          return [
-            {
-              key: 'train',
-              label: 'Train',
-              color: PARTITION_COLORS.train,
-              getSamples: (bar) => bar.samples.filter((sampleIdx) => colorContext.trainIndices?.has(sampleIdx)),
-            },
-            {
-              key: 'test',
-              label: 'Test',
-              color: PARTITION_COLORS.test,
-              getSamples: (bar) => bar.samples.filter((sampleIdx) => colorContext.testIndices?.has(sampleIdx)),
-            },
-          ];
-        }
-        return [];
+        return colorContext
+          ? getPresentPartitionRoles(colorContext).map((role) => ({
+              key: role,
+              label: getPartitionRoleLabel(role),
+              color: getPartitionRoleColor(role),
+              getSamples: (bar) => bar.samples.filter((sampleIdx) => getSamplePartitionRole(sampleIdx, colorContext) === role),
+            }))
+          : [];
 
       case 'fold':
-        return uniqueFolds.map((foldIdx) => ({
-          key: `fold${foldIdx}`,
-          label: `Fold ${foldIdx + 1}`,
-          color: getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default'),
-          getSamples: (bar) => bar.foldSamples?.[foldIdx] ?? [],
-        }));
+        return [
+          ...uniqueFolds.map((foldIdx) => ({
+            key: `fold${foldIdx}`,
+            label: `Fold ${foldIdx + 1}`,
+            color: getCategoricalColor(foldIdx, globalColorConfig?.categoricalPalette ?? 'default'),
+            getSamples: (bar: ClassBarData) => bar.samples.filter((sampleIdx) => colorContext?.foldLabels?.[sampleIdx] === foldIdx),
+          })),
+          ...(hasHeldOutTestSamples(colorContext ?? {})
+            ? [{
+                key: 'test',
+                label: 'Test',
+                color: getHeldOutTestColor(),
+                getSamples: (bar: ClassBarData) => bar.samples.filter((sampleIdx) => colorContext ? isHeldOutTestSample(sampleIdx, colorContext) : false),
+              }]
+            : []),
+        ];
 
       case 'outlier':
         if ((colorContext?.outlierIndices?.size ?? 0) > 0) {
@@ -239,23 +246,60 @@ export default function HistogramClassification({
         break;
 
       case 'partition': {
-        const trainCount = entry.samples.filter((sampleIdx) => colorContext?.trainIndices?.has(sampleIdx)).length;
-        const testCount = entry.samples.filter((sampleIdx) => colorContext?.testIndices?.has(sampleIdx)).length;
-        if (trainCount > testCount) return PARTITION_COLORS.train;
-        if (testCount > trainCount) return PARTITION_COLORS.test;
+        const partitionCounts = {
+          train: 0,
+          val: 0,
+          test: 0,
+        };
+        entry.samples.forEach((sampleIdx) => {
+          const role = colorContext ? getSamplePartitionRole(sampleIdx, colorContext) : 'unknown';
+          if (role === 'train' || role === 'val' || role === 'test') {
+            partitionCounts[role] += 1;
+          }
+        });
+
+        let dominantRole: 'train' | 'val' | 'test' | null = null;
+        let dominantCount = 0;
+        (['train', 'val', 'test'] as const).forEach((role) => {
+          if (partitionCounts[role] > dominantCount) {
+            dominantRole = role;
+            dominantCount = partitionCounts[role];
+          }
+        });
+
+        if (dominantRole) {
+          return getPartitionRoleColor(dominantRole);
+        }
         break;
       }
 
       case 'fold': {
-        let dominantFold = -1;
+        let dominantFold: number | null = null;
         let dominantCount = 0;
-        Object.entries(entry.foldCounts ?? {}).forEach(([foldKey, count]) => {
-          if (count > dominantCount) {
-            dominantFold = Number(foldKey);
-            dominantCount = count;
+        let heldOutCount = 0;
+        const foldCounts = new Map<number, number>();
+
+        entry.samples.forEach((sampleIdx) => {
+          if (colorContext && isHeldOutTestSample(sampleIdx, colorContext)) {
+            heldOutCount += 1;
+            return;
+          }
+
+          const foldLabel = colorContext?.foldLabels?.[sampleIdx];
+          if (foldLabel !== undefined && foldLabel >= 0) {
+            const nextCount = (foldCounts.get(foldLabel) ?? 0) + 1;
+            foldCounts.set(foldLabel, nextCount);
+            if (nextCount > dominantCount) {
+              dominantFold = foldLabel;
+              dominantCount = nextCount;
+            }
           }
         });
-        if (dominantFold >= 0) {
+
+        if (heldOutCount > dominantCount) {
+          return getHeldOutTestColor();
+        }
+        if (dominantFold !== null) {
           return getCategoricalColor(dominantFold, globalColorConfig?.categoricalPalette ?? 'default');
         }
         break;

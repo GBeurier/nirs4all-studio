@@ -456,11 +456,11 @@ export function DimensionReductionChart({
   const computedColorContext = useMemo<ColorContext>(() => {
     if (externalColorContext) return externalColorContext;
 
-    // Build train/test indices from first fold for partition mode
-    // Use first fold only to ensure disjoint sets (K-fold has overlapping samples)
+    // Only treat a single split as a train/test partition. Multi-fold CV does
+    // not define a single global train/test membership for per-sample coloring.
     let trainIndices: Set<number> | undefined;
     let testIndices: Set<number> | undefined;
-    if (folds?.folds && folds.folds.length > 0) {
+    if (folds?.folds && folds.folds.length === 1) {
       const firstFold = folds.folds[0];
       trainIndices = new Set<number>(firstFold.train_indices ?? []);
       testIndices = new Set<number>(firstFold.test_indices ?? []);
@@ -473,6 +473,8 @@ export function DimensionReductionChart({
       trainIndices,
       testIndices,
       foldLabels: folds?.fold_labels ?? pca?.fold_labels,
+      foldKind: folds?.kind,
+      foldCount: folds?.n_folds,
       metadata,
       selectedSamples,
       pinnedSamples,

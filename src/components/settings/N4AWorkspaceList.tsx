@@ -5,7 +5,6 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FolderOpen,
   Clock,
@@ -40,13 +39,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  getLinkedWorkspaces,
   unlinkN4AWorkspace,
   activateN4AWorkspace,
   scanN4AWorkspace,
 } from "@/api/client";
 import { formatRelativeTime } from "@/utils/formatters";
 import type { LinkedWorkspace } from "@/types/linked-workspaces";
+import {
+  useInvalidateDatasets,
+  useLinkedWorkspacesQuery,
+} from "@/hooks/useDatasetQueries";
 
 interface WorkspaceItemProps {
   workspace: LinkedWorkspace;
@@ -216,17 +218,13 @@ export function N4AWorkspaceList({
 }: N4AWorkspaceListProps) {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  const invalidateDatasets = useInvalidateDatasets();
 
   const {
     data: workspacesData,
     isLoading,
     refetch: loadWorkspaces,
-  } = useQuery({
-    queryKey: ["linked-workspaces"],
-    queryFn: getLinkedWorkspaces,
-    staleTime: 10000,
-  });
+  } = useLinkedWorkspacesQuery();
 
   const workspaces = workspacesData?.workspaces ?? [];
 
@@ -242,9 +240,7 @@ export function N4AWorkspaceList({
       setError(null);
       await activateN4AWorkspace(id);
       setSuccessMessage("Workspace activated");
-      // Invalidate cross-page queries so Runs, Results, Predictions pick up the change
-      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
-      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      await invalidateDatasets();
       onWorkspaceChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to activate");
@@ -257,7 +253,7 @@ export function N4AWorkspaceList({
       const result = await scanN4AWorkspace(id);
       const d = result.discovered ?? { runs_count: 0, exports_count: 0 };
       setSuccessMessage("Scanned: " + d.runs_count + " runs, " + d.exports_count + " exports");
-      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
+      await invalidateDatasets();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to scan");
     }
@@ -268,9 +264,7 @@ export function N4AWorkspaceList({
       setError(null);
       await unlinkN4AWorkspace(id);
       setSuccessMessage("Workspace unlinked");
-      // Invalidate cross-page queries
-      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
-      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      await invalidateDatasets();
       onWorkspaceChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unlink");

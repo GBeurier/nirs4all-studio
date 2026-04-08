@@ -6,7 +6,7 @@
  * - Demo data generation
  */
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Trash2,
   FolderOpen,
@@ -19,10 +19,11 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { SpectralData } from '@/types/spectral';
-import { getWorkspace, type DatasetInfo } from '@/api/client';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
-import type { PartitionKey } from '@/types/datasets';
+import type { Dataset, PartitionKey } from '@/types/datasets';
+import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
 import { cn } from '@/lib/utils';
+import { formatWavelengthUnit } from '@/components/playground/visualizations/chartConfig';
 
 interface DataUploadProps {
   data: SpectralData | null;
@@ -56,9 +57,23 @@ export function DataUpload({
   showDatasetSelector = false,
   onToggleDatasetSelector,
 }: DataUploadProps) {
-  const [workspaceDatasets, setWorkspaceDatasets] = useState<DatasetInfo[]>([]);
-  const [workspaceLoading, setWorkspaceLoading] = useState(true); // Start as loading
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  // Shared dataset cache — see src/hooks/useDatasetQueries.ts. This is the
+  // same source of data the Datasets page uses, persisted to localStorage,
+  // so the picker is populated instantly on Playground mount instead of
+  // re-fetching `/api/workspace` every time.
+  const datasetsQuery = useDatasetsQuery();
+  const workspaceDatasets = useMemo<Dataset[]>(
+    () => datasetsQuery.data?.datasets ?? [],
+    [datasetsQuery.data]
+  );
+  // Spinner only on the very first cold load (no cached data yet); a
+  // background refetch keeps the previous list visible.
+  const workspaceLoading = datasetsQuery.isLoading && !datasetsQuery.data;
+  const workspaceError = datasetsQuery.error
+    ? datasetsQuery.error instanceof Error
+      ? datasetsQuery.error.message
+      : 'Failed to load workspace'
+    : null;
 
   const currentPartition = currentDatasetInfo?.partition ?? 'all';
   const currentTrainSamples = currentDatasetInfo?.trainSamples;
@@ -68,30 +83,7 @@ export function DataUpload({
     ? 'train'
     : currentPartition;
 
-  // Fetch workspace datasets on mount
-  useEffect(() => {
-    let cancelled = false;
-
-    getWorkspace()
-      .then(response => {
-        if (!cancelled) {
-          setWorkspaceDatasets(response.datasets || []);
-          setWorkspaceLoading(false);
-        }
-      })
-      .catch(err => {
-        if (!cancelled) {
-          setWorkspaceError(err.detail || err.message || 'Failed to load workspace');
-          setWorkspaceLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleDatasetSelect = useCallback((dataset: DatasetInfo, partition: PartitionKey = 'all') => {
+  const handleDatasetSelect = useCallback((dataset: Dataset, partition: PartitionKey = 'all') => {
     onLoadFromWorkspace(dataset.id, dataset.name, partition, {
       trainSamples: dataset.train_samples,
       testSamples: dataset.test_samples,
@@ -185,7 +177,7 @@ export function DataUpload({
            <div className="p-2 px-3 flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Range</span>
               <span className="font-mono text-xs text-foreground">
-                 {Number.isFinite(data.wavelengths[0]) ? data.wavelengths[0].toFixed(0) : '0'} - {Number.isFinite(data.wavelengths[data.wavelengths.length - 1]) ? data.wavelengths[data.wavelengths.length - 1].toFixed(0) : String(data.wavelengths.length - 1)} nm
+                 {Number.isFinite(data.wavelengths[0]) ? data.wavelengths[0].toFixed(0) : '0'} - {Number.isFinite(data.wavelengths[data.wavelengths.length - 1]) ? data.wavelengths[data.wavelengths.length - 1].toFixed(0) : String(data.wavelengths.length - 1)}{(() => { const u = formatWavelengthUnit(data.wavelengthUnit); return u ? ` ${u}` : ''; })()}
               </span>
            </div>
         </div>
@@ -277,8 +269,8 @@ export function DataUpload({
                         </div>
                         <div className="min-w-0 flex-1">
                           {(() => {
-                            const totalSamples = dataset.num_samples ?? dataset.samples;
-                            const totalFeatures = dataset.num_features ?? dataset.features;
+                            const totalSamples = dataset.num_samples;
+                            const totalFeatures = dataset.num_features;
                             const hasTestPartition = dataset.test_samples != null && dataset.test_samples > 0;
                             return (
                               <>

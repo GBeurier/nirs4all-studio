@@ -86,7 +86,7 @@ export function useSpectralData() {
       }
     }
 
-    setRawData({ wavelengths, spectra, y, sampleIds, metadata });
+    setRawData({ wavelengths, spectra, y, sampleIds, metadata, wavelengthUnit: 'nm' });
     setDataSource('demo');
     setCurrentDatasetInfo(null);
     setError(null);

@@ -1278,6 +1278,21 @@ class StoreAdapter:
         when one exists, even if that chain falls outside the top ``n``
         cross-validation ranks.
 
+        Implementation notes (Phase 5 of the startup-perf plan):
+            * Per-dataset ranking is performed in Python over a single
+              streamed pass of the chain-summary rows. Heavy fields
+              (``cv_scores``/``final_scores``/``best_params`` JSON blobs)
+              are only deserialized for chains that survive the ranking.
+            * ``_get_pipeline_metadata_map`` is now called only with the
+              pipeline IDs of the chains that are actually emitted, not
+              every pipeline that has a chain row in the store. This
+              avoids loading and JSON-parsing ``expanded_config`` for
+              pipelines that get filtered out.
+            * Metric direction (lower-is-better vs higher-is-better) is
+              looked up once per metric so a workspace with many
+              datasets sharing one metric only pays the lookup cost
+              once.
+
         Returns:
             ``{"datasets": [{"dataset_name", "metric", "task_type", "top_chains": [...]}]}``
         """
@@ -1301,123 +1316,146 @@ class StoreAdapter:
             except Exception:
                 return None
 
-        # Group chains by dataset
-        datasets_result: list[dict[str, Any]] = []
-        rows = [dict(row) for row in all_df.iter_rows(named=True)]
-        pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
-        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
+        # Cache metric direction lookups - many datasets share a metric.
+        metric_direction_cache: dict[str, bool] = {}
+
+        def _higher_is_better(metric_name: str | None) -> bool:
+            key = metric_name or ""
+            cached = metric_direction_cache.get(key)
+            if cached is not None:
+                return cached
+            info = get_metric_info(metric_name) if metric_name else {}
+            value = bool(info.get("higher_is_better", True))
+            metric_direction_cache[key] = value
+            return value
+
+        # Single pass: bucket rows by dataset_name. Skip rows without one.
         datasets: dict[str, list[dict[str, Any]]] = {}
-        for row in rows:
+        for row in all_df.iter_rows(named=True):
             ds = row.get("dataset_name") or ""
-            if ds:
-                datasets.setdefault(ds, []).append(row)
+            if not ds:
+                continue
+            datasets.setdefault(ds, []).append(dict(row))
+
+        # Phase 1: rank per dataset and collect ONLY the rows we will emit.
+        # We defer pipeline-metadata loading and JSON deserialization until
+        # after this filter so we never pay those costs for chains that get
+        # dropped on the floor. Each selection is a (entry, is_refit_only)
+        # tuple.
+        per_dataset_selection: list[
+            tuple[str, str, str | None, list[tuple[dict[str, Any], bool]]]
+        ] = []
 
         for ds_name in sorted(datasets):
             ds_chains = datasets[ds_name]
             metric = next((c.get("metric") for c in ds_chains if c.get("metric")), "r2")
             task_type = next((c.get("task_type") for c in ds_chains if c.get("task_type")), None)
-            metric_info = get_metric_info(metric)
-            higher_is_better = metric_info.get("higher_is_better", True)
+            higher_is_better = _higher_is_better(metric)
 
-            # Separate CV chains (have cv_fold_count > 0) and refit-only
-            cv_chains = [c for c in ds_chains if (c.get("cv_fold_count") or 0) > 0]
-            refit_only = [c for c in ds_chains if (c.get("cv_fold_count") or 0) == 0 and c.get("final_test_score") is not None]
-            best_final_entry = None
-            best_final_score = None
+            # Best final/refit chain across all rows for this dataset.
+            best_final_entry: dict[str, Any] | None = None
+            best_final_score: float | None = None
+
+            cv_chains: list[dict[str, Any]] = []
+            refit_only: list[dict[str, Any]] = []
+
             for entry in ds_chains:
+                fold_count = entry.get("cv_fold_count") or 0
                 final_score = _coerce_score(entry.get("final_test_score"))
-                if final_score is None:
-                    continue
-                if best_final_score is None or (higher_is_better and final_score > best_final_score) or (not higher_is_better and final_score < best_final_score):
+                if fold_count > 0:
+                    cv_chains.append(entry)
+                elif final_score is not None:
+                    refit_only.append(entry)
+
+                if final_score is not None and (best_final_score is None or (higher_is_better and final_score > best_final_score) or (not higher_is_better and final_score < best_final_score)):
                     best_final_score = final_score
                     best_final_entry = entry
 
-            # Sort CV chains by cv_val_score
-            cv_chains.sort(
-                key=lambda x: x.get("cv_val_score") if x.get("cv_val_score") is not None else (float("inf") if not higher_is_better else float("-inf")),
-                reverse=higher_is_better,
-            )
+            # Rank CV chains by cv_val_score (None pushed to the end).
+            sentinel = float("-inf") if higher_is_better else float("inf")
 
-            top_chains = []
-            cv_chain_ids: set[str] = set()
+            def _cv_key(c: dict[str, Any], _s: float = sentinel) -> float:
+                v = c.get("cv_val_score")
+                return v if v is not None else _s
 
-            for entry in cv_chains[:n]:
-                chain = self._serialize_chain_summary_row(entry, pipeline_map)
-                chain_id = chain.get("chain_id", "")
-                cv_chain_ids.add(chain_id)
-                top_chains.append(_sanitize_dict({
-                    "chain_id": chain_id,
-                    "run_id": chain.get("run_id", ""),
-                    "pipeline_id": chain.get("pipeline_id"),
-                    "pipeline_name": chain.get("pipeline_name"),
-                    "model_name": chain.get("model_name", ""),
-                    "model_class": chain.get("model_class", ""),
-                    "preprocessings": chain.get("preprocessings", ""),
-                    "avg_val_score": chain.get("cv_val_score"),
-                    "avg_test_score": chain.get("cv_test_score"),
-                    "avg_train_score": chain.get("cv_train_score"),
-                    "fold_count": chain.get("cv_fold_count", 0),
-                    "scores": chain.get("cv_scores", {}),
-                    "final_test_score": chain.get("final_test_score"),
-                    "final_train_score": chain.get("final_train_score"),
-                    "final_scores": chain.get("final_scores", {}),
-                    "best_params": chain.get("best_params"),
-                    "variant_params": chain.get("variant_params"),
-                }))
+            cv_chains.sort(key=_cv_key, reverse=higher_is_better)
+            top_cv = cv_chains[:n]
 
-            # Add refit-only chains
-            for entry in refit_only:
-                chain = self._serialize_chain_summary_row(entry, pipeline_map)
-                chain_id = chain.get("chain_id", "")
-                if chain_id in cv_chain_ids:
+            # Build the ordered selection list, deduping by chain_id while
+            # preserving emission order: top CV first, then refit-only,
+            # then the best-final fallback if it is not already present.
+            seen_chain_ids: set[str] = set()
+            selected: list[tuple[dict[str, Any], bool]] = []
+            for entry in top_cv:
+                cid = entry.get("chain_id") or ""
+                if cid and cid in seen_chain_ids:
                     continue
-                top_chains.append(_sanitize_dict({
-                    "chain_id": chain_id,
-                    "run_id": chain.get("run_id", ""),
-                    "pipeline_id": chain.get("pipeline_id"),
-                    "pipeline_name": chain.get("pipeline_name"),
-                    "model_name": chain.get("model_name", ""),
-                    "model_class": chain.get("model_class", ""),
-                    "preprocessings": chain.get("preprocessings", ""),
-                    "avg_val_score": chain.get("cv_val_score"),
-                    "avg_test_score": chain.get("cv_test_score"),
-                    "avg_train_score": chain.get("cv_train_score"),
-                    "fold_count": chain.get("cv_fold_count", 0),
-                    "scores": chain.get("cv_scores", {}),
-                    "final_test_score": chain.get("final_test_score"),
-                    "final_train_score": chain.get("final_train_score"),
-                    "final_scores": chain.get("final_scores", {}),
-                    "best_params": chain.get("best_params"),
-                    "variant_params": chain.get("variant_params"),
-                    "is_refit_only": True,
-                }))
+                if cid:
+                    seen_chain_ids.add(cid)
+                selected.append((entry, False))
+
+            for entry in refit_only:
+                cid = entry.get("chain_id") or ""
+                if cid and cid in seen_chain_ids:
+                    continue
+                if cid:
+                    seen_chain_ids.add(cid)
+                selected.append((entry, True))
 
             if best_final_entry is not None:
-                chain = self._serialize_chain_summary_row(best_final_entry, pipeline_map)
-                chain_id = chain.get("chain_id", "")
-                if chain_id and all(existing.get("chain_id") != chain_id for existing in top_chains):
-                    top_chains.append(_sanitize_dict({
-                        "chain_id": chain_id,
-                        "run_id": chain.get("run_id", ""),
-                        "pipeline_id": chain.get("pipeline_id"),
-                        "pipeline_name": chain.get("pipeline_name"),
-                        "model_name": chain.get("model_name", ""),
-                        "model_class": chain.get("model_class", ""),
-                        "preprocessings": chain.get("preprocessings", ""),
-                        "avg_val_score": chain.get("cv_val_score"),
-                        "avg_test_score": chain.get("cv_test_score"),
-                        "avg_train_score": chain.get("cv_train_score"),
-                        "fold_count": chain.get("cv_fold_count", 0),
-                        "scores": chain.get("cv_scores", {}),
-                        "final_test_score": chain.get("final_test_score"),
-                        "final_train_score": chain.get("final_train_score"),
-                        "final_scores": chain.get("final_scores", {}),
-                        "best_params": chain.get("best_params"),
-                        "variant_params": chain.get("variant_params"),
-                    }))
+                cid = best_final_entry.get("chain_id") or ""
+                if cid and cid not in seen_chain_ids:
+                    seen_chain_ids.add(cid)
+                    # Best-final is appended without is_refit_only=True so
+                    # the legacy payload shape (no flag) is preserved for
+                    # final chains that ALSO had CV folds.
+                    selected.append((best_final_entry, False))
 
-            if not top_chains:
+            if not selected:
                 continue
+
+            per_dataset_selection.append((ds_name, metric, task_type, selected))
+
+        if not per_dataset_selection:
+            return {"datasets": []}
+
+        # Phase 2: load pipeline metadata only for the chains we will emit.
+        needed_pipeline_ids: set[str] = set()
+        for _ds, _metric, _task, sel in per_dataset_selection:
+            for entry, _is_refit in sel:
+                pid = entry.get("pipeline_id")
+                if pid:
+                    needed_pipeline_ids.add(pid)
+        pipeline_map = self._get_pipeline_metadata_map(list(needed_pipeline_ids))
+
+        # Phase 3: serialize selected chains.
+        datasets_result: list[dict[str, Any]] = []
+        for ds_name, metric, task_type, selected in per_dataset_selection:
+            top_chains: list[dict[str, Any]] = []
+            for entry, is_refit_only in selected:
+                chain = self._serialize_chain_summary_row(entry, pipeline_map)
+                payload: dict[str, Any] = {
+                    "chain_id": chain.get("chain_id", ""),
+                    "run_id": chain.get("run_id", ""),
+                    "pipeline_id": chain.get("pipeline_id"),
+                    "pipeline_name": chain.get("pipeline_name"),
+                    "model_name": chain.get("model_name", ""),
+                    "model_class": chain.get("model_class", ""),
+                    "preprocessings": chain.get("preprocessings", ""),
+                    "avg_val_score": chain.get("cv_val_score"),
+                    "avg_test_score": chain.get("cv_test_score"),
+                    "avg_train_score": chain.get("cv_train_score"),
+                    "fold_count": chain.get("cv_fold_count", 0),
+                    "scores": chain.get("cv_scores", {}),
+                    "final_test_score": chain.get("final_test_score"),
+                    "final_train_score": chain.get("final_train_score"),
+                    "final_scores": chain.get("final_scores", {}),
+                    "best_params": chain.get("best_params"),
+                    "variant_params": chain.get("variant_params"),
+                }
+                if is_refit_only:
+                    payload["is_refit_only"] = True
+                top_chains.append(_sanitize_dict(payload))
 
             datasets_result.append(_sanitize_dict({
                 "dataset_name": ds_name,

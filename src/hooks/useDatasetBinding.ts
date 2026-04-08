@@ -14,7 +14,10 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { listDatasets } from "@/api/client";
+import {
+  useDatasetsQuery,
+  useInvalidateDatasets,
+} from "@/hooks/useDatasetQueries";
 import type { Dataset } from "@/types/datasets";
 import type { BoundDataset, DataShape } from "@/components/pipeline-editor/DatasetBinding";
 
@@ -128,55 +131,45 @@ export function useDatasetBinding({
   pipelineId,
   persistBinding = true,
 }: UseDatasetBindingOptions): UseDatasetBindingReturn {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  // Shared dataset cache: same source as the Datasets page and every other
+  // dataset-list consumer in the app, persisted to localStorage. The Pipeline
+  // Editor no longer pays a round-trip on every mount.
+  const datasetsQuery = useDatasetsQuery();
+  const invalidateDatasets = useInvalidateDatasets();
+  const datasets: Dataset[] = datasetsQuery.data?.datasets ?? [];
+  const isLoading = datasetsQuery.isLoading && !datasetsQuery.data;
+  const error = datasetsQuery.error
+    ? datasetsQuery.error instanceof Error
+      ? datasetsQuery.error.message
+      : "Failed to load datasets"
+    : null;
+
   const [boundDataset, setBoundDataset] = useState<BoundDataset | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
-  // Load datasets on mount
-  const loadDatasets = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listDatasets();
-      setDatasets(response.datasets);
-      return response.datasets;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load datasets");
-      return [];
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Initialize and restore binding on mount
+  // Restore the persisted binding once the dataset list becomes available.
+  // We deliberately gate on `datasetsQuery.data` (not just isLoading) so the
+  // restored dataset is always cross-checked against the current cache.
   useEffect(() => {
     if (initialized) return;
+    if (!datasetsQuery.data) return;
 
-    const init = async () => {
-      const loadedDatasets = await loadDatasets();
-
-      // Try to restore binding from storage
-      if (persistBinding) {
-        const storedBinding = loadBinding(pipelineId);
-        if (storedBinding) {
-          const dataset = loadedDatasets.find(
-            (d) => d.id === storedBinding.datasetId
+    if (persistBinding) {
+      const storedBinding = loadBinding(pipelineId);
+      if (storedBinding) {
+        const dataset = datasetsQuery.data.datasets.find(
+          (d) => d.id === storedBinding.datasetId
+        );
+        if (dataset && dataset.status === "available") {
+          setBoundDataset(
+            datasetToBoundDataset(dataset, storedBinding.selectedTarget)
           );
-          if (dataset && dataset.status === "available") {
-            setBoundDataset(
-              datasetToBoundDataset(dataset, storedBinding.selectedTarget)
-            );
-          }
         }
       }
+    }
 
-      setInitialized(true);
-    };
-
-    init();
-  }, [pipelineId, persistBinding, loadDatasets, initialized]);
+    setInitialized(true);
+  }, [pipelineId, persistBinding, datasetsQuery.data, initialized]);
 
   // Bind a dataset
   const bindDataset = useCallback(
@@ -227,23 +220,23 @@ export function useDatasetBinding({
     [boundDataset, pipelineId, persistBinding]
   );
 
-  // Refresh datasets
+  // Refresh datasets — invalidate the shared cache then reconcile the bound
+  // dataset against the fresh payload. Same semantics as the previous
+  // imperative `loadDatasets()` flow, just routed through the shared cache.
+  const refetch = datasetsQuery.refetch;
   const refreshDatasets = useCallback(async () => {
-    const loadedDatasets = await loadDatasets();
-
-    // Update bound dataset if it exists
-    if (boundDataset) {
-      const updated = loadedDatasets.find((d) => d.id === boundDataset.id);
-      if (updated && updated.status === "available") {
-        setBoundDataset(
-          datasetToBoundDataset(updated, boundDataset.selectedTarget)
-        );
-      } else if (!updated || updated.status !== "available") {
-        // Dataset no longer available, clear binding
-        clearBinding();
-      }
+    await invalidateDatasets();
+    const { data } = await refetch();
+    if (!boundDataset || !data) return;
+    const updated = data.datasets.find((d) => d.id === boundDataset.id);
+    if (updated && updated.status === "available") {
+      setBoundDataset(
+        datasetToBoundDataset(updated, boundDataset.selectedTarget)
+      );
+    } else {
+      clearBinding();
     }
-  }, [loadDatasets, boundDataset, clearBinding]);
+  }, [invalidateDatasets, refetch, boundDataset, clearBinding]);
 
   return {
     boundDataset,

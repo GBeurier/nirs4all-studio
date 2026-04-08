@@ -10,11 +10,9 @@ Verifies:
 """
 
 import json
-import shutil
 
 # Add parent path for imports
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,20 +20,49 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.workspace_manager import WorkspaceManager
+# NOTE: ``api/__init__.py`` re-exports the ``workspace_manager`` singleton,
+# which means ``import api.workspace_manager as <name>`` actually binds
+# the singleton instance, not the submodule. We have to fetch the real
+# module objects via ``sys.modules`` to monkeypatch their globals.
+import api.app_config  # noqa: F401  (ensure module is in sys.modules)
+import api.workspace_manager  # noqa: F401
+app_config_module = sys.modules["api.app_config"]
+workspace_manager_module = sys.modules["api.workspace_manager"]
+from api.app_config import AppConfigManager  # noqa: E402
+from api.workspace_manager import WorkspaceManager  # noqa: E402
 
 
 @pytest.fixture
-def temp_workspace():
-    """Create a temporary workspace directory."""
-    temp_dir = tempfile.mkdtemp(prefix="nirs4all_test_")
-    yield temp_dir
-    shutil.rmtree(temp_dir, ignore_errors=True)
+def temp_workspace(tmp_path):
+    """Create a temporary workspace directory under pytest's tmp_path.
+
+    Using tmp_path (instead of tempfile.mkdtemp) keeps the directory
+    inside pytest's per-test sandbox so it is auto-cleaned and never
+    leaks into the OS temp folder.
+    """
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    return str(workspace_dir)
 
 
 @pytest.fixture
-def workspace_manager(temp_workspace):
-    """Create a workspace manager with a test workspace."""
+def workspace_manager(tmp_path, temp_workspace, monkeypatch):
+    """Create a workspace manager backed by an isolated app config dir.
+
+    Critical: this fixture must NOT use the real ``api.app_config``
+    singleton, otherwise every test run pollutes the user's
+    ``app_settings.json`` with stale entries (see prior incident that
+    accumulated 135 orphan ``nirs4all_test_*`` workspaces in the user's
+    %APPDATA%/nirs4all/app_settings.json).
+    """
+    isolated_config_dir = tmp_path / "config"
+    isolated_config_dir.mkdir()
+    monkeypatch.setenv("NIRS4ALL_CONFIG", str(isolated_config_dir))
+
+    isolated_app_config = AppConfigManager()
+    monkeypatch.setattr(app_config_module, "app_config", isolated_app_config)
+    monkeypatch.setattr(workspace_manager_module, "app_config", isolated_app_config)
+
     manager = WorkspaceManager()
     manager.set_workspace(temp_workspace)
     return manager

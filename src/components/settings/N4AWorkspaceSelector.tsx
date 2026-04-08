@@ -5,7 +5,6 @@
  */
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { FolderPlus, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { selectFolder } from "@/utils/fileDialogs";
 import { linkN4AWorkspace } from "@/api/client";
+import { useInvalidateDatasets } from "@/hooks/useDatasetQueries";
 
 export interface N4AWorkspaceSelectorProps {
   onWorkspaceLinked?: () => void;
@@ -37,7 +37,7 @@ export function N4AWorkspaceSelector({
   const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const queryClient = useQueryClient();
+  const invalidateDatasets = useInvalidateDatasets();
 
   const handleBrowse = async () => {
     const selectedPath = await selectFolder();
@@ -62,9 +62,7 @@ export function N4AWorkspaceSelector({
       setError(null);
       await linkN4AWorkspace({ path, name: name || undefined });
       setSuccess(true);
-      // Invalidate cross-page queries
-      queryClient.invalidateQueries({ queryKey: ["linked-workspaces"] });
-      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      await invalidateDatasets();
       setTimeout(() => {
         setIsOpen(false);
         setPath("");

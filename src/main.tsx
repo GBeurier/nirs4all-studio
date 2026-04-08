@@ -30,6 +30,7 @@ initSentry();
 // Use HashRouter for Electron (file:// protocol doesn't support BrowserRouter)
 const isElectron = typeof window !== "undefined" && (window as unknown as { electronApi?: unknown }).electronApi !== undefined;
 const Router = isElectron ? HashRouter : BrowserRouter;
+import { hydrateDatasetCachesFromStorage } from "@/hooks/useDatasetQueries";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { DeveloperModeProvider } from "@/context/DeveloperModeContext";
 import { UISettingsProvider } from "@/context/UISettingsContext";
@@ -61,6 +62,13 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Hydrate the dataset list / linked-workspaces caches from localStorage BEFORE
+// React mounts. Without this, every cold start would render an empty Datasets
+// page until the first HTTP round-trip completed; with it, the previous
+// session's list is on screen instantly and React Query refetches in the
+// background to correct any drift.
+hydrateDatasetCachesFromStorage(queryClient);
 
 const appTree = (
   <StrictMode>

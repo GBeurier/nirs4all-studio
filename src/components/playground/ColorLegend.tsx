@@ -16,7 +16,11 @@ import {
   isContinuousMode,
   getContinuousPaletteGradient,
   getCategoricalColor,
-  PARTITION_COLORS,
+  getPartitionRoleColor,
+  getPartitionRoleLabel,
+  getPresentPartitionRoles,
+  getHeldOutTestColor,
+  hasHeldOutTestSamples,
   HIGHLIGHT_COLORS_CONCRETE,
   getColorModeLabel,
   getEffectiveTargetType,
@@ -60,18 +64,26 @@ function getCategoricalLegendItems(
     }
 
     case 'partition':
-      return [
-        { color: PARTITION_COLORS.train, label: 'Train' },
-        { color: PARTITION_COLORS.test, label: 'Test' },
-      ];
+      return getPresentPartitionRoles(context).map((role) => ({
+        color: getPartitionRoleColor(role),
+        label: getPartitionRoleLabel(role),
+      }));
 
     case 'fold': {
-      if (!context.foldLabels) return [];
+      if (!context.foldLabels) {
+        return hasHeldOutTestSamples(context)
+          ? [{ color: getHeldOutTestColor(), label: 'Test' }]
+          : [];
+      }
       const uniqueFolds = [...new Set(context.foldLabels)].filter(f => f >= 0).sort((a, b) => a - b);
-      return uniqueFolds.map(fold => ({
+      const items = uniqueFolds.map(fold => ({
         color: getCategoricalColor(fold, config.categoricalPalette),
         label: `Fold ${fold + 1}`,
       }));
+      if (hasHeldOutTestSamples(context)) {
+        items.push({ color: getHeldOutTestColor(), label: 'Test' });
+      }
+      return items;
     }
 
     case 'metadata': {

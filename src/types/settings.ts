@@ -31,6 +31,12 @@ export interface WorkspaceStatsResponse {
 
   created_at: string;
   last_accessed: string;
+
+  /** Workspace-scoped counts (read from the active store / scan). */
+  runs_count: number;
+  datasets_count: number;
+  predictions_count: number;
+  models_count: number;
 }
 
 /**

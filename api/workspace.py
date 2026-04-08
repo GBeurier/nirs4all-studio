@@ -89,6 +89,105 @@ def invalidate_workspace_cache(workspace_path: str = None) -> None:
         keys_to_delete = [k for k in _workspace_runs_cache if k[0] == workspace_path]
         for k in keys_to_delete:
             del _workspace_runs_cache[k]
+    # Phase 3/4: also drop derived results caches for this workspace.
+    _invalidate_results_caches(workspace_path)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3/4: results-summary and dataset-scores caches
+#
+# These caches are keyed on (workspace_id, store_signature, dataset_links_signature,
+# shape_params). The store signature is the (mtime_ns, size) of store.sqlite
+# (and store.duckdb, if present). The dataset-links signature is a stable hash
+# of the (id, name, path) tuples returned by app_config.get_datasets() — that
+# input is the only piece of app config that influences the resolved
+# `linked_dataset_id` mapping. Both caches use the same key shape but live in
+# separate dicts to allow independent eviction.
+#
+# Cache entries are validated against the current store signature on every
+# read; an entry whose signature no longer matches is treated as a miss. This
+# is the correctness backstop in case some mutation site forgets to call
+# `_invalidate_results_caches`.
+# ---------------------------------------------------------------------------
+
+# key: (workspace_id, store_sig, links_sig, shape_key) -> payload
+_RESULTS_SUMMARY_CACHE: dict[tuple, Any] = {}
+_DATASET_SCORES_CACHE: dict[tuple, Any] = {}
+
+
+def _store_signature(workspace_path: Path) -> tuple | None:
+    """Return a cheap signature for the workspace store files.
+
+    Combines (mtime_ns, size) for store.sqlite and store.duckdb when present.
+    Returns None if neither file exists.
+    """
+    parts: list[tuple[str, int, int]] = []
+    for name in ("store.sqlite", "store.duckdb"):
+        p = workspace_path / name
+        try:
+            st = p.stat()
+        except (FileNotFoundError, OSError):
+            continue
+        parts.append((name, st.st_mtime_ns, st.st_size))
+    if not parts:
+        return None
+    return tuple(parts)
+
+
+def _dataset_links_signature(linked_datasets: list) -> tuple:
+    """Stable, cheap fingerprint of the dataset-links mapping used to resolve
+    `linked_dataset_id`. Only the fields read by `_resolve_dataset_mapping`
+    matter (id, name, path)."""
+    parts: list[tuple[str, str, str]] = []
+    for ld in linked_datasets:
+        ld_id = getattr(ld, "id", None) if not isinstance(ld, dict) else ld.get("id")
+        ld_name = getattr(ld, "name", None) if not isinstance(ld, dict) else ld.get("name")
+        ld_path = getattr(ld, "path", None) if not isinstance(ld, dict) else ld.get("path")
+        parts.append((str(ld_id or ""), str(ld_name or ""), str(ld_path or "")))
+    parts.sort()
+    return tuple(parts)
+
+
+def _invalidate_results_caches(workspace_path_or_id: str | None = None) -> None:
+    """Drop cached results-summary and dataset-scores entries.
+
+    Pass None to clear everything. Pass a workspace path or workspace id to
+    clear all entries whose first key component matches.
+    """
+    if workspace_path_or_id is None:
+        _RESULTS_SUMMARY_CACHE.clear()
+        _DATASET_SCORES_CACHE.clear()
+        return
+
+    target = str(workspace_path_or_id)
+    cache_targets = {target}
+    try:
+        target_path = Path(target).resolve()
+    except (OSError, RuntimeError):
+        target_path = None
+
+    try:
+        for ws in workspace_manager.get_linked_workspaces():
+            ws_id = str(ws.id)
+            ws_path = str(ws.path)
+            if ws_id == target or ws_path == target:
+                cache_targets.update({ws_id, ws_path})
+                continue
+            if target_path is None:
+                continue
+            try:
+                if Path(ws.path).resolve() == target_path:
+                    cache_targets.update({ws_id, ws_path})
+            except (OSError, RuntimeError):
+                continue
+    except Exception:
+        # Cache invalidation must stay best-effort.
+        pass
+
+    for cache in (_RESULTS_SUMMARY_CACHE, _DATASET_SCORES_CACHE):
+        stale = [k for k in cache if k and k[0] in cache_targets]
+        for k in stale:
+            del cache[k]
 
 
 # ============= Request/Response Models =============
@@ -816,6 +915,11 @@ async def import_workspace(request: ImportWorkspaceRequest):
         # Add to recent workspaces
         workspace_manager.add_to_recent(str(destination_path.resolve()), workspace_name)
 
+        # Importing a workspace can introduce new store contents under any
+        # registered workspace_id. Drop all results caches to avoid serving
+        # stale data; the file-signature backstop would also catch this.
+        _invalidate_results_caches(None)
+
         return {
             "success": True,
             "workspace_path": str(destination_path.resolve()),
@@ -1041,13 +1145,18 @@ class WorkspaceStatsResponse(BaseModel):
     name: str = Field(..., description="Workspace name")
     total_size_bytes: int = Field(0, description="Total workspace size in bytes")
     space_usage: list[SpaceUsageItem] = Field(default_factory=list, description="Breakdown by category")
-    linked_datasets_count: int = Field(0, description="Number of linked datasets")
+    linked_datasets_count: int = Field(0, description="Number of globally linked datasets (workspace-independent)")
     linked_datasets_external_size: int = Field(0, description="Total size of external datasets")
     duckdb_size_bytes: int = Field(0, description="Metadata store size (SQLite)")
     parquet_arrays_size_bytes: int = Field(0, description="Total Parquet array files size")
     storage_mode: str = Field("unknown", description="Storage backend: migrated, legacy, new")
     created_at: str = Field(..., description="Workspace creation time")
     last_accessed: str = Field(..., description="Last access time")
+    # Workspace-scoped counts (from the active store / scan)
+    runs_count: int = Field(0, description="Number of runs in this workspace")
+    datasets_count: int = Field(0, description="Number of distinct datasets in this workspace")
+    predictions_count: int = Field(0, description="Number of predictions in this workspace")
+    models_count: int = Field(0, description="Number of trained model exports in this workspace")
 
 
 class StorageStatusResponse(BaseModel):
@@ -1332,6 +1441,11 @@ def _emit_maintenance_progress(job_id: str, progress: float, message: str = "") 
 def _emit_maintenance_completed(job_id: str, operation: str, report: dict[str, Any]) -> None:
     if WS_AVAILABLE and notify_maintenance_completed is not None:
         _run_async_notification(notify_maintenance_completed(job_id, operation, report))
+    # Maintenance jobs (migration, compaction, predictions cleanup) can mutate
+    # store contents. Conservatively drop all results caches; entries with a
+    # stale store signature would be rejected anyway, but this also clears
+    # them eagerly.
+    _invalidate_results_caches(None)
 
 
 def _emit_maintenance_failed(job_id: str, operation: str, error: str) -> None:
@@ -1506,15 +1620,18 @@ async def get_workspace_stats():
 
         workspace_path = Path(workspace.path)
 
-        # Define categories and their directories
+        # Define categories and their directories. The structure here must
+        # match what ``ensure_default_workspace`` creates and what the rest
+        # of nirs4all writes to (runs/, exports/, library/, plus the
+        # arrays/ directory used by the new Parquet storage backend).
         categories = [
-            ("results", workspace_path / "results"),
-            ("models", workspace_path / "models"),
-            ("predictions", workspace_path / "predictions"),
+            ("Runs",            workspace_path / "runs"),
+            ("Exports",         workspace_path / "exports"),
+            ("Templates",       workspace_path / "library" / "templates"),
+            ("Trained models",  workspace_path / "library" / "trained"),
             ("Prediction arrays", workspace_path / "arrays"),
-            ("pipelines", workspace_path / "pipelines"),
-            ("cache", workspace_path / ".cache"),
-            ("temp", workspace_path / ".tmp"),
+            ("Cache",           workspace_path / ".cache"),
+            ("Temp",            workspace_path / ".tmp"),
         ]
 
         space_usage: list[SpaceUsageItem] = []
@@ -1560,6 +1677,31 @@ async def get_workspace_stats():
 
         storage_status = _get_storage_status_for_workspace(workspace_path)
 
+        # Workspace-scoped counts: read directly from the active workspace
+        # via the same scanner used by the Discovery panel so the Settings
+        # card always reflects what nirs4all itself sees. The scanner
+        # transparently uses the SQLite store when present and falls back
+        # to filesystem manifests otherwise.
+        runs_count = 0
+        datasets_count = 0
+        predictions_count = 0
+        models_count = 0
+        try:
+            scanner = WorkspaceScanner(workspace_path)
+            scan_result = scanner.scan()
+            summary = scan_result.get("summary", {})
+            runs_count = int(summary.get("runs_count", 0))
+            datasets_count = int(summary.get("datasets_count", 0))
+            predictions_count = int(summary.get("predictions_count", 0))
+            # "Trained models" in the workspace are exported pipelines under
+            # library/trained/ plus exports/ entries; both are surfaced as
+            # ``exports`` by the scanner.
+            models_count = int(summary.get("exports_count", 0))
+        except Exception as scan_exc:
+            # Don't fail the whole stats endpoint if the scanner errors out
+            # (e.g. on a freshly-created empty workspace) — just report zero.
+            logger.warning("Workspace scan during /workspace/stats failed: %s", scan_exc)
+
         return WorkspaceStatsResponse(
             path=str(workspace_path),
             name=workspace.name,
@@ -1572,6 +1714,10 @@ async def get_workspace_stats():
             storage_mode=str(storage_status.get("storage_mode", "unknown")),
             created_at=workspace.created_at,
             last_accessed=workspace.last_accessed,
+            runs_count=runs_count,
+            datasets_count=datasets_count,
+            predictions_count=predictions_count,
+            models_count=models_count,
         )
 
     except HTTPException:
@@ -2317,6 +2463,27 @@ async def unlink_workspace(workspace_id: str):
         )
 
 
+@router.post("/workspaces/prune")
+async def prune_workspaces():
+    """Remove linked workspaces whose directories no longer exist on disk.
+
+    Returns the list of removed entries so the caller can verify what
+    was cleaned up. If the active workspace was among the removed
+    entries, a remaining workspace is activated (or a default created).
+    """
+    try:
+        removed = workspace_manager.prune_missing_workspaces()
+        return {
+            "success": True,
+            "removed_count": len(removed),
+            "removed": removed,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to prune workspaces: {str(e)}"
+        )
+
+
 @router.post("/workspaces/{workspace_id}/activate", response_model=LinkedWorkspaceResponse)
 async def activate_workspace(workspace_id: str):
     """Set a linked workspace as active."""
@@ -2608,6 +2775,8 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
 
         # Invalidate cached runs for this workspace
         invalidate_workspace_cache(str(workspace_path))
+        # Results caches are keyed by workspace_id; clear those too.
+        _invalidate_results_caches(workspace_id)
 
         return result
     except HTTPException:
@@ -2735,8 +2904,13 @@ def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list)
 
 
 @router.get("/workspaces/{workspace_id}/results/summary")
-async def get_workspace_results_summary(workspace_id: str):
-    """Get results summary: top 5 models per dataset across all runs."""
+async def get_workspace_results_summary(workspace_id: str, n: int = 5):
+    """Get results summary: top N models per dataset across all runs.
+
+    Cached at module scope keyed on (workspace_id, store file signature,
+    dataset-links signature, n). Cache entries are validated against the
+    current store signature on every read.
+    """
     try:
         ws = workspace_manager._find_linked_workspace(workspace_id)
         if not ws:
@@ -2747,21 +2921,27 @@ async def get_workspace_results_summary(workspace_id: str):
             return {"workspace_id": workspace_id, "datasets": []}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.sqlite"
-        if not store_path.exists():
-            store_path = workspace_path / "store.duckdb"
-        if not store_path.exists():
+        store_sig = _store_signature(workspace_path)
+        if store_sig is None:
             return {"workspace_id": workspace_id, "datasets": []}
+
+        linked_datasets = app_config.get_datasets()
+        links_sig = _dataset_links_signature(linked_datasets)
+        cache_key = (workspace_id, store_sig, links_sig, ("summary", n))
+
+        cached = _RESULTS_SUMMARY_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
 
         adapter = StoreAdapter(workspace_path)
         try:
-            result = adapter.get_dataset_top_chains()
+            result = adapter.get_dataset_top_chains(n=n)
             result["workspace_id"] = workspace_id
 
             # Resolve store dataset names to linked dataset IDs
-            linked_datasets = app_config.get_datasets()
             _resolve_dataset_mapping(result.get("datasets", []), linked_datasets)
 
+            _RESULTS_SUMMARY_CACHE[cache_key] = result
             return result
         finally:
             adapter.close()
@@ -2769,6 +2949,165 @@ async def get_workspace_results_summary(workspace_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/workspaces/{workspace_id}/results/dataset-scores")
+async def get_workspace_dataset_scores(workspace_id: str):
+    """Compact best-score-per-dataset endpoint for the Datasets page.
+
+    Returns only the fields needed to render the per-dataset best-score badges,
+    avoiding the heavy `top_chains` payload that the Results page consumes via
+    `/results/summary`. Cached using the same key shape as
+    `get_workspace_results_summary`, in a separate cache namespace.
+
+    Response shape::
+
+        {
+          "workspace_id": str,
+          "datasets": [
+            {
+              "dataset_name": str,
+              "linked_dataset_id": str | None,
+              "metric": str,
+              "best_score": float | None,
+              "cv_score": float | None,
+              "score_kind": "final" | "cv",
+              "model_name": str,
+            },
+            ...
+          ],
+        }
+    """
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
+        if not STORE_AVAILABLE:
+            return {"workspace_id": workspace_id, "datasets": []}
+
+        workspace_path = Path(ws.path)
+        store_sig = _store_signature(workspace_path)
+        if store_sig is None:
+            return {"workspace_id": workspace_id, "datasets": []}
+
+        linked_datasets = app_config.get_datasets()
+        links_sig = _dataset_links_signature(linked_datasets)
+        cache_key = (workspace_id, store_sig, links_sig, ("dataset_scores",))
+
+        cached = _DATASET_SCORES_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        adapter = StoreAdapter(workspace_path)
+        try:
+            payload = _build_dataset_scores_payload(adapter, workspace_id, linked_datasets)
+            _DATASET_SCORES_CACHE[cache_key] = payload
+            return payload
+        finally:
+            adapter.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _build_dataset_scores_payload(
+    adapter: "StoreAdapter",
+    workspace_id: str,
+    linked_datasets: list,
+) -> dict[str, Any]:
+    """Compute the compact dataset-scores payload directly from
+    ``v_chain_summary`` rows. Avoids loading pipeline metadata, parsing
+    ``expanded_config``, or building any per-chain serialization that the
+    Datasets page does not render.
+    """
+    try:
+        df = adapter.store.query_chain_summaries()
+    except Exception:
+        return {"workspace_id": workspace_id, "datasets": []}
+
+    if len(df) == 0:
+        return {"workspace_id": workspace_id, "datasets": []}
+
+    from nirs4all.pipeline.run import get_metric_info
+
+    def _to_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            f = float(value)
+        except (TypeError, ValueError):
+            return None
+        # Polars may give us NaN for missing scores; treat as missing.
+        if f != f:  # NaN check
+            return None
+        return f
+
+    def _is_better(candidate: float, incumbent: float | None, *, higher_is_better: bool) -> bool:
+        if incumbent is None:
+            return True
+        return candidate > incumbent if higher_is_better else candidate < incumbent
+
+    # Group rows by dataset_name. iter_rows(named=True) yields plain dicts.
+    by_dataset: dict[str, list[dict[str, Any]]] = {}
+    for row in df.iter_rows(named=True):
+        ds = row.get("dataset_name") or ""
+        if not ds:
+            continue
+        by_dataset.setdefault(ds, []).append(row)
+
+    datasets_out: list[dict[str, Any]] = []
+    for ds_name in sorted(by_dataset):
+        rows = by_dataset[ds_name]
+        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
+        higher_is_better = bool(get_metric_info(metric).get("higher_is_better", True))
+
+        best_final_row: dict[str, Any] | None = None
+        best_final_score: float | None = None
+        best_cv_row: dict[str, Any] | None = None
+        best_cv_score: float | None = None
+
+        for r in rows:
+            final = _to_float(r.get("final_test_score"))
+            if final is not None and _is_better(final, best_final_score, higher_is_better=higher_is_better):
+                best_final_row = r
+                best_final_score = final
+            cv = _to_float(r.get("cv_val_score"))
+            if cv is not None and _is_better(cv, best_cv_score, higher_is_better=higher_is_better):
+                best_cv_row = r
+                best_cv_score = cv
+
+        if best_final_row is None and best_cv_row is None:
+            continue
+
+        # Preserve the previous Datasets-page semantics: prefer the best final
+        # score when one exists, and only fall back to the best CV score when
+        # no refit/final result is available for that dataset.
+        if best_final_row is not None and best_final_score is not None:
+            best_row = best_final_row
+            best_score = best_final_score
+            best_kind = "final"
+            cv_score = _to_float(best_final_row.get("cv_val_score"))
+        else:
+            best_row = best_cv_row or {}
+            best_score = best_cv_score
+            best_kind = "cv"
+            cv_score = None
+
+        datasets_out.append({
+            "dataset_name": ds_name,
+            "linked_dataset_id": None,
+            "metric": metric,
+            "best_score": best_score,
+            "cv_score": cv_score,
+            "score_kind": best_kind,
+            "model_name": best_row.get("model_name") or best_row.get("model_class") or "",
+        })
+
+    _resolve_dataset_mapping(datasets_out, linked_datasets)
+    return {"workspace_id": workspace_id, "datasets": datasets_out}
 
 
 @router.get("/workspaces/{workspace_id}/results/datasets/{dataset_name}/chains")

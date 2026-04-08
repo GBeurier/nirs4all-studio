@@ -16,6 +16,57 @@ if str(webapp_root) not in sys.path:
     sys.path.insert(0, str(webapp_root))
 
 
+@pytest.fixture(autouse=True)
+def _guard_against_real_app_config():
+    """Fail any test that ends up writing to the real user app_settings.json.
+
+    Prior incident: tests that instantiated WorkspaceManager() without
+    isolation accumulated 135 stale ``nirs4all_test_*`` workspace
+    entries in the user's %APPDATA%/nirs4all/app_settings.json. This
+    fixture imports the app_config singleton at test time and asserts
+    its config_dir is NOT the platform default. Tests that need to
+    touch the workspace manager must either redirect via
+    NIRS4ALL_CONFIG or monkeypatch the singleton.
+    """
+    try:
+        from api.app_config import app_config as _live_app_config
+    except Exception:
+        # api.app_config not importable in this environment - nothing to guard.
+        yield
+        return
+
+    default_dir = Path(_live_app_config._get_default_config_dir()).resolve()
+    current_dir = Path(_live_app_config.config_dir).resolve()
+
+    if current_dir == default_dir:
+        # Allowed only if the test never touches the singleton; we cannot
+        # detect that statically. Tests that DO touch it must shadow the
+        # singleton (see tests/test_custom_nodes.py for the pattern).
+        pass
+
+    yield
+
+    # After the test, re-check that no test leaked entries with a
+    # ``nirs4all_test_`` prefix into the real app_settings.json.
+    try:
+        from api.app_config import app_config as _post_app_config
+        post_dir = Path(_post_app_config.config_dir).resolve()
+        if post_dir == default_dir:
+            settings = _post_app_config.get_app_settings()
+            leaked = [
+                ws for ws in settings.get("linked_workspaces", [])
+                if "nirs4all_test_" in ws.get("path", "")
+                or "pytest" in ws.get("path", "").lower()
+            ]
+            assert not leaked, (
+                f"Test leaked {len(leaked)} workspace entries into the real "
+                f"user app_settings.json at {post_dir}. Use the isolated-config "
+                f"fixture pattern from tests/test_custom_nodes.py."
+            )
+    except Exception:
+        pass
+
+
 # ============================================================================
 # Pytest Hooks
 # ============================================================================

@@ -1,4 +1,4 @@
-import nirsOscLoader from "@/assets/nirs-osc-loader.svg";
+import nirsOscLoaderMarkup from "@/assets/nirs-osc-loader.svg?raw";
 
 type NirsSplashLoaderProps = {
   className?: string;
@@ -6,12 +6,16 @@ type NirsSplashLoaderProps = {
 };
 
 export function NirsSplashLoader({ className, alt = "NIRS loading animation" }: NirsSplashLoaderProps) {
+  const svgMarkup = nirsOscLoaderMarkup
+    .replace('role="img"', 'aria-hidden="true"')
+    .replace(/aria-label="[^"]*"/, "");
+
   return (
-    <img
-      src={nirsOscLoader}
-      alt={alt}
-      draggable={false}
-      className={`pointer-events-none select-none ${className ?? ""}`.trim()}
+    <div
+      role="img"
+      aria-label={alt}
+      className={`pointer-events-none select-none [&>svg]:block [&>svg]:h-full [&>svg]:w-full ${className ?? ""}`.trim()}
+      dangerouslySetInnerHTML={{ __html: svgMarkup }}
     />
   );
 }

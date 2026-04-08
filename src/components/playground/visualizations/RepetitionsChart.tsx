@@ -56,12 +56,6 @@ import {
 import {
   type GlobalColorConfig,
   type ColorContext,
-  getContinuousColor,
-  getCategoricalColor,
-  normalizeValue,
-  detectMetadataType,
-  PARTITION_COLORS,
-  HIGHLIGHT_COLORS_CONCRETE,
   getWebGLSampleColor,
 } from '@/lib/playground/colorConfig';
 import { useSelection } from '@/context/SelectionContext';
@@ -154,41 +148,11 @@ interface ComputedDistances {
   max: number;
 }
 
-// ============= Color Helpers =============
-
-function getTargetColor(
-  y: number,
-  yMin: number,
-  yMax: number,
-  palette?: GlobalColorConfig['continuousPalette']
-): string {
-  if (yMax === yMin) return 'hsl(180, 60%, 50%)';
-  const t = normalizeValue(y, yMin, yMax);
-  if (palette) {
-    return getContinuousColor(t, palette);
-  }
-  const hue = 270 - t * 210;
-  const saturation = 60 + t * 20;
-  const lightness = 35 + t * 25;
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-}
-
 function getDistanceColor(distance: number, maxDistance: number): string {
   if (maxDistance === 0) return 'hsl(120, 60%, 50%)';
   const t = Math.min(distance / maxDistance, 1);
   const hue = 120 - t * 120;
   return `hsl(${hue}, 70%, 50%)`;
-}
-
-function getBioSampleColor(
-  index: number,
-  palette?: GlobalColorConfig['categoricalPalette']
-): string {
-  if (palette) {
-    return getCategoricalColor(index, palette);
-  }
-  const hue = (index * 137.508) % 360;
-  return `hsl(${hue}, 60%, 50%)`;
 }
 
 // ============= Constants =============
@@ -469,111 +433,51 @@ export function RepetitionsChart({
   // Max distance for color scaling
   const maxDistance = statistics?.max_distance ?? 1;
 
+  const targetValueRange = useMemo(() => {
+    const targetValues = (colorContext?.y ?? y ?? []).filter((value): value is number => Number.isFinite(value));
+    if (targetValues.length === 0) {
+      return { min: 0, max: 1 };
+    }
+
+    let min = targetValues[0];
+    let max = targetValues[0];
+    for (let i = 1; i < targetValues.length; i++) {
+      const value = targetValues[i];
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    return { min, max };
+  }, [colorContext?.y, y]);
+
+  const resolvedColorContext = useMemo<ColorContext>(() => ({
+    ...colorContext,
+    y: colorContext?.y ?? y,
+    yMin: colorContext?.yMin ?? targetValueRange.min,
+    yMax: colorContext?.yMax ?? targetValueRange.max,
+    totalSamples: colorContext?.totalSamples ?? plotData.length,
+    selectedSamples: colorContext?.selectedSamples ?? selectedSamples,
+  }), [colorContext, y, targetValueRange, plotData.length, selectedSamples]);
+
   // Get point color - handles all global color modes
   const getPointColor = useCallback((point: PlotDataPoint): string => {
-    const continuousPalette = globalColorConfig?.continuousPalette ?? 'blue_red';
-    const categoricalPalette = globalColorConfig?.categoricalPalette ?? 'default';
-
     if (globalColorConfig) {
-      const mode = globalColorConfig.mode;
-      switch (mode) {
-        case 'target':
-          if (point.targetY !== undefined) {
-            return getTargetColor(point.targetY, yRange.min, yRange.max, continuousPalette);
-          }
-          return HIGHLIGHT_COLORS_CONCRETE.unselected;
-
-        case 'partition':
-          if (colorContext?.trainIndices?.has(point.sampleIndex)) {
-            return PARTITION_COLORS.train;
-          }
-          if (colorContext?.testIndices?.has(point.sampleIndex)) {
-            return PARTITION_COLORS.test;
-          }
-          return HIGHLIGHT_COLORS_CONCRETE.unselected;
-
-        case 'fold': {
-          const foldLabel = colorContext?.foldLabels?.[point.sampleIndex];
-          if (foldLabel !== undefined && foldLabel >= 0) {
-            return getCategoricalColor(foldLabel, categoricalPalette);
-          }
-          return HIGHLIGHT_COLORS_CONCRETE.unselected;
-        }
-
-        case 'selection': {
-          const isSelected = colorContext?.selectedSamples?.has(point.sampleIndex);
-          return isSelected ? HIGHLIGHT_COLORS_CONCRETE.selected : HIGHLIGHT_COLORS_CONCRETE.unselected;
-        }
-
-        case 'outlier':
-          if (colorContext?.outlierIndices?.has(point.sampleIndex)) {
-            return HIGHLIGHT_COLORS_CONCRETE.outlier;
-          }
-          return HIGHLIGHT_COLORS_CONCRETE.unselected;
-
-        case 'metadata': {
-          const metadataKey = globalColorConfig.metadataKey;
-          if (!metadataKey || !colorContext?.metadata) {
-            return HIGHLIGHT_COLORS_CONCRETE.unselected;
-          }
-          const values = colorContext.metadata[metadataKey];
-          const value = values?.[point.sampleIndex];
-          if (value === undefined || value === null) {
-            return HIGHLIGHT_COLORS_CONCRETE.unselected;
-          }
-          // Determine type
-          const metadataType = globalColorConfig.metadataType ?? detectMetadataType(values);
-          if (metadataType === 'continuous' && typeof value === 'number') {
-            const numericValues = values.filter(v => typeof v === 'number') as number[];
-            const min = Math.min(...numericValues);
-            const max = Math.max(...numericValues);
-            const t = normalizeValue(value, min, max);
-            return getContinuousColor(t, continuousPalette);
-          } else {
-            // Categorical
-            const uniqueValues = [...new Set(values.filter(v => v !== null && v !== undefined))];
-            const idx = uniqueValues.indexOf(value);
-            return getCategoricalColor(idx >= 0 ? idx : 0, categoricalPalette);
-          }
-        }
-
-        case 'index': {
-          const totalSamples = colorContext?.totalSamples ?? 1;
-          const t = point.sampleIndex / Math.max(1, totalSamples - 1);
-          return getContinuousColor(t, continuousPalette);
-        }
-
-        default:
-          return HIGHLIGHT_COLORS_CONCRETE.unselected;
-      }
+      return getWebGLSampleColor(point.sampleIndex, globalColorConfig, resolvedColorContext);
     }
 
     // Default: color by distance
     return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
-  }, [yRange, maxDistance, globalColorConfig, colorContext, scaleType]);
+  }, [globalColorConfig, resolvedColorContext, scaleType, maxDistance]);
 
   // Get point color for WebGL renderers - uses concrete HSL colors (no CSS variables)
   const getWebGLPointColor = useCallback((point: PlotDataPoint): string => {
-    // Build a minimal colorContext for this point
-    const pointColorContext: ColorContext = {
-      y: point.targetY !== undefined ? [point.targetY] : undefined,
-      yMin: yRange.min,
-      yMax: yRange.max,
-      selectedSamples,
-      totalSamples: plotData.length,
-    };
-
     // Use the unified WebGL color function if globalColorConfig is provided
     if (globalColorConfig) {
-      return getWebGLSampleColor(point.sampleIndex, globalColorConfig, {
-        ...pointColorContext,
-        ...colorContext,
-      });
+      return getWebGLSampleColor(point.sampleIndex, globalColorConfig, resolvedColorContext);
     }
 
     // Default: color by distance (same as getPointColor but with concrete colors)
     return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
-  }, [yRange, maxDistance, globalColorConfig, colorContext, scaleType, selectedSamples, plotData.length]);
+  }, [globalColorConfig, resolvedColorContext, scaleType, maxDistance]);
 
   // Pre-computed WebGL props for 2D renderers (ScatterPureWebGL2D, ScatterRegl2D)
   const webglProps = useMemo(() => {

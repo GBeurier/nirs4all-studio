@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import tempfile
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -1956,14 +1957,46 @@ class WorkspaceManager:
         return Path.cwd() / "workspace"
 
     def link_workspace_internal(
-        self, path: str, name: str, is_new: bool = False
+        self, path: str, name: str, is_new: bool = False, allow_temp: bool = False
     ) -> LinkedWorkspace:
         """Link a workspace without validation.
 
         Used for creating new workspaces where the directory structure
         is already set up but may not have runs/exports yet.
+
+        Refuses to register paths that live under the OS temp directory
+        unless ``allow_temp=True`` is passed. This guards against tests or
+        ad-hoc scripts polluting the user's persistent registry with
+        short-lived temp directories.
         """
         workspace_path = Path(path).resolve()
+
+        # Guard: refuse to write temp-directory paths into a *production*
+        # app_settings.json. Tests that legitimately use temp paths must
+        # also redirect the app config dir into the temp tree (e.g. via
+        # NIRS4ALL_CONFIG); in that case the guard stays out of the way.
+        if not allow_temp:
+            temp_root = Path(tempfile.gettempdir()).resolve()
+            try:
+                workspace_path.relative_to(temp_root)
+                workspace_under_temp = True
+            except ValueError:
+                workspace_under_temp = False
+
+            if workspace_under_temp:
+                try:
+                    self.app_config.config_dir.resolve().relative_to(temp_root)
+                    config_under_temp = True
+                except ValueError:
+                    config_under_temp = False
+
+                if not config_under_temp:
+                    raise ValueError(
+                        f"Refusing to register workspace under OS temp directory: {workspace_path}. "
+                        "Pass allow_temp=True if this is intentional, or redirect the app "
+                        "config dir via NIRS4ALL_CONFIG."
+                    )
+
         now = datetime.now().isoformat()
 
         settings = self.app_config.get_app_settings()
@@ -1978,7 +2011,7 @@ class WorkspaceManager:
 
         # Create linked workspace entry
         linked_ws = LinkedWorkspace(
-            id=f"ws_{int(datetime.now().timestamp())}_{len(workspaces)}",
+            id=f"ws_{uuid.uuid4().hex[:16]}",
             path=str(workspace_path),
             name=name or workspace_path.name,
             is_active=is_first,
@@ -2587,6 +2620,22 @@ class WorkspaceManager:
         """Get all linked nirs4all workspaces."""
         settings = self.app_config.get_app_settings()
         workspaces_data = settings.get("linked_workspaces", [])
+
+        # Migrate legacy colliding IDs (older builds used `ws_{ts}_{len}` which
+        # could collide on unlink/relink races). Reassign fresh UUID-based IDs
+        # to any duplicates so the frontend never sees two entries sharing a key.
+        seen_ids: set[str] = set()
+        mutated = False
+        for ws in workspaces_data:
+            ws_id = ws.get("id")
+            if not ws_id or ws_id in seen_ids:
+                ws["id"] = f"ws_{uuid.uuid4().hex[:16]}"
+                mutated = True
+            seen_ids.add(ws["id"])
+        if mutated:
+            settings["linked_workspaces"] = workspaces_data
+            self.app_config.save_app_settings(settings)
+
         return [LinkedWorkspace.from_dict(ws) for ws in workspaces_data]
 
     def get_active_workspace(self) -> LinkedWorkspace | None:
@@ -2641,7 +2690,7 @@ class WorkspaceManager:
         # Create linked workspace entry
         now = datetime.now().isoformat()
         linked_ws = LinkedWorkspace(
-            id=f"ws_{int(datetime.now().timestamp())}_{len(workspaces)}",
+            id=f"ws_{uuid.uuid4().hex[:16]}",
             path=str(workspace_path),
             name=name or workspace_path.name,
             is_active=len(workspaces) == 0,
@@ -2687,6 +2736,76 @@ class WorkspaceManager:
         settings["linked_workspaces"] = workspaces
         self.app_config.save_app_settings(settings)
         return True
+
+    def prune_missing_workspaces(self) -> list[dict[str, Any]]:
+        """Remove leaked/orphan workspace entries.
+
+        An entry is removed when either:
+          - its directory no longer exists on disk, OR
+          - its path lives under the OS temp directory (temp paths are
+            always considered leaked test/debug artefacts; the
+            ``link_workspace_internal`` guard prevents new ones from
+            being added in the first place).
+
+        Returns the list of removed entries (id, path, name). If the
+        active workspace is among the removed entries, the first
+        remaining workspace is activated; if none remain, a new default
+        workspace is created.
+        """
+        settings = self.app_config.get_app_settings()
+        workspaces = settings.get("linked_workspaces", [])
+        temp_root = Path(tempfile.gettempdir()).resolve()
+
+        kept: list[dict[str, Any]] = []
+        removed: list[dict[str, Any]] = []
+        active_removed = False
+
+        for ws in workspaces:
+            path_str = ws.get("path", "")
+            try:
+                exists = bool(path_str) and Path(path_str).exists()
+            except OSError:
+                exists = False
+
+            under_temp = False
+            if path_str:
+                try:
+                    Path(path_str).resolve().relative_to(temp_root)
+                    under_temp = True
+                except (ValueError, OSError):
+                    under_temp = False
+
+            if exists and not under_temp:
+                kept.append(ws)
+            else:
+                removed.append({
+                    "id": ws.get("id", ""),
+                    "path": path_str,
+                    "name": ws.get("name", ""),
+                    "reason": "under_temp" if under_temp else "missing",
+                })
+                if ws.get("is_active"):
+                    active_removed = True
+
+        if not removed:
+            return []
+
+        if active_removed and kept and not any(ws.get("is_active") for ws in kept):
+            kept[0]["is_active"] = True
+
+        settings["linked_workspaces"] = kept
+        self.app_config.save_app_settings(settings)
+
+        # If we just removed the active workspace, refresh the process-local
+        # active state from whatever is now active (or recreate a default).
+        if active_removed:
+            new_active = self.get_active_workspace()
+            if new_active is None:
+                new_active = self.ensure_default_workspace()
+            if new_active is not None:
+                self._set_process_local_active_workspace(new_active)
+
+        return removed
 
     def activate_workspace(self, workspace_id: str) -> LinkedWorkspace | None:
         """Set a linked workspace as active.

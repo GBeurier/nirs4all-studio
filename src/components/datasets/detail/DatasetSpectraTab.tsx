@@ -34,12 +34,22 @@ export function DatasetSpectraTab({
   const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
   const partitionTheme = getPartitionTheme(effectivePartition);
 
+  const hasPerSource = (preview?.summary?.n_sources ?? 0) > 1 && !!preview?.spectra_per_source_by_partition;
+  const [selectedSource, setSelectedSource] = useState(0);
+
   const spectraSource: SpectraPreview | undefined = useMemo(() => {
+    if (hasPerSource && preview?.spectra_per_source_by_partition) {
+      const sourceMap = preview.spectra_per_source_by_partition[selectedSource];
+      if (sourceMap) {
+        return sourceMap[effectivePartition] ?? sourceMap.train ?? preview?.spectra_preview;
+      }
+    }
+
     if (partitionMap) {
       return partitionMap[effectivePartition] ?? partitionMap.train ?? preview?.spectra_preview;
     }
     return preview?.spectra_preview;
-  }, [partitionMap, effectivePartition, preview?.spectra_preview]);
+  }, [partitionMap, effectivePartition, preview, hasPerSource, selectedSource]);
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -92,7 +102,23 @@ export function DatasetSpectraTab({
               <BarChart3 className="h-4 w-4" />
               Spectral Overview
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {hasPerSource && (
+                <div className="flex items-center gap-2 mr-2">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Source:</span>
+                  <select
+                    className="flex h-8 w-32 items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={selectedSource}
+                    onChange={(e) => setSelectedSource(Number(e.target.value))}
+                  >
+                    {Array.from({ length: preview?.summary?.n_sources ?? 0 }).map((_, i) => (
+                      <option key={i} value={i}>
+                        Source {i + 1}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <PartitionToggle
                 value={effectivePartition}
                 onChange={setPartition}
@@ -119,7 +145,7 @@ export function DatasetSpectraTab({
               maxSpectrum={spectra.max_spectrum}
               width={960}
               height={360}
-              xLabel="Wavelength"
+              unit={preview?.summary?.header_unit}
               yLabel="Absorbance"
               lineColor={partitionTheme.lineColor}
               rangeFillColor={partitionTheme.rangeFillColor}

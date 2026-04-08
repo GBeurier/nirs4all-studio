@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
 import { Target, Info, FileSpreadsheet, Clock } from "lucide-react";
 import { TargetHistogram } from "../charts";
+import { buildTargetHistogramData } from "../charts/TargetHistogram";
 import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
 import type {
@@ -67,6 +68,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
       ? trainCount
       : ((trainCount ?? 0) + (testCount ?? 0)) || dataset.num_samples
   );
+  const histogramData = useMemo(() => buildTargetHistogramData(distribution), [distribution]);
 
   return (
     <div className="space-y-6">
@@ -76,7 +78,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Target className="h-4 w-4" />
-                Target Histogram
+                Target Distribution
                 <Badge variant="outline" className="text-xs capitalize">
                   {distribution.type}
                 </Badge>
@@ -94,10 +96,10 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
           <CardContent>
             <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)] gap-6 items-start">
               <div>
-                {distribution.histogram ? (
+                {histogramData.length > 0 ? (
                   <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
                     <TargetHistogram
-                      data={distribution.histogram}
+                      data={histogramData}
                       type={distribution.type}
                       width={560}
                       height={240}
@@ -106,7 +108,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                   </div>
                 ) : (
                   <div className="h-[220px] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-                    No histogram preview available
+                    No distribution preview available
                   </div>
                 )}
               </div>
@@ -245,7 +247,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
               <div>
                 <p className="text-sm text-muted-foreground">Signal Type</p>
                 <div className="flex gap-1 mt-1">
-                  {dataset.signal_types.map((type) => (
+                  {Array.from(new Set(dataset.signal_types)).map((type) => (
                     <Badge key={type} variant="outline" className="text-xs">
                       {type}
                     </Badge>

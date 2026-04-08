@@ -7,6 +7,7 @@
  */
 
 import { spawn, execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import https from "node:https";
@@ -80,6 +81,23 @@ export interface EnvInfo {
 }
 
 const SETTINGS_FILE = "env-settings.json";
+const VERIFY_CACHE_FILE = "verify-cache.json";
+
+// Short-TTL in-memory cache for detectExistingEnvs(). Scanning PATH and
+// spawning Python for every candidate is expensive, and the Settings UI can
+// trigger it multiple times in quick succession. This cache is intentionally
+// module-scope and non-persistent — the separate on-disk verify cache above
+// (verify-cache.json) covers ensureBackendPackages() and must not be
+// co-mingled with this transient cache.
+const DETECT_ENVS_TTL_MS = 30_000;
+let detectEnvsCache: { key: string; expiresAt: number; result: DetectedEnv[] } | null = null;
+
+interface VerifyCacheEntry {
+  pythonPath: string;
+  appVersion: string;
+  fingerprint: string;
+  verifiedAt: number;
+}
 
 interface EnvSettings {
   pythonPath?: string;
@@ -403,30 +421,135 @@ export class EnvManager {
   }
 
   /**
-   * Verify that critical backend packages (uvicorn, fastapi) are importable.
-   * Returns true if all packages are available, false otherwise.
+   * Lightweight runtime check: verifies that uvicorn and fastapi are
+   * importable. Intended for the startup-fast path — does NOT import
+   * `nirs4all`, which is heavy and is loaded lazily by the backend itself.
+   */
+  async verifyBackendRuntime(): Promise<boolean> {
+    const pythonPath = this.getPythonPath();
+    if (!pythonPath || !fs.existsSync(pythonPath)) return false;
+
+    const start = Date.now();
+    const result = await new Promise<boolean>((resolve) => {
+      execFile(
+        pythonPath,
+        ["-c", "import uvicorn, fastapi"],
+        { timeout: 15000 },
+        (error) => resolve(!error),
+      );
+    });
+    console.log(`verifyBackendRuntime: ${result ? "ok" : "fail"} in ${Date.now() - start}ms`);
+    return result;
+  }
+
+  /**
+   * Heavier verify that also imports `nirs4all`. Used by explicit setup/repair
+   * flows, never on the startup critical path.
    */
   async verifyBackendPackages(): Promise<boolean> {
     const pythonPath = this.getPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
-    return new Promise((resolve) => {
+    const start = Date.now();
+    const result = await new Promise<boolean>((resolve) => {
       execFile(
         pythonPath,
         ["-c", "import uvicorn; import fastapi; import nirs4all"],
-        { timeout: 15000 },
+        { timeout: 30000 },
         (error) => resolve(!error),
       );
     });
+    console.log(`verifyBackendPackages: ${result ? "ok" : "fail"} in ${Date.now() - start}ms`);
+    return result;
+  }
+
+  /**
+   * Compute a fingerprint for the current Python environment, used as the
+   * cache key suffix for {@link verifyBackendRuntime}. Returns null when no
+   * reliable fingerprint can be built (e.g. user-provided custom env without
+   * a recognisable layout) — callers MUST treat this as "do not cache".
+   */
+  private computeEnvFingerprint(pythonPath: string): string | null {
+    const parts: string[] = [];
+
+    // Derive env root from python executable location.
+    const dir = path.dirname(pythonPath);
+    const dirName = path.basename(dir).toLowerCase();
+    const envRoot = (dirName === "scripts" || dirName === "bin")
+      ? path.dirname(dir)
+      : dir;
+
+    const stat = (p: string): string | null => {
+      try {
+        const s = fs.statSync(p);
+        return `${s.mtimeMs}:${s.size}`;
+      } catch {
+        return null;
+      }
+    };
+
+    // build_info.json (managed env marker)
+    const buildInfo = stat(path.join(this.envDir, "build_info.json"));
+    if (buildInfo) parts.push(`build:${buildInfo}`);
+
+    // pyvenv.cfg
+    const pyvenvCfg = stat(path.join(envRoot, "pyvenv.cfg"));
+    if (pyvenvCfg) parts.push(`pyvenv:${pyvenvCfg}`);
+
+    // site-packages directory mtime
+    const sitePackages = this.getSitePackages();
+    if (sitePackages) {
+      const sp = stat(sitePackages);
+      if (sp) parts.push(`site:${sp}`);
+    }
+
+    // For custom envs that don't expose any of the markers above, we can't
+    // build a reliable fingerprint — refuse to cache.
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return parts.join("|");
+  }
+
+  private getVerifyCachePath(): string {
+    return path.join(app.getPath("userData"), VERIFY_CACHE_FILE);
+  }
+
+  private readVerifyCache(): VerifyCacheEntry | null {
+    try {
+      const p = this.getVerifyCachePath();
+      if (!fs.existsSync(p)) return null;
+      const data = JSON.parse(fs.readFileSync(p, "utf-8")) as VerifyCacheEntry;
+      if (!data.pythonPath || !data.appVersion || !data.fingerprint) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeVerifyCache(entry: VerifyCacheEntry): void {
+    try {
+      const p = this.getVerifyCachePath();
+      const dir = path.dirname(p);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(p, JSON.stringify(entry, null, 2));
+    } catch (error) {
+      console.warn(`[EnvManager] Failed to write verify cache: ${error}`);
+    }
   }
 
   /**
    * Ensure critical backend packages are installed.
-   * If uvicorn/fastapi are missing, installs all CORE_PACKAGES.
+   * Verifies the lightweight runtime first, then confirms that `nirs4all`
+   * itself imports cleanly before writing the persistent verify cache.
+   *
+   * Returns true when a repair/install was actually performed.
+   *
    * Called before starting the backend to fix the portable-mode issue
    * where the env exists but is missing backend dependencies.
    */
-  async ensureBackendPackages(options?: EnsureBackendPackagesOptions): Promise<void> {
+  async ensureBackendPackages(options?: EnsureBackendPackagesOptions): Promise<boolean> {
     if (!this.validateConfiguredState()) {
       this.status = "error";
       this.lastError = "Python environment is not configured or is missing";
@@ -441,16 +564,77 @@ export class EnvManager {
     }
 
     try {
-      const hasPackages = await this.verifyBackendPackages();
-      if (!hasPackages) {
-        console.log("Backend packages missing, installing core packages...");
+      let repaired = false;
+
+      // Fast path: persistent verify cache. Skips spawning Python entirely
+      // when the env fingerprint matches a previously FULLY verified state.
+      const fingerprint = this.computeEnvFingerprint(pythonPath);
+      const currentVersion = app.getVersion();
+      if (fingerprint) {
+        const cached = this.readVerifyCache();
+        if (
+          cached
+          && cached.pythonPath === pythonPath
+          && cached.appVersion === currentVersion
+          && cached.fingerprint === fingerprint
+        ) {
+          console.log("ensureBackendPackages: verify-cache hit");
+          this.lastError = null;
+          this.status = "ready";
+          return false;
+        }
+      } else {
+        console.log("ensureBackendPackages: verify-cache disabled (no fingerprint)");
+      }
+
+      // Cache miss / disabled / mismatch — verify the lightweight runtime
+      // first so we can repair the common "uvicorn/fastapi missing" case
+      // without paying the heavier import if the env is obviously broken.
+      const hasRuntime = await this.verifyBackendRuntime();
+      if (!hasRuntime) {
+        console.log("Backend runtime packages missing, installing core packages...");
         await this.installCorePackages(pythonPath, {
           timeoutMs: options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS,
         });
         console.log("Core packages installed successfully");
+        repaired = true;
       }
+
+      // The startup-fast path only skipped the heavy import from the main
+      // process. We still need to confirm that nirs4all imports before we
+      // trust or persist this environment state.
+      let hasBackendPackages = await this.verifyBackendPackages();
+      if (!hasBackendPackages) {
+        if (!repaired) {
+          console.log("Backend packages incomplete, reinstalling core packages...");
+          await this.installCorePackages(pythonPath, {
+            timeoutMs: options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS,
+          });
+          console.log("Core packages reinstalled successfully");
+          repaired = true;
+        }
+
+        hasBackendPackages = await this.verifyBackendPackages();
+        if (!hasBackendPackages) {
+          throw new Error("Backend packages are still not importable after repair");
+        }
+      }
+
+      // Persist a fresh cache entry. Recompute the fingerprint after any
+      // install so the new site-packages mtime is captured.
+      const finalFingerprint = this.computeEnvFingerprint(pythonPath);
+      if (finalFingerprint) {
+        this.writeVerifyCache({
+          pythonPath,
+          appVersion: currentVersion,
+          fingerprint: finalFingerprint,
+          verifiedAt: Date.now(),
+        });
+      }
+
       this.lastError = null;
       this.status = "ready";
+      return repaired;
     } catch (error) {
       this.status = "error";
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -460,8 +644,23 @@ export class EnvManager {
 
   /**
    * Detect existing Python environments on the system.
+   *
+   * Results are cached in-memory for a short TTL, keyed on a hash of
+   * `process.env.PATH` plus `process.platform`. The cache is intentionally
+   * transient and separate from the persistent verify cache used by
+   * {@link ensureBackendPackages}.
    */
   async detectExistingEnvs(): Promise<DetectedEnv[]> {
+    const cacheKey = createHash("sha1")
+      .update(process.platform)
+      .update("\u0000")
+      .update(process.env.PATH || "")
+      .digest("hex");
+    const now = Date.now();
+    if (detectEnvsCache && detectEnvsCache.key === cacheKey && detectEnvsCache.expiresAt > now) {
+      return detectEnvsCache.result.slice();
+    }
+
     const envs: DetectedEnv[] = [];
     const candidates: string[] = [];
 
@@ -537,6 +736,12 @@ export class EnvManager {
         // Skip inaccessible paths
       }
     }
+
+    detectEnvsCache = {
+      key: cacheKey,
+      expiresAt: Date.now() + DETECT_ENVS_TTL_MS,
+      result: envs.slice(),
+    };
 
     return envs;
   }

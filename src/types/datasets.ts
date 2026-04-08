@@ -343,9 +343,14 @@ export interface MergeConfig {
 
 /**
  * Dataset list response from API
+ *
+ * `/api/datasets` returns both datasets and groups in a single payload, so the
+ * frontend never needs to make a separate `/api/workspace/groups` request to
+ * render the Datasets page.
  */
 export interface DatasetListResponse {
   datasets: Dataset[];
+  groups: DatasetGroup[];
   total: number;
 }
 
@@ -690,6 +695,31 @@ export interface RefreshDatasetResponse {
   version: number;
   change_summary: DatasetChangeSummary;
   refreshed_at: string;
+}
+
+/**
+ * Compact best-score entry returned by
+ * `GET /api/workspaces/{workspace_id}/results/dataset-scores`.
+ *
+ * Used by the Datasets page to render the per-dataset best-score badges
+ * without pulling the heavier `/results/summary` payload.
+ */
+export interface DatasetScoreEntry {
+  dataset_name: string;
+  linked_dataset_id: string | null;
+  metric: string;
+  best_score: number | null;
+  cv_score?: number | null;
+  score_kind: "final" | "cv";
+  model_name: string;
+}
+
+/**
+ * Response shape for the compact dataset-scores endpoint.
+ */
+export interface DatasetScoresResponse {
+  workspace_id: string;
+  datasets: DatasetScoreEntry[];
 }
 
 /**

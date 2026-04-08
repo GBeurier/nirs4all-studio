@@ -16,12 +16,17 @@ import {
   ReferenceArea,
 } from 'recharts';
 import {
-  CHART_THEME,
-  CHART_MARGINS,
   ANIMATION_CONFIG,
+  CHART_MARGINS,
+  CHART_THEME,
   formatYValue,
 } from '../chartConfig';
-import { getCategoricalColor } from '@/lib/playground/colorConfig';
+import {
+  getCategoricalColor,
+  getHeldOutTestColor,
+  hasHeldOutTestSamples,
+  isHeldOutTestSample,
+} from '@/lib/playground/colorConfig';
 import { extractModifiers } from '@/lib/playground/selectionUtils';
 import {
   computeStackedBarAction,
@@ -47,9 +52,33 @@ export default function HistogramByFold({
   handleDragSelection,
   lastMouseEventRef,
   globalColorConfig,
+  colorContext,
   uniqueFolds,
 }: HistogramChartProps) {
   const palette = globalColorConfig?.categoricalPalette ?? 'default';
+  const showHeldOutTest = hasHeldOutTestSamples(colorContext ?? {});
+  const stackSegments = useMemo(() => {
+    const foldSegments = uniqueFolds.map((foldIdx) => ({
+      key: `fold${foldIdx}`,
+      label: `Fold ${foldIdx + 1}`,
+      color: getCategoricalColor(foldIdx, palette),
+      getSamples: (samples: number[]) => samples.filter((sampleIdx) => colorContext?.foldLabels?.[sampleIdx] === foldIdx),
+    }));
+
+    if (!showHeldOutTest) {
+      return foldSegments;
+    }
+
+    return [
+      ...foldSegments,
+      {
+        key: 'test',
+        label: 'Test',
+        color: getHeldOutTestColor(),
+        getSamples: (samples: number[]) => samples.filter((sampleIdx) => colorContext ? isHeldOutTestSample(sampleIdx, colorContext) : false),
+      },
+    ];
+  }, [colorContext, palette, showHeldOutTest, uniqueFolds]);
 
   // Transform data for fold stacking
   const stackedData = useMemo(() =>
@@ -61,13 +90,14 @@ export default function HistogramByFold({
         samples: bin.samples,
         label: bin.label,
       };
-      uniqueFolds.forEach(foldIdx => {
-        row[`fold${foldIdx}`] = getYValue(bin.foldCounts?.[foldIdx] || 0);
-        row[`fold${foldIdx}Samples`] = bin.foldSamples?.[foldIdx] || [];
+      stackSegments.forEach((segment) => {
+        const segmentSamples = segment.getSamples(bin.samples);
+        row[segment.key] = getYValue(segmentSamples.length);
+        row[`${segment.key}Samples`] = segmentSamples;
       });
       return row;
     }),
-  [histogramData, getYValue, uniqueFolds]);
+  [histogramData, getYValue, stackSegments]);
 
   // Calculate range selection bounds
   const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
@@ -106,17 +136,11 @@ export default function HistogramByFold({
     const barRect = findBarRect(e, target);
     const clickedFill = barRect?.getAttribute('fill') || '';
 
-    // Find which fold has this color
-    let clickedFoldIdx = uniqueFolds[0];
-    for (const foldIdx of uniqueFolds) {
-      if (getCategoricalColor(foldIdx, palette) === clickedFill) {
-        clickedFoldIdx = foldIdx;
-        break;
-      }
-    }
-
     const barSamples = entry.samples as number[];
-    const segmentSamples = (entry[`fold${clickedFoldIdx}Samples`] as number[] | undefined) ?? [];
+    const segment = stackSegments.find((item) => item.color === clickedFill) ?? stackSegments[0];
+    const segmentSamples = segment
+      ? (entry[`${segment.key}Samples`] as number[] | undefined) ?? []
+      : barSamples;
 
     // 5. Apply 3-click selection logic
     const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
@@ -126,7 +150,7 @@ export default function HistogramByFold({
       modifiers
     );
     executeSelectionAction(selectionCtx, action);
-  }, [stackedData, handleDragSelection, selectionCtx, lastMouseEventRef, setRangeSelection, uniqueFolds, palette]);
+  }, [stackSegments, stackedData, handleDragSelection, selectionCtx, lastMouseEventRef, setRangeSelection]);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -176,16 +200,16 @@ export default function HistogramByFold({
             return (
               <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs">
                 <p className="font-medium">{data.label}</p>
-                {uniqueFolds.map(foldIdx => {
-                  const count = data[`fold${foldIdx}`] || 0;
+                {stackSegments.map((segment) => {
+                  const count = data[segment.key] || 0;
                   if (count === 0) return null;
                   return (
-                    <p key={foldIdx} className="flex items-center gap-1">
+                    <p key={segment.key} className="flex items-center gap-1">
                       <span
                         className="w-2 h-2 rounded-sm"
-                        style={{ backgroundColor: getCategoricalColor(foldIdx, palette) }}
+                        style={{ backgroundColor: segment.color }}
                       />
-                      Fold {foldIdx + 1}: {typeof count === 'number' ? count.toFixed(config.yAxisType === 'count' ? 0 : 2) : count}
+                      {segment.label}: {typeof count === 'number' ? count.toFixed(config.yAxisType === 'count' ? 0 : 2) : count}
                     </p>
                   );
                 })}
@@ -197,31 +221,27 @@ export default function HistogramByFold({
           verticalAlign="top"
           height={24}
           iconSize={10}
-          formatter={(value) => (
-            <span className="text-[10px]">
-              {value.replace('fold', 'Fold ').replace(/(\d+)/, (m: string) => String(Number(m) + 1))}
-            </span>
-          )}
+          formatter={(value) => <span className="text-[10px]">{value}</span>}
         />
-        {uniqueFolds.map(foldIdx => (
+        {stackSegments.map((segment, segmentIdx) => (
           <Bar
-            key={`fold-${foldIdx}`}
-            dataKey={`fold${foldIdx}`}
-            name={`fold${foldIdx}`}
+            key={segment.key}
+            dataKey={segment.key}
+            name={segment.label}
             stackId="folds"
-            fill={getCategoricalColor(foldIdx, palette)}
-            radius={foldIdx === uniqueFolds[uniqueFolds.length - 1] ? [2, 2, 0, 0] : undefined}
+            fill={segment.color}
+            radius={segmentIdx === stackSegments.length - 1 ? [2, 2, 0, 0] : undefined}
             cursor="pointer"
             {...ANIMATION_CONFIG}
           >
             {stackedData.map((entry, index) => {
-              const segmentSamples = (entry[`fold${foldIdx}Samples`] as number[] | undefined) ?? [];
+              const segmentSamples = (entry[`${segment.key}Samples`] as number[] | undefined) ?? [];
               const hasSelectedInSegment = segmentSamples.some(s => selectedSamples.has(s));
               const isHovered = hoveredBin === index;
               return (
                 <Cell
-                  key={`fold-${foldIdx}-${index}`}
-                  fill={getCategoricalColor(foldIdx, palette)}
+                  key={`${segment.key}-${index}`}
+                  fill={segment.color}
                   stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
                   strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}
                 />

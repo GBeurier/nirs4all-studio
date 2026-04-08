@@ -19,11 +19,12 @@ import {
   getBestFinalEntry,
 } from "@/lib/scores";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
-import { getLinkedWorkspaces, getWorkspaceResultsSummary } from "@/api/client";
+import { getWorkspaceResultsSummary } from "@/api/client";
 import type { DatasetTopChains } from "@/types/runs";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import { DatasetResultCard } from "@/components/scores/DatasetResultCard";
 import type { EnrichedDatasetRun } from "@/types/enriched-runs";
+import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -58,11 +59,7 @@ export default function Results() {
   // Detect task type from data for metric selector
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection("results", "regression");
 
-  const { data: workspacesData } = useQuery({
-    queryKey: ["linked-workspaces"],
-    queryFn: getLinkedWorkspaces,
-    staleTime: 30000,
-  });
+  const { data: workspacesData } = useLinkedWorkspacesQuery();
   const activeWorkspace = workspacesData?.workspaces.find(w => w.is_active) ?? null;
 
   const { data: summaryData, isLoading, refetch } = useQuery({

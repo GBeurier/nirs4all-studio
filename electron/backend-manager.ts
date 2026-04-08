@@ -213,6 +213,10 @@ export class BackendManager {
     const url = `http://127.0.0.1:${this.port}/api/health`;
 
     while (Date.now() - startTime < HEALTH_CHECK_TIMEOUT) {
+      if (!this.process && this.status === "error") {
+        throw new Error(this.lastError ?? "Backend exited during startup");
+      }
+
       try {
         const response = await fetch(url, { method: "GET" });
         if (response.ok) {
@@ -419,9 +423,13 @@ export class BackendManager {
     this.process.on("exit", (code, signal) => {
       console.log(`Backend exited with code ${code}, signal ${signal}`);
       const wasRunning = this.status === "running";
+      const wasStarting = this.status === "starting" || this.status === "restarting";
       this.process = null;
 
-      if (wasRunning && !this.isShuttingDown) {
+      if ((wasRunning || wasStarting) && !this.isShuttingDown) {
+        this.lastError = code === null
+          ? `Backend exited unexpectedly (signal ${signal ?? "unknown"})`
+          : `Backend exited unexpectedly with code ${code}`;
         this.status = "error";
         this.notifyRenderer();
       }
@@ -506,13 +514,15 @@ export class BackendManager {
     this.process.on("exit", (code, signal) => {
       console.log(`Backend exited with code ${code}, signal ${signal}`);
       const wasRunning = this.status === "running";
+      const wasStarting = this.status === "starting" || this.status === "restarting";
       this.process = null;
 
-      // Only trigger crash handling if we were running and not shutting down
-      if (wasRunning && !this.isShuttingDown) {
+      if ((wasRunning || wasStarting) && !this.isShuttingDown) {
+        this.lastError = code === null
+          ? `Backend exited unexpectedly (signal ${signal ?? "unknown"})`
+          : `Backend exited unexpectedly with code ${code}`;
         this.status = "error";
         this.notifyRenderer();
-        // Crash handling is done via health monitor
       }
     });
 

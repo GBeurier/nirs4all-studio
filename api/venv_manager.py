@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import venv
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -77,6 +78,47 @@ class PackageInfo:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# Short-TTL in-memory cache for get_installed_packages(). Keyed on a
+# fingerprint derived from the active interpreter path (and its mtime, when
+# cheaply available). If no reliable fingerprint can be built we skip caching
+# on that call.
+_INSTALLED_PACKAGES_CACHE_TTL_SECONDS = 30.0
+_installed_packages_cache: dict[str, tuple[float, list["PackageInfo"]]] = {}
+
+
+def _installed_packages_fingerprint(python_exe: Path) -> str | None:
+    """Build a cheap fingerprint for the active interpreter.
+
+    Returns None if no reliable signal can be established — callers MUST treat
+    that as "do not cache".
+    """
+    try:
+        exe_str = str(python_exe)
+    except Exception:
+        return None
+    if not exe_str:
+        return None
+    parts: list[str] = [exe_str, sys.executable or ""]
+    try:
+        st = os.stat(exe_str)
+        parts.append(f"{st.st_mtime_ns}:{st.st_size}")
+    except OSError:
+        # Interpreter path not stat-able — still cache on path identity alone,
+        # since sys.executable is part of the key.
+        pass
+    return "|".join(parts)
+
+
+def invalidate_installed_packages_cache() -> None:
+    """Drop the cached installed-packages result.
+
+    Other modules can call this after mutating the environment (install /
+    uninstall / upgrade). Not wired to any callers in this phase — exposed so
+    they can opt in later.
+    """
+    _installed_packages_cache.clear()
 
 
 class VenvManager:
@@ -405,6 +447,7 @@ class VenvManager:
         metadata = self._load_metadata() or {}
         metadata["last_updated"] = datetime.now().isoformat()
         self._save_metadata(metadata)
+        invalidate_installed_packages_cache()
 
         if progress_callback:
             progress_callback(100, f"Successfully installed {package}")
@@ -415,6 +458,15 @@ class VenvManager:
         """Get list of installed packages in the venv."""
         if not self._is_valid_venv():
             return []
+
+        fingerprint = _installed_packages_fingerprint(self.python_executable)
+        now = time.monotonic()
+        if fingerprint is not None:
+            cached = _installed_packages_cache.get(fingerprint)
+            if cached is not None:
+                cached_at, cached_pkgs = cached
+                if now - cached_at < _INSTALLED_PACKAGES_CACHE_TTL_SECONDS:
+                    return list(cached_pkgs)
 
         packages = []
         try:
@@ -433,6 +485,10 @@ class VenvManager:
                     ))
         except Exception as e:
             logger.error("Error getting installed packages: %s", e)
+            return packages
+
+        if fingerprint is not None:
+            _installed_packages_cache[fingerprint] = (now, list(packages))
 
         return packages
 
@@ -512,6 +568,7 @@ class VenvManager:
         if progress_callback:
             progress_callback(100, f"Successfully uninstalled {package}")
 
+        invalidate_installed_packages_cache()
         return True, f"Successfully uninstalled {package}"
 
     def get_outdated_packages(self) -> list[dict[str, str]]:

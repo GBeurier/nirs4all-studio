@@ -76,6 +76,12 @@ export interface SpectraSettingsPopupProps {
   wavelengthRange: [number, number];
   /** Wavelength count */
   wavelengthCount: number;
+  /**
+   * Display suffix for the wavelength unit (e.g. " nm", " cm⁻¹"). Empty
+   * string when the unit is unknown — do not hardcode "nm" in display text,
+   * since cm⁻¹ datasets exist and were previously mislabelled.
+   */
+  wavelengthUnitSuffix?: string;
   /** Callback when any setting changes */
   onInteractionStart?: () => void;
   /** Compact mode for smaller containers */
@@ -117,6 +123,7 @@ export function SpectraSettingsPopup({
   totalSamples,
   wavelengthRange,
   wavelengthCount,
+  wavelengthUnitSuffix = '',
   onInteractionStart,
   compact = false,
   open: externalOpen,
@@ -386,8 +393,8 @@ export function SpectraSettingsPopup({
                 className="w-full"
               />
               <div className="flex justify-between text-[9px] text-muted-foreground font-mono mt-1">
-                <span>{(config.wavelengthFocus.range?.[0] ?? wavelengthRange[0]).toFixed(0)} nm</span>
-                <span>{(config.wavelengthFocus.range?.[1] ?? wavelengthRange[1]).toFixed(0)} nm</span>
+                <span>{(config.wavelengthFocus.range?.[0] ?? wavelengthRange[0]).toFixed(0)}{wavelengthUnitSuffix}</span>
+                <span>{(config.wavelengthFocus.range?.[1] ?? wavelengthRange[1]).toFixed(0)}{wavelengthUnitSuffix}</span>
               </div>
             </div>
 

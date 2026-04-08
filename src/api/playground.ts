@@ -169,6 +169,10 @@ export async function validatePlaygroundPipeline(
 export function buildExecuteRequest(params: {
   spectra: number[][];
   wavelengths?: number[];
+  /** Wavelength axis unit (e.g. "nm", "cm-1"). Forwarded so the backend can
+   * echo it back on the original/processed DataSections, letting charts label
+   * the X axis correctly even for uploaded data. */
+  wavelengthUnit?: string;
   y?: number[];
   sampleIds?: string[];
   metadata?: Record<string, unknown[]>;
@@ -198,6 +202,7 @@ export function buildExecuteRequest(params: {
       y: params.y,
       sample_ids: params.sampleIds,
       metadata: params.metadata,
+      header_unit: params.wavelengthUnit,
     },
     steps: params.steps,
     sampling: params.samplingMethod !== 'all' ? {
@@ -383,6 +388,14 @@ export async function loadWorkspaceDataset(
     y,
     sampleIds,
     metadata,
+    // Propagate the unit detected by nirs4all so spectra charts can label the
+    // X axis with the correct quantity ("Wavelength (nm)" vs "Wavenumber
+    // (cm⁻¹)") instead of hardcoding "nm". The backend returns "unknown" when
+    // it cannot determine the unit; treat that as missing.
+    wavelengthUnit:
+      response.wavelength_unit && response.wavelength_unit !== 'unknown'
+        ? response.wavelength_unit
+        : undefined,
   };
 }
 

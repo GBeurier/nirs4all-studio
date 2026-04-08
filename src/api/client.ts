@@ -1617,6 +1617,18 @@ export async function getWorkspaceResultsSummary(
 }
 
 /**
+ * Get compact best-score-per-dataset payload used by the Datasets page.
+ * Much cheaper than `/results/summary`: returns only the fields needed
+ * to render per-dataset best-score badges (metric, best score, final/cv,
+ * model name, linked dataset id).
+ */
+export async function getDatasetScores(
+  workspaceId: string,
+): Promise<import("@/types/datasets").DatasetScoresResponse> {
+  return api.get(`/workspaces/${workspaceId}/results/dataset-scores`);
+}
+
+/**
  * Get datasets discovered from run manifests.
  * Includes full metadata like n_samples, y_stats, and path status.
  */

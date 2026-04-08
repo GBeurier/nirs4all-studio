@@ -74,6 +74,7 @@ import {
   type ColorContext,
   getContinuousColor,
   getCategoricalColor,
+  getHeldOutTestColor,
   PARTITION_COLORS,
   HIGHLIGHT_COLORS,
   normalizeValue,
@@ -704,12 +705,12 @@ export function FoldDistributionChartV2({
   // Get train/test colors from global palette
   const trainColor = PARTITION_COLORS.train;
   const trainColorLight = PARTITION_COLORS.trainLight;
-  const testColor = PARTITION_COLORS.test;
-  const testColorLight = PARTITION_COLORS.testLight;
+  const valColor = PARTITION_COLORS.val;
+  const valColorLight = PARTITION_COLORS.valLight;
 
-  // Get held-out test color from categorical palette (index 4 = purple in default palette)
-  const catPalette = globalColorConfig?.categoricalPalette ?? 'default';
-  const heldOutTestColor = getCategoricalColor(4, catPalette);
+  const heldOutTestColor = getHeldOutTestColor();
+  const validationLabel = folds && folds.n_folds > 1 ? 'Val' : 'Test';
+  const validationColor = folds && folds.n_folds > 1 ? PARTITION_COLORS.val : PARTITION_COLORS.test;
   // Create a lighter version by adjusting the HSL
   const heldOutTestColorLight = useMemo(() => {
     // Parse the HSL color and lighten it
@@ -731,15 +732,13 @@ export function FoldDistributionChartV2({
       case 'train':
         return isHighlighted ? trainColor : trainColorLight;
       case 'val':
-        // Validation bars use test color (orange)
-        return isHighlighted ? testColor : testColorLight;
+        return isHighlighted ? valColor : valColorLight;
       case 'test':
-        // Held-out test uses color from categorical palette for consistency
         return isHighlighted ? heldOutTestColor : heldOutTestColorLight;
       default:
         return 'hsl(var(--primary))';
     }
-  }, [trainColor, trainColorLight, testColor, testColorLight, heldOutTestColor, heldOutTestColorLight]);
+  }, [trainColor, trainColorLight, valColor, valColorLight, heldOutTestColor, heldOutTestColorLight]);
 
   /**
    * Get segment color for a partition bar entry
@@ -769,7 +768,7 @@ export function FoldDistributionChartV2({
         if (entry.foldIndex !== null) {
           return getCategoricalColor(entry.foldIndex, catPalette);
         }
-        return 'hsl(var(--muted-foreground))';
+        return entry.partitionType === 'test' ? heldOutTestColor : 'hsl(var(--muted-foreground))';
 
       case 'outlier':
         if (segmentKey === 'outlier') {
@@ -794,7 +793,7 @@ export function FoldDistributionChartV2({
       default:
         return getPartitionBarColor(entry, true);
     }
-  }, [effectiveColorMode, globalColorConfig, selectedFold, getPartitionBarColor, yBins]);
+  }, [effectiveColorMode, globalColorConfig, selectedFold, getPartitionBarColor, heldOutTestColor, yBins]);
 
   // Get segment label for legend
   const getSegmentLabel = useCallback((segmentKey: string): string => {
@@ -1416,7 +1415,7 @@ export function FoldDistributionChartV2({
                       <p>Range: [{formatYValue(entry.trainMin)}, {formatYValue(entry.trainMax)}]</p>
                     </div>
                     <div>
-                      <p className="font-medium" style={{ color: PARTITION_COLORS.test }}>Test</p>
+                      <p className="font-medium" style={{ color: validationColor }}>{validationLabel}</p>
                       <p>Mean: {formatYValue(entry.testMean)}</p>
                       <p>Std: {formatYValue(entry.testStd)}</p>
                       <p>Range: [{formatYValue(entry.testMin)}, {formatYValue(entry.testMax)}]</p>
@@ -1433,7 +1432,7 @@ export function FoldDistributionChartV2({
               height={24}
               iconSize={10}
               formatter={(value) => (
-                <span className="text-xs">{value.includes('train') ? 'Train' : 'Test'}</span>
+                <span className="text-xs">{value.includes('train') ? 'Train' : validationLabel}</span>
               )}
             />
           )}
@@ -1461,21 +1460,21 @@ export function FoldDistributionChartV2({
 
           <Bar
             dataKey="testMean"
-            fill={PARTITION_COLORS.test}
+            fill={validationColor}
             barSize={12}
             {...ANIMATION_CONFIG}
           >
             {yData.map((entry) => (
               <Cell
                 key={`test-${entry.foldIndex}`}
-                fill={PARTITION_COLORS.test}
+                fill={validationColor}
                 opacity={selectedFold === null || selectedFold === entry.foldIndex ? 1 : 0.4}
               />
             ))}
             <ErrorBar
               dataKey="testUpper"
               direction="y"
-              stroke={PARTITION_COLORS.test}
+              stroke={validationColor}
               strokeWidth={1.5}
             />
           </Bar>
@@ -1568,7 +1567,7 @@ export function FoldDistributionChartV2({
                 </span>
                 {partitionBarData.some(p => p.partitionType === 'val') && (
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: testColor }} />
+                    <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: valColor }} />
                     Val
                   </span>
                 )}
@@ -1592,6 +1591,15 @@ export function FoldDistributionChartV2({
                     Fold {(foldIdx ?? 0) + 1}
                   </span>
                 ))}
+                {partitionBarData.some(p => p.partitionType === 'test') && (
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="w-2 h-2 rounded-sm"
+                      style={{ backgroundColor: heldOutTestColor }}
+                    />
+                    Test
+                  </span>
+                )}
               </>
             )}
             {/* Dynamic legend for other color modes (when showLegend is true) */}

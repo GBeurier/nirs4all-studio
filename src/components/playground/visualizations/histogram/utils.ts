@@ -71,18 +71,22 @@ export function calculateOptimalBinCount(values: number[]): number {
 
 /**
  * Find the actual bar rect element from a Recharts mouse event target.
- * Handles the case where the target is a ReferenceArea overlay by looking underneath.
+ * Always prefers the topmost visible bar segment at the click position so stacked
+ * bar interactions resolve the segment the user actually hit.
  */
 export function findBarRect(e: MouseEvent | null, target: SVGElement | null): Element | null {
-  if (!e || !target) return null;
-
-  if (target.classList.contains('recharts-reference-area-rect')) {
+  if (e) {
     const elements = document.elementsFromPoint(e.clientX, e.clientY);
-    return elements.find(el =>
+    const topmostBarRect = elements.find(el =>
       el.classList.contains('recharts-rectangle') &&
       !el.classList.contains('recharts-reference-area-rect')
-    ) || null;
+    );
+    if (topmostBarRect) {
+      return topmostBarRect;
+    }
   }
+
+  if (!target) return null;
 
   if (target.tagName.toLowerCase() === 'rect') {
     return target;

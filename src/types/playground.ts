@@ -68,6 +68,13 @@ export interface PlaygroundData {
   wavelengths?: number[];
   sample_ids?: string[];
   metadata?: Record<string, unknown[]>;
+  /**
+   * Unit of the wavelength axis (e.g. "nm", "cm-1"). Forwarded to the backend
+   * so the executor can include it on the original/processed DataSections in
+   * the response. Allows charts to render the correct axis label even for
+   * uploaded (non-workspace) data.
+   */
+  header_unit?: string;
 }
 
 /**
@@ -226,6 +233,13 @@ export interface DataSection {
   sample_indices?: number[];
   shape: number[];
   statistics?: SpectrumStats;
+  /**
+   * Unit of the wavelength axis as detected by nirs4all from the dataset
+   * headers (e.g. "nm", "cm-1"). Used by spectra charts to label the X axis
+   * correctly. Optional because legacy responses and uploaded (non-workspace)
+   * data may not carry this information.
+   */
+  header_unit?: string;
 }
 
 /**

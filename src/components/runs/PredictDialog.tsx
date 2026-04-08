@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +56,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { api, listDatasets } from "@/api/client";
+import { api } from "@/api/client";
+import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 
 // ============================================================================
 // Types
@@ -236,10 +237,9 @@ function DatasetSelector({
   selectedPartition: string;
   onPartitionChange: (partition: string) => void;
 }) {
-  const { data: datasetsData, isLoading } = useQuery({
-    queryKey: ["datasets-for-predict"],
-    queryFn: () => listDatasets(false),
-  });
+  // Shared dataset cache (see src/hooks/useDatasetQueries.ts) — instant on
+  // open, persisted to localStorage, refreshed in the background.
+  const { data: datasetsData, isLoading } = useDatasetsQuery();
 
   return (
     <div className="space-y-4">

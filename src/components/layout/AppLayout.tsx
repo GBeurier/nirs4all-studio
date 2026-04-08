@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { BackendStartupBanner } from "./BackendStartupBanner";
 import { FloatingRunWidget } from "./FloatingRunWidget";
 import { useStartupUpdateCheck } from "@/hooks/useStartupUpdateCheck";
 
@@ -17,6 +18,7 @@ export function AppLayout() {
         </div>
         <div className="flex flex-1 flex-col overflow-hidden">
           <AppHeader />
+          <BackendStartupBanner />
           <main className="flex-1 overflow-auto p-4 md:p-6">
             <div className="h-full">
               <Outlet />

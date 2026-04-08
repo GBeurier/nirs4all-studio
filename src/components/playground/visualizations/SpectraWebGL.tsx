@@ -104,6 +104,12 @@ export interface SpectraWebGLProps {
   showGrid?: boolean;
   /** Opacity for non-selected lines when there's a selection (0-1) */
   unselectedOpacity?: number;
+  /**
+   * X-axis label. When omitted, defaults to "Wavelength (nm)". Pass a value
+   * derived from the dataset's header_unit so cm⁻¹ datasets render
+   * "Wavenumber (cm⁻¹)" instead of being mislabelled as nm.
+   */
+  xLabel?: string;
 }
 
 interface LineData {
@@ -1272,6 +1278,8 @@ interface SpectraSceneProps {
   selectedIndices?: Set<number>;
   /** Pinned sample indices for line grouping */
   pinnedIndices?: Set<number>;
+  /** X-axis label override (defaults to "Wavelength (nm)") */
+  xLabel?: string;
 }
 
 /**
@@ -1325,7 +1333,7 @@ function ResponsiveCamera() {
   return null;
 }
 
-function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx, aggregatedStats, groupedStats, unselectedOpacity, selectedIndices, pinnedIndices }: SpectraSceneProps) {
+function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, qualityConfig, showGrid, onHover, onClick, hoveredIdx, aggregatedStats, groupedStats, unselectedOpacity, selectedIndices, pinnedIndices, xLabel }: SpectraSceneProps) {
   const { camera } = useThree();
 
   // Setup orthographic camera on mount
@@ -1345,7 +1353,7 @@ function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, q
       {!aggregatedStats && !groupedStats && (
         <SpectraInteractionController lines={lines} onHover={onHover} onClick={onClick} />
       )}
-      <Axes yRange={yRange} xViewRange={xViewRange} showGrid={showGrid} />
+      <Axes yRange={yRange} xViewRange={xViewRange} showGrid={showGrid} xLabel={xLabel} />
 
       {/* Render aggregated area with min/max and median */}
       {aggregatedStats && (
@@ -1428,6 +1436,7 @@ export function SpectraWebGL({
   showQualityControls = true,
   showGrid = true,
   unselectedOpacity: propUnselectedOpacity,
+  xLabel,
 }: SpectraWebGLProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
@@ -1834,6 +1843,7 @@ export function SpectraWebGL({
           unselectedOpacity={effectiveUnselectedOpacity}
           selectedIndices={selectedIndicesSet}
           pinnedIndices={pinnedIndicesSet}
+          xLabel={xLabel}
         />
       </Canvas>
 

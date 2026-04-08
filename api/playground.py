@@ -83,6 +83,13 @@ class PlaygroundData(BaseModel):
     wavelengths: list[float] | None = Field(None, description="Wavelength headers")
     sample_ids: list[str] | None = Field(None, description="Sample identifiers")
     metadata: dict[str, list[Any]] | None = Field(None, description="Additional metadata columns")
+    header_unit: str | None = Field(
+        None,
+        description=(
+            "Unit of the wavelength axis (e.g. 'nm', 'cm-1'). Forwarded to the "
+            "executor so the response can label charts with the correct axis."
+        ),
+    )
 
 
 class SamplingOptions(BaseModel):
@@ -238,6 +245,7 @@ class PlaygroundExecutor:
         y_np=None,
         wavelengths_np: list[float] | None = None,
         metadata_np: dict[str, Any] | None = None,
+        header_unit: str | None = None,
     ) -> ExecuteResponse:
         """Execute pipeline on data.
 
@@ -268,6 +276,13 @@ class PlaygroundExecutor:
             X_original = np.array(data.x, dtype=np.float64)
             y = np.array(data.y, dtype=np.float64) if data.y else None
             wavelengths = data.wavelengths or list(range(X_original.shape[1]))
+
+        # Resolve the wavelength axis unit ("nm", "cm-1", ...) so the response
+        # can label charts correctly. Prefer an explicit kwarg from the caller
+        # (set by /execute-dataset from the loaded SpectroDataset), then fall
+        # back to the unit attached to the request payload (set by clients
+        # uploading data through /execute).
+        resolved_header_unit = header_unit if header_unit is not None else getattr(data, "header_unit", None)
 
         # Convert metadata to numpy arrays if provided
         metadata = None
@@ -663,12 +678,14 @@ class PlaygroundExecutor:
                 "sample_indices": sample_indices.tolist(),
                 "shape": list(X_sampled.shape),
                 "statistics": original_stats,
+                "header_unit": resolved_header_unit,
             },
             processed={
                 "spectra": X_processed_out.tolist(),
                 "wavelengths": wavelengths_out,
                 "shape": list(X_processed.shape),
                 "statistics": processed_stats,
+                "header_unit": resolved_header_unit,
             },
             pca=pca_result,
             umap=umap_result,
@@ -913,25 +930,64 @@ class PlaygroundExecutor:
         if operator is None:
             raise ValueError(f"Unknown splitter: {step.name}")
 
+        def _is_held_out_partition(value: Any) -> bool:
+            if value is None:
+                return False
+            return str(value).strip().lower() in {"test", "holdout", "held-out"}
+
+        # When the playground is previewing a dataset that already has a held-out
+        # test partition, CV splitters must only operate on the train subset.
+        # Keep global sample indices so the frontend can still render the full
+        # dataset and keep held-out test samples visible.
+        split_indices = np.arange(X.shape[0], dtype=int)
+        X_for_split = X
+        y_for_split = y
+        metadata_for_split = metadata
+
+        if kind == "cv_folds" and metadata:
+            partition_values = None
+            for key in ("set", "partition"):
+                values = metadata.get(key)
+                if values is not None and len(values) == X.shape[0]:
+                    partition_values = np.asarray(values)
+                    break
+
+            if partition_values is not None:
+                held_out_mask = np.array(
+                    [_is_held_out_partition(value) for value in partition_values],
+                    dtype=bool,
+                )
+                if held_out_mask.any() and (~held_out_mask).any():
+                    split_indices = np.flatnonzero(~held_out_mask)
+                    X_for_split = X[split_indices]
+                    y_for_split = y[split_indices] if y is not None else None
+                    metadata_for_split = {
+                        key: value[split_indices]
+                        if value is not None and len(value) == X.shape[0]
+                        else value
+                        for key, value in metadata.items()
+                    }
+
         # Prepare arguments for split()
         kwargs = {}
         import inspect
         sig = inspect.signature(operator.split)
 
-        if y is not None and "y" in sig.parameters:
+        if y_for_split is not None and "y" in sig.parameters:
             # For stratified splitters with continuous y, bin into classes
             if "Stratified" in step.name:
                 # Bin continuous y into quantile-based classes
-                n_bins = min(5, len(np.unique(y)))
+                n_bins = min(5, len(np.unique(y_for_split)))
                 if n_bins > 1:
                     y_binned = np.digitize(
-                        y, np.percentile(y, np.linspace(0, 100, n_bins + 1)[1:-1])
+                        y_for_split,
+                        np.percentile(y_for_split, np.linspace(0, 100, n_bins + 1)[1:-1]),
                     )
                     kwargs["y"] = y_binned
                 else:
-                    kwargs["y"] = y
+                    kwargs["y"] = y_for_split
             else:
-                kwargs["y"] = y
+                kwargs["y"] = y_for_split
 
         # Group-aware splitters require a `groups` array. Derive it from the
         # first available metadata column; fall back to a quantile-binned y so
@@ -945,29 +1001,39 @@ class PlaygroundExecutor:
         )
         if is_group_aware and "groups" in sig.parameters:
             groups = None
-            if metadata:
-                first_key = next(iter(metadata.keys()), None)
+            if metadata_for_split:
+                first_key = next(
+                    (
+                        key
+                        for key in metadata_for_split.keys()
+                        if key.lower() not in {"set", "partition"}
+                    ),
+                    None,
+                )
+                if first_key is None:
+                    first_key = next(iter(metadata_for_split.keys()), None)
                 if first_key is not None:
-                    groups = np.asarray(metadata[first_key])
-                    if groups.shape[0] != X.shape[0]:
+                    groups = np.asarray(metadata_for_split[first_key])
+                    if groups.shape[0] != X_for_split.shape[0]:
                         groups = None
-            if groups is None and y is not None:
-                n_bins = min(5, len(np.unique(y)))
+            if groups is None and y_for_split is not None:
+                n_bins = min(5, len(np.unique(y_for_split)))
                 if n_bins > 1:
                     groups = np.digitize(
-                        y, np.percentile(y, np.linspace(0, 100, n_bins + 1)[1:-1])
+                        y_for_split,
+                        np.percentile(y_for_split, np.linspace(0, 100, n_bins + 1)[1:-1]),
                     )
                 else:
-                    groups = np.zeros(X.shape[0], dtype=int)
+                    groups = np.zeros(X_for_split.shape[0], dtype=int)
             if groups is None:
                 # No metadata, no y — synthesize a balanced group label so the
                 # splitter can still produce folds for visualization.
-                n_groups = max(2, min(5, X.shape[0]))
-                groups = np.arange(X.shape[0]) % n_groups
+                n_groups = max(2, min(5, X_for_split.shape[0]))
+                groups = np.arange(X_for_split.shape[0]) % n_groups
             kwargs["groups"] = groups
 
         # Generate folds
-        folds_list = list(operator.split(X, **kwargs))
+        folds_list = list(operator.split(X_for_split, **kwargs))
 
         # Handle split_index for ShuffleSplit-like splitters
         split_index = options.get("split_index")
@@ -976,9 +1042,11 @@ class PlaygroundExecutor:
         folds_data = []
         fold_labels = np.full(X.shape[0], -1, dtype=int)  # -1 = not assigned
 
-        for fold_idx, (train_indices, test_indices) in enumerate(folds_list):
-            train_indices = np.array(train_indices)
-            test_indices = np.array(test_indices)
+        for fold_idx, (train_indices_local, test_indices_local) in enumerate(folds_list):
+            train_indices_local = np.asarray(train_indices_local, dtype=int)
+            test_indices_local = np.asarray(test_indices_local, dtype=int)
+            train_indices = split_indices[train_indices_local]
+            test_indices = split_indices[test_indices_local]
 
             fold_data = {
                 "fold_index": fold_idx,
@@ -1971,6 +2039,14 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
                 wavelengths = list(range(X.shape[1]))
         except Exception:
             wavelengths = list(range(X.shape[1]))
+
+        # Resolve the wavelength axis unit (e.g. "nm", "cm-1") so the response
+        # can label charts with the correct quantity. nirs4all detects this
+        # from the dataset headers; we forward it as-is to the executor.
+        try:
+            dataset_header_unit = dataset.header_unit(0)
+        except Exception:
+            dataset_header_unit = None
     except HTTPException:
         raise
     except Exception as e:
@@ -2045,6 +2121,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
             y_np=y_array,
             wavelengths_np=wavelengths,
             metadata_np=metadata_np,
+            header_unit=dataset_header_unit,
         )
     except Exception as e:
         raise HTTPException(

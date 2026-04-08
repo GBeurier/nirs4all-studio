@@ -243,6 +243,183 @@ class TestStoreAdapter:
         best_final = next(chain for chain in top_chains if chain["chain_id"] == "chain-final-best")
         assert best_final["final_test_score"] == 0.18
 
+    def test_get_dataset_top_chains_refit_only_flag_and_dedup(self, mock_polars_df):
+        """Refit-only chains carry the flag, and dedup avoids double-emit
+        when the best-final is also a top-CV winner."""
+        mock_store = MagicMock()
+        mock_store.query_chain_summaries.return_value = mock_polars_df([
+            # CV winner that is ALSO the best final - must not be duplicated.
+            {
+                "chain_id": "chain-cv-final-winner",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "dataset_a",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Model A",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_val_score": 0.95,
+                "cv_test_score": 0.93,
+                "cv_train_score": 0.97,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": 0.94,
+                "final_train_score": 0.96,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            },
+            # Refit-only chain (no CV folds) - should appear with the flag.
+            {
+                "chain_id": "chain-refit-only",
+                "run_id": "run-002",
+                "pipeline_id": "pipe-002",
+                "dataset_name": "dataset_a",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Model B",
+                "model_class": "PLSRegression",
+                "preprocessings": "MSC",
+                "cv_val_score": None,
+                "cv_test_score": None,
+                "cv_train_score": None,
+                "cv_fold_count": 0,
+                "cv_scores": {},
+                "final_test_score": 0.80,
+                "final_train_score": 0.82,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            },
+        ])
+
+        adapter = self._make_adapter(mock_store)
+        adapter._get_pipeline_metadata_map = MagicMock(return_value={})
+
+        result = adapter.get_dataset_top_chains(n=5)
+
+        assert len(result["datasets"]) == 1
+        top_chains = result["datasets"][0]["top_chains"]
+        ids = [chain["chain_id"] for chain in top_chains]
+        # Each chain appears exactly once.
+        assert ids.count("chain-cv-final-winner") == 1
+        assert ids.count("chain-refit-only") == 1
+        refit_chain = next(c for c in top_chains if c["chain_id"] == "chain-refit-only")
+        assert refit_chain.get("is_refit_only") is True
+        cv_chain = next(c for c in top_chains if c["chain_id"] == "chain-cv-final-winner")
+        assert cv_chain.get("is_refit_only") is not True
+
+    def test_get_dataset_top_chains_only_loads_metadata_for_selected(self, mock_polars_df):
+        """``_get_pipeline_metadata_map`` must be called only with the
+        pipeline ids of chains that survive ranking."""
+        rows = []
+        # Build n=1 selection: 5 CV chains, only one wins; 4 others must
+        # not appear in the metadata fetch.
+        for i in range(5):
+            rows.append({
+                "chain_id": f"chain-{i}",
+                "run_id": "run-001",
+                "pipeline_id": f"pipe-{i}",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": f"Model {i}",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_val_score": 0.10 + i * 0.05,  # rmse: lower is better -> i=0 wins
+                "cv_test_score": 0.12,
+                "cv_train_score": 0.09,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            })
+        mock_store = MagicMock()
+        mock_store.query_chain_summaries.return_value = mock_polars_df(rows)
+
+        adapter = self._make_adapter(mock_store)
+        meta_mock = MagicMock(return_value={})
+        adapter._get_pipeline_metadata_map = meta_mock
+
+        result = adapter.get_dataset_top_chains(n=1)
+
+        assert len(result["datasets"][0]["top_chains"]) == 1
+        assert result["datasets"][0]["top_chains"][0]["chain_id"] == "chain-0"
+        # Only the surviving pipeline id should have been requested.
+        meta_mock.assert_called_once()
+        called_ids = meta_mock.call_args[0][0]
+        assert set(called_ids) == {"pipe-0"}
+
+    def test_build_dataset_scores_prefers_final_and_keeps_cv_context(self, mock_polars_df):
+        mock_store = MagicMock()
+        mock_store.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-final",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "Model A",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_val_score": 0.12,
+                "cv_test_score": 0.14,
+                "cv_train_score": 0.10,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": 0.18,
+                "final_train_score": 0.11,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            },
+            {
+                "chain_id": "chain-cv",
+                "run_id": "run-002",
+                "pipeline_id": "pipe-002",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "Model B",
+                "model_class": "PLSRegression",
+                "preprocessings": "MSC",
+                "cv_val_score": 0.10,
+                "cv_test_score": 0.12,
+                "cv_train_score": 0.09,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": None,
+            },
+        ])
+
+        adapter = self._make_adapter(mock_store)
+
+        from api.workspace import _build_dataset_scores_payload
+
+        payload = _build_dataset_scores_payload(
+            adapter,
+            workspace_id="ws_001",
+            linked_datasets=[{"id": "ds_linked", "name": "dataset_a", "path": ""}],
+        )
+
+        assert payload["workspace_id"] == "ws_001"
+        assert len(payload["datasets"]) == 1
+        score_entry = payload["datasets"][0]
+        assert score_entry["linked_dataset_id"] == "ds_linked"
+        assert score_entry["score_kind"] == "final"
+        assert score_entry["best_score"] == 0.18
+        assert score_entry["cv_score"] == 0.12
+        assert score_entry["model_name"] == "Model A"
+
     def test_get_prediction_scatter(self):
         import numpy as np
 
@@ -292,6 +469,33 @@ class TestStoreAdapter:
             pass
 
         mock_store.close.assert_called_once()
+
+
+class TestWorkspaceResultsCaches:
+    def test_invalidate_results_caches_accepts_workspace_path(self, tmp_path):
+        from api import workspace as workspace_module
+
+        workspace_dir = tmp_path / "workspace"
+        workspace_dir.mkdir()
+        workspace_id = "ws_cache_test"
+        summary_key = (workspace_id, (("store.duckdb", 1, 1),), (), ("summary", 5))
+        scores_key = (workspace_id, (("store.duckdb", 1, 1),), (), ("dataset_scores",))
+
+        workspace_module._RESULTS_SUMMARY_CACHE.clear()
+        workspace_module._DATASET_SCORES_CACHE.clear()
+        workspace_module._RESULTS_SUMMARY_CACHE[summary_key] = {"ok": True}
+        workspace_module._DATASET_SCORES_CACHE[scores_key] = {"ok": True}
+
+        linked_ws = MagicMock(id=workspace_id, path=str(workspace_dir))
+        with patch.object(
+            workspace_module.workspace_manager,
+            "get_linked_workspaces",
+            return_value=[linked_ws],
+        ):
+            workspace_module._invalidate_results_caches(str(workspace_dir))
+
+        assert summary_key not in workspace_module._RESULTS_SUMMARY_CACHE
+        assert scores_key not in workspace_module._DATASET_SCORES_CACHE
 
 
 # ---------------------------------------------------------------------------

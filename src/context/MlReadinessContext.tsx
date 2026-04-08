@@ -20,6 +20,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { prefetchDatasetsList } from "@/hooks/useDatasetQueries";
 
 interface MlReadiness {
   coreReady: boolean;
@@ -81,10 +82,14 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
   const workspaceReadyFired = useRef(false);
 
   // Invalidate all queries when core becomes ready (backend first reachable)
+  // and warm dataset caches so the first navigation to /datasets is instant.
+  // The dataset list and linked-workspaces endpoints read from app_config.json
+  // and do not depend on nirs4all warmup, so they are safe to fire here.
   useEffect(() => {
     if (state.coreReady && !coreReadyFired.current) {
       coreReadyFired.current = true;
       queryClient.invalidateQueries();
+      prefetchDatasetsList(queryClient);
     }
   }, [state.coreReady, queryClient]);
 
@@ -112,7 +117,31 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     // Listen for backend status changes (core_ready)
     const cleanupStatus = electronApi?.onBackendStatusChanged?.((info) => {
       if (info.status === "running") {
-        setState((prev) => ({ ...prev, coreReady: true }));
+        setState((prev) => ({
+          ...prev,
+          coreReady: true,
+          mlError: null,
+        }));
+        return;
+      }
+
+      if (info.status === "starting" || info.status === "restarting") {
+        setState((prev) => ({
+          ...prev,
+          coreReady: false,
+          mlLoading: true,
+          mlError: null,
+        }));
+        return;
+      }
+
+      if (info.status === "error") {
+        setState((prev) => ({
+          ...prev,
+          coreReady: false,
+          mlLoading: false,
+          mlError: "Backend failed to start",
+        }));
       }
     });
 
@@ -176,9 +205,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       try {
         if (electronApi?.getMlStatus) {
           const status = await electronApi.getMlStatus();
-          // The IPC handler proxies /api/system/readiness — if we got a
-          // response at all, core is ready.
-          return apply({ ...status, core_ready: true });
+          return apply(status);
         }
         const data = await api.get<{
           ml_ready: boolean;
@@ -187,7 +214,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           core_ready?: boolean;
           workspace_ready?: boolean;
         }>("/system/readiness");
-        return apply({ ...data, core_ready: true });
+        return apply(data);
       } catch {
         // Backend not available yet, keep polling
         return false;

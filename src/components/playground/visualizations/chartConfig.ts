@@ -439,6 +439,46 @@ export function formatWavelength(value: number): string {
 }
 
 /**
+ * Normalize a header_unit string from the backend to a display-ready unit symbol.
+ * Returns "" for index/none/text/missing units (i.e. no physical unit available).
+ */
+export function formatWavelengthUnit(unit?: string | null): string {
+  if (!unit) return '';
+  const u = String(unit).trim().toLowerCase();
+  if (u === 'cm-1' || u === 'cm^-1' || u === 'cm⁻¹' || u === 'wavenumber') return 'cm⁻¹';
+  if (u === 'nm' || u === 'nanometer' || u === 'nanometers') return 'nm';
+  if (u === 'um' || u === 'µm' || u === 'micrometer' || u === 'micrometers') return 'µm';
+  if (u === 'index' || u === 'none' || u === 'text') return '';
+  return String(unit);
+}
+
+/**
+ * Build the X-axis label for a spectra chart based on the underlying header unit.
+ *
+ * - "nm" → "Wavelength (nm)"
+ * - "cm-1" → "Wavenumber (cm⁻¹)" (different physical quantity, not a wavelength)
+ * - missing/index/none → "Wavelength" (best-effort fallback when the unit is unknown)
+ */
+export function getWavelengthAxisLabel(unit?: string | null): string {
+  const symbol = formatWavelengthUnit(unit);
+  if (symbol === 'cm⁻¹') return 'Wavenumber (cm⁻¹)';
+  if (symbol === 'nm') return 'Wavelength (nm)';
+  if (symbol === 'µm') return 'Wavelength (µm)';
+  if (symbol) return `Wavelength (${symbol})`;
+  return 'Wavelength';
+}
+
+/**
+ * Short label for the X-axis quantity name only (without parentheses or unit).
+ * Used in tooltips that already render the unit separately.
+ */
+export function getWavelengthAxisName(unit?: string | null): string {
+  const symbol = formatWavelengthUnit(unit);
+  if (symbol === 'cm⁻¹') return 'Wavenumber';
+  return 'Wavelength';
+}
+
+/**
  * Format Y value for display
  */
 export function formatYValue(value: number, precision: number = 2): string {

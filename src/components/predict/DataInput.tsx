@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
 import {
   ClipboardPaste,
   Database,
@@ -10,7 +9,7 @@ import {
   Upload,
 } from "lucide-react";
 
-import { listDatasets } from "@/api/client";
+import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,12 +48,10 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
   const [pasteError, setPasteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: datasetsData } = useQuery({
-    queryKey: ["datasets-list"],
-    queryFn: () => listDatasets(),
-    staleTime: 30000,
-  });
-
+  // Shared dataset cache (see src/hooks/useDatasetQueries.ts) — instant on
+  // mount, persisted to localStorage, refreshed in the background, and
+  // invalidated by any dataset mutation app-wide.
+  const { data: datasetsData } = useDatasetsQuery();
   const datasets = datasetsData?.datasets ?? [];
   const isModelSelected = model != null;
 

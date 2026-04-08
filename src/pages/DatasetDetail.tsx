@@ -7,7 +7,7 @@
  * - Targets: Target distribution and statistics
  * - Raw Data: Paginated data table
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -30,15 +30,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useMlReadiness } from "@/context/MlReadinessContext";
 import {
   DatasetOverviewTab,
   DatasetSpectraTab,
   DatasetTargetsTab,
   DatasetRawDataTab,
 } from "@/components/datasets/detail";
-import { getDataset, previewDatasetById } from "@/api/client";
+import {
+  useDatasetQuery,
+  useDatasetPreviewQuery,
+} from "@/hooks/useDatasetQueries";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
-import type { Dataset, PreviewDataResponse } from "@/types/datasets";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -65,68 +68,35 @@ export default function DatasetDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { workspaceReady } = useMlReadiness();
 
-  // Data state
-  const [dataset, setDataset] = useState<Dataset | null>(null);
-  const [preview, setPreview] = useState<PreviewDataResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  // Server state via React Query — both queries are cached for 5 minutes and
+  // shared with DatasetQuickView, so navigating between Datasets ↔ Detail
+  // reuses already-fetched data instead of re-hitting the backend.
+  const datasetQuery = useDatasetQuery(id);
+  const previewQuery = useDatasetPreviewQuery(id, 100);
+
+  const dataset = datasetQuery.data ?? null;
+  const loading = datasetQuery.isLoading;
+  const error =
+    datasetQuery.error instanceof Error ? datasetQuery.error.message : null;
+  const preview = previewQuery.data ?? null;
+  const waitingForWorkspace = !!id && !workspaceReady && !preview;
+  const previewLoading =
+    waitingForWorkspace || previewQuery.isLoading || (previewQuery.isFetching && !preview);
+  const previewError =
+    previewQuery.error instanceof Error
+      ? previewQuery.error.message
+      : preview?.error ?? null;
+  const loadDataset = () => {
+    datasetQuery.refetch();
+  };
+  const loadPreview = () => {
+    previewQuery.refetch();
+  };
 
   // UI state
   const [activeTab, setActiveTab] = useState("overview");
-
-  // Load dataset
-  const loadDataset = useCallback(async () => {
-    if (!id) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { dataset } = await getDataset(id);
-      setDataset(dataset);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to load dataset";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  // Load preview data
-  const loadPreview = useCallback(async () => {
-    if (!dataset?.id) return;
-
-    setPreviewLoading(true);
-    setPreviewError(null);
-
-    try {
-      const result = await previewDatasetById(dataset.id, 100);
-      setPreview(result);
-      if (result.error) {
-        setPreviewError(result.error);
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to load preview";
-      setPreviewError(message);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, [dataset?.id]);
-
-  // Load dataset on mount
-  useEffect(() => {
-    loadDataset();
-  }, [loadDataset]);
-
-  // Load preview when dataset is available
-  useEffect(() => {
-    if (dataset && !preview && !previewLoading) {
-      loadPreview();
-    }
-  }, [dataset, preview, previewLoading, loadPreview]);
 
   // Loading state
   if (loading) {
@@ -262,7 +232,7 @@ export default function DatasetDetail() {
                         Repetition: {repetitionColumn}
                       </Badge>
                     )}
-                    {dataset.signal_types?.map((signalType) => (
+                    {Array.from(new Set(dataset.signal_types ?? [])).map((signalType) => (
                       <Badge key={signalType} variant="outline" className="capitalize">
                         {signalType}
                       </Badge>

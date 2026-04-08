@@ -16,10 +16,13 @@ import { extractModifiers } from '@/lib/playground/selectionUtils';
 import {
   getCategoricalColor,
   getContinuousColor,
-  normalizeValue,
   detectMetadataType,
-  PARTITION_COLORS,
   HIGHLIGHT_COLORS,
+  getHeldOutTestColor,
+  getPartitionRoleColor,
+  getSamplePartitionRole,
+  isHeldOutTestSample,
+  normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { exportChart } from '@/lib/chartExport';
 import { formatYValue } from '../chartConfig';
@@ -556,15 +559,31 @@ export function useHistogramData(props: YHistogramV2Props) {
       }
 
       case 'fold': {
-        if (uniqueFolds.length > 0) {
-          const foldCounts = entry.foldCounts || {};
+        if (entry.samples.length > 0) {
+          const foldCounts = new Map<number, number>();
           let maxFold = -1;
           let maxCount = 0;
-          for (const [fold, count] of Object.entries(foldCounts)) {
-            if (count > maxCount) {
-              maxCount = count;
-              maxFold = parseInt(fold, 10);
+          let heldOutCount = 0;
+
+          entry.samples.forEach((sampleIdx) => {
+            if (colorContext && isHeldOutTestSample(sampleIdx, colorContext)) {
+              heldOutCount += 1;
+              return;
             }
+
+            const foldLabel = colorContext?.foldLabels?.[sampleIdx];
+            if (foldLabel !== undefined && foldLabel >= 0) {
+              const nextCount = (foldCounts.get(foldLabel) ?? 0) + 1;
+              foldCounts.set(foldLabel, nextCount);
+              if (nextCount > maxCount) {
+                maxCount = nextCount;
+                maxFold = foldLabel;
+              }
+            }
+          });
+
+          if (heldOutCount > maxCount) {
+            return getHeldOutTestColor();
           }
           if (maxFold >= 0) {
             return getCategoricalColor(maxFold, globalColorConfig?.categoricalPalette ?? 'default');
@@ -574,10 +593,31 @@ export function useHistogramData(props: YHistogramV2Props) {
       }
 
       case 'partition': {
-        const trainCount = entry.samples.filter(s => colorContext?.trainIndices?.has(s)).length;
-        const testCount = entry.samples.filter(s => colorContext?.testIndices?.has(s)).length;
-        if (trainCount > testCount) return PARTITION_COLORS.train;
-        if (testCount > trainCount) return PARTITION_COLORS.test;
+        const partitionCounts = {
+          train: 0,
+          val: 0,
+          test: 0,
+        };
+
+        entry.samples.forEach((sampleIdx) => {
+          const role = colorContext ? getSamplePartitionRole(sampleIdx, colorContext) : 'unknown';
+          if (role === 'train' || role === 'val' || role === 'test') {
+            partitionCounts[role] += 1;
+          }
+        });
+
+        let dominantRole: 'train' | 'val' | 'test' | null = null;
+        let dominantCount = 0;
+        (['train', 'val', 'test'] as const).forEach((role) => {
+          if (partitionCounts[role] > dominantCount) {
+            dominantRole = role;
+            dominantCount = partitionCounts[role];
+          }
+        });
+
+        if (dominantRole) {
+          return getPartitionRoleColor(dominantRole);
+        }
         return 'hsl(var(--primary) / 0.6)';
       }
 

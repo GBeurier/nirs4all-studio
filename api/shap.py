@@ -616,7 +616,13 @@ def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) ->
 
 
 def _get_available_chains() -> list[DatasetChains]:
-    """Get available trained chains from the workspace store, grouped by dataset."""
+    """Return refit chains from the workspace store, grouped by dataset.
+
+    Only chains that have a final refit model artifact (``fold_final`` or
+    legacy ``final`` in ``fold_artifacts``) are returned -- SHAP analysis
+    requires a fitted model to explain.  Datasets with no refit chains
+    are omitted from the result entirely.
+    """
     workspace = workspace_manager.get_active_workspace()
     if not workspace or not STORE_AVAILABLE:
         return []
@@ -661,13 +667,36 @@ def _get_available_chains() -> list[DatasetChains]:
     result = []
     for ds_name in sorted(datasets_map):
         chains = datasets_map[ds_name]
-        # Sort: best cv_val_score first
-        chains.sort(
-            key=lambda c: c.get("cv_val_score") if c.get("cv_val_score") is not None else float("-inf"),
-            reverse=True
-        )
+        # Metric/task_type can be inferred from any chain in the dataset
+        # (CV or refit), so resolve before filtering.
         metric = next((c.get("metric") for c in chains if c.get("metric")), "")
         task_type = next((c.get("task_type") for c in chains if c.get("task_type")), None)
+
+        # Keep only chains that have a refit artifact -- SHAP analysis
+        # requires the final refit model.  Refit chains have
+        # cv_val_score=NULL (their predictions are stored with
+        # refit_context!=NULL, so the CV averaging in update_chain_summary
+        # excludes them), so they must be filtered BEFORE truncation;
+        # otherwise sorting by cv_val_score pushes them past the top-20
+        # cutoff and the resulting list is empty.
+        refit_only = [c for c in chains if c.get("chain_id", "") in refit_chains]
+
+        # Sort by final_test_score (the score that actually exists on a
+        # refit chain), falling back to cv_val_score for legacy rows that
+        # may have it populated.  Direction follows the existing
+        # higher-is-better convention used by the previous sort.
+        def _sort_key(c: dict[str, Any]) -> float:
+            score = c.get("final_test_score")
+            if score is None:
+                score = c.get("cv_val_score")
+            return float(score) if score is not None else float("-inf")
+
+        refit_only.sort(key=_sort_key, reverse=True)
+
+        if not refit_only:
+            # Skip datasets with no refit chains rather than emit an empty
+            # SelectGroup that confuses the UI dropdown.
+            continue
 
         available = [
             AvailableChain(
@@ -681,10 +710,9 @@ def _get_available_chains() -> list[DatasetChains]:
                 cv_val_score=c.get("cv_val_score"),
                 final_test_score=c.get("final_test_score"),
                 cv_fold_count=c.get("cv_fold_count", 0),
-                has_refit=c.get("chain_id", "") in refit_chains,
+                has_refit=True,
             )
-            for c in chains[:20]
-            if c.get("chain_id", "") in refit_chains  # Only models with refit artifact
+            for c in refit_only[:20]
         ]
 
         result.append(DatasetChains(

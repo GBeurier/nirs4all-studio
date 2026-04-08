@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
@@ -50,29 +50,27 @@ import {
 import type { DatasetScoreInfo } from "@/components/datasets/DatasetCard";
 import type { WizardInitialState } from "@/components/datasets/DatasetWizard";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
-import { useMlReadiness } from "@/context/MlReadinessContext";
 import {
-  listDatasets,
   linkDataset,
   unlinkDataset,
   refreshDataset,
   updateDatasetConfig,
   type UpdateDatasetRequest,
-  listGroups,
   createGroup,
   renameGroup,
   deleteGroup,
   addDatasetToGroup,
   removeDatasetFromGroup,
-  getLinkedWorkspaces,
-  reloadWorkspace,
   detectUnified,
   detectFilesList,
-  getWorkspaceResultsSummary,
 } from "@/api/client";
-import { getBestCvEntry, getBestFinalEntry } from "@/lib/scores";
-import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
-import type { DatasetTopChains } from "@/types/runs";
+import {
+  useDatasetsQuery,
+  useLinkedWorkspacesQuery,
+  useDatasetScoresQuery,
+  useInvalidateDatasets,
+} from "@/hooks/useDatasetQueries";
+import type { Dataset, DatasetConfig } from "@/types/datasets";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -89,31 +87,6 @@ const itemVariants = {
 
 type FilterGroup = "all" | string;
 
-function getDatasetBestScore(dataset: DatasetTopChains): DatasetScoreInfo | null {
-  const bestFinalChain = getBestFinalEntry(dataset.top_chains, dataset.metric);
-  if (bestFinalChain?.final_test_score != null) {
-    return {
-      score: bestFinalChain.final_test_score,
-      metric: dataset.metric ?? "score",
-      model: bestFinalChain.model_name,
-      isFinal: true,
-      cvScore: bestFinalChain.avg_val_score ?? undefined,
-    };
-  }
-
-  const bestCvChain = getBestCvEntry(dataset.top_chains, dataset.metric);
-  if (bestCvChain?.avg_val_score != null) {
-    return {
-      score: bestCvChain.avg_val_score,
-      metric: dataset.metric ?? "score",
-      model: bestCvChain.model_name,
-      isFinal: false,
-    };
-  }
-
-  return null;
-}
-
 export default function Datasets() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -121,17 +94,63 @@ export default function Datasets() {
   // Developer mode
   const isDeveloperMode = useIsDeveloperMode();
 
-  // Backend readiness — used to refetch dataset scores once the active
-  // nirs4all workspace has finished restoring. Until then, the results
-  // summary endpoint returns empty data even though the FastAPI layer is up.
-  const { workspaceReady } = useMlReadiness();
+  // ----------------------------------------------------------------------
+  // Server state via React Query
+  //
+  // Datasets, groups, the active workspace and per-dataset scores are all
+  // cached in the global QueryClient (5 min staleTime, 30 min gcTime). This
+  // means navigating away and back to /datasets renders cached data
+  // immediately and revalidates in the background instead of dropping the
+  // page back to a spinner — which was the original "still in loading mode
+  // at startup" complaint.
+  //
+  // The very first navigation is also primed by `prefetchDatasetsList()` in
+  // MlReadinessProvider as soon as the FastAPI core is reachable.
+  // ----------------------------------------------------------------------
+  const datasetsQuery = useDatasetsQuery();
+  const linkedWorkspacesQuery = useLinkedWorkspacesQuery();
+  const invalidateDatasets = useInvalidateDatasets();
 
-  // Data state
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [groups, setGroups] = useState<DatasetGroup[]>([]);
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const datasets = datasetsQuery.data?.datasets ?? [];
+  const groups = datasetsQuery.data?.groups ?? [];
+  const activeWorkspace = useMemo(
+    () => linkedWorkspacesQuery.data?.workspaces.find((ws) => ws.is_active) ?? null,
+    [linkedWorkspacesQuery.data]
+  );
+  const workspacePath = activeWorkspace?.path ?? null;
+  const workspaceId = activeWorkspace?.id ?? null;
+
+  // Show the spinner only when we have no cached data at all. After the first
+  // load, refetches happen in the background while the previous list stays
+  // visible (stale-while-revalidate).
+  const loading =
+    (datasetsQuery.isLoading || linkedWorkspacesQuery.isLoading) &&
+    !datasetsQuery.data;
+  const refreshing =
+    datasetsQuery.isFetching || linkedWorkspacesQuery.isFetching;
+  const loadError =
+    (datasetsQuery.error instanceof Error && datasetsQuery.error.message)
+    || (linkedWorkspacesQuery.error instanceof Error && linkedWorkspacesQuery.error.message)
+    || null;
+
+  // Per-dataset best scores. Gated on workspaceReady inside the hook so the
+  // request only fires once the SQLite store is authoritative.
+  const datasetScoresQuery = useDatasetScoresQuery(workspaceId);
+  const datasetScores = useMemo(() => {
+    const scores = new Map<string, DatasetScoreInfo>();
+    for (const entry of datasetScoresQuery.data?.datasets ?? []) {
+      const matchKey = entry.linked_dataset_id || entry.dataset_name;
+      if (!matchKey || entry.best_score == null) continue;
+      scores.set(matchKey, {
+        score: entry.best_score,
+        metric: entry.metric ?? "score",
+        model: entry.model_name || undefined,
+        isFinal: entry.score_kind === "final",
+        cvScore: entry.cv_score ?? undefined,
+      });
+    }
+    return scores;
+  }, [datasetScoresQuery.data]);
 
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
@@ -320,72 +339,6 @@ export default function Datasets() {
     disabled: false,
   });
 
-  // Load data
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      // Reload workspace from disk to ensure fresh data
-      await reloadWorkspace();
-
-      // Load workspace path from linked workspaces (active workspace)
-      try {
-        const linkedRes = await getLinkedWorkspaces();
-        const active = linkedRes.workspaces.find((ws) => ws.is_active);
-        setWorkspacePath(active?.path ?? null);
-      } catch {
-        setWorkspacePath(null);
-      }
-
-      // Load datasets
-      const dsResponse = await listDatasets();
-      setDatasets(dsResponse.datasets || []);
-
-      // Load groups
-      const groupsResponse = await listGroups();
-      setGroups(groupsResponse.groups || []);
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-    // Re-run after workspace_ready flips: the first call (right after backend
-    // start) gets fresh global dataset state, but the second is needed to pick
-    // up workspace-scoped data once nirs4all has finished restoring.
-  }, [loadData, workspaceReady]);
-
-  // Best scores per dataset (from results summary) — keyed by linked_dataset_id
-  const [datasetScores, setDatasetScores] = useState<Map<string, DatasetScoreInfo>>(new Map());
-  useEffect(() => {
-    // Scores come from the SQLite store via StoreAdapter, which requires the
-    // active nirs4all workspace to be restored. Skip the call until then to
-    // avoid caching an empty result that sticks around forever.
-    if (!workspaceReady) return;
-    (async () => {
-      try {
-        const linkedRes = await getLinkedWorkspaces();
-        const active = linkedRes.workspaces.find((ws) => ws.is_active);
-        if (!active) return;
-        const summary = await getWorkspaceResultsSummary(active.id);
-        const scores = new Map<string, DatasetScoreInfo>();
-        for (const ds of summary.datasets || []) {
-          // Use linked_dataset_id (resolved by backend) for matching
-          const matchKey = ds.linked_dataset_id || ds.dataset_name;
-          const bestScore = getDatasetBestScore(ds);
-          if (!matchKey || !bestScore) continue;
-          scores.set(matchKey, bestScore);
-        }
-        setDatasetScores(scores);
-      } catch {
-        // Scores are optional, ignore errors
-      }
-    })();
-  }, [datasets.length, workspaceReady]);
-
   // Normalize datasets to ensure they have required fields
   const normalizedDatasets = datasets.map((ds, index) => {
     if (!ds) return null;
@@ -467,12 +420,8 @@ export default function Datasets() {
   };
 
   const handleRefreshAll = async () => {
-    setRefreshing(true);
-    try {
-      await loadData();
-    } finally {
-      setRefreshing(false);
-    }
+    // Force a background refetch of every dataset cache key.
+    await invalidateDatasets();
   };
 
   const handleAddDataset = async (
@@ -483,7 +432,7 @@ export default function Datasets() {
     if (!result.success) {
       throw new Error("Failed to link dataset");
     }
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleEditDataset = (dataset: Dataset) => {
@@ -496,7 +445,7 @@ export default function Datasets() {
     updates: UpdateDatasetRequest
   ) => {
     await updateDatasetConfig(datasetId, updates);
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleDeleteDataset = async (dataset: Dataset) => {
@@ -506,12 +455,12 @@ export default function Datasets() {
     if (quickViewDataset?.id === dataset.id) {
       setQuickViewDataset(null);
     }
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleRefreshDataset = async (dataset: Dataset) => {
     await refreshDataset(dataset.id);
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleAssignGroup = async (
@@ -536,23 +485,23 @@ export default function Datasets() {
       }
     }
 
-    await loadData();
+    await invalidateDatasets();
   };
 
   // Groups handlers
   const handleCreateGroup = async (name: string) => {
     await createGroup(name);
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleRenameGroup = async (groupId: string, newName: string) => {
     await renameGroup(groupId, newName);
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleDeleteGroup = async (groupId: string) => {
     await deleteGroup(groupId);
-    await loadData();
+    await invalidateDatasets();
   };
 
   const handleRemoveDatasetFromGroup = async (
@@ -560,7 +509,7 @@ export default function Datasets() {
     datasetId: string
   ) => {
     await removeDatasetFromGroup(groupId, datasetId);
-    await loadData();
+    await invalidateDatasets();
   };
 
   return (
@@ -821,6 +770,24 @@ export default function Datasets() {
               </div>
             </CardContent>
           </Card>
+        ) : loadError ? (
+          <Card>
+            <CardContent className="p-12">
+              <div className="flex flex-col items-center justify-center text-center">
+                <Database className="h-10 w-10 text-destructive mb-4" />
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  Failed to load datasets
+                </h3>
+                <p className="text-muted-foreground max-w-md mb-6">
+                  {loadError}
+                </p>
+                <Button onClick={handleRefreshAll}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : filteredDatasets.length === 0 ? (
           <Card>
             <CardContent className="p-12">
@@ -924,7 +891,7 @@ export default function Datasets() {
         onSave={handleSaveDatasetConfig}
         onRefresh={async (datasetId) => {
           await refreshDataset(datasetId);
-          await loadData();
+          await invalidateDatasets();
         }}
       />
 
@@ -938,7 +905,7 @@ export default function Datasets() {
         onDeleteGroup={handleDeleteGroup}
         onAddDatasetToGroup={async (groupId, datasetId) => {
           await addDatasetToGroup(groupId, datasetId);
-          await loadData();
+          await invalidateDatasets();
         }}
         onRemoveDatasetFromGroup={handleRemoveDatasetFromGroup}
       />
@@ -947,7 +914,7 @@ export default function Datasets() {
       <SyntheticDataDialog
         open={syntheticDialogOpen}
         onOpenChange={setSyntheticDialogOpen}
-        onDatasetGenerated={() => loadData()}
+        onDatasetGenerated={() => { void invalidateDatasets(); }}
       />
 
       {/* Batch Scan Dialog */}
@@ -955,7 +922,7 @@ export default function Datasets() {
         open={batchScanOpen}
         onOpenChange={setBatchScanOpen}
         folderPath={batchScanPath}
-        onComplete={() => loadData()}
+        onComplete={() => { void invalidateDatasets(); }}
       />
 
       {/* Drag & Drop Overlay */}

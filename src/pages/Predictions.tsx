@@ -23,7 +23,6 @@ import { toast } from "sonner";
 import { EmptyState, ErrorState, LoadingState, NoWorkspaceState } from "@/components/ui/state-display";
 import {
   exportAggregatedPredictions,
-  getLinkedWorkspaces,
   getN4AWorkspacePredictionsData,
 } from "@/api/client";
 import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspaces";
@@ -35,6 +34,7 @@ import { FOLD_ORDER, isFinalFold, isAggFold, isNumberedFold } from "@/lib/fold-u
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getMetricAbbreviation, isLowerBetter } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
+import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 const FETCH_PAGE_SIZE = 1000;
 
@@ -156,11 +156,7 @@ export default function Predictions() {
     isLoading: workspacesLoading,
     error: workspacesError,
     refetch: refetchWorkspaces,
-  } = useQuery({
-    queryKey: ["linked-workspaces"],
-    queryFn: getLinkedWorkspaces,
-    staleTime: 30000,
-  });
+  } = useLinkedWorkspacesQuery();
 
   const activeWorkspace: LinkedWorkspace | null = workspacesData?.workspaces.find(workspace => workspace.is_active) ?? null;
 

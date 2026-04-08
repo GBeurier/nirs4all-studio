@@ -91,6 +91,8 @@ export interface SpectraChartToolbarProps {
   wavelengthRange?: [number, number];
   /** Wavelength count for settings */
   wavelengthCount?: number;
+  /** Unit symbol for wavelength range display (e.g. "nm", "cm⁻¹"). Empty string when unknown. */
+  wavelengthUnitSuffix?: string;
   /** Current render mode (user selection for UI display) */
   renderMode?: RenderMode;
   /** Effective render mode (actual mode being used for rendering) */
@@ -154,6 +156,7 @@ export function SpectraChartToolbar({
   metadataColumns,
   wavelengthRange,
   wavelengthCount,
+  wavelengthUnitSuffix = '',
   renderMode = 'auto',
   effectiveRenderMode,
   onRenderModeChange,
@@ -525,6 +528,7 @@ export function SpectraChartToolbar({
             metadataColumns={metadataColumns}
             wavelengthRange={wavelengthRange ?? [0, 1000]}
             wavelengthCount={wavelengthCount ?? 100}
+            wavelengthUnitSuffix={wavelengthUnitSuffix}
             totalSamples={totalSamples}
             onInteractionStart={onInteractionStart}
             compact={compact}

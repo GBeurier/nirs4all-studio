@@ -26,6 +26,7 @@
 
 import React, { Suspense } from 'react';
 import { BarChart3 } from 'lucide-react';
+import { getPresentPartitionRoles } from '@/lib/playground/colorConfig';
 import { useHistogramData } from './useHistogramData';
 import HistogramBase from './HistogramBase';
 import type { YHistogramV2Props, HistogramChartProps, BinData } from './types';
@@ -156,7 +157,7 @@ export function YHistogramV2(props: YHistogramV2Props) {
     }
 
     // Stack by partition (train/test)
-    if (shouldStackByPartition && colorContext?.trainIndices && colorContext?.testIndices) {
+    if (shouldStackByPartition && colorContext && getPresentPartitionRoles(colorContext).length > 0) {
       return <HistogramByPartition {...chartProps} />;
     }
 

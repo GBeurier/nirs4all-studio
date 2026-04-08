@@ -69,17 +69,23 @@ import type {
 function getCategoryIcon(name: string) {
   switch (name) {
     case "results":
+    case "Runs":
       return <FileBox className="h-4 w-4" />;
     case "models":
+    case "Trained models":
       return <Database className="h-4 w-4" />;
     case "predictions":
+    case "Exports":
       return <FolderOpen className="h-4 w-4" />;
     case "Prediction arrays":
       return <Database className="h-4 w-4" />;
     case "pipelines":
+    case "Templates":
       return <Archive className="h-4 w-4" />;
     case "cache":
     case "temp":
+    case "Cache":
+    case "Temp":
       return <Trash2 className="h-4 w-4 text-muted-foreground" />;
     default:
       return <HardDrive className="h-4 w-4" />;
@@ -92,17 +98,23 @@ function getCategoryIcon(name: string) {
 function getCategoryColor(name: string): string {
   switch (name) {
     case "results":
+    case "Runs":
       return "bg-blue-500";
     case "models":
+    case "Trained models":
       return "bg-green-500";
     case "predictions":
+    case "Exports":
       return "bg-purple-500";
     case "Prediction arrays":
       return "bg-cyan-500";
     case "pipelines":
+    case "Templates":
       return "bg-orange-500";
     case "cache":
     case "temp":
+    case "Cache":
+    case "Temp":
       return "bg-gray-400";
     default:
       return "bg-slate-500";
@@ -356,7 +368,30 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Summary */}
+        {/* Workspace-scoped counts (read from the active store via the
+            scanner — these are what nirs4all itself sees in this workspace). */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Runs</p>
+            <p className="text-2xl font-bold">{stats.runs_count}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Datasets</p>
+            <p className="text-2xl font-bold">{stats.datasets_count}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Predictions</p>
+            <p className="text-2xl font-bold">{stats.predictions_count}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Models</p>
+            <p className="text-2xl font-bold">{stats.models_count}</p>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Storage summary */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Total Size</p>
@@ -365,7 +400,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
             </p>
           </div>
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Linked Datasets</p>
+            <p className="text-sm text-muted-foreground">Globally Linked Datasets</p>
             <p className="text-2xl font-bold">
               {stats.linked_datasets_count}
               <span className="text-sm font-normal text-muted-foreground ml-2">

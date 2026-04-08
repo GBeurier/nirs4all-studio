@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { AlertTriangle, Pin, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -451,7 +451,6 @@ export function InspectorCanvas() {
 
   const renderPanel = (panelType: InspectorPanelType) => {
     const commonProps = {
-      key: panelType,
       panelType,
       viewState: panelStates[panelType],
       isMaximized: maximizedPanel === panelType,
@@ -799,7 +798,10 @@ export function InspectorCanvas() {
             />
           ) : (
             <div className={gridClassName}>
-              {panelIdsToRender.map(panelType => renderPanel(panelType))}
+              {panelIdsToRender.map(panelType => {
+                const panel = renderPanel(panelType);
+                return panel ? <Fragment key={panelType}>{panel}</Fragment> : null;
+              })}
             </div>
           )}
         </div>

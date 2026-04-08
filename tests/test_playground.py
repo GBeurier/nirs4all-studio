@@ -29,6 +29,54 @@ client = TestClient(app)
 # ============= Test Data Fixtures =============
 
 
+class _FakeMetadataFrame:
+    def __init__(self, data: dict[str, list[object]]):
+        self._data = data
+
+    def __len__(self) -> int:
+        if not self._data:
+            return 0
+        return len(next(iter(self._data.values())))
+
+    def to_dict(self, as_series: bool = False) -> dict[str, list[object]]:
+        return self._data
+
+
+class _FakePartitionedDataset:
+    def __init__(
+        self,
+        X_train: np.ndarray,
+        X_test: np.ndarray,
+        y_train: np.ndarray,
+        y_test: np.ndarray,
+    ):
+        self._X = {
+            "train": X_train,
+            "test": X_test,
+        }
+        self._y = {
+            "train": y_train,
+            "test": y_test,
+        }
+        self._metadata = {
+            "train": _FakeMetadataFrame({"group": [f"train_{i}" for i in range(len(X_train))]}),
+            "test": _FakeMetadataFrame({"group": [f"test_{i}" for i in range(len(X_test))]}),
+        }
+        self._headers = list(range(X_train.shape[1]))
+
+    def x(self, context, layout="2d"):
+        return self._X[context["partition"]]
+
+    def y(self, context):
+        return self._y[context["partition"]]
+
+    def metadata(self, context):
+        return self._metadata[context["partition"]]
+
+    def headers(self, _source_index):
+        return self._headers
+
+
 @pytest.fixture
 def sample_spectral_data():
     """Generate sample spectral data for testing."""
@@ -267,6 +315,60 @@ class TestSplitters:
         assert data["success"] is True
         assert len(data["execution_trace"]) == 2
         assert data["folds"] is not None
+
+    def test_execute_dataset_splitter_only_folds_train_partition(self, monkeypatch):
+        """Dataset-backed CV splitters must leave held-out test samples outside the folds."""
+        n_train = 12
+        n_test = 4
+        n_features = 8
+
+        X_train = np.arange(n_train * n_features, dtype=float).reshape(n_train, n_features)
+        X_test = np.arange(n_test * n_features, dtype=float).reshape(n_test, n_features) + 10_000
+        y_train = np.linspace(0.0, 1.0, n_train)
+        y_test = np.linspace(2.0, 3.0, n_test)
+
+        dataset = _FakePartitionedDataset(X_train, X_test, y_train, y_test)
+        monkeypatch.setattr("api.spectra._load_dataset", lambda _dataset_id: dataset)
+
+        response = client.post(
+            "/api/playground/execute-dataset",
+            json={
+                "dataset_id": "playground-cv-train-only",
+                "partition": "all",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "type": "splitting",
+                        "name": "KFold",
+                        "params": {"n_splits": 3},
+                        "enabled": True,
+                    }
+                ],
+                "options": {"use_cache": False},
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["source_partitions"] == {
+            "has_test": True,
+            "n_train": n_train,
+            "n_test": n_test,
+        }
+        assert data["folds"]["kind"] == "cv_folds"
+
+        fold_labels = data["folds"]["fold_labels"]
+        assert len(fold_labels) == n_train + n_test
+        assert all(label == -1 for label in fold_labels[n_train:])
+
+        fold_indices = set()
+        for fold in data["folds"]["folds"]:
+            fold_indices.update(fold["train_indices"])
+            fold_indices.update(fold["test_indices"])
+
+        assert fold_indices == set(range(n_train))
+        assert not any(idx >= n_train for idx in fold_indices)
 
 
 # ============= Statistics and PCA Tests =============

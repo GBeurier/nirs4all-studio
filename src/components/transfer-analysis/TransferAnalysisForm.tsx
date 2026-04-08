@@ -7,10 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { listDatasets } from '@/api/client';
+import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
 import { getPreprocessingOptions, getTransferPresets } from '@/api/transfer';
 import type { PreprocessingConfig, PreprocessingOptionInfo, TransferPresetInfo } from '@/types/transfer';
-import type { Dataset } from '@/types/datasets';
 
 interface TransferAnalysisFormProps {
   selectedDatasets: string[];
@@ -33,33 +32,44 @@ export function TransferAnalysisForm({
   knn,
   onKnnChange,
 }: TransferAnalysisFormProps) {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  // Datasets come from the shared cache (see src/hooks/useDatasetQueries.ts)
+  // — instant on mount, persisted to localStorage. Presets and preprocessing
+  // options remain in their own effect because they have no shared cache yet.
+  const datasetsQuery = useDatasetsQuery();
+  const datasets = datasetsQuery.data?.datasets ?? [];
+
   const [presets, setPresets] = useState<TransferPresetInfo[]>([]);
   const [preprocessingOptions, setPreprocessingOptions] = useState<PreprocessingOptionInfo[]>([]);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [optionsLoading, setOptionsLoading] = useState(true);
 
-  // Load datasets and options
   useEffect(() => {
-    async function loadData() {
-      setIsLoading(true);
+    let cancelled = false;
+    async function loadOptions() {
+      setOptionsLoading(true);
       try {
-        const [datasetsRes, presetsRes, optionsRes] = await Promise.all([
-          listDatasets(),
+        const [presetsRes, optionsRes] = await Promise.all([
           getTransferPresets(),
           getPreprocessingOptions(),
         ]);
-        setDatasets(datasetsRes.datasets || []);
+        if (cancelled) return;
         setPresets(presetsRes);
         setPreprocessingOptions(optionsRes);
       } catch (error) {
-        console.error('Failed to load form data:', error);
+        if (!cancelled) console.error('Failed to load transfer options:', error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setOptionsLoading(false);
       }
     }
-    loadData();
+    loadOptions();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Combined loading flag: datasets only spin on the very first cold load.
+  const isLoading =
+    (datasetsQuery.isLoading && !datasetsQuery.data) || optionsLoading;
 
   const handleDatasetToggle = (datasetId: string) => {
     if (selectedDatasets.includes(datasetId)) {

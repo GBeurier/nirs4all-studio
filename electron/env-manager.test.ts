@@ -113,9 +113,11 @@ describe("EnvManager", () => {
       }),
     );
 
+    let verifyCalls = 0;
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const callback = args[args.length - 1] as (error: Error | null) => void;
-      callback(new Error("missing packages"));
+      verifyCalls += 1;
+      callback(verifyCalls === 1 ? new Error("missing packages") : null);
     });
 
     childProcessMocks.spawn.mockImplementation(() => {
@@ -134,7 +136,7 @@ describe("EnvManager", () => {
     const { EnvManager } = await import("./env-manager");
     const manager = new EnvManager();
 
-    await expect(manager.ensureBackendPackages({ timeoutMs: 1000 })).resolves.toBeUndefined();
+    await expect(manager.ensureBackendPackages({ timeoutMs: 1000 })).resolves.toBe(true);
 
     const spawnCalls = childProcessMocks.spawn.mock.calls;
     expect(spawnCalls.length).toBeGreaterThanOrEqual(2);
@@ -151,6 +153,62 @@ describe("EnvManager", () => {
     for (const [, , options] of spawnCalls) {
       expect(options).toMatchObject({ shell: false });
     }
+  });
+
+  it("repairs a runtime that is missing nirs4all even when uvicorn and fastapi import", async () => {
+    const userDataDir = makeUserDataDir();
+    const settingsPath = path.join(userDataDir, "env-settings.json");
+    const pythonPath = path.join(userDataDir, "runtime", "python.exe");
+
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(pythonPath, "");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        pythonPath,
+        appVersion: "0.3.1",
+      }),
+    );
+
+    let heavyVerifyCalls = 0;
+    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+      const code = args[1] as string[];
+      const callback = args[args.length - 1] as (error: Error | null) => void;
+      if (Array.isArray(code) && code[1]?.includes("import uvicorn, fastapi")) {
+        callback(null);
+        return;
+      }
+      heavyVerifyCalls += 1;
+      callback(heavyVerifyCalls === 1 ? new Error("missing nirs4all") : null);
+    });
+
+    childProcessMocks.spawn.mockImplementation(() => {
+      const proc = new EventEmitter() as EventEmitter & {
+        pid: number;
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
+      proc.pid = 5678;
+      proc.stderr = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      process.nextTick(() => proc.emit("close", 0));
+      return proc;
+    });
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    await expect(manager.ensureBackendPackages({ timeoutMs: 1000 })).resolves.toBe(true);
+
+    expect(
+      childProcessMocks.spawn.mock.calls.some(
+        ([command, args]) =>
+          command === pythonPath &&
+          Array.isArray(args) &&
+          args.includes("pip") &&
+          args.includes("install"),
+      ),
+    ).toBe(true);
   });
 
   it("annotates spawn failures with the exact command that could not be started", async () => {

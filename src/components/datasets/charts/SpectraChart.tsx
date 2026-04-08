@@ -1,9 +1,25 @@
 /**
- * SpectraChart - SVG-based spectral visualization component
+ * SpectraChart - Recharts-based spectral visualization component
  *
  * Displays mean spectrum with optional min/max range shading.
  * Used in dataset previews and quick views.
  */
+import { useMemo } from "react";
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  formatWavelengthUnit,
+  getWavelengthAxisLabel,
+  getWavelengthAxisName,
+} from "@/components/playground/visualizations/chartConfig";
 
 export interface SpectraChartProps {
   /** Array of wavelength values for the x-axis */
@@ -16,14 +32,24 @@ export interface SpectraChartProps {
   minSpectrum?: number[];
   /** Maximum spectrum values for range display (optional) */
   maxSpectrum?: number[];
-  /** Chart width (default: 400) */
-  width?: number;
+  /** Chart width (default: 100%) */
+  width?: number | string;
   /** Chart height (default: 200) */
-  height?: number;
-  /** X-axis label (default: "Wavelength") */
+  height?: number | string;
+  /**
+   * Override the X-axis label entirely. When omitted, the label is derived
+   * from `unit` so cm⁻¹ datasets render "Wavenumber (cm⁻¹)" instead of being
+   * mislabelled as nm.
+   */
   xLabel?: string;
   /** Y-axis label (default: none) */
   yLabel?: string;
+  /**
+   * Wavelength axis unit (e.g. "nm", "cm-1") as detected by nirs4all from the
+   * dataset headers. Used to derive the X-axis label and tooltip text when
+   * `xLabel` is not explicitly set.
+   */
+  unit?: string;
   /** Show axis labels (default: true) */
   showLabels?: boolean;
   /** Mean line color override (default: primary) */
@@ -38,21 +64,33 @@ export function SpectraChart({
   stdSpectrum,
   minSpectrum,
   maxSpectrum,
-  width = 400,
+  width = "100%",
   height = 200,
-  xLabel = "Wavelength",
+  xLabel,
   yLabel,
+  unit,
   showLabels = true,
   lineColor,
   rangeFillColor,
 }: SpectraChartProps) {
-  // Calculate chart dimensions
-  const padding = { top: 20, right: 20, bottom: 30, left: 50 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
+  const resolvedXLabel = xLabel ?? getWavelengthAxisLabel(unit);
+  const axisName = getWavelengthAxisName(unit);
+  const unitSymbol = formatWavelengthUnit(unit);
+  const tooltipUnitSuffix = unitSymbol ? ` ${unitSymbol}` : "";
+  // Transform data for Recharts
+  const data = useMemo(() => {
+    if (!wavelengths?.length || !meanSpectrum?.length) return [];
+    return wavelengths.map((w, i) => {
+      const point: Record<string, number | number[]> = { wavelength: w, mean: meanSpectrum[i] };
+      if (minSpectrum && maxSpectrum) {
+        point.range = [minSpectrum[i], maxSpectrum[i]];
+      }
+      return point;
+    });
+  }, [wavelengths, meanSpectrum, minSpectrum, maxSpectrum]);
 
   // Handle empty data
-  if (!wavelengths.length || !meanSpectrum.length) {
+  if (!wavelengths?.length || !meanSpectrum?.length) {
     return (
       <div
         className="flex items-center justify-center text-muted-foreground text-sm"
@@ -63,117 +101,112 @@ export function SpectraChart({
     );
   }
 
-  // Scale functions
-  const xMin = Math.min(...wavelengths);
-  const xMax = Math.max(...wavelengths);
-  const allValues = [
-    ...meanSpectrum,
-    ...(minSpectrum || []),
-    ...(maxSpectrum || []),
-  ];
-  const yMin = Math.min(...allValues);
-  const yMax = Math.max(...allValues);
-  const yRange = yMax - yMin || 1;
-
-  const scaleX = (x: number) =>
-    padding.left + ((x - xMin) / (xMax - xMin || 1)) * chartWidth;
-  const scaleY = (y: number) =>
-    padding.top + chartHeight - ((y - yMin) / yRange) * chartHeight;
-
-  // Create path for mean spectrum
-  const meanPath = meanSpectrum
-    .map((y, i) => `${i === 0 ? "M" : "L"} ${scaleX(wavelengths[i])} ${scaleY(y)}`)
-    .join(" ");
-
-  // Create area for min-max range
-  let rangePath = "";
-  if (minSpectrum && maxSpectrum) {
-    const upper = maxSpectrum
-      .map((y, i) => `${i === 0 ? "M" : "L"} ${scaleX(wavelengths[i])} ${scaleY(y)}`)
-      .join(" ");
-    const lower = [...minSpectrum]
-      .reverse()
-      .map(
-        (y, i) =>
-          `L ${scaleX(wavelengths[wavelengths.length - 1 - i])} ${scaleY(y)}`
-      )
-      .join(" ");
-    rangePath = `${upper} ${lower} Z`;
-  }
+  const defaultColor = "hsl(var(--primary))";
+  const strokeColor = lineColor ?? defaultColor;
+  const fillColor = rangeFillColor ?? defaultColor;
+  const fillOpacity = rangeFillColor ? 1 : 0.15;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ aspectRatio: `${width} / ${height}` }}>
-      {/* Grid lines */}
-      {[0.25, 0.5, 0.75].map((t) => (
-        <line
-          key={t}
-          x1={padding.left}
-          x2={width - padding.right}
-          y1={padding.top + chartHeight * t}
-          y2={padding.top + chartHeight * t}
-          stroke="currentColor"
-          strokeOpacity={0.1}
-        />
-      ))}
-
-      {/* Range area */}
-      {rangePath && (
-        <path
-          d={rangePath}
-          fill={rangeFillColor ?? "hsl(var(--primary))"}
-          fillOpacity={rangeFillColor ? 1 : 0.1}
-          stroke="none"
-        />
-      )}
-
-      {/* Mean line */}
-      <path
-        d={meanPath}
-        fill="none"
-        stroke={lineColor ?? "hsl(var(--primary))"}
-        strokeWidth={2}
-      />
-
-      {/* X-axis */}
-      <line
-        x1={padding.left}
-        x2={width - padding.right}
-        y1={height - padding.bottom}
-        y2={height - padding.bottom}
-        stroke="currentColor"
-        strokeOpacity={0.3}
-      />
-      {showLabels && xLabel && (
-        <text
-          x={width / 2}
-          y={height - 5}
-          textAnchor="middle"
-          className="text-xs fill-muted-foreground"
+    <div style={{ width, height }} className="min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={data}
+          margin={{
+            top: 20,
+            right: 20,
+            left: -15, // Compress padding
+            bottom: showLabels ? 20 : 5,
+          }}
         >
-          {xLabel}
-        </text>
-      )}
-
-      {/* Y-axis */}
-      <line
-        x1={padding.left}
-        x2={padding.left}
-        y1={padding.top}
-        y2={height - padding.bottom}
-        stroke="currentColor"
-        strokeOpacity={0.3}
-      />
-      {showLabels && yLabel && (
-        <text
-          x={15}
-          y={height / 2}
-          textAnchor="middle"
-          className="text-xs fill-muted-foreground"
-          transform={`rotate(-90, 15, ${height / 2})`}
-        >
-          {yLabel}
-        </text>
-      )}
-    </svg>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+          <XAxis
+            dataKey="wavelength"
+            type="number"
+            domain={["dataMin", "dataMax"]}
+            minTickGap={30}
+            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+            tickLine={false}
+            axisLine={{ stroke: "hsl(var(--border))" }}
+            tickFormatter={(value) => Number(value).toFixed(0)}
+            label={
+              showLabels && resolvedXLabel
+                ? {
+                    value: resolvedXLabel,
+                    position: "insideBottom",
+                    offset: -15,
+                    fill: "hsl(var(--muted-foreground))",
+                    fontSize: 12,
+                  }
+                : undefined
+            }
+          />
+          <YAxis
+            type="number"
+            domain={["auto", "auto"]}
+            tickFormatter={(value) => {
+               // Handle large or very small numbers
+               if (value === 0) return "0";
+               if (Math.abs(value) >= 1000 || Math.abs(value) < 0.01) {
+                  return value.toExponential(1);
+               }
+               return value.toFixed(1);
+            }}
+            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+            tickLine={false}
+            axisLine={false}
+            width={45}
+            allowDecimals={true}
+            label={
+               showLabels && yLabel
+                 ? {
+                     value: yLabel,
+                     angle: -90,
+                     position: "insideLeft",
+                     fill: "hsl(var(--muted-foreground))",
+                     fontSize: 12,
+                   }
+                 : undefined
+             }
+          />
+          <Tooltip
+            contentStyle={{
+              borderRadius: "var(--radius)",
+              border: "1px solid hsl(var(--border))",
+              backgroundColor: "hsl(var(--background))",
+              fontSize: "12px",
+              boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+            }}
+            itemStyle={{ color: "hsl(var(--foreground))" }}
+            labelStyle={{ color: "hsl(var(--foreground))", fontWeight: "bold", marginBottom: "4px" }}
+            labelFormatter={(label) => `${axisName}: ${label}${tooltipUnitSuffix}`}
+            formatter={(value: unknown, name: string) => {
+              if (name === "range") {
+                const [lo, hi] = Array.isArray(value) ? value : [value, value];
+                return [`[${Number(lo).toFixed(3)}, ${Number(hi).toFixed(3)}]`, "Min/Max"];
+              }
+              return [typeof value === "number" ? value.toFixed(3) : value, "Mean"];
+            }}
+          />
+          {minSpectrum && maxSpectrum && (
+            <Area
+              type="monotone"
+              dataKey="range"
+              stroke="none"
+              fill={fillColor}
+              fillOpacity={fillOpacity}
+              activeDot={false}
+            />
+          )}
+          <Line
+            type="monotone"
+            dataKey="mean"
+            stroke={strokeColor}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, strokeWidth: 0, fill: strokeColor }}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

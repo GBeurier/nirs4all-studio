@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Target, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 import { TargetHistogram } from "../charts";
+import { buildTargetHistogramData } from "../charts/TargetHistogram";
 import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
 import type { Dataset, PartitionKey, PreviewDataResponse, TargetDistribution } from "@/types/datasets";
@@ -43,6 +44,7 @@ export function DatasetTargetsTab({
     }
     return preview?.target_distribution;
   }, [partitionMap, effectivePartition, preview?.target_distribution]);
+  const histogramData = useMemo(() => buildTargetHistogramData(distribution), [distribution]);
 
   if (loading) {
     return (
@@ -158,10 +160,10 @@ export function DatasetTargetsTab({
           <CardContent>
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,1fr)]">
               {/* Histogram */}
-              {distribution.histogram && (
+              {histogramData.length > 0 && (
                 <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
                   <TargetHistogram
-                    data={distribution.histogram}
+                    data={histogramData}
                     type={distribution.type}
                     width={640}
                     height={260}
