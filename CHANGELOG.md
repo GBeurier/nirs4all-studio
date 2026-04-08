@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.3.7] — 2026-04-08
+
+*(Release notes pending)*
+
+---
+
 ## [0.3.2] — 2026-04-03
 
 *(Release notes pending)*
