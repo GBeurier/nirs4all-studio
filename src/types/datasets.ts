@@ -177,6 +177,10 @@ export interface DatasetConfig {
   task_type?: TaskType;
   /** Aggregation settings */
   aggregation?: AggregationConfig;
+  /** Legacy flattened aggregate key used by some stored dataset configs */
+  aggregate?: string;
+  /** Legacy flattened repetition key used by some stored dataset configs */
+  repetition?: string;
   /** Fold configuration */
   folds?: FoldConfig | null;
 }
@@ -204,6 +208,10 @@ export interface Dataset {
 
   // Computed fields (from loading the dataset)
   num_samples?: number;
+  /** Number of samples in the train partition (subset of num_samples). */
+  train_samples?: number;
+  /** Number of samples in the test partition (0 when the dataset has no test files). */
+  test_samples?: number;
   num_features?: number;
   n_sources?: number;
   is_multi_source?: boolean;
@@ -555,45 +563,50 @@ export interface PreviewDataResponse {
     signal_type?: SignalType;
     header_unit?: HeaderUnit;
   };
-  spectra_preview?: {
-    wavelengths: number[];
-    mean_spectrum: number[];
-    std_spectrum: number[];
-    min_spectrum: number[];
-    max_spectrum: number[];
-    sample_spectra: number[][];
-  };
-  target_distribution?: {
-    type: "regression" | "classification";
-    values?: number[];
-    min?: number;
-    max?: number;
-    mean?: number;
-    std?: number;
-    histogram?: { bin: number; count: number }[];
-    classes?: string[];
-    class_counts?: Record<string, number>;
-  };
+  spectra_preview?: SpectraPreview;
+  target_distribution?: TargetDistribution;
   /** Per-source spectra data for multi-source datasets */
-  spectra_per_source?: Record<number, {
-    wavelengths: number[];
-    mean_spectrum: number[];
-    std_spectrum: number[];
-    min_spectrum: number[];
-    max_spectrum: number[];
-  }>;
+  spectra_per_source?: Record<number, SpectraPreview>;
   /** Per-target distribution data for multi-target datasets */
-  target_distributions?: Record<string, {
-    type: "regression" | "classification";
-    min?: number;
-    max?: number;
-    mean?: number;
-    std?: number;
-    histogram?: { bin: number; count: number }[];
-    classes?: string[];
-    class_counts?: Record<string, number>;
-  }>;
+  target_distributions?: Record<string, TargetDistribution>;
+  /** Partition-aware spectra preview map: keys are "train", "test" (when present), "all". */
+  spectra_preview_by_partition?: PartitionedSpectraPreview;
+  /** Partition-aware target distribution map. */
+  target_distribution_by_partition?: PartitionedTargetDistribution;
+  /** Partition-aware per-source spectra previews. */
+  spectra_per_source_by_partition?: Record<number, PartitionedSpectraPreview>;
 }
+
+/** A spectra preview produced by the backend (mean / min / max / sample_spectra). */
+export interface SpectraPreview {
+  wavelengths: number[];
+  mean_spectrum: number[];
+  std_spectrum: number[];
+  min_spectrum: number[];
+  max_spectrum: number[];
+  sample_spectra?: number[][];
+  n_samples?: number;
+}
+
+/** Target distribution produced by the backend. */
+export interface TargetDistribution {
+  type: "regression" | "classification";
+  n_samples?: number;
+  values?: number[];
+  min?: number;
+  max?: number;
+  mean?: number;
+  std?: number;
+  histogram?: { bin: number; count: number }[];
+  classes?: string[];
+  class_counts?: Record<string, number>;
+}
+
+/** Partition keys returned by partition-aware preview maps. */
+export type PartitionKey = "train" | "test" | "all";
+
+export type PartitionedSpectraPreview = Partial<Record<PartitionKey, SpectraPreview>>;
+export type PartitionedTargetDistribution = Partial<Record<PartitionKey, TargetDistribution>>;
 
 /**
  * Complete wizard state

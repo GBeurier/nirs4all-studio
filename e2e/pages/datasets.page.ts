@@ -24,7 +24,7 @@ export class DatasetsPage extends BasePage {
     super(page);
 
     this.pageTitle = page.getByRole('heading', { name: /datasets/i }).first();
-    this.addDatasetButton = page.getByRole('button', { name: /add.*dataset/i });
+    this.addDatasetButton = page.getByRole('button', { name: /add.*dataset/i }).first();
     this.groupsButton = page.getByRole('button', { name: /groups/i });
     // Use the page-specific search input, not the global sidebar search
     this.searchInput = page.getByPlaceholder('Search datasets...');

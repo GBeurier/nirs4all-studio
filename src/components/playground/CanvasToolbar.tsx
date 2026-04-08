@@ -115,7 +115,16 @@ export interface CanvasToolbarProps {
   // Chart visibility
   effectiveVisibleCharts: Set<ChartType>;
   onToggleChart: (chart: ChartType) => void;
+  /** True when CV folds (kind="cv_folds", n_folds > 1) are available. */
   hasFolds: boolean;
+  /**
+   * True when partition coloring should be enabled — independent from folds.
+   * Set when the source dataset has a test partition, when the first splitter
+   * has produced one, or when raw data carries a 'set' metadata column.
+   */
+  hasPartition: boolean;
+  /** True when the partition/fold distribution chart should be shown. */
+  showFoldsChart: boolean;
   hasRepetitions: boolean;
 
   // Loading state
@@ -424,6 +433,8 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   effectiveVisibleCharts,
   onToggleChart,
   hasFolds,
+  hasPartition,
+  showFoldsChart,
   hasRepetitions,
   isFetching,
   selectedCount,
@@ -519,8 +530,7 @@ export const CanvasToolbar = memo(function CanvasToolbar({
     });
   }, [metadata]);
 
-  // Determine if partition coloring is available (has folds with train/test split)
-  const hasPartition = hasFolds;
+  // hasPartition / hasFolds are now distinct concerns and are passed in directly.
 
   return (
     <div
@@ -536,9 +546,13 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           {/* Chart visibility toggles */}
           {CHART_CONFIG.map(({ id, label, requiresFolds, requiresRepetitions }) => {
             const isVisible = effectiveVisibleCharts.has(id);
-            const isDisabled = (requiresFolds && !hasFolds) || (requiresRepetitions && !hasRepetitions);
+            // The "folds" chart is shown for either CV folds or a train/test partition,
+            // since both produce a meaningful per-bucket distribution view.
+            const isDisabled = (requiresFolds && !showFoldsChart) || (requiresRepetitions && !hasRepetitions);
             const tooltipText = isDisabled
-              ? (requiresFolds ? 'Add a splitter operator to see folds' : 'No repetitions detected in dataset')
+              ? (requiresFolds
+                  ? 'Add a splitter operator (or load a dataset with a test partition) to see fold distribution'
+                  : 'No repetitions detected in dataset')
               : `${isVisible ? 'Hide' : 'Show'} ${label} chart (press ${CHART_CONFIG.findIndex(c => c.id === id) + 1})`;
 
             return (
@@ -755,8 +769,8 @@ export const CanvasToolbar = memo(function CanvasToolbar({
 
         {/* FILTER GROUP */}
         <RibbonGroup label="Filter" icon={<Filter className="w-2.5 h-2.5" />}>
-          {/* Partition filter */}
-          {hasFolds && (
+          {/* Partition filter — available when there's a partition (train/test) or CV folds */}
+          {(hasPartition || hasFolds) && (
             <PartitionSelector
               value={partitionFilter}
               onChange={onPartitionFilterChange}
@@ -897,7 +911,7 @@ export const CanvasToolbar = memo(function CanvasToolbar({
                 <Image className="w-4 h-4 mr-2" />
                 Histogram as PNG
               </DropdownMenuItem>
-              {hasFolds && (
+              {showFoldsChart && (
                 <DropdownMenuItem onClick={() => onExportChartPng('folds')}>
                   <Image className="w-4 h-4 mr-2" />
                   Folds as PNG

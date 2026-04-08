@@ -163,12 +163,111 @@ def _clear_dataset_cache(dataset_id: str | None = None):
         _dataset_cache.clear()
 
 
+def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: bool = False, want_metadata: bool = False):
+    """Load X (and optionally y / metadata) for a partition.
+
+    Supports partition="all" by concatenating train and test. Returns
+    (X, y, metadata_dict) where each can be None if not present/requested.
+    metadata_dict is a column-name → list mapping (compatible with the
+    current spectra endpoint response format).
+    """
+    import numpy as np
+
+    parts = ("train", "test") if partition == "all" else (partition,)
+
+    X_chunks: list = []
+    y_chunks: list = []
+    meta_columns: dict[str, list] = {}
+    meta_seen = False
+    set_labels: list[str] = []
+    loaded_parts: set[str] = set()
+
+    for p in parts:
+        sel = {"partition": p}
+        try:
+            X_p = dataset.x(sel, layout="2d", concat_source=False)
+        except Exception:
+            continue
+        if isinstance(X_p, list):
+            if source >= len(X_p):
+                continue
+            X_p = X_p[source]
+        if X_p is None or len(X_p) == 0:
+            continue
+        X_chunks.append(X_p)
+        loaded_parts.add(p)
+        if want_metadata:
+            set_labels.extend([p] * len(X_p))
+
+        if want_y:
+            try:
+                y_p = dataset.y(sel)
+                if y_p is not None and len(y_p) > 0:
+                    y_chunks.append(y_p if y_p.ndim == 1 else y_p[:, 0])
+                else:
+                    y_chunks.append(None)
+            except Exception:
+                y_chunks.append(None)
+
+        if want_metadata:
+            try:
+                meta_df = dataset.metadata(sel)
+            except Exception:
+                meta_df = None
+            if meta_df is not None and len(meta_df) > 0:
+                meta_seen = True
+                raw_dict = meta_df.to_dict(as_series=False)
+                for col_name, col_values in raw_dict.items():
+                    cleaned = [
+                        None if v is None or (isinstance(v, float) and v != v) else v
+                        for v in col_values
+                    ]
+                    if col_name not in meta_columns:
+                        # Pad with Nones if previous chunks missed this column
+                        prev_total = sum(len(c) for c in X_chunks[:-1])
+                        meta_columns[col_name] = [None] * prev_total
+                    meta_columns[col_name].extend(cleaned)
+        # Pad metadata columns that did not appear in this chunk
+        if want_metadata and meta_seen:
+            total_so_far = sum(len(c) for c in X_chunks)
+            for col_values in meta_columns.values():
+                if len(col_values) < total_so_far:
+                    col_values.extend([None] * (total_so_far - len(col_values)))
+
+    if not X_chunks:
+        return None, None, None
+
+    X = np.concatenate(X_chunks, axis=0) if len(X_chunks) > 1 else X_chunks[0]
+
+    y_out = None
+    if want_y and y_chunks and any(c is not None for c in y_chunks):
+        # Replace any None chunks with NaN-filled arrays of the right length
+        normalized = []
+        for X_chunk, y_chunk in zip(X_chunks, y_chunks):
+            if y_chunk is None:
+                normalized.append(np.full(len(X_chunk), np.nan))
+            else:
+                normalized.append(y_chunk)
+        y_out = np.concatenate(normalized, axis=0) if len(normalized) > 1 else normalized[0]
+
+    # When the response actually contains samples from more than one partition,
+    # inject a synthesized 'set' column so the frontend can distinguish train vs
+    # test rows even if the source dataset has no native 'set' metadata column.
+    # The injection is skipped when only a single partition was actually loaded.
+    if want_metadata and len(loaded_parts) > 1 and set_labels:
+        meta_columns.setdefault("set", set_labels)
+        meta_seen = True
+
+    meta_out = meta_columns if want_metadata and meta_seen else None
+    return X, y_out, meta_out
+
+
 @router.get("/spectra/{dataset_id}")
 async def get_spectra(
     dataset_id: str,
     start: int = Query(0, ge=0, description="Start index for pagination"),
     end: int | None = Query(None, description="End index (exclusive)"),
-    partition: str = Query("train", description="Partition to get spectra from"),
+    partition: str = Query("train", description="Partition: 'train', 'test', or 'all'"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
     include_y: bool = Query(False, description="Whether to include target (y) values"),
     include_metadata: bool = Query(False, description="Whether to include sample metadata"),
@@ -179,6 +278,8 @@ async def get_spectra(
     Returns spectral data as a 2D array with wavelength headers.
     Optionally includes target (y) values when include_y=True.
     Optionally includes sample metadata when include_metadata=True.
+
+    The 'partition' query supports 'train', 'test', or 'all' (concatenated train+test).
     """
     import numpy as np
     if not NIRS4ALL_AVAILABLE:
@@ -191,17 +292,14 @@ async def get_spectra(
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
-        selector = {"partition": partition}
-        X = dataset.x(selector, layout="2d", concat_source=False)
-
-        # Handle multi-source
-        if isinstance(X, list):
-            if source >= len(X):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Source index {source} out of range (max: {len(X) - 1})",
-                )
-            X = X[source]
+        X, y_full, meta_full = _get_partition_arrays(
+            dataset, partition, source=source, want_y=include_y, want_metadata=include_metadata,
+        )
+        if X is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No samples found for partition '{partition}' (source={source})",
+            )
 
         # Apply pagination
         total_samples = X.shape[0]
@@ -252,43 +350,21 @@ async def get_spectra(
 
         # Include y values if requested
         if include_y:
-            try:
-                y = dataset.y(selector)
-                if y is not None and len(y) > 0:
-                    y_slice = y[start:end]
-                    # Handle multi-target (2D) vs single-target (1D)
-                    if y_slice.ndim == 1:
-                        response["y"] = y_slice.tolist()
-                    else:
-                        # Use first target column for simplicity
-                        response["y"] = y_slice[:, 0].tolist()
-                else:
-                    response["y"] = None
-            except Exception as e:
-                logger.warning("Could not get y values: %s", e)
+            if y_full is not None:
+                y_slice = y_full[start:end]
+                response["y"] = y_slice.tolist()
+            else:
                 response["y"] = None
 
         # Include metadata if requested
         if include_metadata:
-            try:
-                meta_df = dataset.metadata(selector)
-                if meta_df is not None and len(meta_df) > 0:
-                    meta_df_slice = meta_df[start:end]
-                    raw_dict = meta_df_slice.to_dict(as_series=False)
-                    # Ensure all values are JSON-serializable (NaN → None)
-                    metadata_dict = {}
-                    for col_name, col_values in raw_dict.items():
-                        metadata_dict[col_name] = [
-                            None if v is None or (isinstance(v, float) and v != v) else v
-                            for v in col_values
-                        ]
-                    response["metadata"] = metadata_dict
-                    response["metadata_columns"] = list(raw_dict.keys())
-                else:
-                    response["metadata"] = None
-                    response["metadata_columns"] = []
-            except Exception as e:
-                logger.warning("Could not get metadata: %s", e)
+            if meta_full is not None:
+                metadata_dict = {
+                    col: list(values[start:end]) for col, values in meta_full.items()
+                }
+                response["metadata"] = metadata_dict
+                response["metadata_columns"] = list(meta_full.keys())
+            else:
                 response["metadata"] = None
                 response["metadata_columns"] = []
 
@@ -304,7 +380,7 @@ async def get_spectra(
 async def get_spectrum(
     dataset_id: str,
     sample_index: int,
-    partition: str = Query("train", description="Partition to get spectrum from"),
+    partition: str = Query("train", description="Partition: 'train', 'test', or 'all'"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
 ):
     """
@@ -322,17 +398,14 @@ async def get_spectrum(
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
-        selector = {"partition": partition}
-        X = dataset.x(selector, layout="2d", concat_source=False)
-
-        # Handle multi-source
-        if isinstance(X, list):
-            if source >= len(X):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Source index {source} out of range (max: {len(X) - 1})",
-                )
-            X = X[source]
+        X, y_full, meta_full = _get_partition_arrays(
+            dataset, partition, source=source, want_y=True, want_metadata=True,
+        )
+        if X is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No samples found for partition '{partition}' (source={source})",
+            )
 
         if sample_index < 0 or sample_index >= X.shape[0]:
             raise HTTPException(
@@ -349,23 +422,14 @@ async def get_spectrum(
         except Exception:
             wavelengths = list(range(len(spectrum)))
 
-        # Get target if available
         target = None
-        try:
-            y = dataset.y(selector)
-            if y is not None and len(y) > sample_index:
-                target = float(y[sample_index]) if y.ndim == 1 else y[sample_index].tolist()
-        except Exception:
-            pass
+        if y_full is not None and len(y_full) > sample_index:
+            val = y_full[sample_index]
+            target = float(val) if hasattr(val, "__float__") else val
 
-        # Get metadata if available
         metadata = None
-        try:
-            meta_df = dataset.metadata(selector)
-            if meta_df is not None and len(meta_df) > sample_index:
-                metadata = meta_df.row(sample_index, named=True)
-        except Exception:
-            pass
+        if meta_full is not None:
+            metadata = {col: values[sample_index] for col, values in meta_full.items()}
 
         return {
             "dataset_id": dataset_id,
@@ -401,12 +465,12 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
-        selector = {"partition": request.partition}
-        X = dataset.x(selector, layout="2d")
-
-        # Handle multi-source (concatenate for simplicity)
-        if isinstance(X, list):
-            X = X[0]  # Use first source for now
+        X, _, _ = _get_partition_arrays(dataset, request.partition, source=0)
+        if X is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No samples for partition '{request.partition}'",
+            )
 
         # Apply indices filter if provided
         if request.indices:
@@ -437,7 +501,7 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
 @router.get("/spectra/{dataset_id}/stats")
 async def get_spectra_statistics(
     dataset_id: str,
-    partition: str = Query("train", description="Partition to compute statistics for"),
+    partition: str = Query("train", description="Partition: 'train', 'test', or 'all'"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
 ):
     """
@@ -456,17 +520,12 @@ async def get_spectra_statistics(
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
-        selector = {"partition": partition}
-        X = dataset.x(selector, layout="2d", concat_source=False)
-
-        # Handle multi-source
-        if isinstance(X, list):
-            if source >= len(X):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Source index {source} out of range (max: {len(X) - 1})",
-                )
-            X = X[source]
+        X, _, _ = _get_partition_arrays(dataset, partition, source=source)
+        if X is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No samples for partition '{partition}' (source={source})",
+            )
 
         # Compute statistics
         mean = np.mean(X, axis=0).tolist()

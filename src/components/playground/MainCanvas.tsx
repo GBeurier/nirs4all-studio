@@ -388,26 +388,94 @@ export function MainCanvas({
     return first && 'set' in first;
   }, [rawData?.metadata]);
 
-  // Check if we have folds (from splitter) or metadata partition
+  // Partition coloring is available when:
+  //   1. The source dataset already has a test partition (set on /execute-dataset),
+  //   2. The pipeline contains a first splitter (kind="test_split" creates the test partition), or
+  //   3. The raw data carries a 'set' metadata column.
+  // It is intentionally INDEPENDENT from CV-fold availability.
+  const hasPartition = useMemo(() => {
+    if (result?.source_partitions?.has_test) return true;
+    if (result?.folds?.kind === 'test_split') return true;
+    return hasMetadataPartition;
+  }, [result?.source_partitions, result?.folds, hasMetadataPartition]);
+
+  // CV folds are available only when a splitter has produced multiple folds
+  // beyond the initial train/test split (kind="cv_folds" with n_folds > 1).
   const hasFolds = useMemo(() => {
-    return (result?.folds && result.folds.n_folds > 0) || hasMetadataPartition;
-  }, [result?.folds, hasMetadataPartition]);
+    return !!(result?.folds && result.folds.kind === 'cv_folds' && result.folds.n_folds > 1);
+  }, [result?.folds]);
+
+  const hasRawRepetitions = useMemo(() => {
+    const metadata = rawData?.metadata;
+    if (Array.isArray(metadata) && metadata.length > 1) {
+      const first = metadata[0];
+      if (first && typeof first === 'object') {
+        const metadataKeys = Object.keys(first).filter(
+          (key) => !['set', 'partition', 'fold', 'fold_id'].includes(key.toLowerCase())
+        );
+
+        for (const key of metadataKeys) {
+          const counts = new Map<string, number>();
+          for (const row of metadata) {
+            const value = row?.[key as keyof typeof row];
+            if (value === null || value === undefined || value === '') {
+              continue;
+            }
+            const token = String(value);
+            counts.set(token, (counts.get(token) ?? 0) + 1);
+          }
+          if (Array.from(counts.values()).some((count) => count >= 2)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    const sampleIds = rawData?.sampleIds;
+    if (Array.isArray(sampleIds) && sampleIds.length > 1) {
+      const patterns = [
+        /^(.+?)[-_][Rr]ep\d+$/,
+        /^(.+?)[-_]\d+$/,
+        /^(.+?)[-_][A-Za-z]$/,
+        /^(.+?)\s*\(\d+\)$/,
+      ];
+
+      for (const pattern of patterns) {
+        const groups = new Map<string, number>();
+        for (const sampleId of sampleIds) {
+          const value = String(sampleId);
+          const match = pattern.exec(value);
+          const key = match ? match[1] : value;
+          groups.set(key, (groups.get(key) ?? 0) + 1);
+        }
+        if (Array.from(groups.values()).some((count) => count >= 2)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }, [rawData?.metadata, rawData?.sampleIds]);
 
   const hasRepetitions = useMemo(() => {
-    return result?.repetitions?.has_repetitions ?? false;
-  }, [result?.repetitions]);
+    return result?.repetitions?.has_repetitions ?? hasRawRepetitions;
+  }, [result?.repetitions, hasRawRepetitions]);
+
+  // The fold-distribution chart is shown for either CV folds OR a train/test partition,
+  // since both produce a meaningful per-bucket breakdown.
+  const showFoldsChart = hasFolds || hasPartition;
 
   // Effective visible charts (filter out folds/repetitions if not available)
   const effectiveVisibleCharts = useMemo(() => {
     const visible = new Set(visibleCharts);
-    if (!hasFolds && visible.has('folds')) {
+    if (!showFoldsChart && visible.has('folds')) {
       visible.delete('folds');
     }
     if (!hasRepetitions && visible.has('repetitions')) {
       visible.delete('repetitions');
     }
     return visible;
-  }, [visibleCharts, hasFolds, hasRepetitions]);
+  }, [visibleCharts, showFoldsChart, hasRepetitions]);
 
   // OPT-8: Staggered chart mounting to avoid rendering burst
   const hasData = !!(rawData || result);
@@ -589,11 +657,55 @@ export function MainCanvas({
     return columnMetadata ? Object.keys(columnMetadata) : undefined;
   }, [columnMetadata]);
 
-  // Create effective folds - either from result or synthesized from metadata partition
+  // Create effective folds - either from result, synthesized from source_partitions,
+  // or synthesized from a metadata partition column.
   const effectiveFolds = useMemo(() => {
     // If we have folds from splitter, use them
     if (result?.folds && result.folds.n_folds > 0) {
       return result.folds;
+    }
+
+    // If the source dataset has a pre-existing test partition, synthesize a
+    // single-fold view from the n_train/n_test boundary.
+    const sp = result?.source_partitions;
+    if (sp?.has_test && sp.n_train + sp.n_test > 0) {
+      const trainArr: number[] = [];
+      for (let i = 0; i < sp.n_train; i++) trainArr.push(i);
+      const testArr: number[] = [];
+      for (let i = 0; i < sp.n_test; i++) testArr.push(sp.n_train + i);
+
+      let yTrainStats = undefined;
+      let yTestStats = undefined;
+      if (rawData?.y && rawData.y.length > 0) {
+        const yTrain = trainArr.map(i => rawData.y![i]).filter(v => v !== undefined);
+        const yTest = testArr.map(i => rawData.y![i]).filter(v => v !== undefined);
+        if (yTrain.length > 0) {
+          const mean = yTrain.reduce((a, b) => a + b, 0) / yTrain.length;
+          const std = Math.sqrt(yTrain.reduce((a, b) => a + (b - mean) ** 2, 0) / yTrain.length);
+          yTrainStats = { mean, std, min: Math.min(...yTrain), max: Math.max(...yTrain) };
+        }
+        if (yTest.length > 0) {
+          const mean = yTest.reduce((a, b) => a + b, 0) / yTest.length;
+          const std = Math.sqrt(yTest.reduce((a, b) => a + (b - mean) ** 2, 0) / yTest.length);
+          yTestStats = { mean, std, min: Math.min(...yTest), max: Math.max(...yTest) };
+        }
+      }
+
+      return {
+        splitter_name: 'Source Partition',
+        n_folds: 1,
+        folds: [{
+          fold_index: 0,
+          train_count: sp.n_train,
+          test_count: sp.n_test,
+          train_indices: trainArr,
+          test_indices: testArr,
+          y_train_stats: yTrainStats,
+          y_test_stats: yTestStats,
+        }],
+        // No fold_labels: this is a single train/test split, not K-fold CV.
+        fold_labels: undefined,
+      };
     }
 
     // If we have metadata partition, create a synthetic folds object
@@ -652,7 +764,7 @@ export function MainCanvas({
     }
 
     return null;
-  }, [result?.folds, metadataPartition, rawData?.y]);
+  }, [result?.folds, result?.source_partitions, metadataPartition, rawData?.y]);
 
   // Derive train/test indices from effectiveFolds for consistent coloring
   // Uses first fold only to ensure disjoint sets (K-fold has overlapping samples across folds)
@@ -865,6 +977,8 @@ export function MainCanvas({
         effectiveVisibleCharts={effectiveVisibleCharts}
         onToggleChart={toggleChart}
         hasFolds={!!hasFolds}
+        hasPartition={hasPartition}
+        showFoldsChart={showFoldsChart}
         hasRepetitions={hasRepetitions}
         isFetching={isFetching}
         selectedCount={selectedCount}
@@ -1064,8 +1178,8 @@ export function MainCanvas({
           </ChartPanel>
         )}
 
-        {/* Fold Distribution */}
-        {shouldRenderChart('folds') && hasFolds && (
+        {/* Fold / partition distribution chart (shown for either CV folds or a train/test partition) */}
+        {shouldRenderChart('folds') && showFoldsChart && (
           <ChartPanel
             ref={foldsChartRef}
             chartType="folds"

@@ -50,6 +50,8 @@ class DatasetLink:
     group_ids: list[str] = field(default_factory=list)
     # Computed fields from nirs4all
     num_samples: int | None = None
+    train_samples: int | None = None
+    test_samples: int | None = None
     num_features: int | None = None
     n_sources: int = 1
     task_type: str | None = None
@@ -76,6 +78,8 @@ class DatasetLink:
             stats=data.get("stats", {}),
             group_ids=data.get("group_ids") or ([data["group_id"]] if data.get("group_id") else []),
             num_samples=data.get("num_samples"),
+            train_samples=data.get("train_samples"),
+            test_samples=data.get("test_samples"),
             num_features=data.get("num_features"),
             n_sources=data.get("n_sources", 1),
             task_type=data.get("task_type"),
@@ -533,7 +537,7 @@ class AppConfigManager:
                 # Update allowed fields - including computed fields and stats
                 allowed_fields = [
                     "name", "config", "group_ids", "stats", "description",
-                    "num_samples", "num_features", "n_sources", "task_type",
+                    "num_samples", "train_samples", "test_samples", "num_features", "n_sources", "task_type",
                     "signal_types", "targets", "default_target",
                     "hash", "version", "version_status", "last_verified", "last_refreshed",
                 ]

@@ -31,6 +31,7 @@ import type {
   PlaygroundResult,
 } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
+import type { PartitionKey } from '@/types/datasets';
 
 /**
  * Options for usePlaygroundQuery
@@ -46,6 +47,8 @@ export interface UsePlaygroundQueryOptions {
   debounceMs?: number;
   /** Workspace dataset ID — when set, uses server-side dataset loading to avoid data round-trip */
   datasetId?: string | null;
+  /** Selected source dataset partition when using datasetId. */
+  datasetPartition?: PartitionKey;
   /** Callback when execution completes */
   onSuccess?: (result: PlaygroundResult) => void;
   /** Callback when execution fails */
@@ -84,6 +87,7 @@ function transformResponse(response: ExecuteResponse): PlaygroundResult {
     pca: response.pca,
     umap: response.umap,
     folds: response.folds,
+    source_partitions: response.source_partitions,
     filterInfo: response.filter_info,
     repetitions: response.repetitions,
     subsetInfo: response.subset_info,
@@ -119,6 +123,7 @@ export function usePlaygroundQuery(
     executeOptions,
     debounceMs = DEBOUNCE_DELAYS.STRUCTURE_CHANGE,
     datasetId,
+    datasetPartition,
     onSuccess,
     onError,
   } = options;
@@ -170,13 +175,13 @@ export function usePlaygroundQuery(
       executeOptions
     );
 
-    // Add datasetId to distinguish dataset-ref vs raw-data queries
+    // Add datasetId and datasetPartition to distinguish dataset-ref queries
     if (datasetId) {
-      return [...baseKey, 'dataset', datasetId] as const;
+      return [...baseKey, 'dataset', datasetId, datasetPartition ?? 'all'] as const;
     }
 
     return baseKey;
-  }, [data, debouncedPipelineHash, sampling, executeOptions, datasetId]);
+  }, [data, debouncedPipelineHash, sampling, executeOptions, datasetId, datasetPartition]);
 
   // Query function with abort support
   const queryFn = useCallback(async (): Promise<PlaygroundResult> => {
@@ -205,6 +210,7 @@ export function usePlaygroundQuery(
         response = await executeDatasetPlayground(
           {
             dataset_id: datasetId,
+            partition: datasetPartition,
             steps,
             sampling: sampling.method !== 'all'
               ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
@@ -280,7 +286,7 @@ export function usePlaygroundQuery(
         abortControllerRef.current = null;
       }
     }
-  }, [data, datasetId, debouncedPipelineHash, sampling, executeOptions]);
+  }, [data, datasetId, datasetPartition, debouncedPipelineHash, sampling, executeOptions]);
 
   // Parallel chart queries are disabled — PCA and repetitions are computed
   // in the main query for reliability. The parallel endpoints relied on a

@@ -26,6 +26,10 @@ export interface SpectraChartProps {
   yLabel?: string;
   /** Show axis labels (default: true) */
   showLabels?: boolean;
+  /** Mean line color override (default: primary) */
+  lineColor?: string;
+  /** Range fill color override (default: primary with low opacity) */
+  rangeFillColor?: string;
 }
 
 export function SpectraChart({
@@ -39,6 +43,8 @@ export function SpectraChart({
   xLabel = "Wavelength",
   yLabel,
   showLabels = true,
+  lineColor,
+  rangeFillColor,
 }: SpectraChartProps) {
   // Calculate chart dimensions
   const padding = { top: 20, right: 20, bottom: 30, left: 50 };
@@ -114,8 +120,8 @@ export function SpectraChart({
       {rangePath && (
         <path
           d={rangePath}
-          fill="hsl(var(--primary))"
-          fillOpacity={0.1}
+          fill={rangeFillColor ?? "hsl(var(--primary))"}
+          fillOpacity={rangeFillColor ? 1 : 0.1}
           stroke="none"
         />
       )}
@@ -124,7 +130,7 @@ export function SpectraChart({
       <path
         d={meanPath}
         fill="none"
-        stroke="hsl(var(--primary))"
+        stroke={lineColor ?? "hsl(var(--primary))"}
         strokeWidth={2}
       />
 

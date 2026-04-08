@@ -65,10 +65,13 @@ class TestRunStop:
         data = stop_response.json()
         assert data["success"] is True
 
-        # Verify run status changed to failed
-        run_response = workspace_client.get(f"/api/runs/{run_id}")
-        run = run_response.json()
-        assert run["status"] == "failed"
+        # Wait for the background task to actually transition to a terminal
+        # state — stop is asynchronous and the asyncio task that drives the run
+        # must finish before the test exits, otherwise leftover work can race
+        # with xdist worker teardown.
+        tracker = RunProgressTracker(workspace_client, run_id)
+        final_status = tracker.poll_until_complete(timeout=10.0, poll_interval=0.2)
+        assert final_status == "failed", f"Expected failed, got {final_status}"
 
     @pytest.mark.timeout(30)
     def test_stop_sets_error_message(
@@ -96,6 +99,11 @@ class TestRunStop:
 
         # Stop
         workspace_client.post(f"/api/runs/{run_id}/stop")
+
+        # Wait for terminal state so the background task is fully cleaned up
+        # before the test exits.
+        tracker = RunProgressTracker(workspace_client, run_id)
+        tracker.poll_until_complete(timeout=10.0, poll_interval=0.2)
 
         # Check error message
         run = workspace_client.get(f"/api/runs/{run_id}").json()
@@ -132,6 +140,11 @@ class TestRunStop:
 
         # Should succeed even if queued
         assert stop_response.status_code == 200
+
+        # Wait for terminal state so the background task is fully cleaned up
+        # before the test exits.
+        tracker = RunProgressTracker(workspace_client, run_id)
+        tracker.poll_until_complete(timeout=10.0, poll_interval=0.2)
 
 
 # ============================================================================
@@ -173,6 +186,14 @@ class TestRunPauseResume:
         # Verify paused status
         paused_run = workspace_client.get(f"/api/runs/{run_id}").json()
         assert paused_run["status"] == "paused"
+
+        # Stop the run so the background asyncio task and worker thread fully
+        # terminate before the test exits — otherwise an in-flight thread can
+        # outlive the test and crash the xdist worker on teardown.
+        workspace_client.post(f"/api/runs/{run_id}/resume")
+        workspace_client.post(f"/api/runs/{run_id}/stop")
+        tracker = RunProgressTracker(workspace_client, run_id)
+        tracker.poll_until_complete(timeout=10.0, poll_interval=0.2)
 
     @pytest.mark.timeout(60)
     def test_resume_paused_run(

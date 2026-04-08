@@ -478,7 +478,7 @@ def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
             k in normalized for k in ("estimator", "estimators", "transformers", "transformer_list", "dictionary")
         )
         if not has_nested:
-            from sklearn.linear_model import Ridge, LogisticRegression  # lazy import
+            from sklearn.linear_model import LogisticRegression, Ridge  # lazy import
             if name_lower in _regression_estimator_meta:
                 normalized["estimator"] = Ridge()
             elif name_lower in _classification_estimator_meta:

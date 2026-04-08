@@ -8,13 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -30,7 +23,8 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
-import type { Dataset, PreviewDataResponse } from "@/types/datasets";
+import { PartitionToggle } from "../PartitionToggle";
+import type { Dataset, PartitionKey, PreviewDataResponse } from "@/types/datasets";
 import { getDatasetSpectra, type SpectraResponse } from "@/api/playground";
 
 interface DatasetRawDataTabProps {
@@ -48,7 +42,12 @@ export function DatasetRawDataTab({
   error,
   onRefresh,
 }: DatasetRawDataTabProps) {
-  const [partition, setPartition] = useState<"all" | "train" | "test">("all");
+  const trainCount = preview?.summary?.train_samples;
+  const testCount = preview?.summary?.test_samples;
+  const hasTest = testCount != null && testCount > 0;
+
+  const [partition, setPartition] = useState<PartitionKey>("all");
+  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 20;
 
@@ -60,7 +59,7 @@ export function DatasetRawDataTab({
   // Reset page when partition changes
   useEffect(() => {
     setCurrentPage(0);
-  }, [partition]);
+  }, [effectivePartition]);
 
   // Check if we have sample data from preview
   const hasSampleData = preview?.summary?.num_samples && preview.summary.num_samples > 0;
@@ -79,7 +78,7 @@ export function DatasetRawDataTab({
         const data = await getDatasetSpectra(dataset.id, {
           start,
           end,
-          partition: partition === "all" ? "train" : partition,
+          partition: effectivePartition,
           includeY: true,
           includeMetadata: true,
         });
@@ -93,7 +92,7 @@ export function DatasetRawDataTab({
 
     fetchData();
     return () => { cancelled = true; };
-  }, [dataset?.id, currentPage, pageSize, partition, hasSampleData]);
+  }, [dataset?.id, currentPage, pageSize, effectivePartition, hasSampleData]);
 
   // Build columns and rows from real data
   const { columns, rows } = useMemo(() => {
@@ -195,16 +194,13 @@ export function DatasetRawDataTab({
     <div className="space-y-4">
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
-        <Select value={partition} onValueChange={(v) => setPartition(v as typeof partition)}>
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="Partition" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Data</SelectItem>
-            <SelectItem value="train">Train Only</SelectItem>
-            <SelectItem value="test">Test Only</SelectItem>
-          </SelectContent>
-        </Select>
+        <PartitionToggle
+          value={effectivePartition}
+          onChange={setPartition}
+          hasTest={hasTest}
+          trainCount={trainCount}
+          testCount={testCount}
+        />
       </div>
 
       {/* Data Table */}

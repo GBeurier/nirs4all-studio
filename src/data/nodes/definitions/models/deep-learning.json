@@ -375,7 +375,7 @@
       "transformer",
       "pretrained"
     ],
-    "source": "tabpfn",
+    "source": "nirs4all",
     "legacyClassPaths": [
       "nirs4all.operators.models.TabPFN"
     ],

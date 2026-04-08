@@ -18,9 +18,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { PartitionToggle } from '@/components/datasets';
 import { SpectralData } from '@/types/spectral';
 import { getWorkspace, type DatasetInfo } from '@/api/client';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
+import type { PartitionKey } from '@/types/datasets';
 import { cn } from '@/lib/utils';
 
 interface DataUploadProps {
@@ -30,7 +32,12 @@ interface DataUploadProps {
   dataSource: 'workspace' | 'demo' | null;
   currentDatasetInfo: WorkspaceDatasetInfo | null;
   onLoadDemo: () => void;
-  onLoadFromWorkspace: (datasetId: string, datasetName: string) => void;
+  onLoadFromWorkspace: (
+    datasetId: string,
+    datasetName: string,
+    partition?: PartitionKey,
+    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
+  ) => void;
   onClear: () => void;
   /** Whether to show the dataset selector even when data is loaded */
   showDatasetSelector?: boolean;
@@ -53,6 +60,14 @@ export function DataUpload({
   const [workspaceDatasets, setWorkspaceDatasets] = useState<DatasetInfo[]>([]);
   const [workspaceLoading, setWorkspaceLoading] = useState(true); // Start as loading
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+
+  const currentPartition = currentDatasetInfo?.partition ?? 'all';
+  const currentTrainSamples = currentDatasetInfo?.trainSamples;
+  const currentTestSamples = currentDatasetInfo?.testSamples;
+  const hasCurrentTestPartition = currentTestSamples != null && currentTestSamples > 0;
+  const effectiveCurrentPartition: PartitionKey = !hasCurrentTestPartition && currentPartition !== 'train'
+    ? 'train'
+    : currentPartition;
 
   // Fetch workspace datasets on mount
   useEffect(() => {
@@ -77,8 +92,11 @@ export function DataUpload({
     };
   }, []);
 
-  const handleDatasetSelect = useCallback((dataset: DatasetInfo) => {
-    onLoadFromWorkspace(dataset.id, dataset.name);
+  const handleDatasetSelect = useCallback((dataset: DatasetInfo, partition: PartitionKey = 'all') => {
+    onLoadFromWorkspace(dataset.id, dataset.name, partition, {
+      trainSamples: dataset.train_samples,
+      testSamples: dataset.test_samples,
+    });
   }, [onLoadFromWorkspace]);
 
   // Data loaded view (but can show selector if showDatasetSelector is true)
@@ -136,6 +154,38 @@ export function DataUpload({
           </div>
         </div>
 
+        {dataSource === 'workspace' && currentDatasetInfo && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Loaded Partition</p>
+              <p className="text-xs font-medium text-foreground">
+                {effectiveCurrentPartition === 'all' ? 'Both' : effectiveCurrentPartition === 'train' ? 'Train' : 'Test'}
+              </p>
+              {hasCurrentTestPartition && (
+                <p className="text-[10px] tabular-nums text-muted-foreground">
+                  {(currentTrainSamples ?? 0).toLocaleString()} train · {(currentTestSamples ?? 0).toLocaleString()} test
+                </p>
+              )}
+            </div>
+            <PartitionToggle
+              value={effectiveCurrentPartition}
+              onChange={(partition) => onLoadFromWorkspace(
+                currentDatasetInfo.datasetId,
+                currentDatasetInfo.datasetName,
+                partition,
+                {
+                  trainSamples: currentTrainSamples,
+                  testSamples: currentTestSamples,
+                },
+              )}
+              hasTest={hasCurrentTestPartition}
+              trainCount={currentTrainSamples}
+              testCount={currentTestSamples}
+              size="xs"
+            />
+          </div>
+        )}
+
         {/* Compact Stats Container */}
         <div className="bg-muted/30 rounded-md border border-border/40 divide-y divide-border/40">
            <div className="grid grid-cols-2 divide-x divide-border/40">
@@ -148,6 +198,14 @@ export function DataUpload({
                 <span className="font-mono text-xs">{data.wavelengths.length}</span>
              </div>
            </div>
+           {dataSource === 'workspace' && currentDatasetInfo && (
+             <div className="p-2 px-3 flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Partition</span>
+                <span className="font-mono text-xs text-foreground">
+                   {effectiveCurrentPartition === 'all' ? 'both' : effectiveCurrentPartition}
+                </span>
+             </div>
+           )}
            <div className="p-2 px-3 flex items-center justify-between">
               <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Range</span>
               <span className="font-mono text-xs text-foreground">
@@ -242,21 +300,35 @@ export function DataUpload({
                           <Database className="w-4 h-4 text-primary" />
                         </div>
                         <div className="min-w-0 flex-1">
+                          {(() => {
+                            const totalSamples = dataset.num_samples ?? dataset.samples;
+                            const totalFeatures = dataset.num_features ?? dataset.features;
+                            const hasTestPartition = dataset.test_samples != null && dataset.test_samples > 0;
+                            return (
+                              <>
                           <div className="font-medium text-sm truncate group-hover:text-primary transition-colors">
                             {dataset.name}
                           </div>
                           <div className="flex items-center gap-1.5 mt-1">
-                            {dataset.samples && (
+                            {totalSamples != null && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
-                                {dataset.samples.toLocaleString()} samples
+                                {totalSamples.toLocaleString()} samples
                               </Badge>
                             )}
-                            {dataset.features && (
+                            {totalFeatures != null && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
-                                {dataset.features.toLocaleString()} features
+                                {totalFeatures.toLocaleString()} features
                               </Badge>
                             )}
                           </div>
+                          {hasTestPartition && (
+                            <div className="mt-1 text-[10px] tabular-nums text-muted-foreground">
+                              {(dataset.train_samples ?? 0).toLocaleString()} train · {dataset.test_samples!.toLocaleString()} test
+                            </div>
+                          )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </button>

@@ -138,6 +138,11 @@ class PreviewDataResponse(BaseModel):
     target_distribution: dict[str, Any] | None = None
     spectra_per_source: dict[int, dict[str, Any]] | None = None
     target_distributions: dict[str, dict[str, Any]] | None = None
+    # Partition-aware previews. Each maps partition name → preview dict.
+    # Partition keys: "train" (always present when data exists), "test" (only when test partition exists), "all".
+    spectra_preview_by_partition: dict[str, dict[str, Any]] | None = None
+    target_distribution_by_partition: dict[str, dict[str, Any]] | None = None
+    spectra_per_source_by_partition: dict[int, dict[str, dict[str, Any]]] | None = None
 
 
 class SyntheticPresetInfo(BaseModel):
@@ -279,6 +284,7 @@ def _compute_spectra_preview(X, wavelengths) -> dict[str, Any]:
         "min_spectrum": np.min(X, axis=0).tolist(),
         "max_spectrum": np.max(X, axis=0).tolist(),
         "sample_spectra": X[:5].tolist() if len(X) >= 5 else X.tolist(),
+        "n_samples": int(len(X)),
     }
 
 
@@ -289,6 +295,7 @@ def _compute_target_distribution(y, is_regression: bool) -> dict[str, Any]:
         hist, bin_edges = np.histogram(y, bins=20)
         return {
             "type": "regression",
+            "n_samples": int(len(y)),
             "min": float(np.min(y)),
             "max": float(np.max(y)),
             "mean": float(np.mean(y)),
@@ -299,9 +306,125 @@ def _compute_target_distribution(y, is_regression: bool) -> dict[str, Any]:
         unique, counts = np.unique(y, return_counts=True)
         return {
             "type": "classification",
+            "n_samples": int(len(y)),
             "classes": [str(c) for c in unique.tolist()],
             "class_counts": {str(k): int(v) for k, v in zip(unique.tolist(), counts.tolist())},
         }
+
+
+def _safe_partition_X(dataset, partition: str, source_idx: int | None = None):
+    """Return X for a given partition, or None if empty/unavailable.
+
+    For multi-source datasets, pass source_idx to get a single source slice;
+    pass None to get the source-0 (or single-source) view.
+    """
+    try:
+        sel = {"partition": partition}
+        if source_idx is not None:
+            X_list = dataset.x(sel, layout="2d", concat_source=False)
+            if isinstance(X_list, list):
+                if source_idx >= len(X_list):
+                    return None
+                X = X_list[source_idx]
+            else:
+                X = X_list
+        else:
+            X = dataset.x(sel, layout="2d")
+            if isinstance(X, list):
+                X = X[0] if X else None
+        if X is None or len(X) == 0:
+            return None
+        return X
+    except Exception:
+        return None
+
+
+def _safe_partition_y(dataset, partition: str):
+    """Return y for a given partition, or None if empty/unavailable."""
+    try:
+        y = dataset.y({"partition": partition})
+        if y is None or len(y) == 0:
+            return None
+        return y
+    except Exception:
+        return None
+
+
+def _downsample_X(X, max_samples: int):
+    """Downsample X to at most max_samples rows for preview."""
+    import numpy as np
+    if len(X) > max_samples:
+        idx = np.linspace(0, len(X) - 1, max_samples, dtype=int)
+        return X[idx]
+    return X
+
+
+def _build_spectra_preview_by_partition(
+    dataset,
+    wavelengths,
+    max_samples: int,
+    source_idx: int | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Build {train, test?, all} → spectra preview map for a single source view.
+
+    'test' is omitted when the dataset has no test partition.
+    'all' is the concatenation of train and test (or just train when test is absent).
+    """
+    import numpy as np
+    out: dict[str, dict[str, Any]] = {}
+
+    X_train = _safe_partition_X(dataset, "train", source_idx)
+    X_test = _safe_partition_X(dataset, "test", source_idx)
+
+    if X_train is not None:
+        out["train"] = _compute_spectra_preview(_downsample_X(X_train, max_samples), wavelengths)
+
+    if X_test is not None:
+        out["test"] = _compute_spectra_preview(_downsample_X(X_test, max_samples), wavelengths)
+
+    # "all" view
+    if X_train is not None and X_test is not None:
+        X_all = np.concatenate([X_train, X_test], axis=0)
+    elif X_train is not None:
+        X_all = X_train
+    elif X_test is not None:
+        X_all = X_test
+    else:
+        return out
+
+    out["all"] = _compute_spectra_preview(_downsample_X(X_all, max_samples), wavelengths)
+    return out
+
+
+def _build_target_distribution_by_partition(dataset) -> dict[str, dict[str, Any]]:
+    """Build {train, test?, all} → target distribution map.
+
+    'test' is omitted when the dataset has no test target data.
+    """
+    import numpy as np
+    out: dict[str, dict[str, Any]] = {}
+    is_regression = dataset.is_regression
+
+    y_train = _safe_partition_y(dataset, "train")
+    y_test = _safe_partition_y(dataset, "test")
+
+    if y_train is not None:
+        out["train"] = _compute_target_distribution(y_train, is_regression)
+
+    if y_test is not None:
+        out["test"] = _compute_target_distribution(y_test, is_regression)
+
+    if y_train is not None and y_test is not None:
+        y_all = np.concatenate([y_train, y_test], axis=0)
+    elif y_train is not None:
+        y_all = y_train
+    elif y_test is not None:
+        y_all = y_test
+    else:
+        return out
+
+    out["all"] = _compute_target_distribution(y_all, is_regression)
+    return out
 
 
 # ============= Detection Endpoints =============
@@ -927,10 +1050,17 @@ async def preview_dataset(request: PreviewDataRequest):
 
             spectra_preview = _compute_spectra_preview(X, wavelengths)
 
+            # Partition-aware spectra previews (train, test if present, all)
+            spectra_preview_by_partition = _build_spectra_preview_by_partition(
+                dataset, wavelengths, request.max_samples, source_idx=0 if is_multi_source else None,
+            )
+
             # Per-source spectra for multi-source datasets
             spectra_per_source = None
+            spectra_per_source_by_partition: dict[int, dict[str, dict[str, Any]]] | None = None
             if is_multi_source and X_sources:
                 spectra_per_source = {}
+                spectra_per_source_by_partition = {}
                 for src_idx, X_src in enumerate(X_sources):
                     if X_src is None or len(X_src) == 0:
                         continue
@@ -946,6 +1076,9 @@ async def preview_dataset(request: PreviewDataRequest):
                         idx = np.linspace(0, len(X_preview) - 1, request.max_samples, dtype=int)
                         X_preview = X_preview[idx]
                     spectra_per_source[src_idx] = _compute_spectra_preview(X_preview, src_wl)
+                    spectra_per_source_by_partition[src_idx] = _build_spectra_preview_by_partition(
+                        dataset, src_wl, request.max_samples, source_idx=src_idx,
+                    )
 
             target_distribution = None
             try:
@@ -954,6 +1087,8 @@ async def preview_dataset(request: PreviewDataRequest):
                     target_distribution = _compute_target_distribution(y, dataset.is_regression)
             except Exception:
                 pass
+
+            target_distribution_by_partition = _build_target_distribution_by_partition(dataset)
 
             # Sample counts — use source 0 shape for multi-source
             train_samples = len(X_sources[0]) if X_sources else len(dataset.x({"partition": "train"}, layout="2d"))
@@ -990,6 +1125,9 @@ async def preview_dataset(request: PreviewDataRequest):
                 spectra_preview=spectra_preview,
                 target_distribution=target_distribution,
                 spectra_per_source=spectra_per_source,
+                spectra_preview_by_partition=spectra_preview_by_partition or None,
+                target_distribution_by_partition=target_distribution_by_partition or None,
+                spectra_per_source_by_partition=spectra_per_source_by_partition,
             )
 
         except Exception as e:
@@ -1144,15 +1282,21 @@ async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
         max_samples=max_samples,
     ))
 
-    # Back-fill stored stats if preview loaded successfully but stored stats are missing
-    if result.success and result.summary and not dataset_info.get("num_samples"):
+    # Back-fill stored stats if preview loaded successfully. Always refresh
+    # train/test sample counts since they may have been computed in an earlier
+    # build that did not store them yet.
+    if result.success and result.summary:
         try:
             from .app_config import app_config
-            app_config.update_dataset(dataset_id, {
-                "num_samples": result.summary.get("num_samples"),
-                "num_features": result.summary.get("num_features"),
-                "n_sources": result.summary.get("n_sources", 1),
-            })
+            updates: dict[str, Any] = {
+                "train_samples": result.summary.get("train_samples"),
+                "test_samples": result.summary.get("test_samples"),
+            }
+            if not dataset_info.get("num_samples"):
+                updates["num_samples"] = result.summary.get("num_samples")
+                updates["num_features"] = result.summary.get("num_features")
+                updates["n_sources"] = result.summary.get("n_sources", 1)
+            app_config.update_dataset(dataset_id, updates)
         except Exception:
             pass  # Non-critical: stats will show via preview fallback in frontend
 

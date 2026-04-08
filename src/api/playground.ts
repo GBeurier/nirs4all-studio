@@ -82,6 +82,7 @@ export async function executePlayground(
  */
 export interface ExecuteDatasetRequest {
   dataset_id: string;
+  partition?: 'train' | 'test' | 'all';
   steps: PlaygroundStep[];
   sampling?: ExecuteRequest['sampling'];
   options?: Record<string, unknown>;
@@ -314,10 +315,14 @@ export async function getDatasetSpectraStats(
  */
 export async function loadWorkspaceDataset(
   datasetId: string,
-  datasetName?: string
+  datasetName?: string,
+  partition: 'train' | 'test' | 'all' = 'all'
 ): Promise<SpectralData> {
-  // Request Y values and metadata along with spectra
-  const response = await getDatasetSpectra(datasetId, { includeY: true, includeMetadata: true });
+  const response = await getDatasetSpectra(datasetId, {
+    partition,
+    includeY: true,
+    includeMetadata: true,
+  });
 
   // Convert wavelengths to numbers with robust handling
   // Backend may return numbers, strings, or edge cases like empty/null

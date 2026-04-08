@@ -29,3 +29,6 @@ export { BatchScanDialog } from "./BatchScanDialog";
 // Drag & Drop
 export { DropZoneOverlay, useDragDrop } from "./DropZoneOverlay";
 export type { DroppedContent } from "./DropZoneOverlay";
+
+// Partition filter (train/test/all)
+export { PartitionToggle } from "./PartitionToggle";

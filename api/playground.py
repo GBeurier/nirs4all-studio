@@ -114,6 +114,7 @@ class ExecuteDatasetRequest(BaseModel):
     """
 
     dataset_id: str = Field(..., description="Workspace dataset identifier")
+    partition: str = Field("all", description="Dataset partition to load: train, test, or all")
     steps: list[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
     sampling: SamplingOptions | None = Field(None, description="Sampling options for large datasets")
     options: dict[str, Any] = Field(
@@ -193,6 +194,10 @@ class ExecuteResponse(BaseModel):
     execution_trace: list[StepTrace] = Field(default_factory=list, description="Per-step execution info")
     step_errors: list[dict[str, Any]] = Field(default_factory=list, description="Any step-level errors")
     is_raw_data: bool = Field(default=False, description="True if no operators were applied")
+    source_partitions: dict[str, Any] | None = Field(
+        None,
+        description="Source dataset partition info: {has_test, n_train, n_test}. Set when the executor is invoked on a dataset with a known partition layout.",
+    )
 
 
 # ============= PlaygroundExecutor =============
@@ -337,6 +342,13 @@ class PlaygroundExecutor:
         step_errors: list[dict[str, Any]] = []
         fold_info = None
         filter_info = None
+        # Source partitions: forwarded from caller (execute-dataset detects whether
+        # the dataset already has a test partition). Used to label the first
+        # splitter's kind: when the source has no test partition, the first split
+        # creates one (kind="test_split"); subsequent splits produce CV folds.
+        source_partitions = options.get("source_partitions") if options else None
+        pre_has_test = bool(source_partitions and source_partitions.get("has_test"))
+        splitter_count = 0
         augmentation_info = None
         splitter_applied = False
         total_filtered = 0
@@ -366,6 +378,8 @@ class PlaygroundExecutor:
                     execution_trace = list(cached_state.get("trace", []))
                     step_errors = list(cached_state.get("errors", []))
                     splitter_applied = cached_state.get("splitter_applied", False)
+                    splitter_count = cached_state.get("splitter_count", 0)
+                    pre_has_test = cached_state.get("pre_has_test", pre_has_test)
                     total_filtered = cached_state.get("total_filtered", 0)
                     skip_count = i
                     break
@@ -383,10 +397,19 @@ class PlaygroundExecutor:
             step_start = time.perf_counter()
             try:
                 if step.type == "splitting":
-                    # Handle splitter
+                    # Handle splitter — first splitter on a dataset without an
+                    # existing test partition creates that partition; subsequent
+                    # splits (or any split when test already exists) produce CV folds.
+                    splitter_count += 1
+                    splitter_kind = "cv_folds" if (pre_has_test or splitter_count > 1) else "test_split"
                     fold_info = self._execute_splitter(
-                        step, X_processed, y_sampled, options, metadata_sampled
+                        step, X_processed, y_sampled, options, metadata_sampled,
+                        kind=splitter_kind,
                     )
+                    if splitter_kind == "test_split":
+                        # Once the first split has run, the dataset effectively has
+                        # a test partition for any subsequent splitter steps.
+                        pre_has_test = True
                     splitter_applied = True
                     trace = StepTrace(
                         step_id=step.id,
@@ -518,6 +541,8 @@ class PlaygroundExecutor:
                     "trace": list(execution_trace),
                     "errors": list(step_errors),
                     "splitter_applied": splitter_applied,
+                    "splitter_count": splitter_count,
+                    "pre_has_test": pre_has_test,
                     "total_filtered": total_filtered,
                 })
 
@@ -655,7 +680,8 @@ class PlaygroundExecutor:
             subset_info=subset_info,
             execution_trace=execution_trace,
             step_errors=step_errors,
-            is_raw_data=is_raw_data
+            is_raw_data=is_raw_data,
+            source_partitions=source_partitions,
         )
 
         return response
@@ -721,6 +747,7 @@ class PlaygroundExecutor:
             Transformed data
         """
         import inspect
+
         import numpy as np
 
         params = dict(step.params)
@@ -865,6 +892,8 @@ class PlaygroundExecutor:
         y,
         options: dict[str, Any],
         metadata: dict[str, Any] | None = None,
+        *,
+        kind: str = "cv_folds",
     ) -> dict[str, Any]:
         """Execute a splitter step.
 
@@ -995,6 +1024,7 @@ class PlaygroundExecutor:
             "folds": folds_data,
             "fold_labels": fold_labels.tolist(),
             "split_index": split_index,
+            "kind": kind,
         }
 
     def _compute_statistics(self, X) -> dict[str, Any]:
@@ -1821,19 +1851,115 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
             detail=f"Dataset '{request.dataset_id}' not found or could not be loaded"
         )
 
-    # Extract X, y, wavelengths from SpectroDataset as numpy arrays (no .tolist() conversion)
+    # Extract X, y, wavelengths from SpectroDataset as numpy arrays (no .tolist() conversion).
+    # When the dataset has a pre-existing test partition, we load both train and test
+    # and concatenate them so the playground can color samples by their source partition
+    # without requiring the user to add a splitter step.
     try:
-        X = dataset.x({"partition": "train"}, layout="2d")
-        if isinstance(X, list):
-            X = X[0]
+        def _load_partition(part: str):
+            """Return (X, y, metadata_dict) for a single partition, or (None, None, None) if empty."""
+            try:
+                X_p = dataset.x({"partition": part}, layout="2d")
+                if isinstance(X_p, list):
+                    X_p = X_p[0]
+                if X_p is None or len(X_p) == 0:
+                    return None, None, None
+            except Exception:
+                return None, None, None
 
-        y_array = None
-        try:
-            y_raw = dataset.y({"partition": "train"})
-            if y_raw is not None and len(y_raw) > 0:
-                y_array = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
-        except Exception:
-            pass
+            y_p = None
+            try:
+                y_raw = dataset.y({"partition": part})
+                if y_raw is not None and len(y_raw) > 0:
+                    y_p = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+            except Exception:
+                pass
+
+            meta_p = None
+            try:
+                meta_df = dataset.metadata({"partition": part})
+                if meta_df is not None and len(meta_df) > 0:
+                    raw_dict = meta_df.to_dict(as_series=False)
+                    meta_p = {k: np.array(v) for k, v in raw_dict.items()}
+            except Exception:
+                pass
+
+            return X_p, y_p, meta_p
+
+        requested_partition = request.partition if request.partition in {"train", "test", "all"} else "all"
+
+        X_train, y_train, meta_train = _load_partition("train")
+        X_test, y_test, meta_test = _load_partition("test")
+
+        if requested_partition == "test":
+            if X_test is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Dataset '{request.dataset_id}' has no test partition data",
+                )
+            X = X_test
+            y_array = y_test
+            metadata_np = meta_test
+            has_test = False
+            n_train = int(len(X_test))
+            n_test = 0
+        elif requested_partition == "train":
+            if X_train is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Dataset '{request.dataset_id}' has no train partition data",
+                )
+            X = X_train
+            y_array = y_train
+            metadata_np = meta_train
+            has_test = False
+            n_train = int(len(X_train))
+            n_test = 0
+        else:
+            if X_train is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Dataset '{request.dataset_id}' has no train partition data",
+                )
+
+            has_test = X_test is not None
+            n_train = int(len(X_train))
+            n_test = int(len(X_test)) if has_test else 0
+
+            if has_test:
+                X = np.concatenate([X_train, X_test], axis=0)
+
+                if y_train is not None and y_test is not None:
+                    y_array = np.concatenate([y_train, y_test], axis=0)
+                elif y_train is not None:
+                    y_array = np.concatenate([y_train, np.full(n_test, np.nan)], axis=0)
+                elif y_test is not None:
+                    y_array = np.concatenate([np.full(n_train, np.nan), y_test], axis=0)
+                else:
+                    y_array = None
+
+                # Merge metadata: union of column names; missing values padded with None.
+                metadata_np: dict[str, Any] | None = None
+                if meta_train or meta_test:
+                    metadata_np = {}
+                    cols = set()
+                    if meta_train:
+                        cols.update(meta_train.keys())
+                    if meta_test:
+                        cols.update(meta_test.keys())
+                    for col in cols:
+                        train_vals = meta_train[col] if meta_train and col in meta_train else np.array([None] * n_train, dtype=object)
+                        test_vals = meta_test[col] if meta_test and col in meta_test else np.array([None] * n_test, dtype=object)
+                        metadata_np[col] = np.concatenate([train_vals, test_vals])
+                else:
+                    metadata_np = {}
+
+                # Inject a 'set' column so the existing 'set' metadata path also lights up.
+                metadata_np["set"] = np.array(["train"] * n_train + ["test"] * n_test, dtype=object)
+            else:
+                X = X_train
+                y_array = y_train
+                metadata_np = meta_train
 
         try:
             headers = dataset.headers(0)
@@ -1845,21 +1971,19 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
                 wavelengths = list(range(X.shape[1]))
         except Exception:
             wavelengths = list(range(X.shape[1]))
-
-        # Load metadata for MetadataFilter support
-        metadata_np = None
-        try:
-            meta_df = dataset.metadata({"partition": "train"})
-            if meta_df is not None and len(meta_df) > 0:
-                raw_dict = meta_df.to_dict(as_series=False)
-                metadata_np = {k: np.array(v) for k, v in raw_dict.items()}
-        except Exception:
-            pass
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to extract data from dataset '{request.dataset_id}': {str(e)}"
         )
+
+    source_partitions = {
+        "has_test": has_test,
+        "n_train": n_train,
+        "n_test": n_test,
+    }
 
     # Validate size limits
     n_samples, n_features = X.shape
@@ -1906,12 +2030,17 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
     # Execute pipeline — pass numpy arrays directly (no list conversion)
     executor = PlaygroundExecutor(verbose=0)
 
+    # Forward source partition info to the executor so the splitter step can
+    # decide whether the first split represents the test partition or CV folds.
+    exec_options = dict(request.options or {})
+    exec_options["source_partitions"] = source_partitions
+
     try:
         result = executor.execute(
             data=data,
             steps=request.steps,
             sampling=request.sampling,
-            options=request.options,
+            options=exec_options,
             X_np=X,
             y_np=y_array,
             wavelengths_np=wavelengths,

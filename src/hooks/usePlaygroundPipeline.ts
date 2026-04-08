@@ -20,6 +20,7 @@ import type {
   PerChartLoadingState,
 } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
+import type { PartitionKey } from '@/types/datasets';
 import { usePlaygroundQuery } from './usePlaygroundQuery';
 import { useChangeDetection } from './useChangeDetection';
 import {
@@ -73,6 +74,8 @@ export interface UsePlaygroundPipelineOptions {
   enableBackend?: boolean;
   /** Workspace dataset ID — when set, uses server-side dataset loading to avoid data round-trip */
   datasetId?: string | null;
+  /** Selected source dataset partition for workspace-backed runs. */
+  datasetPartition?: PartitionKey;
 }
 
 /**
@@ -141,7 +144,13 @@ export function usePlaygroundPipeline(
   rawData: SpectralData | null,
   options: UsePlaygroundPipelineOptions = {}
 ): UsePlaygroundPipelineResult {
-  const { sampling, executeOptions: externalExecuteOptions, enableBackend = true, datasetId } = options;
+  const {
+    sampling,
+    executeOptions: externalExecuteOptions,
+    enableBackend = true,
+    datasetId,
+    datasetPartition,
+  } = options;
 
   // Pipeline state - initialize from sessionStorage
   const [operators, setOperatorsRaw] = useState<UnifiedOperator[]>(() => loadPersistedState());
@@ -224,6 +233,7 @@ export function usePlaygroundPipeline(
     sampling,
     executeOptions,
     datasetId,
+    datasetPartition,
   });
 
   // Change detection for granular chart loading states

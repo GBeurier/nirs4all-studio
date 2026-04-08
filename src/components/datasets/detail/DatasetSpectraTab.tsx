@@ -1,12 +1,15 @@
 /**
  * DatasetSpectraTab - Full spectra visualization tab for dataset detail page
  */
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BarChart3, RefreshCw, Loader2, AlertCircle, Settings } from "lucide-react";
 import { SpectraChart } from "../charts";
-import type { PreviewDataResponse } from "@/types/datasets";
+import { PartitionToggle } from "../PartitionToggle";
+import { getPartitionTheme } from "../partitionTheme";
+import type { PartitionKey, PreviewDataResponse, SpectraPreview } from "@/types/datasets";
 
 interface DatasetSpectraTabProps {
   preview: PreviewDataResponse | null;
@@ -21,6 +24,22 @@ export function DatasetSpectraTab({
   error,
   onRefresh,
 }: DatasetSpectraTabProps) {
+  const partitionMap = preview?.spectra_preview_by_partition;
+  const trainCount = preview?.summary?.train_samples;
+  const testCount = preview?.summary?.test_samples;
+  const hasTest = !!partitionMap?.test || (testCount != null && testCount > 0);
+
+  const [partition, setPartition] = useState<PartitionKey>("all");
+  // Reset to train if user previously selected test/all then dataset changes to one without test
+  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
+  const partitionTheme = getPartitionTheme(effectivePartition);
+
+  const spectraSource: SpectraPreview | undefined = useMemo(() => {
+    if (partitionMap) {
+      return partitionMap[effectivePartition] ?? partitionMap.train ?? preview?.spectra_preview;
+    }
+    return preview?.spectra_preview;
+  }, [partitionMap, effectivePartition, preview?.spectra_preview]);
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -46,7 +65,7 @@ export function DatasetSpectraTab({
     );
   }
 
-  if (!preview?.spectra_preview) {
+  if (!spectraSource) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <BarChart3 className="h-8 w-8 text-muted-foreground mb-4 opacity-50" />
@@ -59,7 +78,7 @@ export function DatasetSpectraTab({
     );
   }
 
-  const spectra = preview.spectra_preview;
+  const spectra = spectraSource;
   const wavelengthMin = Math.min(...spectra.wavelengths);
   const wavelengthMax = Math.max(...spectra.wavelengths);
 
@@ -74,6 +93,14 @@ export function DatasetSpectraTab({
               Spectral Overview
             </CardTitle>
             <div className="flex items-center gap-2">
+              <PartitionToggle
+                value={effectivePartition}
+                onChange={setPartition}
+                hasTest={hasTest}
+                trainCount={trainCount}
+                testCount={testCount}
+                size="xs"
+              />
               <Badge variant="outline" className="text-xs">
                 {spectra.wavelengths.length} points
               </Badge>
@@ -93,6 +120,8 @@ export function DatasetSpectraTab({
             height={350}
             xLabel="Wavelength"
             yLabel="Absorbance"
+            lineColor={partitionTheme.lineColor}
+            rangeFillColor={partitionTheme.rangeFillColor}
           />
           <p className="text-xs text-muted-foreground mt-3 text-center">
             Mean spectrum with min-max range shading
@@ -135,9 +164,9 @@ export function DatasetSpectraTab({
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">Samples</p>
             <p className="text-lg font-semibold">
-              {preview.summary?.num_samples?.toLocaleString() || "--"}
+              {(spectra.n_samples ?? preview?.summary?.num_samples ?? 0).toLocaleString() || "--"}
             </p>
-            <p className="text-xs text-muted-foreground">total</p>
+            <p className="text-xs text-muted-foreground">{effectivePartition}</p>
           </CardContent>
         </Card>
       </div>

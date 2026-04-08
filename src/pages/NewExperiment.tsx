@@ -113,6 +113,8 @@ export default function NewExperiment() {
     id: d.id,
     name: d.name || d.path?.split("/").pop() || "Unknown",
     samples: d.num_samples || 0,
+    train_samples: d.train_samples,
+    test_samples: d.test_samples,
     features: d.num_features || 0,
     target: d.default_target || d.targets?.[0]?.column || "Unknown",
   }));
@@ -452,8 +454,13 @@ export default function NewExperiment() {
                               {dataset.name}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              {dataset.samples} samples • {dataset.features}{" "}
-                              features • Target: {dataset.target}
+                              {dataset.samples} samples
+                              {dataset.test_samples != null && dataset.test_samples > 0 && (
+                                <span className="ml-1 tabular-nums">
+                                  ({dataset.train_samples?.toLocaleString() ?? "—"} train · {dataset.test_samples.toLocaleString()} test)
+                                </span>
+                              )}
+                              {" • "}{dataset.features}{" "}features • Target: {dataset.target}
                             </p>
                           </div>
                         </div>

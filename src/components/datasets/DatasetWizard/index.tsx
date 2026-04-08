@@ -385,9 +385,11 @@ interface WizardContentProps {
   onAdd: (path: string, config: Partial<DatasetConfig>) => Promise<void>;
   onClose: () => void;
   onScanFolder?: (path: string) => void;
+  submitLabel?: string;
+  submitErrorMessage?: string;
 }
 
-function WizardContent({ onAdd, onClose, onScanFolder }: WizardContentProps) {
+function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add Dataset", submitErrorMessage = "Failed to add dataset" }: WizardContentProps) {
   const { state, dispatch, nextStep, prevStep, canProceed } = useWizard();
   const currentIndex = STEP_ORDER.indexOf(state.step);
   const isFirstStep = currentIndex === 0;
@@ -472,7 +474,7 @@ function WizardContent({ onAdd, onClose, onScanFolder }: WizardContentProps) {
         type: "SET_ERROR",
         payload: {
           key: "submit",
-          message: error instanceof Error ? error.message : "Failed to add dataset",
+          message: error instanceof Error ? error.message : submitErrorMessage,
         },
       });
     } finally {
@@ -547,7 +549,7 @@ function WizardContent({ onAdd, onClose, onScanFolder }: WizardContentProps) {
             disabled={state.isLoading || !canProceed()}
           >
             {state.isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Add Dataset
+            {submitLabel}
           </Button>
         ) : (
           <Button
@@ -572,9 +574,11 @@ interface DatasetWizardProps {
   initialState?: WizardInitialState;
   /** Callback to open batch scan dialog from wizard source step */
   onScanFolder?: (path: string) => void;
+  submitLabel?: string;
+  submitErrorMessage?: string;
 }
 
-export function DatasetWizard({ open, onOpenChange, onAdd, initialState, onScanFolder }: DatasetWizardProps) {
+export function DatasetWizard({ open, onOpenChange, onAdd, initialState, onScanFolder, submitLabel, submitErrorMessage }: DatasetWizardProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -583,7 +587,13 @@ export function DatasetWizard({ open, onOpenChange, onAdd, initialState, onScanF
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <WizardProvider initialState={initialState}>
-          <WizardContent onAdd={onAdd} onClose={() => onOpenChange(false)} onScanFolder={onScanFolder} />
+          <WizardContent
+            onAdd={onAdd}
+            onClose={() => onOpenChange(false)}
+            onScanFolder={onScanFolder}
+            submitLabel={submitLabel}
+            submitErrorMessage={submitErrorMessage}
+          />
         </WizardProvider>
       </DialogContent>
     </Dialog>

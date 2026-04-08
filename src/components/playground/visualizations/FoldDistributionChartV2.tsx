@@ -773,7 +773,7 @@ export function FoldDistributionChartV2({
 
       case 'outlier':
         if (segmentKey === 'outlier') {
-          return 'hsl(0, 70%, 55%)';
+          return HIGHLIGHT_COLORS.outlier;
         }
         return 'hsl(var(--muted-foreground))';
 

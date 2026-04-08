@@ -1,12 +1,15 @@
 /**
  * DatasetTargetsTab - Target distribution visualization tab for dataset detail page
  */
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Target, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 import { TargetHistogram } from "../charts";
-import type { Dataset, PreviewDataResponse } from "@/types/datasets";
+import { PartitionToggle } from "../PartitionToggle";
+import { getPartitionTheme } from "../partitionTheme";
+import type { Dataset, PartitionKey, PreviewDataResponse, TargetDistribution } from "@/types/datasets";
 
 interface DatasetTargetsTabProps {
   dataset: Dataset;
@@ -23,6 +26,24 @@ export function DatasetTargetsTab({
   error,
   onRefresh,
 }: DatasetTargetsTabProps) {
+  // Hooks must be called unconditionally before any early return.
+  const hasTargets = dataset.targets && dataset.targets.length > 0;
+  const partitionMap = preview?.target_distribution_by_partition;
+  const trainCount = preview?.summary?.train_samples;
+  const testCount = preview?.summary?.test_samples;
+  const hasTest = !!partitionMap?.test || (testCount != null && testCount > 0);
+
+  const [partition, setPartition] = useState<PartitionKey>("all");
+  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
+  const partitionTheme = getPartitionTheme(effectivePartition);
+
+  const distribution: TargetDistribution | undefined = useMemo(() => {
+    if (partitionMap) {
+      return partitionMap[effectivePartition] ?? partitionMap.train ?? preview?.target_distribution;
+    }
+    return preview?.target_distribution;
+  }, [partitionMap, effectivePartition, preview?.target_distribution]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -47,9 +68,6 @@ export function DatasetTargetsTab({
       </div>
     );
   }
-
-  const hasTargets = dataset.targets && dataset.targets.length > 0;
-  const distribution = preview?.target_distribution;
 
   if (!hasTargets && !distribution) {
     return (
@@ -122,9 +140,19 @@ export function DatasetTargetsTab({
                   {distribution.type}
                 </Badge>
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={onRefresh}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <PartitionToggle
+                  value={effectivePartition}
+                  onChange={setPartition}
+                  hasTest={hasTest}
+                  trainCount={trainCount}
+                  testCount={testCount}
+                  size="xs"
+                />
+                <Button variant="ghost" size="sm" onClick={onRefresh}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -137,6 +165,7 @@ export function DatasetTargetsTab({
                     type={distribution.type}
                     width={400}
                     height={220}
+                    barColor={partitionTheme.histogramColor}
                   />
                 </div>
               )}

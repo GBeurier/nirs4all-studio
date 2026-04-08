@@ -307,8 +307,13 @@ export interface DatasetInfo {
   name: string;
   path: string;
   samples?: number;
+  num_samples?: number;
+  train_samples?: number;
+  test_samples?: number;
   features?: number;
+  num_features?: number;
   targets?: number;
+  default_target?: string;
   config?: Record<string, unknown>;
   group_id?: string;
   created_at: string;

@@ -177,7 +177,12 @@ export interface FoldData {
 }
 
 /**
- * Fold information when a splitter is present
+ * Fold information when a splitter is present.
+ *
+ * `kind` reflects nirs4all semantics: the first splitter on a dataset without a
+ * pre-existing test partition creates that partition (`"test_split"`); any
+ * subsequent split (or any split when the dataset already had a test partition)
+ * produces cross-validation folds (`"cv_folds"`).
  */
 export interface FoldsInfo {
   splitter_name: string;
@@ -185,6 +190,18 @@ export interface FoldsInfo {
   folds: FoldData[];
   fold_labels?: number[];
   split_index?: number;
+  kind?: "test_split" | "cv_folds";
+}
+
+/**
+ * Source dataset partition info (set on /execute-dataset responses).
+ * Indicates whether the underlying dataset already has a test partition,
+ * independent of any splitter steps the user may have added.
+ */
+export interface SourcePartitions {
+  has_test: boolean;
+  n_train: number;
+  n_test: number;
 }
 
 /**
@@ -448,6 +465,7 @@ export interface ExecuteResponse {
   execution_trace: StepTrace[];
   step_errors: StepError[];
   is_raw_data?: boolean;
+  source_partitions?: SourcePartitions;
 }
 
 /**
@@ -595,6 +613,7 @@ export interface PlaygroundResult {
   pca?: PCAResult;
   umap?: UMAPResult;
   folds?: FoldsInfo;
+  source_partitions?: SourcePartitions;
   filterInfo?: FilterInfo;
   repetitions?: RepetitionResult;
   metrics?: MetricsResult;

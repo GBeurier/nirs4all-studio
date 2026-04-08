@@ -34,6 +34,7 @@ import { ExecutionStatus } from './ExecutionStatus';
 import type { SpectralData } from '@/types/spectral';
 import type { UnifiedOperator, OperatorDefinition, StepError, FilterInfo } from '@/types/playground';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
+import type { PartitionKey } from '@/types/datasets';
 
 interface PlaygroundSidebarProps {
   // Data
@@ -60,7 +61,12 @@ interface PlaygroundSidebarProps {
 
   // Data handlers
   onLoadDemo: () => void;
-  onLoadFromWorkspace: (datasetId: string, datasetName: string) => void;
+  onLoadFromWorkspace: (
+    datasetId: string,
+    datasetName: string,
+    partition?: PartitionKey,
+    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
+  ) => void;
   onClearData: () => void;
 
   // Dataset selector

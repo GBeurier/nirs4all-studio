@@ -32,8 +32,10 @@ import {
 } from "@/components/ui/select";
 import { useWizard } from "./WizardContext";
 import { previewDataset, previewDatasetWithUploads } from "@/api/client";
+import { PartitionToggle } from "../PartitionToggle";
 import { SpectraChart, TargetHistogram } from "../charts";
-import type { DatasetFile } from "@/types/datasets";
+import { getPartitionTheme } from "../partitionTheme";
+import type { DatasetFile, PartitionKey } from "@/types/datasets";
 
 // Alias for backward compatibility in this file
 const Histogram = TargetHistogram;
@@ -44,6 +46,7 @@ export function PreviewStep() {
   const [error, setError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<number>(0);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
+  const [selectedPartition, setSelectedPartition] = useState<PartitionKey>("all");
 
   const loadPreview = useCallback(async () => {
     if (state.files.length === 0) return;
@@ -120,6 +123,13 @@ export function PreviewStep() {
   }, [loadPreview, state.preview, loading]);
 
   const preview = state.preview;
+  const partitionMap = preview?.spectra_preview_by_partition;
+  const targetPartitionMap = preview?.target_distribution_by_partition;
+  const trainCount = preview?.summary?.train_samples;
+  const testCount = preview?.summary?.test_samples;
+  const hasTest = !!partitionMap?.test || !!targetPartitionMap?.test || (testCount != null && testCount > 0);
+  const effectivePartition: PartitionKey = !hasTest && selectedPartition !== "train" ? "train" : selectedPartition;
+  const partitionTheme = getPartitionTheme(effectivePartition);
 
   return (
     <div className="flex-1 overflow-auto py-2 space-y-4">
@@ -229,23 +239,33 @@ export function PreviewStep() {
                   <BarChart3 className="h-4 w-4" />
                   Spectra Preview
                 </CardTitle>
-                {preview.summary.n_sources > 1 && preview.spectra_per_source && (
-                  <Select
-                    value={String(selectedSource)}
-                    onValueChange={(v) => setSelectedSource(Number(v))}
-                  >
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue placeholder="Select source" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.keys(preview.spectra_per_source).map((sourceIdx) => (
-                        <SelectItem key={sourceIdx} value={sourceIdx}>
-                          Source {Number(sourceIdx) + 1}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <div className="flex items-center gap-2">
+                  {preview.summary.n_sources > 1 && preview.spectra_per_source && (
+                    <Select
+                      value={String(selectedSource)}
+                      onValueChange={(v) => setSelectedSource(Number(v))}
+                    >
+                      <SelectTrigger className="w-[140px] h-8">
+                        <SelectValue placeholder="Select source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(preview.spectra_per_source).map((sourceIdx) => (
+                          <SelectItem key={sourceIdx} value={sourceIdx}>
+                            Source {Number(sourceIdx) + 1}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <PartitionToggle
+                    value={effectivePartition}
+                    onChange={setSelectedPartition}
+                    hasTest={hasTest}
+                    trainCount={trainCount}
+                    testCount={testCount}
+                    size="xs"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -253,10 +273,15 @@ export function PreviewStep() {
                 // Use per-source data if available and multi-source, otherwise fall back to global
                 const spectraData =
                   preview.summary.n_sources > 1 &&
-                  preview.spectra_per_source &&
-                  preview.spectra_per_source[selectedSource]
-                    ? preview.spectra_per_source[selectedSource]
-                    : preview.spectra_preview;
+                  preview.spectra_per_source_by_partition?.[selectedSource]
+                    ? preview.spectra_per_source_by_partition[selectedSource][effectivePartition]
+                      ?? preview.spectra_per_source_by_partition[selectedSource].train
+                      ?? preview.spectra_per_source?.[selectedSource]
+                    : partitionMap?.[effectivePartition]
+                      ?? partitionMap?.train
+                      ?? (preview.spectra_per_source && preview.spectra_per_source[selectedSource]
+                        ? preview.spectra_per_source[selectedSource]
+                        : preview.spectra_preview);
 
                 if (spectraData) {
                   return (
@@ -265,6 +290,8 @@ export function PreviewStep() {
                       meanSpectrum={spectraData.mean_spectrum}
                       minSpectrum={spectraData.min_spectrum}
                       maxSpectrum={spectraData.max_spectrum}
+                      lineColor={partitionTheme.lineColor}
+                      rangeFillColor={partitionTheme.rangeFillColor}
                     />
                   );
                 }
@@ -287,6 +314,14 @@ export function PreviewStep() {
                     Target Distribution
                   </CardTitle>
                   <div className="flex items-center gap-2">
+                    <PartitionToggle
+                      value={effectivePartition}
+                      onChange={setSelectedPartition}
+                      hasTest={hasTest}
+                      trainCount={trainCount}
+                      testCount={testCount}
+                      size="xs"
+                    />
                     {preview.target_distributions && Object.keys(preview.target_distributions).length > 1 && (
                       <Select
                         value={selectedTarget || ""}
@@ -321,7 +356,9 @@ export function PreviewStep() {
                   // Use selected target data if available, otherwise fall back to global
                   const targetDist = selectedTarget && preview.target_distributions?.[selectedTarget]
                     ? preview.target_distributions[selectedTarget]
-                    : preview.target_distribution;
+                    : targetPartitionMap?.[effectivePartition]
+                      ?? targetPartitionMap?.train
+                      ?? preview.target_distribution;
 
                   if (!targetDist) return null;
 
@@ -331,6 +368,7 @@ export function PreviewStep() {
                         <Histogram
                           data={targetDist.histogram}
                           type={targetDist.type}
+                          barColor={partitionTheme.histogramColor}
                         />
                       )}
                       <div className="space-y-2">

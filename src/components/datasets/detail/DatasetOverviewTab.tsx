@@ -1,19 +1,25 @@
 /**
  * DatasetOverviewTab - Summary and metadata tab for dataset detail page
  */
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Target, Info, FileSpreadsheet, Clock } from "lucide-react";
-import type { Dataset, PreviewDataResponse } from "@/types/datasets";
+import { TargetHistogram } from "../charts";
+import { PartitionToggle } from "../PartitionToggle";
+import { getPartitionTheme } from "../partitionTheme";
+import type {
+  Dataset,
+  PartitionKey,
+  PreviewDataResponse,
+  TargetDistribution,
+} from "@/types/datasets";
 
 interface DatasetOverviewTabProps {
   dataset: Dataset;
   preview: PreviewDataResponse | null;
 }
 
-/**
- * Get relative time string from ISO date
- */
 function getRelativeTime(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -28,10 +34,126 @@ function getRelativeTime(dateString: string): string {
   return `${Math.floor(diffDays / 365)} years ago`;
 }
 
+function formatCount(value: number | null | undefined): string {
+  if (value == null) return "--";
+  return value.toLocaleString();
+}
+
 export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps) {
+  const configRecord = dataset.config as Record<string, unknown> | undefined;
+  const legacyRepetition = typeof configRecord?.repetition === "string" ? configRecord.repetition : undefined;
+  const legacyAggregate = typeof configRecord?.aggregate === "string" ? configRecord.aggregate : undefined;
+  const repetitionColumn = dataset.config?.aggregation?.column || legacyRepetition || legacyAggregate;
+
+  const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
+  const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
+  const hasTest = !!preview?.target_distribution_by_partition?.test || (testCount != null && testCount > 0);
+
+  const [partition, setPartition] = useState<PartitionKey>("all");
+  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
+  const partitionTheme = getPartitionTheme(effectivePartition);
+
+  const distribution: TargetDistribution | undefined = useMemo(() => {
+    if (preview?.target_distribution_by_partition) {
+      return preview.target_distribution_by_partition[effectivePartition]
+        ?? preview.target_distribution_by_partition.train
+        ?? preview.target_distribution;
+    }
+    return preview?.target_distribution;
+  }, [preview?.target_distribution_by_partition, preview?.target_distribution, effectivePartition]);
+
+  const partitionSampleCount = distribution?.n_samples ?? (
+    effectivePartition === "test"
+      ? testCount
+      : effectivePartition === "train"
+      ? trainCount
+      : ((trainCount ?? 0) + (testCount ?? 0)) || dataset.num_samples
+  );
+
   return (
     <div className="space-y-6">
-      {/* Target Statistics */}
+      {distribution && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Target Histogram
+                <Badge variant="outline" className="text-xs capitalize">
+                  {distribution.type}
+                </Badge>
+              </CardTitle>
+              <PartitionToggle
+                value={effectivePartition}
+                onChange={setPartition}
+                hasTest={hasTest}
+                trainCount={trainCount}
+                testCount={testCount}
+                size="xs"
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)] gap-6 items-start">
+              <div>
+                {distribution.histogram ? (
+                  <TargetHistogram
+                    data={distribution.histogram}
+                    type={distribution.type}
+                    width={420}
+                    height={220}
+                    barColor={partitionTheme.histogramColor}
+                  />
+                ) : (
+                  <div className="h-[220px] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                    No histogram preview available
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="p-3 bg-muted/30 rounded-lg">
+                  <p className="text-xs text-muted-foreground">Partition</p>
+                  <p className="font-medium mt-1">{partitionTheme.label}</p>
+                  <p className="text-[10px] tabular-nums text-muted-foreground mt-1">
+                    {formatCount(partitionSampleCount)} samples
+                  </p>
+                </div>
+                {distribution.type === "regression" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Min</p>
+                      <p className="font-mono font-medium">{distribution.min?.toFixed(3) || "--"}</p>
+                    </div>
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Max</p>
+                      <p className="font-mono font-medium">{distribution.max?.toFixed(3) || "--"}</p>
+                    </div>
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Mean</p>
+                      <p className="font-mono font-medium">{distribution.mean?.toFixed(3) || "--"}</p>
+                    </div>
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Std</p>
+                      <p className="font-mono font-medium">{distribution.std?.toFixed(3) || "--"}</p>
+                    </div>
+                  </div>
+                )}
+                {distribution.type === "classification" && distribution.class_counts && (
+                  <div className="space-y-2">
+                    {Object.entries(distribution.class_counts).map(([label, count]) => (
+                      <div key={label} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="font-mono font-medium">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {dataset.targets && dataset.targets.length > 0 && (
         <div className="grid md:grid-cols-2 gap-4">
           {dataset.targets.map((target) => (
@@ -50,35 +172,26 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-4 gap-4 text-sm">
-                  {preview?.target_distribution?.type === "regression" && (
+                  {distribution?.type === "regression" ? (
                     <>
                       <div>
                         <p className="text-muted-foreground">Min</p>
-                        <p className="font-mono font-medium">
-                          {preview.target_distribution.min?.toFixed(3) || "--"}
-                        </p>
+                        <p className="font-mono font-medium">{distribution.min?.toFixed(3) || "--"}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Max</p>
-                        <p className="font-mono font-medium">
-                          {preview.target_distribution.max?.toFixed(3) || "--"}
-                        </p>
+                        <p className="font-mono font-medium">{distribution.max?.toFixed(3) || "--"}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Mean</p>
-                        <p className="font-mono font-medium">
-                          {preview.target_distribution.mean?.toFixed(3) || "--"}
-                        </p>
+                        <p className="font-mono font-medium">{distribution.mean?.toFixed(3) || "--"}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Std</p>
-                        <p className="font-mono font-medium">
-                          {preview.target_distribution.std?.toFixed(3) || "--"}
-                        </p>
+                        <p className="font-mono font-medium">{distribution.std?.toFixed(3) || "--"}</p>
                       </div>
                     </>
-                  )}
-                  {(!preview?.target_distribution || preview.target_distribution.type === "classification") && (
+                  ) : (
                     <>
                       <div>
                         <p className="text-muted-foreground">Type</p>
@@ -105,7 +218,6 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         </div>
       )}
 
-      {/* Dataset Metadata */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -121,6 +233,14 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                 {dataset.task_type || "auto"}
               </Badge>
             </div>
+            {testCount != null && testCount > 0 && (
+              <div>
+                <p className="text-sm text-muted-foreground">Partitions</p>
+                <p className="font-mono text-sm font-medium mt-1 tabular-nums">
+                  {formatCount(trainCount)} train · {formatCount(testCount)} test
+                </p>
+              </div>
+            )}
             {dataset.signal_types && dataset.signal_types.length > 0 && (
               <div>
                 <p className="text-sm text-muted-foreground">Signal Type</p>
@@ -145,11 +265,16 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                 <p className="font-medium mt-1">{dataset.n_sources}</p>
               </div>
             )}
+            <div>
+              <p className="text-sm text-muted-foreground">Repetition Column</p>
+              <p className="font-mono text-sm font-medium mt-1" title={repetitionColumn || "--"}>
+                {repetitionColumn || "--"}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Version Information */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -183,7 +308,6 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
         </CardContent>
       </Card>
 
-      {/* File Path */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">

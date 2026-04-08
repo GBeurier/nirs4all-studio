@@ -221,6 +221,18 @@ export default function DatasetDetail() {
               <p className="text-sm text-muted-foreground">{t("datasets.info.samples")}</p>
             </div>
             <p className="text-2xl font-bold">{formatNumber(dataset.num_samples)}</p>
+            {(() => {
+              const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
+              const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
+              if (testCount != null && testCount > 0) {
+                return (
+                  <p className="text-xs text-muted-foreground tabular-nums mt-1">
+                    {formatNumber(trainCount)} train · {formatNumber(testCount)} test
+                  </p>
+                );
+              }
+              return null;
+            })()}
           </CardContent>
         </Card>
         <Card className="bg-card/50">

@@ -12,7 +12,7 @@ test.describe('Navigation', () => {
     // Datasets (root redirects to /datasets)
     await sidebar.navigateTo('datasets');
     await expect(page).toHaveURL('/datasets');
-    await expect(page.getByRole('heading', { name: /datasets/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Datasets', exact: true })).toBeVisible();
 
     // Playground
     await sidebar.navigateTo('playground');

@@ -79,6 +79,7 @@ export function useHistogramData(props: YHistogramV2Props) {
   // Determine stacking modes
   const shouldStackByPartition = effectiveColorMode === 'partition';
   const shouldStackByFold = effectiveColorMode === 'fold';
+  const shouldStackByOutlier = effectiveColorMode === 'outlier' && (colorContext?.outlierIndices?.size ?? 0) > 0;
   const shouldStackBySelection = effectiveColorMode === 'selection';
 
   // Auto-detect metadata type if not explicitly set
@@ -642,6 +643,7 @@ export function useHistogramData(props: YHistogramV2Props) {
     isClassificationMode,
     shouldStackByPartition,
     shouldStackByFold,
+    shouldStackByOutlier,
     shouldStackByMetadata,
     shouldStackBySelection,
     hasFolds,

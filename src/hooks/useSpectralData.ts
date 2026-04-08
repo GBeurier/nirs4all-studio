@@ -1,10 +1,14 @@
 import { useState, useCallback } from 'react';
 import { SpectralData, SampleMetadata } from '@/types/spectral';
 import { loadWorkspaceDataset } from '@/api/playground';
+import type { PartitionKey } from '@/types/datasets';
 
 export interface WorkspaceDatasetInfo {
   datasetId: string;
   datasetName: string;
+  partition: PartitionKey;
+  trainSamples?: number;
+  testSamples?: number;
 }
 
 export function useSpectralData() {
@@ -88,15 +92,26 @@ export function useSpectralData() {
     setError(null);
   }, []);
 
-  const loadFromWorkspace = useCallback(async (datasetId: string, datasetName: string) => {
+  const loadFromWorkspace = useCallback(async (
+    datasetId: string,
+    datasetName: string,
+    partition: PartitionKey = 'all',
+    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
+  ) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const data = await loadWorkspaceDataset(datasetId, datasetName);
+      const data = await loadWorkspaceDataset(datasetId, datasetName, partition);
       setRawData(data);
       setDataSource('workspace');
-      setCurrentDatasetInfo({ datasetId, datasetName });
+      setCurrentDatasetInfo({
+        datasetId,
+        datasetName,
+        partition,
+        trainSamples: datasetInfo?.trainSamples,
+        testSamples: datasetInfo?.testSamples,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workspace dataset');
       setRawData(null);

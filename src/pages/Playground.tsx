@@ -123,6 +123,7 @@ export default function Playground() {
       method: 'all',
     },
     datasetId: currentDatasetInfo?.datasetId,
+    datasetPartition: currentDatasetInfo?.partition,
     executeOptions: visibilityExecuteOptions,
   });
 

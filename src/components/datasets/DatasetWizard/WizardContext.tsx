@@ -91,8 +91,17 @@ const initialState: WizardState = createInitialState(SYSTEM_DEFAULT_PARSING);
 export interface WizardInitialState {
   sourceType: WizardSourceType;
   basePath: string;
+  datasetName?: string;
   files?: DetectedFile[];
   skipToStep?: WizardStep;
+  parsing?: Partial<ParsingOptions>;
+  perFileOverrides?: Record<string, Partial<ParsingOptions>>;
+  targets?: TargetConfig[];
+  defaultTarget?: string;
+  taskType?: TaskType;
+  aggregation?: Partial<AggregationConfig>;
+  multiSource?: MultiSourceConfig | null;
+  folds?: FoldConfig | null;
   // Detection results from unified detection
   detectedParsing?: Partial<ParsingOptions>;
   hasFoldFile?: boolean;
@@ -249,16 +258,25 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       const parts = basePath.split(/[/\\]/);
       const name = parts[parts.length - 1] || "dataset";
       // Merge detected parsing options with defaults
-      const mergedParsing = initial.detectedParsing
-        ? { ...parsing, ...initial.detectedParsing }
-        : parsing;
+      const mergedParsing = {
+        ...parsing,
+        ...(initial.detectedParsing || {}),
+        ...(initial.parsing || {}),
+      };
       return {
         ...createInitialState(mergedParsing),
         step: initial.skipToStep || "files",
         sourceType: initial.sourceType,
         basePath: initial.basePath,
-        datasetName: name,
+        datasetName: initial.datasetName || name,
         files: initial.files || [],
+        perFileOverrides: initial.perFileOverrides || {},
+        targets: initial.targets || [],
+        defaultTarget: initial.defaultTarget || "",
+        taskType: initial.taskType || "auto",
+        aggregation: { ...DEFAULT_AGGREGATION, ...(initial.aggregation || {}) },
+        multiSource: initial.multiSource || null,
+        folds: initial.folds === undefined ? null : initial.folds,
         isLoading: !initial.files, // If no files yet, we're loading
         // Detection results
         hasFoldFile: initial.hasFoldFile || false,

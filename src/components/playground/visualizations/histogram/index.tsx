@@ -7,7 +7,7 @@
  *
  * Features:
  * - Configurable bin count (auto, 10, 20, 50, custom)
- * - Automatic stacking based on global color mode (partition/fold = stacked)
+ * - Automatic stacking based on global color mode (partition/fold/outlier = stacked)
  * - Color derived from global color configuration
  * - KDE overlay toggle
  * - Reference lines (mean, median)
@@ -35,6 +35,7 @@ import type { YHistogramV2Props, HistogramChartProps, BinData } from './types';
 const HistogramSimple = React.lazy(() => import('./HistogramSimple'));
 const HistogramByPartition = React.lazy(() => import('./HistogramByPartition'));
 const HistogramByFold = React.lazy(() => import('./HistogramByFold'));
+const HistogramByOutlier = React.lazy(() => import('./HistogramByOutlier'));
 const HistogramByMetadata = React.lazy(() => import('./HistogramByMetadata'));
 const HistogramBySelection = React.lazy(() => import('./HistogramBySelection'));
 const HistogramClassification = React.lazy(() => import('./HistogramClassification'));
@@ -74,6 +75,7 @@ export function YHistogramV2(props: YHistogramV2Props) {
     // For mode selection
     shouldStackByPartition,
     shouldStackByFold,
+    shouldStackByOutlier,
     shouldStackByMetadata,
     shouldStackBySelection,
     hasFolds,
@@ -161,6 +163,11 @@ export function YHistogramV2(props: YHistogramV2Props) {
     // Stack by fold
     if (shouldStackByFold && hasFolds) {
       return <HistogramByFold {...chartProps} />;
+    }
+
+    // Stack by outlier state
+    if (shouldStackByOutlier) {
+      return <HistogramByOutlier {...chartProps} />;
     }
 
     // Stack by metadata category

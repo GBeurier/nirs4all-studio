@@ -25,6 +25,10 @@ export interface TargetHistogramProps {
   xLabel?: string;
   /** Show axis labels (default: true) */
   showLabels?: boolean;
+  /** Bar color override (default: primary) */
+  barColor?: string;
+  /** Bar fill opacity (default: 0.7) */
+  barOpacity?: number;
 }
 
 export function TargetHistogram({
@@ -34,6 +38,8 @@ export function TargetHistogram({
   height = 150,
   xLabel,
   showLabels = true,
+  barColor,
+  barOpacity = 0.7,
 }: TargetHistogramProps) {
   const padding = { top: 10, right: 10, bottom: 25, left: 40 };
   const chartWidth = width - padding.left - padding.right;
@@ -67,8 +73,8 @@ export function TargetHistogram({
           y={padding.top + chartHeight * (1 - d.count / maxCount)}
           width={barWidth}
           height={(d.count / maxCount) * chartHeight}
-          fill="hsl(var(--primary))"
-          fillOpacity={0.7}
+          fill={barColor ?? "hsl(var(--primary))"}
+          fillOpacity={barOpacity}
           rx={2}
         />
       ))}

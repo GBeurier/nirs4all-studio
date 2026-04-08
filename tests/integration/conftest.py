@@ -460,9 +460,13 @@ def slow_mock_nirs4all(monkeypatch):
     """Mock nirs4all.run() with a slow execution for testing stop/pause.
 
     Uses a threading.Event so the mock can exit quickly during fixture cleanup,
-    preventing orphaned threads from crashing xdist workers on teardown.
+    and tracks the in-flight worker threads so they are joined before the test
+    exits — otherwise an orphaned thread holding the patched ``nirs4all.run``
+    can race with interpreter teardown and crash xdist workers on Windows.
     """
     stop_event = threading.Event()
+    active_threads: list[threading.Thread] = []
+    active_threads_lock = threading.Lock()
 
     class SlowResult:
         best_rmse = 0.5
@@ -477,19 +481,33 @@ def slow_mock_nirs4all(monkeypatch):
             Path(path).touch()
 
     def slow_run(**kwargs):
-        # Sleep in small increments; exit early when stop_event is set
-        for _ in range(50):
-            if stop_event.is_set():
-                return SlowResult()
-            time.sleep(0.1)
-        return SlowResult()
+        # Register the calling thread so cleanup can join it deterministically.
+        current = threading.current_thread()
+        with active_threads_lock:
+            active_threads.append(current)
+        try:
+            # Sleep in small increments; exit early when stop_event is set
+            for _ in range(50):
+                if stop_event.is_set():
+                    return SlowResult()
+                time.sleep(0.1)
+            return SlowResult()
+        finally:
+            with active_threads_lock:
+                if current in active_threads:
+                    active_threads.remove(current)
 
     monkeypatch.setattr("nirs4all.run", slow_run, raising=False)
     yield SlowResult
 
-    # Signal the mock to stop and give the background async task time to notice
+    # Signal the mock to exit ASAP, then deterministically wait for every
+    # in-flight worker thread to finish. This prevents an orphaned thread from
+    # outliving the test and racing with xdist worker teardown.
     stop_event.set()
-    time.sleep(0.5)
+    with active_threads_lock:
+        threads_snapshot = list(active_threads)
+    for t in threads_snapshot:
+        t.join(timeout=5.0)
 
 
 @pytest.fixture
