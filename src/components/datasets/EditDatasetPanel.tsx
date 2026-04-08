@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from "react";
 import type { UpdateDatasetRequest } from "@/api/client";
 import { DatasetWizard, type WizardInitialState } from "./DatasetWizard";
+import { getInitialAggregationConfig } from "@/lib/datasetConfig";
 import type {
   Dataset,
   DatasetConfig,
@@ -136,7 +137,7 @@ function buildInitialState(dataset: Dataset): WizardInitialState {
     targets: config.targets ?? dataset.targets ?? [],
     defaultTarget: dataset.default_target ?? config.default_target ?? "",
     taskType: dataset.task_type ?? config.task_type ?? "auto",
-    aggregation: config.aggregation ?? { enabled: false, method: "mean" },
+    aggregation: getInitialAggregationConfig(config),
     folds: config.folds ?? null,
     hasFoldFile: config.folds?.source === "file",
     foldFilePath: config.folds?.file,

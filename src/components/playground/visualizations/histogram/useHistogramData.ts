@@ -73,6 +73,12 @@ export function useHistogramData(props: YHistogramV2Props) {
   const displayY = processedY && processedY.length === y.length ? processedY : y;
   const isProcessed = processedY && processedY.length === y.length;
 
+  useEffect(() => {
+    if (config.selectedOnly && selectedSamples.size === 0) {
+      setConfig(prev => ({ ...prev, selectedOnly: false }));
+    }
+  }, [config.selectedOnly, selectedSamples.size]);
+
   // Determine effective color mode from global config
   const effectiveColorMode = globalColorConfig?.mode ?? 'target';
 
@@ -103,12 +109,36 @@ export function useHistogramData(props: YHistogramV2Props) {
     return uniqueValues.sort();
   }, [shouldStackByMetadata, globalColorConfig?.metadataKey, metadata]);
 
+  const effectiveDisplayFilter = useMemo(() => {
+    const baseFilter = colorContext?.displayFilteredIndices;
+
+    if (!config.selectedOnly || selectedSamples.size === 0) {
+      return baseFilter;
+    }
+
+    const selectedOnlyFilter = new Set<number>();
+    selectedSamples.forEach((sampleIdx) => {
+      if (!baseFilter || baseFilter.has(sampleIdx)) {
+        selectedOnlyFilter.add(sampleIdx);
+      }
+    });
+
+    return selectedOnlyFilter;
+  }, [colorContext?.displayFilteredIndices, config.selectedOnly, selectedSamples]);
+
+  const filteredDisplayY = useMemo(() => {
+    if (!effectiveDisplayFilter) {
+      return displayY;
+    }
+    return displayY.filter((_, idx) => effectiveDisplayFilter.has(idx));
+  }, [displayY, effectiveDisplayFilter]);
+
   // Calculate effective bin count
   const effectiveBinCount = useMemo(() => {
     if (config.binCount === 'custom') return config.customBinCount;
-    if (config.binCount === 'auto') return calculateOptimalBinCount(displayY);
+    if (config.binCount === 'auto') return calculateOptimalBinCount(filteredDisplayY);
     return parseInt(config.binCount, 10);
-  }, [config.binCount, config.customBinCount, displayY]);
+  }, [config.binCount, config.customBinCount, filteredDisplayY]);
 
   // Compute histogram bins
   const { histogramData, sampleBins } = useMemo(() => {
@@ -116,12 +146,18 @@ export function useHistogramData(props: YHistogramV2Props) {
       return { histogramData: [] as BinData[], sampleBins: [] as number[] };
     }
 
-    // Phase 4: Get display filter from colorContext
-    const displayFilter = colorContext?.displayFilteredIndices;
+    const displayFilter = effectiveDisplayFilter;
+    const visibleValues = displayFilter
+      ? displayY.filter((_, idx) => displayFilter.has(idx))
+      : displayY;
+
+    if (visibleValues.length === 0) {
+      return { histogramData: [] as BinData[], sampleBins: [] as number[] };
+    }
 
     const values = displayY;
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = Math.min(...visibleValues);
+    const max = Math.max(...visibleValues);
     const range = max - min;
     const binWidth = range / effectiveBinCount || 1;
 
@@ -167,7 +203,7 @@ export function useHistogramData(props: YHistogramV2Props) {
     });
 
     return { histogramData: histogram, sampleBins: sampleToBin };
-  }, [displayY, effectiveBinCount, folds, colorContext?.displayFilteredIndices]);
+  }, [displayY, effectiveBinCount, folds, effectiveDisplayFilter]);
 
   // Phase 5: Determine if we're in classification mode
   const isClassificationMode = useMemo(() => {
@@ -180,9 +216,10 @@ export function useHistogramData(props: YHistogramV2Props) {
     if (!isClassificationMode) return [];
 
     const classLabels = colorContext?.classLabels;
+    const classLabelMap = colorContext?.classLabelMap;
     if (!classLabels || classLabels.length === 0) return [];
 
-    const displayFilter = colorContext?.displayFilteredIndices;
+    const displayFilter = effectiveDisplayFilter;
     const foldLabels = folds?.fold_labels ?? [];
 
     // Initialize class bars
@@ -202,7 +239,9 @@ export function useHistogramData(props: YHistogramV2Props) {
         return;
       }
 
-      const classIdx = classLabels.indexOf(String(yVal));
+      const classIdx = classLabelMap
+        ? classLabelMap.get(String(yVal)) ?? -1
+        : classLabels.indexOf(String(yVal));
       if (classIdx >= 0) {
         classBars[classIdx].count++;
         classBars[classIdx].samples.push(idx);
@@ -223,24 +262,25 @@ export function useHistogramData(props: YHistogramV2Props) {
     });
 
     return classBars;
-  }, [isClassificationMode, colorContext?.classLabels, colorContext?.displayFilteredIndices, displayY, folds]);
+  }, [isClassificationMode, colorContext?.classLabels, colorContext?.classLabelMap, effectiveDisplayFilter, displayY, folds]);
 
   // Phase 5: Map samples to their class index for selection highlighting
   const sampleToClass = useMemo(() => {
     if (!isClassificationMode) return [] as number[];
     const classLabels = colorContext?.classLabels ?? [];
-    return displayY.map(yVal => classLabels.indexOf(String(yVal)));
-  }, [isClassificationMode, colorContext?.classLabels, displayY]);
+    const classLabelMap = colorContext?.classLabelMap;
+    return displayY.map((yVal) =>
+      classLabelMap
+        ? classLabelMap.get(String(yVal)) ?? -1
+        : classLabels.indexOf(String(yVal))
+    );
+  }, [isClassificationMode, colorContext?.classLabels, colorContext?.classLabelMap, displayY]);
 
   // Compute statistics
   const stats = useMemo<YStats | null>(() => {
     if (!displayY || displayY.length === 0) return null;
 
-    // Phase 4: Filter values based on display filter
-    const displayFilter = colorContext?.displayFilteredIndices;
-    const values = displayFilter
-      ? displayY.filter((_, idx) => displayFilter.has(idx))
-      : displayY;
+    const values = filteredDisplayY;
 
     if (values.length === 0) return null;
 
@@ -257,13 +297,15 @@ export function useHistogramData(props: YHistogramV2Props) {
     const q3 = sorted[Math.floor(n * 0.75)];
 
     return { mean, median, std, min: sorted[0], max: sorted[n - 1], n, q1, q3 };
-  }, [displayY, colorContext?.displayFilteredIndices]);
+  }, [filteredDisplayY]);
 
   // Compute stats for selected samples
   const selectedStats = useMemo<YStats | null>(() => {
     if (!displayY || displayY.length === 0 || selectedSamples.size === 0) return null;
 
-    const values = displayY.filter((_, idx) => selectedSamples.has(idx));
+    const values = displayY.filter((_, idx) =>
+      selectedSamples.has(idx) && (!effectiveDisplayFilter || effectiveDisplayFilter.has(idx))
+    );
     if (values.length === 0) return null;
 
     const n = values.length;
@@ -279,15 +321,15 @@ export function useHistogramData(props: YHistogramV2Props) {
     const q3 = sorted[Math.floor(n * 0.75)];
 
     return { mean, median, std, min: sorted[0], max: sorted[n - 1], n, q1, q3 };
-  }, [displayY, selectedSamples]);
+  }, [displayY, effectiveDisplayFilter, selectedSamples]);
 
   // Stats to display in footer
   const displayStats = selectedSamples.size > 0 ? selectedStats : stats;
 
   // Compute KDE data
   const kdeData = useMemo(() => {
-    if (!config.showKDE || !displayY || displayY.length === 0) return [];
-    const kde = computeKDE(displayY);
+    if (!config.showKDE || filteredDisplayY.length === 0) return [];
+    const kde = computeKDE(filteredDisplayY);
     // Scale KDE to match histogram height
     const maxCount = Math.max(...histogramData.map(d => d.count));
     const maxDensity = Math.max(...kde.map(d => d.density));
@@ -295,7 +337,7 @@ export function useHistogramData(props: YHistogramV2Props) {
       x: d.x,
       density: (d.density / maxDensity) * maxCount,
     }));
-  }, [config.showKDE, displayY, histogramData]);
+  }, [config.showKDE, filteredDisplayY, histogramData]);
 
   // Get unique fold indices
   const uniqueFolds = useMemo(() => {

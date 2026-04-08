@@ -133,7 +133,7 @@ export function DatasetTargetsTab({
       {distribution && (
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
                 Distribution
                 <Badge variant="outline" className="text-xs capitalize">
@@ -156,15 +156,15 @@ export function DatasetTargetsTab({
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,1fr)]">
               {/* Histogram */}
               {distribution.histogram && (
-                <div>
+                <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
                   <TargetHistogram
                     data={distribution.histogram}
                     type={distribution.type}
-                    width={400}
-                    height={220}
+                    width={640}
+                    height={260}
                     barColor={partitionTheme.histogramColor}
                   />
                 </div>
@@ -174,7 +174,7 @@ export function DatasetTargetsTab({
               <div className="space-y-4">
                 {distribution.type === "regression" && (
                   <>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <div className="p-3 bg-muted/30 rounded-lg">
                         <p className="text-xs text-muted-foreground">Minimum</p>
                         <p className="font-mono font-medium text-lg">

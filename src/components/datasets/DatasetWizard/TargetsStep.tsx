@@ -580,7 +580,7 @@ export function TargetsStep() {
               checked={state.aggregation.enabled}
               onCheckedChange={(v) => {
                 dispatch({ type: "SET_AGGREGATION", payload: { enabled: v } });
-                if (v) setShowAggregation(true);
+                setShowAggregation(v);
               }}
             />
           </div>

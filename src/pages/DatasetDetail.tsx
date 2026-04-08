@@ -15,9 +15,7 @@ import { motion } from "@/lib/motion";
 import {
   ArrowLeft,
   FileSpreadsheet,
-  Download,
   Play,
-  Settings,
   RefreshCw,
   Loader2,
   AlertCircle,
@@ -30,7 +28,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DatasetOverviewTab,
@@ -39,6 +37,7 @@ import {
   DatasetRawDataTab,
 } from "@/components/datasets/detail";
 import { getDataset, previewDatasetById } from "@/api/client";
+import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
 import type { Dataset, PreviewDataResponse } from "@/types/datasets";
 
 const containerVariants = {
@@ -162,10 +161,57 @@ export default function DatasetDetail() {
     );
   }
 
+  const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
+  const taskLabel = dataset.task_type === "regression"
+    ? "Regression"
+    : dataset.task_type === "classification"
+      ? dataset.num_classes && dataset.num_classes > 2
+        ? "Multiclass"
+        : "Classification"
+      : "Auto";
+
+  const statCards = [
+    {
+      title: t("datasets.info.samples"),
+      icon: Layers,
+      value: formatNumber(dataset.num_samples),
+      detail: (() => {
+        const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
+        const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
+        if (testCount != null && testCount > 0) {
+          return `${formatNumber(trainCount)} train · ${formatNumber(testCount)} test`;
+        }
+        return "All available samples";
+      })(),
+    },
+    {
+      title: t("datasets.info.features"),
+      icon: Hash,
+      value: formatNumber(dataset.num_features),
+      detail: preview?.summary?.header_unit
+        ? `Header: ${preview.summary.header_unit}`
+        : "Feature count",
+    },
+    {
+      title: t("datasets.info.spectralRange"),
+      icon: BarChart3,
+      value: preview?.spectra_preview
+        ? `${Math.min(...preview.spectra_preview.wavelengths).toFixed(0)}-${Math.max(...preview.spectra_preview.wavelengths).toFixed(0)}`
+        : "--",
+      detail: preview?.summary?.signal_type ?? "Preview pending",
+    },
+    {
+      title: t("datasets.info.targets"),
+      icon: Target,
+      value: String(dataset.targets?.length || 0),
+      detail: dataset.default_target || "No default target",
+    },
+  ];
+
   return (
     <MlLoadingOverlay>
     <motion.div
-      className="space-y-6"
+      className="mx-auto w-full max-w-7xl space-y-6 pb-6"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
@@ -183,87 +229,83 @@ export default function DatasetDetail() {
 
       {/* Header */}
       <motion.div variants={itemVariants}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-primary/10">
-              <FileSpreadsheet className="h-8 w-8 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{dataset.name}</h1>
-              <p className="text-muted-foreground font-mono text-sm truncate max-w-lg" title={dataset.path}>
-                {dataset.path}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate(`/datasets`)}>
-              <Settings className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button>
-              <Play className="h-4 w-4 mr-2" />
-              Run Analysis
-            </Button>
-          </div>
-        </div>
-      </motion.div>
+        <Card className="overflow-hidden border-border/70 bg-card/80 shadow-sm">
+          <CardContent className="space-y-6 p-5 sm:p-6">
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10">
+                  <FileSpreadsheet className="h-7 w-7 text-primary" />
+                </div>
+                <div className="min-w-0 space-y-3">
+                  <div className="space-y-1">
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                      {dataset.name}
+                    </h1>
+                    <p
+                      className="max-w-3xl truncate text-sm font-mono text-muted-foreground"
+                      title={dataset.path}
+                    >
+                      {dataset.path}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="capitalize">
+                      {taskLabel}
+                    </Badge>
+                    {dataset.default_target && (
+                      <Badge variant="secondary">
+                        Default target: {dataset.default_target}
+                      </Badge>
+                    )}
+                    {repetitionColumn && (
+                      <Badge variant="outline">
+                        Repetition: {repetitionColumn}
+                      </Badge>
+                    )}
+                    {dataset.signal_types?.map((signalType) => (
+                      <Badge key={signalType} variant="outline" className="capitalize">
+                        {signalType}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-      {/* Quick Stats */}
-      <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-4" variants={itemVariants}>
-        <Card className="bg-card/50">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Layers className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t("datasets.info.samples")}</p>
+              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <Button variant="outline" onClick={loadPreview} disabled={previewLoading}>
+                  <RefreshCw className={`mr-2 h-4 w-4 ${previewLoading ? "animate-spin" : ""}`} />
+                  Refresh Preview
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/playground">
+                    <Play className="mr-2 h-4 w-4" />
+                    Open Playground
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link to="/datasets">
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Back to Library
+                  </Link>
+                </Button>
+              </div>
             </div>
-            <p className="text-2xl font-bold">{formatNumber(dataset.num_samples)}</p>
-            {(() => {
-              const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
-              const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
-              if (testCount != null && testCount > 0) {
-                return (
-                  <p className="text-xs text-muted-foreground tabular-nums mt-1">
-                    {formatNumber(trainCount)} train · {formatNumber(testCount)} test
-                  </p>
-                );
-              }
-              return null;
-            })()}
-          </CardContent>
-        </Card>
-        <Card className="bg-card/50">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Hash className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t("datasets.info.features")}</p>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {statCards.map(({ title, icon: Icon, value, detail }) => (
+                <div
+                  key={title}
+                  className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3"
+                >
+                  <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+                    <Icon className="h-4 w-4" />
+                    <p className="text-sm">{title}</p>
+                  </div>
+                  <p className="text-2xl font-bold text-foreground">{value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                </div>
+              ))}
             </div>
-            <p className="text-2xl font-bold">{formatNumber(dataset.num_features)}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/50">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 mb-1">
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t("datasets.info.spectralRange")}</p>
-            </div>
-            <p className="text-2xl font-bold">
-              {preview?.spectra_preview
-                ? `${Math.min(...preview.spectra_preview.wavelengths).toFixed(0)}-${Math.max(...preview.spectra_preview.wavelengths).toFixed(0)}`
-                : "--"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/50">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Target className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t("datasets.info.targets")}</p>
-            </div>
-            <p className="text-2xl font-bold">{dataset.targets?.length || 0}</p>
           </CardContent>
         </Card>
       </motion.div>
@@ -271,24 +313,31 @@ export default function DatasetDetail() {
       {/* Tabs */}
       <motion.div variants={itemVariants}>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="bg-muted/50">
-            <TabsTrigger value="overview" className="gap-2">
-              <Info className="h-4 w-4" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="spectra" className="gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Spectra
-            </TabsTrigger>
-            <TabsTrigger value="targets" className="gap-2">
-              <Target className="h-4 w-4" />
-              Targets
-            </TabsTrigger>
-            <TabsTrigger value="data" className="gap-2">
-              <Table className="h-4 w-4" />
-              Raw Data
-            </TabsTrigger>
-          </TabsList>
+          <Card className="border-border/70 bg-card/70 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Dataset Views</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-xl bg-muted/30 p-2 lg:grid-cols-4">
+                <TabsTrigger value="overview" className="gap-2 rounded-lg py-2.5">
+                  <Info className="h-4 w-4" />
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="spectra" className="gap-2 rounded-lg py-2.5">
+                  <BarChart3 className="h-4 w-4" />
+                  Spectra
+                </TabsTrigger>
+                <TabsTrigger value="targets" className="gap-2 rounded-lg py-2.5">
+                  <Target className="h-4 w-4" />
+                  Targets
+                </TabsTrigger>
+                <TabsTrigger value="data" className="gap-2 rounded-lg py-2.5">
+                  <Table className="h-4 w-4" />
+                  Raw Data
+                </TabsTrigger>
+              </TabsList>
+            </CardContent>
+          </Card>
 
           <div className="mt-6">
             <TabsContent value="overview" className="m-0">

@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
 import { Target, Info, FileSpreadsheet, Clock } from "lucide-react";
 import { TargetHistogram } from "../charts";
 import { PartitionToggle } from "../PartitionToggle";
@@ -40,10 +41,7 @@ function formatCount(value: number | null | undefined): string {
 }
 
 export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps) {
-  const configRecord = dataset.config as Record<string, unknown> | undefined;
-  const legacyRepetition = typeof configRecord?.repetition === "string" ? configRecord.repetition : undefined;
-  const legacyAggregate = typeof configRecord?.aggregate === "string" ? configRecord.aggregate : undefined;
-  const repetitionColumn = dataset.config?.aggregation?.column || legacyRepetition || legacyAggregate;
+  const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
 
   const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
   const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
@@ -75,7 +73,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
       {distribution && (
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Target className="h-4 w-4" />
                 Target Histogram
@@ -97,13 +95,15 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
             <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)] gap-6 items-start">
               <div>
                 {distribution.histogram ? (
-                  <TargetHistogram
-                    data={distribution.histogram}
-                    type={distribution.type}
-                    width={420}
-                    height={220}
-                    barColor={partitionTheme.histogramColor}
-                  />
+                  <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
+                    <TargetHistogram
+                      data={distribution.histogram}
+                      type={distribution.type}
+                      width={560}
+                      height={240}
+                      barColor={partitionTheme.histogramColor}
+                    />
+                  </div>
                 ) : (
                   <div className="h-[220px] flex items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
                     No histogram preview available
@@ -171,7 +171,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-sm lg:grid-cols-4">
                   {distribution?.type === "regression" ? (
                     <>
                       <div>
@@ -226,7 +226,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
             <div>
               <p className="text-sm text-muted-foreground">Task Type</p>
               <Badge variant="outline" className="capitalize mt-1">
@@ -265,12 +265,14 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                 <p className="font-medium mt-1">{dataset.n_sources}</p>
               </div>
             )}
-            <div>
-              <p className="text-sm text-muted-foreground">Repetition Column</p>
-              <p className="font-mono text-sm font-medium mt-1" title={repetitionColumn || "--"}>
-                {repetitionColumn || "--"}
-              </p>
-            </div>
+            {repetitionColumn && (
+              <div>
+                <p className="text-sm text-muted-foreground">Repetition Column</p>
+                <p className="font-mono text-sm font-medium mt-1" title={repetitionColumn}>
+                  {repetitionColumn}
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

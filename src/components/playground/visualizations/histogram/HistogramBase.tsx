@@ -11,6 +11,7 @@ import {
   Download,
   Settings2,
   ChevronDown,
+  MousePointer2,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -92,6 +93,33 @@ export default function HistogramBase({
               <SelectItem value="50">50</SelectItem>
             </SelectContent>
           </Select>
+
+          <TooltipProvider delayDuration={200}>
+            <TooltipUI>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    variant={config.selectedOnly ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 px-2"
+                    disabled={selectedSamples.size === 0}
+                    onClick={() => updateConfig({ selectedOnly: !config.selectedOnly })}
+                  >
+                    <MousePointer2 className="w-3 h-3" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">
+                  {config.selectedOnly
+                    ? 'Show all visible samples'
+                    : selectedSamples.size > 0
+                      ? `Show only ${selectedSamples.size} selected sample${selectedSamples.size === 1 ? '' : 's'}`
+                      : 'Select samples to enable selected-only view'}
+                </p>
+              </TooltipContent>
+            </TooltipUI>
+          </TooltipProvider>
 
           {/* Settings dropdown */}
           <DropdownMenu>

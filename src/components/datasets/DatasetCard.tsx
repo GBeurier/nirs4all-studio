@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,11 +84,7 @@ export function DatasetCard({
   onAssignGroup,
 }: DatasetCardProps) {
   const versionStatus = (dataset.version_status || "unchecked") as DatasetVersionStatus;
-  const configRecord = dataset.config as Record<string, unknown> | undefined;
-  const legacyRepetition = typeof configRecord?.repetition === "string" ? configRecord.repetition : undefined;
-  const legacyAggregate = typeof configRecord?.aggregate === "string" ? configRecord.aggregate : undefined;
-  const repetitionColumn = dataset.config?.aggregation?.column || legacyRepetition || legacyAggregate;
-  const repetitionModeLabel = repetitionColumn ? "Reps: Column" : "Reps: Auto";
+  const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
 
   // Find assigned groups (multi-group support)
   const assignedGroups = groups.filter((g) =>
@@ -121,13 +118,15 @@ export function DatasetCard({
             lastVerified={dataset.last_verified}
             hash={dataset.hash}
           />
-          <Badge
-            variant="outline"
-            className={repetitionColumn ? "text-[10px]" : "text-[10px] text-muted-foreground"}
-            title={repetitionColumn ? `Configured repetition column: ${repetitionColumn}` : "No repetition column configured. Auto-detection is used in playground."}
-          >
-            {repetitionModeLabel}
-          </Badge>
+          {repetitionColumn && (
+            <Badge
+              variant="outline"
+              className="text-[10px]"
+              title={`Repetition column: ${repetitionColumn}`}
+            >
+              {repetitionColumn}
+            </Badge>
+          )}
           {/* Group badges */}
           {assignedGroups.map((g) => (
             <Badge
@@ -200,12 +199,6 @@ export function DatasetCard({
               : dataset.task_type === "classification"
                 ? (dataset.num_classes && dataset.num_classes > 2 ? "Multi" : "Classif")
                 : "--"}
-          </p>
-        </div>
-        <div className="text-center min-w-[90px]">
-          <p className="text-muted-foreground text-xs">Repetition</p>
-          <p className="font-medium text-foreground truncate max-w-[90px]" title={repetitionColumn || "--"}>
-            {repetitionColumn || "--"}
           </p>
         </div>
       </div>

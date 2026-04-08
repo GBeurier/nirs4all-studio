@@ -18,7 +18,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { PartitionToggle } from '@/components/datasets';
 import { SpectralData } from '@/types/spectral';
 import { getWorkspace, type DatasetInfo } from '@/api/client';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
@@ -154,35 +153,12 @@ export function DataUpload({
           </div>
         </div>
 
-        {dataSource === 'workspace' && currentDatasetInfo && (
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Loaded Partition</p>
-              <p className="text-xs font-medium text-foreground">
-                {effectiveCurrentPartition === 'all' ? 'Both' : effectiveCurrentPartition === 'train' ? 'Train' : 'Test'}
-              </p>
-              {hasCurrentTestPartition && (
-                <p className="text-[10px] tabular-nums text-muted-foreground">
-                  {(currentTrainSamples ?? 0).toLocaleString()} train · {(currentTestSamples ?? 0).toLocaleString()} test
-                </p>
-              )}
-            </div>
-            <PartitionToggle
-              value={effectiveCurrentPartition}
-              onChange={(partition) => onLoadFromWorkspace(
-                currentDatasetInfo.datasetId,
-                currentDatasetInfo.datasetName,
-                partition,
-                {
-                  trainSamples: currentTrainSamples,
-                  testSamples: currentTestSamples,
-                },
-              )}
-              hasTest={hasCurrentTestPartition}
-              trainCount={currentTrainSamples}
-              testCount={currentTestSamples}
-              size="xs"
-            />
+        {dataSource === 'workspace' && currentDatasetInfo && hasCurrentTestPartition && (
+          <div className="mb-3 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Dataset Split</p>
+            <p className="mt-1 text-xs font-medium text-foreground">
+              {(currentTrainSamples ?? 0).toLocaleString()} train · {(currentTestSamples ?? 0).toLocaleString()} test
+            </p>
           </div>
         )}
 

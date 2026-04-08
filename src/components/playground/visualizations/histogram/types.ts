@@ -46,6 +46,7 @@ export interface YStats {
 export interface HistogramConfig {
   binCount: BinCountOption;
   customBinCount: number;
+  selectedOnly: boolean;
   showKDE: boolean;
   showMean: boolean;
   showMedian: boolean;
@@ -71,6 +72,7 @@ export interface RangeSelection {
 export const DEFAULT_CONFIG: HistogramConfig = {
   binCount: 'auto',
   customBinCount: 20,
+  selectedOnly: false,
   showKDE: false,
   showMean: false,
   showMedian: false,

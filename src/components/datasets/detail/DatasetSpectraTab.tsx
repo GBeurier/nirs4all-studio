@@ -87,7 +87,7 @@ export function DatasetSpectraTab({
       {/* Main Spectra Chart */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Spectral Overview
@@ -111,18 +111,20 @@ export function DatasetSpectraTab({
           </div>
         </CardHeader>
         <CardContent>
-          <SpectraChart
-            wavelengths={spectra.wavelengths}
-            meanSpectrum={spectra.mean_spectrum}
-            minSpectrum={spectra.min_spectrum}
-            maxSpectrum={spectra.max_spectrum}
-            width={800}
-            height={350}
-            xLabel="Wavelength"
-            yLabel="Absorbance"
-            lineColor={partitionTheme.lineColor}
-            rangeFillColor={partitionTheme.rangeFillColor}
-          />
+          <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
+            <SpectraChart
+              wavelengths={spectra.wavelengths}
+              meanSpectrum={spectra.mean_spectrum}
+              minSpectrum={spectra.min_spectrum}
+              maxSpectrum={spectra.max_spectrum}
+              width={960}
+              height={360}
+              xLabel="Wavelength"
+              yLabel="Absorbance"
+              lineColor={partitionTheme.lineColor}
+              rangeFillColor={partitionTheme.rangeFillColor}
+            />
+          </div>
           <p className="text-xs text-muted-foreground mt-3 text-center">
             Mean spectrum with min-max range shading
           </p>
@@ -130,7 +132,7 @@ export function DatasetSpectraTab({
       </Card>
 
       {/* Spectral Statistics */}
-      <div className="grid md:grid-cols-4 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">Wavelength Range</p>

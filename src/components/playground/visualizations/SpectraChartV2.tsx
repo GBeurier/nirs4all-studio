@@ -15,7 +15,7 @@
  * while maintaining full backward compatibility.
  */
 
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import {
   ComposedChart,
   Line,
@@ -174,6 +174,12 @@ export function SpectraChartV2({
 
   const hoveredSample = selectionCtx?.hoveredSample ?? null;
   const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
+
+  useEffect(() => {
+    if (config.displayMode === 'selected_only' && selectedSamples.size === 0) {
+      configResult.setDisplayMode('individual');
+    }
+  }, [config.displayMode, configResult, selectedSamples.size]);
 
   // Brush state for zoom
   const [brushDomain, setBrushDomain] = useState<[number, number] | null>(null);
@@ -1235,6 +1241,7 @@ export function SpectraChartV2({
         samplingResult={samplingResult}
         totalSamples={totalSamples}
         displayedSamples={displayedSamples}
+        selectedCount={selectedSamples.size}
         isLoading={isLoading}
         brushActive={!!brushDomain}
         onResetBrush={handleResetBrush}

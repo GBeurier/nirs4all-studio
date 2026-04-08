@@ -16,6 +16,7 @@
 import { useMemo, useCallback } from 'react';
 import {
   Download,
+  Filter,
   Layers,
   RefreshCw,
   ZoomIn,
@@ -68,6 +69,8 @@ export interface SpectraChartToolbarProps {
   totalSamples: number;
   /** Displayed sample count */
   displayedSamples: number;
+  /** Selected sample count */
+  selectedCount?: number;
   /** Whether data is loading */
   isLoading?: boolean;
   /** Whether brush zoom is active */
@@ -140,6 +143,7 @@ export function SpectraChartToolbar({
   samplingResult,
   totalSamples,
   displayedSamples,
+  selectedCount = 0,
   isLoading,
   brushActive,
   onResetBrush,
@@ -230,6 +234,13 @@ export function SpectraChartToolbar({
   // Get view mode label
   const viewModeLabel = VIEW_MODE_OPTIONS.find(o => o.value === config.viewMode)?.label ?? 'Processed';
   const displayModeLabel = DISPLAY_MODE_OPTIONS.find(o => o.value === config.displayMode)?.label ?? 'Individual';
+  const hasSelection = selectedCount > 0;
+
+  const handleSelectedOnlyToggle = useCallback(() => {
+    if (!hasSelection) return;
+    onInteractionStart?.();
+    handleDisplayModeChange(config.displayMode === 'selected_only' ? 'individual' : 'selected_only');
+  }, [config.displayMode, handleDisplayModeChange, hasSelection, onInteractionStart]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -329,6 +340,29 @@ export function SpectraChartToolbar({
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  variant={config.displayMode === 'selected_only' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={!hasSelection}
+                  onClick={handleSelectedOnlyToggle}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {config.displayMode === 'selected_only'
+                ? 'Show all visible spectra'
+                : hasSelection
+                  ? `Show only ${selectedCount} selected sample${selectedCount === 1 ? '' : 's'}`
+                  : 'Select samples to enable selected-only view'}
+            </TooltipContent>
+          </Tooltip>
 
           {/* Selection Color dropdown - always visible for changing selection highlight color */}
           <DropdownMenu>
