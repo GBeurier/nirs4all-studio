@@ -10,8 +10,11 @@
 #   -SkipE2E             Skip Playwright E2E tests
 #   -SkipBuild           Skip production build validation
 #   -SkipElectron        Skip Electron build test
-#   -Only STEP           Run only one step: lint | validate-nodes | type-check |
-#                        frontend-tests | backend-lint | backend-tests | e2e | build | electron
+#   -Only CATEGORY       Run only one category: lint | tests | e2e | build
+#                          lint  -> eslint + validate-nodes + tsc (+ ruff + py-syntax unless -SkipBackend)
+#                          tests -> vitest (+ pytest unless -SkipBackend)
+#                          e2e   -> playwright
+#                          build -> web build + electron build (respects -SkipBuild / -SkipElectron)
 #   -Python PATH         Python interpreter to use (default: .venv\Scripts\python.exe or python)
 #   -Help                Show this help
 
@@ -216,78 +219,81 @@ function Skip-Step {
 # Steps
 # ──────────────────────────────────────────────────────────────────────────────
 
+function Phase-Lint {
+    $lintNames = @("eslint", "nodes", "tsc")
+    $lintCmds  = @("npm run lint", "npm run validate:nodes", "npx tsc --noEmit")
+
+    if (-not $SkipBackend) {
+        $lintNames += @("ruff", "py-syntax")
+        $lintCmds  += @("npm run lint:ruff", "npm run lint:py-syntax")
+    }
+
+    Invoke-ParallelStep "Lint ($($lintCmds.Count) checks)" -Names $lintNames -Commands $lintCmds
+}
+
+function Phase-Tests {
+    if ($SkipBackend) {
+        Invoke-Step "Frontend Tests" "npm run test:frontend"
+    } else {
+        Invoke-ParallelStep "Tests (vitest + pytest)" `
+            -Names @("vitest", "pytest") `
+            -Commands @("npm run test:frontend", "npm run test:backend")
+    }
+}
+
+function Phase-E2E {
+    if ($SkipE2E) { Skip-Step "E2E Tests" }
+    else { Invoke-Step "E2E Tests" "npx playwright test --project=web-chromium --workers=2 --retries=2" }
+}
+
+function Phase-Build {
+    if ($SkipBuild) { Skip-Step "Web Build" }
+    else {
+        Invoke-Step "Web Build" "npm run build"
+        if ($StepResult["Web Build"] -eq "pass") {
+            $indexPath = Join-Path $ProjectRoot "dist\index.html"
+            if (-not (Test-Path $indexPath)) {
+                $StepResult["Web Build"] = "fail"
+                Write-Err "Web Build - dist\index.html not found"
+            } else { Write-Info "Web build OK" }
+        }
+    }
+
+    if ($SkipElectron) { Skip-Step "Electron Build" }
+    else {
+        Invoke-Step "Electron Build" "npm run build:electron"
+        if ($StepResult["Electron Build"] -eq "pass") {
+            $distElectron = Join-Path $ProjectRoot "dist-electron"
+            if (-not (Test-Path $distElectron)) {
+                $StepResult["Electron Build"] = "fail"
+                Write-Err "Electron Build - dist-electron not found"
+            } else { Write-Info "Electron build OK" }
+        }
+    }
+}
+
 try {
     Push-Location $ProjectRoot
 
     if ($Only) {
-        # ── Single step mode ────────────────────────────────────────────────
+        # ── Single category mode ────────────────────────────────────────────
         switch ($Only) {
-            "lint"            { Invoke-Step "ESLint" "npm run lint" }
-            "validate-nodes"  { Invoke-Step "Node Registry" "npm run validate:nodes" }
-            "type-check"      { Invoke-Step "TypeScript" "npx tsc --noEmit" }
-            "frontend-tests"  { Invoke-Step "Frontend Tests" "npm run test:frontend" }
-            "backend-lint"    { Invoke-Step "Backend Lint" "npm run lint:ruff" }
-            "backend-tests"   { Invoke-Step "Backend Tests" "npm run test:backend" }
-            "e2e"             { Invoke-Step "E2E Tests" "npx playwright test --project=web-chromium --workers=2 --retries=2" }
-            "build"           { Invoke-Step "Web Build" "npm run build" }
-            "electron"        { Invoke-Step "Electron Build" "npm run build:electron" }
+            "lint"  { Phase-Lint }
+            "tests" { Phase-Tests }
+            "e2e"   { Phase-E2E }
+            "build" { Phase-Build }
             default {
-                Write-Err "Unknown step: $Only"
-                Write-Err "Valid: lint validate-nodes type-check frontend-tests backend-lint backend-tests e2e build electron"
+                Write-Err "Unknown category: $Only"
+                Write-Err "Valid: lint tests e2e build"
                 exit 1
             }
         }
     } else {
-        # ── Parallel mode ───────────────────────────────────────────────────
-
-        # Phase 1: Lint (all independent checks in parallel)
-        $lintNames = @("eslint", "nodes", "tsc")
-        $lintCmds  = @("npm run lint", "npm run validate:nodes", "npx tsc --noEmit")
-
-        if (-not $SkipBackend) {
-            $lintNames += @("ruff", "py-syntax")
-            $lintCmds  += @("npm run lint:ruff", "npm run lint:py-syntax")
-        }
-
-        Invoke-ParallelStep "Lint ($($lintCmds.Count) checks)" -Names $lintNames -Commands $lintCmds
-
-        # Phase 2: Tests (vitest + pytest in parallel)
-        if ($SkipBackend) {
-            Invoke-Step "Frontend Tests" "npm run test:frontend"
-        } else {
-            Invoke-ParallelStep "Tests (vitest + pytest)" `
-                -Names @("vitest", "pytest") `
-                -Commands @("npm run test:frontend", "npm run test:backend")
-        }
-
-        # Phase 3: E2E
-        if ($SkipE2E) { Skip-Step "E2E Tests" }
-        else { Invoke-Step "E2E Tests" "npx playwright test --project=web-chromium --workers=2 --retries=2" }
-
-        # Phase 4: Builds
-        if ($SkipBuild) { Skip-Step "Web Build" }
-        else {
-            Invoke-Step "Web Build" "npm run build"
-            if ($StepResult["Web Build"] -eq "pass") {
-                $indexPath = Join-Path $ProjectRoot "dist\index.html"
-                if (-not (Test-Path $indexPath)) {
-                    $StepResult["Web Build"] = "fail"
-                    Write-Err "Web Build - dist\index.html not found"
-                } else { Write-Info "Web build OK" }
-            }
-        }
-
-        if ($SkipElectron) { Skip-Step "Electron Build" }
-        else {
-            Invoke-Step "Electron Build" "npm run build:electron"
-            if ($StepResult["Electron Build"] -eq "pass") {
-                $distElectron = Join-Path $ProjectRoot "dist-electron"
-                if (-not (Test-Path $distElectron)) {
-                    $StepResult["Electron Build"] = "fail"
-                    Write-Err "Electron Build - dist-electron not found"
-                } else { Write-Info "Electron build OK" }
-            }
-        }
+        # ── Full mode ───────────────────────────────────────────────────────
+        Phase-Lint
+        Phase-Tests
+        Phase-E2E
+        Phase-Build
     }
 
     # ──────────────────────────────────────────────────────────────────────────

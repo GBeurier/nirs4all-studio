@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # module objects via ``sys.modules`` to monkeypatch their globals.
 import api.app_config  # noqa: F401  (ensure module is in sys.modules)
 import api.workspace_manager  # noqa: F401
+
 app_config_module = sys.modules["api.app_config"]
 workspace_manager_module = sys.modules["api.workspace_manager"]
 from api.app_config import AppConfigManager  # noqa: E402

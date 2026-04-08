@@ -1005,7 +1005,7 @@ class PlaygroundExecutor:
                 first_key = next(
                     (
                         key
-                        for key in metadata_for_split.keys()
+                        for key in metadata_for_split
                         if key.lower() not in {"set", "partition"}
                     ),
                     None,

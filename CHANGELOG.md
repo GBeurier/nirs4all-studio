@@ -6,6 +6,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.4.0] — 2026-04-08
+
+### Added
+
+- **Shared Query Hooks**: New `useDatasetsQuery` and `useLinkedWorkspacesQuery` hooks centralize dataset and workspace fetching with shared TanStack Query cache, eliminating duplicate API calls across `NewExperiment`, `Predictions`, `Results`, `Runs`, and `Settings` pages.
+- **Backend Startup Banner**: New `BackendStartupBanner` component surfaces backend readiness state during app launch.
+- **Selected-Only Visualizations**: `SpectraChartV2` and histogram components now support a selected-only view with tooltip toggles. `HistogramClassification` renders stacked bar segments for selection, partition, and metadata modes.
+- **Test Coverage**: Added test suites for dataset queries, playground partition selector, color configuration, target histograms, and store integration. New `conftest.py` fixtures isolate user settings during tests.
+
+### Improved
+
+- **Dataset & Workspace Types**: Extended dataset types with groups and score entry structures for richer API responses.
+- **Playground**: Enhanced color legend, partition selector, reference mode controls, and histogram data filtering based on sample selection.
+- **Settings Page**: Workspace list now uses the shared query hook with a change callback for live updates.
+- **Auto Display Mode**: `SpectraChartV2` automatically switches display mode when no samples are selected.
+
+### Fixed
+
+- Dataset top chains deduplication and metadata loading behavior.
+
+---
+
 ## [0.3.7] — 2026-04-08
 
 *(Release notes pending)*

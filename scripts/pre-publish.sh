@@ -10,8 +10,11 @@
 #   --skip-e2e           Skip Playwright E2E tests
 #   --skip-build         Skip production build validation
 #   --skip-electron      Skip Electron build test
-#   --only STEP          Run only one step: lint | validate-nodes | type-check |
-#                        frontend-tests | backend-lint | backend-tests | e2e | build | electron
+#   --only CATEGORY      Run only one category: lint | tests | e2e | build
+#                          lint  → eslint + validate-nodes + tsc (+ ruff + py-syntax unless --skip-backend)
+#                          tests → vitest (+ pytest unless --skip-backend)
+#                          e2e   → playwright
+#                          build → web build + electron build (respects --skip-build / --skip-electron)
 #   --docker             Run inside a clean ubuntu:24.04 Docker container (closest to GitHub Actions)
 #   --python PYTHON      Python interpreter to use (default: .venv/bin/python or python3)
 #   -h, --help           Show this help
@@ -208,41 +211,25 @@ skip_step() {
 
 cd "$PROJECT_ROOT"
 
-if [[ -n "$ONLY_STEP" ]]; then
-  # ── Single step mode ──────────────────────────────────────────────────────
-  case "$ONLY_STEP" in
-    lint)            run_step "ESLint" npm run lint ;;
-    validate-nodes)  run_step "Node Registry" npm run validate:nodes ;;
-    type-check)      run_step "TypeScript" npx tsc --noEmit ;;
-    frontend-tests)  run_step "Frontend Tests" npm run test:frontend ;;
-    backend-lint)    run_step "Backend Lint" npm run lint:ruff ;;
-    backend-tests)   run_step "Backend Tests" npm run test:backend ;;
-    e2e)             run_step "E2E Tests" npx playwright test --project=web-chromium --workers=2 --retries=2 ;;
-    build)           run_step "Web Build" bash -c "npm run build && test -f dist/index.html && echo 'Web build OK'" ;;
-    electron)        run_step "Electron Build" bash -c "npm run build:electron && test -d dist-electron && echo 'Electron build OK'" ;;
-    *) err "Unknown step: $ONLY_STEP"; err "Valid: lint validate-nodes type-check frontend-tests backend-lint backend-tests e2e build electron"; exit 1 ;;
-  esac
-else
-  # ── Parallel mode ─────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase definitions (shared by --only and full mode)
+# ──────────────────────────────────────────────────────────────────────────────
 
-  # Phase 1: Lint (all independent checks in parallel)
-  LINT_CMDS=()
-  LINT_NAMES=()
-
-  LINT_CMDS+=("npm run lint");           LINT_NAMES+=("eslint")
-  LINT_CMDS+=("npm run validate:nodes"); LINT_NAMES+=("nodes")
-  LINT_CMDS+=("npx tsc --noEmit");       LINT_NAMES+=("tsc")
+phase_lint() {
+  local LINT_CMDS=("npm run lint" "npm run validate:nodes" "npx tsc --noEmit")
+  local LINT_NAMES=("eslint" "nodes" "tsc")
 
   if ! $SKIP_BACKEND; then
-    LINT_CMDS+=("npm run lint:ruff");      LINT_NAMES+=("ruff")
-    LINT_CMDS+=("npm run lint:py-syntax"); LINT_NAMES+=("py-syntax")
+    LINT_CMDS+=("npm run lint:ruff" "npm run lint:py-syntax")
+    LINT_NAMES+=("ruff" "py-syntax")
   fi
 
   run_step "Lint (${#LINT_CMDS[@]} checks)" npx concurrently --group \
     --names "$(IFS=,; echo "${LINT_NAMES[*]}")" \
     "${LINT_CMDS[@]}"
+}
 
-  # Phase 2: Tests (vitest + pytest in parallel)
+phase_tests() {
   if $SKIP_BACKEND; then
     run_step "Frontend Tests" npm run test:frontend
   else
@@ -251,15 +238,17 @@ else
       "npm run test:frontend" \
       "npm run test:backend"
   fi
+}
 
-  # Phase 3: E2E
+phase_e2e() {
   if $SKIP_E2E; then
     skip_step "E2E Tests"
   else
     run_step "E2E Tests" npx playwright test --project=web-chromium --workers=2 --retries=2
   fi
+}
 
-  # Phase 4: Builds
+phase_build() {
   if $SKIP_BUILD; then
     skip_step "Web Build"
   else
@@ -271,6 +260,23 @@ else
   else
     run_step "Electron Build" bash -c "npm run build:electron && test -d dist-electron && echo 'Electron build OK'"
   fi
+}
+
+if [[ -n "$ONLY_STEP" ]]; then
+  # ── Single category mode ──────────────────────────────────────────────────
+  case "$ONLY_STEP" in
+    lint)  phase_lint ;;
+    tests) phase_tests ;;
+    e2e)   phase_e2e ;;
+    build) phase_build ;;
+    *) err "Unknown category: $ONLY_STEP"; err "Valid: lint tests e2e build"; exit 1 ;;
+  esac
+else
+  # ── Full mode ─────────────────────────────────────────────────────────────
+  phase_lint
+  phase_tests
+  phase_e2e
+  phase_build
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
