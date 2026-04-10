@@ -75,6 +75,12 @@ const GeneratorRenderer = lazy(() =>
   }))
 );
 
+const BranchRenderer = lazy(() =>
+  import("./BranchRenderer").then((m) => ({
+    default: m.BranchRenderer,
+  }))
+);
+
 const SequentialRenderer = lazy(() =>
   import("./SequentialRenderer").then((m) => ({
     default: m.SequentialRenderer,
@@ -151,9 +157,9 @@ const RENDERER_REGISTRY: Record<StepType, RendererConfig> = {
 const SUBTYPE_RENDERER_REGISTRY: Partial<Record<StepSubType, RendererConfig>> = {
   // Flow sub-types
   branch: {
-    component: DefaultRenderer,
-    usesParameterProps: true,
-    isLazy: false,
+    component: BranchRenderer,
+    usesParameterProps: false,
+    isLazy: true,
   },
   merge: {
     component: MergeRenderer,

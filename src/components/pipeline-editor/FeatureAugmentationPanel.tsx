@@ -89,7 +89,7 @@ export interface FeatureAugmentationConfig {
 export interface FeatureAugmentationTransform {
   id: string;
   name: string;
-  params: Record<string, string | number | boolean>;
+  params: Record<string, unknown>;
   enabled: boolean;
 }
 
@@ -193,7 +193,7 @@ export function FeatureAugmentationPanel({
     onChange({ ...config, action });
   };
 
-  const handleAddTransform = (name: string, params: Record<string, string | number | boolean>) => {
+  const handleAddTransform = (name: string, params: Record<string, unknown>) => {
     const newTransform: FeatureAugmentationTransform = {
       id: generateStepId(),
       name,
@@ -224,7 +224,7 @@ export function FeatureAugmentationPanel({
 
   const handleUpdateTransformParams = (
     id: string,
-    params: Record<string, string | number | boolean>
+    params: Record<string, unknown>
   ) => {
     onChange({
       ...config,
@@ -236,7 +236,7 @@ export function FeatureAugmentationPanel({
 
   const handleApplyPreset = (preset: typeof AUGMENTATION_PRESETS[0]) => {
     const newTransforms: FeatureAugmentationTransform[] = preset.transforms.map((t) => {
-      const cleanParams: Record<string, string | number | boolean> = {};
+      const cleanParams: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(t.params)) {
         if (value !== undefined) {
           cleanParams[key] = value;
@@ -478,7 +478,7 @@ interface TransformItemProps {
   index: number;
   onToggle: (enabled: boolean) => void;
   onRemove: () => void;
-  onUpdateParams: (params: Record<string, string | number | boolean>) => void;
+  onUpdateParams: (params: Record<string, unknown>) => void;
 }
 
 function TransformItem({
@@ -564,7 +564,7 @@ function TransformItem({
               </Label>
               <Input
                 type={typeof value === "number" ? "number" : "text"}
-                value={typeof value === "boolean" ? String(value) : value}
+                value={typeof value === "boolean" ? String(value) : String(value ?? "")}
                 onChange={(e) => {
                   const newValue =
                     typeof value === "number"
@@ -586,7 +586,7 @@ function TransformItem({
  * Dialog for adding a new transform
  */
 interface AddTransformDialogProps {
-  onAdd: (name: string, params: Record<string, string | number | boolean>) => void;
+  onAdd: (name: string, params: Record<string, unknown>) => void;
   trigger: React.ReactNode;
 }
 

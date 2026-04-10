@@ -5,7 +5,7 @@
 
 export { PipelineCard } from "./PipelineCard";
 export { PipelineRow } from "./PipelineRow";
-export { PresetSelector, defaultPresets } from "./PresetSelector";
+export { PresetSelector } from "./PresetSelector";
 export {
   ImportPipelineModal,
   DeletePipelineDialog,

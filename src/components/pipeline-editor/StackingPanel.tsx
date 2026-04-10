@@ -81,7 +81,7 @@ import { stepOptions, stepColors, type PipelineStep } from "./types";
 export interface StackingConfig {
   enabled: boolean;
   metaModel: string;
-  metaModelParams: Record<string, string | number | boolean>;
+  metaModelParams: Record<string, unknown>;
   sourceModels: string[]; // IDs of source model steps (empty = all)
   coverageStrategy: "drop" | "fill" | "model"; // How to handle missing OOF predictions
   fillValue?: number; // For 'fill' strategy
@@ -102,10 +102,10 @@ export function defaultStackingConfig(): StackingConfig {
   };
 }
 
-// Helper to safely get default params as Record<string, string | number | boolean>
-function getMetaModelDefaultParams(option: typeof META_MODEL_OPTIONS[number] | undefined): Record<string, string | number | boolean> {
+// Helper to safely get default params as Record<string, unknown>
+function getMetaModelDefaultParams(option: typeof META_MODEL_OPTIONS[number] | undefined): Record<string, unknown> {
   if (!option) return {};
-  const result: Record<string, string | number | boolean> = {};
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(option.defaultParams)) {
     if (value !== undefined) {
       result[key] = value;
@@ -222,7 +222,7 @@ export function StackingPanel({
     });
   };
 
-  const handleParamChange = (key: string, value: string | number | boolean) => {
+  const handleParamChange = (key: string, value: unknown) => {
     onChange({
       ...config,
       metaModelParams: { ...config.metaModelParams, [key]: value },
@@ -451,7 +451,7 @@ export function StackingPanel({
                       type={typeof defaultValue === "number" ? "number" : "text"}
                       value={typeof config.metaModelParams[key] === "boolean"
                         ? String(config.metaModelParams[key])
-                        : (config.metaModelParams[key] ?? defaultValue)}
+                        : String(config.metaModelParams[key] ?? defaultValue)}
                       onChange={(e) => {
                         const val =
                           typeof defaultValue === "number"

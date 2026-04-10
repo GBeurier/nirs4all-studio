@@ -19,6 +19,27 @@ from .lazy_imports import get_cached, is_ml_ready
 STORE_AVAILABLE = True
 
 
+def _get_workspace_store_cls() -> Any:
+    """Resolve ``WorkspaceStore`` without waiting for the full ML warmup.
+
+    Store-backed data pages only need the storage layer. If the background ML
+    loader has not populated the lazy cache yet, import ``WorkspaceStore``
+    directly so read-only database views do not stay blocked behind
+    ``ml_ready``.
+    """
+    if is_ml_ready():
+        store_cls = get_cached("WorkspaceStore", optional=True)
+        if store_cls is not None:
+            return store_cls
+
+    try:
+        from nirs4all.pipeline.storage import WorkspaceStore
+    except Exception as exc:
+        raise RuntimeError("nirs4all WorkspaceStore is not available") from exc
+
+    return WorkspaceStore
+
+
 def _sanitize_float(value: Any) -> Any:
     """Convert NaN / Inf to ``None`` for JSON serialization."""
     if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
@@ -98,6 +119,71 @@ def _merge_variant_params(
     return merged or None
 
 
+def _stable_serialize_for_signature(value: Any) -> str:
+    """Stable serialization used to compare CV / refit chain signatures."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except Exception:
+            return value
+    try:
+        return json.dumps(value, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _chain_match_signature(record: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Build a (model_class, model_name, preprocessings, params) signature.
+
+    Mirrors the frontend ``signatureParts`` helper so refit chains can be
+    paired with the matching CV chain that produced their best params.
+    """
+    return (
+        record.get("model_class") or "",
+        record.get("model_name") or "",
+        record.get("preprocessings") or "",
+        _stable_serialize_for_signature(record.get("best_params")),
+    )
+
+
+_CV_FALLBACK_FIELDS = ("cv_val_score", "cv_test_score", "cv_train_score", "cv_fold_count", "cv_scores")
+
+
+def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
+    """Copy CV scores from sibling CV chains onto refit chains in-place.
+
+    A row is treated as a "refit-only" entry when ``final_test_score``
+    is set but ``cv_val_score`` is missing. The matching CV row is found
+    by comparing (model_class, model_name, preprocessings, best_params).
+    """
+    refits = [
+        r for r in rows
+        if r.get("final_test_score") is not None and r.get("cv_val_score") is None
+    ]
+    if not refits:
+        return
+
+    cv_by_signature: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        if row.get("cv_val_score") is None:
+            continue
+        sig = _chain_match_signature(row)
+        cv_by_signature.setdefault(sig, row)
+
+    if not cv_by_signature:
+        return
+
+    for refit in refits:
+        match = cv_by_signature.get(_chain_match_signature(refit))
+        if match is None:
+            continue
+        for field in _CV_FALLBACK_FIELDS:
+            if refit.get(field) is None:
+                refit[field] = match.get(field)
+
+
 class StoreAdapter:
     """Wraps ``WorkspaceStore`` for webapp-specific operations.
 
@@ -112,7 +198,7 @@ class StoreAdapter:
         if not STORE_AVAILABLE:
             raise RuntimeError("nirs4all library is required for StoreAdapter")
         self._workspace_path = Path(workspace_path)
-        self._store = get_cached("WorkspaceStore")(workspace_path)
+        self._store = _get_workspace_store_cls()(workspace_path)
 
     def __enter__(self) -> StoreAdapter:
         return self
@@ -358,6 +444,10 @@ class StoreAdapter:
                 # Rename prediction_id → id for frontend compatibility
                 if "prediction_id" in d and "id" not in d:
                     d["id"] = d.pop("prediction_id")
+                # Expose chain_id under trace_id for legacy frontend consumers
+                # that key the pipeline-editor link off ``trace_id``.
+                if "chain_id" in d and "trace_id" not in d:
+                    d["trace_id"] = d.get("chain_id")
                 records.append(d)
 
             # Total count (without limit) for the frontend pagination display.
@@ -1219,6 +1309,7 @@ class StoreAdapter:
             return {"chains": [], "total": 0, "metric": None}
 
         rows = [dict(row) for row in df.iter_rows(named=True)]
+        _enrich_refit_with_cv_inplace(rows)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
         pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
@@ -1250,6 +1341,7 @@ class StoreAdapter:
             return {"chains": [], "total": 0, "metric": None}
 
         rows = [dict(row) for row in df.iter_rows(named=True)]
+        _enrich_refit_with_cv_inplace(rows)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
         pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
@@ -1336,6 +1428,10 @@ class StoreAdapter:
             if not ds:
                 continue
             datasets.setdefault(ds, []).append(dict(row))
+
+        # Inherit CV scores from sibling CV chains for refit-only entries.
+        for ds_chains in datasets.values():
+            _enrich_refit_with_cv_inplace(ds_chains)
 
         # Phase 1: rank per dataset and collect ONLY the rows we will emit.
         # We defer pipeline-metadata loading and JSON deserialization until

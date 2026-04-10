@@ -5,7 +5,7 @@
  * Opened from RunItem model cards or the AllModelsPanel table.
  */
 
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import {
   Box, Target, BarChart3, Layers, Loader2, ScatterChart as ScatterIcon,
-  TrendingDown, Settings2,
+  TrendingDown, Settings2, FileSpreadsheet, ImageDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMetricValue, extractFinalMetrics, extractCVMetrics, extractCVOnlyMetrics, type MetricEntry } from "@/lib/scores";
@@ -72,6 +72,88 @@ function PartitionBadge({ partition }: { partition: string }) {
 function fmtScore(value: number | null | undefined): string {
   if (value == null) return "\u2014";
   return value.toFixed(4);
+}
+
+/** Compact tick formatter for chart axes — keeps labels short. */
+function formatTick(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  const abs = Math.abs(value);
+  if (abs === 0) return "0";
+  if (abs >= 1000 || abs < 0.01) return value.toExponential(1);
+  return value.toFixed(2);
+}
+
+/** Escape a CSV field per RFC 4180. */
+function csvEscape(value: unknown): string {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/** Trigger a browser download for the given Blob. */
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Sanitize a string for use in a filename. */
+function sanitizeFilename(value: string | null | undefined): string {
+  return (value || "chart").replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+/** Convert points to CSV and download. */
+function exportPointsCsv(
+  points: Array<{ observed: number; predicted: number; residual: number; partition: string; foldId: string }>,
+  modelName: string | null | undefined,
+  foldId: string | undefined,
+  mode: "scatter" | "residuals",
+): void {
+  const header = ["partition", "fold_id", "observed", "predicted", "residual"].join(",");
+  const lines = points.map((p) =>
+    [csvEscape(p.partition), csvEscape(p.foldId), p.observed, p.predicted, p.residual].join(","),
+  );
+  const csv = [header, ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const filename = `${sanitizeFilename(modelName)}_${sanitizeFilename(foldId)}_${mode}.csv`;
+  downloadBlob(blob, filename);
+}
+
+/** Serialize a chart's SVG to PNG via canvas. */
+function exportChartPng(container: HTMLElement | null, filename: string): void {
+  if (!container) return;
+  const svg = container.querySelector("svg");
+  if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(rect.width));
+  clone.setAttribute("height", String(rect.height));
+  const xml = new XMLSerializer().serializeToString(clone);
+  const svg64 = btoa(unescape(encodeURIComponent(xml)));
+  const image64 = `data:image/svg+xml;base64,${svg64}`;
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(rect.width * scale));
+    canvas.height = Math.max(1, Math.round(rect.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(blob, filename);
+    }, "image/png");
+  };
+  img.src = image64;
 }
 
 // ============================================================================
@@ -301,11 +383,13 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
             <Box className="h-5 w-5 text-muted-foreground" />
             {chain.model_name}
           </SheetTitle>
-          <SheetDescription className="flex items-center gap-2 flex-wrap">
-            {chain.preprocessings && <span>{chain.preprocessings}</span>}
-            {datasetName && <><span className="text-muted-foreground/40">|</span><span>{datasetName}</span></>}
+          <div className="flex items-center gap-2 flex-wrap">
+            <SheetDescription>
+              {chain.preprocessings && <span>{chain.preprocessings}</span>}
+              {datasetName && <><span className="text-muted-foreground/40"> | </span><span>{datasetName}</span></>}
+            </SheetDescription>
             {hasFinal && <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">Refit</Badge>}
-          </SheetDescription>
+          </div>
         </SheetHeader>
 
         <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
@@ -489,6 +573,7 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
               arraysByPredictionId={arraysByPredictionId}
               loadingArrays={loadingFoldArrays}
               mode="scatter"
+              modelName={chain.model_name}
             />
           </TabsContent>
 
@@ -504,6 +589,7 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
               arraysByPredictionId={arraysByPredictionId}
               loadingArrays={loadingFoldArrays}
               mode="residuals"
+              modelName={chain.model_name}
             />
           </TabsContent>
         </Tabs>
@@ -526,6 +612,7 @@ function ScatterTabContent({
   arraysByPredictionId,
   loadingArrays,
   mode,
+  modelName,
 }: {
   partitionRows: PartitionPrediction[];
   foldIds: string[];
@@ -536,6 +623,7 @@ function ScatterTabContent({
   arraysByPredictionId: Record<string, PredictionArraysResponse>;
   loadingArrays: boolean;
   mode: "scatter" | "residuals";
+  modelName?: string | null;
 }) {
   const sortedPartitions = useMemo(() => {
     const order = (partition: string): number => {
@@ -638,8 +726,8 @@ function ScatterTabContent({
 
       {!loadingArrays && points.length > 0 && (
         mode === "scatter"
-          ? <ObsPredChart points={points} foldId={selectedFoldId} />
-          : <ResidualsChart points={points} foldId={selectedFoldId} />
+          ? <ObsPredChart points={points} foldId={selectedFoldId} modelName={modelName} />
+          : <ResidualsChart points={points} foldId={selectedFoldId} modelName={modelName} />
       )}
     </div>
   );
@@ -649,10 +737,12 @@ function ScatterTabContent({
 // Obs vs Pred Chart
 // ============================================================================
 
-function ObsPredChart({ points, foldId }: {
-  points: Array<{ observed: number; predicted: number; residual: number; partition: string }>;
+function ObsPredChart({ points, foldId, modelName }: {
+  points: Array<{ observed: number; predicted: number; residual: number; partition: string; foldId: string }>;
   foldId?: string;
+  modelName?: string | null;
 }) {
+  const chartRef = useRef<HTMLDivElement>(null);
   const { domain, stats, pointsByPartition } = useMemo(() => {
     const observed = points.map((p) => p.observed);
     const predicted = points.map((p) => p.predicted);
@@ -701,21 +791,41 @@ function ObsPredChart({ points, foldId }: {
             <PartitionBadge key={partition} partition={partition} />
           ))}
           {foldId && <Badge variant="outline" className="text-[10px]">Fold {foldId}</Badge>}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Export points as CSV"
+            onClick={() => exportPointsCsv(points, modelName, foldId, "scatter")}
+          >
+            <FileSpreadsheet className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Export chart as PNG"
+            onClick={() => exportChartPng(chartRef.current, `${sanitizeFilename(modelName)}_${sanitizeFilename(foldId)}_scatter.png`)}
+          >
+            <ImageDown className="h-3 w-3" />
+          </Button>
         </div>
       </div>
       <div className="text-xs text-muted-foreground font-mono">
         R² = {stats.r2.toFixed(4)} | RMSE = {stats.rmse.toFixed(4)} | n = {stats.n}
       </div>
-      <div className="h-[350px]">
+      <div className="h-[350px]" ref={chartRef}>
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 10, bottom: 30, left: 40 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
             <XAxis type="number" dataKey="x" domain={domain} name="Observed"
               label={{ value: "Observed", position: "bottom", offset: 15, style: { fontSize: 12 } }}
-              tick={{ fontSize: 10 }} />
+              tick={{ fontSize: 10 }}
+              tickFormatter={formatTick} />
             <YAxis type="number" dataKey="y" domain={domain} name="Predicted"
               label={{ value: "Predicted", angle: -90, position: "left", offset: 25, style: { fontSize: 12 } }}
-              tick={{ fontSize: 10 }} />
+              tick={{ fontSize: 10 }}
+              tickFormatter={formatTick} />
             <RechartsTooltip
               content={({ payload }) => {
                 if (!payload?.[0]) return null;
@@ -737,7 +847,7 @@ function ObsPredChart({ points, foldId }: {
             {orderedPartitions.map((partition) => (
               <Scatter key={partition} data={pointsByPartition[partition]} isAnimationActive={false}>
                 {pointsByPartition[partition].map((_, i) => (
-                  <Cell key={`${partition}-${i}`} fill={PARTITION_COLORS[partition]?.dot || "#666"} fillOpacity={0.65} r={3} />
+                  <Cell key={`${partition}-${i}`} fill={PARTITION_COLORS[partition]?.dot || "#666"} fillOpacity={0.65} r={2} />
                 ))}
               </Scatter>
             ))}
@@ -752,10 +862,12 @@ function ObsPredChart({ points, foldId }: {
 // Residuals Chart
 // ============================================================================
 
-function ResidualsChart({ points, foldId }: {
-  points: Array<{ observed: number; predicted: number; residual: number; partition: string }>;
+function ResidualsChart({ points, foldId, modelName }: {
+  points: Array<{ observed: number; predicted: number; residual: number; partition: string; foldId: string }>;
   foldId?: string;
+  modelName?: string | null;
 }) {
+  const chartRef = useRef<HTMLDivElement>(null);
   const { xDomain, yDomain, stats, pointsByPartition } = useMemo(() => {
     const predicted = points.map((p) => p.predicted);
     const residuals = points.map((p) => p.residual);
@@ -805,21 +917,41 @@ function ResidualsChart({ points, foldId }: {
             <PartitionBadge key={partition} partition={partition} />
           ))}
           {foldId && <Badge variant="outline" className="text-[10px]">Fold {foldId}</Badge>}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Export points as CSV"
+            onClick={() => exportPointsCsv(points, modelName, foldId, "residuals")}
+          >
+            <FileSpreadsheet className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            title="Export chart as PNG"
+            onClick={() => exportChartPng(chartRef.current, `${sanitizeFilename(modelName)}_${sanitizeFilename(foldId)}_residuals.png`)}
+          >
+            <ImageDown className="h-3 w-3" />
+          </Button>
         </div>
       </div>
       <div className="text-xs text-muted-foreground font-mono">
         Mean = {stats.mean.toFixed(4)} | Std = {stats.std.toFixed(4)} | n = {stats.n}
       </div>
-      <div className="h-[350px]">
+      <div className="h-[350px]" ref={chartRef}>
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 10, right: 10, bottom: 30, left: 40 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
             <XAxis type="number" dataKey="x" domain={xDomain} name="Predicted"
               label={{ value: "Predicted", position: "bottom", offset: 15, style: { fontSize: 12 } }}
-              tick={{ fontSize: 10 }} />
+              tick={{ fontSize: 10 }}
+              tickFormatter={formatTick} />
             <YAxis type="number" dataKey="y" domain={yDomain} name="Residual"
               label={{ value: "Residual", angle: -90, position: "left", offset: 25, style: { fontSize: 12 } }}
-              tick={{ fontSize: 10 }} />
+              tick={{ fontSize: 10 }}
+              tickFormatter={formatTick} />
             <RechartsTooltip
               content={({ payload }) => {
                 if (!payload?.[0]) return null;
@@ -842,7 +974,7 @@ function ResidualsChart({ points, foldId }: {
             {orderedPartitions.map((partition) => (
               <Scatter key={partition} data={pointsByPartition[partition]} isAnimationActive={false}>
                 {pointsByPartition[partition].map((_, i) => (
-                  <Cell key={`${partition}-${i}`} fill={PARTITION_COLORS[partition]?.dot || "#666"} fillOpacity={0.65} r={3} />
+                  <Cell key={`${partition}-${i}`} fill={PARTITION_COLORS[partition]?.dot || "#666"} fillOpacity={0.65} r={2} />
                 ))}
               </Scatter>
             ))}

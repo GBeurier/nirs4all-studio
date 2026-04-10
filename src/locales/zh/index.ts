@@ -90,9 +90,9 @@ const zh = {
     playground: "实验台",
     inspector: "检查器",
     history: "历史",
-    results: "结果",
+    leaderboard: "排行榜",
     scores: "评分",
-    predictions: "预测",
+    database: "数据库",
     aggregatedResults: "聚合结果",
     predict: "预测",
     lab: "实验室",
@@ -484,13 +484,42 @@ const zh = {
       groups: {
         prepare: "准备",
         explore: "探索",
-        results: "结果",
+        outcomes: "成果",
+        apply: "应用",
       },
     },
     header: {
       searchPlaceholder: "搜索...",
       search: "搜索",
       toggleTheme: "切换主题",
+    },
+    backendStartup: {
+      connectingTitle: "正在连接后端...",
+      errorTitle: "后端启动中断",
+      loadingTitle: "正在加载分析后端...",
+      workspaceTitle: "正在恢复工作区...",
+      connectingDescription:
+        "后端仍在启动中。缓存内容可能会先显示，但操作将受到限制，直到 API 响应。",
+      loadingDescription:
+        "nirs4all 及其 ML 依赖项正在后台初始化。高级分析功能将自动解锁。",
+      workspaceDescription:
+        "后端正在恢复活动工作区。启动完成后，数据集、运行、结果和预测视图将刷新。",
+      errorBadge: "启动问题",
+      badge: "后端加载中",
+      apiLabel: "API",
+      apiReady: "已连接",
+      apiLoading: "正在启动 FastAPI",
+      mlLabel: "ML 引擎",
+      mlError: "初始化失败",
+      mlReady: "依赖项已加载",
+      mlLoading: "正在导入 nirs4all 和 sklearn",
+      mlWaiting: "等待 API",
+      workspaceLabel: "工作区",
+      workspaceBlocked: "等待后端恢复",
+      workspaceReady: "就绪",
+      workspaceLoading: "正在恢复数据集和运行状态",
+      workspaceWaiting: "等待 ML 启动后执行",
+      loaderAlt: "后端加载动画",
     },
   },
 
@@ -1176,6 +1205,17 @@ const zh = {
       noData: "请提供用于预测的数据",
       predictionFailed: "预测失败",
       fileParseError: "无法解析上传的文件",
+    },
+  },
+  // ============= ML 引擎 =============
+  ml: {
+    loading: {
+      title: "正在加载 ML 引擎...",
+      description:
+        "机器学习依赖项正在初始化。此页面将在片刻后可用。",
+    },
+    error: {
+      title: "ML 引擎错误",
     },
   },
 };

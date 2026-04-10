@@ -24,6 +24,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 
 from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .pipeline_canonical import (
+    contains_generators,
+    count_runtime_variants,
+    editor_steps_to_runtime_canonical,
+)
 from .workspace_manager import workspace_manager
 
 NIRS4ALL_AVAILABLE = True
@@ -976,14 +981,15 @@ def expand_pipeline_variants(steps: list[dict[str, Any]]) -> list[PipelineVarian
 
     from nirs4all.pipeline.config.generator import expand_spec_with_choices
 
-    # Build the pipeline with generators intact
-    build_result = build_full_pipeline(steps)
+    canonical_steps = editor_steps_to_runtime_canonical(steps)
+    estimated_variants = count_runtime_variants(canonical_steps)
+    has_generators = contains_generators(canonical_steps)
 
-    if not build_result.has_generators:
+    if not has_generators or estimated_variants <= 1:
         # No generators, single variant
         return [PipelineVariant(
             index=0,
-            steps=build_result.steps,
+            steps=canonical_steps,
             description="Single configuration",
             choices={},
             model_name=_extract_first_model(steps),
@@ -991,7 +997,7 @@ def expand_pipeline_variants(steps: list[dict[str, Any]]) -> list[PipelineVarian
         )]
 
     # Expand with choice tracking
-    expanded = expand_spec_with_choices(build_result.steps)
+    expanded = expand_spec_with_choices(canonical_steps)
 
     variants = []
     for idx, (config, choices_list) in enumerate(expanded):
@@ -1002,14 +1008,11 @@ def expand_pipeline_variants(steps: list[dict[str, Any]]) -> list[PipelineVarian
             for key, value in choice.items():
                 if key.startswith("_"):
                     # Generator choice (_or_, _range_, etc)
-                    if isinstance(value, type) or hasattr(value, '__name__'):
+                    display_name = _component_display_name(value)
+                    if display_name:
+                        value_str = display_name
+                    elif isinstance(value, type) or hasattr(value, '__name__'):
                         value_str = value.__name__
-                    elif isinstance(value, dict) and "model" in value:
-                        model = value.get("model")
-                        if hasattr(model, '__class__'):
-                            value_str = model.__class__.__name__
-                        else:
-                            value_str = str(value)
                     else:
                         value_str = str(value)
 
@@ -1078,10 +1081,9 @@ def _extract_model_from_config(config) -> str:
                 return result
     elif isinstance(config, dict):
         if "model" in config:
-            model = config["model"]
-            if hasattr(model, '__class__'):
-                return model.__class__.__name__
-            return str(model)
+            model_name = _component_display_name(config["model"])
+            if model_name:
+                return model_name
         for value in config.values():
             result = _extract_model_from_config(value)
             if result != "Unknown":
@@ -1101,9 +1103,17 @@ def _extract_preprocessing_from_config(config) -> list[str]:
         for item in config:
             names.extend(_extract_preprocessing_from_config(item))
     elif isinstance(config, dict):
+        display_name = _component_display_name(config)
+        if display_name and _is_preprocessing_reference(config):
+            names.append(display_name)
+            return names
         for key, value in config.items():
             if key not in ("model", "y_processing"):
                 names.extend(_extract_preprocessing_from_config(value))
+    elif _is_preprocessing_reference(config):
+        display_name = _component_display_name(config)
+        if display_name:
+            names.append(display_name)
     elif hasattr(config, '__class__'):
         class_name = config.__class__.__name__
         # Common preprocessing classes
@@ -1113,6 +1123,74 @@ def _extract_preprocessing_from_config(config) -> list[str]:
                           "Baseline", "Gaussian", "CropTransformer"):
             names.append(class_name)
     return names
+
+
+def _component_reference_path(component: Any) -> str | None:
+    """Return the canonical class/function path when available."""
+    if isinstance(component, str):
+        return component
+    if isinstance(component, dict):
+        if "model" in component:
+            return _component_reference_path(component["model"])
+        if isinstance(component.get("class"), str):
+            return component["class"]
+        if isinstance(component.get("function"), str):
+            return component["function"]
+    return None
+
+
+def _component_display_name(component: Any) -> str | None:
+    """Return a short component name for canonical or instantiated payloads."""
+    path = _component_reference_path(component)
+    if path:
+        return path.rsplit(".", 1)[-1]
+
+    if isinstance(component, (dict, list, tuple, set)):
+        return None
+
+    if hasattr(component, "__name__"):
+        return component.__name__
+
+    if (
+        hasattr(component, "__class__")
+        and component.__class__ is not object
+        and component.__class__.__module__ != "builtins"
+    ):
+        return component.__class__.__name__
+
+    return None
+
+
+def _is_preprocessing_reference(component: Any) -> bool:
+    """Return whether a canonical or instantiated component looks like preprocessing."""
+    path = _component_reference_path(component)
+    if path:
+        return (
+            path.startswith("sklearn.preprocessing.")
+            or path.startswith("nirs4all.operators.transforms.")
+        )
+
+    if hasattr(component, "__class__"):
+        class_name = component.__class__.__name__
+        return class_name in {
+            "StandardNormalVariate",
+            "SNV",
+            "MultiplicativeScatterCorrection",
+            "MSC",
+            "SavitzkyGolay",
+            "FirstDerivative",
+            "SecondDerivative",
+            "Detrend",
+            "StandardScaler",
+            "MinMaxScaler",
+            "RobustScaler",
+            "MaxAbsScaler",
+            "Baseline",
+            "Gaussian",
+            "CropTransformer",
+        }
+
+    return False
 
 
 # ============================================================================

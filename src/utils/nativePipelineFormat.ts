@@ -29,7 +29,8 @@ import { generateStepId } from "@/components/pipeline-editor/types";
 /** A single step in nirs4all-native format. */
 export type NativePipelineStep =
   | string
-  | Record<string, unknown>;
+  | Record<string, unknown>
+  | null;
 
 /** Full pipeline document with version wrapper. */
 export interface NativePipelineDocument {
@@ -50,7 +51,7 @@ export interface NativePipelineDocument {
  * Also remove params that match defaults (empty objects after cleanup).
  */
 function normalizeParams(
-  params: Record<string, string | number | boolean> | undefined
+  params: Record<string, unknown> | undefined
 ): Record<string, unknown> | null {
   if (!params || Object.keys(params).length === 0) return null;
 
@@ -95,6 +96,34 @@ function buildOperatorRef(name: string, params: Record<string, unknown> | null):
   return { [name]: params };
 }
 
+function isNativeStepDefined(
+  step: NativePipelineStep | undefined
+): step is NativePipelineStep {
+  return step !== undefined;
+}
+
+function createNoOpEditorStep(): EditorPipelineStep {
+  return {
+    id: generateStepId(),
+    type: "utility",
+    name: "NoOp",
+    params: {},
+    isNoOp: true,
+    rawNirs4all: null,
+  };
+}
+
+function createSequentialEditorStep(children: EditorPipelineStep[]): EditorPipelineStep {
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "sequential",
+    name: "Sequential",
+    params: {},
+    children,
+  };
+}
+
 // ============================================================================
 // Editor -> Native Format
 // ============================================================================
@@ -109,15 +138,15 @@ export function toNativeFormat(steps: EditorPipelineStep[]): NativePipelineStep[
   return steps
     .filter((step) => step.enabled !== false)
     .map((step) => convertStepToNative(step))
-    .filter((step): step is NativePipelineStep => step !== null);
+    .filter(isNativeStepDefined);
 }
 
 /**
  * Convert a single editor step to native format.
  */
-function convertStepToNative(step: EditorPipelineStep): NativePipelineStep | null {
+function convertStepToNative(step: EditorPipelineStep): NativePipelineStep | undefined {
   // Handle raw nirs4all passthrough
-  if (step.rawNirs4all) {
+  if (step.rawNirs4all !== undefined) {
     return step.rawNirs4all as NativePipelineStep;
   }
 
@@ -239,7 +268,7 @@ function convertYProcessingToNative(step: EditorPipelineStep): NativePipelineSte
 /**
  * Convert flow steps (branch, merge, sample_augmentation, etc.)
  */
-function convertFlowStepToNative(step: EditorPipelineStep): NativePipelineStep | null {
+function convertFlowStepToNative(step: EditorPipelineStep): NativePipelineStep | undefined {
   switch (step.subType) {
     case "branch":
       return convertBranchToNative(step);
@@ -261,7 +290,7 @@ function convertFlowStepToNative(step: EditorPipelineStep): NativePipelineStep |
         // Return children as an inlined array (will be flattened into parent)
         return toNativeFormat(step.children) as unknown as NativePipelineStep;
       }
-      return null;
+      return undefined;
     default:
       return convertSimpleStepToNative(step);
   }
@@ -270,7 +299,7 @@ function convertFlowStepToNative(step: EditorPipelineStep): NativePipelineStep |
 /**
  * Convert utility steps (generators, charts, comments)
  */
-function convertUtilityStepToNative(step: EditorPipelineStep): NativePipelineStep | null {
+function convertUtilityStepToNative(step: EditorPipelineStep): NativePipelineStep | undefined {
   switch (step.subType) {
     case "generator":
       return convertGeneratorToNative(step);
@@ -278,9 +307,9 @@ function convertUtilityStepToNative(step: EditorPipelineStep): NativePipelineSte
       return convertChartToNative(step);
     case "comment":
       // Comments are not part of the native pipeline
-      return null;
+      return undefined;
     default:
-      return null;
+      return undefined;
   }
 }
 
@@ -339,9 +368,9 @@ function convertMergeToNative(step: EditorPipelineStep): NativePipelineStep {
 function convertSampleAugmentationToNative(step: EditorPipelineStep): NativePipelineStep {
   // Prefer children (editable format)
   const transformers = step.children?.length
-    ? step.children.map((child) => convertStepToNative(child)).filter(Boolean) as NativePipelineStep[]
+    ? step.children.map((child) => convertStepToNative(child)).filter(isNativeStepDefined)
     : step.sampleAugmentationConfig?.transformers?.map((t) => {
-        const p = normalizeParams(t.params as Record<string, string | number | boolean>);
+        const p = normalizeParams(t.params as Record<string, unknown>);
         return buildOperatorRef(t.name, p);
       }) || [];
 
@@ -370,7 +399,7 @@ function convertFeatureAugmentationToNative(step: EditorPipelineStep): NativePip
 
   if (step.children?.length) {
     if (isGeneratorMode) {
-      const orList = step.children.map((child) => convertStepToNative(child)).filter(Boolean);
+      const orList = step.children.map((child) => convertStepToNative(child)).filter(isNativeStepDefined);
       const augConfig: Record<string, unknown> = { _or_: orList };
       if (step.generatorOptions?.pick !== undefined) augConfig.pick = step.generatorOptions.pick;
       if (step.generatorOptions?.count !== undefined) augConfig.count = step.generatorOptions.count;
@@ -379,7 +408,7 @@ function convertFeatureAugmentationToNative(step: EditorPipelineStep): NativePip
       return result;
     }
 
-    const transformList = step.children.map((child) => convertStepToNative(child)).filter(Boolean);
+    const transformList = step.children.map((child) => convertStepToNative(child)).filter(isNativeStepDefined);
     const result: Record<string, unknown> = { feature_augmentation: transformList };
     if (step.params?.action) result.action = step.params.action;
     return result;
@@ -394,9 +423,9 @@ function convertFeatureAugmentationToNative(step: EditorPipelineStep): NativePip
  */
 function convertSampleFilterToNative(step: EditorPipelineStep): NativePipelineStep {
   const filters = step.children?.length
-    ? step.children.map((child) => convertStepToNative(child)).filter(Boolean) as NativePipelineStep[]
+    ? step.children.map((child) => convertStepToNative(child)).filter(isNativeStepDefined)
     : step.sampleFilterConfig?.filters?.map((f) => {
-        const p = normalizeParams(f.params as Record<string, string | number | boolean>);
+        const p = normalizeParams(f.params as Record<string, unknown>);
         return buildOperatorRef(f.name, p);
       }) || [];
 
@@ -414,7 +443,11 @@ function convertSampleFilterToNative(step: EditorPipelineStep): NativePipelineSt
  */
 function convertConcatTransformToNative(step: EditorPipelineStep): NativePipelineStep {
   if (step.children?.length) {
-    return { concat_transform: step.children.map((child) => convertStepToNative(child)).filter(Boolean) };
+    return {
+      concat_transform: step.children
+        .map((child) => convertStepToNative(child))
+        .filter(isNativeStepDefined),
+    };
   }
   if (step.branches?.length) {
     return {
@@ -424,6 +457,31 @@ function convertConcatTransformToNative(step: EditorPipelineStep): NativePipelin
     };
   }
   return { concat_transform: [] };
+}
+
+function convertCartesianStageToNative(
+  stage: EditorPipelineStep[]
+): NativePipelineStep | NativePipelineStep[] {
+  if (stage.length === 0) {
+    return [];
+  }
+
+  if (stage.length > 1) {
+    return {
+      _or_: stage.map((option) => convertStepToNative(option)).filter(isNativeStepDefined),
+    };
+  }
+
+  const [singleStep] = stage;
+  if (singleStep.isNoOp) {
+    return { _or_: [null] };
+  }
+
+  if (singleStep.subType === "sequential") {
+    return toNativeFormat(singleStep.children ?? []);
+  }
+
+  return convertStepToNative(singleStep) ?? [];
 }
 
 /**
@@ -442,9 +500,7 @@ function convertGeneratorToNative(step: EditorPipelineStep): NativePipelineStep 
   }
 
   if (step.generatorKind === "cartesian" && branches.length) {
-    const stages = branches.map((stage) =>
-      stage.map((s) => convertStepToNative(s)).filter(Boolean)
-    );
+    const stages = branches.map((stage) => convertCartesianStageToNative(stage));
     const result: Record<string, unknown> = { _cartesian_: stages };
     if (opts.pick) result.pick = opts.pick;
     if (opts.arrange) result.arrange = opts.arrange;
@@ -456,7 +512,7 @@ function convertGeneratorToNative(step: EditorPipelineStep): NativePipelineStep 
     const grid: Record<string, unknown[]> = {};
     branches.forEach((branch, idx) => {
       const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
-      grid[paramName] = branch.map((s) => convertStepToNative(s)).filter(Boolean);
+      grid[paramName] = branch.map((s) => convertStepToNative(s)).filter(isNativeStepDefined);
     });
     const result: Record<string, unknown> = { _grid_: grid };
     addModifiers(result);
@@ -467,7 +523,7 @@ function convertGeneratorToNative(step: EditorPipelineStep): NativePipelineStep 
     const zipData: Record<string, unknown[]> = {};
     branches.forEach((branch, idx) => {
       const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
-      zipData[paramName] = branch.map((s) => convertStepToNative(s)).filter(Boolean);
+      zipData[paramName] = branch.map((s) => convertStepToNative(s)).filter(isNativeStepDefined);
     });
     const result: Record<string, unknown> = { _zip_: zipData };
     addModifiers(result);
@@ -671,6 +727,10 @@ export function fromNativeFormat(steps: NativePipelineStep[]): EditorPipelineSte
 }
 
 function convertNativeToEditor(step: NativePipelineStep): EditorPipelineStep {
+  if (step === null) {
+    return createNoOpEditorStep();
+  }
+
   // String: simple class name
   if (typeof step === "string") {
     const type = inferStepType(step);
@@ -1025,6 +1085,47 @@ function convertNativeFeatureAugToEditor(step: Record<string, unknown>): EditorP
   };
 }
 
+function getGeneratorParams(step: Record<string, unknown>): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  if (step._seed_ !== undefined) {
+    params._seed_ = step._seed_;
+  }
+  return params;
+}
+
+function createEditorStepFromNativeAlternative(
+  alternative: NativePipelineStep | NativePipelineStep[]
+): EditorPipelineStep {
+  if (Array.isArray(alternative)) {
+    return createSequentialEditorStep(fromNativeFormat(alternative));
+  }
+  return convertNativeToEditor(alternative);
+}
+
+function convertNativeCartesianStageToEditor(
+  stage: NativePipelineStep | NativePipelineStep[]
+): EditorPipelineStep[] {
+  if (Array.isArray(stage)) {
+    if (stage.length === 0) {
+      return [];
+    }
+    return [createSequentialEditorStep(fromNativeFormat(stage))];
+  }
+
+  if (
+    typeof stage === "object" &&
+    stage !== null &&
+    "_or_" in stage &&
+    Object.keys(stage).length === 1
+  ) {
+    return ((stage._or_ as Array<NativePipelineStep | NativePipelineStep[]>) || []).map(
+      (alternative) => createEditorStepFromNativeAlternative(alternative)
+    );
+  }
+
+  return [convertNativeToEditor(stage)];
+}
+
 function convertNativeOrToEditor(step: Record<string, unknown>): EditorPipelineStep {
   const alternatives = (step._or_ as unknown[]) || [];
   const branches = alternatives.map((alt) => {
@@ -1039,7 +1140,7 @@ function convertNativeOrToEditor(step: Record<string, unknown>): EditorPipelineS
     type: "flow",
     subType: "generator",
     name: "Or",
-    params: {},
+    params: getGeneratorParams(step),
     branches,
     generatorKind: "or",
     generatorOptions: {
@@ -1061,7 +1162,7 @@ function convertNativeRangeToEditor(step: Record<string, unknown>, keyword: "_ra
     type: "flow",
     subType: "generator",
     name: keyword === "_log_range_" ? "LogRange" : "Range",
-    params: {},
+    params: getGeneratorParams(step),
     generatorKind: keyword === "_log_range_" ? "log_range" : "range",
     stepGenerator: {
       type: keyword,
@@ -1073,17 +1174,15 @@ function convertNativeRangeToEditor(step: Record<string, unknown>, keyword: "_ra
 }
 
 function convertNativeCartesianToEditor(step: Record<string, unknown>): EditorPipelineStep {
-  const stages = (step._cartesian_ as unknown[][]) || [];
-  const branches = stages.map((stage) =>
-    (stage as NativePipelineStep[]).map((s) => convertNativeToEditor(s))
-  );
+  const stages = (step._cartesian_ as Array<NativePipelineStep | NativePipelineStep[]>) || [];
+  const branches = stages.map((stage) => convertNativeCartesianStageToEditor(stage));
 
   return {
     id: generateStepId(),
     type: "flow",
     subType: "generator",
     name: "Cartesian",
-    params: {},
+    params: getGeneratorParams(step),
     branches,
     generatorKind: "cartesian",
     generatorOptions: {
@@ -1111,7 +1210,7 @@ function convertNativeGridToEditor(step: Record<string, unknown>): EditorPipelin
     type: "flow",
     subType: "generator",
     name: "Grid",
-    params: {},
+    params: getGeneratorParams(step),
     branches,
     branchMetadata,
     generatorKind: "grid",
@@ -1138,7 +1237,7 @@ function convertNativeZipToEditor(step: Record<string, unknown>): EditorPipeline
     type: "flow",
     subType: "generator",
     name: "Zip",
-    params: {},
+    params: getGeneratorParams(step),
     branches,
     branchMetadata,
     generatorKind: "zip",
@@ -1162,7 +1261,7 @@ function convertNativeChainToEditor(step: Record<string, unknown>): EditorPipeli
     type: "flow",
     subType: "generator",
     name: "Chain",
-    params: {},
+    params: getGeneratorParams(step),
     branches,
     generatorKind: "chain",
     generatorOptions: {
@@ -1173,7 +1272,7 @@ function convertNativeChainToEditor(step: Record<string, unknown>): EditorPipeli
 
 function convertNativeSampleToEditor(step: Record<string, unknown>): EditorPipelineStep {
   const sampleConfig = step._sample_ as Record<string, unknown>;
-  const params: Record<string, string | number | boolean> = {};
+  const params: Record<string, unknown> = {};
 
   for (const key of ["distribution", "from", "to", "mean", "std", "num"]) {
     if (sampleConfig[key] !== undefined) {
@@ -1186,7 +1285,7 @@ function convertNativeSampleToEditor(step: Record<string, unknown>): EditorPipel
     type: "flow",
     subType: "generator",
     name: "Sample",
-    params,
+    params: { ...params, ...getGeneratorParams(step) },
     generatorKind: "sample",
     generatorOptions: {
       count: step.count as number,
@@ -1217,8 +1316,8 @@ function parseOperatorRef(ref: string | Record<string, unknown>): { name: string
 /**
  * Flatten params to editor-compatible types.
  */
-function flattenParams(params: Record<string, unknown>): Record<string, string | number | boolean> {
-  const result: Record<string, string | number | boolean> = {};
+function flattenParams(params: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       result[key] = value;
@@ -1227,7 +1326,7 @@ function flattenParams(params: Record<string, unknown>): Record<string, string |
       result[`${key}_min`] = value[0];
       result[`${key}_max`] = value[1];
     } else if (value !== null && value !== undefined) {
-      result[key] = JSON.stringify(value);
+      result[key] = value;
     }
   }
   return result;

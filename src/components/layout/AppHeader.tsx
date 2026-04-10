@@ -23,9 +23,9 @@ const searchItems = [
   { labelKey: "nav.playground", path: "/playground", keywords: ["explore", "visualize", "spectra"] },
   { labelKey: "nav.inspector", path: "/inspector", keywords: ["predict", "batch", "analysis"] },
   { labelKey: "nav.history", path: "/runs", keywords: ["execute", "monitor", "progress"] },
-  { labelKey: "nav.results", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "results", "scores"] },
+  { labelKey: "nav.leaderboard", path: "/results", keywords: ["metrics", "performance", "evaluate", "compare", "results", "scores", "leaderboard"] },
   { labelKey: "nav.aggregatedResults", path: "/results/aggregated", keywords: ["aggregate", "chain", "fold", "summary", "ranking"] },
-  { labelKey: "nav.predictions", path: "/predictions", keywords: ["predict", "inference"] },
+  { labelKey: "nav.database", path: "/predictions", keywords: ["predict", "inference", "database", "predictions"] },
   { labelKey: "nav.lab", path: "/lab", keywords: ["synthesis", "transfer", "shapley", "shap", "importance"] },
   { labelKey: "nav.settings", path: "/settings", keywords: ["config", "preferences", "options"] },
 ];

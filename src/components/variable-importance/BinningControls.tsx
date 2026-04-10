@@ -92,11 +92,11 @@ export const BinningControls = memo(function BinningControls({
           value={binSize}
           onChange={(e) => {
             const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val >= 1) setBinSize(val);
+            if (!isNaN(val) && val >= 5 && val <= 100) setBinSize(val);
           }}
           className="w-20 h-8 text-sm"
-          min={1}
-          max={200}
+          min={5}
+          max={100}
         />
       </div>
 
@@ -109,11 +109,11 @@ export const BinningControls = memo(function BinningControls({
           value={binStride}
           onChange={(e) => {
             const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val >= 1) setBinStride(val);
+            if (!isNaN(val) && val >= 1 && val <= 50) setBinStride(val);
           }}
           className="w-20 h-8 text-sm"
           min={1}
-          max={200}
+          max={50}
         />
       </div>
 

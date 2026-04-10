@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   Wand2,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,10 +42,14 @@ const exploreNavItems: NavItem[] = [
   { title: "Lab", href: "/lab", icon: Beaker },
 ];
 
-const resultsNavItems: NavItem[] = [
-  { title: "Runs", href: "/runs", icon: Play },
-  { title: "Results", href: "/results", icon: BarChart3 },
-  { title: "Predictions", href: "/predictions", icon: Target },
+const outcomesNavItems: NavItem[] = [
+  { title: "History", href: "/runs", icon: Play },
+  { title: "Leaderboard", href: "/results", icon: BarChart3 },
+  { title: "Database", href: "/predictions", icon: Target },
+];
+
+const applyNavItems: NavItem[] = [
+  { title: "Predict", href: "/predict", icon: Zap },
 ];
 
 export function MobileSidebar() {
@@ -183,7 +188,9 @@ export function MobileSidebar() {
                   <Separator className="mx-3" />
                   {renderNavGroup("Explore", exploreNavItems)}
                   <Separator className="mx-3" />
-                  {renderNavGroup("Results", resultsNavItems)}
+                  {renderNavGroup("Outcomes", outcomesNavItems)}
+                  <Separator className="mx-3" />
+                  {renderNavGroup("Apply", applyNavItems)}
                 </div>
               </ScrollArea>
 

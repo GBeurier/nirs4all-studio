@@ -793,7 +793,8 @@ export async function listPipelines(): Promise<{ pipelines: PipelineInfo[] }> {
 }
 
 export async function getPipeline(id: string): Promise<PipelineInfo> {
-  return api.get(`/pipelines/${id}`);
+  const response = await api.get<{ pipeline: PipelineInfo }>(`/pipelines/${id}`);
+  return response.pipeline;
 }
 
 export async function savePipeline(
@@ -803,6 +804,52 @@ export async function savePipeline(
     return api.put(`/pipelines/${pipeline.id}`, pipeline);
   }
   return api.post("/pipelines", pipeline);
+}
+
+export interface PipelineImportRequest {
+  content?: string;
+  payload?: unknown;
+  format?: "yaml" | "yml" | "json";
+  name?: string;
+}
+
+export interface PipelineImportPreviewResponse {
+  success: boolean;
+  name: string;
+  description: string;
+  steps: PipelineStep[];
+}
+
+export interface CanonicalPipelineRenderRequest {
+  steps: PipelineStep[];
+  name?: string;
+  description?: string;
+}
+
+export interface CanonicalPipelineRenderResponse {
+  success: boolean;
+  payload: unknown;
+  json: string;
+  yaml: string;
+  filename: string;
+}
+
+export async function previewPipelineImport(
+  request: PipelineImportRequest
+): Promise<PipelineImportPreviewResponse> {
+  return api.post("/pipelines/import-preview", request);
+}
+
+export async function importPipeline(
+  request: PipelineImportRequest
+): Promise<{ success: boolean; pipeline: PipelineInfo }> {
+  return api.post("/pipelines/import", request);
+}
+
+export async function renderCanonicalPipeline(
+  request: CanonicalPipelineRenderRequest
+): Promise<CanonicalPipelineRenderResponse> {
+  return api.post("/pipelines/render-canonical", request);
 }
 
 export async function deletePipeline(

@@ -39,6 +39,7 @@ export type { StepActionsProps } from "./StepActions";
 
 // Direct imports for non-lazy usage (testing, SSR, etc.)
 export { DefaultRenderer } from "./DefaultRenderer";
+export { BranchRenderer } from "./BranchRenderer";
 export { GeneratorRenderer } from "./GeneratorRenderer";
 export { ModelRenderer } from "./ModelRenderer";
 export { MergeRenderer } from "./MergeRenderer";

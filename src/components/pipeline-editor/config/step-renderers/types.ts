@@ -64,7 +64,7 @@ export interface ParameterRendererProps extends StepRendererProps {
    * Render a parameter input field
    * Provided by StepConfigPanel with sweep support
    */
-  renderParamInput: (key: string, value: string | number | boolean) => React.ReactNode;
+  renderParamInput: (key: string, value: unknown) => React.ReactNode;
 
   /**
    * Handle algorithm/step name change

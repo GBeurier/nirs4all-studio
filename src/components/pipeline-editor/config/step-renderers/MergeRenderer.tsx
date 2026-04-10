@@ -10,7 +10,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
-import { useState, useCallback, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { Info, RotateCcw, GitMerge, GitBranch, Layers, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -39,6 +40,10 @@ import {
 import { defaultStackingConfig } from "../../StackingPanel";
 import { StepActions } from "./StepActions";
 import type { ParameterRendererProps } from "./types";
+
+function safeStringify(value: unknown): string {
+  return JSON.stringify(value, null, 2);
+}
 
 // Lazy load heavy StackingPanel component
 const StackingPanel = lazy(() =>
@@ -105,7 +110,8 @@ export function MergeRenderer({
   const hasStackingEnabled = stackingConfig?.enabled ?? false;
   const hasAdvancedConfig =
     (mergeConfig.predictions && mergeConfig.predictions.length > 0) ||
-    (mergeConfig.features && mergeConfig.features.length > 0);
+    (mergeConfig.features && mergeConfig.features.length > 0) ||
+    mergeConfig.sources !== undefined;
 
   return (
     <>
@@ -136,7 +142,8 @@ export function MergeRenderer({
               {hasAdvancedConfig && (
                 <Badge className="ml-1.5 h-4 px-1 text-[10px] bg-blue-500">
                   {(mergeConfig.predictions?.length ?? 0) +
-                    (mergeConfig.features?.length ?? 0)}
+                    (mergeConfig.features?.length ?? 0) +
+                    (mergeConfig.sources !== undefined ? 1 : 0)}
                 </Badge>
               )}
             </TabsTrigger>
@@ -305,12 +312,33 @@ interface SourcesTabProps {
   onConfigChange: (config: MergeConfig) => void;
 }
 
+function getFallbackMergeMode(config: MergeConfig): string {
+  const hasPredictions = (config.predictions?.length ?? 0) > 0;
+  const hasFeatures = (config.features?.length ?? 0) > 0;
+  if (hasPredictions && hasFeatures) {
+    return "custom";
+  }
+  if (hasFeatures) {
+    return "features";
+  }
+  return "predictions";
+}
+
 function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
   // Track which sections are enabled
   const predictionsEnabled = (mergeConfig.predictions?.length ?? 0) > 0 ||
     mergeConfig.mode === "predictions" || mergeConfig.mode === "custom";
   const featuresEnabled = (mergeConfig.features?.length ?? 0) > 0 ||
     mergeConfig.mode === "features" || mergeConfig.mode === "custom";
+  const [sourcesDraft, setSourcesDraft] = useState(
+    mergeConfig.sources === undefined ? "" : safeStringify(mergeConfig.sources),
+  );
+
+  useEffect(() => {
+    setSourcesDraft(
+      mergeConfig.sources === undefined ? "" : safeStringify(mergeConfig.sources),
+    );
+  }, [mergeConfig.sources]);
 
   const togglePredictions = () => {
     if (predictionsEnabled) {
@@ -431,6 +459,70 @@ function SourcesTab({ mergeConfig, onConfigChange }: SourcesTabProps) {
             />
           </div>
         )}
+      </div>
+
+      <div className="space-y-2 rounded-lg border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label className="text-sm font-medium">Structured Source Payload</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Use this for canonical merge source payloads such as <code>"concat"</code>
+              {" "}or nested JSON objects.
+            </p>
+          </div>
+          {mergeConfig.sources !== undefined && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() =>
+                onConfigChange({
+                  ...mergeConfig,
+                  mode: getFallbackMergeMode(mergeConfig),
+                  sources: undefined,
+                })
+              }
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+        <Textarea
+          value={sourcesDraft}
+          onChange={(event) => setSourcesDraft(event.target.value)}
+          onBlur={() => {
+            const trimmed = sourcesDraft.trim();
+            if (!trimmed) {
+              onConfigChange({
+                ...mergeConfig,
+                mode: getFallbackMergeMode(mergeConfig),
+                sources: undefined,
+              });
+              return;
+            }
+
+            let parsed: unknown = trimmed;
+            if (trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("\"")) {
+              try {
+                parsed = JSON.parse(trimmed);
+              } catch {
+                setSourcesDraft(
+                  mergeConfig.sources === undefined ? "" : safeStringify(mergeConfig.sources),
+                );
+                return;
+              }
+            }
+
+            onConfigChange({
+              ...mergeConfig,
+              mode: "sources",
+              sources: parsed,
+            });
+          }}
+          rows={5}
+          className="font-mono text-xs"
+          placeholder='concat or {"left": [0], "right": [1]}'
+        />
       </div>
 
       <Separator />

@@ -8,7 +8,6 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -304,7 +303,6 @@ export default function AggregatedResults() {
   }
 
   return (
-    <MlLoadingOverlay>
     <motion.div
       className="flex flex-col gap-6 p-6"
       variants={containerVariants}
@@ -608,7 +606,14 @@ export default function AggregatedResults() {
                             </TableCell>
                             <TableCell className="text-center">{pred.cv_fold_count}</TableCell>
                             <TableCell onClick={e => e.stopPropagation()}>
-                              <ModelActionMenu chainId={pred.chain_id} modelName={pred.model_name || ""} datasetName={pred.dataset_name || ""} runId={pred.run_id} hasRefit />
+                              <ModelActionMenu
+                                chainId={pred.chain_id}
+                                modelName={pred.model_name || ""}
+                                datasetName={pred.dataset_name || ""}
+                                runId={pred.run_id}
+                                hasRefit
+                                onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }}
+                              />
                             </TableCell>
                           </TableRow>
                         </CollapsibleTrigger>
@@ -655,7 +660,14 @@ export default function AggregatedResults() {
                             <TableCell className="text-right tabular-nums text-muted-foreground">{"\u2014"}</TableCell>
                             <TableCell className="text-center">{pred.cv_fold_count}</TableCell>
                             <TableCell onClick={e => e.stopPropagation()}>
-                              <ModelActionMenu chainId={pred.chain_id} modelName={pred.model_name || ""} datasetName={pred.dataset_name || ""} runId={pred.run_id} hasRefit={false} />
+                              <ModelActionMenu
+                                chainId={pred.chain_id}
+                                modelName={pred.model_name || ""}
+                                datasetName={pred.dataset_name || ""}
+                                runId={pred.run_id}
+                                hasRefit={false}
+                                onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }}
+                              />
                             </TableCell>
                           </TableRow>
                         </CollapsibleTrigger>
@@ -703,6 +715,5 @@ export default function AggregatedResults() {
         onOpenChange={setQuickViewOpen}
       />
     </motion.div>
-    </MlLoadingOverlay>
   );
 }

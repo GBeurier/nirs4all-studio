@@ -41,15 +41,15 @@ function createStep(
   };
 }
 
-function createPreprocessingStep(name: string, params: Record<string, string | number | boolean> = {}): PipelineStep {
+function createPreprocessingStep(name: string, params: Record<string, unknown> = {}): PipelineStep {
   return createStep("preprocessing", name, { params });
 }
 
-function createModelStep(name: string, params: Record<string, string | number | boolean> = {}): PipelineStep {
+function createModelStep(name: string, params: Record<string, unknown> = {}): PipelineStep {
   return createStep("model", name, { params });
 }
 
-function createSplitterStep(name: string, params: Record<string, string | number | boolean> = {}): PipelineStep {
+function createSplitterStep(name: string, params: Record<string, unknown> = {}): PipelineStep {
   return createStep("splitting", name, { params });
 }
 

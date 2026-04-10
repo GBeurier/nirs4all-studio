@@ -2,18 +2,16 @@
  * PipelineYAMLView
  * ================
  *
- * Read-only YAML view of the current pipeline in nirs4all-native format.
- * Displays the pipeline definition as human-readable YAML that matches
- * what users would write in Python or save as a .yaml config file.
+ * Read-only YAML/JSON view of the current pipeline in canonical nirs4all format.
  *
  * Features:
- * - Converts editor steps to native format on-the-fly
+ * - Uses the backend canonical converter as the source of truth
  * - Syntax-highlighted YAML display
  * - Copy to clipboard button
  * - JSON toggle for alternative view
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useDeferredValue, useEffect } from "react";
 import { Copy, Check, FileCode, FileJson, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,10 +22,9 @@ import {
 import { toast } from "sonner";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 import {
-  toNativeFormat,
-  toNativePipelineYAML,
-  toNativePipelineJSON,
-} from "@/utils/nativePipelineFormat";
+  renderCanonicalPipeline,
+  type CanonicalPipelineRenderResponse,
+} from "@/api/client";
 
 // ============================================================================
 // Props
@@ -200,47 +197,102 @@ export function PipelineYAMLView({
   steps,
   pipelineName,
   pipelineDescription,
-  randomState,
+  randomState: _randomState,
   className,
 }: PipelineYAMLViewProps) {
   const [format, setFormat] = useState<"yaml" | "json">("yaml");
   const [copied, setCopied] = useState(false);
+  const [preview, setPreview] = useState<CanonicalPipelineRenderResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const deferredSteps = useDeferredValue(steps);
+  const deferredPipelineName = useDeferredValue(pipelineName);
+  const deferredPipelineDescription = useDeferredValue(pipelineDescription);
 
-  // Convert editor steps to native format
-  const nativeSteps = useMemo(() => {
-    try {
-      return toNativeFormat(steps);
-    } catch {
-      return [];
+  useEffect(() => {
+    if (deferredSteps.length === 0) {
+      setPreview(null);
+      setPreviewError(null);
+      setIsLoading(false);
+      return;
     }
-  }, [steps]);
 
-  // Generate YAML string
+    let cancelled = false;
+    setIsLoading(true);
+    setPreviewError(null);
+
+    renderCanonicalPipeline({
+      steps: deferredSteps,
+      name: deferredPipelineName,
+      description: deferredPipelineDescription,
+    })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setPreview(result);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setPreview(null);
+        setPreviewError(
+          error instanceof Error ? error.message : "Unknown error"
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deferredPipelineDescription, deferredPipelineName, deferredSteps]);
+
+  const canonicalStepCount = useMemo(() => {
+    const payload = preview?.payload;
+    if (Array.isArray(payload)) {
+      return payload.length;
+    }
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "pipeline" in payload &&
+      Array.isArray((payload as { pipeline?: unknown }).pipeline)
+    ) {
+      return ((payload as { pipeline: unknown[] }).pipeline).length;
+    }
+    return steps.length;
+  }, [preview?.payload, steps.length]);
+
   const yamlContent = useMemo(() => {
-    try {
-      return toNativePipelineYAML(steps, {
-        name: pipelineName,
-        description: pipelineDescription,
-        randomState,
-      });
-    } catch (e) {
-      return `# Error generating YAML: ${e instanceof Error ? e.message : "Unknown error"}`;
+    if (preview?.yaml) {
+      return preview.yaml;
     }
-  }, [steps, pipelineName, pipelineDescription, randomState]);
+    if (previewError) {
+      return `# Error generating canonical YAML: ${previewError}`;
+    }
+    if (isLoading) {
+      return "# Generating canonical YAML...";
+    }
+    return "";
+  }, [isLoading, preview?.yaml, previewError]);
 
-  // Generate JSON string
   const jsonContent = useMemo(() => {
-    try {
-      const doc = toNativePipelineJSON(steps, {
-        name: pipelineName,
-        description: pipelineDescription,
-        randomState,
-      });
-      return JSON.stringify(doc, null, 2);
-    } catch (e) {
-      return `// Error generating JSON: ${e instanceof Error ? e.message : "Unknown error"}`;
+    if (preview?.json) {
+      return preview.json;
     }
-  }, [steps, pipelineName, pipelineDescription, randomState]);
+    if (previewError) {
+      return `// Error generating canonical JSON: ${previewError}`;
+    }
+    if (isLoading) {
+      return "{\n  \"status\": \"Generating canonical JSON...\"\n}";
+    }
+    return "";
+  }, [isLoading, preview?.json, previewError]);
 
   const content = format === "yaml" ? yamlContent : jsonContent;
 
@@ -252,6 +304,11 @@ export function PipelineYAMLView({
 
   // Copy to clipboard
   const handleCopy = useCallback(async () => {
+    if (!content) {
+      toast.error("Nothing to copy yet");
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
@@ -264,6 +321,11 @@ export function PipelineYAMLView({
 
   // Download as file
   const handleDownload = useCallback(() => {
+    if (!content) {
+      toast.error("Nothing to download yet");
+      return;
+    }
+
     const ext = format === "yaml" ? "yaml" : "json";
     const mimeType = format === "yaml" ? "text/yaml" : "application/json";
     const blob = new Blob([content], { type: mimeType });
@@ -279,7 +341,7 @@ export function PipelineYAMLView({
   if (steps.length === 0) {
     return (
       <div className={`flex items-center justify-center h-full text-muted-foreground text-sm ${className || ""}`}>
-        Add steps to the pipeline to see the native format view.
+        Add steps to the pipeline to see the canonical format view.
       </div>
     );
   }
@@ -290,11 +352,14 @@ export function PipelineYAMLView({
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">
-            nirs4all Native Format
+            Canonical nirs4all Format
           </span>
           <span className="text-xs text-muted-foreground">
-            ({nativeSteps.length} step{nativeSteps.length !== 1 ? "s" : ""})
+            ({canonicalStepCount} step{canonicalStepCount !== 1 ? "s" : ""})
           </span>
+          {isLoading ? (
+            <span className="text-xs text-muted-foreground">Updating...</span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-1">

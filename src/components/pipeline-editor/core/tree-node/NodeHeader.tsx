@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/popover";
 import { Repeat, Sparkles, Package, Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { PipelineStep } from "../../types";
+import type { GeneratorKind, PipelineStep } from "../../types";
 
 interface NodeHeaderProps {
   step: PipelineStep;
@@ -44,7 +44,7 @@ interface NodeHeaderProps {
   childLabel: string;
   // Generator info
   isGenerator?: boolean;
-  generatorKind?: "or" | "cartesian" | null;
+  generatorKind?: GeneratorKind | null;
   generatorVariantCount?: number;
   generatorOptionCount?: number;
   generatorSelectionSummary?: string;

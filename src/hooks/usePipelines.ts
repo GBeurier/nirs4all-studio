@@ -29,6 +29,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
   const [presets, setPresets] = useState<PipelinePreset[]>([]);
   const [operators, setOperators] = useState<PipelineOperators | null>(null);
   const [loading, setLoading] = useState(false);
+  const [presetsLoading, setPresetsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Filter and view state
@@ -68,11 +69,14 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
 
   // Fetch presets
   const fetchPresets = useCallback(async () => {
+    setPresetsLoading(true);
     try {
       const response = await api.get<PipelinePresetsResponse>("/pipelines/presets");
       setPresets(response.presets);
     } catch (err) {
       console.error("Failed to fetch presets:", err);
+    } finally {
+      setPresetsLoading(false);
     }
   }, []);
 
@@ -303,10 +307,10 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
     total: pipelines.length,
     favorites: pipelines.filter((p) => p.isFavorite).length,
     user: pipelines.filter((p) => p.category === "user").length,
-    presets: pipelines.filter((p) => p.category === "preset").length,
+    presets: presets.length,
     shared: pipelines.filter((p) => p.category === "shared").length,
     withRuns: pipelines.filter((p) => (p.runCount ?? 0) > 0).length,
-  }), [pipelines]);
+  }), [pipelines, presets]);
 
   return {
     // Data
@@ -316,6 +320,7 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
     operators,
     stats,
     loading,
+    presetsLoading,
     error,
 
     // Filter and view state

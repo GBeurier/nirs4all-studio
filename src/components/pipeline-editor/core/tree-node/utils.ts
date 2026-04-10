@@ -21,7 +21,7 @@ import {
   LineChart,
   MessageSquare,
 } from "lucide-react";
-import type { StepType, StepSubType, FlowStepSubType, PipelineStep, ParameterSweep } from "../../types";
+import type { StepType, StepSubType, FlowStepSubType, GeneratorKind, PipelineStep, ParameterSweep } from "../../types";
 import { formatSweepDisplay, calculateStepVariants, getStepColor, CONTAINER_CHILDREN_SUBTYPES } from "../../types";
 
 /**
@@ -102,13 +102,19 @@ export function getContainerChildLabel(step: PipelineStep): string {
  * Check if step is a branch or generator (uses branches array).
  */
 export function isBranchableStep(step: PipelineStep): boolean {
-  return step.subType === "branch" || step.subType === "generator";
+  return step.subType === "branch" || (
+    step.subType === "generator" &&
+    (step.branches?.length ?? 0) > 0
+  );
 }
 
 /**
  * Get the label for branches based on step configuration
  */
 export function getBranchLabel(step: PipelineStep): string {
+  if (step.subType === "branch" && step.branchMode === "separation") {
+    return "Route";
+  }
   if (step.subType === "generator") {
     return step.generatorKind === "cartesian" ? "Stage"
       : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
@@ -204,7 +210,7 @@ export function computeFinetuneInfo(step: PipelineStep): FinetuneInfo {
  */
 export interface GeneratorInfo {
   isGenerator: boolean;
-  generatorKind: "or" | "cartesian" | null;
+  generatorKind: GeneratorKind | null;
   optionCount: number;
   variantCount: number;
   hasPickArrange: boolean;
@@ -230,7 +236,13 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
 
   const generatorKind = step.generatorKind || "or";
   const branches = step.branches || [];
-  const optionCount = branches.length;
+  const scalarEntries = step.scalarGeneratorConfig?.entries ?? [];
+  const sampleConfig = step.scalarGeneratorConfig?.sample ?? {};
+  const optionCount = generatorKind === "grid" || generatorKind === "zip"
+    ? scalarEntries.length || branches.length
+    : generatorKind === "sample"
+      ? Number(sampleConfig.num) || 0
+      : branches.length;
   const opts = step.generatorOptions || {};
 
   // Check if pick/arrange is configured
@@ -239,46 +251,7 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
     opts.then_pick !== undefined ||
     opts.then_arrange !== undefined;
 
-  // Calculate variant count using the same logic as calculateStepVariants
-  let variantCount = 1;
-
-  if (generatorKind === "or") {
-    let genVariants = optionCount;
-
-    // Primary selection
-    if (opts.arrange !== undefined) {
-      genVariants = calculateGenValue(optionCount, "arrange", opts.arrange);
-    } else if (opts.pick !== undefined) {
-      genVariants = calculateGenValue(optionCount, "pick", opts.pick);
-    }
-
-    // Second-order selection
-    if (opts.then_arrange !== undefined) {
-      genVariants = calculateGenValue(genVariants, "arrange", opts.then_arrange);
-    } else if (opts.then_pick !== undefined) {
-      genVariants = calculateGenValue(genVariants, "pick", opts.then_pick);
-    }
-
-    // Apply count limiter
-    if (opts.count && opts.count > 0 && genVariants > opts.count) {
-      genVariants = opts.count;
-    }
-
-    variantCount = genVariants;
-  } else if (generatorKind === "cartesian") {
-    // Cartesian: product of steps in each stage
-    variantCount = branches.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
-  } else if (generatorKind === "grid") {
-    // Grid: Cartesian product of param value lists
-    variantCount = branches.reduce((acc, branch) => acc * Math.max(1, branch.length), 1);
-  } else if (generatorKind === "zip") {
-    // Zip: min of branch sizes (parallel pairing)
-    const sizes = branches.map(b => b.length).filter(l => l > 0);
-    variantCount = sizes.length > 0 ? Math.min(...sizes) : 0;
-  } else if (generatorKind === "chain") {
-    // Chain: flat count of configs
-    variantCount = optionCount;
-  }
+  const variantCount = calculateStepVariants(step);
 
   // Build selection summary
   const summaryParts: string[] = [];
@@ -299,11 +272,22 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
   }
 
   // Get option names from branches
-  const optionNames = branches.map((branch, idx) => {
-    if (branch.length === 0) return `Option ${idx + 1} (empty)`;
-    if (branch.length === 1) return branch[0].name;
-    return `${branch[0].name} + ${branch.length - 1} more`;
-  });
+  const optionNames = generatorKind === "grid" || generatorKind === "zip"
+    ? scalarEntries.map((entry, idx) => {
+        const prefix = generatorKind === "grid" || generatorKind === "zip" ? entry.key : `Option ${idx + 1}`;
+        return `${prefix} (${entry.values.length})`;
+      })
+    : generatorKind === "sample"
+      ? [String(sampleConfig.distribution || "distribution")]
+      : branches.map((branch, idx) => {
+          if (branch.length === 0) return `Option ${idx + 1} (empty)`;
+          if (branch.length === 1) return branch[0].name;
+          return `${branch[0].name} + ${branch.length - 1} more`;
+        });
+
+  if (generatorKind === "sample" && sampleConfig.distribution) {
+    summaryParts.unshift(`${sampleConfig.distribution} distribution`);
+  }
 
   return {
     isGenerator: true,
@@ -315,45 +299,11 @@ export function computeGeneratorInfo(step: PipelineStep): GeneratorInfo {
       generatorKind === "cartesian" || generatorKind === "grid" ? "all combinations"
         : generatorKind === "zip" ? "parallel pairs"
         : generatorKind === "chain" ? "ordered sequence"
+        : generatorKind === "sample" ? "sampled distribution"
         : "try each"
     ),
     optionNames,
   };
-}
-
-// Helper: Calculate generator value for pick/arrange
-function calculateGenValue(n: number, mode: "pick" | "arrange", value: number | [number, number]): number {
-  if (Array.isArray(value) && value.length === 2) {
-    const [from, to] = value;
-    let total = 0;
-    for (let k = from; k <= to; k++) {
-      total += mode === "pick" ? binomial(n, k) : perm(n, k);
-    }
-    return total;
-  }
-  const k = typeof value === "number" ? value : 1;
-  return mode === "pick" ? binomial(n, k) : perm(n, k);
-}
-
-// Helper: Binomial coefficient C(n, k)
-function binomial(n: number, k: number): number {
-  if (k < 0 || k > n) return 0;
-  if (k === 0 || k === n) return 1;
-  let result = 1;
-  for (let i = 0; i < k; i++) {
-    result = (result * (n - i)) / (i + 1);
-  }
-  return Math.round(result);
-}
-
-// Helper: Permutation P(n, k)
-function perm(n: number, k: number): number {
-  if (k < 0 || k > n) return 0;
-  let result = 1;
-  for (let i = 0; i < k; i++) {
-    result *= n - i;
-  }
-  return result;
 }
 
 // Helper: Format pick/arrange value for display
@@ -391,7 +341,7 @@ export function getFoldLabel(step: PipelineStep, childLabel: string): string {
         : step.generatorKind === "grid" || step.generatorKind === "zip" ? "params"
         : step.generatorKind === "chain" ? "configs"
         : "options")
-      : "branches";
+      : step.branchMode === "separation" ? "routes" : "branches";
     return `${count} ${label}`;
   }
   if (isContainer) {

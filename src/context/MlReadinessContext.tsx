@@ -192,9 +192,16 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         status.workspace_ready ??
         (status.ml_ready ? true : false);
       setState((prev) => ({
-        coreReady: status.core_ready ?? prev.coreReady,
-        mlReady: status.ml_ready ?? prev.mlReady,
-        mlLoading: status.ml_ready ? false : status.ml_loading ?? prev.mlLoading,
+        // Readiness only moves backwards on explicit backend status events.
+        // Poll responses can race cleanup or transient fetch failures, so a
+        // later "false" payload must not resurrect the ML overlay after a
+        // previous successful ready signal.
+        coreReady: prev.coreReady || !!status.core_ready,
+        mlReady: prev.mlReady || !!status.ml_ready,
+        mlLoading:
+          (prev.mlReady || !!status.ml_ready)
+            ? false
+            : status.ml_loading ?? prev.mlLoading,
         mlError: status.ml_error ?? prev.mlError,
         workspaceReady: workspaceReady || prev.workspaceReady,
       }));
@@ -205,6 +212,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       try {
         if (electronApi?.getMlStatus) {
           const status = await electronApi.getMlStatus();
+          if (disposed) return true;
           return apply(status);
         }
         const data = await api.get<{
@@ -214,26 +222,39 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           core_ready?: boolean;
           workspace_ready?: boolean;
         }>("/system/readiness");
+        if (disposed) return true;
         return apply(data);
       } catch {
         // Backend not available yet, keep polling
-        return false;
+        return disposed;
       }
     };
 
-    let cleanupRef: (() => void) | null = null;
+    let disposed = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
     check().then((ready) => {
-      if (ready) return;
+      if (disposed || ready) return;
 
-      const interval = setInterval(async () => {
+      interval = setInterval(async () => {
         const done = await check();
-        if (done) clearInterval(interval);
+        if (done || disposed) {
+          stopPolling();
+        }
       }, 1000);
-
-      cleanupRef = () => clearInterval(interval);
     });
 
-    return () => cleanupRef?.();
+    return () => {
+      disposed = true;
+      stopPolling();
+    };
   }, [state.workspaceReady]);
 
   return (

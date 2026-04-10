@@ -1,0 +1,88 @@
+id: pls_spxy_cartesian_finetune
+name: Advanced PLS Pipelineees
+description: PLS finetuning with SPXYFolding and Cartesian product of main preprocessings
+task_type: regression
+pipeline:
+- class: nirs4all.operators.splitters.splitters.SPXYFold
+  params:
+    n_splits: 3
+    random_state: 42
+- _cartesian_:
+  - _or_:
+    - null
+    - nirs4all.operators.transforms.scalers.StandardNormalVariate
+    - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+    - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      params:
+        degree: 1
+    - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+  - _or_:
+    - null
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        polyorder: 2
+        deriv: 1
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        window_length: 15
+        polyorder: 2
+        deriv: 1
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        window_length: 21
+        polyorder: 2
+        deriv: 1
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        window_length: 31
+        polyorder: 2
+        deriv: 1
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        window_length: 15
+        deriv: 2
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        window_length: 21
+        deriv: 2
+    - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+      params:
+        window_length: 31
+        deriv: 2
+    - class: nirs4all.operators.transforms.signal.Gaussian
+      params:
+        order: 0
+    - class: nirs4all.operators.transforms.signal.Gaussian
+      params:
+        order: 0
+        sigma: 2
+  - _or_:
+    - null
+    - nirs4all.operators.transforms.nirs.ASLSBaseline
+    - nirs4all.operators.transforms.signal.Detrend
+  - _or_:
+    - null
+    - nirs4all.operators.transforms.orthogonalization.OSC
+    - class: nirs4all.operators.transforms.orthogonalization.OSC
+      params:
+        n_components: 2
+    - class: nirs4all.operators.transforms.orthogonalization.OSC
+      params:
+        n_components: 3
+  count: 150
+- class: sklearn.preprocessing._data.StandardScaler
+  params:
+    with_std: false
+- model:
+    class: sklearn.cross_decomposition._pls.PLSRegression
+    params:
+      scale: false
+  name: PLS
+  finetune_params:
+    n_trials: 25
+    sampler: binary
+    model_params:
+      n_components:
+      - int
+      - 1
+      - 25

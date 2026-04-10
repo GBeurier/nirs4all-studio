@@ -9,7 +9,6 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +44,16 @@ import { ReconnectingIndicator, ErrorState, LoadingState } from "@/components/ui
 import type { Run, RunStatus, PipelineRun, RunMetrics } from "@/types/runs";
 import { runStatusConfig } from "@/types/runs";
 import { getWebSocketBaseUrl } from "@/lib/websocket";
+import {
+  buildPipelineCompactSummary,
+  buildPipelinePrimarySummary,
+  formatPipelineChainLabel,
+  formatPipelineVariantLabel,
+  getPipelineDisplayMetrics,
+  getPipelineFitCount,
+  getPipelineFoldCount,
+  type DisplayMetrics,
+} from "@/lib/run-progress-display";
 
 // WebSocket message types
 interface WsMessage {
@@ -242,8 +251,22 @@ function StatusBadge({ status }: { status: RunStatus }) {
   );
 }
 
-function MetricsCard({ metrics, label }: { metrics?: RunMetrics; label: string }) {
-  if (!metrics) return null;
+function MetricsCard({
+  metrics,
+  label,
+  primaryText,
+  secondaryText,
+  variantText,
+  pendingMessage,
+}: {
+  metrics?: DisplayMetrics;
+  label: string;
+  primaryText?: string;
+  secondaryText?: string;
+  variantText?: string | null;
+  pendingMessage?: string;
+}) {
+  if (!metrics && !pendingMessage) return null;
 
   return (
     <Card>
@@ -252,42 +275,57 @@ function MetricsCard({ metrics, label }: { metrics?: RunMetrics; label: string }
           <BarChart3 className="h-4 w-4" />
           {label}
         </CardTitle>
+        {primaryText && <div className="text-sm font-medium text-foreground">{primaryText}</div>}
+        {secondaryText && <div className="text-xs text-muted-foreground leading-relaxed">{secondaryText}</div>}
+        {variantText && (
+          <div className="pt-1">
+            <Badge variant="outline" className="max-w-full text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30 font-mono whitespace-normal break-words">
+              {variantText}
+            </Badge>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4">
-          {metrics.r2 != null && (
-            <div>
-              <div className="text-2xl font-bold text-chart-1">
-                {(metrics.r2 * 100).toFixed(2)}%
+        {metrics ? (
+          <div className="grid grid-cols-2 gap-4">
+            {metrics.r2 != null && (
+              <div>
+                <div className="text-2xl font-bold text-chart-1">
+                  {(metrics.r2 * 100).toFixed(2)}%
+                </div>
+                <div className="text-xs text-muted-foreground">R² Score</div>
               </div>
-              <div className="text-xs text-muted-foreground">R² Score</div>
-            </div>
-          )}
-          {metrics.rmse != null && (
-            <div>
-              <div className="text-2xl font-bold text-chart-2">
-                {metrics.rmse.toFixed(4)}
+            )}
+            {metrics.rmse != null && (
+              <div>
+                <div className="text-2xl font-bold text-chart-2">
+                  {metrics.rmse.toFixed(4)}
+                </div>
+                <div className="text-xs text-muted-foreground">RMSE</div>
               </div>
-              <div className="text-xs text-muted-foreground">RMSE</div>
-            </div>
-          )}
-          {metrics.mae != null && (
-            <div>
-              <div className="text-lg font-semibold">
-                {metrics.mae.toFixed(4)}
+            )}
+            {metrics.mae != null && (
+              <div>
+                <div className="text-lg font-semibold">
+                  {metrics.mae.toFixed(4)}
+                </div>
+                <div className="text-xs text-muted-foreground">MAE</div>
               </div>
-              <div className="text-xs text-muted-foreground">MAE</div>
-            </div>
-          )}
-          {metrics.rpd != null && (
-            <div>
-              <div className="text-lg font-semibold">
-                {metrics.rpd.toFixed(2)}
+            )}
+            {metrics.rpd != null && (
+              <div>
+                <div className="text-lg font-semibold">
+                  {metrics.rpd.toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground">RPD</div>
               </div>
-              <div className="text-xs text-muted-foreground">RPD</div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">
+            {pendingMessage}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -295,16 +333,40 @@ function MetricsCard({ metrics, label }: { metrics?: RunMetrics; label: string }
 
 function PipelineProgress({
   pipeline,
+  pipelineIndex,
+  totalPipelines,
   currentStepMessage,
   granularProgress,
 }: {
   pipeline: PipelineRun;
+  pipelineIndex: number | null;
+  totalPipelines: number;
   currentStepMessage?: string;
   granularProgress?: GranularProgress;
 }) {
   const Icon = statusIcons[pipeline.status];
   const config = runStatusConfig[pipeline.status];
-  const hasVariants = pipeline.has_generators || (pipeline.estimated_variants && pipeline.estimated_variants > 1);
+  const chainLabel = formatPipelineChainLabel(pipeline.preprocessing, pipeline.pipeline_name, pipeline.model);
+  const fitCount = getPipelineFitCount(pipeline);
+  const foldCount = getPipelineFoldCount(pipeline);
+  const liveVariantDescription = granularProgress?.variantDescription ?? pipeline.variant_description;
+  const variantLabel = formatPipelineVariantLabel(pipeline.variant_choices, liveVariantDescription);
+  const hasVariants =
+    Boolean(variantLabel) ||
+    pipeline.has_generators ||
+    (pipeline.estimated_variants != null && pipeline.estimated_variants > 1) ||
+    (pipeline.tested_variants != null && pipeline.tested_variants > 1);
+  const variantFallbackLabel = variantLabel || (
+    hasVariants
+      ? pipeline.tested_variants !== undefined
+        ? `${pipeline.tested_variants} variants tested`
+        : pipeline.estimated_variants !== undefined
+          ? `~${pipeline.estimated_variants} variants`
+          : null
+      : null
+  );
+  const displayMetrics = getPipelineDisplayMetrics(pipeline);
+  const primarySummary = buildPipelinePrimarySummary(pipelineIndex, totalPipelines, pipeline) || pipeline.pipeline_name;
 
   return (
     <Card className={cn(
@@ -313,51 +375,30 @@ function PipelineProgress({
     )}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className={cn("p-2 rounded-lg", config.bg)}>
               <Icon className={cn("h-4 w-4", config.color, config.iconClass)} />
             </div>
-            <div>
-              <h4 className="font-medium">{pipeline.pipeline_name}</h4>
+            <div className="min-w-0">
+              <h4 className="font-medium">{primarySummary}</h4>
               <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                {foldCount != null && (
+                  <Badge variant="outline" className="text-[10px] bg-cyan-500/10 text-cyan-600 border-cyan-500/30">
+                    {foldCount} folds
+                  </Badge>
+                )}
                 <Badge className="text-[10px] bg-teal-500/15 text-teal-600 border-teal-500/30 hover:bg-teal-500/20" variant="outline">
                   <Box className="h-3 w-3 mr-0.5" />{pipeline.model}
                 </Badge>
-                {pipeline.preprocessing && pipeline.preprocessing !== "None" && (
-                  <span className="text-muted-foreground">{pipeline.preprocessing}</span>
-                )}
-                {/* Show model count breakdown */}
-                {pipeline.model_count_breakdown && (
-                  <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-500">
-                    {pipeline.model_count_breakdown}
-                  </Badge>
-                )}
-                {/* Show variant count badge (fallback) */}
-                {!pipeline.model_count_breakdown && hasVariants && (
-                  <Badge variant="secondary" className="text-[10px] bg-purple-500/10 text-purple-500">
-                    {pipeline.tested_variants !== undefined
-                      ? `${pipeline.tested_variants} variants tested`
-                      : pipeline.estimated_variants !== undefined
-                        ? `~${pipeline.estimated_variants} variants`
-                        : "sweep"}
-                  </Badge>
+                {chainLabel && <span className="min-w-0 truncate">{chainLabel}</span>}
+                {!chainLabel && fitCount != null && (
+                  <span className="text-muted-foreground">{fitCount} fits</span>
                 )}
               </div>
-              {/* Sweep parameters for expanded variants */}
-              {pipeline.variant_choices && Object.keys(pipeline.variant_choices).length > 0 && (
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  {Object.entries(pipeline.variant_choices).map(([key, value]) => (
-                    <Badge key={key} variant="outline" className="text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30 font-mono">
-                      {key}={String(value)}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              {/* Fallback: variant description when no structured choices */}
-              {!pipeline.variant_choices && pipeline.variant_description && (
+              {variantFallbackLabel && (
                 <div className="mt-1">
-                  <Badge variant="outline" className="text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30 font-mono">
-                    {pipeline.variant_description}
+                  <Badge variant="outline" className="max-w-full text-[10px] bg-violet-500/10 text-violet-600 border-violet-500/30 font-mono whitespace-normal break-words">
+                    {variantFallbackLabel}
                   </Badge>
                 </div>
               )}
@@ -402,22 +443,26 @@ function PipelineProgress({
           </div>
         )}
 
-        {/* Metrics for completed pipelines */}
-        {pipeline.status === "completed" && pipeline.metrics && (pipeline.metrics.r2 != null || pipeline.metrics.rmse != null) && (
+        {/* Metrics for completed or partially evaluated pipelines */}
+        {displayMetrics && (displayMetrics.r2 != null || displayMetrics.rmse != null) && pipeline.status !== "failed" && (
           <div className="flex items-center gap-4 text-sm">
-            {pipeline.metrics.r2 != null && (
+            {displayMetrics.r2 != null && (
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5 text-chart-1" />
-                <span className="font-mono">R² = {(pipeline.metrics.r2 * 100).toFixed(2)}%</span>
+                <span className="font-mono">R² = {(displayMetrics.r2 * 100).toFixed(2)}%</span>
               </div>
             )}
-            {pipeline.metrics.rmse != null && (
+            {displayMetrics.rmse != null && (
               <div className="text-muted-foreground font-mono">
-                RMSE = {pipeline.metrics.rmse.toFixed(4)}
+                RMSE = {displayMetrics.rmse.toFixed(4)}
               </div>
             )}
-            {/* Show best of N variants */}
-            {pipeline.tested_variants && pipeline.tested_variants > 1 && (
+            {pipeline.status !== "completed" && (
+              <div className="text-muted-foreground text-xs">
+                partial
+              </div>
+            )}
+            {pipeline.status === "completed" && pipeline.tested_variants && pipeline.tested_variants > 1 && (
               <div className="text-muted-foreground text-xs">
                 (best of {pipeline.tested_variants})
               </div>
@@ -468,12 +513,14 @@ function LogsPanel({
   isLoading,
   errorMessage,
   onRefresh,
+  onExport,
 }: {
   logs: string[];
   isLive?: boolean;
   isLoading?: boolean;
   errorMessage?: string | null;
   onRefresh?: () => void;
+  onExport?: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -500,9 +547,23 @@ function LogsPanel({
               Loading
             </Badge>
           )}
-          <span className="ml-auto text-[10px] text-muted-foreground font-normal">
-            {logs.length} entries
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {onExport && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px]"
+                onClick={onExport}
+                disabled={logs.length === 0}
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Export
+              </Button>
+            )}
+            <span className="text-[10px] text-muted-foreground font-normal">
+              {logs.length} entries
+            </span>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -565,6 +626,24 @@ function LogsPanel({
       </CardContent>
     </Card>
   );
+}
+
+function downloadTextFile(content: string, filename: string): void {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeFilename(value: string | null | undefined): string {
+  return (value || "run")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "run";
 }
 
 function RefitPhaseIndicator({ refit }: { refit: RefitState }) {
@@ -1042,18 +1121,27 @@ export default function RunProgress() {
 
   // Aggregate pipeline info
   const allPipelines = run.datasets.flatMap(d => d.pipelines);
+  const totalPipelineCount = run.total_pipelines || allPipelines.length;
+  const pipelineIndexById = new Map<string, number>();
+  allPipelines.forEach((pipeline, index) => {
+    pipelineIndexById.set(pipeline.id, index + 1);
+  });
   const completedCount = allPipelines.filter(p => p.status === "completed").length;
   const failedCount = allPipelines.filter(p => p.status === "failed").length;
-  const runningPipeline = allPipelines.find(p => p.status === "running");
+  const currentPipeline =
+    allPipelines.find(p => p.status === "running") ||
+    allPipelines.find(p => p.status === "queued") ||
+    null;
+  const currentPipelineIndex = currentPipeline ? (pipelineIndexById.get(currentPipeline.id) ?? null) : null;
 
   // Calculate overall progress more accurately
   // Use running pipeline progress + completed pipelines
-  const baseProgress = run.total_pipelines
-    ? (completedCount / run.total_pipelines) * 100
+  const baseProgress = totalPipelineCount
+    ? (completedCount / totalPipelineCount) * 100
     : 0;
-  const runningProgress = runningPipeline?.progress || 0;
-  const runningContribution = run.total_pipelines
-    ? (runningProgress / 100) * (100 / run.total_pipelines)
+  const runningProgress = currentPipeline?.status === "running" ? currentPipeline.progress || 0 : 0;
+  const runningContribution = totalPipelineCount
+    ? (runningProgress / 100) * (100 / totalPipelineCount)
     : 0;
   const overallProgress = baseProgress + runningContribution;
 
@@ -1073,9 +1161,44 @@ export default function RunProgress() {
         (p.metrics?.r2 ?? 0) > (best.metrics?.r2 ?? 0) ? p : best
       )
     : null;
+  const bestPipelineIndex = bestPipeline ? (pipelineIndexById.get(bestPipeline.id) ?? null) : null;
+  const summaryPipeline = run.status === "running" || run.status === "queued"
+    ? currentPipeline
+    : bestPipeline;
+  const summaryPipelineIndex = summaryPipeline?.id === currentPipeline?.id
+    ? currentPipelineIndex
+    : bestPipelineIndex;
+  const summaryMetrics = summaryPipeline ? getPipelineDisplayMetrics(summaryPipeline) : undefined;
+  const summaryLabel = run.status === "running" || run.status === "queued"
+    ? "Current pipeline"
+    : "Best completed";
+  const summaryPrimaryText = summaryPipeline
+    ? buildPipelinePrimarySummary(summaryPipelineIndex, totalPipelineCount, summaryPipeline)
+    : undefined;
+  const summarySecondaryText = summaryPipeline
+    ? buildPipelineCompactSummary(summaryPipeline)
+    : undefined;
+  const summaryVariantText = summaryPipeline
+    ? formatPipelineVariantLabel(
+        summaryPipeline.variant_choices,
+        summaryPipeline.id === currentPipeline?.id
+          ? granularProgress.variantDescription ?? summaryPipeline.variant_description
+          : summaryPipeline.variant_description
+      )
+    : null;
+
+  const handleExportLogs = () => {
+    if (allLogs.length === 0) {
+      return;
+    }
+
+    downloadTextFile(
+      `${allLogs.join("\n")}${allLogs.length > 0 ? "\n" : ""}`,
+      `${sanitizeFilename(run.name)}_${sanitizeFilename(run.id)}_logs.txt`
+    );
+  };
 
   return (
-    <MlLoadingOverlay>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1142,16 +1265,20 @@ export default function RunProgress() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-start gap-2 text-sm min-w-0">
                 <Layers className="h-4 w-4 text-muted-foreground" />
-                <span>
-                  Pipeline {completedCount + 1} of {run.total_pipelines}
-                </span>
-                {runningPipeline && (
-                  <Badge variant="secondary" className="text-xs">
-                    {runningPipeline.pipeline_name}
-                  </Badge>
-                )}
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">
+                    {currentPipeline
+                      ? buildPipelinePrimarySummary(currentPipelineIndex, totalPipelineCount, currentPipeline)
+                      : `${Math.min(completedCount + 1, totalPipelineCount)}/${totalPipelineCount}`}
+                  </div>
+                  {currentPipeline && (
+                    <div className="text-xs text-muted-foreground truncate">
+                      {buildPipelineCompactSummary(currentPipeline)}
+                    </div>
+                  )}
+                </div>
               </div>
               <span className="text-sm font-medium">{Math.round(overallProgress)}%</span>
             </div>
@@ -1223,8 +1350,10 @@ export default function RunProgress() {
                 <PipelineProgress
                   key={pipeline.id}
                   pipeline={pipeline}
-                  currentStepMessage={pipeline.status === "running" ? currentProgress?.message : undefined}
-                  granularProgress={pipeline.status === "running" ? granularProgress : undefined}
+                  pipelineIndex={pipelineIndexById.get(pipeline.id) ?? null}
+                  totalPipelines={totalPipelineCount}
+                  currentStepMessage={pipeline.id === currentPipeline?.id && pipeline.status === "running" ? currentProgress?.message : undefined}
+                  granularProgress={pipeline.id === currentPipeline?.id && pipeline.status === "running" ? granularProgress : undefined}
                 />
               ))}
             </div>
@@ -1238,11 +1367,19 @@ export default function RunProgress() {
 
         {/* Side panel */}
         <div className="space-y-4">
-          {/* Best result */}
-          {bestPipeline && bestPipeline.metrics && (
+          {/* Summary metrics */}
+          {summaryPipeline && (
             <MetricsCard
-              metrics={bestPipeline.metrics}
-              label={`Best: ${bestPipeline.pipeline_name}`}
+              metrics={summaryMetrics}
+              label={summaryLabel}
+              primaryText={summaryPrimaryText}
+              secondaryText={summarySecondaryText}
+              variantText={summaryVariantText}
+              pendingMessage={
+                run.status === "running" || run.status === "queued"
+                  ? "Metrics will appear here after the first completed fit for the current pipeline."
+                  : undefined
+              }
             />
           )}
 
@@ -1253,6 +1390,7 @@ export default function RunProgress() {
             isLoading={isLoadingLogs}
             errorMessage={logsError}
             onRefresh={loadPersistedLogs}
+            onExport={handleExportLogs}
           />
 
           {/* Run info */}
@@ -1298,6 +1436,5 @@ export default function RunProgress() {
         </div>
       </div>
     </div>
-    </MlLoadingOverlay>
   );
 }

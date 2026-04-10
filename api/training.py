@@ -413,7 +413,8 @@ def _run_training_task(
     """
     import nirs4all
 
-    from .nirs4all_adapter import build_dataset_config, build_full_pipeline
+    from .nirs4all_adapter import build_dataset_config
+    from .pipeline_canonical import editor_steps_to_runtime_canonical
 
     config = job.config
     start_time = time.time()
@@ -431,10 +432,11 @@ def _run_training_task(
     if not progress_callback(10, "Building pipeline..."):
         return {"error": "Cancelled"}
 
-    # Build nirs4all-compatible pipeline
+    # Build canonical nirs4all pipeline directly from editor state
     try:
-        build_result = build_full_pipeline(steps)
-        pipeline_steps = build_result.steps
+        pipeline_steps = editor_steps_to_runtime_canonical(steps)
+        if not pipeline_steps:
+            raise ValueError("Pipeline has no executable steps")
     except Exception as e:
         raise ValueError(f"Failed to build pipeline: {str(e)}")
 

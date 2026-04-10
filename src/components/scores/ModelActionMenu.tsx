@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -8,10 +10,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  MoreVertical, Eye, ScatterChart, BarChart3, Zap, Lightbulb,
-  RefreshCw, Play, Download, FileSpreadsheet, Package, ExternalLink,
-  Database, Star, Trash2, Pencil,
+  MoreVertical, Eye, ScatterChart, BarChart3, Zap,
+  Download, FileSpreadsheet, ExternalLink,
+  Database, Pencil, Loader2,
 } from "lucide-react";
+import { getChainPartitionDetail } from "@/api/client";
 
 interface ModelActionMenuProps {
   chainId: string;
@@ -21,21 +24,71 @@ interface ModelActionMenuProps {
   hasRefit: boolean;
   onViewDetails?: () => void;
   onExport?: () => void;
-  onRetrain?: () => void;
-  onDelete?: () => void;
-  onPin?: () => void;
+}
+
+function csvEscape(value: unknown): string {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeFilename(value: string | null | undefined): string {
+  return (value || "chain").replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
 export function ModelActionMenu({
   chainId, modelName, datasetName, runId,
-  hasRefit, onViewDetails, onExport, onRetrain, onDelete, onPin,
+  hasRefit, onViewDetails, onExport,
 }: ModelActionMenuProps) {
+  const [csvBusy, setCsvBusy] = useState(false);
+
   const predictionsUrl = `/predictions?${new URLSearchParams({
     ...(runId ? { run_id: runId } : {}),
     ...(datasetName ? { dataset: datasetName } : {}),
     model: modelName,
   }).toString()}`;
   const pipelineEditorUrl = chainId ? `/pipelines/new?chainId=${encodeURIComponent(chainId)}` : null;
+
+  const handleCsvExport = async () => {
+    if (!chainId) {
+      toast.error("Missing chain id");
+      return;
+    }
+    setCsvBusy(true);
+    try {
+      const detail = await getChainPartitionDetail(chainId);
+      const rows = detail.predictions || [];
+      if (rows.length === 0) {
+        toast.error("No predictions found for this chain");
+        return;
+      }
+      const header = [
+        "fold_id", "partition", "model_name", "dataset_name",
+        "val_score", "test_score", "train_score", "metric",
+        "n_samples", "preprocessings",
+      ];
+      const lines = rows.map((row) => header.map((col) => csvEscape((row as Record<string, unknown>)[col])).join(","));
+      const csv = [header.join(","), ...lines].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      downloadBlob(blob, `${sanitizeFilename(modelName)}_${sanitizeFilename(chainId.slice(0, 8))}.csv`);
+      toast.success("CSV exported");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "CSV export failed");
+    } finally {
+      setCsvBusy(false);
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -61,28 +114,16 @@ export function ModelActionMenu({
           </Link>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-
         {hasRefit && (
           <>
+            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
                 <Zap className="h-4 w-4 mr-2" /> Predict (new data)
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem disabled>
-              <Lightbulb className="h-4 w-4 mr-2" /> Explain (SHAP)
-            </DropdownMenuItem>
           </>
         )}
-        {onRetrain && (
-          <DropdownMenuItem onClick={onRetrain}>
-            <RefreshCw className="h-4 w-4 mr-2" /> Retrain
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem disabled>
-          <Play className="h-4 w-4 mr-2" /> Replay pipeline
-        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
@@ -91,14 +132,10 @@ export function ModelActionMenu({
             <Download className="h-4 w-4 mr-2" /> Export (.parquet)
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem disabled>
-          <FileSpreadsheet className="h-4 w-4 mr-2" /> Export (.csv)
+        <DropdownMenuItem onSelect={(event) => { event.preventDefault(); handleCsvExport(); }} disabled={csvBusy}>
+          {csvBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
+          Export (.csv)
         </DropdownMenuItem>
-        {hasRefit && (
-          <DropdownMenuItem disabled>
-            <Package className="h-4 w-4 mr-2" /> Export bundle (.n4a)
-          </DropdownMenuItem>
-        )}
 
         <DropdownMenuSeparator />
 
@@ -122,20 +159,6 @@ export function ModelActionMenu({
               <Database className="h-4 w-4 mr-2" /> Goto dataset
             </Link>
           </DropdownMenuItem>
-        )}
-        {onPin && (
-          <DropdownMenuItem onClick={onPin}>
-            <Star className="h-4 w-4 mr-2" /> Pin as favorite
-          </DropdownMenuItem>
-        )}
-
-        {onDelete && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onDelete} className="text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" /> Delete
-            </DropdownMenuItem>
-          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

@@ -65,7 +65,7 @@ import { useSelectWheel } from "./shared/useSelectWheel";
 export interface YProcessingConfig {
   enabled: boolean;
   scaler: string;
-  params: Record<string, string | number | boolean>;
+  params: Record<string, unknown>;
 }
 
 // Available scalers for y_processing
@@ -157,10 +157,10 @@ export function defaultYProcessingConfig(): YProcessingConfig {
   };
 }
 
-// Helper to safely get default params as Record<string, string | number | boolean>
-function getDefaultParams(option: typeof Y_PROCESSING_OPTIONS[number] | undefined): Record<string, string | number | boolean> {
+// Helper to safely get default params as Record<string, unknown>
+function getDefaultParams(option: typeof Y_PROCESSING_OPTIONS[number] | undefined): Record<string, unknown> {
   if (!option) return {};
-  const result: Record<string, string | number | boolean> = {};
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(option.defaultParams)) {
     if (value !== undefined) {
       result[key] = value;
@@ -211,7 +211,7 @@ export function YProcessingPanel({
     });
   };
 
-  const handleParamChange = (key: string, value: string | number | boolean) => {
+  const handleParamChange = (key: string, value: unknown) => {
     onChange({
       ...config,
       params: { ...config.params, [key]: value },
@@ -437,10 +437,10 @@ export function YProcessingCompact({
  */
 interface YProcessingParamInputProps {
   paramKey: string;
-  value: string | number | boolean;
-  defaultValue: string | number | boolean;
+  value: unknown;
+  defaultValue: unknown;
   description?: string;
-  onChange: (value: string | number | boolean) => void;
+  onChange: (value: unknown) => void;
 }
 
 function YProcessingParamInput({
@@ -493,7 +493,7 @@ function YProcessingParamInput({
           )}
         </div>
         <div onWheel={handleMethodWheel}>
-          <Select value={String(value)} onValueChange={onChange}>
+          <Select value={String(value ?? "")} onValueChange={onChange}>
             <SelectTrigger className="h-8">
               <SelectValue />
             </SelectTrigger>
@@ -524,7 +524,7 @@ function YProcessingParamInput({
           )}
         </div>
         <div onWheel={handleDistWheel}>
-          <Select value={String(value)} onValueChange={onChange}>
+          <Select value={String(value ?? "")} onValueChange={onChange}>
             <SelectTrigger className="h-8">
               <SelectValue />
             </SelectTrigger>
@@ -555,7 +555,7 @@ function YProcessingParamInput({
           )}
         </div>
         <div onWheel={handleStratWheel}>
-          <Select value={String(value)} onValueChange={onChange}>
+          <Select value={String(value ?? "")} onValueChange={onChange}>
             <SelectTrigger className="h-8">
               <SelectValue />
             </SelectTrigger>
@@ -588,7 +588,7 @@ function YProcessingParamInput({
       </div>
       <Input
         type={typeof defaultValue === "number" ? "number" : "text"}
-        value={typeof value === "boolean" ? String(value) : value}
+        value={typeof value === "boolean" ? String(value) : String(value ?? "")}
         onChange={(e) => {
           const newValue =
             typeof defaultValue === "number"

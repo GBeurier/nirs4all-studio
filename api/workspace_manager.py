@@ -2139,22 +2139,7 @@ class WorkspaceManager:
 
     def get_groups(self) -> list[dict[str, Any]]:
         """Get all dataset groups with populated dataset_ids."""
-        groups = [g.to_dict() for g in self.app_config.get_dataset_groups()]
-        datasets = self.app_config.get_datasets()
-
-        # Build a map of group_id -> dataset_ids from multi-group group_ids lists
-        group_datasets: dict[str, list[str]] = {}
-        for ds in datasets:
-            for gid in ds.group_ids:
-                if gid not in group_datasets:
-                    group_datasets[gid] = []
-                group_datasets[gid].append(ds.id)
-
-        # Populate dataset_ids for each group
-        for g in groups:
-            g["dataset_ids"] = group_datasets.get(g["id"], [])
-
-        return groups
+        return [g.to_dict() for g in self.app_config.get_dataset_groups()]
 
     def create_group(self, name: str) -> dict[str, Any]:
         """Create a new dataset group."""

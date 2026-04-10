@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
@@ -426,111 +425,110 @@ export default function Predictions() {
   }
 
   return (
-    <MlLoadingOverlay>
-      <motion.div className="space-y-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
-            <p className="mt-1 text-muted-foreground">
-              {stats.total.toLocaleString()} scored models · {activeWorkspace.name}
-              {predictionsLoading && <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <MetricSelector taskType="regression" selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
-            <Button variant="outline" onClick={handleRefresh} size="sm">
-              <RefreshCw className="h-4 w-4 mr-1" /> Refresh
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => openExportDialog()} disabled={datasets.length === 0}>
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
-          </div>
+    <motion.div className="space-y-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
+          <p className="mt-1 text-muted-foreground">
+            {stats.total.toLocaleString()} scored models · {activeWorkspace.name}
+            {predictionsLoading && <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />}
+          </p>
         </div>
+        <div className="flex items-center gap-2">
+          <MetricSelector taskType="regression" selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
+          <Button variant="outline" onClick={handleRefresh} size="sm">
+            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => openExportDialog()} disabled={datasets.length === 0}>
+            <Download className="h-4 w-4 mr-1" /> Export
+          </Button>
+        </div>
+      </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <Card className="glass-card">
-            <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Total</p>
-              <p className="text-xl font-bold">{stats.total.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Datasets</p>
-              <p className="text-xl font-bold">{stats.datasets}</p>
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Models</p>
-              <p className="text-xl font-bold">{stats.models}</p>
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardContent className="p-3">
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Pipelines</p>
-              <p className="text-xl font-bold">{stats.pipelines}</p>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card className="glass-card">
+          <CardContent className="p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-medium">Total</p>
+            <p className="text-xl font-bold">{stats.total.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-medium">Datasets</p>
+            <p className="text-xl font-bold">{stats.datasets}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-medium">Models</p>
+            <p className="text-xl font-bold">{stats.models}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-medium">Pipelines</p>
+            <p className="text-xl font-bold">{stats.pipelines}</p>
+          </CardContent>
+        </Card>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[180px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search models, datasets..."
-              value={searchQuery}
-              onChange={event => setSearchQuery(event.target.value)}
-              className="pl-9 h-8 bg-muted/50 text-sm"
-            />
-          </div>
-          <Select value={filterDataset} onValueChange={setFilterDataset}>
-            <SelectTrigger className="w-[170px] h-8 bg-muted/50 text-xs">
-              <Database className="h-3.5 w-3.5 mr-1" />
-              <SelectValue placeholder="Dataset" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Datasets</SelectItem>
-              {datasets.map(datasetName => <SelectItem key={datasetName} value={datasetName}>{datasetName}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterModel} onValueChange={setFilterModel}>
-            <SelectTrigger className="w-[160px] h-8 bg-muted/50 text-xs">
-              <Brain className="h-3.5 w-3.5 mr-1" />
-              <SelectValue placeholder="Model" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Models</SelectItem>
-              {models.map(modelName => <SelectItem key={modelName} value={modelName}>{modelName}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterTaskType} onValueChange={setFilterTaskType}>
-            <SelectTrigger className="w-[140px] h-8 bg-muted/50 text-xs">
-              <SelectValue placeholder="Task" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Tasks</SelectItem>
-              {taskTypes.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <ToggleGroup
-            type="multiple"
-            value={visibleFoldTypes}
-            onValueChange={value => { if (value.length > 0) setVisibleFoldTypes(value); }}
-            variant="outline"
-            size="sm"
-            className="h-8"
-          >
-            <ToggleGroupItem value="folds" className="h-7 px-2 text-[11px]">Folds</ToggleGroupItem>
-            <ToggleGroupItem value="refits" className="h-7 px-2 text-[11px]">Refits</ToggleGroupItem>
-            <ToggleGroupItem value="averages" className="h-7 px-2 text-[11px]">Averages</ToggleGroupItem>
-          </ToggleGroup>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground">
-              Clear
-            </Button>
-          )}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search models, datasets..."
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            className="pl-9 h-8 bg-muted/50 text-sm"
+          />
         </div>
+        <Select value={filterDataset} onValueChange={setFilterDataset}>
+          <SelectTrigger className="w-[170px] h-8 bg-muted/50 text-xs">
+            <Database className="h-3.5 w-3.5 mr-1" />
+            <SelectValue placeholder="Dataset" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Datasets</SelectItem>
+            {datasets.map(datasetName => <SelectItem key={datasetName} value={datasetName}>{datasetName}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filterModel} onValueChange={setFilterModel}>
+          <SelectTrigger className="w-[160px] h-8 bg-muted/50 text-xs">
+            <Brain className="h-3.5 w-3.5 mr-1" />
+            <SelectValue placeholder="Model" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Models</SelectItem>
+            {models.map(modelName => <SelectItem key={modelName} value={modelName}>{modelName}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filterTaskType} onValueChange={setFilterTaskType}>
+          <SelectTrigger className="w-[140px] h-8 bg-muted/50 text-xs">
+            <SelectValue placeholder="Task" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Tasks</SelectItem>
+            {taskTypes.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <ToggleGroup
+          type="multiple"
+          value={visibleFoldTypes}
+          onValueChange={value => { if (value.length > 0) setVisibleFoldTypes(value); }}
+          variant="outline"
+          size="sm"
+          className="h-8"
+        >
+          <ToggleGroupItem value="folds" className="h-7 px-2 text-[11px]">Folds</ToggleGroupItem>
+          <ToggleGroupItem value="refits" className="h-7 px-2 text-[11px]">Refits</ToggleGroupItem>
+          <ToggleGroupItem value="averages" className="h-7 px-2 text-[11px]">Averages</ToggleGroupItem>
+        </ToggleGroup>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground">
+            Clear
+          </Button>
+        )}
+      </div>
 
         <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
@@ -636,7 +634,6 @@ export default function Predictions() {
           onOpenChange={setQuickViewOpen}
           workspaceId={activeWorkspace.id}
         />
-      </motion.div>
-    </MlLoadingOverlay>
+    </motion.div>
   );
 }

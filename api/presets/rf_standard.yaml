@@ -1,0 +1,8 @@
+id: rf_standard
+name: Random Forest Pipeline
+description: Random Forest with standard preprocessing
+task_type: regression
+pipeline:
+- sklearn.preprocessing._data.StandardScaler
+- sklearn.model_selection._split.KFold
+- model: sklearn.ensemble._forest.RandomForestRegressor

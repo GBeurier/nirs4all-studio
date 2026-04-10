@@ -281,6 +281,11 @@ export function TreeNode({
               key={branchIndex}
               branch={branch}
               branchIndex={branchIndex}
+              branchName={
+                typeof step.branchMetadata?.[branchIndex]?.name === "string"
+                  ? step.branchMetadata[branchIndex]?.name
+                  : undefined
+              }
               parentPath={[...path, step.id]}
               parentStepId={step.id}
               depth={depth + 1}

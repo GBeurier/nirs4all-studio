@@ -23,6 +23,16 @@ from typing import Any, Dict, List, Optional, Type, get_type_hints
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from .pipeline_canonical import (
+    canonical_to_editor,
+    count_runtime_variants,
+    editor_steps_to_runtime_canonical,
+    editor_to_canonical,
+)
+from .pipeline_canonical import (
+    filter_comments as filter_canonical_comments,
+)
+from .preset_loader import list_presets, load_preset
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -80,6 +90,23 @@ class PipelineExecuteRequest(BaseModel):
     dataset_id: str
     partition: str = "train"
     dry_run: bool = False
+
+
+class PipelineCanonicalImportRequest(BaseModel):
+    """Request model for converting canonical payloads into editor steps."""
+
+    content: str | None = None
+    payload: Any | None = None
+    format: str = "yaml"
+    name: str | None = None
+
+
+class PipelineCanonicalRenderRequest(BaseModel):
+    """Request model for rendering current editor steps as canonical content."""
+
+    steps: list[dict[str, Any]]
+    name: str | None = None
+    description: str | None = None
 
 
 router = APIRouter()
@@ -158,69 +185,15 @@ async def get_pipeline_presets():
     """
     Get predefined pipeline presets/templates.
 
-    Returns common pipeline configurations for different use cases.
-    """
-    presets = [
-        {
-            "id": "pls_basic",
-            "name": "Basic PLS Pipeline",
-            "description": "Simple PLS regression with SNV preprocessing",
-            "task_type": "regression",
-            "steps": [
-                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
-                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "PLSRegression", "type": "model", "params": {"n_components": 10}},
-            ],
-        },
-        {
-            "id": "pls_derivative",
-            "name": "PLS with Derivative",
-            "description": "PLS regression with first derivative preprocessing",
-            "task_type": "regression",
-            "steps": [
-                {"name": "SavitzkyGolay", "type": "preprocessing", "params": {"window_length": 11, "polyorder": 2, "deriv": 1}},
-                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
-                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "PLSRegression", "type": "model", "params": {"n_components": 15}},
-            ],
-        },
-        {
-            "id": "rf_standard",
-            "name": "Random Forest Pipeline",
-            "description": "Random Forest with standard preprocessing",
-            "task_type": "regression",
-            "steps": [
-                {"name": "StandardScaler", "type": "preprocessing", "params": {}},
-                {"name": "KFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "RandomForestRegressor", "type": "model", "params": {"n_estimators": 100}},
-            ],
-        },
-        {
-            "id": "kennard_stone_pls",
-            "name": "Kennard-Stone PLS",
-            "description": "PLS with Kennard-Stone sample selection",
-            "task_type": "regression",
-            "steps": [
-                {"name": "MultiplicativeScatterCorrection", "type": "preprocessing", "params": {}},
-                {"name": "KennardStoneSplitter", "type": "splitting", "params": {"test_size": 0.2}},
-                {"name": "PLSRegression", "type": "model", "params": {"n_components": 10}},
-            ],
-        },
-        {
-            "id": "advanced_nirs",
-            "name": "Advanced NIRS Pipeline",
-            "description": "Comprehensive NIRS preprocessing with OPLS",
-            "task_type": "regression",
-            "steps": [
-                {"name": "ASLSBaseline", "type": "preprocessing", "params": {"lam": 1e6, "p": 0.01}},
-                {"name": "StandardNormalVariate", "type": "preprocessing", "params": {}},
-                {"name": "SavitzkyGolay", "type": "preprocessing", "params": {"window_length": 15, "polyorder": 2, "deriv": 1}},
-                {"name": "SPXYGFold", "type": "splitting", "params": {"n_splits": 5}},
-                {"name": "OPLS", "type": "model", "params": {"n_components": 10}},
-            ],
-        },
-    ]
+    Presets are loaded from YAML/JSON files in ``api/presets/``. Each file
+    is authored in nirs4all's canonical pipeline format. See
+    ``docs/_internals/pipeline_preset_authoring.md`` for the schema and
+    authoring workflow.
 
+    Files that fail to parse are skipped (and logged) rather than causing
+    the endpoint to error.
+    """
+    presets = list_presets()
     return {
         "presets": presets,
         "total": len(presets),
@@ -232,6 +205,97 @@ async def get_pipeline_presets():
 # The routes below forward to their implementations defined later in the file.
 # This is necessary because FastAPI matches routes in order of definition.
 # ============================================================================
+
+
+def _resolve_import_payload(
+    request: PipelineCanonicalImportRequest,
+) -> tuple[list[dict[str, Any]], str | None, str]:
+    """Parse an import request and return editor steps plus metadata."""
+    import yaml
+
+    try:
+        if request.payload is not None:
+            imported = request.payload
+        elif request.content is not None:
+            fmt = request.format.lower()
+            if fmt in {"yaml", "yml"}:
+                imported = yaml.safe_load(request.content)
+            elif fmt == "json":
+                imported = json.loads(request.content)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported import format: {request.format}",
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Import request must include either 'content' or 'payload'.",
+            )
+    except HTTPException:
+        raise
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}") from e
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
+
+    try:
+        if isinstance(imported, list):
+            imported_steps = canonical_to_editor(imported)
+            imported_name = None
+            imported_description = ""
+        elif isinstance(imported, dict) and "pipeline" in imported:
+            imported_steps = canonical_to_editor(imported)
+            imported_name = imported.get("name")
+            imported_description = imported.get("description", "")
+        elif isinstance(imported, dict) and "steps" in imported:
+            imported_steps = imported.get("steps", [])
+            imported_name = imported.get("name")
+            imported_description = imported.get("description", "")
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Imported payload must be a canonical pipeline wrapper, a canonical step list, or an editor payload with 'steps'.",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to convert imported pipeline: {e}",
+        ) from e
+
+    return imported_steps, imported_name, imported_description
+
+
+def _render_canonical_pipeline_content(
+    steps: list[dict[str, Any]],
+    *,
+    name: str | None = None,
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Render editor steps into canonical payload plus YAML/JSON strings."""
+    import yaml
+
+    canonical_payload = editor_to_canonical(
+        steps,
+        name=name,
+        description=description,
+        include_wrapper=True,
+    )
+    pipeline_name = (name or "pipeline").replace(" ", "_").lower()
+
+    return {
+        "payload": canonical_payload,
+        "json": json.dumps(canonical_payload, indent=2),
+        "yaml": yaml.safe_dump(
+            canonical_payload,
+            sort_keys=False,
+            default_flow_style=False,
+            allow_unicode=False,
+        ),
+        "filename_stem": pipeline_name,
+    }
 
 
 @router.get("/pipelines/operators")
@@ -250,6 +314,37 @@ async def validate_pipeline_forward(request: PipelineValidateRequest):
 async def count_variants_forward(request: PipelineCountRequest):
     """Forward to the count_pipeline_variants implementation."""
     return await _count_variants_impl(request)
+
+
+@router.post("/pipelines/import-preview")
+async def preview_pipeline_import(request: PipelineCanonicalImportRequest):
+    """Convert canonical JSON/YAML or editor JSON into editor steps without saving."""
+    imported_steps, imported_name, imported_description = _resolve_import_payload(request)
+
+    return {
+        "success": True,
+        "name": request.name or imported_name or "Imported Pipeline",
+        "description": imported_description,
+        "steps": imported_steps,
+    }
+
+
+@router.post("/pipelines/render-canonical")
+async def render_canonical_pipeline(request: PipelineCanonicalRenderRequest):
+    """Render current editor steps into canonical JSON/YAML content."""
+    rendered = _render_canonical_pipeline_content(
+        request.steps,
+        name=request.name,
+        description=request.description,
+    )
+
+    return {
+        "success": True,
+        "payload": rendered["payload"],
+        "json": rendered["json"],
+        "yaml": rendered["yaml"],
+        "filename": f"{rendered['filename_stem']}.yaml",
+    }
 
 
 # ============================================================================
@@ -431,8 +526,8 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
             "warnings": ["nirs4all not available for full validation"],
         }
 
-    # Convert frontend steps to nirs4all format for validation
-    nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
+    # Convert frontend/editor steps to canonical nirs4all format for validation.
+    nirs4all_steps = filter_canonical_comments(editor_to_canonical(request.steps))
 
     # Use nirs4all's validate_spec
     validation_result = _validate_spec(nirs4all_steps)
@@ -1231,24 +1326,25 @@ async def prepare_pipeline_execution(
 async def create_pipeline_from_preset(preset_id: str, name: str | None = None):
     """
     Create a new pipeline from a preset template.
+
+    Loads the canonical preset file, converts it into the editor JSON shape,
+    and persists it as a normal pipeline. Unsupported canonical constructs are
+    preserved via ``rawNirs4all`` passthrough so preset import does not fail
+    just because the editor cannot fully edit a construct yet.
     """
-    presets_response = await get_pipeline_presets()
-    preset = next(
-        (p for p in presets_response["presets"] if p["id"] == preset_id),
-        None
+    preset = load_preset(preset_id)  # raises 404 if missing
+    editor_steps = canonical_to_editor(
+        {
+            "name": preset.get("name", ""),
+            "description": preset.get("description", ""),
+            "pipeline": preset["pipeline"],
+        }
     )
 
-    if not preset:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Preset '{preset_id}' not found",
-        )
-
-    # Create pipeline from preset
     pipeline_data = PipelineCreate(
         name=name or preset["name"],
-        description=preset["description"],
-        steps=preset["steps"],
+        description=preset.get("description", ""),
+        steps=editor_steps,
         category="preset",
         task_type=preset.get("task_type"),
     )
@@ -1257,170 +1353,6 @@ async def create_pipeline_from_preset(preset_id: str, name: str | None = None):
 
 
 # ============= Pipeline Variant Counting =============
-
-
-def _convert_frontend_steps_to_nirs4all(steps: list[dict[str, Any]]) -> list[Any]:
-    """
-    Convert frontend pipeline step format to nirs4all generator format.
-
-    Frontend steps use structure like:
-    {
-        "id": "1",
-        "type": "preprocessing",
-        "name": "SNV",
-        "params": {},
-        "generator": { "_or_": [...], "_range_": [1, 10, 1], "pick": 2 }  # Optional
-    }
-
-    This converts to nirs4all format which is just the step definition,
-    potentially wrapped in generator keywords.
-    """
-    result = []
-
-    for step in steps:
-        step_name = step.get("name", "")
-        step_params = step.get("params", {})
-        step_type = step.get("type", "")
-        sub_type = step.get("subType", "")
-        generator = step.get("generator")
-        children = step.get("children", [])
-        branches = step.get("branches", [])
-        generator_kind = step.get("generatorKind", "")
-        generator_options = step.get("generatorOptions", {})
-
-        # --- Consolidated "flow" type ---
-        if step_type == "flow":
-            if sub_type == "branch" and branches:
-                branch_paths = []
-                for branch_steps in branches:
-                    branch_paths.append(_convert_frontend_steps_to_nirs4all(branch_steps))
-                result.append({"branch": branch_paths})
-                continue
-            if sub_type == "merge":
-                merge_config = step.get("mergeConfig")
-                if merge_config and merge_config.get("mode"):
-                    result.append({"merge": merge_config["mode"]})
-                else:
-                    result.append({"merge": step_params.get("merge_type", "predictions")})
-                continue
-            if sub_type in ("sample_augmentation", "feature_augmentation") and children:
-                child_steps = _convert_frontend_steps_to_nirs4all(children)
-                result.extend(child_steps)
-                continue
-            if sub_type == "sample_filter" and children:
-                child_steps = _convert_frontend_steps_to_nirs4all(children)
-                mode = step.get("sampleFilterConfig", {}).get("mode", "any")
-                result.append({"exclude": child_steps, "mode": mode})
-                continue
-            if sub_type == "concat_transform" and branches:
-                branch_paths = []
-                for branch_steps in branches:
-                    branch_paths.append(_convert_frontend_steps_to_nirs4all(branch_steps))
-                result.append({"branch": branch_paths})
-                continue
-            if sub_type == "sequential" and children:
-                child_steps = _convert_frontend_steps_to_nirs4all(children)
-                result.extend(child_steps)
-                continue
-            # Unknown flow subType — skip
-            continue
-
-        # --- Consolidated "utility" type ---
-        if step_type == "utility":
-            if sub_type == "generator" and branches:
-                alternatives = []
-                for branch in branches:
-                    branch_steps = _convert_frontend_steps_to_nirs4all(branch)
-                    if len(branch_steps) == 1:
-                        alternatives.append(branch_steps[0])
-                    else:
-                        alternatives.append(branch_steps)
-                if generator_kind == "cartesian":
-                    result.append({"_cartesian_": alternatives})
-                else:
-                    gen_step: dict[str, Any] = {"_or_": alternatives}
-                    if generator_options.get("pick"):
-                        gen_step["pick"] = generator_options["pick"]
-                    if generator_options.get("arrange"):
-                        gen_step["arrange"] = generator_options["arrange"]
-                    if generator_options.get("count"):
-                        gen_step["count"] = generator_options["count"]
-                    result.append(gen_step)
-                continue
-            # Charts and comments are non-executing
-            continue
-
-        # --- Legacy and standard types below ---
-
-        # Build the base step representation
-        # For nirs4all, we represent operators as class names or dicts
-        if step_params:
-            base_step = {step_name: step_params}
-        else:
-            base_step = step_name
-
-        # Wrap with model/y_processing keyword if needed
-        if step_type == "model":
-            base_step = {"model": base_step}
-        elif step_type == "y_processing":
-            base_step = {"y_processing": base_step}
-
-        # Handle generator step type (choice/or node) - legacy
-        if step_type == "generator" and children:
-            alternatives = []
-            for child in children:
-                child_steps = _convert_frontend_steps_to_nirs4all([child])
-                alternatives.extend(child_steps)
-            if alternatives:
-                gen_step = {"_or_": alternatives}
-                if generator:
-                    if generator.get("pick"):
-                        gen_step["pick"] = generator["pick"]
-                    if generator.get("count"):
-                        gen_step["count"] = generator["count"]
-                result.append(gen_step)
-            continue
-
-        # Handle branch step type - legacy
-        if step_type == "branch" and children:
-            branch_paths = []
-            for child in children:
-                child_steps = _convert_frontend_steps_to_nirs4all([child])
-                branch_paths.extend(child_steps)
-            if branch_paths:
-                result.append({"branch": branch_paths})
-            continue
-
-        # Apply generator wrapper if present on regular steps
-        if generator:
-            if "_or_" in generator and generator["_or_"]:
-                gen_step = {"_or_": generator["_or_"]}
-                if generator.get("pick"):
-                    gen_step["pick"] = generator["pick"]
-                if generator.get("count"):
-                    gen_step["count"] = generator["count"]
-                result.append(gen_step)
-            elif "_range_" in generator and generator["_range_"]:
-                gen_step = {"_range_": generator["_range_"]}
-                result.append(gen_step)
-            elif "_log_range_" in generator and generator["_log_range_"]:
-                gen_step = {"_log_range_": generator["_log_range_"]}
-                result.append(gen_step)
-            else:
-                result.append(base_step)
-        else:
-            result.append(base_step)
-
-        # Handle children for other container steps - legacy
-        if children and step_type not in ("branch", "generator"):
-            child_steps = _convert_frontend_steps_to_nirs4all(children)
-            if step_type == "sample_augmentation":
-                result.append({"sample_augmentation": {"transformers": child_steps}})
-            elif step_type == "feature_augmentation":
-                result.append({"feature_augmentation": child_steps})
-
-    return result
-
 
 # Implementation function - called by forwarding route defined earlier
 async def _count_variants_impl(request: PipelineCountRequest):
@@ -1439,8 +1371,8 @@ async def _count_variants_impl(request: PipelineCountRequest):
         }
 
     try:
-        # Convert frontend steps to nirs4all format
-        nirs4all_steps = _convert_frontend_steps_to_nirs4all(request.steps)
+        # Convert frontend/editor steps to canonical nirs4all format
+        nirs4all_steps = filter_canonical_comments(editor_to_canonical(request.steps))
 
         # Count combinations using nirs4all
         total_count = _count_combinations(nirs4all_steps)
@@ -1450,7 +1382,7 @@ async def _count_variants_impl(request: PipelineCountRequest):
         for i, step in enumerate(request.steps):
             step_name = step.get("name", f"step_{i}")
             step_id = step.get("id", str(i))
-            single_step = _convert_frontend_steps_to_nirs4all([step])
+            single_step = filter_canonical_comments(editor_to_canonical([step]))
             step_count = _count_combinations(single_step) if single_step else 1
             breakdown[step_id] = {"name": step_name, "count": step_count}
 
@@ -1567,7 +1499,7 @@ def _run_pipeline_task(job, progress_callback):
     Returns:
         Execution result dictionary
     """
-    from .nirs4all_adapter import build_full_pipeline, ensure_models_dir
+    from .nirs4all_adapter import ensure_models_dir
 
     config = job.config
     steps = config.get("pipeline_steps", [])
@@ -1578,14 +1510,13 @@ def _run_pipeline_task(job, progress_callback):
     progress_callback(5, "Building pipeline...")
 
     try:
-        # Build full pipeline with all features
-        build_result = build_full_pipeline(steps)
-        pipeline_steps = build_result.steps
+        pipeline_steps = editor_steps_to_runtime_canonical(steps)
+        estimated_variants = count_runtime_variants(pipeline_steps)
 
         if not pipeline_steps:
             raise ValueError("Pipeline has no executable steps")
 
-        progress_callback(10, f"Running pipeline ({build_result.estimated_variants} variants)...")
+        progress_callback(10, f"Running pipeline ({estimated_variants} variants)...")
 
         # Execute using nirs4all.run()
         import nirs4all
@@ -1643,7 +1574,7 @@ def _run_pipeline_task(job, progress_callback):
             "success": True,
             "metrics": metrics,
             "top_results": top_results,
-            "variants_tested": build_result.estimated_variants,
+            "variants_tested": estimated_variants,
             "model_path": model_path,
         }
 
@@ -1663,10 +1594,10 @@ async def export_pipeline(pipeline_id: str, request: PipelineExportRequest):
 
     Supported formats:
     - python: Executable Python code
-    - yaml: YAML configuration
-    - json: JSON configuration
+    - yaml: canonical nirs4all YAML
+    - json: canonical nirs4all JSON
     """
-    from .nirs4all_adapter import export_pipeline_to_python, export_pipeline_to_yaml
+    from .nirs4all_adapter import export_pipeline_to_python
 
     pipeline = _load_pipeline(pipeline_id)
     steps = pipeline.get("steps", [])
@@ -1682,18 +1613,22 @@ async def export_pipeline(pipeline_id: str, request: PipelineExportRequest):
         extension = "py"
 
     elif request.format == "yaml":
-        content = export_pipeline_to_yaml(
-            steps=steps,
-            config={
-                "name": pipeline.get("name"),
-                "description": pipeline.get("description"),
-            }
+        rendered = _render_canonical_pipeline_content(
+            steps,
+            name=pipeline.get("name"),
+            description=pipeline.get("description"),
         )
+        content = rendered["yaml"]
         content_type = "text/yaml"
         extension = "yaml"
 
     elif request.format == "json":
-        content = json.dumps(pipeline, indent=2)
+        rendered = _render_canonical_pipeline_content(
+            steps,
+            name=pipeline.get("name"),
+            description=pipeline.get("description"),
+        )
+        content = rendered["json"]
         content_type = "application/json"
         extension = "json"
 
@@ -1713,30 +1648,23 @@ async def export_pipeline(pipeline_id: str, request: PipelineExportRequest):
 
 
 @router.post("/pipelines/import")
-async def import_pipeline(content: str, format: str = "yaml", name: str | None = None):
+async def import_pipeline(request: PipelineCanonicalImportRequest):
     """
-    Import pipeline from YAML or JSON format.
-    """
-    from .nirs4all_adapter import import_pipeline_from_yaml
+    Import pipeline from canonical YAML or JSON.
 
-    if format == "yaml":
-        imported = import_pipeline_from_yaml(content)
-    elif format == "json":
-        try:
-            imported = json.loads(content)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported import format: {format}",
-        )
+    The canonical nirs4all wrapper ``{name, description, pipeline}`` is the
+    primary contract. For compatibility, editor JSON payloads with ``steps``
+    are still accepted.
+    """
+    imported_steps, imported_name, imported_description = _resolve_import_payload(
+        request
+    )
 
     # Create pipeline from imported data
     pipeline_data = PipelineCreate(
-        name=name or imported.get("name", "Imported Pipeline"),
-        description=imported.get("description", ""),
-        steps=imported.get("steps", []),
+        name=request.name or imported_name or "Imported Pipeline",
+        description=imported_description,
+        steps=imported_steps,
         category="imported",
     )
 
@@ -1782,17 +1710,55 @@ def _load_sample_file(filepath: Path) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to load sample: {e}")
 
 
-def _filter_comments(steps: list[Any]) -> list[Any]:
-    """Remove _comment steps from pipeline."""
-    filtered = []
-    for step in steps:
-        if isinstance(step, dict):
-            if set(step.keys()) == {"_comment"}:
+def _filter_comments(payload: Any) -> Any:
+    """Remove explicit ``_comment`` metadata recursively from a pipeline payload."""
+    if isinstance(payload, list):
+        filtered: list[Any] = []
+        for item in payload:
+            cleaned = _filter_comments(item)
+            if cleaned is not None:
+                filtered.append(cleaned)
+        return filtered
+
+    if isinstance(payload, dict):
+        if set(payload.keys()) == {"_comment"}:
+            return None
+        filtered_dict: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key == "_comment":
                 continue
-            # Remove _comment key from steps but keep the rest
-            step = {k: v for k, v in step.items() if k != "_comment"}
-        filtered.append(step)
-    return filtered
+            cleaned = _filter_comments(value)
+            if cleaned is not None:
+                filtered_dict[key] = cleaned
+        return filtered_dict
+
+    return payload
+
+
+def _stable_sort_template(value: Any) -> Any:
+    """Return a deterministically key-sorted copy of a JSON-like structure."""
+    if isinstance(value, dict):
+        return {
+            key: _stable_sort_template(child)
+            for key, child in sorted(value.items(), key=lambda item: item[0])
+        }
+    if isinstance(value, list):
+        return [_stable_sort_template(item) for item in value]
+    return value
+
+
+def _semantic_pipeline_template(
+    steps: list[Any],
+    *,
+    name: str = "",
+    description: str = "",
+) -> Any:
+    """Build the library-semantic template used for canonical round-trip checks."""
+    from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
+
+    filtered_steps = _filter_comments(steps)
+    config = PipelineConfigs(filtered_steps, name=name, description=description)
+    return _stable_sort_template(config.original_template)
 
 
 def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
@@ -1831,9 +1797,10 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
 
         steps = _filter_comments(steps)
 
-        # Create PipelineConfigs to get canonical form
+        # Create PipelineConfigs to get canonical form while preserving the
+        # original generator template instead of only the first expansion.
         config = PipelineConfigs(steps, name=name, description=description)
-        canonical_steps = config.steps[0] if config.steps else []
+        canonical_steps = _stable_sort_template(config.original_template)
 
         return {
             "name": name,
@@ -1962,19 +1929,22 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
     canonical = _get_canonical_pipeline(filepath)
     original_steps = canonical.get("pipeline", [])
 
-    # Deep comparison
     differences = []
 
-    def normalize_for_comparison(obj):
-        """Normalize object for comparison (sort dicts, etc.)"""
-        if isinstance(obj, dict):
-            return {k: normalize_for_comparison(v) for k, v in sorted(obj.items())}
-        elif isinstance(obj, list):
-            return [normalize_for_comparison(item) for item in obj]
-        return obj
-
-    original_normalized = normalize_for_comparison(original_steps)
-    editor_normalized = normalize_for_comparison(editor_steps)
+    try:
+        original_normalized = _semantic_pipeline_template(
+            original_steps,
+            name=canonical.get("name", ""),
+            description=canonical.get("description", ""),
+        )
+        editor_normalized = _semantic_pipeline_template(
+            editor_steps,
+            name=canonical.get("name", ""),
+            description=canonical.get("description", ""),
+        )
+    except Exception:
+        original_normalized = _stable_sort_template(_filter_comments(original_steps))
+        editor_normalized = _stable_sort_template(_filter_comments(editor_steps))
 
     original_json = json.dumps(original_normalized, sort_keys=True)
     editor_json = json.dumps(editor_normalized, sort_keys=True)
@@ -1987,8 +1957,8 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
             differences.append(f"Step count differs: {len(original_steps)} vs {len(editor_steps)}")
 
         for i, (orig, edit) in enumerate(zip(original_steps, editor_steps)):
-            orig_json = json.dumps(normalize_for_comparison(orig), sort_keys=True)
-            edit_json = json.dumps(normalize_for_comparison(edit), sort_keys=True)
+            orig_json = json.dumps(_stable_sort_template(_filter_comments(orig)), sort_keys=True)
+            edit_json = json.dumps(_stable_sort_template(_filter_comments(edit)), sort_keys=True)
             if orig_json != edit_json:
                 differences.append(f"Step {i} differs")
 
@@ -2207,4 +2177,3 @@ async def propagate_shape(request: ShapePropagationRequest):
         output_shape=current_shape,
         is_valid=is_valid,
     )
-

@@ -29,6 +29,15 @@ function preprocessingStep(name: string): PipelineStep {
   return makeStep({ name, type: "preprocessing" });
 }
 
+function sequentialStep(children: PipelineStep[]): PipelineStep {
+  return makeStep({
+    name: "Sequential",
+    type: "flow",
+    subType: "sequential",
+    children,
+  });
+}
+
 // ============================================================================
 // Editor → Native (toNativeFormat)
 // ============================================================================
@@ -143,8 +152,8 @@ describe("toNativeFormat - Generator serialization", () => {
       const native = result[0] as Record<string, unknown>;
       expect(native._cartesian_).toBeDefined();
       expect(native._cartesian_).toEqual([
-        ["SNV", "MSC"],
-        ["StandardScaler", "MinMaxScaler"],
+        { _or_: ["SNV", "MSC"] },
+        { _or_: ["StandardScaler", "MinMaxScaler"] },
       ]);
     });
 
@@ -165,6 +174,41 @@ describe("toNativeFormat - Generator serialization", () => {
       const native = result[0] as Record<string, unknown>;
       expect(native._cartesian_).toBeDefined();
       expect(native.pick).toBe(1);
+    });
+
+    it("preserves sequential and nested generator stages", () => {
+      const step = makeStep({
+        name: "Cartesian",
+        type: "flow",
+        subType: "generator",
+        generatorKind: "cartesian",
+        branches: [
+          [sequentialStep([preprocessingStep("SNV"), preprocessingStep("Detrend")])],
+          [
+            makeStep({
+              name: "Or",
+              type: "flow",
+              subType: "generator",
+              generatorKind: "or",
+              branches: [
+                [preprocessingStep("StandardScaler")],
+                [preprocessingStep("MinMaxScaler")],
+              ],
+              generatorOptions: { count: 1 },
+            }),
+          ],
+        ],
+        generatorOptions: { count: 3 },
+      });
+
+      const result = toNativeFormat([step]);
+      expect(result[0]).toEqual({
+        _cartesian_: [
+          ["SNV", "Detrend"],
+          { _or_: ["StandardScaler", "MinMaxScaler"], count: 1 },
+        ],
+        count: 3,
+      });
     });
   });
 
@@ -353,6 +397,73 @@ describe("toNativeFormat - Generator serialization", () => {
       expect(native.count).toBe(3);
     });
 
+    it.each([
+      [
+        "grid",
+        makeStep({
+          name: "Grid",
+          type: "flow",
+          subType: "generator",
+          generatorKind: "grid",
+          branches: [
+            [preprocessingStep("SNV"), preprocessingStep("MSC")],
+            [preprocessingStep("StandardScaler"), preprocessingStep("MinMaxScaler")],
+          ],
+          branchMetadata: [{ name: "preprocessing" }, { name: "scaling" }],
+          generatorOptions: { count: 4 },
+        }),
+      ],
+      [
+        "zip",
+        makeStep({
+          name: "Zip",
+          type: "flow",
+          subType: "generator",
+          generatorKind: "zip",
+          branches: [
+            [preprocessingStep("SNV"), preprocessingStep("MSC")],
+            [preprocessingStep("StandardScaler"), preprocessingStep("MinMaxScaler")],
+          ],
+          branchMetadata: [{ name: "transform" }, { name: "scaler" }],
+          generatorOptions: { count: 2 },
+        }),
+      ],
+      [
+        "chain",
+        makeStep({
+          name: "Chain",
+          type: "flow",
+          subType: "generator",
+          generatorKind: "chain",
+          branches: [
+            [preprocessingStep("SNV")],
+            [preprocessingStep("MSC")],
+          ],
+          generatorOptions: { count: 2 },
+        }),
+      ],
+      [
+        "sample",
+        makeStep({
+          name: "Sample",
+          type: "flow",
+          subType: "generator",
+          generatorKind: "sample",
+          params: {
+            distribution: "uniform",
+            from: 0,
+            to: 1,
+            num: 5,
+          },
+          generatorOptions: { count: 3 },
+        }),
+      ],
+    ])("includes count for %s generators", (_kind, step) => {
+      const result = toNativeFormat([step]);
+      const native = result[0] as Record<string, unknown>;
+      expect(native.count).toBe(step.generatorOptions?.count);
+    });
+
     it("includes seed when set", () => {
       const step = makeStep({
         name: "Or",
@@ -403,7 +514,12 @@ describe("fromNativeFormat - Generator deserialization", () => {
   describe("_cartesian_ generator", () => {
     it("deserializes _cartesian_ with stages", () => {
       const native: NativePipelineStep[] = [
-        { _cartesian_: [["SNV", "MSC"], ["StandardScaler", "MinMaxScaler"]] },
+        {
+          _cartesian_: [
+            { _or_: ["SNV", "MSC"] },
+            { _or_: ["StandardScaler", "MinMaxScaler"] },
+          ],
+        },
       ];
 
       const result = fromNativeFormat(native);
@@ -418,10 +534,38 @@ describe("fromNativeFormat - Generator deserialization", () => {
 
     it("deserializes _cartesian_ with count", () => {
       const native: NativePipelineStep[] = [
-        { _cartesian_: [["SNV"], ["MSC"]], count: 3 },
+        { _cartesian_: [{ _or_: ["SNV"] }, { _or_: ["MSC"] }], count: 3 },
       ];
 
       const result = fromNativeFormat(native);
+      expect(result[0].generatorOptions?.count).toBe(3);
+    });
+
+    it("keeps sequential and modified _or_ stages distinct", () => {
+      const native: NativePipelineStep[] = [
+        {
+          _cartesian_: [
+            ["SNV", "Detrend"],
+            { _or_: ["StandardScaler", "MinMaxScaler"], count: 1 },
+          ],
+          count: 3,
+        },
+      ];
+
+      const result = fromNativeFormat(native);
+      expect(result[0].branches?.[0]?.[0]).toMatchObject({
+        name: "Sequential",
+        subType: "sequential",
+      });
+      expect(result[0].branches?.[0]?.[0].children?.map((child) => child.name)).toEqual([
+        "SNV",
+        "Detrend",
+      ]);
+      expect(result[0].branches?.[1]?.[0]).toMatchObject({
+        name: "Or",
+        generatorKind: "or",
+      });
+      expect(result[0].branches?.[1]?.[0].generatorOptions?.count).toBe(1);
       expect(result[0].generatorOptions?.count).toBe(3);
     });
   });
@@ -441,6 +585,15 @@ describe("fromNativeFormat - Generator deserialization", () => {
       expect(result[0].branchMetadata?.[1]?.name).toBe("scaling");
       expect(result[0].branches![0]).toHaveLength(2);
     });
+
+    it("deserializes _grid_ with count", () => {
+      const native: NativePipelineStep[] = [
+        { _grid_: { preprocessing: ["SNV", "MSC"], scaling: ["StandardScaler", "MinMaxScaler"] }, count: 2 },
+      ];
+
+      const result = fromNativeFormat(native);
+      expect(result[0].generatorOptions?.count).toBe(2);
+    });
   });
 
   describe("_zip_ generator", () => {
@@ -456,6 +609,15 @@ describe("fromNativeFormat - Generator deserialization", () => {
       expect(result[0].branches).toHaveLength(2);
       expect(result[0].branchMetadata?.[0]?.name).toBe("transform");
       expect(result[0].branchMetadata?.[1]?.name).toBe("scaler");
+    });
+
+    it("deserializes _zip_ with count", () => {
+      const native: NativePipelineStep[] = [
+        { _zip_: { transform: ["SNV", "MSC"], scaler: ["StandardScaler", "MinMaxScaler"] }, count: 2 },
+      ];
+
+      const result = fromNativeFormat(native);
+      expect(result[0].generatorOptions?.count).toBe(2);
     });
   });
 
@@ -482,6 +644,15 @@ describe("fromNativeFormat - Generator deserialization", () => {
       expect(result[0].branches).toHaveLength(2);
       expect(result[0].branches![0]).toHaveLength(2);
       expect(result[0].branches![1]).toHaveLength(1);
+    });
+
+    it("deserializes _chain_ with count", () => {
+      const native: NativePipelineStep[] = [
+        { _chain_: ["SNV", "MSC"], count: 2 },
+      ];
+
+      const result = fromNativeFormat(native);
+      expect(result[0].generatorOptions?.count).toBe(2);
     });
   });
 
@@ -510,6 +681,15 @@ describe("fromNativeFormat - Generator deserialization", () => {
       expect(result[0].params.distribution).toBe("normal");
       expect(result[0].params.mean).toBe(0);
       expect(result[0].params.std).toBe(1);
+    });
+
+    it("deserializes _sample_ with count", () => {
+      const native: NativePipelineStep[] = [
+        { _sample_: { distribution: "uniform", from: 0.1, to: 1.0, num: 5 }, count: 3 },
+      ];
+
+      const result = fromNativeFormat(native);
+      expect(result[0].generatorOptions?.count).toBe(3);
     });
   });
 });
@@ -564,6 +744,12 @@ describe("Generator round-trip tests", () => {
     expect(restored[0].branches![0]).toHaveLength(2);
     expect(restored[0].branches![0][0].name).toBe("SNV");
     expect(restored[0].branches![1][0].name).toBe("StandardScaler");
+    expect(native[0]).toEqual({
+      _cartesian_: [
+        { _or_: ["SNV", "MSC"] },
+        { _or_: ["StandardScaler", "MinMaxScaler"] },
+      ],
+    });
   });
 
   it("_grid_ round-trips correctly", () => {
@@ -680,6 +866,73 @@ describe("Generator round-trip tests", () => {
 
     const restored = fromNativeFormat(native);
     expect(restored[0].generatorOptions?.count).toBe(5);
+  });
+
+  it.each([
+    [
+      "grid",
+      makeStep({
+        name: "Grid",
+        type: "flow",
+        subType: "generator",
+        generatorKind: "grid",
+        branches: [
+          [preprocessingStep("SNV"), preprocessingStep("MSC")],
+          [preprocessingStep("StandardScaler"), preprocessingStep("MinMaxScaler")],
+        ],
+        branchMetadata: [{ name: "preprocessing" }, { name: "scaling" }],
+        generatorOptions: { count: 4 },
+      }),
+    ],
+    [
+      "zip",
+      makeStep({
+        name: "Zip",
+        type: "flow",
+        subType: "generator",
+        generatorKind: "zip",
+        branches: [
+          [preprocessingStep("SNV"), preprocessingStep("MSC")],
+          [preprocessingStep("StandardScaler"), preprocessingStep("MinMaxScaler")],
+        ],
+        branchMetadata: [{ name: "transform" }, { name: "scaler" }],
+        generatorOptions: { count: 2 },
+      }),
+    ],
+    [
+      "chain",
+      makeStep({
+        name: "Chain",
+        type: "flow",
+        subType: "generator",
+        generatorKind: "chain",
+        branches: [
+          [preprocessingStep("SNV")],
+          [preprocessingStep("MSC")],
+        ],
+        generatorOptions: { count: 2 },
+      }),
+    ],
+    [
+      "sample",
+      makeStep({
+        name: "Sample",
+        type: "flow",
+        subType: "generator",
+        generatorKind: "sample",
+        params: {
+          distribution: "uniform",
+          from: 0,
+          to: 1,
+          num: 5,
+        },
+        generatorOptions: { count: 3 },
+      }),
+    ],
+  ])("count round-trips for %s generators", (_kind, original) => {
+    const native = toNativeFormat([original]);
+    const restored = fromNativeFormat(native);
+    expect(restored[0].generatorOptions?.count).toBe(original.generatorOptions?.count);
   });
 
   it("seed is preserved through round-trip", () => {

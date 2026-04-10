@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
@@ -317,7 +316,6 @@ export default function NewExperiment() {
   };
 
   return (
-    <MlLoadingOverlay>
     <motion.div
       className="space-y-6"
       variants={containerVariants}
@@ -723,6 +721,5 @@ export default function NewExperiment() {
         </motion.div>
       )}
     </motion.div>
-    </MlLoadingOverlay>
   );
 }

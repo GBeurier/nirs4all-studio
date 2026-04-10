@@ -361,7 +361,8 @@
                 "type": "array",
                 "description": "Sub-pipeline (sequence of steps)",
                 "items": { "$ref": "#/$defs/step" }
-              }
+              },
+              { "type": "null" }
             ]
           }
         },
@@ -372,6 +373,10 @@
         "count": {
           "type": "integer",
           "description": "Maximum number of variants to generate"
+        },
+        "_seed_": {
+          "type": "integer",
+          "description": "Optional random seed used when count sampling is applied"
         }
       },
       "additionalProperties": false
@@ -416,6 +421,10 @@
         "param": {
           "type": "string",
           "description": "Parameter name this range applies to"
+        },
+        "count": {
+          "type": "integer",
+          "description": "Maximum number of values"
         }
       },
       "additionalProperties": false
@@ -423,28 +432,30 @@
 
     "cartesianGeneratorStep": {
       "type": "object",
-      "description": "Cartesian product of stages. Example: {\"_cartesian_\": [[\"SNV\", \"MSC\"], [\"PLS\", \"Ridge\"]]}",
+      "description": "Cartesian product of stages. Each stage can be a step, an _or_ generator, or a sequential sub-pipeline.",
       "required": ["_cartesian_"],
       "properties": {
         "_cartesian_": {
           "type": "array",
-          "description": "List of stages, each stage is a list of alternatives",
+          "description": "List of stages. Use _or_ inside a stage when the stage has alternatives.",
           "items": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                { "$ref": "#/$defs/step" },
-                {
-                  "type": "array",
-                  "items": { "$ref": "#/$defs/step" }
-                }
-              ]
-            }
+            "oneOf": [
+              { "$ref": "#/$defs/step" },
+              {
+                "type": "array",
+                "description": "Sequential sub-pipeline for a single cartesian stage",
+                "items": { "$ref": "#/$defs/step" }
+              }
+            ]
           }
         },
         "pick": { "$ref": "#/$defs/pickValue" },
         "arrange": { "$ref": "#/$defs/pickValue" },
-        "count": { "type": "integer" }
+        "count": { "type": "integer" },
+        "_seed_": {
+          "type": "integer",
+          "description": "Optional random seed used when count sampling is applied"
+        }
       },
       "additionalProperties": false
     },
@@ -461,7 +472,11 @@
             "type": "array"
           }
         },
-        "count": { "type": "integer" }
+        "count": { "type": "integer" },
+        "_seed_": {
+          "type": "integer",
+          "description": "Optional random seed used when count sampling is applied"
+        }
       },
       "additionalProperties": false
     },

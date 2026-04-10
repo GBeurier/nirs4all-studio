@@ -10,7 +10,7 @@
  * - Variant count preview
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Sparkles,
   Info,
@@ -24,11 +24,15 @@ import {
   BarChart3,
   GitBranch,
   Ruler,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -45,7 +49,11 @@ import {
 } from "@/components/ui/tooltip";
 import { StepActions } from "./StepActions";
 import type { StepRendererProps } from "./types";
-import type { PipelineStep, GeneratorKind } from "../../types";
+import type { GeneratorKind, PipelineStep, ScalarGeneratorEntry } from "../../types";
+import { calculateGeneratorExpansionCount, calculateStepVariants } from "../../types";
+
+const EMPTY_SCALAR_ENTRIES: ScalarGeneratorEntry[] = [];
+const EMPTY_SAMPLE_CONFIG: Record<string, unknown> = {};
 
 // ---------------------------------------------------------------------------
 // Selection types
@@ -209,75 +217,8 @@ function calculateVariantsForValue(
   return mode === "pick" ? combinations(optionCount, value) : permutations(optionCount, value);
 }
 
-// ---------------------------------------------------------------------------
-// Variant count calculator
-// ---------------------------------------------------------------------------
-
-function calculateVariants(optionCount: number, config: SelectionConfig, kind: string): number {
-  // For grid: Cartesian product of branch sizes (would need branch info — approximate with optionCount)
-  if (kind === "grid") {
-    // Each branch is a param dimension; total = product of branch sizes
-    // Since we don't have individual branch sizes, use optionCount as a proxy
-    return applyCountLimit(optionCount, config.count);
-  }
-
-  // For zip: min of branch sizes — approximate with optionCount
-  if (kind === "zip") {
-    return applyCountLimit(optionCount, config.count);
-  }
-
-  // For chain: flat count of branches
-  if (kind === "chain") {
-    return applyCountLimit(optionCount, config.count);
-  }
-
-  // For sample/range/log_range: driven by their own params, not branches
-  if (kind === "sample" || kind === "range" || kind === "log_range") {
-    return applyCountLimit(optionCount, config.count);
-  }
-
-  // For or/cartesian: use pick/arrange logic
-  let primary: number;
-
-  switch (config.primaryMode) {
-    case "none":
-      if (kind === "cartesian") {
-        // Cartesian = product of options per stage. Without per-stage sizes, show branch count
-        primary = optionCount;
-      } else {
-        primary = optionCount; // or: try each
-      }
-      break;
-    case "pick":
-      primary = calculateVariantsForValue(optionCount, "pick", config.primaryValue || 1);
-      break;
-    case "arrange":
-      primary = calculateVariantsForValue(optionCount, "arrange", config.primaryValue || 1);
-      break;
-    default:
-      primary = optionCount;
-  }
-
-  if (config.secondaryMode !== "none") {
-    let secondary: number;
-    switch (config.secondaryMode) {
-      case "then_pick":
-        secondary = calculateVariantsForValue(primary, "pick", config.secondaryValue || 2);
-        break;
-      case "then_arrange":
-        secondary = calculateVariantsForValue(primary, "arrange", config.secondaryValue || 2);
-        break;
-      default:
-        secondary = primary;
-    }
-    return applyCountLimit(secondary, config.count);
-  }
-
-  return applyCountLimit(primary, config.count);
-}
-
-function applyCountLimit(total: number, count?: number): number {
-  return count && count > 0 ? Math.min(total, count) : total;
+function safeStringify(value: unknown): string {
+  return JSON.stringify(value, null, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -466,12 +407,74 @@ export function GeneratorRenderer({
   const meta = getKindMeta(generatorKind);
   const Icon = meta.icon;
 
-  const optionCount = step.branches?.length || 0;
+  const scalarEntries = step.scalarGeneratorConfig?.entries ?? EMPTY_SCALAR_ENTRIES;
+  const sampleConfig = step.scalarGeneratorConfig?.sample ?? EMPTY_SAMPLE_CONFIG;
+  const optionCount = generatorKind === "grid" || generatorKind === "zip"
+    ? scalarEntries.length
+    : generatorKind === "sample"
+      ? Number(sampleConfig.num) || 0
+      : step.branches?.length || 0;
+  const selectionBaseCount = useMemo(
+    () => Math.max(0, calculateGeneratorExpansionCount(step)),
+    [step]
+  );
   const config = useMemo(() => extractConfig(step), [step]);
+  const [entryDrafts, setEntryDrafts] = useState<Record<string, string>>({});
+  const [sampleChoicesDraft, setSampleChoicesDraft] = useState(
+    safeStringify(sampleConfig.choices ?? []),
+  );
+
+  useEffect(() => {
+    setEntryDrafts(
+      Object.fromEntries(
+        scalarEntries.map((entry) => [entry.id, safeStringify(entry.values)]),
+      ),
+    );
+  }, [scalarEntries]);
+
+  useEffect(() => {
+    setSampleChoicesDraft(safeStringify(sampleConfig.choices ?? []));
+  }, [sampleConfig.choices]);
+
+  const primarySelectionCount = useMemo(() => {
+    if (!meta.supportsPickArrange) {
+      return selectionBaseCount;
+    }
+    if (config.primaryMode === "arrange") {
+      return calculateVariantsForValue(
+        selectionBaseCount,
+        "arrange",
+        config.primaryValue || 1
+      );
+    }
+    if (config.primaryMode === "pick") {
+      return calculateVariantsForValue(
+        selectionBaseCount,
+        "pick",
+        config.primaryValue || 1
+      );
+    }
+    return selectionBaseCount;
+  }, [
+    config.primaryMode,
+    config.primaryValue,
+    meta.supportsPickArrange,
+    selectionBaseCount,
+  ]);
 
   const variantCount = useMemo(
-    () => calculateVariants(optionCount, config, generatorKind),
-    [optionCount, config, generatorKind]
+    () => calculateStepVariants(step),
+    [step]
+  );
+
+  const unboundedVariantCount = useMemo(
+    () => calculateStepVariants({
+      ...step,
+      generatorOptions: step.generatorOptions
+        ? { ...step.generatorOptions, count: undefined }
+        : undefined,
+    }),
+    [step]
   );
 
   const handleConfigChange = useCallback(
@@ -487,6 +490,33 @@ export function GeneratorRenderer({
       onUpdate(step.id, updatePayload);
     },
     [config, onUpdate, step.id, step.params]
+  );
+
+  const updateScalarEntries = useCallback(
+    (entries: ScalarGeneratorEntry[]) => {
+      onUpdate(step.id, {
+        scalarGeneratorConfig: {
+          ...step.scalarGeneratorConfig,
+          entries,
+        },
+      });
+    },
+    [onUpdate, step.id, step.scalarGeneratorConfig]
+  );
+
+  const updateSampleConfig = useCallback(
+    (updates: Record<string, unknown>) => {
+      onUpdate(step.id, {
+        scalarGeneratorConfig: {
+          ...step.scalarGeneratorConfig,
+          sample: {
+            ...sampleConfig,
+            ...updates,
+          },
+        },
+      });
+    },
+    [onUpdate, sampleConfig, step.id, step.scalarGeneratorConfig]
   );
 
   const handlePrimaryModeChange = useCallback(
@@ -543,6 +573,216 @@ export function GeneratorRenderer({
             </div>
           </div>
 
+          {(generatorKind === "grid" || generatorKind === "zip") && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Scalar Parameters</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      updateScalarEntries([
+                        ...scalarEntries,
+                        {
+                          id: crypto.randomUUID(),
+                          key: `param_${scalarEntries.length + 1}`,
+                          values: [],
+                        },
+                      ]);
+                    }}
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    Add Param
+                  </Button>
+                </div>
+
+                {scalarEntries.length > 0 ? (
+                  scalarEntries.map((entry, index) => (
+                    <div key={entry.id} className="space-y-2 rounded-lg border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs text-muted-foreground">
+                          Param {index + 1}
+                        </Label>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            updateScalarEntries(scalarEntries.filter((candidate) => candidate.id !== entry.id))
+                          }
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <Input
+                        value={entry.key}
+                        onChange={(event) =>
+                          updateScalarEntries(
+                            scalarEntries.map((candidate) =>
+                              candidate.id === entry.id
+                                ? { ...candidate, key: event.target.value }
+                                : candidate,
+                            ),
+                          )
+                        }
+                        placeholder="Parameter name"
+                      />
+                      <Textarea
+                        value={entryDrafts[entry.id] ?? safeStringify(entry.values)}
+                        onChange={(event) =>
+                          setEntryDrafts((current) => ({
+                            ...current,
+                            [entry.id]: event.target.value,
+                          }))
+                        }
+                        onBlur={() => {
+                          try {
+                            const parsed = JSON.parse(entryDrafts[entry.id] ?? "[]");
+                            if (Array.isArray(parsed)) {
+                              updateScalarEntries(
+                                scalarEntries.map((candidate) =>
+                                  candidate.id === entry.id
+                                    ? { ...candidate, values: parsed }
+                                    : candidate,
+                                ),
+                              );
+                            } else {
+                              setEntryDrafts((current) => ({
+                                ...current,
+                                [entry.id]: safeStringify(entry.values),
+                              }));
+                            }
+                          } catch {
+                            setEntryDrafts((current) => ({
+                              ...current,
+                              [entry.id]: safeStringify(entry.values),
+                            }));
+                          }
+                        }}
+                        rows={4}
+                        className="font-mono text-xs"
+                        placeholder='[0.1, 1.0, 10.0]'
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Add parameter arrays to configure the {generatorKind} generator.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
+          {generatorKind === "sample" && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Sampling Configuration</Label>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Distribution</Label>
+                  <Select
+                    value={String(sampleConfig.distribution || "uniform")}
+                    onValueChange={(value) => updateSampleConfig({ distribution: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover">
+                      <SelectItem value="uniform">uniform</SelectItem>
+                      <SelectItem value="log_uniform">log_uniform</SelectItem>
+                      <SelectItem value="normal">normal</SelectItem>
+                      <SelectItem value="choice">choice</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Samples</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={Number(sampleConfig.num) || 1}
+                      onChange={(event) =>
+                        updateSampleConfig({ num: Math.max(1, parseInt(event.target.value, 10) || 1) })
+                      }
+                    />
+                  </div>
+                  {(sampleConfig.distribution === "uniform" ||
+                    sampleConfig.distribution === "log_uniform") && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">From</Label>
+                        <Input
+                          type="number"
+                          value={Number(sampleConfig.from) || 0}
+                          onChange={(event) => updateSampleConfig({ from: Number(event.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">To</Label>
+                        <Input
+                          type="number"
+                          value={Number(sampleConfig.to) || 1}
+                          onChange={(event) => updateSampleConfig({ to: Number(event.target.value) })}
+                        />
+                      </div>
+                    </>
+                  )}
+                  {sampleConfig.distribution === "normal" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Mean</Label>
+                        <Input
+                          type="number"
+                          value={Number(sampleConfig.mean) || 0}
+                          onChange={(event) => updateSampleConfig({ mean: Number(event.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Std</Label>
+                        <Input
+                          type="number"
+                          value={Number(sampleConfig.std) || 1}
+                          onChange={(event) => updateSampleConfig({ std: Number(event.target.value) })}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {sampleConfig.distribution === "choice" && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Choices (JSON array)</Label>
+                    <Textarea
+                      value={sampleChoicesDraft}
+                      onChange={(event) => setSampleChoicesDraft(event.target.value)}
+                      onBlur={() => {
+                        try {
+                          const parsed = JSON.parse(sampleChoicesDraft);
+                          if (Array.isArray(parsed)) {
+                            updateSampleConfig({ choices: parsed });
+                            return;
+                          }
+                        } catch {
+                          // Reset invalid edits to the current saved value.
+                        }
+                        setSampleChoicesDraft(safeStringify(sampleConfig.choices ?? []));
+                      }}
+                      rows={4}
+                      className="font-mono text-xs"
+                      placeholder='["snv", "msc"]'
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {/* Selection Mode — only for _or_ and _cartesian_ */}
           {meta.supportsPickArrange && (
             <>
@@ -573,15 +813,15 @@ export function GeneratorRenderer({
                     <RangeValueInput
                       value={config.primaryValue}
                       onChange={(value) => handleConfigChange({ primaryValue: value })}
-                      maxValue={optionCount}
+                      maxValue={Math.max(1, selectionBaseCount)}
                       label={config.primaryMode === "pick" ? "Pick" : "Arrange"}
                     />
                     <div className="text-xs text-muted-foreground">
                       {isRange(config.primaryValue)
                         ? `All ${config.primaryMode === "pick" ? "combinations" : "permutations"} from ${config.primaryValue[0]} to ${config.primaryValue[1]}`
                         : config.primaryMode === "pick"
-                          ? `C(${optionCount}, ${config.primaryValue || 1}) = ${combinations(optionCount, (config.primaryValue as number) || 1)} combinations`
-                          : `P(${optionCount}, ${config.primaryValue || 1}) = ${permutations(optionCount, (config.primaryValue as number) || 1)} permutations`
+                          ? `C(${selectionBaseCount}, ${config.primaryValue || 1}) = ${combinations(selectionBaseCount, (config.primaryValue as number) || 1)} combinations`
+                          : `P(${selectionBaseCount}, ${config.primaryValue || 1}) = ${permutations(selectionBaseCount, (config.primaryValue as number) || 1)} permutations`
                       }
                     </div>
                   </div>
@@ -642,7 +882,7 @@ export function GeneratorRenderer({
                     <RangeValueInput
                       value={config.secondaryValue}
                       onChange={(value) => handleConfigChange({ secondaryValue: value })}
-                      maxValue={variantCount}
+                      maxValue={Math.max(1, primarySelectionCount)}
                       label={config.secondaryMode === "then_pick" ? "Then Pick" : "Then Arrange"}
                     />
                   </div>
@@ -660,7 +900,7 @@ export function GeneratorRenderer({
               <Switch
                 checked={!!config.count && config.count > 0}
                 onCheckedChange={(checked) =>
-                  handleConfigChange({ count: checked ? Math.min(10, variantCount) : undefined })
+                  handleConfigChange({ count: checked ? Math.min(10, unboundedVariantCount) : undefined })
                 }
               />
             </div>
@@ -680,7 +920,7 @@ export function GeneratorRenderer({
                   className="w-20 h-8"
                 />
                 <span className="text-sm text-muted-foreground">
-                  of {variantCount}
+                  of {unboundedVariantCount}
                 </span>
               </div>
             )}
@@ -767,7 +1007,7 @@ export function GeneratorRenderer({
                 </p>
               )}
               <p className="text-xs text-orange-600 mt-1">
-                Total: {applyCountLimit(variantCount, config.count)} {meta.variantLabel}{applyCountLimit(variantCount, config.count) !== 1 ? "s" : ""}
+                Total: {variantCount} {meta.variantLabel}{variantCount !== 1 ? "s" : ""}
                 {config.seed !== undefined && ` (seed: ${config.seed})`}
               </p>
             </div>

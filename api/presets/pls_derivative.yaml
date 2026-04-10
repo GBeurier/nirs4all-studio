@@ -1,0 +1,15 @@
+id: pls_derivative
+name: PLS with Derivative
+description: PLS regression with first derivative preprocessing
+task_type: regression
+pipeline:
+- class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+  params:
+    polyorder: 2
+    deriv: 1
+- nirs4all.operators.transforms.scalers.StandardNormalVariate
+- sklearn.model_selection._split.KFold
+- model:
+    class: sklearn.cross_decomposition._pls.PLSRegression
+    params:
+      n_components: 15

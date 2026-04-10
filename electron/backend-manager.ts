@@ -11,6 +11,8 @@ const { BrowserWindow } = electron;
 const HEALTH_CHECK_TIMEOUT = 90000; // 90 seconds (first launch may need pip installs)
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
 const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health checks
+const HEALTH_MONITOR_TIMEOUT = 30000; // 30 seconds for transient import / startup stalls
+const HEALTH_MONITOR_FAILURE_THRESHOLD = 3; // Require repeated failures before restart
 const MAX_RESTART_ATTEMPTS = 3;
 const RESTART_DELAY = 2000; // 2 seconds before restart attempt
 
@@ -34,6 +36,7 @@ export class BackendManager {
   private isRecovering: boolean = false;
   private isShuttingDown: boolean = false;
   private lastError: string | null = null;
+  private consecutiveHealthFailures: number = 0;
   private envManager: EnvManager | null = null;
   /** When true, stop() kills only the backend process (no tree kill)
    *  so that child processes like the updater script survive. */
@@ -317,6 +320,7 @@ export class BackendManager {
     this.isShuttingDown = false;
     this.restartCount = 0;
     this.lastError = null;
+    this.consecutiveHealthFailures = 0;
     this.status = "starting";
     this.notifyRenderer();
 
@@ -352,6 +356,7 @@ export class BackendManager {
     this.isShuttingDown = false;
     this.restartCount = 0;
     this.lastError = null;
+    this.consecutiveHealthFailures = 0;
     this.status = "starting";
     this.notifyRenderer();
 
@@ -713,14 +718,26 @@ export class BackendManager {
       try {
         const response = await fetch(`http://127.0.0.1:${this.port}/api/health`, {
           method: "GET",
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(HEALTH_MONITOR_TIMEOUT),
         });
         if (!response.ok) {
           throw new Error(`Health check failed with status ${response.status}`);
         }
+        this.consecutiveHealthFailures = 0;
       } catch (error) {
-        console.error("Health check failed:", error);
-        // Backend might have crashed, attempt restart
+        this.consecutiveHealthFailures += 1;
+        console.error(
+          `Health check failed (${this.consecutiveHealthFailures}/${HEALTH_MONITOR_FAILURE_THRESHOLD}):`,
+          error,
+        );
+
+        if (this.consecutiveHealthFailures < HEALTH_MONITOR_FAILURE_THRESHOLD) {
+          return;
+        }
+
+        this.consecutiveHealthFailures = 0;
+
+        // Backend might have crashed, but tolerate transient stalls before restarting.
         if (!this.isShuttingDown && this.restartCount < MAX_RESTART_ATTEMPTS) {
           await this.handleCrash();
         } else if (!this.isShuttingDown) {
@@ -753,6 +770,7 @@ export class BackendManager {
     }
 
     this.isRecovering = true;
+    this.consecutiveHealthFailures = 0;
     console.log(`Backend crashed, attempting restart (${this.restartCount + 1}/${MAX_RESTART_ATTEMPTS})...`);
     this.status = "restarting";
     this.restartCount++;

@@ -20,7 +20,7 @@ function createMockStep(overrides: Partial<PipelineStep> = {}): PipelineStep {
     name: "TestStep",
     type: "preprocessing" as StepType,
     enabled: true,
-    params: {} as Record<string, string | number | boolean>,
+    params: {} as Record<string, unknown>,
     ...overrides,
   };
 }
@@ -282,7 +282,7 @@ describe("edge cases", () => {
 
   it("should handle steps with null params", () => {
     const step = createMockStep({
-      params: null as unknown as Record<string, string | number | boolean>,
+      params: null as unknown as Record<string, unknown>,
     });
 
     // Should not throw
@@ -292,7 +292,7 @@ describe("edge cases", () => {
 
   it("should handle steps with undefined params", () => {
     const step = createMockStep({
-      params: undefined as unknown as Record<string, string | number | boolean>,
+      params: undefined as unknown as Record<string, unknown>,
     });
 
     // Should not throw

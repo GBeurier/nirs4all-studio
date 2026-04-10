@@ -4,7 +4,7 @@
  */
 
 import { motion } from "@/lib/motion";
-import { FlaskConical, Wheat, Calculator, GitBranch, Sparkles, Beaker } from "lucide-react";
+import { ArrowRight, FlaskConical, Calculator, GitBranch, Sparkles, Beaker } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,15 +16,13 @@ interface PresetSelectorProps {
   loading?: boolean;
 }
 
-// Icon mapping for preset categories
+// Icon mapping for preset ids. Falls back to `default` for unknown presets.
 const presetIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   pls_basic: Calculator,
   pls_derivative: GitBranch,
   rf_standard: Sparkles,
   kennard_stone_pls: FlaskConical,
   advanced_nirs: Beaker,
-  food: Wheat,
-  pharma: FlaskConical,
   default: GitBranch,
 };
 
@@ -76,43 +74,57 @@ export function PresetSelector({ presets, onSelect, loading }: PresetSelectorPro
 
   return (
     <motion.div
-      className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+      className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
       {presets.map((preset) => {
         const Icon = presetIcons[preset.id] || presetIcons.default;
-        const colorClass = categoryColors[preset.taskType] || categoryColors.default;
+        const colorClass = categoryColors[preset.task_type] || categoryColors.default;
 
         return (
           <motion.div key={preset.id} variants={itemVariants}>
-            <Card className="step-card cursor-pointer h-full">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${colorClass}`}>
+            <Card className="step-card group h-full border-border/70 bg-card/95">
+              <CardContent className="flex h-full flex-col gap-4 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`rounded-2xl p-2.5 ${colorClass}`}>
                       <Icon className="h-4 w-4" />
                     </div>
-                    <h3 className="font-semibold text-foreground">{preset.name}</h3>
+                    <div>
+                      <h3 className="font-semibold text-foreground">{preset.name}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground line-clamp-3">
+                        {preset.description}
+                      </p>
+                    </div>
                   </div>
-                  <Badge variant="outline" className="text-xs shrink-0">
-                    {preset.taskType}
+                  <Badge variant="outline" className="shrink-0 text-xs">
+                    {preset.task_type}
                   </Badge>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {preset.description}
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    {preset.steps.length} steps
-                  </span>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="font-normal">
+                    {preset.steps_count} steps
+                  </Badge>
+                  <Badge variant="outline" className="font-normal">
+                    Creates editable copy
+                  </Badge>
+                </div>
+
+                <div className="mt-auto flex items-end justify-between gap-3">
+                  <p className="max-w-xs text-xs leading-5 text-muted-foreground">
+                    The template stays unchanged. Clicking Use Template creates a new pipeline in your library.
+                  </p>
                   <Button
-                    variant="ghost"
+                    variant="default"
                     size="sm"
                     onClick={() => onSelect(preset.id)}
+                    className="shrink-0"
                   >
                     Use Template
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </Button>
                 </div>
               </CardContent>
@@ -124,82 +136,3 @@ export function PresetSelector({ presets, onSelect, loading }: PresetSelectorPro
   );
 }
 
-// Inline presets for when the API is unavailable
-export const defaultPresets: PipelinePreset[] = [
-  {
-    id: "pls_basic",
-    name: "Basic PLS Pipeline",
-    description: "Simple PLS regression with SNV preprocessing",
-    category: "regression",
-    taskType: "regression",
-    steps: [
-      { name: "StandardNormalVariate", type: "preprocessing", params: {} },
-      { name: "KFold", type: "splitting", params: { n_splits: 5 } },
-      { name: "PLSRegression", type: "model", params: { n_components: 10 } },
-    ],
-  },
-  {
-    id: "pls_derivative",
-    name: "PLS with Derivative",
-    description: "PLS regression with first derivative preprocessing",
-    category: "regression",
-    taskType: "regression",
-    steps: [
-      { name: "SavitzkyGolay", type: "preprocessing", params: { window_length: 11, polyorder: 2, deriv: 1 } },
-      { name: "StandardNormalVariate", type: "preprocessing", params: {} },
-      { name: "KFold", type: "splitting", params: { n_splits: 5 } },
-      { name: "PLSRegression", type: "model", params: { n_components: 15 } },
-    ],
-  },
-  {
-    id: "rf_standard",
-    name: "Random Forest Pipeline",
-    description: "Random Forest with standard preprocessing",
-    category: "regression",
-    taskType: "regression",
-    steps: [
-      { name: "StandardScaler", type: "preprocessing", params: {} },
-      { name: "KFold", type: "splitting", params: { n_splits: 5 } },
-      { name: "RandomForestRegressor", type: "model", params: { n_estimators: 100 } },
-    ],
-  },
-  {
-    id: "kennard_stone_pls",
-    name: "Kennard-Stone PLS",
-    description: "PLS with Kennard-Stone sample selection for optimal coverage",
-    category: "regression",
-    taskType: "regression",
-    steps: [
-      { name: "MultiplicativeScatterCorrection", type: "preprocessing", params: {} },
-      { name: "KennardStoneSplitter", type: "splitting", params: { test_size: 0.2 } },
-      { name: "PLSRegression", type: "model", params: { n_components: 10 } },
-    ],
-  },
-  {
-    id: "advanced_nirs",
-    name: "Advanced NIRS Pipeline",
-    description: "Comprehensive NIRS preprocessing with baseline correction and OPLS",
-    category: "regression",
-    taskType: "regression",
-    steps: [
-      { name: "ASLSBaseline", type: "preprocessing", params: { lam: 1e6, p: 0.01 } },
-      { name: "StandardNormalVariate", type: "preprocessing", params: {} },
-      { name: "SavitzkyGolay", type: "preprocessing", params: { window_length: 15, polyorder: 2, deriv: 1 } },
-      { name: "SPXYGFold", type: "splitting", params: { n_splits: 5 } },
-      { name: "OPLS", type: "model", params: { n_components: 10 } },
-    ],
-  },
-  {
-    id: "food_analysis",
-    name: "Food Analysis",
-    description: "Optimized for NIR protein and nutrient content prediction",
-    category: "food",
-    taskType: "regression",
-    steps: [
-      { name: "StandardNormalVariate", type: "preprocessing", params: {} },
-      { name: "SavitzkyGolay", type: "preprocessing", params: { window_length: 11, polyorder: 2, deriv: 1 } },
-      { name: "KBinsStratifiedSplitter", type: "splitting", params: { test_size: 0.2, n_bins: 10 } },
-      { name: "PLSRegression", type: "model", params: { n_components: 12 } },
-    ],
-  },
-];

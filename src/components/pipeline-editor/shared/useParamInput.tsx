@@ -8,12 +8,13 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -89,7 +90,7 @@ const selectParamKeys = new Set(Object.keys(selectOptions));
 
 interface UseParamInputOptions {
   paramSweeps?: Record<string, ParameterSweep>;
-  onParamChange: (key: string, value: string | number | boolean) => void;
+  onParamChange: (key: string, value: unknown) => void;
   onSweepChange: (key: string, sweep: ParameterSweep | undefined) => void;
 }
 
@@ -102,7 +103,7 @@ export function useParamInput({
   onSweepChange,
 }: UseParamInputOptions) {
   const renderParamInput = useCallback(
-    (key: string, value: string | number | boolean) => {
+    (key: string, value: unknown) => {
       const info = parameterInfo[key];
       const sweep = paramSweeps?.[key];
       const hasSweepActive = !!sweep;
@@ -119,6 +120,19 @@ export function useParamInput({
             hasSweepActive={hasSweepActive}
             onParamChange={onParamChange}
             onSweepChange={onSweepChange}
+          />
+        );
+      }
+
+      // Arrays / objects / null use a structured JSON fallback editor.
+      if (isStructuredParamValue(value)) {
+        return (
+          <StructuredParamInput
+            key={key}
+            paramKey={key}
+            value={value}
+            info={info}
+            onParamChange={onParamChange}
           />
         );
       }
@@ -144,7 +158,7 @@ export function useParamInput({
         <TextParamInput
           key={key}
           paramKey={key}
-          value={value}
+          value={typeof value === "number" || typeof value === "string" ? value : String(value ?? "")}
           info={info}
           sweep={sweep}
           hasSweepActive={hasSweepActive}
@@ -168,8 +182,20 @@ interface ParamInputBaseProps {
   info?: string;
   sweep?: ParameterSweep;
   hasSweepActive: boolean;
-  onParamChange: (key: string, value: string | number | boolean) => void;
+  onParamChange: (key: string, value: unknown) => void;
   onSweepChange: (key: string, sweep: ParameterSweep | undefined) => void;
+}
+
+function isStructuredParamValue(value: unknown): value is Record<string, unknown> | unknown[] | null {
+  return value === null || Array.isArray(value) || (typeof value === "object" && value !== null);
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? "null";
+  } catch {
+    return String(value);
+  }
 }
 
 /**
@@ -339,6 +365,59 @@ function TextParamInput({
         sweep={sweep}
         onSweepChange={(s) => onSweepChange(paramKey, s)}
       />
+    </div>
+  );
+}
+
+function StructuredParamInput({
+  paramKey,
+  value,
+  info,
+  onParamChange,
+}: {
+  paramKey: string;
+  value: Record<string, unknown> | unknown[] | null;
+  info?: string;
+  onParamChange: (key: string, value: unknown) => void;
+}) {
+  const [draft, setDraft] = useState(() => safeJsonStringify(value));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(safeJsonStringify(value));
+    setError(null);
+  }, [value]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <ParamLabel paramKey={paramKey} info={info} hasSweepActive={false} />
+        <Badge variant="outline" className="text-[10px] px-1 h-4">
+          JSON
+        </Badge>
+      </div>
+      <Textarea
+        value={draft}
+        onChange={(e) => {
+          const next = e.target.value;
+          setDraft(next);
+          try {
+            onParamChange(paramKey, JSON.parse(next));
+            setError(null);
+          } catch {
+            setError("Invalid JSON");
+          }
+        }}
+        className="min-h-28 font-mono text-xs"
+        spellCheck={false}
+      />
+      {error ? (
+        <p className="text-xs text-destructive">{error}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Structured params are preserved as canonical JSON.
+        </p>
+      )}
     </div>
   );
 }

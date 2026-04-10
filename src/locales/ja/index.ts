@@ -90,9 +90,9 @@ const ja = {
     playground: "プレイグラウンド",
     inspector: "インスペクター",
     history: "履歴",
-    results: "結果",
+    leaderboard: "ランキング",
     scores: "スコア",
-    predictions: "予測",
+    database: "データベース",
     aggregatedResults: "集計結果",
     predict: "予測",
     lab: "ラボ",
@@ -485,13 +485,42 @@ const ja = {
       groups: {
         prepare: "準備",
         explore: "探索",
-        results: "結果",
+        outcomes: "成果",
+        apply: "適用",
       },
     },
     header: {
       searchPlaceholder: "検索...",
       search: "検索",
       toggleTheme: "テーマの切り替え",
+    },
+    backendStartup: {
+      connectingTitle: "バックエンドに接続中...",
+      errorTitle: "バックエンドの起動が停止しました",
+      loadingTitle: "解析バックエンドを読み込み中...",
+      workspaceTitle: "ワークスペースを復元中...",
+      connectingDescription:
+        "バックエンドはまだ起動中です。キャッシュされたコンテンツが最初に表示される場合がありますが、APIが応答するまでアクションは制限されます。",
+      loadingDescription:
+        "nirs4allとそのML依存関係がバックグラウンドで初期化されています。高度な分析機能は自動的に利用可能になります。",
+      workspaceDescription:
+        "バックエンドはアクティブなワークスペースを復元しています。起動完了後、データセット、実行、結果、予測のビューが更新されます。",
+      errorBadge: "起動エラー",
+      badge: "バックエンド読み込み中",
+      apiLabel: "API",
+      apiReady: "接続済み",
+      apiLoading: "FastAPIを起動中",
+      mlLabel: "MLエンジン",
+      mlError: "初期化に失敗しました",
+      mlReady: "依存関係を読み込み済み",
+      mlLoading: "nirs4allとsklearnをインポート中",
+      mlWaiting: "APIを待機中",
+      workspaceLabel: "ワークスペース",
+      workspaceBlocked: "バックエンドの復旧まで待機中",
+      workspaceReady: "準備完了",
+      workspaceLoading: "データセットと実行状態を復元中",
+      workspaceWaiting: "ML起動後に実行予定",
+      loaderAlt: "バックエンド読み込みアニメーション",
     },
   },
 
@@ -1177,6 +1206,17 @@ const ja = {
       noData: "予測用のデータを提供してください",
       predictionFailed: "予測に失敗しました",
       fileParseError: "アップロードされたファイルを解析できませんでした",
+    },
+  },
+  // ============= MLエンジン =============
+  ml: {
+    loading: {
+      title: "MLエンジンを読み込み中...",
+      description:
+        "機械学習の依存関係が初期化されています。このページはまもなく利用可能になります。",
+    },
+    error: {
+      title: "MLエンジンエラー",
     },
   },
 };

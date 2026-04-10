@@ -31,6 +31,7 @@ interface PersistedPipelineState {
   isFavorite: boolean;
   lastModified: number;
   config?: PipelineConfig;
+  isDirty?: boolean;
 }
 
 function getPersistenceKey(pipelineId: string): string {
@@ -43,9 +44,23 @@ function loadPersistedState(pipelineId: string): PersistedPipelineState | null {
     const stored = localStorage.getItem(key);
     if (stored) {
       const state = JSON.parse(stored) as PersistedPipelineState;
+      if (!Array.isArray(state.steps)) {
+        state.steps = [];
+      }
       // Migrate steps to backfill missing fields (generatorKind, subType, etc.)
-      if (state.steps) {
+      if (state.steps.length > 0) {
         state.steps = state.steps.map(migrateStep);
+      }
+      // Ignore and clean up stale placeholder snapshots created before the
+      // real pipeline ever hydrated from the backend.
+      if (
+        state.isDirty !== true &&
+        state.steps.length === 0 &&
+        typeof state.pipelineName === "string" &&
+        state.pipelineName.toLowerCase().startsWith("loading pipeline")
+      ) {
+        clearPersistedState(pipelineId);
+        return null;
       }
       return state;
     }
@@ -73,6 +88,10 @@ function clearPersistedState(pipelineId: string): void {
   }
 }
 
+export function hasPersistedPipelineState(pipelineId: string): boolean {
+  return loadPersistedState(pipelineId)?.isDirty === true;
+}
+
 interface UsePipelineEditorOptions {
   initialSteps?: PipelineStep[];
   initialName?: string;
@@ -80,6 +99,7 @@ interface UsePipelineEditorOptions {
   maxHistorySize?: number;
   pipelineId?: string; // Unique ID for persistence
   persistState?: boolean; // Enable/disable persistence (default: true)
+  allowPersistedState?: boolean; // Whether persisted state should seed initial state
 }
 
 interface UsePipelineEditorReturn {
@@ -311,13 +331,14 @@ export function usePipelineEditor(
     maxHistorySize = 50,
     pipelineId = "default",
     persistState = true,
+    allowPersistedState = true,
   } = options;
 
   // Load persisted state on initial render
   const persistedState = useMemo(() => {
-    if (!persistState) return null;
+    if (!persistState || !allowPersistedState) return null;
     return loadPersistedState(pipelineId);
-  }, [pipelineId, persistState]);
+  }, [allowPersistedState, pipelineId, persistState]);
 
   // Determine initial values (prefer persisted over provided)
   // Migrate initialSteps to backfill missing fields (generatorKind, subType)
@@ -357,9 +378,10 @@ export function usePipelineEditor(
       isFavorite,
       lastModified: Date.now(),
       config: pipelineConfig,
+      isDirty,
     };
     savePersistedState(pipelineId, state);
-  }, [steps, pipelineName, isFavorite, pipelineConfig, pipelineId, persistState]);
+  }, [steps, pipelineName, isFavorite, pipelineConfig, pipelineId, persistState, isDirty]);
 
   // Wrapper for setPipelineName that also persists
   const setPipelineName = useCallback((name: string) => {
@@ -772,16 +794,21 @@ export function usePipelineEditor(
 
   // Load pipeline
   const loadPipeline = useCallback(
-    (newSteps: PipelineStep[], name?: string) => {
+    (newSteps: PipelineStep[], name?: string, config?: PipelineConfig) => {
       const migrated = newSteps.map(migrateStep);
       setSteps(migrated);
       setHistory([migrated]);
       setHistoryIndex(0);
       setSelectedStepId(null);
+      if (name) {
+        setPipelineNameState(name);
+      }
+      if (config) {
+        setPipelineConfigState(config);
+      }
       setIsDirty(false);
-      if (name) setPipelineName(name);
     },
-    [setPipelineName]
+    []
   );
 
   // Export pipeline

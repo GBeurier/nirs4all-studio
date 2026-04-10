@@ -55,7 +55,9 @@ export interface ExecutionBreakdown {
   generatorVariants: number;
   finetuningTrials: number;
   cvFolds: number;
+  cvFitsPerPipeline: number;
   totalFits: number;
+  refitModels: number;
   totalPipelines: number;
   totalModels: number;
   modelsWithFinetuning: number;
@@ -74,36 +76,50 @@ export interface ExecutionPreviewPanelProps {
 }
 
 // Extract execution statistics from pipeline
-function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
+export function analyzeExecution(
+  steps: PipelineStep[],
+  variantCount?: number,
+): ExecutionBreakdown {
   let sweepVariants = 1;
   let generatorVariants = 1;
   let finetuningTrials = 0;
   let cvFolds = 5; // Default
+  let cvFitsPerPipeline = 0;
   let modelsWithFinetuning = 0;
   let modelsWithSweeps = 0;
   let modelsWithGenerators = 0;
   let modelsWithRefit = 0;
   let modelCount = 0;
 
-  function processSteps(stepList: PipelineStep[]) {
+  function processSteps(
+    stepList: PipelineStep[],
+    variantsAlreadyAccounted = false,
+  ) {
     for (const step of stepList) {
+      const isGeneratorStep = step.subType === "generator" && !!step.generatorKind;
+
       // Check if this is a generator step
-      if (step.subType === "generator" && step.branches) {
-        const genVariants = calculateStepVariants(step);
-        if (genVariants > 1) {
-          generatorVariants *= genVariants;
-          modelsWithGenerators++;
+      if (isGeneratorStep && step.branches) {
+        if (!variantsAlreadyAccounted) {
+          const genVariants = calculateStepVariants(step);
+          if (genVariants > 1) {
+            generatorVariants *= genVariants;
+            modelsWithGenerators++;
+          }
         }
-        // Process generator branches
+
+        // Child generators and sweeps are already accounted for in the
+        // parent generator's expansion count, but nested models/splitters
+        // still need to be discovered for the execution summary.
         for (const branch of step.branches) {
-          processSteps(branch);
+          processSteps(branch, true);
         }
         continue;
       }
 
       // Count sweep variants (parameter sweeps)
       const hasSweeps = (step.paramSweeps && Object.keys(step.paramSweeps).length > 0) || step.stepGenerator;
-      if (hasSweeps) {
+      if (hasSweeps && !variantsAlreadyAccounted) {
         const stepVariants = calculateStepVariants(step);
         if (stepVariants > 1) {
           sweepVariants *= stepVariants;
@@ -124,13 +140,17 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
       // Count models and their configurations
       if (step.type === "model") {
         modelCount++;
+        const trials = step.finetuneConfig?.enabled
+          ? Math.max(1, step.finetuneConfig.n_trials ?? 50)
+          : 1;
+        cvFitsPerPipeline += trials;
         // Refit is on by default
         if (step.refitConfig?.enabled ?? true) {
           modelsWithRefit++;
         }
         // Finetuning
         if (step.finetuneConfig?.enabled) {
-          finetuningTrials += step.finetuneConfig.n_trials ?? 50;
+          finetuningTrials += trials;
           modelsWithFinetuning++;
         }
       }
@@ -138,22 +158,31 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
       // Process nested branches (non-generator)
       if (step.branches && step.subType !== "generator") {
         for (const branch of step.branches) {
-          processSteps(branch);
+          processSteps(branch, variantsAlreadyAccounted);
         }
+      }
+
+      // Process nested children for sequential and container nodes.
+      if (step.children) {
+        processSteps(step.children, variantsAlreadyAccounted);
       }
     }
   }
 
   processSteps(steps);
 
-  // Total distinct pipeline configurations
-  const totalPipelines = sweepVariants * generatorVariants;
+  // Total distinct pipeline configurations. The page-level variantCount is
+  // authoritative because it comes from the backend's canonical counter.
+  const totalPipelines =
+    variantCount && variantCount > 0
+      ? variantCount
+      : sweepVariants * generatorVariants;
 
-  // Total fits = pipelines × (finetuning trials or 1) × CV folds
-  const totalFits = totalPipelines * Math.max(1, finetuningTrials) * cvFolds;
+  // Total CV fits = pipelines × per-pipeline model fits × CV folds
+  const totalFits = totalPipelines * cvFitsPerPipeline * cvFolds;
 
-  // Total trained models = CV fits + refit models (1 per pipeline if refit enabled)
-  const refitModels = modelsWithRefit > 0 ? totalPipelines : 0;
+  // Total refits = pipelines × refit-enabled model steps
+  const refitModels = totalPipelines * modelsWithRefit;
   const totalModels = totalFits + refitModels;
 
   return {
@@ -161,7 +190,9 @@ function analyzeExecution(steps: PipelineStep[]): ExecutionBreakdown {
     generatorVariants,
     finetuningTrials,
     cvFolds,
+    cvFitsPerPipeline,
     totalFits,
+    refitModels,
     totalPipelines,
     totalModels,
     modelsWithFinetuning,
@@ -249,7 +280,10 @@ export function ExecutionPreviewPanel({
   isLoading,
   className = "",
 }: ExecutionPreviewPanelProps) {
-  const breakdown = useMemo(() => analyzeExecution(steps), [steps]);
+  const breakdown = useMemo(
+    () => analyzeExecution(steps, variantCount),
+    [steps, variantCount]
+  );
   const severity = getFitsSeverity(breakdown.totalFits);
   const severityColor = getSeverityColor(severity);
   const timeEstimate = estimateTime(breakdown.totalFits);
@@ -487,20 +521,24 @@ export function ExecutionPreviewPanel({
 
 // Build the formula string for total models
 function buildFormulaString(breakdown: ExecutionBreakdown): string {
-  const parts: string[] = [];
-  if (breakdown.totalPipelines > 1) {
-    const pipelineParts: string[] = [];
-    if (breakdown.sweepVariants > 1) pipelineParts.push(`${breakdown.sweepVariants} sweeps`);
-    if (breakdown.generatorVariants > 1) pipelineParts.push(`${breakdown.generatorVariants} generators`);
-    parts.push(pipelineParts.length > 0 ? pipelineParts.join(" × ") : `${breakdown.totalPipelines}`);
+  const pipelineTerm = breakdown.totalPipelines > 1
+    ? (() => {
+      const pipelineParts: string[] = [];
+      if (breakdown.sweepVariants > 1) pipelineParts.push(`${breakdown.sweepVariants} sweeps`);
+      if (breakdown.generatorVariants > 1) pipelineParts.push(`${breakdown.generatorVariants} generators`);
+      return pipelineParts.length > 0 ? pipelineParts.join(" × ") : `${breakdown.totalPipelines} pipelines`;
+    })()
+    : "1 pipeline";
+
+  const fitTerm = `${breakdown.cvFitsPerPipeline} fit${breakdown.cvFitsPerPipeline !== 1 ? "s" : ""}/pipeline`;
+  const cvFormula = `${pipelineTerm} × ${fitTerm} × ${breakdown.cvFolds} folds`;
+  if (breakdown.refitModels > 0) {
+    return `${cvFormula} + ${breakdown.refitModels.toLocaleString()} refit${breakdown.refitModels !== 1 ? "s" : ""}`;
   }
-  if (breakdown.finetuningTrials > 0) parts.push(`${breakdown.finetuningTrials} trials`);
-  parts.push(`${breakdown.cvFolds} folds`);
-  if (breakdown.modelsWithRefit > 0) parts.push("refit");
-  return parts.join(" × ");
+  return cvFormula;
 }
 
-// Compact version for header/inline use — two capsules: "X models" + "Y fits"
+// Compact version for header/inline use — single training summary capsule.
 export function ExecutionPreviewCompact({
   steps,
   variantCount,
@@ -508,7 +546,10 @@ export function ExecutionPreviewCompact({
   steps: PipelineStep[];
   variantCount: number;
 }) {
-  const breakdown = useMemo(() => analyzeExecution(steps), [steps]);
+  const breakdown = useMemo(
+    () => analyzeExecution(steps, variantCount),
+    [steps, variantCount]
+  );
   const severity = getFitsSeverity(breakdown.totalFits);
 
   if (steps.length === 0) return null;
@@ -521,7 +562,7 @@ export function ExecutionPreviewCompact({
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      {/* Capsule 1: Total trained models */}
+      {/* Training summary capsule */}
       <Popover>
         <PopoverTrigger asChild>
           <Badge
@@ -592,7 +633,7 @@ export function ExecutionPreviewCompact({
                     <RefreshCw className="h-3 w-3 text-teal-500" />
                     Refit models
                   </span>
-                  <span className="font-mono">+{breakdown.totalPipelines.toLocaleString()}</span>
+                  <span className="font-mono">+{breakdown.refitModels.toLocaleString()}</span>
                 </div>
               )}
             </div>
@@ -603,52 +644,6 @@ export function ExecutionPreviewCompact({
               </p>
               <p className="text-xs text-muted-foreground">
                 Total model training operations when you run this pipeline.
-              </p>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {/* Capsule 2: Total fits (CV training operations) */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Badge
-            variant="outline"
-            className={`gap-1 cursor-pointer transition-colors hover:bg-accent ${severityClass}`}
-          >
-            <Calculator className="h-3 w-3" />
-            <span>{formatVariantCount(breakdown.totalFits)} fit{breakdown.totalFits !== 1 ? "s" : ""}</span>
-          </Badge>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 bg-popover">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium">CV Fits Breakdown</h4>
-              <span className={`text-lg font-bold ${getSeverityColor(severity)}`}>
-                {breakdown.totalFits.toLocaleString()}
-              </span>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Pipelines</span>
-                <span className="font-mono">{breakdown.totalPipelines.toLocaleString()}</span>
-              </div>
-              {breakdown.finetuningTrials > 0 && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Finetuning trials</span>
-                  <span className="font-mono">×{breakdown.finetuningTrials}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">CV folds</span>
-                <span className="font-mono">×{breakdown.cvFolds}</span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-border">
-              <p className="text-xs text-muted-foreground">
-                Cross-validation training operations (excludes refit).
               </p>
             </div>
           </div>

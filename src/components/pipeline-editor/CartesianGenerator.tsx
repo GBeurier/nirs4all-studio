@@ -45,7 +45,15 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepOptions, stepColors, getStepColor, generateStepId, createStepFromOption } from "./types";
+import {
+  calculateCartesianStageVariants,
+  calculateStepVariants,
+  stepOptions,
+  stepColors,
+  getStepColor,
+  generateStepId,
+  createStepFromOption,
+} from "./types";
 
 /**
  * CartesianStage - A single stage in the cartesian generator
@@ -319,10 +327,14 @@ export function CartesianGeneratorContainer({
     () => new Set(stages.map((_, i) => i))
   );
 
-  // Calculate total combinations
-  const totalCombinations = useMemo(() => {
-    return stages.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
+  const baseCombinations = useMemo(() => {
+    return stages.reduce(
+      (acc, stage) => acc * calculateCartesianStageVariants(stage),
+      1
+    );
   }, [stages]);
+
+  const totalVariants = useMemo(() => calculateStepVariants(step), [step]);
 
   // Toggle stage expansion
   const toggleStage = useCallback((index: number) => {
@@ -340,7 +352,7 @@ export function CartesianGeneratorContainer({
   // Generate combination examples for preview
   const combinationExamples = useMemo(() => {
     if (stages.length === 0) return [];
-    if (totalCombinations > 20) return []; // Too many to show
+    if (baseCombinations > 20) return []; // Too many to show
 
     const examples: string[][] = [];
 
@@ -365,7 +377,7 @@ export function CartesianGeneratorContainer({
 
     generateCombinations(0, []);
     return examples.slice(0, 10); // Limit to 10 examples
-  }, [stages, totalCombinations]);
+  }, [stages, baseCombinations]);
 
   return (
     <div
@@ -386,8 +398,11 @@ export function CartesianGeneratorContainer({
             </h4>
             <p className="text-xs text-muted-foreground">
               {stages.length} stage{stages.length !== 1 ? "s" : ""} •{" "}
-              {totalCombinations.toLocaleString()} combination
-              {totalCombinations !== 1 ? "s" : ""}
+              {baseCombinations.toLocaleString()} base combination
+              {baseCombinations !== 1 ? "s" : ""}
+              {totalVariants !== baseCombinations && (
+                <> • {totalVariants.toLocaleString()} generated variant{totalVariants !== 1 ? "s" : ""}</>
+              )}
             </p>
           </div>
         </div>
@@ -396,14 +411,14 @@ export function CartesianGeneratorContainer({
           variant="secondary"
           className={cn(
             "text-sm font-bold",
-            totalCombinations > 100
+            totalVariants > 100
               ? "bg-orange-500/20 text-orange-600"
-              : totalCombinations > 1000
+              : totalVariants > 1000
               ? "bg-red-500/20 text-red-600"
               : "bg-cyan-500/20 text-cyan-600"
           )}
         >
-          {totalCombinations.toLocaleString()} pipelines
+          {totalVariants.toLocaleString()} pipelines
         </Badge>
       </div>
 

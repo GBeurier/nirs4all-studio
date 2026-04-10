@@ -91,9 +91,9 @@ const en = {
     playground: "Playground",
     inspector: "Inspector",
     history: "History",
-    results: "Results",
+    leaderboard: "Leaderboard",
     scores: "Scores",
-    predictions: "Predictions",
+    database: "Database",
     aggregatedResults: "Aggregated Results",
     predict: "Predict",
     lab: "Lab",
@@ -489,13 +489,42 @@ const en = {
       groups: {
         prepare: "Prepare",
         explore: "Explore",
-        results: "Results",
+        outcomes: "Outcomes",
+        apply: "Apply",
       },
     },
     header: {
       searchPlaceholder: "Search...",
       search: "Search",
       toggleTheme: "Toggle theme",
+    },
+    backendStartup: {
+      connectingTitle: "Connecting to backend...",
+      errorTitle: "Backend startup stalled",
+      loadingTitle: "Loading analysis backend...",
+      workspaceTitle: "Restoring workspace...",
+      connectingDescription:
+        "The backend is still starting. Cached content may appear first, but actions stay limited until the API responds.",
+      loadingDescription:
+        "nirs4all and its ML dependencies are initializing in the background. Heavy analysis features will unlock automatically.",
+      workspaceDescription:
+        "The backend is restoring the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes.",
+      errorBadge: "Startup issue",
+      badge: "Backend loading",
+      apiLabel: "API",
+      apiReady: "Connected",
+      apiLoading: "Starting FastAPI",
+      mlLabel: "ML Engine",
+      mlError: "Initialization failed",
+      mlReady: "Dependencies loaded",
+      mlLoading: "Importing nirs4all and sklearn",
+      mlWaiting: "Waiting for API",
+      workspaceLabel: "Workspace",
+      workspaceBlocked: "Blocked until backend recovers",
+      workspaceReady: "Ready",
+      workspaceLoading: "Restoring datasets and run state",
+      workspaceWaiting: "Queued behind ML startup",
+      loaderAlt: "Backend loading animation",
     },
   },
 
@@ -1178,6 +1207,17 @@ const en = {
       noData: "Please provide data for prediction",
       predictionFailed: "Prediction failed",
       fileParseError: "Could not parse the uploaded file",
+    },
+  },
+  // ============= ML Engine =============
+  ml: {
+    loading: {
+      title: "Loading ML Engine...",
+      description:
+        "Machine learning dependencies are being initialized. This page will be available in a moment.",
+    },
+    error: {
+      title: "ML Engine Error",
     },
   },
 };

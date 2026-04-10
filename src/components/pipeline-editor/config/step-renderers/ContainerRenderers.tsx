@@ -410,6 +410,7 @@ export function SampleFilterRenderer({
 }: StepRendererProps) {
   const config = step.sampleFilterConfig;
   const children = step.children ?? [];
+  const filterOrigin = step.filterOrigin ?? "sample_filter";
 
   const handleModeChange = (mode: string) => {
     onUpdate(step.id, {
@@ -425,6 +426,10 @@ export function SampleFilterRenderer({
       params: { ...step.params, report },
       sampleFilterConfig: config ? { ...config, report } : undefined,
     });
+  };
+
+  const handleOriginChange = (origin: "sample_filter" | "exclude" | "tag") => {
+    onUpdate(step.id, { filterOrigin: origin });
   };
 
   return (
@@ -443,6 +448,24 @@ export function SampleFilterRenderer({
 
           {/* Configuration */}
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Filter Origin</Label>
+              <Select value={filterOrigin} onValueChange={(value) => handleOriginChange(value as "sample_filter" | "exclude" | "tag")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover">
+                  <SelectItem value="sample_filter">sample_filter</SelectItem>
+                  <SelectItem value="exclude">exclude</SelectItem>
+                  <SelectItem value="tag">tag</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Preserve the canonical wrapper keyword used on import/export.
+              </p>
+            </div>
+
+            {filterOrigin !== "tag" && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">Filter Mode</Label>
               <Select
@@ -465,16 +488,19 @@ export function SampleFilterRenderer({
                 </SelectContent>
               </Select>
             </div>
+            )}
 
-            <div className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Generate Report</Label>
+            {filterOrigin === "sample_filter" && (
+              <div className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm">Generate Report</Label>
+                </div>
+                <Switch
+                  checked={Boolean(step.params.report ?? config?.report ?? true)}
+                  onCheckedChange={handleReportChange}
+                />
               </div>
-              <Switch
-                checked={Boolean(step.params.report ?? config?.report ?? true)}
-                onCheckedChange={handleReportChange}
-              />
-            </div>
+            )}
           </div>
 
           <Separator />

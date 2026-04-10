@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   TrendingUp,
@@ -17,6 +18,8 @@ import {
   Layers,
   Loader2,
   AlertCircle,
+  FileSpreadsheet,
+  ImageDown,
 } from "lucide-react";
 import {
   XAxis,
@@ -50,6 +53,77 @@ interface QuickViewTarget {
   fold_id: string | null;
   task_type: string | null;
   source_dataset?: string;
+}
+
+/** Compact tick formatter for chart axes — keeps labels short. */
+function formatTick(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  const abs = Math.abs(value);
+  if (abs === 0) return "0";
+  if (abs >= 1000 || abs < 0.01) return value.toExponential(1);
+  return value.toFixed(2);
+}
+
+function csvEscape(value: unknown): string {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeFilename(value: string | null | undefined): string {
+  return (value || "chart").replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+/** Render the rows as CSV and download as a file. */
+function exportRowsCsv<T extends Record<string, unknown>>(rows: T[], header: (keyof T)[], filename: string): void {
+  const headerLine = header.map((c) => csvEscape(String(c))).join(",");
+  const lines = rows.map((row) => header.map((col) => csvEscape(row[col])).join(","));
+  const csv = [headerLine, ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  downloadBlob(blob, filename);
+}
+
+/** Serialize a chart's SVG inside `container` to PNG via canvas. */
+function exportChartPng(container: HTMLElement | null, filename: string): void {
+  if (!container) return;
+  const svg = container.querySelector("svg");
+  if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(rect.width));
+  clone.setAttribute("height", String(rect.height));
+  const xml = new XMLSerializer().serializeToString(clone);
+  const svg64 = btoa(unescape(encodeURIComponent(xml)));
+  const image64 = `data:image/svg+xml;base64,${svg64}`;
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(rect.width * scale));
+    canvas.height = Math.max(1, Math.round(rect.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(blob, filename);
+    }, "image/png");
+  };
+  img.src = image64;
 }
 
 /** Adapt a PartitionPrediction to QuickViewTarget. */
@@ -103,6 +177,8 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
   const [scatterData, setScatterData] = useState<PredictionScatterResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scatterChartRef = useRef<HTMLDivElement>(null);
+  const residualsChartRef = useRef<HTMLDivElement>(null);
 
   // Resolve the target from either prop
   const target: QuickViewTarget | null = useMemo(() => {
@@ -263,6 +339,35 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
           <TabsContent value="scatter" className="mt-4">
             <Card>
               <CardContent className="pt-6">
+                {hasScatterData && (
+                  <div className="flex justify-end gap-1 -mt-2 mb-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Export points as CSV"
+                      onClick={() => exportRowsCsv(
+                        predictionChartData.map((p) => ({ actual: p.actual, predicted: p.predicted, residual: p.actual - p.predicted })),
+                        ["actual", "predicted", "residual"],
+                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_scatter.csv`,
+                      )}
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Export chart as PNG"
+                      onClick={() => exportChartPng(
+                        scatterChartRef.current,
+                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_scatter.png`,
+                      )}
+                    >
+                      <ImageDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
                 {isLoading ? (
                   <div className="h-[320px] flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -273,7 +378,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                     <p>{error || "No scatter data available"}</p>
                   </div>
                 ) : (
-                  <div className="h-[320px]">
+                  <div className="h-[320px]" ref={scatterChartRef}>
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -284,6 +389,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                           domain={['auto', 'auto']}
                           label={{ value: 'Actual', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
                           tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                          tickFormatter={formatTick}
                         />
                         <YAxis
                           dataKey="predicted"
@@ -292,6 +398,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                           domain={['auto', 'auto']}
                           label={{ value: 'Predicted', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
                           tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                          tickFormatter={formatTick}
                         />
                         <Tooltip
                           contentStyle={{
@@ -315,6 +422,9 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                           data={predictionChartData}
                           fill="hsl(var(--primary))"
                           opacity={0.7}
+                          shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                            <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.7} />
+                          )}
                         />
                       </ScatterChart>
                     </ResponsiveContainer>
@@ -332,6 +442,35 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
           <TabsContent value="residuals" className="mt-4">
             <Card>
               <CardContent className="pt-6">
+                {hasScatterData && (
+                  <div className="flex justify-end gap-1 -mt-2 mb-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Export points as CSV"
+                      onClick={() => exportRowsCsv(
+                        residualChartData,
+                        ["predicted", "residual"],
+                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_residuals.csv`,
+                      )}
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Export chart as PNG"
+                      onClick={() => exportChartPng(
+                        residualsChartRef.current,
+                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_residuals.png`,
+                      )}
+                    >
+                      <ImageDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
                 {isLoading ? (
                   <div className="h-[320px] flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -342,7 +481,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                     <p>{error || "No residual data available"}</p>
                   </div>
                 ) : (
-                  <div className="h-[320px]">
+                  <div className="h-[320px]" ref={residualsChartRef}>
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -352,6 +491,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                           domain={['auto', 'auto']}
                           label={{ value: 'Predicted', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
                           tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                          tickFormatter={formatTick}
                         />
                         <YAxis
                           dataKey="residual"
@@ -359,6 +499,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                           domain={['auto', 'auto']}
                           label={{ value: 'Residual', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
                           tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                          tickFormatter={formatTick}
                         />
                         <Tooltip
                           contentStyle={{
@@ -374,6 +515,9 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                           data={residualChartData}
                           fill="hsl(var(--chart-2))"
                           opacity={0.7}
+                          shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                            <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.7} />
+                          )}
                         />
                       </ScatterChart>
                     </ResponsiveContainer>

@@ -40,6 +40,11 @@ describe("step-renderers module exports", () => {
       expect(typeof StepRenderers.DefaultRenderer).toBe("function");
     });
 
+    it("should export BranchRenderer component", () => {
+      expect(StepRenderers.BranchRenderer).toBeDefined();
+      expect(typeof StepRenderers.BranchRenderer).toBe("function");
+    });
+
     it("should export ModelRenderer component", () => {
       expect(StepRenderers.ModelRenderer).toBeDefined();
       expect(typeof StepRenderers.ModelRenderer).toBe("function");
@@ -99,6 +104,7 @@ describe("step-renderers module exports", () => {
         "StepActions",
         // Renderers
         "DefaultRenderer",
+        "BranchRenderer",
         "ModelRenderer",
         "MergeRenderer",
         "YProcessingRenderer",

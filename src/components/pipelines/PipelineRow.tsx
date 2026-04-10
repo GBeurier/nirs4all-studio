@@ -38,8 +38,8 @@ interface PipelineRowProps {
 }
 
 const categoryConfig = {
-  user: { label: "My Pipeline", color: "text-primary bg-primary/10" },
-  preset: { label: "Preset", color: "text-accent bg-accent/10" },
+  user: { label: "Saved", color: "text-primary bg-primary/10" },
+  preset: { label: "Template", color: "text-accent bg-accent/10" },
   shared: { label: "Shared", color: "text-success bg-success/10" },
 };
 
@@ -124,17 +124,21 @@ export function PipelineRow({
             <Play className="h-4 w-4" /> {pipeline.runCount} runs
           </span>
         )}
-        {pipeline.lastRunStatus && (
-          <span className="flex items-center gap-1">
-            {(() => {
+        <span className="flex items-center gap-1">
+          {pipeline.lastRunStatus ? (
+            (() => {
               const Status = statusConfig[pipeline.lastRunStatus];
               return <Status.icon className={cn("h-4 w-4", Status.color)} />;
-            })()}
-            <span className="text-xs">
-              {pipeline.lastRunDate || formatRelativeDate(pipeline.updatedAt)}
-            </span>
+            })()
+          ) : (
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="text-xs">
+            {pipeline.lastRunDate
+              ? formatRelativeDate(pipeline.lastRunDate)
+              : `Updated ${formatRelativeDate(pipeline.updatedAt)}`}
           </span>
-        )}
+        </span>
       </div>
 
       {/* Tags */}

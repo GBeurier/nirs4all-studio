@@ -100,11 +100,8 @@ export interface PipelinePreset {
   id: string;
   name: string;
   description: string;
-  category: string;
-  taskType: "regression" | "classification";
-  steps: Omit<PipelineStep, "id">[];
-  icon?: string;
-  recommended?: boolean;
+  task_type: "regression" | "classification";
+  steps_count: number;
 }
 
 export interface PipelineOperator {

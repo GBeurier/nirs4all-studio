@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,7 +25,13 @@ import {
   Settings,
   Workflow,
 } from "lucide-react";
-import { savePipeline, getChainPipelineSteps } from "@/api/client";
+import {
+  savePipeline,
+  getPipeline,
+  getChainPipelineSteps,
+  previewPipelineImport,
+  renderCanonicalPipeline,
+} from "@/api/client";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,7 +69,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { usePipelineEditor } from "@/hooks/usePipelineEditor";
+import { hasPersistedPipelineState, usePipelineEditor } from "@/hooks/usePipelineEditor";
 import { useDatasetBinding } from "@/hooks/useDatasetBinding";
 import { listPipelineSamples, getPipelineSample } from "@/api/client";
 import type { PipelineSampleInfo } from "@/api/client";
@@ -90,31 +95,7 @@ import {
 import { DatasetBindingProvider, NodeRegistryProvider, PipelineEditorPreferencesProvider } from "@/components/pipeline-editor/contexts";
 import { useKeyboardNavigation, KEYBOARD_SHORTCUTS, formatShortcut } from "@/hooks/useKeyboardNavigation";
 import type { DragData, DropIndicator } from "@/components/pipeline-editor/types";
-import type { PipelineStep } from "@/types/pipelines";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
-
-// Demo pipeline for testing
-const demoPipeline: EditorPipelineStep[] = [
-  { id: "1", type: "preprocessing", name: "SNV", params: {} },
-  {
-    id: "2",
-    type: "preprocessing",
-    name: "SavitzkyGolay",
-    params: { window_length: 11, polyorder: 2, deriv: 1 },
-  },
-  {
-    id: "3",
-    type: "splitting",
-    name: "KennardStone",
-    params: { test_size: 0.2, metric: "euclidean" },
-  },
-  {
-    id: "4",
-    type: "model",
-    name: "PLSRegression",
-    params: { n_components: 10, max_iter: 500 },
-  },
-];
 
 export default function PipelineEditor() {
   const { id } = useParams();
@@ -124,6 +105,7 @@ export default function PipelineEditor() {
 
   // Use a stable ID for persistence: either the route param or "new" for new pipelines
   const pipelineId = id || "new";
+  const hasPersistedDraft = !isNew && hasPersistedPipelineState(pipelineId);
 
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
@@ -137,7 +119,7 @@ export default function PipelineEditor() {
   const [samples, setSamples] = useState<PipelineSampleInfo[]>([]);
   const [samplesLoading, setSamplesLoading] = useState(false);
 
-  // Initialize with demo pipeline if editing, empty if new
+  // Existing pipelines hydrate from the backend unless a local persisted draft exists.
   const {
     steps,
     pipelineName,
@@ -168,15 +150,41 @@ export default function PipelineEditor() {
     redo,
     getSelectedStep,
     clearPipeline,
+    loadPipeline,
     exportPipeline,
-    loadFromNirs4all,
-    exportToNirs4all,
   } = usePipelineEditor({
-    initialSteps: isNew ? [] : demoPipeline,
-    initialName: isNew ? "New Pipeline" : "SNV + SG → PLS",
+    initialSteps: [],
+    initialName: isNew ? "New Pipeline" : "Loading Pipeline...",
     pipelineId: pipelineId,
     persistState: true,
+    allowPersistedState: isNew || hasPersistedDraft,
   });
+
+  useEffect(() => {
+    if (isNew || hasPersistedDraft) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const pipeline = await getPipeline(pipelineId);
+        if (cancelled) return;
+
+        loadPipeline(pipeline.steps as EditorPipelineStep[], pipeline.name);
+        setIsFavorite(!!pipeline.is_favorite);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to load pipeline:", error);
+        toast.error(
+          `Failed to load pipeline: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPersistedDraft, isNew, loadPipeline, pipelineId, setIsFavorite]);
 
   // Dataset binding for shape-aware validation (Phase 4)
   const {
@@ -220,30 +228,65 @@ export default function PipelineEditor() {
     return warnings;
   }, [boundDataset, steps]);
 
+  const importIntoEditor = useCallback(
+    async ({
+      content,
+      payload,
+      format,
+      fallbackName,
+    }: {
+      content?: string;
+      payload?: unknown;
+      format?: "json" | "yaml" | "yml";
+      fallbackName?: string;
+    }) => {
+      const result = await previewPipelineImport({
+        content,
+        payload,
+        format,
+      });
+      const importedName = result.name || fallbackName || "Imported Pipeline";
+      loadPipeline(result.steps as EditorPipelineStep[], importedName);
+      return {
+        ...result,
+        name: importedName,
+      };
+    },
+    [loadPipeline]
+  );
+
   // Handle import from Playground via sessionStorage
   useEffect(() => {
     const source = searchParams.get('source');
-    if (source === 'playground') {
-      const PLAYGROUND_EXPORT_KEY = 'playground-pipeline-export';
+    if (source !== 'playground') return;
+
+    const PLAYGROUND_EXPORT_KEY = 'playground-pipeline-export';
+
+    (async () => {
       try {
         const exportData = sessionStorage.getItem(PLAYGROUND_EXPORT_KEY);
         if (exportData) {
           const parsed = JSON.parse(exportData);
           if (parsed.steps && Array.isArray(parsed.steps)) {
-            // Convert playground steps to nirs4all format
-            const nirs4allPipeline = parsed.steps.map((step: { type: string; name: string; params: Record<string, unknown> }) => ({
-              [step.type === 'splitting' ? 'split' : 'preprocessing']: step.name,
-              ...step.params,
-            }));
+            const canonicalPipeline = parsed.steps.map(
+              (step: { type: string; name: string; params: Record<string, unknown> }) => ({
+                [step.type === 'splitting' ? 'split' : 'preprocessing']: step.name,
+                ...step.params,
+              })
+            );
 
-            loadFromNirs4all({ pipeline: nirs4allPipeline });
-            setPipelineName(parsed.name || 'Imported from Playground');
-
-            toast.success('Pipeline imported from Playground', {
-              description: `${parsed.steps.length} operators loaded`,
+            const imported = await importIntoEditor({
+              payload: {
+                name: parsed.name || 'Imported from Playground',
+                pipeline: canonicalPipeline,
+              },
+              fallbackName: parsed.name || 'Imported from Playground',
             });
 
-            // Clear the export data
+            toast.success('Pipeline imported from Playground', {
+              description: `${imported.steps.length} steps loaded`,
+            });
+
             sessionStorage.removeItem(PLAYGROUND_EXPORT_KEY);
           }
         }
@@ -252,10 +295,9 @@ export default function PipelineEditor() {
         toast.error('Failed to import pipeline from Playground');
       }
 
-      // Clean up URL params
       navigate(`/pipelines/${pipelineId}`, { replace: true });
-    }
-  }, [searchParams, loadFromNirs4all, setPipelineName, navigate, pipelineId]);
+    })();
+  }, [searchParams, importIntoEditor, navigate, pipelineId]);
 
   // Handle import from chain (edit pipeline from predictions)
   useEffect(() => {
@@ -266,11 +308,16 @@ export default function PipelineEditor() {
       try {
         const result = await getChainPipelineSteps(chainId);
         if (result.pipeline && Array.isArray(result.pipeline)) {
-          loadFromNirs4all({ pipeline: result.pipeline, name: result.name });
-          setPipelineName(result.name || 'Chain Pipeline');
+          const imported = await importIntoEditor({
+            payload: {
+              name: result.name,
+              pipeline: result.pipeline,
+            },
+            fallbackName: result.name || 'Chain Pipeline',
+          });
 
           toast.success('Pipeline loaded from chain', {
-            description: `${result.pipeline.length} steps loaded`,
+            description: `${imported.steps.length} steps loaded`,
           });
         }
       } catch (e) {
@@ -281,7 +328,7 @@ export default function PipelineEditor() {
       // Clean up URL params
       navigate(`/pipelines/${pipelineId}`, { replace: true });
     })();
-  }, [searchParams, loadFromNirs4all, setPipelineName, navigate, pipelineId]);
+  }, [searchParams, importIntoEditor, navigate, pipelineId]);
 
   // Load samples on first dropdown open
   const handleLoadSamples = useCallback(async () => {
@@ -301,14 +348,16 @@ export default function PipelineEditor() {
   const handleLoadSample = useCallback(async (sampleId: string, sampleName: string) => {
     try {
       const result = await getPipelineSample(sampleId, true);
-      loadFromNirs4all(result);
-      setPipelineName(result.name || sampleName);
-      toast.success(`Loaded sample: ${result.name || sampleName}`);
+      const imported = await importIntoEditor({
+        payload: result,
+        fallbackName: result.name || sampleName,
+      });
+      toast.success(`Loaded sample: ${imported.name}`);
     } catch (err) {
       console.error("Failed to load sample:", err);
       toast.error(`Failed to load sample: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [loadFromNirs4all, setPipelineName]);
+  }, [importIntoEditor]);
 
   // Keyboard navigation hook
   const {
@@ -416,27 +465,34 @@ export default function PipelineEditor() {
     toast.success("Pipeline exported as JSON");
   };
 
-  const handleExportNirs4all = () => {
-    const nirs4allSteps = exportToNirs4all();
-    const pipeline: Record<string, unknown> = {
-      name: pipelineName,
-      description: "",
-      pipeline: nirs4allSteps,
-    };
-    // Include seed if set
-    if (pipelineConfig.seed !== undefined) {
-      pipeline.seed = pipelineConfig.seed;
-    }
-    const json = JSON.stringify(pipeline, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${pipelineName.replace(/\s+/g, "_")}_nirs4all.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Pipeline exported in nirs4all format");
-  };
+  const handleExportCanonical = useCallback(
+    async (format: "json" | "yaml") => {
+      try {
+        const rendered = await renderCanonicalPipeline({
+          steps,
+          name: pipelineName,
+        });
+        const content = format === "yaml" ? rendered.yaml : rendered.json;
+        const mimeType = format === "yaml" ? "text/yaml" : "application/json";
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${pipelineName.replace(/\s+/g, "_")}_nirs4all.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Pipeline exported as canonical ${format.toUpperCase()}`);
+      } catch (error) {
+        console.error("Canonical export error:", error);
+        toast.error(
+          `Failed to export canonical ${format.toUpperCase()}: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
+    },
+    [pipelineName, steps]
+  );
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -447,40 +503,23 @@ export default function PipelineEditor() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
-        let data: unknown;
-
-        // Try to parse as JSON
-        if (file.name.endsWith('.json')) {
-          data = JSON.parse(content);
-        } else if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
-          // For YAML, we'll need to use the backend
-          toast.error("YAML import requires the backend API. Please use JSON format or load from samples.");
-          return;
-        } else {
-          // Try JSON anyway
-          data = JSON.parse(content);
-        }
-
-        // Check if it's nirs4all format (has 'pipeline' key with array or is an array)
-        const pipeline = data as Record<string, unknown>;
-        if (Array.isArray(pipeline) || (pipeline.pipeline && Array.isArray(pipeline.pipeline))) {
-          loadFromNirs4all(pipeline);
-          const name = typeof pipeline.name === 'string' ? pipeline.name : file.name.replace(/\.[^/.]+$/, "");
-          setPipelineName(name);
-          toast.success(`Pipeline "${name}" imported successfully`);
-        } else if (pipeline.steps && Array.isArray(pipeline.steps)) {
-          // It's editor format
-          // We need to use loadPipeline for editor format
-          toast.info("Detected editor format - please use nirs4all format for import");
-        } else {
-          toast.error("Invalid pipeline format. Expected nirs4all format with 'pipeline' array.");
-        }
+        const format = file.name.endsWith(".yaml") || file.name.endsWith(".yml")
+          ? "yaml"
+          : "json";
+        const imported = await importIntoEditor({
+          content,
+          format,
+          fallbackName: file.name.replace(/\.[^/.]+$/, ""),
+        });
+        toast.success(`Pipeline "${imported.name}" imported successfully`);
       } catch (err) {
         console.error("Import error:", err);
-        toast.error(`Failed to import: ${err instanceof Error ? err.message : 'Invalid file'}`);
+        toast.error(
+          `Failed to import: ${err instanceof Error ? err.message : "Invalid file"}`
+        );
       }
     };
     reader.readAsText(file);
@@ -497,78 +536,18 @@ export default function PipelineEditor() {
 
   const selectedStep = getSelectedStep();
 
-  // Get variant count from nirs4all backend
-  // Convert editor steps to the format expected by the API with full generator info
-  const apiSteps = useMemo(() => {
-    const convertStep = (step: EditorPipelineStep): PipelineStep => {
-      // Build generator object from stepGenerator or paramSweeps
-      let generator: PipelineStep["generator"] = undefined;
-
-      // Check for step-level generator (nirs4all format)
-      if (step.stepGenerator) {
-        generator = {
-          _or_: step.stepGenerator.type === "_or_" ? step.stepGenerator.values : undefined,
-          _range_: step.stepGenerator.type === "_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
-          _log_range_: step.stepGenerator.type === "_log_range_" ? step.stepGenerator.values as [number, number, number] : undefined,
-          pick: Array.isArray(step.generatorOptions?.pick) ? step.generatorOptions.pick[1] : step.generatorOptions?.pick,
-          count: step.generatorOptions?.count,
-        };
-      }
-      // Check for paramSweeps (UI sweep format) and convert to generator format
-      else if (step.paramSweeps && Object.keys(step.paramSweeps).length > 0) {
-        // Convert paramSweeps to nirs4all generator format
-        // For API counting, we send step-level info
-        for (const [paramName, sweep] of Object.entries(step.paramSweeps)) {
-          if (sweep.type === "range" && sweep.from !== undefined && sweep.to !== undefined) {
-            generator = {
-              _range_: [sweep.from, sweep.to, sweep.step ?? 1],
-              param: paramName,
-            };
-            break; // Only handle first sweep for now (main source of variants)
-          } else if (sweep.type === "log_range" && sweep.from !== undefined && sweep.to !== undefined) {
-            generator = {
-              _log_range_: [sweep.from, sweep.to, sweep.count ?? 5],
-              param: paramName,
-            };
-            break;
-          } else if (sweep.type === "or" && sweep.choices) {
-            generator = {
-              _or_: sweep.choices,
-              param: paramName,
-            };
-            break;
-          }
-        }
-      }
-
-      return {
-        id: step.id,
-        // Map editor step types to API step types
-        // flow/utility types map to their subType for API compatibility (e.g., "branch", "merge")
-        // generator subType maps to "branch" for the API
-        type: (step.subType === "generator" ? "branch" : step.subType || step.type) as PipelineStep["type"],
-        name: step.name,
-        params: step.params || {},
-        // Include generator configuration for variant counting
-        generator,
-        // Convert branches recursively for branch/generator steps
-        children: step.branches?.flat().map((child) => convertStep(child)),
-      };
-    };
-    return steps.map(convertStep) as PipelineStep[];
-  }, [steps]);
-
   const {
     count: variantCount,
     breakdown: variantBreakdown,
     warning: variantWarning,
     isLoading: isCountingVariants,
-  } = useVariantCount(apiSteps);
+  } = useVariantCount(steps);
 
   const variantSeverity = getVariantCountSeverity(variantCount);
 
   return (
-    <MlLoadingOverlay>
+    // The editor itself is mostly local-state + JSON-registry driven, so keep
+    // it usable while the backend is still warming ML dependencies.
     <TooltipProvider>
       <PipelineDndProvider onDrop={onDrop} onReorder={onReorder}>
         <motion.div
@@ -981,14 +960,18 @@ export default function PipelineEditor() {
                       <Download className="h-4 w-4 mr-2" />
                       Export as JSON (Editor)
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleExportNirs4all}>
+                    <DropdownMenuItem onClick={() => { void handleExportCanonical("json"); }}>
                       <FileJson className="h-4 w-4 mr-2" />
-                      Export as JSON (nirs4all)
+                      Export as JSON (Canonical)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { void handleExportCanonical("yaml"); }}>
+                      <FileCode className="h-4 w-4 mr-2" />
+                      Export as YAML (Canonical)
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleImportClick}>
                       <Upload className="h-4 w-4 mr-2" />
-                      Import from JSON
+                      Import JSON or YAML
                     </DropdownMenuItem>
                     <DropdownMenuSub onOpenChange={(open) => { if (open) handleLoadSamples(); }}>
                       <DropdownMenuSubTrigger>
@@ -1214,6 +1197,5 @@ export default function PipelineEditor() {
         className="hidden"
       />
     </TooltipProvider>
-    </MlLoadingOverlay>
   );
 }

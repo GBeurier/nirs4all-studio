@@ -122,7 +122,7 @@ export function StepConfigPanel({
   );
 
   const handleParamChange = useCallback(
-    (key: string, value: string | number | boolean) => {
+    (key: string, value: unknown) => {
       if (!step) return;
       onUpdate(step.id, {
         params: { ...step.params, [key]: value },

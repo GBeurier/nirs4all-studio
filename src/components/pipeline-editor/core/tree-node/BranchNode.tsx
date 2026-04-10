@@ -22,6 +22,7 @@ import { TreeNode } from "./TreeNode";
 export function BranchNode({
   branch,
   branchIndex,
+  branchName,
   parentPath,
   parentStepId,
   depth,
@@ -73,7 +74,7 @@ export function BranchNode({
           )}
           <BranchIcon className="h-3 w-3" />
           <span className="text-[10px] font-medium">
-            {branchLabel} {branchIndex + 1}
+            {branchName || `${branchLabel} ${branchIndex + 1}`}
           </span>
           {!isExpanded && branch.length > 0 && (
             <span className="text-[9px] text-muted-foreground/70">

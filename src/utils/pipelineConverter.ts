@@ -37,6 +37,7 @@ import type { NodeDefinition } from "@/data/nodes/types";
  */
 export type Nirs4allStep =
   | string // Class path only, e.g., "sklearn.preprocessing._data.StandardScaler"
+  | null
   | Nirs4allClassStep
   | Nirs4allModelStep
   | Nirs4allYProcessingStep
@@ -45,6 +46,7 @@ export type Nirs4allStep =
   | Nirs4allSampleAugmentationStep
   | Nirs4allFeatureAugmentationStep
   | Nirs4allSampleFilterStep
+  | Nirs4allFilterWrapperStep
   | Nirs4allConcatTransformStep
   | Nirs4allGeneratorStep
   | Nirs4allChartStep;
@@ -55,7 +57,10 @@ export interface Nirs4allClassStep {
 }
 
 export interface Nirs4allModelStep {
-  model: string | Nirs4allClassStep | { function: string; params?: Record<string, unknown> };
+  model:
+    | string
+    | Nirs4allClassStep
+    | { function: string; params?: Record<string, unknown>; framework?: string };
   name?: string;
   finetune_params?: Record<string, unknown>;
   train_params?: Record<string, unknown>;
@@ -99,7 +104,7 @@ export interface Nirs4allSampleAugmentationStep {
 
 export interface Nirs4allFeatureAugmentationStep {
   feature_augmentation: Nirs4allStep[] | {
-    _or_?: Array<string | Nirs4allClassStep>;
+    _or_?: Array<string | Nirs4allClassStep | null>;
     pick?: number | [number, number];
     count?: number;
   };
@@ -114,20 +119,32 @@ export interface Nirs4allSampleFilterStep {
   };
 }
 
+export interface Nirs4allFilterWrapperStep {
+  exclude?: string | Nirs4allClassStep | Array<string | Nirs4allClassStep>;
+  tag?: string | Nirs4allClassStep | Array<string | Nirs4allClassStep>;
+  mode?: string;
+}
+
 export interface Nirs4allConcatTransformStep {
   concat_transform: Array<Nirs4allStep | Nirs4allStep[]>;
 }
 
 export interface Nirs4allGeneratorStep {
-  _or_?: Nirs4allStep[];
+  _or_?: Array<Nirs4allStep | Nirs4allStep[] | null>;
+  _cartesian_?: Array<Nirs4allStep | Nirs4allStep[] | null>;
   _range_?: [number, number, number];
   _log_range_?: [number, number, number];
   _grid_?: Record<string, unknown[]>;
+  _zip_?: Record<string, unknown[]>;
+  _chain_?: Array<Nirs4allStep | Nirs4allStep[] | null>;
+  _sample_?: Record<string, unknown>;
   pick?: number | [number, number];
   arrange?: number | [number, number];
   then_pick?: number | [number, number];
   then_arrange?: number | [number, number];
   count?: number;
+  param?: string;
+  _seed_?: number;
 }
 
 export interface Nirs4allChartStep {
@@ -492,23 +509,188 @@ function getClassPath(type: StepType, name: string): string {
  * Cast params from unknown to editor params type.
  * This sanitizes the params object for the editor.
  */
-type EditorParams = Record<string, string | number | boolean>;
+type EditorParams = Record<string, unknown>;
+const SEARCH_SPACE_TOKENS = new Set(["int", "float", "categorical", "log_float"]);
+
+function cloneParamValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => cloneParamValue(item));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, childValue]) => [
+        key,
+        cloneParamValue(childValue),
+      ])
+    );
+  }
+  return value;
+}
 
 function castParams(params: Record<string, unknown> | undefined): EditorParams {
   if (!params) return {};
   const result: EditorParams = {};
   for (const [key, value] of Object.entries(params)) {
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      result[key] = value;
-    } else if (Array.isArray(value)) {
-      // Store arrays as JSON strings for now (editor can handle this)
-      result[key] = JSON.stringify(value);
-    } else if (value !== null && value !== undefined) {
-      // Store complex objects as JSON strings
-      result[key] = JSON.stringify(value);
+    if (value !== undefined) {
+      result[key] = cloneParamValue(value);
     }
   }
   return result;
+}
+
+function createNoOpEditorStep(): EditorPipelineStep {
+  return {
+    id: generateStepId(),
+    type: "utility",
+    name: "NoOp",
+    params: {},
+    isNoOp: true,
+    rawNirs4all: null,
+  };
+}
+
+function createSequentialEditorStep(children: EditorPipelineStep[]): EditorPipelineStep {
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "sequential",
+    name: "Sequential",
+    params: {},
+    children,
+  };
+}
+
+function convertGeneratorAlternativeToEditor(
+  alternative: Nirs4allStep | Nirs4allStep[] | null
+): EditorPipelineStep[] {
+  if (alternative === null) {
+    return [createNoOpEditorStep()];
+  }
+  if (Array.isArray(alternative)) {
+    return alternative.map(item =>
+      item === null ? createNoOpEditorStep() : convertStepToEditor(item)
+    );
+  }
+  return [convertStepToEditor(alternative)];
+}
+
+function getGeneratorParams(step: Nirs4allGeneratorStep): EditorParams {
+  const params: EditorParams = {};
+  if (step._seed_ !== undefined) {
+    params._seed_ = step._seed_;
+  }
+  return params;
+}
+
+function createEditorStepFromGeneratorAlternative(
+  alternative: Nirs4allStep | Nirs4allStep[] | null
+): EditorPipelineStep {
+  if (alternative === null) {
+    return createNoOpEditorStep();
+  }
+  if (Array.isArray(alternative)) {
+    return createSequentialEditorStep(alternative.map(item => convertStepToEditor(item)));
+  }
+  return convertStepToEditor(alternative);
+}
+
+function convertCartesianStageToEditor(
+  stage: Nirs4allStep | Nirs4allStep[] | null
+): EditorPipelineStep[] {
+  if (Array.isArray(stage)) {
+    if (stage.length === 0) {
+      return [];
+    }
+    return [createSequentialEditorStep(stage.map(item => convertStepToEditor(item)))];
+  }
+
+  if (
+    stage &&
+    typeof stage === "object" &&
+    "_or_" in stage &&
+    Object.keys(stage).length === 1
+  ) {
+    return (stage._or_ || []).map(alternative =>
+      createEditorStepFromGeneratorAlternative(
+        alternative as Nirs4allStep | Nirs4allStep[] | null
+      )
+    );
+  }
+
+  return [convertStepToEditor(stage)];
+}
+
+function parseFinetuneParamConfig(
+  name: string,
+  config: unknown
+): FinetuneParamConfig {
+  if (Array.isArray(config)) {
+    const [token, ...rest] = config;
+    if (typeof token === "string" && SEARCH_SPACE_TOKENS.has(token)) {
+      if (token === "categorical") {
+        const choices = Array.isArray(rest[0]) ? rest[0] : rest;
+        return {
+          name,
+          type: "categorical",
+          choices: choices as (string | number)[],
+          rawValue: cloneParamValue(config),
+        };
+      }
+      return {
+        name,
+        type: token as FinetuneParamType,
+        low: rest[0] as number | undefined,
+        high: rest[1] as number | undefined,
+        step: rest[2] as number | undefined,
+        rawValue: cloneParamValue(config),
+      };
+    }
+    return {
+      name,
+      type: "categorical",
+      choices: config as (string | number)[],
+      rawValue: cloneParamValue(config),
+    };
+  }
+
+  const paramConfig = config as {
+    type?: string;
+    low?: number;
+    high?: number;
+    step?: number;
+    log?: boolean;
+    choices?: (string | number)[];
+  };
+  return {
+    name,
+    type: (paramConfig.log ? "log_float" : paramConfig.type) as FinetuneParamType || "int",
+    low: paramConfig.low,
+    high: paramConfig.high,
+    step: paramConfig.step,
+    choices: paramConfig.choices,
+    rawValue: cloneParamValue(config),
+  };
+}
+
+function isSeparationBranch(
+  branchData: Nirs4allBranchStep["branch"]
+): branchData is {
+  by_tag?: string;
+  by_metadata?: string;
+  by_filter?: unknown;
+  by_source?: boolean;
+  steps: Record<string, Nirs4allStep[]>;
+} {
+  return (
+    !Array.isArray(branchData) &&
+    typeof branchData === "object" &&
+    branchData !== null &&
+    "steps" in branchData &&
+    ("by_tag" in branchData ||
+      "by_metadata" in branchData ||
+      "by_filter" in branchData ||
+      "by_source" in branchData)
+  );
 }
 
 // ============================================================================
@@ -527,6 +709,10 @@ export function importFromNirs4all(pipeline: Nirs4allPipeline | Nirs4allStep[]):
  * Convert a single nirs4all step to editor format.
  */
 function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
+  if (step === null) {
+    return createNoOpEditorStep();
+  }
+
   // Handle string class path (no params)
   if (typeof step === "string") {
     // Check for special chart strings
@@ -600,6 +786,10 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
     return convertSampleFilterToEditor(step as Nirs4allSampleFilterStep);
   }
 
+  if ("exclude" in step || "tag" in step) {
+    return convertFilterWrapperToEditor(step as Nirs4allFilterWrapperStep);
+  }
+
   // Handle concat_transform
   if ("concat_transform" in step) {
     return convertConcatTransformToEditor(step as Nirs4allConcatTransformStep);
@@ -648,6 +838,24 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
   if ("_or_" in step) {
     return convertOrGeneratorToEditor(step as Nirs4allGeneratorStep);
   }
+  if ("_cartesian_" in step) {
+    return convertCartesianGeneratorToEditor(step as Nirs4allGeneratorStep);
+  }
+  if ("_range_" in step || "_log_range_" in step) {
+    return convertRangeGeneratorToEditor(step as Nirs4allGeneratorStep);
+  }
+  if ("_grid_" in step) {
+    return convertGridGeneratorToEditor(step as Nirs4allGeneratorStep);
+  }
+  if ("_zip_" in step) {
+    return convertZipGeneratorToEditor(step as Nirs4allGeneratorStep);
+  }
+  if ("_chain_" in step) {
+    return convertChainGeneratorToEditor(step as Nirs4allGeneratorStep);
+  }
+  if ("_sample_" in step) {
+    return convertSampleGeneratorToEditor(step as Nirs4allGeneratorStep);
+  }
 
   // Handle class-based step
   if ("class" in step) {
@@ -693,6 +901,9 @@ function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelineStep {
     functionPath = step.model.function;
     name = getClassNameFromPath(step.model.function);
     params = castParams(step.model.params);
+    if (step.model.framework) {
+      classPath = undefined;
+    }
   }
 
   const editorStep: EditorPipelineStep = {
@@ -710,6 +921,9 @@ function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelineStep {
   // Store function path for function-based operators
   if (functionPath) {
     editorStep.functionPath = functionPath;
+    if ("function" in step.model && step.model.framework) {
+      editorStep.framework = step.model.framework;
+    }
   }
 
   // Store custom name if present
@@ -732,27 +946,13 @@ function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelineStep {
     if (step.finetune_params.model_params) {
       const modelParams = step.finetune_params.model_params as Record<string, unknown>;
       for (const [paramName, paramConfig] of Object.entries(modelParams)) {
-        // Handle array format (categorical choices): [50, 100, 150, 200]
-        if (Array.isArray(paramConfig)) {
-          editorStep.finetuneConfig.model_params.push({
-            name: paramName,
-            type: "categorical",
-            choices: paramConfig as (string | number)[],
-          });
-        }
-        // Handle object format: {type: "int", low: 1, high: 20}
-        else if (typeof paramConfig === "object" && paramConfig !== null) {
-          const config = paramConfig as Record<string, unknown>;
-          // Handle log parameter for float
-          const paramType = config.log === true ? "log_float" : (config.type as string || "int");
-          editorStep.finetuneConfig.model_params.push({
-            name: paramName,
-            type: paramType as "int" | "float" | "categorical" | "log_float",
-            low: config.low as number,
-            high: config.high as number,
-            step: config.step as number,
-            choices: config.choices as (string | number)[],
-          });
+        if (
+          Array.isArray(paramConfig) ||
+          (typeof paramConfig === "object" && paramConfig !== null)
+        ) {
+          editorStep.finetuneConfig.model_params.push(
+            parseFinetuneParamConfig(paramName, paramConfig)
+          );
         }
       }
     }
@@ -761,22 +961,8 @@ function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelineStep {
       const trainParamsRecord = step.finetune_params.train_params as Record<string, unknown>;
       const trainParamsArray: FinetuneParamConfig[] = [];
       for (const [name, config] of Object.entries(trainParamsRecord)) {
-        if (Array.isArray(config)) {
-          // Categorical
-          trainParamsArray.push({
-            name,
-            type: "categorical",
-            choices: config as (string | number)[],
-          });
-        } else if (typeof config === "object" && config !== null) {
-          const paramConfig = config as { type?: string; low?: number; high?: number; step?: number; log?: boolean };
-          trainParamsArray.push({
-            name,
-            type: (paramConfig.log ? "log_float" : paramConfig.type as FinetuneParamType) || "float",
-            low: paramConfig.low as number,
-            high: paramConfig.high as number,
-            step: paramConfig.step as number,
-          });
+        if (Array.isArray(config) || (typeof config === "object" && config !== null)) {
+          trainParamsArray.push(parseFinetuneParamConfig(name, config));
         }
       }
       editorStep.finetuneConfig.train_params = trainParamsArray;
@@ -853,6 +1039,27 @@ function convertYProcessingToEditor(step: Nirs4allYProcessingStep): EditorPipeli
 }
 
 function convertBranchToEditor(step: Nirs4allBranchStep): EditorPipelineStep {
+  if (isSeparationBranch(step.branch)) {
+    const branchData = step.branch;
+    const name = "by_tag" in branchData
+      ? `Branch by tag: ${branchData.by_tag}`
+      : "by_metadata" in branchData
+        ? `Branch by metadata: ${branchData.by_metadata}`
+        : "by_source" in branchData
+          ? "Branch by source"
+          : "Branch by filter";
+
+    return {
+      id: generateStepId(),
+      type: "flow",
+      subType: "branch",
+      name,
+      params: {},
+      branchMode: "separation",
+      rawNirs4all: step,
+    };
+  }
+
   const branches: EditorPipelineStep[][] = [];
   const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
 
@@ -880,6 +1087,7 @@ function convertBranchToEditor(step: Nirs4allBranchStep): EditorPipelineStep {
     params: {},
     branches,
     branchMetadata,
+    branchMode: "duplication",
   };
 }
 
@@ -1021,18 +1229,21 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
   }
 
   // Generator syntax with _or_, pick, count
-  const orOptions = aug._or_?.map((t: string | Nirs4allClassStep) => {
+  const orOptions = aug._or_?.flatMap((t: string | Nirs4allClassStep | null) => {
+    if (t === null) {
+      return [];
+    }
     if (typeof t === "string") {
       const { name } = resolveClassPath(t);
-      return { id: generateStepId(), name, classPath: t, params: {}, enabled: true };
+      return [{ id: generateStepId(), name, classPath: t, params: {}, enabled: true }];
     }
     const { name } = resolveClassPath(t.class);
-    return { id: generateStepId(), name, classPath: t.class, params: t.params || {}, enabled: true };
+    return [{ id: generateStepId(), name, classPath: t.class, params: t.params || {}, enabled: true }];
   }) || [];
 
   // Convert _or_ options to children
-  const childSteps = aug._or_?.map((t: string | Nirs4allClassStep) =>
-    convertStepToEditor(t as Nirs4allStep)
+  const childSteps = aug._or_?.map((t: string | Nirs4allClassStep | null) =>
+    t === null ? createNoOpEditorStep() : convertStepToEditor(t as Nirs4allStep)
   ) || [];
 
   return {
@@ -1042,11 +1253,11 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
     name: "FeatureAugmentation",
     params: {
       action: step.action || "extend",
-      pick: aug.pick !== undefined ? (Array.isArray(aug.pick) ? JSON.stringify(aug.pick) : aug.pick) : "",
+      pick: aug.pick,
       count: aug.count || 0,
     },
     children: childSteps,
-    branches: aug._or_?.map((t: string | Nirs4allClassStep) => [convertStepToEditor(t as Nirs4allStep)]) || [],
+    branches: aug._or_?.map((t: string | Nirs4allClassStep | null) => convertGeneratorAlternativeToEditor(t)) || [],
     generatorKind: "or",
     generatorOptions: {
       pick: aug.pick,
@@ -1093,6 +1304,43 @@ function convertSampleFilterToEditor(step: Nirs4allSampleFilterStep): EditorPipe
       mode: filter.mode as "any" | "all" | "vote" | undefined,
       report: filter.report,
     },
+    filterOrigin: "sample_filter",
+  };
+}
+
+function convertFilterWrapperToEditor(step: Nirs4allFilterWrapperStep): EditorPipelineStep {
+  const origin = "exclude" in step ? "exclude" : "tag";
+  const rawFilters = step[origin];
+  const filters = Array.isArray(rawFilters)
+    ? rawFilters
+    : rawFilters !== undefined
+      ? [rawFilters]
+      : [];
+
+  const filterConfigs = filters.map(f => {
+    if (typeof f === "string") {
+      const { name } = resolveClassPath(f);
+      return { id: generateStepId(), name, classPath: f, params: {}, enabled: true };
+    }
+    const { name } = resolveClassPath(f.class);
+    return { id: generateStepId(), name, classPath: f.class, params: f.params || {}, enabled: true };
+  });
+
+  const childSteps = filters.map(f => convertStepToEditor(f as Nirs4allStep));
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "sample_filter",
+    name: origin === "tag" ? "TagFilter" : "SampleFilter",
+    params: origin === "exclude" && step.mode ? { mode: step.mode } : {},
+    children: childSteps,
+    branches: [childSteps],
+    sampleFilterConfig: {
+      filters: filterConfigs,
+      mode: step.mode as "any" | "all" | "vote" | undefined,
+    },
+    filterOrigin: origin,
   };
 }
 
@@ -1153,14 +1401,139 @@ function convertOrGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipeline
     type: "flow",
     subType: "generator",
     name: "Or",
-    params: {},
-    branches: alternatives.map(alt => [convertStepToEditor(alt)]),
+    params: getGeneratorParams(step),
+    branches: alternatives.map(alt => convertGeneratorAlternativeToEditor(alt as Nirs4allStep | Nirs4allStep[] | null)),
     generatorKind: "or",
     generatorOptions: {
       pick: step.pick,
       arrange: step.arrange,
       then_pick: step.then_pick,
       then_arrange: step.then_arrange,
+      count: step.count,
+    },
+  };
+}
+
+function convertCartesianGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  const stages = step._cartesian_ || [];
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Cartesian",
+    params: getGeneratorParams(step),
+    branches: stages.map(stage =>
+      convertCartesianStageToEditor(stage as Nirs4allStep | Nirs4allStep[] | null)
+    ),
+    generatorKind: "cartesian",
+    generatorOptions: {
+      pick: step.pick,
+      arrange: step.arrange,
+      count: step.count,
+    },
+  };
+}
+
+function convertRangeGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  const keyword = step._log_range_ ? "_log_range_" : "_range_";
+  const values = (step._log_range_ || step._range_ || []) as [number, number, number];
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: keyword === "_log_range_" ? "LogRange" : "Range",
+    params: getGeneratorParams(step),
+    generatorKind: keyword === "_log_range_" ? "log_range" : "range",
+    stepGenerator: {
+      type: keyword,
+      values,
+      param: step.param,
+      count: step.count,
+    },
+  };
+}
+
+function convertGridGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  const branches: EditorPipelineStep[][] = [];
+  const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
+
+  for (const [paramName, values] of Object.entries(step._grid_ || {})) {
+    branches.push((values as Nirs4allStep[]).map(value => convertStepToEditor(value)));
+    branchMetadata.push({ name: paramName });
+  }
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Grid",
+    params: getGeneratorParams(step),
+    branches,
+    branchMetadata,
+    generatorKind: "grid",
+    generatorOptions: {
+      count: step.count,
+    },
+  };
+}
+
+function convertZipGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  const branches: EditorPipelineStep[][] = [];
+  const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
+
+  for (const [paramName, values] of Object.entries(step._zip_ || {})) {
+    branches.push((values as Nirs4allStep[]).map(value => convertStepToEditor(value)));
+    branchMetadata.push({ name: paramName });
+  }
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Zip",
+    params: getGeneratorParams(step),
+    branches,
+    branchMetadata,
+    generatorKind: "zip",
+    generatorOptions: {
+      count: step.count,
+    },
+  };
+}
+
+function convertChainGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  const configs = step._chain_ || [];
+
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Chain",
+    params: getGeneratorParams(step),
+    branches: configs.map(config =>
+      convertGeneratorAlternativeToEditor(config as Nirs4allStep | Nirs4allStep[] | null)
+    ),
+    generatorKind: "chain",
+    generatorOptions: {
+      count: step.count,
+    },
+  };
+}
+
+function convertSampleGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  return {
+    id: generateStepId(),
+    type: "flow",
+    subType: "generator",
+    name: "Sample",
+    params: {
+      ...castParams(step._sample_),
+      ...getGeneratorParams(step),
+    },
+    generatorKind: "sample",
+    generatorOptions: {
       count: step.count,
     },
   };
@@ -1199,7 +1572,7 @@ function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
   const classPath = step.classPath || getClassPath(step.type, step.name);
 
   // Handle raw nirs4all storage (for unknown/complex steps)
-  if (step.rawNirs4all) {
+  if (step.rawNirs4all !== undefined) {
     return step.rawNirs4all as Nirs4allStep;
   }
 
@@ -1282,6 +1655,9 @@ function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: strin
     if (step.params && Object.keys(step.params).length > 0) {
       (modelDef as { function: string; params?: Record<string, unknown> }).params = step.params;
     }
+    if (step.framework) {
+      (modelDef as { function: string; params?: Record<string, unknown>; framework?: string }).framework = step.framework;
+    }
   } else {
     modelDef = { class: classPath };
     if (step.params && Object.keys(step.params).length > 0) {
@@ -1302,6 +1678,10 @@ function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: strin
   if (step.finetuneConfig?.enabled) {
     const modelParams: Record<string, unknown> = {};
     for (const param of step.finetuneConfig.model_params) {
+      if (param.rawValue !== undefined) {
+        modelParams[param.name] = cloneParamValue(param.rawValue);
+        continue;
+      }
       if (param.type === "categorical" && param.choices) {
         // Categorical as array
         modelParams[param.name] = param.choices;
@@ -1335,6 +1715,10 @@ function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: strin
     if (step.finetuneConfig.train_params && step.finetuneConfig.train_params.length > 0) {
       const trainParamsRecord: Record<string, unknown> = {};
       for (const param of step.finetuneConfig.train_params) {
+        if (param.rawValue !== undefined) {
+          trainParamsRecord[param.name] = cloneParamValue(param.rawValue);
+          continue;
+        }
         if (param.type === "categorical" && param.choices) {
           trainParamsRecord[param.name] = param.choices;
         } else {
@@ -1639,16 +2023,34 @@ function convertEditorFeatureAugmentationToNirs4all(step: EditorPipelineStep): N
 }
 
 function convertEditorSampleFilterToNirs4all(step: EditorPipelineStep): Nirs4allStep {
+  const origin = step.filterOrigin || "sample_filter";
+
+  const buildFilterPayload = (
+    filters: Array<string | Nirs4allClassStep>
+  ): Nirs4allStep => {
+    if (origin === "sample_filter") {
+      return {
+        sample_filter: {
+          filters,
+          mode: (step.params.mode as string) || step.sampleFilterConfig?.mode || "any",
+          report: (step.params.report as boolean) ?? step.sampleFilterConfig?.report ?? true,
+        },
+      };
+    }
+
+    const wrapper: Record<string, unknown> = {
+      [origin]: filters.length === 1 ? filters[0] : filters,
+    };
+    if (origin === "exclude" && ((step.params.mode as string) || step.sampleFilterConfig?.mode)) {
+      wrapper.mode = (step.params.mode as string) || step.sampleFilterConfig?.mode;
+    }
+    return wrapper as Nirs4allStep;
+  };
+
   // Prefer children if available (new editable format)
   if (step.children && step.children.length > 0) {
     const filters = step.children.map(child => convertEditorStepToNirs4all(child)) as Array<string | Nirs4allClassStep>;
-    return {
-      sample_filter: {
-        filters,
-        mode: (step.params.mode as string) || step.sampleFilterConfig?.mode || "any",
-        report: (step.params.report as boolean) ?? step.sampleFilterConfig?.report ?? true,
-      },
-    };
+    return buildFilterPayload(filters);
   }
 
   // Use structured config if available (legacy)
@@ -1665,32 +2067,33 @@ function convertEditorSampleFilterToNirs4all(step: EditorPipelineStep): Nirs4all
       return f.name;
     }) as Array<string | Nirs4allClassStep>;
 
-    return {
-      sample_filter: {
-        filters,
-        mode: config.mode,
-        report: config.report,
-      },
+    if (origin === "sample_filter") {
+      return {
+        sample_filter: {
+          filters,
+          mode: config.mode,
+          report: config.report,
+        },
+      };
+    }
+
+    const wrapper: Record<string, unknown> = {
+      [origin]: filters.length === 1 ? filters[0] : filters,
     };
+    if (origin === "exclude" && config.mode) {
+      wrapper.mode = config.mode;
+    }
+    return wrapper as Nirs4allStep;
   }
 
   // Fallback: reconstruct from branches
   if (step.branches?.length) {
-    return {
-      sample_filter: {
-        filters: step.branches[0].map(s => convertEditorStepToNirs4all(s)) as Array<string | Nirs4allClassStep>,
-        mode: (step.params.mode as string) || "any",
-        report: (step.params.report as boolean) ?? true,
-      },
-    };
+    return buildFilterPayload(
+      step.branches[0].map(s => convertEditorStepToNirs4all(s)) as Array<string | Nirs4allClassStep>
+    );
   }
 
-  return {
-    sample_filter: {
-      filters: [],
-      mode: "any",
-    },
-  };
+  return buildFilterPayload([]);
 }
 
 function convertEditorConcatTransformToNirs4all(step: EditorPipelineStep): Nirs4allStep {
@@ -1783,21 +2186,43 @@ function convertEditorChartToNirs4all(step: EditorPipelineStep): Nirs4allStep {
   return { [chartType]: {} };
 }
 
+function convertCartesianStageToNirs4all(
+  stage: EditorPipelineStep[]
+): Nirs4allStep | Nirs4allStep[] {
+  if (stage.length === 0) {
+    return [];
+  }
+
+  if (stage.length > 1) {
+    return {
+      _or_: stage.map(option => convertEditorStepToNirs4all(option)),
+    };
+  }
+
+  const [singleStep] = stage;
+  if (singleStep.isNoOp) {
+    return { _or_: [null] };
+  }
+  if (singleStep.subType === "sequential") {
+    return (singleStep.children || []).map(child => convertEditorStepToNirs4all(child));
+  }
+  return convertEditorStepToNirs4all(singleStep);
+}
+
 function convertEditorGeneratorToNirs4all(step: EditorPipelineStep): Nirs4allStep {
   const branches = step.branches || [];
   const opts = step.generatorOptions || {};
 
   function addModifiers(result: Record<string, unknown>) {
-    if (opts.count && opts.count > 0) result.count = opts.count;
+    const count = opts.count ?? (step.params as Record<string, unknown>)?.count;
+    if (count && count > 0) result.count = count;
     const seed = (step.params as Record<string, unknown>)?._seed_;
     if (seed !== undefined) result._seed_ = seed;
   }
 
   // _cartesian_
   if (step.generatorKind === "cartesian") {
-    const stages = branches.map(stage =>
-      stage.map(s => convertEditorStepToNirs4all(s))
-    );
+    const stages = branches.map(stage => convertCartesianStageToNirs4all(stage));
     const result: Record<string, unknown> = { _cartesian_: stages };
     if (opts.pick) result.pick = opts.pick;
     if (opts.arrange) result.arrange = opts.arrange;

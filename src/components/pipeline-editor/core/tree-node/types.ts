@@ -61,6 +61,7 @@ export interface TreeNodeProps {
 export interface BranchNodeProps {
   branch: PipelineStep[];
   branchIndex: number;
+  branchName?: string;
   parentPath: string[];
   parentStepId: string;
   depth: number;

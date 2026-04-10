@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { PipelineStep } from "@/types/pipelines";
+import type { PipelineStep } from "@/components/pipeline-editor/types";
 import { api } from "@/api/client";
 
 export interface VariantCountResult {
@@ -85,25 +85,9 @@ export function useVariantCount(
     try {
       abortControllerRef.current = new AbortController();
 
-      // Convert steps to the format expected by the API
-      const stepsData = stepsToCount.map((step) => ({
-        id: step.id,
-        type: step.type,
-        name: step.name,
-        params: step.params || {},
-        generator: step.generator,
-        children: step.children?.map((child) => ({
-          id: child.id,
-          type: child.type,
-          name: child.name,
-          params: child.params || {},
-          generator: child.generator,
-        })),
-      }));
-
       const response = await api.post<CountVariantsResponse>(
         "/pipelines/count-variants",
-        { steps: stepsData },
+        { steps: stepsToCount },
         { signal: abortControllerRef.current.signal }
       );
 

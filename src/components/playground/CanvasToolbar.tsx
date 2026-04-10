@@ -12,24 +12,17 @@
  * - ACTIONS: Export, reset, reference mode
  */
 
-import { useCallback, memo, useMemo, useState } from 'react';
+import { useCallback, memo, useMemo } from 'react';
 import {
   Eye,
   EyeOff,
   Loader2,
   Filter,
-  Activity,
-  Download,
-  Image,
-  FileText,
   Palette,
-  RotateCcw,
-  AlertCircle,
   ArrowLeftRight,
   MousePointer2,
   Layers,
   Paintbrush,
-  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,25 +37,13 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { StepComparisonSlider } from './StepComparisonSlider';
 import { PartitionSelector, type PartitionFilter } from './PartitionSelector';
 import { MetricsFilterPanel } from './MetricsFilterPanel';
 import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
@@ -70,7 +51,6 @@ import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
 import { SavedSelections } from './SavedSelections';
 import { SelectionFilters } from './SelectionFilters';
 import { SelectionModeToggle } from './SelectionTools';
-import { ReferenceModeControls } from './ReferenceModeControls';
 import { useSelection } from '@/context/SelectionContext';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo, SubsetInfo } from '@/types/playground';
@@ -89,7 +69,6 @@ import {
   getEffectiveTargetType,
 } from '@/lib/playground/colorConfig';
 import { type TargetType, isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
-import { DisplayFilters } from './DisplayFilters';
 import { type ChartType } from '@/context/PlaygroundViewContext';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
 
@@ -490,36 +469,10 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   // Get selection context for tool mode
   const selectionCtx = useSelection();
 
-  // Phase 8: Reset confirmation dialog state
-  const [showResetDialog, setShowResetDialog] = useState(false);
-  // Handle step comparison enabled change
-  const handleStepComparisonEnabledChange = useCallback((enabled: boolean) => {
-    onStepComparisonEnabledChange?.(enabled);
-    if (enabled && activeStep === 0 && enabledOperatorCount > 0) {
-      onActiveStepChange?.(enabledOperatorCount);
-    }
-  }, [onStepComparisonEnabledChange, onActiveStepChange, activeStep, enabledOperatorCount]);
-
-  const handleActiveStepChange = useCallback((step: number) => {
-    onActiveStepChange?.(step);
-  }, [onActiveStepChange]);
-
   const handleColorConfigChange = useCallback((config: GlobalColorConfig) => {
     onInteractionStart();
     onColorConfigChange(config);
   }, [onInteractionStart, onColorConfigChange]);
-
-  // Phase 8: Handle reset confirmation
-  const handleResetClick = useCallback(() => {
-    if (hasStateToReset) {
-      setShowResetDialog(true);
-    }
-  }, [hasStateToReset]);
-
-  const handleResetConfirm = useCallback(() => {
-    onResetPlayground?.();
-    setShowResetDialog(false);
-  }, [onResetPlayground]);
 
   // Extract metadata column names
   const metadataColumns = useMemo(() => {
@@ -580,23 +533,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
               </TooltipProvider>
             );
           })}
-
-          {/* Step comparison slider */}
-          {hasOperators && onStepComparisonEnabledChange && (
-            <>
-              <Separator orientation="vertical" className="h-4 mx-1" />
-              <StepComparisonSlider
-                operators={operators}
-                currentStep={activeStep}
-                onStepChange={handleActiveStepChange}
-                enabled={stepComparisonEnabled}
-                onEnabledChange={handleStepComparisonEnabledChange}
-                onInteractionStart={onInteractionStart}
-                isLoading={isFetching}
-                compact
-              />
-            </>
-          )}
 
           {/* Diff Mode Toggle */}
           {onSpectraViewModeChange && (
@@ -780,15 +716,6 @@ export const CanvasToolbar = memo(function CanvasToolbar({
             />
           )}
 
-          {/* Display Filters */}
-          <DisplayFilters
-            hasOutliers={hasOutliers}
-            outlierCount={outlierCount}
-            selectedCount={selectedCount}
-            totalSamples={totalSamples}
-            compact
-          />
-
           {/* Advanced Filtering: Metrics, Outliers, Similarity */}
           {metrics && onMetricFiltersChange && (
             <MetricsFilterPanel
@@ -838,145 +765,8 @@ export const CanvasToolbar = memo(function CanvasToolbar({
           />
         </RibbonGroup>
 
-        {/* REFERENCE GROUP (only when operators exist) */}
-        {hasOperators && (
-          <RibbonGroup label="Reference" icon={<Layers className="w-2.5 h-2.5" />}>
-            <ReferenceModeControls
-              stepComparisonEnabled={stepComparisonEnabled}
-              onDisableStepComparison={() => onStepComparisonEnabledChange?.(false)}
-              currentDatasetId={currentDatasetId}
-              onInteractionStart={onInteractionStart}
-              compact
-            />
-          </RibbonGroup>
-        )}
-
-        {/* ACTIONS GROUP */}
-        <RibbonGroup label="Actions" icon={<Zap className="w-2.5 h-2.5" />}>
-          {/* Reset View button */}
-          {onResetPlayground && (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      'h-5 px-1.5 text-[10px] gap-1',
-                      hasStateToReset && 'text-orange-600 dark:text-orange-400 hover:bg-orange-500/10'
-                    )}
-                    onClick={handleResetClick}
-                    disabled={!hasStateToReset}
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Reset
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {hasStateToReset
-                    ? 'Reset all selections, filters, and settings (Ctrl+Shift+R)'
-                    : 'Nothing to reset'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          {/* Export menu */}
-          <DropdownMenu>
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] gap-1">
-                      <Download className="w-3 h-3" />
-                      Export
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Export charts as PNG, data as CSV, or combined report
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => onExportChartPng('spectra')}>
-                <Image className="w-4 h-4 mr-2" />
-                Spectra as PNG
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onExportChartPng('pca')}>
-                <Image className="w-4 h-4 mr-2" />
-                PCA Plot as PNG
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onExportChartPng('histogram')}>
-                <Image className="w-4 h-4 mr-2" />
-                Histogram as PNG
-              </DropdownMenuItem>
-              {showFoldsChart && (
-                <DropdownMenuItem onClick={() => onExportChartPng('folds')}>
-                  <Image className="w-4 h-4 mr-2" />
-                  Folds as PNG
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onBatchExport}>
-                <Image className="w-4 h-4 mr-2" />
-                All Charts as PNG
-              </DropdownMenuItem>
-              {onExportCombinedReport && (
-                <DropdownMenuItem onClick={onExportCombinedReport}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Combined Report
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onExportSpectraCsv}>
-                <FileText className="w-4 h-4 mr-2" />
-                Spectra as CSV
-              </DropdownMenuItem>
-              {selectedCount > 0 && (
-                <DropdownMenuItem onClick={onExportSelectionsJson}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Selection as JSON
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </RibbonGroup>
       </div>
 
-      {/* Phase 8: Reset Confirmation Dialog */}
-      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-orange-500" />
-              Reset Playground View?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will reset all playground state including:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Current selection ({selectedCount} sample{selectedCount !== 1 ? 's' : ''})</li>
-                <li>Pinned samples</li>
-                <li>Display filters (outlier, selection)</li>
-                <li>Color configuration</li>
-                <li>User-marked outliers</li>
-              </ul>
-              <p className="mt-3 text-muted-foreground">
-                This action cannot be undone.
-              </p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleResetConfirm}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
-              Reset View
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 });

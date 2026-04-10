@@ -90,9 +90,9 @@ const de = {
     playground: "Spielwiese",
     inspector: "Inspektor",
     history: "Verlauf",
-    results: "Ergebnisse",
+    leaderboard: "Bestenliste",
     scores: "Ergebnisse",
-    predictions: "Vorhersagen",
+    database: "Datenbank",
     aggregatedResults: "Aggregierte Ergebnisse",
     predict: "Vorhersagen",
     lab: "Labor",
@@ -487,13 +487,42 @@ const de = {
       groups: {
         prepare: "Vorbereiten",
         explore: "Erkunden",
-        results: "Ergebnisse",
+        outcomes: "Auswertung",
+        apply: "Anwenden",
       },
     },
     header: {
       searchPlaceholder: "Suchen...",
       search: "Suchen",
       toggleTheme: "Design wechseln",
+    },
+    backendStartup: {
+      connectingTitle: "Verbindung zum Backend...",
+      errorTitle: "Backend-Start fehlgeschlagen",
+      loadingTitle: "Analyse-Backend wird geladen...",
+      workspaceTitle: "Arbeitsbereich wird wiederhergestellt...",
+      connectingDescription:
+        "Das Backend wird noch gestartet. Zwischengespeicherte Inhalte können zuerst erscheinen, aber Aktionen sind eingeschränkt, bis die API antwortet.",
+      loadingDescription:
+        "nirs4all und seine ML-Abhängigkeiten werden im Hintergrund initialisiert. Erweiterte Analysefunktionen werden automatisch freigeschaltet.",
+      workspaceDescription:
+        "Das Backend stellt den aktiven Arbeitsbereich wieder her. Datensatz-, Ausführungs-, Ergebnis- und Vorhersageansichten werden nach dem Start aktualisiert.",
+      errorBadge: "Startproblem",
+      badge: "Backend wird geladen",
+      apiLabel: "API",
+      apiReady: "Verbunden",
+      apiLoading: "FastAPI wird gestartet",
+      mlLabel: "ML-Engine",
+      mlError: "Initialisierung fehlgeschlagen",
+      mlReady: "Abhängigkeiten geladen",
+      mlLoading: "nirs4all und sklearn werden importiert",
+      mlWaiting: "Warte auf API",
+      workspaceLabel: "Arbeitsbereich",
+      workspaceBlocked: "Blockiert bis Backend wiederhergestellt ist",
+      workspaceReady: "Bereit",
+      workspaceLoading: "Datensätze und Ausführungsstatus werden wiederhergestellt",
+      workspaceWaiting: "In der Warteschlange hinter ML-Start",
+      loaderAlt: "Backend-Ladeanimation",
     },
   },
 
@@ -1176,6 +1205,17 @@ const de = {
       noData: "Bitte stellen Sie Daten für die Vorhersage bereit",
       predictionFailed: "Vorhersage fehlgeschlagen",
       fileParseError: "Die hochgeladene Datei konnte nicht analysiert werden",
+    },
+  },
+  // ============= ML-Engine =============
+  ml: {
+    loading: {
+      title: "ML-Engine wird geladen...",
+      description:
+        "Machine-Learning-Abhängigkeiten werden initialisiert. Diese Seite ist in einem Moment verfügbar.",
+    },
+    error: {
+      title: "ML-Engine-Fehler",
     },
   },
 };

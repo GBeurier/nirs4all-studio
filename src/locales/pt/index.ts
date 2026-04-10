@@ -88,9 +88,9 @@ const pt = {
     playground: "Playground",
     inspector: "Inspetor",
     history: "Histórico",
-    results: "Resultados",
+    leaderboard: "Classificação",
     scores: "Pontuações",
-    predictions: "Predições",
+    database: "Base de dados",
     aggregatedResults: "Resultados Agregados",
     predict: "Prever",
     lab: "Laboratório",
@@ -486,13 +486,42 @@ const pt = {
       groups: {
         prepare: "Preparar",
         explore: "Explorar",
-        results: "Resultados",
+        outcomes: "Balanço",
+        apply: "Aplicar",
       },
     },
     header: {
       searchPlaceholder: "Pesquisar...",
       search: "Pesquisar",
       toggleTheme: "Alternar tema",
+    },
+    backendStartup: {
+      connectingTitle: "Conectando ao backend...",
+      errorTitle: "Início do backend paralisado",
+      loadingTitle: "Carregando backend de análise...",
+      workspaceTitle: "Restaurando espaço de trabalho...",
+      connectingDescription:
+        "O backend ainda está iniciando. O conteúdo em cache pode aparecer primeiro, mas as ações ficam limitadas até que a API responda.",
+      loadingDescription:
+        "nirs4all e suas dependências de ML estão sendo inicializadas em segundo plano. Os recursos de análise avançada serão desbloqueados automaticamente.",
+      workspaceDescription:
+        "O backend está restaurando o espaço de trabalho ativo. As visualizações de conjuntos de dados, execuções, resultados e previsões serão atualizadas quando o início for concluído.",
+      errorBadge: "Problema de início",
+      badge: "Backend carregando",
+      apiLabel: "API",
+      apiReady: "Conectado",
+      apiLoading: "Iniciando FastAPI",
+      mlLabel: "Motor ML",
+      mlError: "Falha na inicialização",
+      mlReady: "Dependências carregadas",
+      mlLoading: "Importando nirs4all e sklearn",
+      mlWaiting: "Aguardando API",
+      workspaceLabel: "Espaço de trabalho",
+      workspaceBlocked: "Bloqueado até o backend se recuperar",
+      workspaceReady: "Pronto",
+      workspaceLoading: "Restaurando conjuntos de dados e estado de execuções",
+      workspaceWaiting: "Na fila após o início do ML",
+      loaderAlt: "Animação de carregamento do backend",
     },
   },
 
@@ -1175,6 +1204,17 @@ const pt = {
       noData: "Por favor, forneça dados para a previsão",
       predictionFailed: "A previsão falhou",
       fileParseError: "Não foi possível analisar o arquivo carregado",
+    },
+  },
+  // ============= Motor ML =============
+  ml: {
+    loading: {
+      title: "Carregando motor ML...",
+      description:
+        "As dependências de aprendizado de máquina estão sendo inicializadas. Esta página estará disponível em breve.",
+    },
+    error: {
+      title: "Erro do motor ML",
     },
   },
 };

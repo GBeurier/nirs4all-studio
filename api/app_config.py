@@ -649,10 +649,61 @@ class AppConfigManager:
     # Dataset Groups
     # ============================================================================
 
+    def _build_group_dataset_memberships(
+        self, data: dict[str, Any]
+    ) -> dict[str, list[str]]:
+        """Build authoritative group -> dataset_ids membership lists.
+
+        Membership used to live on ``group.dataset_ids`` and now primarily lives
+        on each dataset's ``group_ids``. Keep both readable so older configs and
+        newer writes resolve to the same runtime shape.
+        """
+        memberships: dict[str, list[str]] = {}
+
+        for group in data.get("groups", []):
+            group_id = group.get("id")
+            if not group_id:
+                continue
+            memberships[group_id] = []
+            for dataset_id in group.get("dataset_ids", []):
+                if dataset_id and dataset_id not in memberships[group_id]:
+                    memberships[group_id].append(dataset_id)
+
+        for dataset in data.get("datasets", []):
+            dataset_id = dataset.get("id")
+            if not dataset_id:
+                continue
+
+            group_ids = dataset.get("group_ids") or (
+                [dataset["group_id"]] if dataset.get("group_id") else []
+            )
+            for group_id in group_ids:
+                if not group_id:
+                    continue
+                memberships.setdefault(group_id, [])
+                if dataset_id not in memberships[group_id]:
+                    memberships[group_id].append(dataset_id)
+
+        return memberships
+
     def get_dataset_groups(self) -> list[DatasetGroup]:
-        """Get all dataset groups."""
+        """Get all dataset groups with populated ``dataset_ids`` membership."""
         data = self._load_dataset_links()
-        return [DatasetGroup.from_dict(g) for g in data.get("groups", [])]
+        memberships = self._build_group_dataset_memberships(data)
+        groups: list[DatasetGroup] = []
+        for group in data.get("groups", []):
+            group_id = group.get("id", "")
+            groups.append(
+                DatasetGroup.from_dict(
+                    {
+                        **group,
+                        "dataset_ids": memberships.get(
+                            group_id, group.get("dataset_ids", [])
+                        ),
+                    }
+                )
+            )
+        return groups
 
     def create_dataset_group(self, name: str, color: str = "#3b82f6") -> DatasetGroup:
         """Create a new dataset group.

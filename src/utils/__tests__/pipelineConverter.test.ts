@@ -378,4 +378,301 @@ describe("pipelineConverter", () => {
       expect(steps[0].name).toBe("SampleAugmentation");
     });
   });
+
+  describe("phase 1 structured preservation", () => {
+    it("preserves structured params without stringifying them", () => {
+      const steps = importFromNirs4all({
+        pipeline: [
+          {
+            class: "sklearn.preprocessing._data.MinMaxScaler",
+            params: {
+              feature_range: [0.1, 0.9],
+              clip: true,
+              enum_payload: {
+                enum: "demo.mode",
+                value: "soft",
+              },
+            },
+          },
+        ],
+      });
+
+      expect(steps[0].params.feature_range).toEqual([0.1, 0.9]);
+      expect(steps[0].params.enum_payload).toEqual({
+        enum: "demo.mode",
+        value: "soft",
+      });
+
+      const exported = exportToNirs4all(steps) as Array<{
+        class: string;
+        params: Record<string, unknown>;
+      }>;
+
+      expect(exported[0].params.feature_range).toEqual([0.1, 0.9]);
+      expect(exported[0].params.enum_payload).toEqual({
+        enum: "demo.mode",
+        value: "soft",
+      });
+    });
+
+    it("preserves filter origin keywords across import/export", () => {
+      const excludePipeline = [
+        {
+          exclude: {
+            class: "nirs4all.operators.filters.YOutlierFilter",
+            params: { method: "iqr" },
+          },
+          mode: "all",
+        },
+      ] as Nirs4allStep[];
+      const tagPipeline = [
+        {
+          tag: {
+            class: "nirs4all.operators.filters.SpectralQualityFilter",
+            params: { max_nan_ratio: 0.1 },
+          },
+        },
+      ] as Nirs4allStep[];
+
+      const excludeSteps = importFromNirs4all({ pipeline: excludePipeline });
+      const tagSteps = importFromNirs4all({ pipeline: tagPipeline });
+
+      expect(excludeSteps[0].filterOrigin).toBe("exclude");
+      expect(tagSteps[0].filterOrigin).toBe("tag");
+
+      expect(exportToNirs4all(excludeSteps)).toEqual(excludePipeline);
+      expect(exportToNirs4all(tagSteps)).toEqual(tagPipeline);
+    });
+
+    it("imports separation branches as passthrough-safe read-only branches", () => {
+      const separationBranch = {
+        branch: {
+          by_tag: "instrument",
+          steps: {
+            nir: [{ class: "nirs4all.operators.transforms.scalers.StandardNormalVariate" }],
+            mir: [{ class: "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection" }],
+          },
+        },
+      } as Nirs4allStep;
+
+      const steps = importFromNirs4all({ pipeline: [separationBranch] });
+      const branchStep = steps[0];
+
+      expect(branchStep.subType).toBe("branch");
+      expect(branchStep.branchMode).toBe("separation");
+      expect(branchStep.rawNirs4all).toEqual(separationBranch);
+
+      expect(exportToNirs4all(steps)).toEqual([separationBranch]);
+    });
+
+    it("preserves function models and finetune tuple search spaces", () => {
+      const original = [
+        {
+          model: {
+            function: "nirs4all.operators.models.tensorflow.nicon.customizable_nicon",
+            framework: "tensorflow",
+            params: {
+              dropout_rate: 0.2,
+            },
+          },
+          finetune_params: {
+            n_trials: 8,
+            approach: "single",
+            eval_mode: "best",
+            model_params: {
+              filters_1: ["int", 8, 32],
+              learning_rate: ["log_float", 1e-4, 1e-1],
+              activation: ["categorical", ["relu", "tanh"]],
+              explicit_choices: [16, 32, 64],
+            },
+            train_params: {
+              epochs: ["int", 5, 25],
+              batch_size: ["categorical", [16, 32]],
+            },
+          },
+        },
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+      const modelStep = steps[0];
+
+      expect(modelStep.functionPath).toBe(
+        "nirs4all.operators.models.tensorflow.nicon.customizable_nicon"
+      );
+      expect(modelStep.framework).toBe("tensorflow");
+      expect(modelStep.finetuneConfig?.model_params).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: "filters_1",
+            type: "int",
+            low: 8,
+            high: 32,
+            rawValue: ["int", 8, 32],
+          }),
+          expect.objectContaining({
+            name: "learning_rate",
+            type: "log_float",
+            low: 1e-4,
+            high: 1e-1,
+            rawValue: ["log_float", 1e-4, 1e-1],
+          }),
+          expect.objectContaining({
+            name: "activation",
+            type: "categorical",
+            choices: ["relu", "tanh"],
+            rawValue: ["categorical", ["relu", "tanh"]],
+          }),
+          expect.objectContaining({
+            name: "explicit_choices",
+            type: "categorical",
+            choices: [16, 32, 64],
+            rawValue: [16, 32, 64],
+          }),
+        ])
+      );
+
+      const exported = exportToNirs4all(steps) as Nirs4allStep[];
+      expect(exported).toEqual(original);
+    });
+
+    it("represents generator no-op alternatives without leaking executable placeholders", () => {
+      const original = [
+        {
+          _or_: [
+            null,
+            { class: "nirs4all.operators.transforms.scalers.StandardNormalVariate" },
+          ],
+        },
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+      const generator = steps[0];
+
+      expect(generator.branches?.[0]?.[0]).toMatchObject({
+        name: "NoOp",
+        isNoOp: true,
+        rawNirs4all: null,
+      });
+
+      const exported = exportToNirs4all(steps) as Nirs4allStep[];
+      const exportedGenerator = exported[0] as { _or_: Array<Nirs4allStep | null> };
+      expect(exportedGenerator._or_[0]).toBeNull();
+      const secondAlternative = exportedGenerator._or_[1] as { class?: string } | string;
+      expect(
+        typeof secondAlternative === "string"
+          ? secondAlternative
+          : secondAlternative.class
+      ).toBe("nirs4all.operators.transforms.scalers.StandardNormalVariate");
+    });
+
+    it("round-trips cartesian stages as stage-level _or_ nodes", () => {
+      const original = [
+        {
+          _cartesian_: [
+            {
+              _or_: [
+                { class: "nirs4all.operators.transforms.scalers.StandardNormalVariate" },
+                { class: "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection" },
+              ],
+            },
+            {
+              _or_: [
+                { class: "sklearn.preprocessing._data.StandardScaler" },
+                { class: "sklearn.preprocessing._data.MinMaxScaler" },
+              ],
+            },
+          ],
+          count: 3,
+        },
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+      const cartesian = steps[0];
+
+      expect(cartesian.generatorKind).toBe("cartesian");
+      expect(cartesian.generatorOptions?.count).toBe(3);
+      expect(cartesian.branches?.[0]?.map((step) => step.name)).toEqual(["SNV", "MSC"]);
+      expect(cartesian.branches?.[1]?.map((step) => step.name)).toEqual([
+        "StandardScaler",
+        "MinMaxScaler",
+      ]);
+
+      expect(exportToNirs4all(steps)).toEqual([
+        {
+          _cartesian_: [
+            {
+              _or_: [
+                "nirs4all.operators.transforms.scalers.StandardNormalVariate",
+                "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection",
+              ],
+            },
+            {
+              _or_: [
+                "sklearn.preprocessing._data.StandardScaler",
+                "sklearn.preprocessing._data.MinMaxScaler",
+              ],
+            },
+          ],
+          count: 3,
+        },
+      ]);
+    });
+
+    it("preserves sequential cartesian stages and modified nested _or_ stages", () => {
+      const original = [
+        {
+          _cartesian_: [
+            [
+              { class: "nirs4all.operators.transforms.scalers.StandardNormalVariate" },
+              { class: "nirs4all.operators.transforms.signal.Detrend" },
+            ],
+            {
+              _or_: [
+                { class: "sklearn.preprocessing._data.StandardScaler" },
+                { class: "sklearn.preprocessing._data.MinMaxScaler" },
+              ],
+              count: 1,
+            },
+          ],
+          count: 2,
+        },
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+      const cartesian = steps[0];
+
+      expect(cartesian.branches?.[0]?.[0]).toMatchObject({
+        name: "Sequential",
+        subType: "sequential",
+      });
+      expect(cartesian.branches?.[0]?.[0].children?.map((child) => child.name)).toEqual([
+        "SNV",
+        "Detrend",
+      ]);
+      expect(cartesian.branches?.[1]?.[0]).toMatchObject({
+        name: "Or",
+        generatorKind: "or",
+      });
+      expect(cartesian.branches?.[1]?.[0].generatorOptions?.count).toBe(1);
+
+      expect(exportToNirs4all(steps)).toEqual([
+        {
+          _cartesian_: [
+            [
+              "nirs4all.operators.transforms.scalers.StandardNormalVariate",
+              "nirs4all.operators.transforms.signal.Detrend",
+            ],
+            {
+              _or_: [
+                "sklearn.preprocessing._data.StandardScaler",
+                "sklearn.preprocessing._data.MinMaxScaler",
+              ],
+              count: 1,
+            },
+          ],
+          count: 2,
+        },
+      ]);
+    });
+  });
 });

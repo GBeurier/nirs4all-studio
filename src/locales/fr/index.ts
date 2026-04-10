@@ -90,9 +90,9 @@ const fr = {
     playground: "Bac à sable",
     inspector: "Inspecteur",
     history: "Historique",
-    results: "Résultats",
+    leaderboard: "Classement",
     scores: "Scores",
-    predictions: "Prédictions",
+    database: "Base de données",
     aggregatedResults: "Résultats agrégés",
     predict: "Prédire",
     lab: "Labo",
@@ -489,13 +489,42 @@ const fr = {
       groups: {
         prepare: "Préparer",
         explore: "Explorer",
-        results: "Résultats",
+        outcomes: "Bilan",
+        apply: "Appliquer",
       },
     },
     header: {
       searchPlaceholder: "Rechercher...",
       search: "Rechercher",
       toggleTheme: "Changer de thème",
+    },
+    backendStartup: {
+      connectingTitle: "Connexion au backend...",
+      errorTitle: "Démarrage du backend bloqué",
+      loadingTitle: "Chargement du backend d'analyse...",
+      workspaceTitle: "Restauration de l'espace de travail...",
+      connectingDescription:
+        "Le backend est en cours de démarrage. Le contenu mis en cache peut apparaître en premier, mais les actions restent limitées jusqu'à ce que l'API réponde.",
+      loadingDescription:
+        "nirs4all et ses dépendances ML s'initialisent en arrière-plan. Les fonctionnalités d'analyse avancées se déverrouilleront automatiquement.",
+      workspaceDescription:
+        "Le backend restaure l'espace de travail actif. Les vues des jeux de données, des exécutions, des résultats et des prédictions se rafraîchiront à la fin du démarrage.",
+      errorBadge: "Problème de démarrage",
+      badge: "Backend en chargement",
+      apiLabel: "API",
+      apiReady: "Connecté",
+      apiLoading: "Démarrage de FastAPI",
+      mlLabel: "Moteur ML",
+      mlError: "Échec de l'initialisation",
+      mlReady: "Dépendances chargées",
+      mlLoading: "Import de nirs4all et sklearn",
+      mlWaiting: "En attente de l'API",
+      workspaceLabel: "Espace de travail",
+      workspaceBlocked: "Bloqué jusqu'à la récupération du backend",
+      workspaceReady: "Prêt",
+      workspaceLoading: "Restauration des jeux de données et des exécutions",
+      workspaceWaiting: "En attente du démarrage ML",
+      loaderAlt: "Animation de chargement du backend",
     },
   },
 
@@ -1178,6 +1207,17 @@ const fr = {
       noData: "Veuillez fournir des données pour la prédiction",
       predictionFailed: "La prédiction a échoué",
       fileParseError: "Impossible d'analyser le fichier importé",
+    },
+  },
+  // ============= Moteur ML =============
+  ml: {
+    loading: {
+      title: "Chargement du moteur ML...",
+      description:
+        "Les dépendances d'apprentissage automatique sont en cours d'initialisation. Cette page sera disponible dans un instant.",
+    },
+    error: {
+      title: "Erreur du moteur ML",
     },
   },
 };

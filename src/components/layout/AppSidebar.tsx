@@ -54,10 +54,13 @@ const exploreNavItems: NavItem[] = [
   { titleKey: "nav.lab", href: "/lab", icon: FlaskConical },
 ];
 
-const resultsNavItems: NavItem[] = [
+const outcomesNavItems: NavItem[] = [
   { titleKey: "nav.history", href: "/runs", icon: TvMinimalPlay },
-  { titleKey: "nav.results", href: "/results", icon: Trophy },
-  { titleKey: "nav.predictions", href: "/predictions", icon: TableProperties },
+  { titleKey: "nav.leaderboard", href: "/results", icon: Trophy },
+  { titleKey: "nav.database", href: "/predictions", icon: TableProperties },
+];
+
+const applyNavItems: NavItem[] = [
   { titleKey: "nav.predict", href: "/predict", icon: Zap },
 ];
 
@@ -174,7 +177,9 @@ export function AppSidebar() {
           <Separator className="mx-3" />
           {renderNavGroup("layout.sidebar.groups.explore", exploreNavItems)}
           <Separator className="mx-3" />
-          {renderNavGroup("layout.sidebar.groups.results", resultsNavItems)}
+          {renderNavGroup("layout.sidebar.groups.outcomes", outcomesNavItems)}
+          <Separator className="mx-3" />
+          {renderNavGroup("layout.sidebar.groups.apply", applyNavItems)}
         </div>
       </ScrollArea>
 

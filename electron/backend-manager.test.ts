@@ -156,8 +156,50 @@ describe("BackendManager", () => {
     (manager as unknown as { startHealthMonitor: () => void }).startHealthMonitor();
     await vi.advanceTimersByTimeAsync(10_000);
 
+    expect(manager.getInfo().status).toBe("running");
+    expect(manager.getInfo().error).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
     expect(manager.getInfo().status).toBe("error");
     expect(manager.getInfo().error).toBe("Maximum restart attempts exceeded");
+
+    (manager as unknown as { stopHealthMonitor: () => void }).stopHealthMonitor();
+  });
+
+  it("resets transient health-check failures after a successful probe", async () => {
+    makeUserDataDir();
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporary stall"))
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: "healthy" }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+
+    (manager as unknown as { status: string }).status = "running";
+    (manager as unknown as { port: number }).port = 64147;
+    (manager as unknown as { notifyRenderer: ReturnType<typeof vi.fn> }).notifyRenderer = vi.fn();
+
+    (manager as unknown as { startHealthMonitor: () => void }).startHealthMonitor();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(manager.getInfo().status).toBe("running");
+    expect(
+      (manager as unknown as { consecutiveHealthFailures: number }).consecutiveHealthFailures,
+    ).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(manager.getInfo().status).toBe("running");
+    expect(
+      (manager as unknown as { consecutiveHealthFailures: number }).consecutiveHealthFailures,
+    ).toBe(0);
 
     (manager as unknown as { stopHealthMonitor: () => void }).stopHealthMonitor();
   });

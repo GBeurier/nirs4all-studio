@@ -88,9 +88,9 @@ const ar = {
     playground: "ساحة التجارب",
     inspector: "المفتّش",
     history: "السجل",
-    results: "النتائج",
+    leaderboard: "لوحة المتصدرين",
     scores: "الدرجات",
-    predictions: "التنبؤات",
+    database: "قاعدة البيانات",
     aggregatedResults: "النتائج المجمّعة",
     predict: "التنبؤ",
     lab: "المختبر",
@@ -486,13 +486,42 @@ const ar = {
       groups: {
         prepare: "إعداد",
         explore: "استكشاف",
-        results: "النتائج",
+        outcomes: "النتائج",
+        apply: "تطبيق",
       },
     },
     header: {
       searchPlaceholder: "بحث...",
       search: "بحث",
       toggleTheme: "تبديل السمة",
+    },
+    backendStartup: {
+      connectingTitle: "جارٍ الاتصال بالخادم الخلفي...",
+      errorTitle: "توقف تشغيل الخادم الخلفي",
+      loadingTitle: "جارٍ تحميل خلفية التحليل...",
+      workspaceTitle: "جارٍ استعادة مساحة العمل...",
+      connectingDescription:
+        "الخادم الخلفي لا يزال يعمل. قد يظهر المحتوى المخزن مؤقتاً أولاً، لكن الإجراءات ستظل محدودة حتى تستجيب واجهة برمجة التطبيقات.",
+      loadingDescription:
+        "يتم تهيئة nirs4all وتبعيات التعلم الآلي في الخلفية. ستُفتح ميزات التحليل المتقدمة تلقائياً.",
+      workspaceDescription:
+        "يقوم الخادم الخلفي باستعادة مساحة العمل النشطة. ستُحدَّث طرق عرض مجموعات البيانات والتشغيل والنتائج والتنبؤات عند اكتمال التشغيل.",
+      errorBadge: "مشكلة في التشغيل",
+      badge: "جارٍ تحميل الخادم الخلفي",
+      apiLabel: "واجهة برمجة التطبيقات",
+      apiReady: "متصل",
+      apiLoading: "جارٍ تشغيل FastAPI",
+      mlLabel: "محرك التعلم الآلي",
+      mlError: "فشل التهيئة",
+      mlReady: "تم تحميل التبعيات",
+      mlLoading: "جارٍ استيراد nirs4all وsklearn",
+      mlWaiting: "في انتظار واجهة برمجة التطبيقات",
+      workspaceLabel: "مساحة العمل",
+      workspaceBlocked: "محظور حتى تعافي الخادم الخلفي",
+      workspaceReady: "جاهز",
+      workspaceLoading: "جارٍ استعادة مجموعات البيانات وحالة التشغيل",
+      workspaceWaiting: "في قائمة الانتظار خلف تشغيل التعلم الآلي",
+      loaderAlt: "رسوم متحركة لتحميل الخادم الخلفي",
     },
   },
 
@@ -1175,6 +1204,17 @@ const ar = {
       noData: "يرجى تقديم بيانات للتنبؤ",
       predictionFailed: "فشل التنبؤ",
       fileParseError: "تعذّر تحليل الملف المرفوع",
+    },
+  },
+  // ============= محرك التعلم الآلي =============
+  ml: {
+    loading: {
+      title: "جارٍ تحميل محرك التعلم الآلي...",
+      description:
+        "يتم تهيئة تبعيات التعلم الآلي. ستصبح هذه الصفحة متاحة في لحظة.",
+    },
+    error: {
+      title: "خطأ في محرك التعلم الآلي",
     },
   },
 };

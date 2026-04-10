@@ -25,7 +25,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .lazy_imports import get_cached, is_ml_ready
+from .store_adapter import _get_workspace_store_cls
 from .workspace_manager import workspace_manager
 
 STORE_AVAILABLE = True
@@ -213,7 +213,7 @@ def _get_store() -> Any:
             detail="No store found in workspace. Run a pipeline first.",
         )
 
-    return get_cached("WorkspaceStore")(workspace_path)
+    return _get_workspace_store_cls()(workspace_path)
 
 
 def _get_workspace_path() -> Path:
@@ -289,6 +289,119 @@ def _enrich_with_fold_artifacts(records: list[dict], store: Any) -> list[dict]:
     return records
 
 
+def _stable_serialize(value: Any) -> str:
+    """Stable serialization for params signature comparison."""
+    import json as _json
+
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        try:
+            value = _json.loads(value)
+        except Exception:
+            return value
+    try:
+        return _json.dumps(value, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _chain_signature(record: dict) -> tuple[str, str, str, str]:
+    """Build a signature for matching CV ↔ refit chain pairs.
+
+    The signature is (model_class, model_name, preprocessings, best_params).
+    Mirrors the frontend ``signatureParts`` helper in ``score-adapters.ts``.
+    """
+    return (
+        record.get("model_class") or "",
+        record.get("model_name") or "",
+        record.get("preprocessings") or "",
+        _stable_serialize(record.get("best_params")),
+    )
+
+
+def _resolve_chain_id(store: Any, chain_id: str) -> str | None:
+    """Resolve a possibly-truncated chain_id to a full chain_id.
+
+    Tries an exact match first; falls back to a unique prefix match
+    against the chains table for legacy short IDs (e.g. 12-16 char
+    truncated UUIDs from older runs). Returns ``None`` if no chain
+    matches or the prefix is ambiguous.
+    """
+    if not chain_id:
+        return None
+    chain = store.get_chain(chain_id)
+    if chain is not None:
+        return chain_id
+    try:
+        df = store._fetch_pl(
+            "SELECT chain_id FROM chains WHERE chain_id LIKE ? LIMIT 2",
+            [f"{chain_id}%"],
+        )
+    except Exception:
+        return None
+    if len(df) == 1:
+        return str(df.row(0, named=True)["chain_id"])
+    return None
+
+
+def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
+    """For refit chains missing CV scores, copy them from a matching CV sibling.
+
+    A "refit chain" is one with a non-null ``final_test_score`` but null
+    ``cv_val_score``. Looks up sibling chains in the same dataset whose
+    (model_class, model_name, preprocessings, best_params) signature matches
+    and copies their CV fields onto the refit record.
+    """
+    refit_records = [
+        r for r in records
+        if r.get("final_test_score") is not None and r.get("cv_val_score") is None
+    ]
+    if not refit_records:
+        return records
+
+    # Group refit records by dataset to limit lookup scope.
+    datasets = {r.get("dataset_name") for r in refit_records if r.get("dataset_name")}
+    if not datasets:
+        return records
+
+    # Fetch all chains for each affected dataset.
+    cv_pool: list[dict] = []
+    seen_chain_ids: set[str] = set()
+    for dataset_name in datasets:
+        try:
+            df = store.query_chain_summaries(dataset_name=dataset_name)
+        except Exception:
+            continue
+        for row in df.iter_rows(named=True):
+            row_dict = dict(row)
+            cid = row_dict.get("chain_id")
+            if cid and cid not in seen_chain_ids and row_dict.get("cv_val_score") is not None:
+                cv_pool.append(row_dict)
+                seen_chain_ids.add(cid)
+
+    if not cv_pool:
+        return records
+
+    # Build signature → CV chain map.
+    cv_by_signature: dict[tuple[str, str, str, str], dict] = {}
+    for cv in cv_pool:
+        sig = _chain_signature(cv)
+        if sig not in cv_by_signature:
+            cv_by_signature[sig] = cv
+
+    cv_fields = ("cv_val_score", "cv_test_score", "cv_train_score", "cv_fold_count", "cv_scores")
+    for refit in refit_records:
+        match = cv_by_signature.get(_chain_signature(refit))
+        if match is None:
+            continue
+        for field in cv_fields:
+            if refit.get(field) is None:
+                refit[field] = match.get(field)
+
+    return records
+
+
 def _list_array_datasets(workspace_path: Path) -> dict[str, Path]:
     """Map dataset name -> parquet file path under arrays/."""
     arrays_dir = workspace_path / "arrays"
@@ -331,6 +444,7 @@ async def get_aggregated_predictions(
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
         _enrich_with_fold_artifacts(records, store)
+        _enrich_refit_with_cv(records, store)
         return ChainSummariesResponse(
             predictions=records,
             total=len(records),
@@ -368,6 +482,7 @@ async def get_top_aggregated_predictions(
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
         _enrich_with_fold_artifacts(records, store)
+        _enrich_refit_with_cv(records, store)
         return {
             "predictions": records,
             "total": len(records),
@@ -403,6 +518,7 @@ async def get_chain_detail(
         if len(agg_df) > 0:
             summary = _sanitize_dict(dict(agg_df.row(0, named=True)))
             _enrich_with_fold_artifacts([summary], store)
+            _enrich_refit_with_cv([summary], store)
 
         # Get individual prediction rows
         pred_df = store.get_chain_predictions(chain_id)
@@ -450,9 +566,13 @@ async def get_chain_pipeline_steps(chain_id: str):
     """
     store = _get_store()
     try:
-        chain = store.get_chain(chain_id)
+        resolved_id = _resolve_chain_id(store, chain_id)
+        if resolved_id is None:
+            raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found")
+        chain = store.get_chain(resolved_id)
         if chain is None:
             raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found")
+        chain_id = resolved_id
 
         chain_steps = chain.get("steps") or []
         model_step_idx = chain.get("model_step_idx")

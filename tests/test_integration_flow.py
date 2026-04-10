@@ -167,6 +167,32 @@ class TestDatasetsEndpoints:
         assert "task_type" in preset
         assert "n_samples" in preset
 
+    def test_list_datasets_returns_group_memberships(self, client, tmp_path):
+        """Verify /datasets reflects group assignments after group mutations."""
+        dataset_dir = tmp_path / "grouped_dataset"
+        dataset_dir.mkdir()
+
+        link_response = client.post("/api/datasets/link", json={"path": str(dataset_dir)})
+        assert link_response.status_code == 200
+        dataset_id = link_response.json()["dataset"]["id"]
+
+        create_group_response = client.post("/api/workspace/groups", json={"name": "Regression"})
+        assert create_group_response.status_code == 200
+        group_id = create_group_response.json()["group"]["id"]
+
+        assign_response = client.post(
+            f"/api/workspace/groups/{group_id}/datasets",
+            json={"dataset_id": dataset_id},
+        )
+        assert assign_response.status_code == 200
+
+        response = client.get("/api/datasets")
+        assert response.status_code == 200
+        data = response.json()
+
+        group = next(g for g in data["groups"] if g["id"] == group_id)
+        assert dataset_id in group["dataset_ids"]
+
 
 class TestPipelinesEndpoints:
     """Test pipeline-related endpoints."""
@@ -189,12 +215,17 @@ class TestPipelinesEndpoints:
         assert "presets" in data
         assert len(data["presets"]) > 0
 
-        # Verify preset structure
+        # Verify preset listing entry structure (file-based, see api/presets/)
         preset = data["presets"][0]
         assert "id" in preset
         assert "name" in preset
-        assert "steps" in preset
-        assert isinstance(preset["steps"], list)
+        assert "description" in preset
+        assert "task_type" in preset
+        assert "steps_count" in preset
+        assert isinstance(preset["steps_count"], int)
+        # The full pipeline block is intentionally NOT included in the listing
+        assert "steps" not in preset
+        assert "pipeline" not in preset
 
     def test_list_operators(self, client):
         """Test listing available operators."""
@@ -364,8 +395,9 @@ class TestAPIIntegrationChecklist:
             assert "id" in preset
             assert "name" in preset
             assert "description" in preset
-            assert "steps" in preset
-            assert isinstance(preset["steps"], list)
+            assert "task_type" in preset
+            assert "steps_count" in preset
+            assert isinstance(preset["steps_count"], int)
 
     def test_runs_endpoint_structure(self, client):
         """Verify GET /runs returns correct structure."""

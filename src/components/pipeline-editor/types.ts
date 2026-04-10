@@ -50,6 +50,10 @@ export type UtilityStepSubType =
  * Combined sub-type union (for PipelineStep.subType).
  */
 export type StepSubType = FlowStepSubType | UtilityStepSubType;
+export type PipelineParams = Record<string, unknown>;
+export type FilterOriginKeyword = "sample_filter" | "exclude" | "tag";
+export type BranchMode = "duplication" | "separation";
+export type SeparationKind = "by_tag" | "by_metadata" | "by_filter" | "by_source";
 
 /**
  * Legacy step type values (for backwards compatibility with old pipelines).
@@ -99,6 +103,7 @@ export interface FinetuneParamConfig {
   high?: number;          // For int, float, log_float
   step?: number;          // Optional step for int
   choices?: (string | number)[];  // For categorical
+  rawValue?: unknown;     // Preserve original canonical search-space shape
 }
 
 // Refit configuration for model steps
@@ -224,7 +229,7 @@ export interface TransformerConfig {
   id: string;
   name: string;
   classPath?: string;     // Full class path for nirs4all
-  params: Record<string, unknown>;
+  params: PipelineParams;
   enabled?: boolean;
 }
 
@@ -233,6 +238,7 @@ export interface MergeConfig {
   mode?: string;          // Simple mode: "predictions", "features", "concatenate"
   predictions?: MergePredictionSource[];
   features?: number[];    // Branch indices to include features from
+  sources?: unknown;      // Source merge payload: "concat" | "stack" | {...}
   output_as?: "features" | "predictions";
   on_missing?: "warn" | "error" | "drop";
 }
@@ -252,15 +258,41 @@ export interface ChartConfig {
   [key: string]: unknown;
 }
 
+export interface BranchMetadata {
+  name?: string;
+  value?: unknown;
+  isCollapsed?: boolean;
+}
+
+export interface SeparationBranchConfig {
+  kind: SeparationKind;
+  key?: string;
+  filter?: unknown;
+  sharedSteps?: boolean;
+}
+
+export interface ScalarGeneratorEntry {
+  id: string;
+  key: string;
+  values: unknown[];
+}
+
+export interface ScalarGeneratorConfig {
+  entries?: ScalarGeneratorEntry[];
+  sample?: Record<string, unknown>;
+}
+
 export interface PipelineStep {
   id: string;
   type: StepType;
   /** Sub-type for flow/utility steps (preserves legacy type for rendering) */
   subType?: StepSubType;
   name: string;
-  params: Record<string, string | number | boolean>;
+  params: PipelineParams;
   // Full class path (for export to nirs4all)
   classPath?: string;
+  // Optional framework hint for function-based operators
+  framework?: string;
   // Parameter sweeps: which params have generators attached
   paramSweeps?: Record<string, ParameterSweep>;
   // For branching steps: list of parallel pipelines (branch, generator)
@@ -268,10 +300,7 @@ export interface PipelineStep {
   // Named branches support (for dict-style branches like {"snv_path": [...], "msc_path": [...]})
   namedBranches?: Record<string, PipelineStep[]>;
   // Branch metadata (names, collapsed state)
-  branchMetadata?: {
-    name?: string;
-    isCollapsed?: boolean;
-  }[];
+  branchMetadata?: BranchMetadata[];
   // For container steps: nested children (sample_augmentation, feature_augmentation, etc.)
   children?: PipelineStep[];
   // For generator steps (OR, Cartesian): child steps/options
@@ -297,7 +326,7 @@ export interface PipelineStep {
   yProcessingConfig?: {
     enabled: boolean;
     scaler: string;
-    params: Record<string, string | number | boolean>;
+    params: PipelineParams;
   };
   // Feature augmentation configuration (container params, not transforms)
   featureAugmentationConfig?: FeatureAugmentationConfig;
@@ -315,13 +344,23 @@ export interface PipelineStep {
   stackingConfig?: {
     enabled: boolean;
     metaModel: string;
-    metaModelParams: Record<string, string | number | boolean>;
+    metaModelParams: PipelineParams;
     sourceModels: string[];
     coverageStrategy: "drop" | "fill" | "model";
     fillValue?: number;
     useOriginalFeatures: boolean;
     passthrough: boolean;
   };
+  // Preserve the canonical filter wrapper keyword on import/export.
+  filterOrigin?: FilterOriginKeyword;
+  // Distinguish editable duplication branches from passthrough separation branches.
+  branchMode?: BranchMode;
+  // Editable metadata for separation branch routing.
+  separationConfig?: SeparationBranchConfig;
+  // Dedicated UI model for scalar/root-level generators (_grid_, _zip_, _sample_).
+  scalarGeneratorConfig?: ScalarGeneratorConfig;
+  // UI-only explicit no-op generator alternative that exports back to null.
+  isNoOp?: boolean;
   // For function-based operators (e.g., nicon)
   functionPath?: string;
   // Step enabled/disabled state
@@ -339,7 +378,7 @@ export interface PipelineStep {
 export interface StepOption {
   name: string;
   description: string;
-  defaultParams: Record<string, string | number | boolean>;
+  defaultParams: PipelineParams;
   defaultBranches?: PipelineStep[][];
   generatorKind?: GeneratorKind;
   category?: string;        // Subcategory for palette organization
@@ -418,6 +457,87 @@ export function calculateSweepVariants(sweep: ParameterSweep): number {
   }
 }
 
+function applyVariantCountLimit(total: number, count?: number): number {
+  return count && count > 0 ? Math.min(total, count) : total;
+}
+
+export function calculateCartesianStageVariants(stage: PipelineStep[]): number {
+  if (stage.length === 0) {
+    return 1;
+  }
+
+  if (stage.length === 1) {
+    const [singleStep] = stage;
+    if (singleStep.subType === "sequential") {
+      return calculatePipelineVariants(singleStep.children ?? []);
+    }
+    return calculatePipelineVariants([singleStep]);
+  }
+
+  // In the cartesian editor, multiple direct entries in a stage mean alternatives.
+  return stage.reduce(
+    (total, option) => total + calculatePipelineVariants([option]),
+    0
+  );
+}
+
+export function calculateGeneratorExpansionCount(step: PipelineStep): number {
+  const branches = step.branches ?? [];
+
+  if (step.generatorKind === "or") {
+    return branches.reduce(
+      (total, branch) => total + calculatePipelineVariants(branch),
+      0
+    );
+  }
+
+  if (step.generatorKind === "cartesian") {
+    return branches.reduce(
+      (total, stage) => total * calculateCartesianStageVariants(stage),
+      1
+    );
+  }
+
+  if (step.generatorKind === "grid" && step.scalarGeneratorConfig?.entries) {
+    return step.scalarGeneratorConfig.entries.reduce(
+      (total, entry) => total * Math.max(1, entry.values.length),
+      1
+    );
+  }
+
+  if (step.generatorKind === "grid") {
+    return branches.reduce(
+      (total, branch) => total * Math.max(1, branch.length),
+      1
+    );
+  }
+
+  if (step.generatorKind === "zip" && step.scalarGeneratorConfig?.entries) {
+    const lengths = step.scalarGeneratorConfig.entries
+      .map((entry) => entry.values.length)
+      .filter((length) => length > 0);
+    return lengths.length > 0 ? Math.min(...lengths) : 0;
+  }
+
+  if (step.generatorKind === "zip") {
+    const lengths = branches.map((branch) => branch.length).filter((length) => length > 0);
+    return lengths.length > 0 ? Math.min(...lengths) : 0;
+  }
+
+  if (step.generatorKind === "chain") {
+    return branches.reduce(
+      (total, branch) => total + calculatePipelineVariants(branch),
+      0
+    );
+  }
+
+  if (step.generatorKind === "sample") {
+    return Number(step.scalarGeneratorConfig?.sample?.num) || 0;
+  }
+
+  return branches.length;
+}
+
 // Calculate total variants for a step (product of all param sweeps)
 /**
  * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
@@ -450,13 +570,13 @@ export function calculateStepVariants(step: PipelineStep): number {
       genVariants = count;
     } else if (gen.type === "_or_" && Array.isArray(gen.values)) {
       // _or_: list of alternatives
-      genVariants = gen.values.length;
-      // Apply pick modifier if present
-      if (typeof gen.pick === "number" && gen.pick > 0 && gen.pick < genVariants) {
-        genVariants = binomialCoefficient(gen.values.length, gen.pick);
-      } else if (Array.isArray(gen.pick) && gen.pick.length === 2) {
-        // pick as range [min, max] - use max for estimate
-        genVariants = binomialCoefficient(gen.values.length, gen.pick[1]);
+      const choiceCount = gen.values.length;
+      genVariants = choiceCount;
+
+      if (gen.arrange !== undefined) {
+        genVariants = calculateGeneratorValue(choiceCount, "arrange", gen.arrange);
+      } else if (gen.pick !== undefined) {
+        genVariants = calculateGeneratorValue(choiceCount, "pick", gen.pick);
       }
     } else if (gen.type === "_grid_" && Array.isArray(gen.values)) {
       // _grid_: Cartesian product of multiple params
@@ -464,53 +584,38 @@ export function calculateStepVariants(step: PipelineStep): number {
       genVariants = 1; // Can't easily calculate without more info
     }
 
-    // Apply count limiter if present
-    if (gen.count && gen.count > 0 && genVariants > gen.count) {
-      genVariants = gen.count;
-    }
-
-    variants *= genVariants;
+    variants *= applyVariantCountLimit(genVariants, gen.count);
   }
 
   // Generator options (OR with pick/arrange) - for UI "Choose One" nodes
-  if (step.generatorKind === "or" && step.branches) {
-    const branchCount = step.branches.length;
+  if ((step.generatorKind === "or" || step.generatorKind === "cartesian") && step.branches) {
     const opts = step.generatorOptions || {};
+    const expandedCount = calculateGeneratorExpansionCount(step);
 
-    let genVariants = branchCount; // Default: pick 1 = branchCount variants
+    let genVariants = expandedCount;
 
     // Primary selection: pick or arrange
     if (opts.arrange !== undefined) {
-      genVariants = calculateGeneratorValue(branchCount, "arrange", opts.arrange);
+      genVariants = calculateGeneratorValue(expandedCount, "arrange", opts.arrange);
     } else if (opts.pick !== undefined) {
-      genVariants = calculateGeneratorValue(branchCount, "pick", opts.pick);
+      genVariants = calculateGeneratorValue(expandedCount, "pick", opts.pick);
     }
 
     // Second-order selection: then_pick or then_arrange
-    if (opts.then_arrange !== undefined) {
-      genVariants = calculateGeneratorValue(genVariants, "arrange", opts.then_arrange);
-    } else if (opts.then_pick !== undefined) {
-      genVariants = calculateGeneratorValue(genVariants, "pick", opts.then_pick);
+    if (step.generatorKind === "or") {
+      if (opts.then_arrange !== undefined) {
+        genVariants = calculateGeneratorValue(genVariants, "arrange", opts.then_arrange);
+      } else if (opts.then_pick !== undefined) {
+        genVariants = calculateGeneratorValue(genVariants, "pick", opts.then_pick);
+      }
     }
 
-    // Apply count limiter
-    if (opts.count && opts.count > 0 && genVariants > opts.count) {
-      genVariants = opts.count;
-    }
-
-    variants *= genVariants;
-  } else if (step.generatorKind === "cartesian" && step.branches) {
-    // Cartesian: product of all stage options
-    variants *= step.branches.reduce((acc, stage) => acc * Math.max(1, stage.length), 1);
-  } else if (step.generatorKind === "grid" && step.branches) {
-    // Grid: Cartesian product of param value lists
-    variants *= step.branches.reduce((acc, branch) => acc * Math.max(1, branch.length), 1);
-  } else if (step.generatorKind === "zip" && step.branches) {
-    // Zip: min of branch sizes (parallel pairing)
-    variants *= Math.min(...step.branches.map(b => b.length).filter(l => l > 0)) || 1;
-  } else if (step.generatorKind === "chain" && step.branches) {
-    // Chain: flat count of configs
-    variants *= step.branches.length;
+    variants *= applyVariantCountLimit(genVariants, opts.count);
+  } else if (step.generatorKind) {
+    variants *= applyVariantCountLimit(
+      calculateGeneratorExpansionCount(step),
+      step.generatorOptions?.count
+    );
   }
 
   return variants;
@@ -589,23 +694,6 @@ export function calculatePipelineVariants(steps: PipelineStep[]): number {
       // For parallel branches, variants are multiplied from each branch
       for (const branch of step.branches) {
         totalVariants *= calculatePipelineVariants(branch);
-      }
-    }
-
-    // For generators, we already counted in calculateStepVariants
-    // but we need to multiply by variants WITHIN each branch
-    if (step.generatorKind && step.branches) {
-      // Each branch's internal variants contribute
-      let maxBranchVariants = 0;
-      for (const branch of step.branches) {
-        const branchVariants = calculatePipelineVariants(branch);
-        maxBranchVariants = Math.max(maxBranchVariants, branchVariants);
-      }
-      // For OR: we run one branch at a time, so variants are additive not multiplicative
-      // For Cartesian: still multiplicative within each stage combination
-      if (step.generatorKind === "or" && maxBranchVariants > 1) {
-        // OR generator: the max internal variants matters
-        totalVariants *= maxBranchVariants;
       }
     }
   }
@@ -886,7 +974,6 @@ export const stepOptions: Record<StepType, StepOption[]> = {
       name: "Zip",
       description: "Parallel parameter iteration (_zip_)",
       defaultParams: {},
-      defaultBranches: [[], []],
       generatorKind: "zip",
       category: "Generators"
     },
@@ -896,6 +983,13 @@ export const stepOptions: Record<StepType, StepOption[]> = {
       defaultParams: {},
       defaultBranches: [[], [], []],
       generatorKind: "chain",
+      category: "Generators"
+    },
+    {
+      name: "Sample",
+      description: "Sample values from a distribution (_sample_)",
+      defaultParams: {},
+      generatorKind: "sample",
       category: "Generators"
     },
   ],
@@ -1247,16 +1341,37 @@ export function createStepFromOption(type: StepType, option: StepOption): Pipeli
   // Determine if this is a container type that uses children
   const usesChildren = subType !== undefined && CONTAINER_CHILDREN_SUBTYPES.includes(subType as FlowStepSubType);
 
+  const scalarGeneratorConfig = option.generatorKind === "grid" || option.generatorKind === "zip"
+    ? {
+        entries: [
+          { id: generateStepId(), key: "param_1", values: [] },
+          { id: generateStepId(), key: "param_2", values: [] },
+        ],
+      }
+    : option.generatorKind === "sample"
+      ? {
+          sample: {
+            distribution: "uniform",
+            from: 0,
+            to: 1,
+            num: 5,
+          },
+        }
+      : undefined;
+
   return {
     id: generateStepId(),
     type,
     subType,
     name: option.name,
     params: { ...option.defaultParams },
-    branches: option.defaultBranches
+    branches: scalarGeneratorConfig
+      ? undefined
+      : option.defaultBranches
       ? JSON.parse(JSON.stringify(option.defaultBranches))
       : undefined,
     generatorKind: option.generatorKind,
+    scalarGeneratorConfig,
     // Initialize children array for container step types
     children: usesChildren ? [] : undefined,
   };
@@ -1274,8 +1389,17 @@ export function cloneStep(step: PipelineStep): PipelineStep {
     branches: step.branches?.map(branch =>
       branch.map(s => cloneStep(s))
     ),
+    branchMetadata: step.branchMetadata
+      ? JSON.parse(JSON.stringify(step.branchMetadata))
+      : undefined,
     generatorOptions: step.generatorOptions
       ? { ...step.generatorOptions }
+      : undefined,
+    separationConfig: step.separationConfig
+      ? JSON.parse(JSON.stringify(step.separationConfig))
+      : undefined,
+    scalarGeneratorConfig: step.scalarGeneratorConfig
+      ? JSON.parse(JSON.stringify(step.scalarGeneratorConfig))
       : undefined,
   };
 }

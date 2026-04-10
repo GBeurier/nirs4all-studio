@@ -412,8 +412,8 @@ export default function Settings() {
 
             {/* Workspace Statistics — keyed by active workspace id so they
                 remount (and refetch) whenever the user switches workspaces. */}
-            {workspacePath && <WorkspaceStats key={activeN4AWorkspaceId ?? "none"} />}
-            {workspacePath && <StorageHealthWidget key={activeN4AWorkspaceId ?? "none"} />}
+            {workspacePath && <WorkspaceStats key={`stats-${activeN4AWorkspaceId ?? "none"}`} />}
+            {workspacePath && <StorageHealthWidget key={`storage-${activeN4AWorkspaceId ?? "none"}`} />}
 
             {/* Discovery Panel */}
             {activeN4AWorkspaceId && (

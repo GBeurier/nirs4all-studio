@@ -74,8 +74,8 @@ describe("renderer configuration", () => {
 
   describe("subType parameter props configuration", () => {
     it("should configure flow sub-types correctly via subType", () => {
-      // branch, merge use parameter props
-      expect(stepTypeUsesParameterProps("flow", "branch")).toBe(true);
+      // merge uses parameter props; branch has a dedicated renderer
+      expect(stepTypeUsesParameterProps("flow", "branch")).toBe(false);
       expect(stepTypeUsesParameterProps("flow", "merge")).toBe(true);
 
       // Generator and container sub-types do not use parameter props

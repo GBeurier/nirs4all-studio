@@ -18,6 +18,7 @@ import {
   Layers,
   CheckCircle2,
   XCircle,
+  CalendarClock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -38,8 +39,8 @@ interface PipelineCardProps {
 }
 
 const categoryConfig = {
-  user: { label: "My Pipeline", color: "text-primary bg-primary/10" },
-  preset: { label: "Preset", color: "text-accent bg-accent/10" },
+  user: { label: "Saved", color: "text-primary bg-primary/10" },
+  preset: { label: "Template", color: "text-accent bg-accent/10" },
   shared: { label: "Shared", color: "text-success bg-success/10" },
 };
 
@@ -57,6 +58,19 @@ export function PipelineCard({
   onDelete,
   onExport,
 }: PipelineCardProps) {
+  const formatRelativeDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString();
+  };
+
   return (
     <motion.div
       className="step-card group"
@@ -132,7 +146,7 @@ export function PipelineCard({
 
       {/* Footer stats */}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/50">
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Layers className="h-3 w-3" /> {pipeline.steps.length} steps
           </span>
@@ -141,6 +155,9 @@ export function PipelineCard({
               <Play className="h-3 w-3" /> {pipeline.runCount} runs
             </span>
           )}
+          <span className="flex items-center gap-1">
+            <CalendarClock className="h-3 w-3" /> {formatRelativeDate(pipeline.updatedAt)}
+          </span>
         </div>
         {pipeline.lastRunStatus && (
           <div className="flex items-center gap-1">

@@ -27,6 +27,11 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .pipeline_canonical import (
+    contains_generators,
+    count_runtime_variants,
+    editor_steps_to_runtime_canonical,
+)
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -1117,7 +1122,7 @@ async def _execute_pipeline_training(
 
         try:
             # Build dataset config with proper loading parameters (delimiter, etc.)
-            from .nirs4all_adapter import build_dataset_config, build_full_pipeline, ensure_models_dir, expand_pipeline_variants
+            from .nirs4all_adapter import build_dataset_config, ensure_models_dir, expand_pipeline_variants
             try:
                 dataset_config = build_dataset_config(dataset_id)
                 log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
@@ -1146,23 +1151,21 @@ async def _execute_pipeline_training(
                             if variants:
                                 nirs4all_steps = variants[0].steps
                             else:
-                                build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
-                                nirs4all_steps = build_result.steps
+                                nirs4all_steps = editor_steps_to_runtime_canonical(steps)
                         estimated_variants = 1  # Only running this one variant
                         has_generators = False
                     else:
-                        # Full pipeline with all generators
-                        build_result = build_full_pipeline(steps, {"cv_folds": cv_folds})
-                        nirs4all_steps = build_result.steps
-                        estimated_variants = build_result.estimated_variants
-                        has_generators = build_result.has_generators
+                        # Full pipeline with generators preserved in canonical form
+                        nirs4all_steps = editor_steps_to_runtime_canonical(steps)
+                        if not nirs4all_steps:
+                            raise ValueError("Pipeline has no executable steps")
+                        estimated_variants = count_runtime_variants(nirs4all_steps)
+                        has_generators = contains_generators(nirs4all_steps)
 
                         log(f"[INFO] Pipeline built: {len(nirs4all_steps)} steps")
 
                         if has_generators:
                             log(f"[INFO] Generators detected: ~{estimated_variants} variants will be tested")
-                        if build_result.finetuning_config:
-                            log(f"[INFO] Finetuning enabled: {build_result.finetuning_config.get('n_trials', 50)} trials")
 
                 except HTTPException as e:
                     # HTTPException from _resolve_operator_class means a missing optional package
@@ -1747,27 +1750,96 @@ class PipelineEstimate:
     model_count_breakdown: str = ""
 
 
+def _estimate_fold_count(steps: list[dict[str, Any]], cv_folds: int | None = None) -> int:
+    """Estimate CV fold count from editor steps, with explicit request override."""
+    fold_count = cv_folds or 1
+
+    def visit(step_list: list[dict[str, Any]]) -> None:
+        nonlocal fold_count
+        for step in step_list:
+            if step.get("type") == "splitting":
+                params = step.get("params") or {}
+                raw_value = params.get("n_splits", params.get("cv_folds"))
+                if isinstance(raw_value, (int, float)) and int(raw_value) > 0:
+                    fold_count = int(raw_value)
+
+            children = step.get("children") or []
+            if children:
+                visit(children)
+
+            for branch in step.get("branches") or []:
+                visit(branch)
+
+    visit(steps)
+    return fold_count
+
+
+def _estimate_branch_count(steps: list[dict[str, Any]]) -> int:
+    """Estimate branching fan-out from editor-only structural nodes."""
+    branch_count = 1
+
+    def visit(step_list: list[dict[str, Any]]) -> None:
+        nonlocal branch_count
+        for step in step_list:
+            step_type = step.get("type", "")
+            sub_type = step.get("subType", "")
+            branches = step.get("branches") or []
+
+            is_branch_container = (
+                (step_type == "flow" and sub_type in ("branch", "concat_transform"))
+                or (step_type == "generator" and bool(branches))
+                or (step_type == "utility" and sub_type == "generator" and bool(branches))
+            )
+            if is_branch_container and branches:
+                branch_count = max(branch_count, len(branches))
+
+            children = step.get("children") or []
+            if children:
+                visit(children)
+
+            for branch in branches:
+                visit(branch)
+
+    visit(steps)
+    return branch_count
+
+
 def _estimate_pipeline_variants(pipeline_config: dict, cv_folds: int | None = None) -> PipelineEstimate:
     """
     Estimate the number of pipeline variants and model count from a configuration.
 
-    Uses build_full_pipeline() from nirs4all_adapter which handles all formats
-    (legacy and editor) and uses nirs4all's count_combinations for accurate counts.
-
-    Returns PipelineEstimate with variant count, fold/branch counts, and breakdown.
+    Variant counts come from the canonical runtime payload so they match
+    nirs4all's library semantics. Fold/branch counts remain lightweight
+    editor-structure estimates for UI progress metadata.
     """
     steps = pipeline_config.get("steps", [])
+    canonical_steps = editor_steps_to_runtime_canonical(steps)
+    estimated_variants = count_runtime_variants(canonical_steps)
+    has_generators = contains_generators(canonical_steps)
+    fold_count = _estimate_fold_count(steps, cv_folds=cv_folds)
+    branch_count = _estimate_branch_count(steps)
+    total_model_count = fold_count * branch_count * estimated_variants
 
-    from .nirs4all_adapter import build_full_pipeline
-    config = {"cv_folds": cv_folds} if cv_folds else {}
-    build_result = build_full_pipeline(steps, config)
+    parts = []
+    if fold_count > 1:
+        parts.append(f"{fold_count} folds")
+    if branch_count > 1:
+        parts.append(f"{branch_count} branches")
+    if estimated_variants > 1:
+        parts.append(f"{estimated_variants} variants")
+
+    if parts:
+        model_count_breakdown = " × ".join(parts) + f" = {total_model_count} models"
+    else:
+        model_count_breakdown = "1 model"
+
     return PipelineEstimate(
-        estimated_variants=build_result.estimated_variants,
-        has_generators=build_result.has_generators,
-        fold_count=build_result.fold_count,
-        branch_count=build_result.branch_count,
-        total_model_count=build_result.total_model_count,
-        model_count_breakdown=build_result.model_count_breakdown,
+        estimated_variants=estimated_variants,
+        has_generators=has_generators,
+        fold_count=fold_count,
+        branch_count=branch_count,
+        total_model_count=total_model_count,
+        model_count_breakdown=model_count_breakdown,
     )
 
 

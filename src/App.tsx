@@ -270,6 +270,7 @@ function App() {
   const [showWizard, setShowWizard] = useState<boolean | null>(null);
   const { coreReady } = useMlReadiness();
   const isElectron = !!electronApi?.isElectron;
+  const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
 
   useEffect(() => {
     if (!isElectron || !electronApi) {
@@ -279,6 +280,12 @@ function App() {
     }
     electronApi.shouldShowWizard().then(setShowWizard);
   }, [isElectron]);
+
+  useEffect(() => {
+    if (coreReady) {
+      setHasConnectedOnce(true);
+    }
+  }, [coreReady]);
 
   // Loading state while checking
   if (showWizard === null) {
@@ -292,7 +299,9 @@ function App() {
 
   // Backend not yet reachable — show connecting screen
   // (only in Electron; in web mode, Vite proxy handles backend connectivity)
-  if (isElectron && !coreReady) {
+  // After the first successful connection, keep the app chrome mounted and let
+  // BackendStartupBanner communicate transient backend restarts/non-ready states.
+  if (isElectron && !coreReady && !hasConnectedOnce) {
     return <BackendConnectingScreen />;
   }
 
