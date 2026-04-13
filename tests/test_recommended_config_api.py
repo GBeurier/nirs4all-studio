@@ -7,12 +7,12 @@ def test_recommended_config_prefers_cached_data_without_remote(monkeypatch):
     cached = {
         "schema_version": "1.2",
         "app_version": "0.3.0",
-        "nirs4all": "0.8.6",
+        "nirs4all": "0.8.9",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.6"}},
+                "packages": {"nirs4all": {"min": ">=0.8.9"}},
             }
         },
         "optional": {},
@@ -38,12 +38,12 @@ def test_recommended_config_uses_bundled_fallback_without_remote_on_startup(monk
     bundled = {
         "schema_version": "1.2",
         "app_version": "0.3.0",
-        "nirs4all": "0.8.6",
+        "nirs4all": "0.8.9",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.6"}},
+                "packages": {"nirs4all": {"min": ">=0.8.9"}},
             }
         },
         "optional": {},
@@ -70,12 +70,12 @@ def test_recommended_config_force_refresh_uses_remote_then_falls_back(monkeypatc
     bundled = {
         "schema_version": "1.2",
         "app_version": "0.3.0",
-        "nirs4all": "0.8.6",
+        "nirs4all": "0.8.9",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.6"}},
+                "packages": {"nirs4all": {"min": ">=0.8.9"}},
             }
         },
         "optional": {},
@@ -130,11 +130,11 @@ def test_get_installed_packages_prefers_runtime_nirs4all_version(monkeypatch):
         "get_installed_packages",
         lambda: [_Pkg("nirs4all", "0.8.2"), _Pkg("torch", "2.10.0+cpu")],
     )
-    monkeypatch.setattr(rc.venv_manager, "get_nirs4all_version", lambda: "0.8.6")
+    monkeypatch.setattr(rc.venv_manager, "get_nirs4all_version", lambda: "0.8.9")
 
     installed = rc._get_installed_packages()
 
-    assert installed["nirs4all"] == "0.8.6"
+    assert installed["nirs4all"] == "0.8.9"
     assert installed["torch"] == "2.10.0+cpu"
 
 
