@@ -1,13 +1,5 @@
 # nirs4all-webapp/scripts/generate_seed_presets.py — run from the repo root
 import yaml
-from sklearn.cross_decomposition import PLSRegression
-from sklearn.model_selection import KFold
-from sklearn.cross_decomposition import PLSRegression
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-
-from nirs4all.operators.transforms import StandardNormalVariate
-from nirs4all.pipeline.config.component_serialization import serialize_component
 from nirs4all.operators.splitters.splitters import SPXYFold, SPXYGFold
 from nirs4all.operators.transforms import (
     AreaNormalization,
@@ -22,6 +14,7 @@ from nirs4all.operators.transforms import (
     KubelkaMunk,
     Normalize,
     SavitzkyGolay,
+    StandardNormalVariate,
     ToAbsorbance,
 )
 from nirs4all.operators.transforms import (
@@ -38,7 +31,11 @@ from nirs4all.operators.transforms import (
 )
 from nirs4all.operators.transforms.nirs import Wavelet
 from nirs4all.operators.transforms.orthogonalization import OSC
-
+from nirs4all.pipeline.config.component_serialization import serialize_component
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import KFold
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 # # 1. Build the pipeline using normal nirs4all syntax
 # pipeline = [
