@@ -312,7 +312,7 @@ async function mockRunsApis(page: Page) {
 }
 
 test.describe("Runs Redesign", () => {
-  test("shows best refit info, complete model listing, and fold-level details", async ({ page, runsPage }) => {
+  test("shows best refit info and fold-level details without a separate all-models panel", async ({ page, runsPage }) => {
     await mockRunsApis(page);
 
     await runsPage.goto();
@@ -324,19 +324,8 @@ test.describe("Runs Redesign", () => {
 
     await expect(page.getByText(/Best Refit RMSEP/i)).toBeVisible();
     await expect(page.getByText(/RMSECV/i).first()).toBeVisible();
-
-    await page.getByText(/Show all trained models/i).click();
-    const allModelsTable = page.locator('[data-testid="all-models-table"]');
-    await expect(allModelsTable).toBeVisible();
-
-    const modelRows = allModelsTable.locator("tbody tr").filter({ hasNot: page.locator("td[colspan]") });
-    await expect(modelRows).toHaveCount(3);
-    await expect(modelRows.nth(0)).toContainText("PLSRegression");
-    await expect(modelRows.nth(1)).toContainText("iPLS");
-    await expect(modelRows.nth(2)).toContainText("RandomForestRegressor");
-    await expect(allModelsTable).toContainText("n_components=8");
-
-    await modelRows.nth(0).getByRole("button", { name: /toggle fold scores/i }).click();
+    await expect(page.getByText(/Show all trained models/i)).toHaveCount(0);
+    await expect(page.getByText(/CV models \(not refit\)/i)).toBeVisible();
     await expect(page.getByText(/Per-fold scores \(train \/ val \/ test\)/i)).toBeVisible();
     await expect(page.getByText("fold_0").first()).toBeVisible();
     await expect(page.getByText("train").first()).toBeVisible();

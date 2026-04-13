@@ -190,18 +190,13 @@ def patched_endpoints(mock_workspace, mock_store):
     # Ensure the module is imported before patching
     import api.aggregated_predictions  # noqa: F401
 
-    # WorkspaceStore is accessed via get_cached("WorkspaceStore"), so we patch
-    # get_cached to return a factory that yields our mock_store.
-    original_get_cached = api.aggregated_predictions.get_cached
-
-    def _patched_get_cached(name):
-        if name == "WorkspaceStore":
-            return MagicMock(return_value=mock_store)
-        return original_get_cached(name)
-
     with (
         patch.object(api.aggregated_predictions, "workspace_manager") as mock_wm,
-        patch.object(api.aggregated_predictions, "get_cached", side_effect=_patched_get_cached),
+        patch.object(
+            api.aggregated_predictions,
+            "_get_workspace_store_cls",
+            return_value=MagicMock(return_value=mock_store),
+        ),
         patch.object(api.aggregated_predictions, "STORE_AVAILABLE", True),
     ):
         mock_wm.get_current_workspace.return_value = mock_workspace
@@ -413,6 +408,129 @@ class TestGetAggregatedPredictions:
         assert "cv_test_score" in pred
         assert "cv_train_score" in pred
         assert "pipeline_status" in pred
+
+    def test_refit_chain_inherits_cv_scores_from_matching_variant(self, client, patched_endpoints, mock_polars_df):
+        rows = [
+            {
+                "run_id": "run-001",
+                "pipeline_id": "pipe-pls-2",
+                "chain_id": "chain-pls-2",
+                "model_name": "PLS",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "branch_path": None,
+                "source_index": None,
+                "model_step_idx": 3,
+                "metric": "rmse",
+                "task_type": "regression",
+                "dataset_name": "dataset_a",
+                "best_params": None,
+                "cv_val_score": 23.314,
+                "cv_test_score": 22.0,
+                "cv_train_score": 21.0,
+                "cv_fold_count": 3,
+                "cv_scores": None,
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": None,
+                "pipeline_status": "completed",
+            },
+            {
+                "run_id": "run-001",
+                "pipeline_id": "pipe-pls-6",
+                "chain_id": "chain-pls-6",
+                "model_name": "PLS",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "branch_path": None,
+                "source_index": None,
+                "model_step_idx": 3,
+                "metric": "rmse",
+                "task_type": "regression",
+                "dataset_name": "dataset_a",
+                "best_params": None,
+                "cv_val_score": 12.811,
+                "cv_test_score": 10.615,
+                "cv_train_score": 11.432,
+                "cv_fold_count": 3,
+                "cv_scores": None,
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": None,
+                "pipeline_status": "completed",
+            },
+            {
+                "run_id": "run-001",
+                "pipeline_id": "pipe-pls-refit",
+                "chain_id": "chain-pls-refit",
+                "model_name": "PLS",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "branch_path": None,
+                "source_index": None,
+                "model_step_idx": 3,
+                "metric": "rmse",
+                "task_type": "regression",
+                "dataset_name": "dataset_a",
+                "best_params": None,
+                "cv_val_score": None,
+                "cv_test_score": None,
+                "cv_train_score": None,
+                "cv_fold_count": 0,
+                "cv_scores": None,
+                "final_test_score": 23.672,
+                "final_train_score": 22.654,
+                "final_scores": None,
+                "pipeline_status": "completed",
+            },
+        ]
+        pipeline_rows = [
+            {
+                "pipeline_id": "pipe-pls-2",
+                "expanded_config": [
+                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
+                    None,
+                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 2}}, "name": "PLS"},
+                ],
+            },
+            {
+                "pipeline_id": "pipe-pls-6",
+                "expanded_config": [
+                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
+                    None,
+                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
+                ],
+            },
+            {
+                "pipeline_id": "pipe-pls-refit",
+                "expanded_config": [
+                    {"class": "nirs4all.pipeline.execution.refit.executor._FullTrainFoldSplitter", "params": {}},
+                    None,
+                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
+                ],
+            },
+        ]
+
+        patched_endpoints.query_chain_summaries.side_effect = [
+            mock_polars_df(rows),
+            mock_polars_df(rows),
+        ]
+
+        def _fetch_pl(sql, _params):
+            if "SELECT chain_id, fold_artifacts FROM chains" in sql:
+                return mock_polars_df([])
+            if "SELECT pipeline_id, expanded_config FROM pipelines" in sql:
+                return mock_polars_df(pipeline_rows)
+            return mock_polars_df([])
+
+        patched_endpoints._fetch_pl.side_effect = _fetch_pl
+
+        resp = client.get("/api/aggregated-predictions")
+        assert resp.status_code == 200
+
+        predictions = {row["chain_id"]: row for row in resp.json()["predictions"]}
+        assert predictions["chain-pls-refit"]["cv_val_score"] == pytest.approx(12.811)
+        assert predictions["chain-pls-refit"]["cv_test_score"] == pytest.approx(10.615)
 
     def test_filter_by_run_id(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions?run_id=run-001")

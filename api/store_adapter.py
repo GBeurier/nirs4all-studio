@@ -134,21 +134,50 @@ def _stable_serialize_for_signature(value: Any) -> str:
         return str(value)
 
 
-def _chain_match_signature(record: dict[str, Any]) -> tuple[str, str, str, str]:
-    """Build a (model_class, model_name, preprocessings, params) signature.
+def _signature_params(record: dict[str, Any]) -> Any:
+    """Return the richest available parameter payload for chain matching."""
+    variant_params = _parse_json_maybe(record.get("variant_params"))
+    if variant_params not in (None, "", {}):
+        return variant_params
+    return _parse_json_maybe(record.get("best_params"))
 
-    Mirrors the frontend ``signatureParts`` helper so refit chains can be
-    paired with the matching CV chain that produced their best params.
+
+def _chain_match_signature(record: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Build a stable signature for pairing refit-only rows with CV rows.
+
+    ``variant_params`` takes precedence because fixed operator parameters
+    are not always present in ``best_params``.
     """
     return (
         record.get("model_class") or "",
         record.get("model_name") or "",
         record.get("preprocessings") or "",
-        _stable_serialize_for_signature(record.get("best_params")),
+        _stable_serialize_for_signature(_signature_params(record)),
     )
 
 
 _CV_FALLBACK_FIELDS = ("cv_val_score", "cv_test_score", "cv_train_score", "cv_fold_count", "cv_scores")
+
+
+def _attach_variant_params_inplace(
+    rows: list[dict[str, Any]],
+    pipeline_map: dict[str, dict[str, Any]],
+) -> None:
+    """Attach merged fixed + tuned params to raw chain-summary rows."""
+    for row in rows:
+        pipeline_id = row.get("pipeline_id", "")
+        pipeline_row = pipeline_map.get(pipeline_id, {})
+        best_params = _parse_json_maybe(row.get("best_params"))
+        if not isinstance(best_params, dict):
+            best_params = None
+        row["best_params"] = best_params
+        row["variant_params"] = _merge_variant_params(
+            _extract_model_params_from_expanded_config(
+                pipeline_row.get("expanded_config"),
+                row.get("model_step_idx"),
+            ),
+            best_params,
+        )
 
 
 def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
@@ -156,7 +185,8 @@ def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
 
     A row is treated as a "refit-only" entry when ``final_test_score``
     is set but ``cv_val_score`` is missing. The matching CV row is found
-    by comparing (model_class, model_name, preprocessings, best_params).
+    within the same run+dataset by comparing
+    ``(model_class, model_name, preprocessings, variant_params)``.
     """
     refits = [
         r for r in rows
@@ -165,18 +195,26 @@ def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
     if not refits:
         return
 
-    cv_by_signature: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    cv_by_signature: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
     for row in rows:
         if row.get("cv_val_score") is None:
             continue
-        sig = _chain_match_signature(row)
+        sig = (
+            row.get("run_id") or "",
+            row.get("dataset_name") or "",
+            *_chain_match_signature(row),
+        )
         cv_by_signature.setdefault(sig, row)
 
     if not cv_by_signature:
         return
 
     for refit in refits:
-        match = cv_by_signature.get(_chain_match_signature(refit))
+        match = cv_by_signature.get((
+            refit.get("run_id") or "",
+            refit.get("dataset_name") or "",
+            *_chain_match_signature(refit),
+        ))
         if match is None:
             continue
         for field in _CV_FALLBACK_FIELDS:
@@ -1309,10 +1347,11 @@ class StoreAdapter:
             return {"chains": [], "total": 0, "metric": None}
 
         rows = [dict(row) for row in df.iter_rows(named=True)]
-        _enrich_refit_with_cv_inplace(rows)
-        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
         pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
+        _attach_variant_params_inplace(rows, pipeline_map)
+        _enrich_refit_with_cv_inplace(rows)
+        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
 
         from nirs4all.pipeline.run import get_metric_info
         metric_info = get_metric_info(metric)
@@ -1341,10 +1380,11 @@ class StoreAdapter:
             return {"chains": [], "total": 0, "metric": None}
 
         rows = [dict(row) for row in df.iter_rows(named=True)]
-        _enrich_refit_with_cv_inplace(rows)
-        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
         pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
+        _attach_variant_params_inplace(rows, pipeline_map)
+        _enrich_refit_with_cv_inplace(rows)
+        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
 
         from nirs4all.pipeline.run import get_metric_info
         metric_info = get_metric_info(metric)
@@ -1375,11 +1415,11 @@ class StoreAdapter:
               streamed pass of the chain-summary rows. Heavy fields
               (``cv_scores``/``final_scores``/``best_params`` JSON blobs)
               are only deserialized for chains that survive the ranking.
-            * ``_get_pipeline_metadata_map`` is now called only with the
-              pipeline IDs of the chains that are actually emitted, not
-              every pipeline that has a chain row in the store. This
-              avoids loading and JSON-parsing ``expanded_config`` for
-              pipelines that get filtered out.
+            * Datasets that contain refit-only chains load pipeline
+              metadata before ranking so those refit rows can be paired
+              with the exact CV sibling variant, including fixed
+              hyperparameters stored in the expanded config rather than
+              ``best_params``.
             * Metric direction (lower-is-better vs higher-is-better) is
               looked up once per metric so a workspace with many
               datasets sharing one metric only pays the lookup cost
@@ -1422,15 +1462,24 @@ class StoreAdapter:
             return value
 
         # Single pass: bucket rows by dataset_name. Skip rows without one.
+        all_rows = [dict(row) for row in all_df.iter_rows(named=True)]
         datasets: dict[str, list[dict[str, Any]]] = {}
-        for row in all_df.iter_rows(named=True):
+        for row in all_rows:
             ds = row.get("dataset_name") or ""
             if not ds:
                 continue
-            datasets.setdefault(ds, []).append(dict(row))
+            datasets.setdefault(ds, []).append(row)
 
         # Inherit CV scores from sibling CV chains for refit-only entries.
         for ds_chains in datasets.values():
+            has_refit_only = any(
+                chain.get("final_test_score") is not None and chain.get("cv_val_score") is None
+                for chain in ds_chains
+            )
+            if has_refit_only:
+                ds_pipeline_ids = [pid for pid in {r.get("pipeline_id") for r in ds_chains} if pid]
+                ds_pipeline_map = self._get_pipeline_metadata_map(ds_pipeline_ids)
+                _attach_variant_params_inplace(ds_chains, ds_pipeline_map)
             _enrich_refit_with_cv_inplace(ds_chains)
 
         # Phase 1: rank per dataset and collect ONLY the rows we will emit.
@@ -1515,7 +1564,7 @@ class StoreAdapter:
         if not per_dataset_selection:
             return {"datasets": []}
 
-        # Phase 2: load pipeline metadata only for the chains we will emit.
+        # Phase 2: keep only metadata for the chains we will emit.
         needed_pipeline_ids: set[str] = set()
         for _ds, _metric, _task, sel in per_dataset_selection:
             for entry, _is_refit in sel:

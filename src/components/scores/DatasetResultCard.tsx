@@ -18,7 +18,6 @@ import {
 } from "./ScoreColumns";
 import { ScoreCardTree } from "./ScoreCardTree";
 import { ModelDetailSheet } from "@/components/runs/ModelDetailSheet";
-import { AllModelsPanel } from "@/components/runs/AllModelsPanel";
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 import type { TopChainResult, EnrichedDatasetRun, AllChainEntry } from "@/types/enriched-runs";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
@@ -76,7 +75,6 @@ function hasBestParams(params: Record<string, unknown> | null | undefined): bool
  * DatasetResultCard — displays results for a single dataset in a hierarchical layout.
  *
  * Uses ScoreCardTree with the unified REFIT/CROSSVAL/TRAIN card hierarchy.
- * Includes an "Inspect all models" section (AllModelsPanel) at the bottom.
  *
  * Reused in both Results page and Runs page (RunItem).
  */
@@ -246,16 +244,6 @@ export function DatasetResultCard({
                 onViewPrediction={handleViewPrediction}
                 showNonRefitSection
               />
-
-              {workspaceId && runId && (
-                <AllModelsPanel
-                  workspaceId={workspaceId}
-                  runId={runId}
-                  datasetName={dataset.dataset_name}
-                  taskType={dataset.task_type}
-                  totalPipelines={dataset.pipeline_count}
-                />
-              )}
             </CardContent>
           </CollapsibleContent>
         </Collapsible>

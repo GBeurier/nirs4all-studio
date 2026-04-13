@@ -167,7 +167,13 @@ export default function Runs() {
         )}
       </div>
 
-      <RunDetailSheet run={detailRun} open={sheetOpen} onOpenChange={setSheetOpen} workspaceId={activeWorkspaceId!} />
+      <RunDetailSheet
+        run={detailRun}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        workspaceId={activeWorkspaceId!}
+        selectedMetrics={selectedMetrics}
+      />
     </div>
   );
 }

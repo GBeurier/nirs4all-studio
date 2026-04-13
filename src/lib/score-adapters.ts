@@ -116,12 +116,20 @@ function stableSerialize(value: unknown): string {
   return String(value);
 }
 
+function normalizeToken(value: string | null | undefined): string {
+  return (value || "").trim().toLowerCase();
+}
+
+function normalizePreprocessings(value: string | null | undefined): string {
+  return normalizeToken(value).replace(/\s+/g, "");
+}
+
 function signatureParts(chain: TopChainResult) {
   const params = displayParams(chain);
   return {
-    modelClass: chain.model_class || "",
-    modelName: chain.model_name || "",
-    preprocessings: chain.preprocessings || "",
+    modelClass: normalizeToken(chain.model_class),
+    modelName: normalizeToken(chain.model_name),
+    preprocessings: normalizePreprocessings(chain.preprocessings),
     bestParams: stableSerialize(params),
   };
 }
@@ -129,10 +137,18 @@ function signatureParts(chain: TopChainResult) {
 function variantKey(chain: TopChainResult): string {
   const params = displayParams(chain);
   return [
-    chain.model_name || "",
-    chain.model_class || "",
-    chain.preprocessings || "",
+    normalizeToken(chain.model_name),
+    normalizeToken(chain.model_class),
+    normalizePreprocessings(chain.preprocessings),
     stableSerialize(params),
+  ].join("::");
+}
+
+function displayVariantKey(chain: TopChainResult): string {
+  return [
+    normalizeToken(chain.model_name),
+    normalizeToken(chain.model_class),
+    normalizePreprocessings(chain.preprocessings),
   ].join("::");
 }
 
@@ -191,7 +207,13 @@ function findMatchingCvSource(
 
   for (const matches of matchers) {
     const candidates = available.filter(matches).sort((a, b) => compareCvChains(a, b, metric));
-    if (candidates.length > 0) return candidates[0];
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      const [bestCandidate] = candidates;
+      if (bestCandidate && signatureParts(bestCandidate).preprocessings === refitSig.preprocessings) {
+        return bestCandidate;
+      }
+    }
   }
 
   return null;
@@ -630,6 +652,7 @@ export function datasetChainsToRows(
     chains.filter(chain => hasCvData(chain) && !hasFinalData(chain)),
     (a, b) => compareCvChains(a, b, metric),
   );
+  const refitDisplayVariants = new Set(refitChains.map(displayVariantKey));
   const usedCvChainIds = new Set<string>();
   const rows: ScoreCardRow[] = [];
 
@@ -641,6 +664,7 @@ export function datasetChainsToRows(
 
   for (const cvChain of cvOnlyChains) {
     if (usedCvChainIds.has(cvChain.chain_id)) continue;
+    if (refitDisplayVariants.has(displayVariantKey(cvChain))) continue;
     rows.push(buildCrossvalRow(cvChain, metric, taskType));
   }
 

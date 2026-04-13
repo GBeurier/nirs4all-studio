@@ -25,7 +25,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .store_adapter import _get_workspace_store_cls
+from .store_adapter import (
+    _extract_model_params_from_expanded_config,
+    _get_workspace_store_cls,
+    _merge_variant_params,
+    _parse_json_maybe,
+)
 from .workspace_manager import workspace_manager
 
 STORE_AVAILABLE = True
@@ -306,17 +311,66 @@ def _stable_serialize(value: Any) -> str:
         return str(value)
 
 
+def _build_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Load pipeline metadata needed to reconstruct fixed variant params."""
+    if not pipeline_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in pipeline_ids)
+    try:
+        pipelines_df = store._fetch_pl(
+            f"SELECT pipeline_id, expanded_config FROM pipelines "
+            f"WHERE pipeline_id IN ({placeholders})",
+            pipeline_ids,
+        )
+        return {
+            prow.get("pipeline_id", ""): dict(prow)
+            for prow in pipelines_df.iter_rows(named=True)
+        }
+    except Exception:
+        return {}
+
+
+def _attach_variant_params_inplace(
+    records: list[dict[str, Any]],
+    pipeline_map: dict[str, dict[str, Any]],
+) -> None:
+    """Attach merged fixed + tuned params to raw chain-summary records."""
+    for record in records:
+        pipeline_row = pipeline_map.get(record.get("pipeline_id", ""), {})
+        best_params = _parse_json_maybe(record.get("best_params"))
+        if not isinstance(best_params, dict):
+            best_params = None
+        record["best_params"] = best_params
+        record["variant_params"] = _merge_variant_params(
+            _extract_model_params_from_expanded_config(
+                pipeline_row.get("expanded_config"),
+                record.get("model_step_idx"),
+            ),
+            best_params,
+        )
+
+
+def _signature_params(record: dict[str, Any]) -> Any:
+    """Return the richest available parameter payload for chain matching."""
+    variant_params = _parse_json_maybe(record.get("variant_params"))
+    if variant_params not in (None, "", {}):
+        return variant_params
+    return _parse_json_maybe(record.get("best_params"))
+
+
 def _chain_signature(record: dict) -> tuple[str, str, str, str]:
     """Build a signature for matching CV ↔ refit chain pairs.
 
-    The signature is (model_class, model_name, preprocessings, best_params).
-    Mirrors the frontend ``signatureParts`` helper in ``score-adapters.ts``.
+    The signature is ``(model_class, model_name, preprocessings, params)``.
+    ``variant_params`` takes precedence because fixed operator parameters
+    are not always present in ``best_params``.
     """
     return (
         record.get("model_class") or "",
         record.get("model_name") or "",
         record.get("preprocessings") or "",
-        _stable_serialize(record.get("best_params")),
+        _stable_serialize(_signature_params(record)),
     )
 
 
@@ -349,9 +403,9 @@ def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
     """For refit chains missing CV scores, copy them from a matching CV sibling.
 
     A "refit chain" is one with a non-null ``final_test_score`` but null
-    ``cv_val_score``. Looks up sibling chains in the same dataset whose
-    (model_class, model_name, preprocessings, best_params) signature matches
-    and copies their CV fields onto the refit record.
+    ``cv_val_score``. Looks up sibling chains in the same run+dataset whose
+    ``(model_class, model_name, preprocessings, variant_params)`` signature
+    matches and copies their CV fields onto the refit record.
     """
     refit_records = [
         r for r in records
@@ -383,16 +437,33 @@ def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
     if not cv_pool:
         return records
 
+    pipeline_ids = [
+        pid
+        for pid in {r.get("pipeline_id") for r in [*records, *cv_pool]}
+        if pid
+    ]
+    pipeline_map = _build_pipeline_metadata_map(store, pipeline_ids)
+    _attach_variant_params_inplace(records, pipeline_map)
+    _attach_variant_params_inplace(cv_pool, pipeline_map)
+
     # Build signature → CV chain map.
-    cv_by_signature: dict[tuple[str, str, str, str], dict] = {}
+    cv_by_signature: dict[tuple[str, str, str, str, str, str], dict] = {}
     for cv in cv_pool:
-        sig = _chain_signature(cv)
+        sig = (
+            cv.get("run_id") or "",
+            cv.get("dataset_name") or "",
+            *_chain_signature(cv),
+        )
         if sig not in cv_by_signature:
             cv_by_signature[sig] = cv
 
     cv_fields = ("cv_val_score", "cv_test_score", "cv_train_score", "cv_fold_count", "cv_scores")
     for refit in refit_records:
-        match = cv_by_signature.get(_chain_signature(refit))
+        match = cv_by_signature.get((
+            refit.get("run_id") or "",
+            refit.get("dataset_name") or "",
+            *_chain_signature(refit),
+        ))
         if match is None:
             continue
         for field in cv_fields:

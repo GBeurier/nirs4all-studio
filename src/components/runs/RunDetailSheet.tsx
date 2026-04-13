@@ -35,7 +35,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   CheckCircle2,
   Clock,
@@ -54,23 +53,17 @@ import {
   Settings2,
   Trophy,
   ArrowUpDown,
-  ChevronDown,
-  ChevronRight,
-  Check,
 } from "lucide-react";
-import { PredictDialog } from "./PredictDialog";
-import { ScoreHistogram } from "./ScoreHistogram";
+import { DatasetResultCard } from "@/components/scores/DatasetResultCard";
 import { cn } from "@/lib/utils";
 import {
   formatScore, formatMetricName, formatMetricValue,
   isLowerBetter,
-  extractFinalMetrics, extractCVMetrics,
-  type MetricEntry,
 } from "@/lib/scores";
 import { RunStatus, runStatusConfig } from "@/types/runs";
-import type { EnrichedRun, EnrichedDatasetRun, TopChainResult } from "@/types/enriched-runs";
+import type { EnrichedRun, EnrichedDatasetRun } from "@/types/enriched-runs";
 import type { ChainSummary } from "@/types/aggregated-predictions";
-import { getAggregatedPredictions, getScoreDistribution } from "@/api/client";
+import { getAggregatedPredictions } from "@/api/client";
 import { filterParasiticDatasets } from "./datasetFilters";
 
 // ---------------------------------------------------------------------------
@@ -82,6 +75,7 @@ interface RunDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: string;
+  selectedMetrics?: string[];
 }
 
 const statusIcons = {
@@ -129,17 +123,14 @@ function formatDatetime(iso: string | null): string {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDetailSheetProps) {
+export function RunDetailSheet({
+  run,
+  open,
+  onOpenChange,
+  workspaceId,
+  selectedMetrics = ["rmse", "r2", "sep", "rpd", "bias", "mae"],
+}: RunDetailSheetProps) {
   const [activeTab, setActiveTab] = useState("overview");
-
-  // Predict dialog state
-  const [predictDialogOpen, setPredictDialogOpen] = useState(false);
-  const [predictChain, setPredictChain] = useState<{ chain: TopChainResult; datasetName: string } | null>(null);
-
-  const handlePredict = (chain: TopChainResult, datasetName: string) => {
-    setPredictChain({ chain, datasetName });
-    setPredictDialogOpen(true);
-  };
 
   const datasets = useMemo(
     () => (run ? filterParasiticDatasets(run.datasets) : []),
@@ -223,23 +214,15 @@ export function RunDetailSheet({ run, open, onOpenChange, workspaceId }: RunDeta
               <LeaderboardTab run={run} datasets={datasets} open={open} activeTab={activeTab} />
             </TabsContent>
             <TabsContent value="datasets" className="m-0">
-              <DatasetsTab run={run} datasets={datasets} workspaceId={workspaceId} onPredict={handlePredict} />
+              <DatasetsTab
+                runId={run.run_id}
+                datasets={datasets}
+                workspaceId={workspaceId}
+                selectedMetrics={selectedMetrics}
+              />
             </TabsContent>
           </ScrollArea>
         </Tabs>
-
-        {/* Predict Dialog */}
-        {predictChain && (
-          <PredictDialog
-            open={predictDialogOpen}
-            onOpenChange={setPredictDialogOpen}
-            modelId={predictChain.chain.chain_id}
-            modelName={predictChain.chain.model_name}
-            pipelineId={predictChain.chain.chain_id}
-            pipelineName={`${predictChain.chain.model_name} (${predictChain.chain.preprocessings || "none"})`}
-            runId={run.run_id}
-          />
-        )}
       </SheetContent>
     </Sheet>
   );
@@ -684,11 +667,11 @@ function LeaderboardTab({ run, datasets, open, activeTab }: {
 // Tab 3: Datasets
 // ---------------------------------------------------------------------------
 
-function DatasetsTab({ run, datasets, workspaceId, onPredict }: {
-  run: EnrichedRun;
+function DatasetsTab({ runId, datasets, workspaceId, selectedMetrics }: {
+  runId: string;
   datasets: EnrichedDatasetRun[];
   workspaceId: string;
-  onPredict: (chain: TopChainResult, datasetName: string) => void;
+  selectedMetrics: string[];
 }) {
   if (datasets.length === 0) {
     return (
@@ -701,284 +684,15 @@ function DatasetsTab({ run, datasets, workspaceId, onPredict }: {
 
   return (
     <div className="space-y-4">
-      {datasets.map(ds => (
-        <EnhancedDatasetCard
-          key={ds.dataset_name}
-          dataset={ds}
-          runId={run.run_id}
+      {datasets.map((dataset, idx) => (
+        <DatasetResultCard
+          key={dataset.dataset_name}
+          dataset={dataset}
+          selectedMetrics={selectedMetrics}
+          runId={runId}
           workspaceId={workspaceId}
-          onPredict={onPredict}
+          defaultExpanded={idx === 0}
         />
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Enhanced dataset card with histogram
-// ---------------------------------------------------------------------------
-
-const PARTITION_LABELS: Record<string, string> = {
-  val: "Validation",
-  test: "Test",
-  train: "Train",
-  final: "Final",
-};
-
-const PARTITION_COLORS: Record<string, string> = {
-  val: "bg-chart-1/20 text-chart-1 border-chart-1/30",
-  test: "bg-chart-2/20 text-chart-2 border-chart-2/30",
-  train: "bg-chart-3/20 text-chart-3 border-chart-3/30",
-  final: "bg-chart-4/20 text-chart-4 border-chart-4/30",
-};
-
-function EnhancedDatasetCard({ dataset, runId, workspaceId, onPredict }: {
-  dataset: EnrichedDatasetRun;
-  runId: string;
-  workspaceId: string;
-  onPredict: (chain: TopChainResult, datasetName: string) => void;
-}) {
-  const [histogramOpen, setHistogramOpen] = useState(false);
-  const [selectedPartitions, setSelectedPartitions] = useState<Set<string>>(new Set(["val", "test"]));
-
-  const { data: distribution } = useQuery({
-    queryKey: ["score-distribution", workspaceId, runId, dataset.dataset_name],
-    queryFn: () => getScoreDistribution(workspaceId, runId, dataset.dataset_name),
-    enabled: histogramOpen && !!workspaceId,
-    staleTime: 60000,
-  });
-
-  const hasFinal = dataset.best_final_score != null;
-  const bestScore = dataset.best_final_score ?? dataset.best_avg_val_score;
-  const models = new Set(dataset.top_5.map(c => c.model_name));
-  const refitChains = dataset.top_5.filter(c => c.final_test_score != null);
-
-  const togglePartition = (part: string) => {
-    setSelectedPartitions(prev => {
-      const next = new Set(prev);
-      if (next.has(part)) next.delete(part);
-      else next.add(part);
-      return next;
-    });
-  };
-
-  return (
-    <div className="p-4 rounded-lg border bg-card">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Database className="h-4 w-4 text-primary" />
-          <span className="font-medium text-sm">{dataset.dataset_name}</span>
-          {dataset.task_type && <Badge variant="outline" className="text-[10px]">{dataset.task_type}</Badge>}
-        </div>
-        {bestScore != null && (
-          <Badge variant="outline" className={cn(
-            "font-mono",
-            hasFinal ? "text-emerald-500 border-emerald-500/30" : "text-chart-1 border-chart-1/30",
-          )}>
-            {hasFinal ? "Final" : "CV"} {formatMetricName(dataset.metric)} {formatScore(bestScore)}
-          </Badge>
-        )}
-      </div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-4 gap-3 text-center mb-3">
-        <div>
-          <p className="text-base font-semibold">{dataset.n_samples ?? "-"}</p>
-          <p className="text-[10px] text-muted-foreground">Samples</p>
-        </div>
-        <div>
-          <p className="text-base font-semibold">{dataset.n_features ?? "-"}</p>
-          <p className="text-[10px] text-muted-foreground">Features</p>
-        </div>
-        <div>
-          <p className="text-base font-semibold">{dataset.pipeline_count}</p>
-          <p className="text-[10px] text-muted-foreground">Pipelines</p>
-        </div>
-        <div>
-          <p className="text-base font-semibold">{models.size}</p>
-          <p className="text-[10px] text-muted-foreground">Models</p>
-        </div>
-      </div>
-
-      {/* Top chains */}
-      {dataset.top_5.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {dataset.top_5.slice(0, 5).map((chain, i) => {
-            const chainHasFinal = chain.final_test_score != null;
-            return (
-              <div key={chain.chain_id} className={cn(
-                "flex items-center justify-between text-xs px-2 py-1.5 rounded",
-                chainHasFinal && "bg-emerald-500/5",
-              )}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={cn(
-                    "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                    i === 0
-                      ? (chainHasFinal ? "bg-emerald-500/20 text-emerald-500" : "bg-chart-1/20 text-chart-1")
-                      : "bg-muted text-muted-foreground",
-                  )}>
-                    {i + 1}
-                  </span>
-                  <Badge variant="outline" className={cn(
-                    "text-[10px] font-mono",
-                    chainHasFinal && "border-emerald-500/30 text-emerald-600",
-                  )}>
-                    {chain.model_name}
-                  </Badge>
-                  {chain.preprocessings && (
-                    <span className="text-muted-foreground truncate max-w-[200px]" title={chain.preprocessings}>
-                      {chain.preprocessings}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="font-mono">
-                    {chainHasFinal ? (
-                      <>
-                        <span className="text-emerald-500 font-bold">{formatScore(chain.final_test_score)}</span>
-                        <span className="text-muted-foreground ml-2 text-[10px]">CV {formatScore(chain.avg_val_score)}</span>
-                      </>
-                    ) : (
-                      <span className="text-chart-1">{formatScore(chain.avg_val_score)}</span>
-                    )}
-                  </div>
-                  {chainHasFinal && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-5 w-5 p-0"
-                            onClick={() => onPredict(chain, dataset.dataset_name)}
-                          >
-                            <Target className="h-3 w-3 text-primary" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Make predictions</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Refit models detail (expanded metrics) */}
-      {refitChains.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {refitChains.map(chain => (
-            <RefitMetricsPanel key={chain.chain_id} chain={chain} taskType={dataset.task_type} metric={dataset.metric} />
-          ))}
-        </div>
-      )}
-
-      {/* Model badges */}
-      <div className="flex flex-wrap gap-1 mb-3">
-        {Array.from(models).map(m => (
-          <Badge key={m} variant="secondary" className="text-[10px]">{m}</Badge>
-        ))}
-      </div>
-
-      {/* Score distribution (collapsible) */}
-      <Collapsible open={histogramOpen} onOpenChange={setHistogramOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="w-full text-xs h-7 justify-start gap-1">
-            {histogramOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            <BarChart3 className="h-3 w-3" />
-            Score Distribution
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="mt-2 space-y-2">
-            {/* Partition filter */}
-            <div className="flex items-center gap-1.5">
-              {(["val", "test", "train", "final"] as const).map(part => {
-                const isActive = selectedPartitions.has(part);
-                return (
-                  <Button
-                    key={part}
-                    variant={isActive ? "default" : "outline"}
-                    size="sm"
-                    className={cn("text-[10px] h-6 gap-0.5 px-2", isActive && PARTITION_COLORS[part])}
-                    onClick={() => togglePartition(part)}
-                  >
-                    {isActive && <Check className="h-2.5 w-2.5" />}
-                    {PARTITION_LABELS[part]}
-                  </Button>
-                );
-              })}
-            </div>
-            {/* Histogram */}
-            <div className="rounded-lg border p-3">
-              <ScoreHistogram
-                distribution={distribution ?? null}
-                selectedPartitions={selectedPartitions}
-              />
-            </div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* Actions */}
-      <div className="flex gap-2 mt-2">
-        <Button variant="ghost" size="sm" className="flex-1 text-xs" asChild>
-          <Link to={`/predictions?run_id=${encodeURIComponent(runId)}&dataset=${encodeURIComponent(dataset.dataset_name)}`}>
-            <ExternalLink className="h-3 w-3 mr-1" />
-            View Predictions
-          </Link>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Refit metrics panel (for dataset cards)
-// ---------------------------------------------------------------------------
-
-function RefitMetricsPanel({ chain, taskType, metric }: { chain: TopChainResult; taskType: string | null; metric: string | null }) {
-  const chainWithMetric = { ...chain, metric };
-  const finalMetrics = extractFinalMetrics(chainWithMetric, taskType);
-  const cvMetrics = extractCVMetrics(chainWithMetric, taskType);
-
-  if (finalMetrics.length === 0) return null;
-
-  return (
-    <div className="p-2.5 rounded-lg border bg-emerald-500/5 border-emerald-500/20">
-      <div className="flex items-center gap-2 mb-1.5 text-xs">
-        <Award className="h-3 w-3 text-emerald-500 shrink-0" />
-        <span className="font-medium text-emerald-600">{chain.model_name}</span>
-        <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20 ml-auto">Refit</Badge>
-      </div>
-      <MetricsGrid metrics={finalMetrics} />
-      {cvMetrics.length > 0 && (
-        <div className="mt-1.5 pt-1.5 border-t border-emerald-500/10">
-          <span className="text-[10px] text-muted-foreground font-medium">CV Scores</span>
-          <MetricsGrid metrics={cvMetrics} className="opacity-70 mt-0.5" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MetricsGrid({ metrics, className }: { metrics: MetricEntry[]; className?: string }) {
-  if (metrics.length === 0) return null;
-  return (
-    <div className={cn("flex flex-wrap gap-x-2 gap-y-0.5", className)}>
-      {metrics.map((m, i) => (
-        <div key={`${m.label}-${i}`} className="text-center min-w-0">
-          <div className="text-muted-foreground uppercase text-[9px] font-medium leading-tight">{m.label}</div>
-          <div className={cn(
-            "font-mono text-[11px] leading-tight",
-            m.highlight ? "font-bold text-foreground" : "text-foreground/80",
-          )}>
-            {formatMetricValue(m.value, m.key)}
-          </div>
-        </div>
       ))}
     </div>
   );
