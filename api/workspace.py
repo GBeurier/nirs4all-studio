@@ -2787,6 +2787,23 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
         )
 
 
+def _get_store_backed_workspace_scanner(workspace_id: str) -> tuple[Any, Path, WorkspaceScanner]:
+    """Resolve a linked workspace and ensure it has a store database."""
+    ws = workspace_manager._find_linked_workspace(workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    workspace_path = Path(ws.path)
+    scanner = WorkspaceScanner(workspace_path)
+    if not scanner._has_store():
+        raise HTTPException(
+            status_code=501,
+            detail="Prediction deletion requires a store database",
+        )
+
+    return ws, workspace_path, scanner
+
+
 @router.get("/workspaces/{workspace_id}/runs/{run_id}/datasets/{dataset_name}/chains")
 async def get_all_chains_for_dataset(workspace_id: str, run_id: str, dataset_name: str):
     """Get ALL chain summaries for a run+dataset, sorted by primary metric."""
@@ -3405,6 +3422,106 @@ async def get_workspace_predictions_data(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to read predictions data: {str(e)}"
+        )
+
+
+@router.delete("/workspaces/{workspace_id}/predictions/datasets/{dataset_name}")
+async def delete_workspace_dataset_predictions(workspace_id: str, dataset_name: str):
+    """Delete all predictions for one dataset in a linked workspace."""
+    try:
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before deletion.",
+            )
+
+        _ws, workspace_path, scanner = _get_store_backed_workspace_scanner(workspace_id)
+        result = scanner.store_adapter.delete_dataset_predictions(dataset_name)
+
+        invalidate_workspace_cache(str(workspace_path))
+        _invalidate_results_caches(workspace_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete dataset predictions: {str(e)}",
+        )
+
+
+@router.delete("/workspaces/{workspace_id}/predictions/chains/{chain_id}")
+async def delete_workspace_chain_predictions(workspace_id: str, chain_id: str):
+    """Delete all predictions for one chain in a linked workspace."""
+    try:
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before deletion.",
+            )
+
+        _ws, workspace_path, scanner = _get_store_backed_workspace_scanner(workspace_id)
+        result = scanner.store_adapter.delete_chain_predictions(chain_id)
+
+        invalidate_workspace_cache(str(workspace_path))
+        _invalidate_results_caches(workspace_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete chain predictions: {str(e)}",
+        )
+
+
+@router.delete("/workspaces/{workspace_id}/predictions/chains/{chain_id}/folds/{fold_id}")
+async def delete_workspace_prediction_group(workspace_id: str, chain_id: str, fold_id: str):
+    """Delete one displayed prediction group (chain + fold)."""
+    try:
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before deletion.",
+            )
+
+        _ws, workspace_path, scanner = _get_store_backed_workspace_scanner(workspace_id)
+        result = scanner.store_adapter.delete_prediction_group(chain_id, fold_id)
+
+        invalidate_workspace_cache(str(workspace_path))
+        _invalidate_results_caches(workspace_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete prediction group: {str(e)}",
+        )
+
+
+@router.delete("/workspaces/{workspace_id}/predictions/{prediction_id}")
+async def delete_workspace_prediction(workspace_id: str, prediction_id: str):
+    """Delete one stored prediction row by ID."""
+    try:
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before deletion.",
+            )
+
+        _ws, workspace_path, scanner = _get_store_backed_workspace_scanner(workspace_id)
+        result = scanner.store_adapter.delete_prediction(prediction_id)
+
+        invalidate_workspace_cache(str(workspace_path))
+        _invalidate_results_caches(workspace_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete prediction: {str(e)}",
         )
 
 

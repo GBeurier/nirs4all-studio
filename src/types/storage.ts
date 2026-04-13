@@ -79,3 +79,17 @@ export interface RemoveBottomReport {
   threshold_score: number;
 }
 
+export interface PredictionDeletionReport {
+  success: boolean;
+  scope: "prediction" | "prediction_group" | "chain" | "dataset";
+  prediction_id?: string;
+  chain_id?: string;
+  fold_id?: string;
+  dataset_name?: string;
+  deleted_predictions: number;
+  deleted_arrays: number;
+  deleted_chains: number;
+  deleted_pipelines: number;
+  deleted_artifacts: number;
+  updated_chains: number;
+}

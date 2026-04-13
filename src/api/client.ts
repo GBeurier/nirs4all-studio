@@ -1604,6 +1604,13 @@ export async function getN4AWorkspaceRunDetail(
   return api.get(`/workspaces/${workspaceId}/runs/${runId}`);
 }
 
+export async function deleteN4AWorkspaceRun(
+  workspaceId: string,
+  runId: string
+): Promise<{ success: boolean; deleted_rows: number; run_id: string }> {
+  return api.delete(`/workspaces/${workspaceId}/runs/${runId}`);
+}
+
 /**
  * Get individual results (pipeline config × dataset combinations).
  * Results represent the granular level below runs.
@@ -1728,6 +1735,39 @@ export async function getN4AWorkspacePredictionsData(
 
   const query = params.toString();
   return api.get(`/workspaces/${workspaceId}/predictions/data${query ? `?${query}` : ""}`);
+}
+
+export async function deleteWorkspacePrediction(
+  workspaceId: string,
+  predictionId: string
+): Promise<import("@/types/storage").PredictionDeletionReport> {
+  return api.delete(`/workspaces/${workspaceId}/predictions/${encodeURIComponent(predictionId)}`);
+}
+
+export async function deleteWorkspacePredictionGroup(
+  workspaceId: string,
+  chainId: string,
+  foldId: string
+): Promise<import("@/types/storage").PredictionDeletionReport> {
+  return api.delete(
+    `/workspaces/${workspaceId}/predictions/chains/${encodeURIComponent(chainId)}/folds/${encodeURIComponent(foldId)}`
+  );
+}
+
+export async function deleteWorkspaceChainPredictions(
+  workspaceId: string,
+  chainId: string
+): Promise<import("@/types/storage").PredictionDeletionReport> {
+  return api.delete(`/workspaces/${workspaceId}/predictions/chains/${encodeURIComponent(chainId)}`);
+}
+
+export async function deleteWorkspaceDatasetPredictions(
+  workspaceId: string,
+  datasetName: string
+): Promise<import("@/types/storage").PredictionDeletionReport> {
+  return api.delete(
+    `/workspaces/${workspaceId}/predictions/datasets/${encodeURIComponent(datasetName)}`
+  );
 }
 
 /**

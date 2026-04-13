@@ -101,7 +101,7 @@ def contains_generators(payload: Any) -> bool:
 
 def editor_steps_to_runtime_canonical(steps: list[dict[str, Any]]) -> list[Any]:
     """Convert editor steps into canonical runtime payload with comments stripped."""
-    return filter_comments(editor_to_canonical(steps))
+    return filter_comments(editor_to_canonical(hydrate_editor_steps(steps)))
 
 
 def count_runtime_variants(canonical_steps: list[Any]) -> int:
@@ -304,24 +304,51 @@ def resolve_editor_class_path(
     name: str,
     class_path: str | None = None,
 ) -> str:
-    if class_path:
-        return class_path
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        return str(class_path or "")
+
+    if class_path and step_type != "model":
+        return str(class_path)
 
     lookup = _name_type_lookup()
-    candidate = lookup.get((step_type, name.lower()))
+    candidate = lookup.get((step_type, normalized_name.lower()))
     if candidate:
         return candidate
 
-    if step_type == "preprocessing":
-        return f"sklearn.preprocessing.{name}"
-    if step_type == "splitting":
-        return f"sklearn.model_selection.{name}"
-    if step_type == "model":
-        return f"sklearn.cross_decomposition.{name}"
-    if step_type == "y_processing":
-        return f"sklearn.preprocessing.{name}"
+    if class_path:
+        return str(class_path)
 
-    return name
+    resolved = resolve_class_reference(normalized_name, forced_type=step_type)
+    resolved_class_path = resolved.get("classPath")
+    if isinstance(resolved_class_path, str) and resolved_class_path:
+        return resolved_class_path
+
+    if step_type == "preprocessing":
+        return f"sklearn.preprocessing.{normalized_name}"
+    if step_type == "splitting":
+        return f"sklearn.model_selection.{normalized_name}"
+    if step_type == "y_processing":
+        return f"sklearn.preprocessing.{normalized_name}"
+
+    # Models and custom components span multiple namespaces. If we cannot
+    # resolve a class path, keep the unresolved name so strict callers can
+    # raise a clear validation error instead of inventing a wrong module path.
+    return normalized_name
+
+
+def resolve_required_editor_class_path(
+    step_type: str,
+    name: str,
+    class_path: str | None = None,
+) -> str:
+    resolved = resolve_editor_class_path(step_type, name, class_path)
+    if "." in resolved:
+        return resolved
+    raise ValueError(
+        f"Could not resolve class path for {step_type} step '{name}'. "
+        "Check that the step definition is valid."
+    )
 
 
 def _normalize_editor_kind(step: dict[str, Any]) -> tuple[str, str | None]:
@@ -334,6 +361,54 @@ def _normalize_editor_kind(step: dict[str, Any]) -> tuple[str, str | None]:
     if step_type in UTILITY_SUBTYPES:
         return "utility", step_type
     return step_type, None
+
+
+def _hydrate_editor_step(step: dict[str, Any]) -> dict[str, Any]:
+    hydrated = clone_value(step)
+    step_type, _sub_type = _normalize_editor_kind(hydrated)
+
+    if (
+        not hydrated.get("functionPath")
+        and hydrated.get("rawNirs4all") is None
+        and step_type not in {"flow", "utility"}
+    ):
+        resolved = resolve_editor_class_path(
+            step_type,
+            str(hydrated.get("name") or ""),
+            hydrated.get("classPath"),
+        )
+        if "." in resolved:
+            hydrated["classPath"] = resolved
+
+    branches = hydrated.get("branches")
+    if isinstance(branches, list):
+        hydrated["branches"] = [
+            [
+                _hydrate_editor_step(branch_step)
+                if isinstance(branch_step, dict)
+                else branch_step
+                for branch_step in branch
+            ]
+            if isinstance(branch, list)
+            else branch
+            for branch in branches
+        ]
+
+    children = hydrated.get("children")
+    if isinstance(children, list):
+        hydrated["children"] = [
+            _hydrate_editor_step(child) if isinstance(child, dict) else child
+            for child in children
+        ]
+
+    return hydrated
+
+
+def hydrate_editor_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _hydrate_editor_step(step) if isinstance(step, dict) else step
+        for step in steps
+    ]
 
 
 def _clean_params(params: dict[str, Any] | None) -> dict[str, Any]:
@@ -1293,34 +1368,61 @@ def _apply_param_sweeps(payload: Any, step: dict[str, Any]) -> Any:
         payload = {"class": payload}
     result = clone_value(payload)
 
-    grid_payload: dict[str, Any] = {}
+    # Find the params dict where sweep specs should be injected.
+    # Generator keywords (_or_, _range_, etc.) must be placed inside the
+    # params dict so they are recognised as pure generator nodes during
+    # pipeline expansion.  Placing them at the step level (next to "class"
+    # or "model") made them part of a mixed dict that the generator system
+    # silently ignored — producing 1 variant instead of N.
+    params_dict = _find_sweep_params_dict(result)
+
     for param_name, sweep in _ensure_mapping_payload(param_sweeps).items():
         if not isinstance(sweep, dict):
             continue
         sweep_type = sweep.get("type")
         if sweep_type == "range":
-            result["_range_"] = [
-                sweep.get("from", 0),
-                sweep.get("to", 10),
-                sweep.get("step", 1),
-            ]
-            result["param"] = param_name
+            params_dict[param_name] = {
+                "_range_": [
+                    sweep.get("from", 0),
+                    sweep.get("to", 10),
+                    sweep.get("step", 1),
+                ]
+            }
         elif sweep_type == "log_range":
-            result["_log_range_"] = [
-                sweep.get("from", 0.001),
-                sweep.get("to", 100),
-                sweep.get("count", 10),
-            ]
-            result["param"] = param_name
+            params_dict[param_name] = {
+                "_log_range_": [
+                    sweep.get("from", 0.001),
+                    sweep.get("to", 100),
+                    sweep.get("count", 10),
+                ]
+            }
         elif sweep_type in {"or", "grid"}:
             choices = sweep.get("choices")
             if isinstance(choices, list):
-                grid_payload[param_name] = clone_value(choices)
-
-    if grid_payload:
-        result["_grid_"] = grid_payload
+                params_dict[param_name] = {"_or_": clone_value(choices)}
 
     return result
+
+
+def _find_sweep_params_dict(payload: dict[str, Any]) -> dict[str, Any]:
+    """Locate (or create) the ``params`` dict inside a canonical step payload.
+
+    Handles both regular components (``{"class": ..., "params": {...}}``) and
+    model wrappers (``{"model": {"class": ..., "params": {...}}}``).
+    """
+    # Regular component
+    if "params" in payload and isinstance(payload["params"], dict):
+        return payload["params"]
+    # Model wrapper
+    if "model" in payload and isinstance(payload["model"], dict):
+        model = payload["model"]
+        if "params" not in model or not isinstance(model.get("params"), dict):
+            model["params"] = {}
+        return model["params"]
+    # Fallback: create params on the payload itself
+    if "params" not in payload:
+        payload["params"] = {}
+    return payload["params"]
 
 
 def _component_payload_from_editor(step: dict[str, Any], class_path: str) -> Any:
@@ -1404,7 +1506,7 @@ def _build_model_payload(step: dict[str, Any]) -> dict[str, Any]:
         if step.get("framework"):
             model_payload["framework"] = step["framework"]
     else:
-        class_path = resolve_editor_class_path(
+        class_path = resolve_required_editor_class_path(
             "model",
             str(step.get("name") or "UnknownModel"),
             step.get("classPath"),
@@ -1479,7 +1581,7 @@ def _convert_editor_model_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
 
 
 def _convert_editor_y_processing_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
-    class_path = resolve_editor_class_path(
+    class_path = resolve_required_editor_class_path(
         "y_processing",
         str(step.get("name") or "StandardScaler"),
         step.get("classPath"),
@@ -1774,7 +1876,7 @@ def _convert_editor_step_to_canonical(step: dict[str, Any]) -> Any:
     if step_type == "y_processing":
         return _convert_editor_y_processing_to_canonical(step)
 
-    class_path = resolve_editor_class_path(
+    class_path = resolve_required_editor_class_path(
         step_type,
         str(step.get("name") or "Unknown"),
         step.get("classPath"),
@@ -1790,7 +1892,7 @@ def editor_to_canonical(
     include_wrapper: bool = False,
 ) -> list[Any] | dict[str, Any]:
     """Convert editor steps back into canonical nirs4all JSON/YAML format."""
-    canonical_steps = _serialize_editor_steps(steps)
+    canonical_steps = _serialize_editor_steps(hydrate_editor_steps(steps))
     if include_wrapper:
         return {
             "name": name or "pipeline",

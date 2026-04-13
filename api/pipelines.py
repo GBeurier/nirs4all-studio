@@ -28,6 +28,8 @@ from .pipeline_canonical import (
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
     editor_to_canonical,
+    hydrate_editor_steps,
+    validate_canonical,
 )
 from .pipeline_canonical import (
     filter_comments as filter_canonical_comments,
@@ -151,6 +153,32 @@ def _save_pipeline(pipeline: dict[str, Any]) -> None:
         raise HTTPException(
             status_code=500, detail=f"Failed to save pipeline: {str(e)}"
         )
+
+
+def _normalize_and_validate_editor_steps(
+    steps: list[dict[str, Any]],
+    *,
+    name: str | None = None,
+    description: str | None = None,
+) -> list[dict[str, Any]]:
+    """Hydrate editor steps and reject invalid definitions before persistence."""
+    normalized_steps = hydrate_editor_steps(steps)
+
+    try:
+        canonical_payload = editor_to_canonical(
+            normalized_steps,
+            name=name,
+            description=description,
+            include_wrapper=True,
+        )
+        validate_canonical(canonical_payload)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid pipeline definition: {e}",
+        ) from e
+
+    return normalized_steps
 
 
 @router.get("/pipelines")
@@ -277,8 +305,13 @@ def _render_canonical_pipeline_content(
     """Render editor steps into canonical payload plus YAML/JSON strings."""
     import yaml
 
-    canonical_payload = editor_to_canonical(
+    normalized_steps = _normalize_and_validate_editor_steps(
         steps,
+        name=name,
+        description=description,
+    )
+    canonical_payload = editor_to_canonical(
+        normalized_steps,
         name=name,
         description=description,
         include_wrapper=True,
@@ -363,13 +396,18 @@ async def create_pipeline(pipeline_data: PipelineCreate):
     try:
         now = datetime.now().isoformat()
         pipeline_id = f"pipeline_{int(datetime.now().timestamp())}"
+        normalized_steps = _normalize_and_validate_editor_steps(
+            pipeline_data.steps,
+            name=pipeline_data.name,
+            description=pipeline_data.description or "",
+        )
 
         pipeline = {
             "id": pipeline_id,
             "name": pipeline_data.name,
             "description": pipeline_data.description or "",
             "category": pipeline_data.category,
-            "steps": pipeline_data.steps,
+            "steps": normalized_steps,
             "is_favorite": False,
             "created_at": now,
             "updated_at": now,
@@ -397,7 +435,11 @@ async def update_pipeline(pipeline_id: str, update_data: PipelineUpdate):
         if update_data.description is not None:
             pipeline["description"] = update_data.description
         if update_data.steps is not None:
-            pipeline["steps"] = update_data.steps
+            pipeline["steps"] = _normalize_and_validate_editor_steps(
+                update_data.steps,
+                name=str(pipeline.get("name") or ""),
+                description=str(pipeline.get("description") or ""),
+            )
         if update_data.is_favorite is not None:
             pipeline["is_favorite"] = update_data.is_favorite
 
@@ -526,8 +568,26 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
             "warnings": ["nirs4all not available for full validation"],
         }
 
-    # Convert frontend/editor steps to canonical nirs4all format for validation.
-    nirs4all_steps = filter_canonical_comments(editor_to_canonical(request.steps))
+    try:
+        normalized_steps = _normalize_and_validate_editor_steps(request.steps)
+        nirs4all_steps = filter_canonical_comments(editor_to_canonical(normalized_steps))
+    except HTTPException as exc:
+        return {
+            "valid": False,
+            "steps": [
+                {
+                    "index": i,
+                    "name": step.get("name", "unknown"),
+                    "type": step.get("type", "unknown"),
+                    "valid": False,
+                    "errors": [str(exc.detail)],
+                    "warnings": [],
+                }
+                for i, step in enumerate(request.steps)
+            ],
+            "errors": [str(exc.detail)],
+            "warnings": [],
+        }
 
     # Use nirs4all's validate_spec
     validation_result = _validate_spec(nirs4all_steps)

@@ -28,8 +28,6 @@ import {
   detectMetadataType,
   HIGHLIGHT_COLORS,
   getHeldOutTestColor,
-  getPartitionRoleColor,
-  getPartitionRoleLabel,
   getPresentPartitionRoles,
   getSamplePartitionRole,
   hasHeldOutTestSamples,
@@ -41,7 +39,12 @@ import {
   computeStackedBarAction,
   executeSelectionAction,
 } from '@/lib/playground/selectionHandlers';
-import { findBarRect, isBarElement } from './utils';
+import {
+  findBarRect,
+  getHistogramPartitionRoleColor,
+  getHistogramPartitionRoleLabel,
+  isBarElement,
+} from './utils';
 import type { HistogramChartProps, ClassBarData, RechartsMouseEvent } from './types';
 
 const UNSELECTED_FILL = 'hsl(var(--muted-foreground) / 0.4)';
@@ -107,8 +110,8 @@ export default function HistogramClassification({
         return colorContext
           ? getPresentPartitionRoles(colorContext).map((role) => ({
               key: role,
-              label: getPartitionRoleLabel(role),
-              color: getPartitionRoleColor(role),
+              label: getHistogramPartitionRoleLabel(role),
+              color: getHistogramPartitionRoleColor(role),
               getSamples: (bar) => bar.samples.filter((sampleIdx) => getSamplePartitionRole(sampleIdx, colorContext) === role),
             }))
           : [];
@@ -268,7 +271,7 @@ export default function HistogramClassification({
         });
 
         if (dominantRole) {
-          return getPartitionRoleColor(dominantRole);
+          return getHistogramPartitionRoleColor(dominantRole);
         }
         break;
       }
@@ -347,8 +350,12 @@ export default function HistogramClassification({
     }
 
     if (stackSegments.length > 0 && selectionCtx) {
-      const clickedFill = findBarRect(nativeEvent, target)?.getAttribute('fill') || '';
-      const segment = stackSegments.find((item) => item.color === clickedFill) ?? stackSegments[0];
+      const barRect = findBarRect(nativeEvent, target);
+      const segmentKey = barRect?.getAttribute('data-segment-key');
+      const clickedFill = barRect?.getAttribute('fill') || '';
+      const segment = stackSegments.find((item) => item.key === segmentKey)
+        ?? stackSegments.find((item) => item.color === clickedFill)
+        ?? stackSegments[0];
       const segmentSamples = (clickedBar[`${segment.key}Samples`] as number[] | undefined) ?? [];
       const modifiers = nativeEvent ? extractModifiers(nativeEvent) : { shift: false, ctrl: false };
       const action = computeStackedBarAction(
@@ -475,6 +482,7 @@ export default function HistogramClassification({
                 return (
                   <Cell
                     key={`${segment.key}-${index}`}
+                    data-segment-key={segment.key}
                     fill={segment.color}
                     stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
                     strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}

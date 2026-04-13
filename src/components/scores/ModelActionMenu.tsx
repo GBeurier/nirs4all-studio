@@ -1,7 +1,18 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +23,17 @@ import {
 import {
   MoreVertical, Eye, ScatterChart, BarChart3, Zap,
   Download, FileSpreadsheet, ExternalLink,
-  Database, Pencil, Loader2,
+  Database, Pencil, Loader2, Trash2,
 } from "lucide-react";
-import { getChainPartitionDetail } from "@/api/client";
+import {
+  deleteWorkspaceChainPredictions,
+  deleteWorkspacePredictionGroup,
+  getChainPartitionDetail,
+} from "@/api/client";
+import {
+  formatPredictionDeletionSummary,
+  invalidatePredictionRelatedQueries,
+} from "@/lib/prediction-deletion";
 
 interface ModelActionMenuProps {
   chainId: string;
@@ -22,8 +41,12 @@ interface ModelActionMenuProps {
   datasetName?: string;
   runId?: string;
   hasRefit: boolean;
+  workspaceId?: string;
+  deleteScope?: "chain" | "group";
+  foldId?: string;
   onViewDetails?: () => void;
   onExport?: () => void;
+  onDeleted?: () => void;
 }
 
 function csvEscape(value: unknown): string {
@@ -49,9 +72,12 @@ function sanitizeFilename(value: string | null | undefined): string {
 
 export function ModelActionMenu({
   chainId, modelName, datasetName, runId,
-  hasRefit, onViewDetails, onExport,
+  hasRefit, workspaceId, deleteScope, foldId, onViewDetails, onExport, onDeleted,
 }: ModelActionMenuProps) {
+  const queryClient = useQueryClient();
   const [csvBusy, setCsvBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const predictionsUrl = `/predictions?${new URLSearchParams({
     ...(runId ? { run_id: runId } : {}),
@@ -59,6 +85,16 @@ export function ModelActionMenu({
     model: modelName,
   }).toString()}`;
   const pipelineEditorUrl = chainId ? `/pipelines/new?chainId=${encodeURIComponent(chainId)}` : null;
+  const canDelete = Boolean(
+    workspaceId
+    && chainId
+    && (deleteScope === "chain" || (deleteScope === "group" && foldId))
+  );
+  const deleteTitle = deleteScope === "group" ? "Delete prediction group?" : "Delete model predictions?";
+  const deleteDescription = deleteScope === "group"
+    ? `This removes the ${foldId || "selected"} prediction group for ${modelName}, including linked arrays. Empty chains and orphaned artifacts will be cleaned automatically.`
+    : `This removes all predictions for ${modelName}. Empty chains, pipelines, arrays, and orphaned artifacts will be cleaned automatically.`;
+  const deleteLabel = deleteScope === "group" ? "Delete prediction" : "Delete model";
 
   const handleCsvExport = async () => {
     if (!chainId) {
@@ -90,77 +126,138 @@ export function ModelActionMenu({
     }
   };
 
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <MoreVertical className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        {onViewDetails && (
-          <DropdownMenuItem onClick={onViewDetails}>
-            <Eye className="h-4 w-4 mr-2" /> View details
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem asChild>
-          <Link to={predictionsUrl}>
-            <ScatterChart className="h-4 w-4 mr-2" /> Scatter plot
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link to={predictionsUrl}>
-            <BarChart3 className="h-4 w-4 mr-2" /> Residual analysis
-          </Link>
-        </DropdownMenuItem>
+  const handleDelete = async () => {
+    if (!workspaceId || !chainId) {
+      toast.error("Missing workspace or chain identifier");
+      return;
+    }
 
-        {hasRefit && (
-          <>
-            <DropdownMenuSeparator />
+    setDeleteBusy(true);
+    try {
+      const result = deleteScope === "group"
+        ? await deleteWorkspacePredictionGroup(workspaceId, chainId, foldId || "")
+        : await deleteWorkspaceChainPredictions(workspaceId, chainId);
+
+      if (!result.success) {
+        toast.error("Nothing was deleted");
+        return;
+      }
+
+      await invalidatePredictionRelatedQueries(queryClient);
+      onDeleted?.();
+      setDeleteOpen(false);
+      toast.success(formatPredictionDeletionSummary(result));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Deletion failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-7 w-7">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          {onViewDetails && (
+            <DropdownMenuItem onClick={onViewDetails}>
+              <Eye className="h-4 w-4 mr-2" /> View details
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem asChild>
+            <Link to={predictionsUrl}>
+              <ScatterChart className="h-4 w-4 mr-2" /> Scatter plot
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to={predictionsUrl}>
+              <BarChart3 className="h-4 w-4 mr-2" /> Residual analysis
+            </Link>
+          </DropdownMenuItem>
+
+          {hasRefit && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
+                  <Zap className="h-4 w-4 mr-2" /> Predict (new data)
+                </Link>
+              </DropdownMenuItem>
+            </>
+          )}
+
+          <DropdownMenuSeparator />
+
+          {onExport && (
+            <DropdownMenuItem onClick={onExport}>
+              <Download className="h-4 w-4 mr-2" /> Export (.parquet)
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onSelect={(event) => { event.preventDefault(); handleCsvExport(); }} disabled={csvBusy}>
+            {csvBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
+            Export (.csv)
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          {pipelineEditorUrl && (
             <DropdownMenuItem asChild>
-              <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
-                <Zap className="h-4 w-4 mr-2" /> Predict (new data)
+              <Link to={pipelineEditorUrl}>
+                <ExternalLink className="h-4 w-4 mr-2" /> Goto pipeline
               </Link>
             </DropdownMenuItem>
-          </>
-        )}
+          )}
+          {pipelineEditorUrl && (
+            <DropdownMenuItem asChild>
+              <Link to={pipelineEditorUrl}>
+                <Pencil className="h-4 w-4 mr-2" /> Edit pipeline
+              </Link>
+            </DropdownMenuItem>
+          )}
+          {datasetName && (
+            <DropdownMenuItem asChild>
+              <Link to={`/datasets/${encodeURIComponent(datasetName)}`}>
+                <Database className="h-4 w-4 mr-2" /> Goto dataset
+              </Link>
+            </DropdownMenuItem>
+          )}
 
-        <DropdownMenuSeparator />
+          {canDelete && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={(event) => {
+                  event.preventDefault();
+                  setDeleteOpen(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" /> {deleteLabel}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {onExport && (
-          <DropdownMenuItem onClick={onExport}>
-            <Download className="h-4 w-4 mr-2" /> Export (.parquet)
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onSelect={(event) => { event.preventDefault(); handleCsvExport(); }} disabled={csvBusy}>
-          {csvBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
-          Export (.csv)
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        {pipelineEditorUrl && (
-          <DropdownMenuItem asChild>
-            <Link to={pipelineEditorUrl}>
-              <ExternalLink className="h-4 w-4 mr-2" /> Goto pipeline
-            </Link>
-          </DropdownMenuItem>
-        )}
-        {pipelineEditorUrl && (
-          <DropdownMenuItem asChild>
-            <Link to={pipelineEditorUrl}>
-              <Pencil className="h-4 w-4 mr-2" /> Edit pipeline
-            </Link>
-          </DropdownMenuItem>
-        )}
-        {datasetName && (
-          <DropdownMenuItem asChild>
-            <Link to={`/datasets/${encodeURIComponent(datasetName)}`}>
-              <Database className="h-4 w-4 mr-2" /> Goto dataset
-            </Link>
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleteBusy}>
+              {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              {deleteLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -66,6 +66,7 @@ import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
 import { ModelTreeView } from "@/components/scores/ModelTreeView";
 import { ModelActionMenu } from "@/components/scores/ModelActionMenu";
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
+import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -109,6 +110,8 @@ export default function AggregatedResults() {
   // which only returns authoritative data once the active nirs4all workspace
   // has finished restoring. Re-fetch when that flips.
   const { workspaceReady } = useMlReadiness();
+  const { data: workspacesData } = useLinkedWorkspacesQuery();
+  const activeWorkspace = workspacesData?.workspaces.find(workspace => workspace.is_active) ?? null;
 
   // State
   const [predictions, setPredictions] = useState<ChainSummary[]>([]);
@@ -612,7 +615,10 @@ export default function AggregatedResults() {
                                 datasetName={pred.dataset_name || ""}
                                 runId={pred.run_id}
                                 hasRefit
+                                workspaceId={activeWorkspace?.id}
+                                deleteScope="chain"
                                 onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }}
+                                onDeleted={() => { void loadData(); }}
                               />
                             </TableCell>
                           </TableRow>
@@ -666,7 +672,10 @@ export default function AggregatedResults() {
                                 datasetName={pred.dataset_name || ""}
                                 runId={pred.run_id}
                                 hasRefit={false}
+                                workspaceId={activeWorkspace?.id}
+                                deleteScope="chain"
                                 onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }}
+                                onDeleted={() => { void loadData(); }}
                               />
                             </TableCell>
                           </TableRow>

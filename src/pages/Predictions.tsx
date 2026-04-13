@@ -562,6 +562,7 @@ export default function Predictions() {
                       key={`${row.chainId}-${row.foldId}-${row.id}`}
                       row={row}
                       selectedMetrics={selectedMetrics}
+                      workspaceId={activeWorkspace.id}
                       rank={startIndex + index + 1}
                       variant="table-row"
                       onViewPrediction={handleQuickView}

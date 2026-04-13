@@ -1228,7 +1228,7 @@ async def preview_dataset_by_id(dataset_id: str, max_samples: int = 100):
     if not workspace:
         return PreviewDataResponse(success=False, error="No workspace selected")
 
-    dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset_info = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
     if not dataset_info:
         return PreviewDataResponse(success=False, error="Dataset not found")
 
@@ -1419,6 +1419,30 @@ async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
 # ============= Dataset CRUD =============
 
 
+def _find_dataset_by_id_or_name(
+    datasets: list[dict[str, Any]], dataset_id: str
+) -> dict[str, Any] | None:
+    """Find a dataset by ID first, then fall back to name match.
+
+    Several frontend views (Results, Predictions, Runs) only have the
+    dataset *name* available and link to ``/datasets/<name>``.  This
+    helper allows those links to resolve correctly.
+    """
+    # Primary: exact ID match
+    for d in datasets:
+        if d.get("id") == dataset_id:
+            return d
+    # Fallback: match by name (case-sensitive, then case-insensitive)
+    for d in datasets:
+        if d.get("name") == dataset_id:
+            return d
+    lower = dataset_id.lower()
+    for d in datasets:
+        if (d.get("name") or "").lower() == lower:
+            return d
+    return None
+
+
 @router.get("/datasets/{dataset_id}")
 async def get_dataset(dataset_id: str):
     """Get detailed information about a specific dataset."""
@@ -1426,16 +1450,17 @@ async def get_dataset(dataset_id: str):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    dataset = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    resolved_id = dataset.get("id", dataset_id)
     extended_info = dict(dataset)
 
     if NIRS4ALL_AVAILABLE:
         try:
             from .spectra import _load_dataset
-            ds = _load_dataset(dataset_id)
+            ds = _load_dataset(resolved_id)
             if ds:
                 task_type_str = str(ds.task_type).split(".")[-1].lower() if ds.task_type else None
                 extended_info.update({
@@ -1505,13 +1530,15 @@ async def delete_dataset(dataset_id: str, delete_files: bool = False):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    dataset = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    resolved_id = dataset.get("id", dataset_id)
+
     try:
         from .spectra import _clear_dataset_cache
-        _clear_dataset_cache(dataset_id)
+        _clear_dataset_cache(resolved_id)
     except Exception:
         pass
 
@@ -1541,20 +1568,22 @@ async def load_dataset(dataset_id: str):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset_info = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
     if not dataset_info:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    resolved_id = dataset_info.get("id", dataset_id)
+
     try:
         from .spectra import _clear_dataset_cache, _load_dataset
-        _clear_dataset_cache(dataset_id)
-        ds = _load_dataset(dataset_id)
+        _clear_dataset_cache(resolved_id)
+        ds = _load_dataset(resolved_id)
         if not ds:
             raise HTTPException(status_code=500, detail="Failed to load dataset")
 
         return {
             "success": True,
-            "dataset_id": dataset_id,
+            "dataset_id": resolved_id,
             "summary": {
                 "name": ds.name,
                 "num_samples": ds.num_samples,
@@ -1625,21 +1654,22 @@ async def verify_dataset(dataset_id: str):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset_info = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
     if not dataset_info:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    resolved_id = dataset_info.get("id", dataset_id)
     dataset_path = Path(dataset_info.get("path", ""))
     now = datetime.now().isoformat()
 
     if not dataset_path.exists():
-        workspace_manager.update_dataset(dataset_id, {
+        workspace_manager.update_dataset(resolved_id, {
             "version_status": "missing",
             "last_verified": now,
         })
         return {
             "success": True,
-            "dataset_id": dataset_id,
+            "dataset_id": resolved_id,
             "version_status": "missing",
             "verified_at": now,
         }
@@ -1684,10 +1714,11 @@ async def refresh_dataset_version(dataset_id: str):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
+    dataset_info = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
     if not dataset_info:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
+    resolved_id = dataset_info.get("id", dataset_id)
     dataset_path = Path(dataset_info.get("path", ""))
     if not dataset_path.exists():
         raise HTTPException(status_code=404, detail="Dataset path not found")
@@ -1705,7 +1736,7 @@ async def refresh_dataset_version(dataset_id: str):
     old_hash = dataset_info.get("hash")
     old_version = dataset_info.get("version", 0)
 
-    workspace_manager.update_dataset(dataset_id, {
+    workspace_manager.update_dataset(resolved_id, {
         "hash": new_hash,
         "version": old_version + 1,
         "version_status": "current",

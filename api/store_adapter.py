@@ -398,6 +398,47 @@ class StoreAdapter:
         total = self._store.delete_run(run_id, delete_artifacts=True)
         return {"success": True, "deleted_rows": total, "run_id": run_id}
 
+    def delete_prediction(self, prediction_id: str) -> dict[str, Any]:
+        """Delete one stored prediction row and clean up empty parents."""
+        summary = self._store.delete_predictions_matching(prediction_ids=[prediction_id])
+        return {
+            "success": bool(summary.get("deleted_predictions")),
+            "scope": "prediction",
+            "prediction_id": prediction_id,
+            **summary,
+        }
+
+    def delete_prediction_group(self, chain_id: str, fold_id: str) -> dict[str, Any]:
+        """Delete all prediction rows for a displayed chain/fold group."""
+        summary = self._store.delete_predictions_matching(chain_id=chain_id, fold_id=fold_id)
+        return {
+            "success": bool(summary.get("deleted_predictions")),
+            "scope": "prediction_group",
+            "chain_id": chain_id,
+            "fold_id": fold_id,
+            **summary,
+        }
+
+    def delete_chain_predictions(self, chain_id: str) -> dict[str, Any]:
+        """Delete all predictions for one chain."""
+        summary = self._store.delete_predictions_matching(chain_id=chain_id)
+        return {
+            "success": bool(summary.get("deleted_predictions")),
+            "scope": "chain",
+            "chain_id": chain_id,
+            **summary,
+        }
+
+    def delete_dataset_predictions(self, dataset_name: str) -> dict[str, Any]:
+        """Delete all predictions for a dataset across the workspace."""
+        summary = self._store.delete_predictions_matching(dataset_name=dataset_name)
+        return {
+            "success": bool(summary.get("deleted_predictions")),
+            "scope": "dataset",
+            "dataset_name": dataset_name,
+            **summary,
+        }
+
     # ------------------------------------------------------------------
     # Predictions
     # ------------------------------------------------------------------

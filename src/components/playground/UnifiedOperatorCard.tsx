@@ -428,7 +428,12 @@ function ParamInput({ paramKey, paramInfo, value, operatorName, datasetId, allPa
         <Label className="text-xs text-muted-foreground">{displayName}</Label>
         <Select
           value={String(value ?? paramInfo.default ?? '')}
-          onValueChange={(v) => onUpdate(paramKey, v)}
+          onValueChange={(v) => {
+            const originalOption = paramInfo.options!.find(
+              (opt) => String(opt.value) === v
+            );
+            onUpdate(paramKey, originalOption?.value ?? v);
+          }}
         >
           <SelectTrigger className="h-8 text-xs mt-1">
             <SelectValue />

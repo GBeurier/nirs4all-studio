@@ -807,8 +807,8 @@ export function getBaseColor(
         return getContinuousColor(t, config.continuousPalette);
       } else {
         // Categorical
-        const uniqueValues = [...new Set(values.filter(v => v !== null && v !== undefined))];
-        const idx = uniqueValues.indexOf(value);
+        const uniqueValues = getMetadataUniqueCategories(values);
+        const idx = uniqueValues.indexOf(String(value));
         return getCategoricalColor(idx >= 0 ? idx : 0, config.categoricalPalette);
       }
     }
@@ -1008,6 +1008,18 @@ export function getMetadataUniqueValues(
   const values = metadata[key];
   if (!values) return [];
   return [...new Set(values.filter(v => v !== null && v !== undefined))];
+}
+
+/**
+ * Get all unique categorical labels for a metadata column while preserving
+ * the original data order used by the other playground charts.
+ */
+export function getMetadataUniqueCategories(values: unknown[]): string[] {
+  return [...new Set(
+    values
+      .filter(v => v !== null && v !== undefined)
+      .map(v => String(v))
+  )];
 }
 
 /**

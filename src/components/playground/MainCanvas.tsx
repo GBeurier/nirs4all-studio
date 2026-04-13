@@ -142,6 +142,9 @@ interface MainCanvasProps {
   onResetPlayground?: () => void;
   /** Whether there is state that can be reset */
   hasStateToReset?: boolean;
+  // === Chart Toggle Notification ===
+  /** Called when a chart is toggled from the toolbar — lets the parent sync execute options (e.g. compute_repetitions) */
+  onChartToggle?: (chart: ChartType) => void;
   // === Granular Chart Loading ===
   /** Per-chart loading states from change detection */
   chartLoadingStates?: PerChartLoadingState;
@@ -228,6 +231,8 @@ export function MainCanvas({
   // Phase 8 props
   onResetPlayground,
   hasStateToReset = false,
+  // Chart toggle notification
+  onChartToggle,
   // Granular chart loading
   chartLoadingStates,
 }: MainCanvasProps) {
@@ -261,7 +266,9 @@ export function MainCanvas({
         return next;
       });
     }
-  }, [viewContext]);
+    // Notify parent so it can sync execute options (e.g. compute_repetitions)
+    onChartToggle?.(chart);
+  }, [viewContext, onChartToggle]);
 
   // Get chart view state
   const getChartViewState = useCallback((chart: ChartType): ViewState => {

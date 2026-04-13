@@ -1,15 +1,34 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  ChevronDown, ChevronRight, Database, Eye, ExternalLink, Loader2, TrendingDown,
+  ChevronDown, ChevronRight, Database, Eye, ExternalLink, Loader2, TrendingDown, Trash2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { isLowerBetter } from "@/lib/scores";
-import { getAllChainsForDataset, getAllChainsForResultsDataset } from "@/api/client";
+import {
+  deleteWorkspaceDatasetPredictions,
+  getAllChainsForDataset,
+  getAllChainsForResultsDataset,
+} from "@/api/client";
+import {
+  formatPredictionDeletionSummary,
+  invalidatePredictionRelatedQueries,
+} from "@/lib/prediction-deletion";
 import { datasetChainsToRows } from "@/lib/score-adapters";
 import {
   InlineScoreDisplay,
@@ -81,11 +100,14 @@ function hasBestParams(params: Record<string, unknown> | null | undefined): bool
 export function DatasetResultCard({
   dataset, allChains, selectedMetrics, runId, workspaceId, defaultExpanded = false,
 }: DatasetResultCardProps) {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [detailChain, setDetailChain] = useState<TopChainResult | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [quickViewPred, setQuickViewPred] = useState<PartitionPrediction | null>(null);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const useFullDatasetChains = !allChains && !!workspaceId;
 
   const { data: allChainsData, isLoading: isAllChainsLoading } = useQuery({
@@ -152,6 +174,30 @@ export function DatasetResultCard({
   const refitCount = scoreRows.filter(row => row.cardType === "refit").length;
   const visibleModelCount = scoreRows.length;
 
+  const handleDeleteDataset = async () => {
+    if (!workspaceId) {
+      toast.error("No active workspace");
+      return;
+    }
+
+    setDeleteBusy(true);
+    try {
+      const result = await deleteWorkspaceDatasetPredictions(workspaceId, dataset.dataset_name);
+      if (!result.success) {
+        toast.error("Nothing was deleted");
+        return;
+      }
+
+      await invalidatePredictionRelatedQueries(queryClient);
+      setDeleteOpen(false);
+      toast.success(formatPredictionDeletionSummary(result));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Dataset deletion failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   return (
     <>
       <Card className="overflow-hidden">
@@ -208,6 +254,20 @@ export function DatasetResultCard({
 
                 {/* Right: details + link */}
                 <div className="flex items-center gap-1 shrink-0">
+                  {workspaceId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteOpen(true);
+                      }}
+                      title="Delete all predictions for this dataset"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   {topChain && (
                     <Button
                       variant="ghost"
@@ -239,6 +299,7 @@ export function DatasetResultCard({
               <ScoreCardTree
                 rows={scoreRows}
                 selectedMetrics={selectedMetrics}
+                workspaceId={workspaceId}
                 variant="card"
                 onViewDetails={handleViewDetails}
                 onViewPrediction={handleViewPrediction}
@@ -262,6 +323,24 @@ export function DatasetResultCard({
         open={quickViewOpen}
         onOpenChange={setQuickViewOpen}
       />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete dataset predictions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes all stored predictions for {dataset.dataset_name} in the active workspace. Empty chains, pipelines, arrays, and orphaned artifacts will be cleaned automatically.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteDataset} disabled={deleteBusy}>
+              {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete dataset
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

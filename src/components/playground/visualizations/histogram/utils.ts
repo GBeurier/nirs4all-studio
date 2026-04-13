@@ -2,6 +2,14 @@
  * Pure utility functions for histogram calculations.
  */
 
+import {
+  getPartitionRoleColor,
+  getPartitionRoleLabel,
+  type PartitionRole,
+} from '@/lib/playground/colorConfig';
+
+type HistogramPartitionRole = Exclude<PartitionRole, 'unknown'>;
+
 // ============= KDE Calculation =============
 
 /**
@@ -104,4 +112,20 @@ export function isBarElement(target: SVGElement | null): boolean {
     target.classList?.contains('recharts-rectangle') ||
     target.closest('.recharts-bar-rectangle') !== null
   );
+}
+
+/**
+ * Histogram-specific partition presentation:
+ * validation folds are displayed as training-colored cross-validation samples.
+ */
+export function getHistogramPartitionRoleColor(role: HistogramPartitionRole): string {
+  return role === 'val'
+    ? getPartitionRoleColor('train')
+    : getPartitionRoleColor(role);
+}
+
+export function getHistogramPartitionRoleLabel(role: HistogramPartitionRole): string {
+  return role === 'val'
+    ? 'cross-val'
+    : getPartitionRoleLabel(role);
 }

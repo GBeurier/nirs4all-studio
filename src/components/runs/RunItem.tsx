@@ -1,15 +1,29 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ChevronDown, ChevronRight, Database, Layers, Box, Clock,
   CheckCircle2, AlertCircle, Eye, HardDrive, Timer, RefreshCw,
-  Pause, Target, FolderKanban,
+  Pause, Target, FolderKanban, Loader2, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { deleteN4AWorkspaceRun } from "@/api/client";
+import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import {
   formatMetricName,
   formatMetricValue,
@@ -82,10 +96,14 @@ function primaryRefitLabel(metric: string | null): string {
 // ============================================================================
 
 export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["rmse", "r2", "sep", "rpd", "bias", "mae"] }: RunItemProps) {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const status = (run.status || "completed") as keyof typeof runStatusConfig;
   const config = runStatusConfig[status] || runStatusConfig.completed;
   const StatusIcon = statusIcons[status] || CheckCircle2;
+  const canDeleteRun = status !== "running" && status !== "queued";
 
   // Filter parasitic datasets
   const datasets = filterParasiticDatasets(run.datasets);
@@ -100,9 +118,26 @@ export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["r
     return isBetterScore(score, bestScore, ds.metric ?? best.metric) ? ds : best;
   }, null);
 
+  const handleDeleteRun = async () => {
+    if (!canDeleteRun) return;
+
+    setDeleteBusy(true);
+    try {
+      await deleteN4AWorkspaceRun(workspaceId, run.run_id);
+      await invalidatePredictionRelatedQueries(queryClient);
+      setDeleteOpen(false);
+      toast.success(`Run ${run.name || run.run_id} deleted`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Run deletion failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <Card className="overflow-hidden" data-testid="run-card">
+    <>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <Card className="overflow-hidden" data-testid="run-card">
         {/* Header — always visible, acts as collapse trigger */}
         <CollapsibleTrigger asChild>
           <CardHeader className="p-4 pb-2 cursor-pointer hover:bg-muted/20 transition-colors">
@@ -207,6 +242,19 @@ export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["r
                   <div>{formatDatetime(run.created_at)}</div>
                   {run.completed_at && <div className="text-muted-foreground/60">{formatDatetime(run.completed_at)}</div>}
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                  disabled={!canDeleteRun || deleteBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteOpen(true);
+                  }}
+                  title={canDeleteRun ? "Delete run" : "Stop the run before deleting it"}
+                >
+                  {deleteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </Button>
                 <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onViewDetails(run); }}>
                   <Eye className="h-4 w-4 mr-1" />
                   Details
@@ -251,7 +299,26 @@ export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["r
             )}
           </CardContent>
         </CollapsibleContent>
-      </Card>
-    </Collapsible>
+        </Card>
+      </Collapsible>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the run and all linked predictions, chains, arrays, logs, and orphaned artifacts from the active workspace.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteRun} disabled={!canDeleteRun || deleteBusy}>
+              {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

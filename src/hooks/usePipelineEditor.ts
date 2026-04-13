@@ -10,7 +10,11 @@ import type {
 } from "../components/pipeline-editor/types";
 import { createStepFromOption, cloneStep, migrateStep } from "../components/pipeline-editor/types";
 import { getAdjustedInsertIndex } from "../components/pipeline-editor/dnd-utils";
-import { importFromNirs4all, exportToNirs4all as exportToNirs4allFormat } from "../utils/pipelineConverter";
+import {
+  hydrateEditorPipelineSteps,
+  importFromNirs4all,
+  exportToNirs4all as exportToNirs4allFormat,
+} from "../utils/pipelineConverter";
 
 // Storage key for persisting pipeline editor state
 const STORAGE_KEY_PREFIX = "nirs4all_pipeline_editor_";
@@ -47,9 +51,9 @@ function loadPersistedState(pipelineId: string): PersistedPipelineState | null {
       if (!Array.isArray(state.steps)) {
         state.steps = [];
       }
-      // Migrate steps to backfill missing fields (generatorKind, subType, etc.)
+      // Migrate steps to backfill missing fields (generatorKind, subType, classPath, etc.)
       if (state.steps.length > 0) {
-        state.steps = state.steps.map(migrateStep);
+        state.steps = hydrateEditorPipelineSteps(state.steps.map(migrateStep));
       }
       // Ignore and clean up stale placeholder snapshots created before the
       // real pipeline ever hydrated from the backend.
@@ -342,7 +346,7 @@ export function usePipelineEditor(
 
   // Determine initial values (prefer persisted over provided)
   // Migrate initialSteps to backfill missing fields (generatorKind, subType)
-  const resolvedInitialSteps = persistedState?.steps ?? initialSteps.map(migrateStep);
+  const resolvedInitialSteps = persistedState?.steps ?? hydrateEditorPipelineSteps(initialSteps.map(migrateStep));
   const resolvedInitialName = persistedState?.pipelineName ?? initialName;
   const resolvedInitialFavorite = persistedState?.isFavorite ?? false;
   const resolvedInitialConfig = persistedState?.config ?? initialConfig;
@@ -795,7 +799,7 @@ export function usePipelineEditor(
   // Load pipeline
   const loadPipeline = useCallback(
     (newSteps: PipelineStep[], name?: string, config?: PipelineConfig) => {
-      const migrated = newSteps.map(migrateStep);
+      const migrated = hydrateEditorPipelineSteps(newSteps.map(migrateStep));
       setSteps(migrated);
       setHistory([migrated]);
       setHistoryIndex(0);
@@ -815,7 +819,7 @@ export function usePipelineEditor(
   const exportPipeline = useCallback(
     () => ({
       name: pipelineName,
-      steps: JSON.parse(JSON.stringify(steps)),
+      steps: JSON.parse(JSON.stringify(hydrateEditorPipelineSteps(steps))),
       config: pipelineConfig,
     }),
     [pipelineName, steps, pipelineConfig]

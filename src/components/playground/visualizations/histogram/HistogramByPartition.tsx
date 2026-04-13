@@ -1,5 +1,5 @@
 /**
- * HistogramByPartition - Stacked histogram by train/test partition.
+ * HistogramByPartition - Stacked histogram by train/cross-val/test partition.
  */
 
 import React, { useMemo, useCallback } from 'react';
@@ -22,8 +22,6 @@ import {
   formatYValue,
 } from '../chartConfig';
 import {
-  getPartitionRoleColor,
-  getPartitionRoleLabel,
   getPresentPartitionRoles,
   getSamplePartitionRole,
 } from '@/lib/playground/colorConfig';
@@ -34,7 +32,12 @@ import {
 } from '@/lib/playground/selectionHandlers';
 import type { HistogramChartProps, RechartsMouseEvent } from './types';
 import { RANGE_SELECTION_INITIAL } from './types';
-import { findBarRect, isBarElement } from './utils';
+import {
+  findBarRect,
+  getHistogramPartitionRoleColor,
+  getHistogramPartitionRoleLabel,
+  isBarElement,
+} from './utils';
 
 export default function HistogramByPartition({
   histogramData,
@@ -57,8 +60,8 @@ export default function HistogramByPartition({
     colorContext
       ? getPresentPartitionRoles(colorContext).map((role) => ({
           key: role,
-          label: getPartitionRoleLabel(role),
-          color: getPartitionRoleColor(role),
+          label: getHistogramPartitionRoleLabel(role),
+          color: getHistogramPartitionRoleColor(role),
         }))
       : []
   ), [colorContext]);
@@ -136,9 +139,12 @@ export default function HistogramByPartition({
 
     // 4. Detect which segment was clicked
     const barRect = findBarRect(e, target);
+    const segmentKey = barRect?.getAttribute('data-segment-key');
     const clickedFill = barRect?.getAttribute('fill') || '';
 
-    const segment = stackSegments.find(item => item.color === clickedFill) ?? stackSegments[0];
+    const segment = stackSegments.find(item => item.key === segmentKey)
+      ?? stackSegments.find(item => item.color === clickedFill)
+      ?? stackSegments[0];
     const segmentSamples = segment
       ? (entry[`${segment.key}Samples` as const] as number[] | undefined) ?? []
       : entry.samples;
@@ -238,6 +244,7 @@ export default function HistogramByPartition({
               return (
                 <Cell
                   key={`${segment.key}-${index}`}
+                  data-segment-key={segment.key}
                   fill={segment.color}
                   stroke={hasSelectedInSegment ? 'hsl(var(--foreground))' : isHovered ? 'hsl(var(--primary))' : 'none'}
                   strokeWidth={hasSelectedInSegment ? 2.5 : isHovered ? 2 : 0}

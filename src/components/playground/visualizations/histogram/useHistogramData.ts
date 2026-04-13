@@ -17,16 +17,20 @@ import {
   getCategoricalColor,
   getContinuousColor,
   detectMetadataType,
+  getMetadataUniqueCategories,
   HIGHLIGHT_COLORS,
   getHeldOutTestColor,
-  getPartitionRoleColor,
   getSamplePartitionRole,
   isHeldOutTestSample,
   normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { exportChart } from '@/lib/chartExport';
 import { formatYValue } from '../chartConfig';
-import { computeKDE, calculateOptimalBinCount } from './utils';
+import {
+  calculateOptimalBinCount,
+  computeKDE,
+  getHistogramPartitionRoleColor,
+} from './utils';
 import {
   type YHistogramV2Props,
   type BinData,
@@ -108,8 +112,7 @@ export function useHistogramData(props: YHistogramV2Props) {
     const key = globalColorConfig.metadataKey;
     const values = metadata[key];
     if (!values) return [];
-    const uniqueValues = [...new Set(values.map(v => String(v)))].filter(v => v !== 'undefined' && v !== 'null');
-    return uniqueValues.sort();
+    return getMetadataUniqueCategories(values);
   }, [shouldStackByMetadata, globalColorConfig?.metadataKey, metadata]);
 
   const effectiveDisplayFilter = useMemo(() => {
@@ -616,7 +619,7 @@ export function useHistogramData(props: YHistogramV2Props) {
         });
 
         if (dominantRole) {
-          return getPartitionRoleColor(dominantRole);
+          return getHistogramPartitionRoleColor(dominantRole);
         }
         return 'hsl(var(--primary) / 0.6)';
       }
@@ -679,9 +682,7 @@ export function useHistogramData(props: YHistogramV2Props) {
             });
 
             if (maxCategory) {
-              const uniqueValues = [...new Set(metadataValues
-                .filter(v => v !== null && v !== undefined)
-                .map(v => String(v)))].sort();
+              const uniqueValues = getMetadataUniqueCategories(metadataValues);
               const idx = uniqueValues.indexOf(maxCategory);
               return getCategoricalColor(idx >= 0 ? idx : 0, globalColorConfig?.categoricalPalette ?? 'default');
             }

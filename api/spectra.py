@@ -40,13 +40,25 @@ _dataset_cache: dict[str, Any] = {}
 
 
 def _get_dataset_config(dataset_id: str) -> dict[str, Any] | None:
-    """Get dataset configuration from workspace."""
+    """Get dataset configuration from workspace.
+
+    Looks up by ID first, then falls back to name matching so that
+    URLs containing a dataset *name* also resolve correctly.
+    """
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         return None
 
     for ds in workspace.datasets:
         if ds.get("id") == dataset_id:
+            return ds
+    # Fallback: match by name
+    for ds in workspace.datasets:
+        if ds.get("name") == dataset_id:
+            return ds
+    lower = dataset_id.lower()
+    for ds in workspace.datasets:
+        if (ds.get("name") or "").lower() == lower:
             return ds
     return None
 

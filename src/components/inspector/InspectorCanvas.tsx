@@ -117,6 +117,43 @@ function PanelNotice({
   );
 }
 
+function StatCell({
+  label,
+  value,
+  subvalue,
+  accent = false,
+  warn = false,
+}: {
+  label: string;
+  value: string | number;
+  subvalue?: string;
+  accent?: boolean;
+  warn?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 px-4 py-3">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground select-none">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-sm font-bold tabular-nums leading-tight",
+          accent && "text-primary",
+          warn && "text-amber-500 dark:text-amber-400",
+          !accent && !warn && "text-foreground",
+        )}
+      >
+        {value}
+      </span>
+      {subvalue && (
+        <span className="mt-0.5 truncate text-[11px] leading-none text-muted-foreground" title={subvalue}>
+          {subvalue}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function WorkspaceStrip({
   bestScoreLabel,
   bestChainLabel,
@@ -146,49 +183,63 @@ function WorkspaceStrip({
   mixedTaskTypes: boolean;
   selectionBar: React.ReactNode;
 }) {
-  const focusLabel = focusMode === "selection" ? "selection focus" : focusMode === "pinned" ? "pinned focus" : "auto focus";
+  const focusModeLabel = focusMode === "selection" ? "Selection" : focusMode === "pinned" ? "Pinned" : "Auto";
+  const focusAccent = focusMode !== "top";
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/60 px-4 py-3 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{filteredCount}/{totalCount} visible</Badge>
-        <Badge variant="outline">{modelCount} models</Badge>
-        <Badge variant="outline">{datasetCount} datasets</Badge>
-        <Badge variant={focusMode === "top" ? "outline" : "secondary"}>{focusLabel}</Badge>
-        {activeFilterCount > 0 ? <Badge variant="outline">{activeFilterCount} local filters</Badge> : null}
-        {pinnedCount > 0 ? (
-          <Badge variant="outline" className="gap-1">
-            <Pin className="h-3 w-3" />
-            {pinnedCount} pinned
-          </Badge>
-        ) : null}
-        {bestScoreLabel ? <Badge variant="secondary">best {bestScoreLabel}</Badge> : null}
-        {bestChainLabel ? (
-          <span className="truncate text-xs text-muted-foreground">leader: {bestChainLabel}</span>
-        ) : null}
-        {mixedMetrics || mixedTaskTypes ? (
-          <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-            mixed scope
-          </Badge>
-        ) : null}
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-sm">
+      {/* Stats grid */}
+      <div className="grid grid-cols-5 divide-x divide-border/40">
+        <StatCell label="Chains" value={`${filteredCount} / ${totalCount}`} />
+        <StatCell label="Models" value={modelCount} />
+        <StatCell label="Datasets" value={datasetCount} />
+        <StatCell
+          label="Best Score"
+          value={bestScoreLabel ?? "—"}
+          subvalue={bestChainLabel ?? undefined}
+          accent={Boolean(bestScoreLabel)}
+        />
+        <StatCell label="Focus Mode" value={focusModeLabel} accent={focusAccent} />
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          Current Focus
+      {/* Focus strip */}
+      <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border/40 bg-muted/10 px-4 py-2">
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground select-none">
+          Focus
         </span>
         {focusChains.length > 0 ? (
           focusChains.map(chain => (
-            <Badge key={chain.chain_id} variant="secondary" className="max-w-[220px] truncate">
+            <Badge key={chain.chain_id} variant="secondary" className="max-w-[200px] truncate text-[11px]">
               {chain.label}
             </Badge>
           ))
         ) : (
           <span className="text-xs text-muted-foreground">No chains in scope.</span>
         )}
+        {(mixedMetrics || mixedTaskTypes) && (
+          <Badge variant="outline" className="ml-2 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            mixed scope
+          </Badge>
+        )}
+        {activeFilterCount > 0 && (
+          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            {activeFilterCount} filters active
+          </Badge>
+        )}
+        {pinnedCount > 0 && (
+          <Badge variant="outline" className="gap-1">
+            <Pin className="h-3 w-3" />
+            {pinnedCount} pinned
+          </Badge>
+        )}
       </div>
 
-      {selectionBar ? <div className="mt-3">{selectionBar}</div> : null}
+      {/* Selection bar */}
+      {selectionBar && (
+        <div className="border-t border-border/40 px-4 py-2">
+          {selectionBar}
+        </div>
+      )}
     </div>
   );
 }
@@ -467,6 +518,7 @@ export function InspectorCanvas() {
           <InspectorPanel
             {...commonProps}
             minHeight="420px"
+            className={commonProps.isMaximized ? undefined : "max-h-[560px] overflow-hidden"}
             itemCount={filteredChains.length}
             headerContent={<Badge variant="outline">{rankingsData.rankings.length} rows</Badge>}
           >

@@ -34,6 +34,7 @@ import type { PartitionPrediction } from "@/types/aggregated-predictions";
 interface ScoreCardTreeProps {
   rows: ScoreCardRow[];
   selectedMetrics: string[];
+  workspaceId?: string;
   variant: "card" | "table";
   onViewDetails?: (row: ScoreCardRow) => void;
   onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
@@ -48,6 +49,7 @@ interface ScoreCardTreeProps {
 function CrossvalExpandable({
   row,
   selectedMetrics,
+  workspaceId,
   rank,
   variant,
   onViewDetails,
@@ -58,6 +60,7 @@ function CrossvalExpandable({
 }: {
   row: ScoreCardRow;
   selectedMetrics: string[];
+  workspaceId?: string;
   rank?: number;
   variant: "card" | "table";
   onViewDetails?: (row: ScoreCardRow) => void;
@@ -108,6 +111,7 @@ function CrossvalExpandable({
         <ScoreCardRowView
           row={displayRow}
           selectedMetrics={selectedMetrics}
+          workspaceId={workspaceId}
           rank={rank}
           variant="inline"
           expandable
@@ -128,6 +132,7 @@ function CrossvalExpandable({
                 key={child.id}
                 row={child}
                 selectedMetrics={selectedMetrics}
+                workspaceId={workspaceId}
                 variant="inline"
                 onViewPrediction={onViewPrediction ? handleViewPred : undefined}
               />
@@ -147,6 +152,7 @@ function CrossvalExpandable({
       <ScoreCardRowView
         row={displayRow}
         selectedMetrics={selectedMetrics}
+        workspaceId={workspaceId}
         rank={rank}
         variant="table-row"
         expandable
@@ -169,6 +175,7 @@ function CrossvalExpandable({
                   key={child.id}
                   row={child}
                   selectedMetrics={selectedMetrics}
+                  workspaceId={workspaceId}
                   variant="inline"
                   onViewPrediction={onViewPrediction ? handleViewPred : undefined}
                 />
@@ -191,6 +198,7 @@ function CrossvalExpandable({
 function RefitExpandable({
   row,
   selectedMetrics,
+  workspaceId,
   rank,
   variant,
   onViewDetails,
@@ -200,6 +208,7 @@ function RefitExpandable({
 }: {
   row: ScoreCardRow;
   selectedMetrics: string[];
+  workspaceId?: string;
   rank?: number;
   variant: "card" | "table";
   onViewDetails?: (row: ScoreCardRow) => void;
@@ -218,6 +227,7 @@ function RefitExpandable({
         <ScoreCardRowView
           row={row}
           selectedMetrics={selectedMetrics}
+          workspaceId={workspaceId}
           rank={rank}
           variant="inline"
           expandable
@@ -232,6 +242,7 @@ function RefitExpandable({
                 key={cvRow.id}
                 row={cvRow}
                 selectedMetrics={selectedMetrics}
+                workspaceId={workspaceId}
                 variant="card"
                 onViewDetails={onViewDetails}
                 onViewPrediction={onViewPrediction}
@@ -255,6 +266,7 @@ function RefitExpandable({
       <ScoreCardRowView
         row={row}
         selectedMetrics={selectedMetrics}
+        workspaceId={workspaceId}
         rank={rank}
         variant="table-row"
         expandable
@@ -272,6 +284,7 @@ function RefitExpandable({
                   key={cvRow.id}
                   row={cvRow}
                   selectedMetrics={selectedMetrics}
+                  workspaceId={workspaceId}
                   variant="card"
                   onViewDetails={onViewDetails}
                   onViewPrediction={onViewPrediction}
@@ -296,6 +309,7 @@ function RefitExpandable({
 export function ScoreCardTree({
   rows,
   selectedMetrics,
+  workspaceId,
   variant,
   onViewDetails,
   onViewPrediction,
@@ -326,6 +340,7 @@ export function ScoreCardTree({
                 key={row.id}
                 row={row}
                 selectedMetrics={selectedMetrics}
+                workspaceId={workspaceId}
                 rank={idx + 1}
                 variant="card"
                 onViewDetails={onViewDetails}
@@ -358,6 +373,7 @@ export function ScoreCardTree({
                     key={row.id}
                     row={row}
                     selectedMetrics={selectedMetrics}
+                    workspaceId={workspaceId}
                     rank={refitRows.length + idx + 1}
                     variant="card"
                     onViewDetails={onViewDetails}
@@ -399,6 +415,7 @@ export function ScoreCardTree({
           key={row.id}
           row={row}
           selectedMetrics={selectedMetrics}
+          workspaceId={workspaceId}
           rank={idx + 1}
           variant="table"
           onViewDetails={onViewDetails}
@@ -424,6 +441,7 @@ export function ScoreCardTree({
           key={row.id}
           row={row}
           selectedMetrics={selectedMetrics}
+          workspaceId={workspaceId}
           rank={refitRows.length + idx + 1}
           variant="table"
           onViewDetails={onViewDetails}

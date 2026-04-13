@@ -24,6 +24,7 @@ import {
   HIGHLIGHT_COLORS_CONCRETE,
   getColorModeLabel,
   getEffectiveTargetType,
+  getMetadataUniqueCategories,
 } from '@/lib/playground/colorConfig';
 import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
 
@@ -90,7 +91,7 @@ function getCategoricalLegendItems(
       if (!config.metadataKey || !context.metadata) return [];
       const values = context.metadata[config.metadataKey];
       if (!values) return [];
-      const uniqueValues = [...new Set(values.filter(v => v !== null && v !== undefined))];
+      const uniqueValues = getMetadataUniqueCategories(values);
       return uniqueValues.slice(0, 10).map((value, idx) => ({
         color: getCategoricalColor(idx, config.categoricalPalette),
         label: String(value),

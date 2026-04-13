@@ -12,10 +12,12 @@ import { describe, it, expect } from "vitest";
 import {
   importFromNirs4all,
   exportToNirs4all,
+  hydrateEditorPipelineSteps,
   validateRoundTrip,
   type Nirs4allPipeline,
   type Nirs4allStep,
 } from "../pipelineConverter";
+import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 
 // Sample canonical pipelines as returned by nirs4all
 const SAMPLE_BASIC_REGRESSION: Nirs4allPipeline = {
@@ -245,6 +247,71 @@ describe("pipelineConverter", () => {
 
       const branchStep = exported[2] as { branch: unknown };
       expect(branchStep.branch).toBeDefined();
+    });
+
+    it("should resolve known models without inventing a cross_decomposition path", () => {
+      const editorSteps: EditorPipelineStep[] = [
+        {
+          id: "step-ridge",
+          type: "model",
+          name: "Ridge",
+          params: { alpha: 1.5 },
+        } as EditorPipelineStep,
+      ];
+
+      const exported = exportToNirs4all(editorSteps) as Nirs4allStep[];
+      const modelStep = exported[0] as { model: { class: string; params?: Record<string, unknown> } };
+
+      expect(modelStep.model.class).toBe("sklearn.linear_model.Ridge");
+      expect(modelStep.model.params).toEqual({ alpha: 1.5 });
+    });
+  });
+
+  describe("hydrateEditorPipelineSteps", () => {
+    it("should backfill missing classPath values for persisted model steps", () => {
+      const editorSteps: EditorPipelineStep[] = [
+        {
+          id: "step-ridge",
+          type: "model",
+          name: "Ridge",
+          params: { alpha: 1.0 },
+        } as EditorPipelineStep,
+      ];
+
+      const hydrated = hydrateEditorPipelineSteps(editorSteps);
+
+      expect(hydrated[0].classPath).toBe("sklearn.linear_model.Ridge");
+    });
+
+    it("should canonicalize incorrect stored classPath values for known models", () => {
+      const editorSteps: EditorPipelineStep[] = [
+        {
+          id: "step-opls",
+          type: "model",
+          name: "OPLS",
+          classPath: "sklearn.cross_decomposition.OPLS",
+          params: {},
+        } as EditorPipelineStep,
+      ];
+
+      const hydrated = hydrateEditorPipelineSteps(editorSteps);
+
+      expect(hydrated[0].classPath).toBe("nirs4all.operators.models.OPLS");
+    });
+
+    it("should reject unresolved model definitions during export", () => {
+      const editorSteps: EditorPipelineStep[] = [
+        {
+          id: "step-unknown",
+          type: "model",
+          name: "DefinitelyNotAModel",
+          params: {},
+        } as EditorPipelineStep,
+      ];
+
+      expect(() => exportToNirs4all(editorSteps)).toThrow(
+        'Could not resolve class path for model step "DefinitelyNotAModel"'
+      );
     });
   });
 

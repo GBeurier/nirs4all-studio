@@ -486,23 +486,107 @@ function resolveClassPath(classPath: string): ResolvedClassInfo {
  * Get class path from editor step info.
  */
 function getClassPath(type: StepType, name: string): string {
-  const key = `${type}:${name}`;
+  const normalizedName = name.trim();
+  const key = `${type}:${normalizedName}`;
   if (NAME_TO_CLASS_PATH[key]) {
     return NAME_TO_CLASS_PATH[key];
   }
 
-  // Fallback: try common prefixes
-  if (type === "preprocessing") {
-    return `sklearn.preprocessing.${name}`;
-  }
-  if (type === "splitting") {
-    return `sklearn.model_selection.${name}`;
-  }
-  if (type === "model") {
-    return `sklearn.cross_decomposition.${name}`;
+  const lookupByName = CLASS_REFERENCE_LOOKUP.get(normalizedName.toLowerCase());
+  if (lookupByName?.type === type && lookupByName.classPath) {
+    return lookupByName.classPath;
   }
 
-  return name;
+  if (normalizedName.includes(".")) {
+    return resolveClassPath(normalizedName).classPath || normalizedName;
+  }
+
+  // Fallback: try common prefixes
+  if (type === "preprocessing") {
+    return `sklearn.preprocessing.${normalizedName}`;
+  }
+  if (type === "y_processing") {
+    return `sklearn.preprocessing.${normalizedName}`;
+  }
+  if (type === "splitting") {
+    return `sklearn.model_selection.${normalizedName}`;
+  }
+
+  // Models live across many sklearn/nirs4all namespaces. Returning the
+  // display name is safer than inventing a wrong module path.
+  return normalizedName;
+}
+
+function hydrateEditorStep(step: EditorPipelineStep): EditorPipelineStep {
+  let hydrated = step;
+
+  if (
+    !hydrated.functionPath &&
+    hydrated.rawNirs4all === undefined &&
+    hydrated.type !== "flow" &&
+    hydrated.type !== "utility"
+  ) {
+    const classPath = resolveConfiguredClassPath(
+      hydrated.type,
+      hydrated.name,
+      hydrated.classPath
+    );
+    if (classPath.includes(".")) {
+      hydrated = { ...hydrated, classPath };
+    }
+  }
+
+  if (hydrated.branches) {
+    hydrated = {
+      ...hydrated,
+      branches: hydrated.branches.map(branch => branch.map(child => hydrateEditorStep(child))),
+    };
+  }
+
+  if (hydrated.children) {
+    hydrated = {
+      ...hydrated,
+      children: hydrated.children.map(child => hydrateEditorStep(child)),
+    };
+  }
+
+  return hydrated;
+}
+
+export function hydrateEditorPipelineSteps(steps: EditorPipelineStep[]): EditorPipelineStep[] {
+  return steps.map(step => hydrateEditorStep(step));
+}
+
+function resolveConfiguredClassPath(
+  type: StepType,
+  name: string,
+  classPath?: string
+): string {
+  const explicit = classPath?.trim();
+  if (type !== "model" && explicit?.includes(".")) {
+    return explicit;
+  }
+
+  const preferred = getClassPath(type, name);
+  if (preferred.includes(".")) {
+    return preferred;
+  }
+
+  if (explicit?.includes(".")) {
+    return explicit;
+  }
+
+  return preferred;
+}
+
+function resolveRequiredClassPath(step: EditorPipelineStep, type: StepType = step.type): string {
+  const resolved = resolveConfiguredClassPath(type, step.name, step.classPath);
+  if (resolved.includes(".")) {
+    return resolved;
+  }
+  throw new Error(
+    `Could not resolve class path for ${type} step "${step.name}". Check that the step definition is valid.`
+  );
 }
 
 /**
@@ -1568,13 +1652,14 @@ export function exportToNirs4all(steps: EditorPipelineStep[], options?: {
  * Convert a single editor step to nirs4all format.
  */
 function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
-  // Use stored classPath if available, otherwise compute
-  const classPath = step.classPath || getClassPath(step.type, step.name);
-
   // Handle raw nirs4all storage (for unknown/complex steps)
   if (step.rawNirs4all !== undefined) {
     return step.rawNirs4all as Nirs4allStep;
   }
+
+  const classPath = step.type === "flow" || step.type === "utility"
+    ? step.classPath || getClassPath(step.type, step.name)
+    : resolveRequiredClassPath(step);
 
   // For flow/utility types, dispatch by subType
   if (step.type === "flow" && step.subType) {
@@ -2300,7 +2385,7 @@ function convertEditorAugmentationToNirs4all(step: EditorPipelineStep): Nirs4all
   }
 
   // Single augmentation transform
-  const classPath = getClassPath(step.type, step.name);
+  const classPath = resolveRequiredClassPath(step);
   return buildClassStep(classPath, step.params);
 }
 
@@ -2316,7 +2401,7 @@ function convertEditorFilterToNirs4all(step: EditorPipelineStep): Nirs4allStep {
   }
 
   // Single filter
-  const classPath = getClassPath(step.type, step.name);
+  const classPath = resolveRequiredClassPath(step);
   return buildClassStep(classPath, step.params);
 }
 

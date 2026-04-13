@@ -18,7 +18,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
 import { SelectionProvider } from '@/context/SelectionContext';
-import { PlaygroundViewProvider } from '@/context/PlaygroundViewContext';
+import { PlaygroundViewProvider, usePlaygroundView } from '@/context/PlaygroundViewContext';
 import { FilterProvider } from '@/context/FilterContext';
 import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
 import { OutliersProvider } from '@/context/OutliersContext';
@@ -628,6 +628,9 @@ function PlaygroundContent({
   selectedSample,
   setSelectedSample,
 }: PlaygroundContentProps) {
+  // View context — needed to sync keyboard shortcut chart toggles with the view state
+  const viewContext = usePlaygroundView();
+
   // Phase 8: Outliers context for mark-as-outliers functionality
   const { toggleOutliers, setDetectedOutliers, clearDetectedOutliers } = useOutliers();
 
@@ -684,6 +687,7 @@ function PlaygroundContent({
       const charts = ['spectra', 'histogram', 'pca', 'folds', 'repetitions'] as const;
       if (index >= 0 && index < charts.length) {
         toggleChartVisibility(charts[index]);
+        viewContext.toggleChart(charts[index]);
       }
     },
     onShowHelp: () => setShowShortcutsHelp(true),
@@ -768,6 +772,8 @@ function PlaygroundContent({
         // Phase 8 props
         onResetPlayground={handleResetPlayground}
         hasStateToReset={hasStateToReset}
+        // Sync execute options (compute_repetitions, compute_pca) when toolbar toggles a chart
+        onChartToggle={toggleChartVisibility}
         // Granular chart loading
         chartLoadingStates={chartLoadingStates}
       />

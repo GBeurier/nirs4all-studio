@@ -17,16 +17,38 @@ from api.pipeline_canonical import (
     editor_to_canonical,
 )
 from api.pipelines import (
+    PipelineCreate,
     PipelineCanonicalImportRequest,
     PipelineCanonicalRenderRequest,
     PipelineExportRequest,
     _semantic_pipeline_template,
+    create_pipeline,
     create_pipeline_from_preset,
     export_pipeline,
     import_pipeline,
     preview_pipeline_import,
     render_canonical_pipeline,
 )
+
+_WEBAPP_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _find_nirs4all_root() -> Path | None:
+    """Find the nirs4all library root (CI: nirs4all-lib/, local: sibling dir)."""
+    for candidate in [
+        _WEBAPP_ROOT / "nirs4all-lib",       # CI checkout
+        _WEBAPP_ROOT.parent / "nirs4all",     # local workspace sibling
+    ]:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+_NIRS4ALL_ROOT = _find_nirs4all_root()
+
+_PRESET_ADVANCED = _WEBAPP_ROOT / "api/presets/pls_finetune_advanced.yaml"
+_SAMPLE_08 = (_NIRS4ALL_ROOT / "examples/pipeline_samples/08_complex_finetune.json") if _NIRS4ALL_ROOT else None
+_SAMPLE_09 = (_NIRS4ALL_ROOT / "examples/pipeline_samples/09_filters_splits.yaml") if _NIRS4ALL_ROOT else None
 
 
 def _load_payload(path: Path) -> dict:
@@ -50,9 +72,9 @@ def pipelines_workspace(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "path",
     [
-        Path("d:/nirs4all/nirs4all-webapp/api/presets/pls_finetune_advanced.yaml"),
-        Path("d:/nirs4all/nirs4all/examples/pipeline_samples/08_complex_finetune.json"),
-        Path("d:/nirs4all/nirs4all/examples/pipeline_samples/09_filters_splits.yaml"),
+        pytest.param(_PRESET_ADVANCED, id="preset_advanced"),
+        pytest.param(_SAMPLE_08, id="sample_08", marks=pytest.mark.skipif(_SAMPLE_08 is None or not (_SAMPLE_08 and _SAMPLE_08.exists()), reason="nirs4all examples not found")),
+        pytest.param(_SAMPLE_09, id="sample_09", marks=pytest.mark.skipif(_SAMPLE_09 is None or not (_SAMPLE_09 and _SAMPLE_09.exists()), reason="nirs4all examples not found")),
     ],
 )
 def test_canonical_roundtrip_matches_library_semantics(path: Path):
@@ -193,9 +215,7 @@ def test_export_and_reimport_pipeline_json_uses_canonical_contract(pipelines_wor
 
 
 def test_preview_pipeline_import_supports_yaml_content():
-    yaml_content = Path(
-        "d:/nirs4all/nirs4all-webapp/api/presets/pls_finetune_advanced.yaml"
-    ).read_text(encoding="utf-8")
+    yaml_content = _PRESET_ADVANCED.read_text(encoding="utf-8")
 
     preview = asyncio.run(
         preview_pipeline_import(
@@ -236,19 +256,102 @@ def test_render_canonical_pipeline_preview_matches_export_payload(pipelines_work
 
 
 def test_runtime_canonical_count_matches_library_for_advanced_preset():
-    payload = _load_payload(
-        Path("d:/nirs4all/nirs4all-webapp/api/presets/pls_finetune_advanced.yaml")
-    )
+    payload = _load_payload(_PRESET_ADVANCED)
     editor_steps = canonical_to_editor(payload)
     runtime_pipeline = editor_steps_to_runtime_canonical(editor_steps)
 
     assert count_runtime_variants(runtime_pipeline) == count_combinations(payload["pipeline"])
 
 
-def test_variant_expansion_returns_fully_expanded_canonical_variants(monkeypatch):
-    payload = _load_payload(
-        Path("d:/nirs4all/nirs4all-webapp/api/presets/pls_finetune_advanced.yaml")
+def test_editor_to_canonical_resolves_ridge_without_cross_decomposition():
+    editor_steps = [
+        {
+            "id": "step-ridge",
+            "type": "model",
+            "name": "Ridge",
+            "params": {"alpha": 1.0},
+        }
+    ]
+
+    canonical = editor_to_canonical(editor_steps)
+
+    model_payload = canonical[0]["model"]
+    assert model_payload["class"].startswith("sklearn.linear_model")
+    assert model_payload["class"].endswith("Ridge")
+    assert "cross_decomposition" not in model_payload["class"]
+    assert model_payload["params"] == {"alpha": 1.0}
+
+
+def test_create_pipeline_hydrates_fresh_saved_steps(pipelines_workspace):
+    created = asyncio.run(
+        create_pipeline(
+            PipelineCreate(
+                name="Fresh Ridge",
+                description="",
+                steps=[
+                    {
+                        "id": "step-ridge",
+                        "type": "model",
+                        "name": "Ridge",
+                        "params": {"alpha": 1.0},
+                    }
+                ],
+            )
+        )
     )
+
+    class_path = created["pipeline"]["steps"][0]["classPath"]
+    assert class_path.startswith("sklearn.linear_model")
+    assert class_path.endswith("Ridge")
+    assert "cross_decomposition" not in class_path
+
+
+def test_create_pipeline_canonicalizes_incorrect_known_model_classpath(pipelines_workspace):
+    created = asyncio.run(
+        create_pipeline(
+            PipelineCreate(
+                name="Fresh OPLS",
+                description="",
+                steps=[
+                    {
+                        "id": "step-opls",
+                        "type": "model",
+                        "name": "OPLS",
+                        "classPath": "sklearn.cross_decomposition.OPLS",
+                        "params": {},
+                    }
+                ],
+            )
+        )
+    )
+
+    class_path = created["pipeline"]["steps"][0]["classPath"]
+    assert class_path.startswith("nirs4all.operators.models")
+    assert class_path.endswith("OPLS")
+    assert "cross_decomposition" not in class_path
+
+
+def test_render_canonical_pipeline_rejects_unknown_model_definition():
+    with pytest.raises(Exception, match="Could not resolve class path for model step 'DefinitelyNotAModel'"):
+        asyncio.run(
+            render_canonical_pipeline(
+                PipelineCanonicalRenderRequest(
+                    steps=[
+                        {
+                            "id": "step-unknown",
+                            "type": "model",
+                            "name": "DefinitelyNotAModel",
+                            "params": {},
+                        }
+                    ],
+                    name="broken",
+                )
+            )
+        )
+
+
+def test_variant_expansion_returns_fully_expanded_canonical_variants(monkeypatch):
+    payload = _load_payload(_PRESET_ADVANCED)
     editor_steps = canonical_to_editor(payload)
     monkeypatch.setattr("api.nirs4all_adapter.require_nirs4all", lambda: None)
     variants = expand_pipeline_variants(editor_steps)

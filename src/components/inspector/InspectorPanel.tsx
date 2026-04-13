@@ -199,14 +199,16 @@ function PanelHeader({
 }
 
 function PanelFooter({ itemCount, selectedCount }: { itemCount?: number; selectedCount?: number }) {
-  const stats: string[] = [];
-  if (itemCount !== undefined) stats.push(`${itemCount} chains`);
-  if (selectedCount !== undefined && selectedCount > 0) stats.push(`${selectedCount} selected`);
-  if (stats.length === 0) return null;
+  if (itemCount === undefined && selectedCount === undefined) return null;
 
   return (
-    <div className="pt-2 border-t border-border/50 mt-auto">
-      <div className="text-xs text-muted-foreground">{stats.join(' | ')}</div>
+    <div className="mt-auto flex items-center gap-3 border-t border-border/40 pt-1.5">
+      {itemCount !== undefined && (
+        <span className="tabular-nums text-[11px] text-muted-foreground">{itemCount} chains</span>
+      )}
+      {selectedCount !== undefined && selectedCount > 0 && (
+        <span className="tabular-nums text-[11px] font-medium text-primary">{selectedCount} selected</span>
+      )}
     </div>
   );
 }
@@ -254,7 +256,7 @@ export const InspectorPanel = forwardRef<HTMLDivElement, InspectorPanelProps>(
         <div
           ref={ref}
           className={cn(
-            'bg-card rounded-lg border border-border relative flex flex-col select-none',
+            'bg-card rounded-lg border border-border/70 shadow-sm relative flex flex-col select-none',
             'transition-all duration-200 ease-in-out',
             isMaximized && 'col-span-full row-span-full z-10',
             isMinimized && 'min-h-0',

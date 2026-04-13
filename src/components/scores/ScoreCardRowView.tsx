@@ -35,6 +35,7 @@ import { safeNumber } from "@/lib/fold-utils";
 interface ScoreCardRowViewProps {
   row: ScoreCardRow;
   selectedMetrics: string[];
+  workspaceId?: string;
   rank?: number;
   variant: "inline" | "table-row";
   expandable?: boolean;
@@ -180,7 +181,7 @@ function CardTypeBadge({ row }: { row: ScoreCardRow }) {
 // ============================================================================
 
 function InlineRow({
-  row, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, indent = 0,
+  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, indent = 0,
 }: ScoreCardRowViewProps) {
   const borderClass = cardTypeBorderClass(row.cardType);
   const isRefit = row.cardType === "refit";
@@ -247,7 +248,16 @@ function InlineRow({
               </Button>
             )}
             {!isTrain && (
-              <ModelActionMenu chainId={row.chainId} modelName={row.modelName} datasetName={row.datasetName} runId={row.runId} hasRefit={row.hasRefitArtifact} onViewDetails={onViewDetails} />
+              <ModelActionMenu
+                chainId={row.chainId}
+                modelName={row.modelName}
+                datasetName={row.datasetName}
+                runId={row.runId}
+                hasRefit={row.hasRefitArtifact}
+                workspaceId={workspaceId}
+                deleteScope="chain"
+                onViewDetails={onViewDetails}
+              />
             )}
           </div>
         </div>
@@ -261,7 +271,7 @@ function InlineRow({
 // ============================================================================
 
 function TableRowVariant({
-  row, selectedMetrics, rank, expanded, onToggleExpand,
+  row, selectedMetrics, workspaceId, rank, expanded, onToggleExpand,
   onViewDetails, onViewPrediction,
 }: ScoreCardRowViewProps) {
   const isRefit = row.cardType === "refit";
@@ -301,7 +311,17 @@ function TableRowVariant({
           {onViewPrediction && (
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onViewPrediction(row.id)}><Eye className="h-3.5 w-3.5" /></Button>
           )}
-          <ModelActionMenu chainId={row.chainId} modelName={row.modelName} datasetName={row.datasetName} runId={row.runId} hasRefit={row.hasRefitArtifact} onViewDetails={onViewDetails} />
+          <ModelActionMenu
+            chainId={row.chainId}
+            modelName={row.modelName}
+            datasetName={row.datasetName}
+            runId={row.runId}
+            hasRefit={row.hasRefitArtifact}
+            workspaceId={workspaceId}
+            deleteScope="group"
+            foldId={row.foldId}
+            onViewDetails={onViewDetails}
+          />
         </div>
       </TableCell>
     </TableRow>

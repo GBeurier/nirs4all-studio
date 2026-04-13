@@ -6,6 +6,7 @@ import {
   getBaseColor,
   getCategoricalColor,
   getHeldOutTestColor,
+  getMetadataUniqueCategories,
   getPresentPartitionRoles,
   getSamplePartitionRole,
   getUnifiedSampleColor,
@@ -94,5 +95,24 @@ describe('colorConfig fold and partition semantics', () => {
     expect(getSamplePartitionRole(1, context)).toBe('val');
     expect(getSamplePartitionRole(2, context)).toBe('test');
     expect(getPresentPartitionRoles(context)).toEqual(['train', 'val', 'test']);
+  });
+
+  it('preserves metadata category order for categorical color mapping', () => {
+    const config = {
+      ...DEFAULT_GLOBAL_COLOR_CONFIG,
+      mode: 'metadata' as const,
+      metadataKey: 'partition',
+      categoricalPalette: 'default' as const,
+    };
+
+    const context: ColorContext = {
+      metadata: {
+        partition: ['train', 'test', 'train', null, undefined],
+      },
+    };
+
+    expect(getMetadataUniqueCategories(context.metadata!.partition)).toEqual(['train', 'test']);
+    expect(getBaseColor(0, config, context)).toBe(getCategoricalColor(0, 'default'));
+    expect(getBaseColor(1, config, context)).toBe(getCategoricalColor(1, 'default'));
   });
 });

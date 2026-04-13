@@ -36,11 +36,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { getCategoricalColor } from '@/lib/playground/colorConfig';
+import {
+  getCategoricalColor,
+  getPresentPartitionRoles,
+} from '@/lib/playground/colorConfig';
 import { formatYValue } from '../chartConfig';
 import { InlineColorLegend } from '../../ColorLegend';
 import { cn } from '@/lib/utils';
 import type { HistogramBaseProps, BinCountOption } from './types';
+import {
+  getHistogramPartitionRoleColor,
+  getHistogramPartitionRoleLabel,
+} from './utils';
 
 export default function HistogramBase({
   chartRef,
@@ -59,6 +66,10 @@ export default function HistogramBase({
   handleExport,
   children,
 }: HistogramBaseProps) {
+  const histogramPartitionRoles = globalColorConfig?.mode === 'partition' && colorContext
+    ? getPresentPartitionRoles(colorContext)
+    : [];
+
   return (
     <div className="h-full flex flex-col" ref={chartRef}>
       {/* Header */}
@@ -294,7 +305,23 @@ export default function HistogramBase({
       {/* Color legend */}
       {globalColorConfig && colorContext && !compact && (
         <div className="mt-2">
-          <InlineColorLegend config={globalColorConfig} context={colorContext} />
+          {globalColorConfig.mode === 'partition' && histogramPartitionRoles.length > 0 ? (
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {histogramPartitionRoles.map((role) => (
+                <div key={role} className="flex items-center gap-1.5">
+                  <div
+                    className="w-3 h-3 rounded-sm shrink-0"
+                    style={{ backgroundColor: getHistogramPartitionRoleColor(role) }}
+                  />
+                  <span className="text-[9px] text-muted-foreground truncate max-w-[60px]">
+                    {getHistogramPartitionRoleLabel(role)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <InlineColorLegend config={globalColorConfig} context={colorContext} />
+          )}
         </div>
       )}
     </div>

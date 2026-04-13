@@ -20,32 +20,57 @@
   ; Switch to current-user context so we target the correct directories.
   SetShellVarContext current
 
-  ; Check if a custom/external Python env was configured (lives outside app data)
+  ; Pre-check: note about external Python environment (before any deletion)
   StrCpy $0 ""
   IfFileExists "$APPDATA\nirs4all Studio\env-settings.json" 0 +2
-    StrCpy $0 "$\n$\nNote: Your external Python environment will NOT be affected."
+    StrCpy $0 "$\n$\nNote: Your external Python environment (if configured) will NOT be affected."
 
-  ; Ask the user if they want to remove all app data
+  ; ---- Question 1: Application settings & cache ----
   MessageBox MB_YESNO|MB_ICONQUESTION \
-    "Do you want to remove all nirs4all Studio configuration and data?$\n$\n\
-This includes settings, logs, and the managed Python environment.$\n\
-Your workspaces and datasets will NOT be affected.$0" \
-    IDYES removeData IDNO skipRemove
+    "Do you want to remove application settings and cache?$\n$\n\
+This includes preferences, logs, dataset links, and backend cache.$\n\
+Your workspaces (models, predictions, databases) and dataset files are NOT affected." \
+    IDYES removeData IDNO skipData
 
   removeData:
-    ; Remove Electron userData (logs, env-settings, managed Python venv)
-    ; Path: %APPDATA%\nirs4all Studio
-    RMDir /r "$APPDATA\nirs4all Studio"
-
-    ; Remove Python backend app data (update cache/backup/staging, venv settings, config snapshots)
-    ; Path: %LOCALAPPDATA%\nirs4all
-    RMDir /r "$LOCALAPPDATA\nirs4all"
-
     ; Remove global app config (app_settings.json, dataset_links.json)
-    ; Path: %APPDATA%\nirs4all
     RMDir /r "$APPDATA\nirs4all"
 
-  skipRemove:
+    ; Remove Python backend app data (update cache/backup/staging, venv settings, config snapshots)
+    RMDir /r "$LOCALAPPDATA\nirs4all"
+
+    ; Remove Electron userData but preserve python-env if it exists
+    RMDir /r "$TEMP\nirs4all-python-env-tmp"
+    IfFileExists "$APPDATA\nirs4all Studio\python-env\*.*" 0 removeAllUserData
+      ; python-env exists — move it aside, nuke the rest, move it back
+      Rename "$APPDATA\nirs4all Studio\python-env" "$TEMP\nirs4all-python-env-tmp"
+      RMDir /r "$APPDATA\nirs4all Studio"
+      CreateDirectory "$APPDATA\nirs4all Studio"
+      Rename "$TEMP\nirs4all-python-env-tmp" "$APPDATA\nirs4all Studio\python-env"
+      Goto skipData
+    removeAllUserData:
+      ; No python-env to preserve — remove the whole directory
+      RMDir /r "$APPDATA\nirs4all Studio"
+
+  skipData:
+
+  ; ---- Question 2: Python environment ----
+  ; Only ask if a managed python-env actually exists
+  IfFileExists "$APPDATA\nirs4all Studio\python-env\*.*" 0 skipEnv
+
+  MessageBox MB_YESNO|MB_ICONQUESTION \
+    "Do you want to remove the managed Python environment?$\n$\n\
+This frees approximately 1-2 GB of disk space.$\n\
+It will be re-downloaded automatically if you reinstall.$0" \
+    IDYES removeEnv IDNO skipEnv
+
+  removeEnv:
+    RMDir /r "$APPDATA\nirs4all Studio\python-env"
+
+  skipEnv:
+  ; Clean up parent directory if it's now empty
+  RMDir "$APPDATA\nirs4all Studio"
+
   ; Restore all-users context for any remaining electron-builder uninstall steps
   SetShellVarContext all
 !macroend
