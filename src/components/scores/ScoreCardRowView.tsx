@@ -88,16 +88,36 @@ function getAnyScore(row: ScoreCardRow, key: string): number | null {
 
 /** REFIT: RMSEP | Train_RMSE | R² | SEP | RPD | BIAS | MAE | NRMSE */
 function RefitScores({ row }: { row: ScoreCardRow }) {
+  const aggTest = row.aggregatedTestScores;
+  const aggTrain = row.aggregatedTrainScores;
+  const hasAgg = !!(aggTest || aggTrain || row.primaryAggTestScore != null);
+  const aggTestVal = (k: string) => safeNumber(aggTest?.[k]);
+  const aggTrainVal = (k: string) => safeNumber(aggTrain?.[k]);
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <ScorePair label="RMSEP" value={row.primaryTestScore ?? getTestScore(row, "rmse")} metric="rmse" colorClass="text-emerald-500 font-semibold" />
-      <ScorePair label="Train" value={row.primaryTrainScore ?? getTrainScore(row, "rmse")} metric="rmse" colorClass="text-orange-400" />
-      <ScorePair label="R²" value={getTestScore(row, "r2")} metric="r2" />
-      <ScorePair label="SEP" value={getTestScore(row, "sep")} metric="sep" />
-      <ScorePair label="RPD" value={getTestScore(row, "rpd")} metric="rpd" />
-      <ScorePair label="BIAS" value={getTestScore(row, "bias")} metric="bias" />
-      <ScorePair label="MAE" value={getTestScore(row, "mae")} metric="mae" />
-      <ScorePair label="NRMSE" value={getTestScore(row, "nrmse")} metric="nrmse" />
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <ScorePair label="RMSEP" value={row.primaryTestScore ?? getTestScore(row, "rmse")} metric="rmse" colorClass="text-emerald-500 font-semibold" />
+        <ScorePair label="Train" value={row.primaryTrainScore ?? getTrainScore(row, "rmse")} metric="rmse" colorClass="text-orange-400" />
+        <ScorePair label="R²" value={getTestScore(row, "r2")} metric="r2" />
+        <ScorePair label="SEP" value={getTestScore(row, "sep")} metric="sep" />
+        <ScorePair label="RPD" value={getTestScore(row, "rpd")} metric="rpd" />
+        <ScorePair label="BIAS" value={getTestScore(row, "bias")} metric="bias" />
+        <ScorePair label="MAE" value={getTestScore(row, "mae")} metric="mae" />
+        <ScorePair label="NRMSE" value={getTestScore(row, "nrmse")} metric="nrmse" />
+      </div>
+      {hasAgg ? (
+        <div className="flex items-center gap-1.5 flex-wrap opacity-90">
+          <Badge variant="outline" className="text-[8px] h-4 px-1 border-purple-500/40 text-purple-500 shrink-0">Agg</Badge>
+          <ScorePair label="RMSEP" value={row.primaryAggTestScore ?? aggTestVal("rmse")} metric="rmse" colorClass="text-purple-500 font-semibold" />
+          <ScorePair label="Train" value={row.primaryAggTrainScore ?? aggTrainVal("rmse")} metric="rmse" colorClass="text-purple-400" />
+          <ScorePair label="R²" value={aggTestVal("r2")} metric="r2" colorClass="text-purple-400/80" />
+          <ScorePair label="SEP" value={aggTestVal("sep")} metric="sep" colorClass="text-purple-400/80" />
+          <ScorePair label="RPD" value={aggTestVal("rpd")} metric="rpd" colorClass="text-purple-400/80" />
+          <ScorePair label="BIAS" value={aggTestVal("bias")} metric="bias" colorClass="text-purple-400/80" />
+          <ScorePair label="MAE" value={aggTestVal("mae")} metric="mae" colorClass="text-purple-400/80" />
+          <ScorePair label="NRMSE" value={aggTestVal("nrmse")} metric="nrmse" colorClass="text-purple-400/80" />
+        </div>
+      ) : null}
     </div>
   );
 }

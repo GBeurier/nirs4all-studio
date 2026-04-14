@@ -298,6 +298,17 @@ function buildRefitRow(
     }
   }
 
+  const aggSource = chain.final_agg_scores as Record<string, unknown> | null | undefined;
+  const aggregatedTestScores: Record<string, number | null> = {};
+  const aggregatedTrainScores: Record<string, number | null> = {};
+  if (aggSource) {
+    for (const key of finalMetricKeys) {
+      aggregatedTestScores[key] = extractScoreValue(aggSource, key, "test");
+      aggregatedTrainScores[key] = extractScoreValue(aggSource, key, "train");
+    }
+  }
+  const hasAgg = aggSource != null || chain.final_agg_test_score != null;
+
   return {
     id: `refit-${chain.chain_id}`,
     chainId: chain.chain_id,
@@ -321,6 +332,10 @@ function buildRefitRow(
     primaryValScore: safeNumber(effectiveCvSource?.avg_val_score ?? chain.avg_val_score),
     primaryTrainScore: safeNumber(chain.final_train_score),
     hasRefitArtifact: true,
+    aggregatedTestScores: hasAgg ? aggregatedTestScores : undefined,
+    aggregatedTrainScores: hasAgg ? aggregatedTrainScores : undefined,
+    primaryAggTestScore: hasAgg ? safeNumber(chain.final_agg_test_score) : undefined,
+    primaryAggTrainScore: hasAgg ? safeNumber(chain.final_agg_train_score) : undefined,
     children: effectiveCvSource ? [buildCrossvalRow(effectiveCvSource, metric, taskType)] : [],
   };
 }
@@ -422,6 +437,7 @@ export function buildFoldTrainCards(
   const foldMap = new Map<string, PartitionPrediction[]>();
   for (const p of predictions) {
     if (p.fold_id === "final" || p.fold_id === "avg" || p.fold_id === "w_avg") continue;
+    if (p.fold_id.endsWith("_agg")) continue;
     const group = foldMap.get(p.fold_id) || [];
     group.push(p);
     foldMap.set(p.fold_id, group);
@@ -567,7 +583,9 @@ function findFoldPrediction(
 }
 
 function isNumberedFoldId(foldId: string): boolean {
-  return foldId !== "avg" && foldId !== "w_avg" && foldId !== "final";
+  if (foldId === "avg" || foldId === "w_avg" || foldId === "final") return false;
+  if (foldId.endsWith("_agg")) return false;
+  return true;
 }
 
 export function enrichCrossvalRow(
@@ -730,6 +748,17 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
   };
 
   if (hasFinal) {
+    const aggSource = summary.final_agg_scores as Record<string, unknown> | null | undefined;
+    const aggregatedTestScores: Record<string, number | null> = {};
+    const aggregatedTrainScores: Record<string, number | null> = {};
+    if (aggSource) {
+      for (const k of allKeys) {
+        aggregatedTestScores[k] = extractScoreValue(aggSource, k, "test");
+        aggregatedTrainScores[k] = extractScoreValue(aggSource, k, "train");
+      }
+    }
+    const hasAgg = aggSource != null || summary.final_agg_test_score != null;
+
     // REFIT card with CROSSVAL child
     const refitRow: ScoreCardRow = {
       id: summary.chain_id,
@@ -756,6 +785,10 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
       primaryTrainScore: safeNumber(summary.final_train_score),
       foldArtifacts: summary.fold_artifacts,
       hasRefitArtifact: true,
+      aggregatedTestScores: hasAgg ? aggregatedTestScores : undefined,
+      aggregatedTrainScores: hasAgg ? aggregatedTrainScores : undefined,
+      primaryAggTestScore: hasAgg ? safeNumber(summary.final_agg_test_score) : undefined,
+      primaryAggTrainScore: hasAgg ? safeNumber(summary.final_agg_train_score) : undefined,
       children: hasCv ? [crossvalRow] : [],
     };
     return refitRow;

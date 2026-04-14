@@ -28,24 +28,34 @@ export function foldSort(a: PartitionPrediction, b: PartitionPrediction): number
 // Fold labels & colors
 // ============================================================================
 
+/** Strip the "_agg" repetition-aggregated suffix, if any. */
+export function foldIdBase(foldId: string): string {
+  return foldId.endsWith("_agg") ? foldId.slice(0, -"_agg".length) : foldId;
+}
+
 /** Human-readable label for a fold ID. */
 export function foldLabel(foldId: string): string {
-  if (foldId === "final") return "Final (refit)";
-  if (foldId === "avg") return "Average";
-  if (foldId === "w_avg") return "Weighted Avg";
-  return `Fold ${foldId}`;
+  const suffix = foldId.endsWith("_agg") ? " (agg)" : "";
+  const base = foldIdBase(foldId);
+  if (base === "final") return `Final (refit)${suffix}`;
+  if (base === "avg") return `Average${suffix}`;
+  if (base === "w_avg") return `Weighted Avg${suffix}`;
+  return `Fold ${base}${suffix}`;
 }
 
 /** Short label for compact displays. */
 export function foldLabelShort(foldId: string): string {
-  if (foldId === "final") return "Refit";
-  if (foldId === "avg") return "Avg";
-  if (foldId === "w_avg") return "W-Avg";
-  return `F${foldId}`;
+  const suffix = foldId.endsWith("_agg") ? "·Agg" : "";
+  const base = foldIdBase(foldId);
+  if (base === "final") return `Refit${suffix}`;
+  if (base === "avg") return `Avg${suffix}`;
+  if (base === "w_avg") return `W-Avg${suffix}`;
+  return `F${base}${suffix}`;
 }
 
 /** Tailwind text color class for a fold ID. */
 export function foldColorClass(foldId: string): string {
+  if (isRepAggFold(foldId)) return "text-purple-500";
   if (foldId === "final") return "text-emerald-500";
   if (foldId === "avg" || foldId === "w_avg") return "text-chart-1";
   return "text-foreground/70";
@@ -53,6 +63,7 @@ export function foldColorClass(foldId: string): string {
 
 /** Tailwind border/bg accent class for a fold ID. */
 export function foldBadgeClasses(foldId: string): string {
+  if (isRepAggFold(foldId)) return "border-purple-500/30 text-purple-500";
   if (foldId === "final") return "border-emerald-500/30 text-emerald-500";
   if (foldId === "avg") return "border-chart-1/30 text-chart-1";
   if (foldId === "w_avg") return "border-indigo-500/30 text-indigo-500";
@@ -63,6 +74,11 @@ export function foldBadgeClasses(foldId: string): string {
 // Fold type checks
 // ============================================================================
 
+/** Repetition-aggregated twin (suffix "_agg"). */
+export function isRepAggFold(foldId: string): boolean {
+  return foldId.endsWith("_agg");
+}
+
 export function isFinalFold(foldId: string): boolean {
   return foldId === "final";
 }
@@ -72,7 +88,7 @@ export function isAggFold(foldId: string): boolean {
 }
 
 export function isNumberedFold(foldId: string): boolean {
-  return !isFinalFold(foldId) && !isAggFold(foldId);
+  return !isFinalFold(foldId) && !isAggFold(foldId) && !isRepAggFold(foldId);
 }
 
 // ============================================================================

@@ -65,6 +65,9 @@ export interface TopChainResult {
   final_train_score: number | null;
   /** Can be flat `{rmse: 0.3}` or nested `{test: {rmse: 0.3}}` — use `extractScoreValue()` to read. */
   final_scores: Record<string, unknown>;
+  final_agg_test_score?: number | null;
+  final_agg_train_score?: number | null;
+  final_agg_scores?: Record<string, unknown> | null;
   best_params?: Record<string, unknown> | null;
   variant_params?: Record<string, unknown> | null;
   is_refit_only?: boolean;
@@ -114,6 +117,9 @@ export interface AllChainEntry {
   final_test_score: number | null;
   final_train_score: number | null;
   final_scores: Record<string, number> | null;
+  final_agg_test_score?: number | null;
+  final_agg_train_score?: number | null;
+  final_agg_scores?: Record<string, unknown> | null;
   metric: string | null;
   task_type: string | null;
 }

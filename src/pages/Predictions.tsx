@@ -29,7 +29,7 @@ import { PredictionQuickView } from "@/components/predictions/PredictionQuickVie
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
 import { predictionRecordToRow } from "@/lib/score-adapters";
-import { FOLD_ORDER, isFinalFold, isAggFold, isNumberedFold } from "@/lib/fold-utils";
+import { FOLD_ORDER, isFinalFold, isAggFold, isNumberedFold, isRepAggFold } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getMetricAbbreviation, isLowerBetter } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
@@ -148,7 +148,7 @@ export default function Predictions() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const [visibleFoldTypes, setVisibleFoldTypes] = useState<string[]>(["folds", "refits", "averages"]);
+  const [visibleFoldTypes, setVisibleFoldTypes] = useState<string[]>(["folds", "refits", "averages", "aggregated"]);
 
   const {
     data: workspacesData,
@@ -216,9 +216,10 @@ export default function Predictions() {
     if (filterModel !== "all") rows = rows.filter(row => row.modelName === filterModel || row.modelClass === filterModel);
     if (filterTaskType !== "all") rows = rows.filter(row => row.taskType === filterTaskType);
 
-    if (visibleFoldTypes.length < 3) {
+    if (visibleFoldTypes.length < 4) {
       rows = rows.filter(row => {
         const fid = row.foldId || "";
+        if (isRepAggFold(fid)) return visibleFoldTypes.includes("aggregated");
         if (isFinalFold(fid)) return visibleFoldTypes.includes("refits");
         if (isAggFold(fid)) return visibleFoldTypes.includes("averages");
         if (isNumberedFold(fid)) return visibleFoldTypes.includes("folds");
@@ -522,6 +523,7 @@ export default function Predictions() {
           <ToggleGroupItem value="folds" className="h-7 px-2 text-[11px]">Folds</ToggleGroupItem>
           <ToggleGroupItem value="refits" className="h-7 px-2 text-[11px]">Refits</ToggleGroupItem>
           <ToggleGroupItem value="averages" className="h-7 px-2 text-[11px]">Averages</ToggleGroupItem>
+          <ToggleGroupItem value="aggregated" className="h-7 px-2 text-[11px]">Aggregated</ToggleGroupItem>
         </ToggleGroup>
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground">

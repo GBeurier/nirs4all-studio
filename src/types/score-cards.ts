@@ -55,6 +55,14 @@ export interface ScoreCardRow {
   primaryValScore: number | null;
   primaryTrainScore: number | null;
 
+  // Repetition-aggregated companion (present only when the dataset has an
+  // aggregate column and the backend stored a `_agg` twin). Refit rows use
+  // these to render a second score line beneath the raw one.
+  aggregatedTestScores?: Record<string, number | null>;
+  aggregatedTrainScores?: Record<string, number | null>;
+  primaryAggTestScore?: number | null;
+  primaryAggTrainScore?: number | null;
+
   // Artifact availability
   foldArtifacts?: Record<string, string> | null;
   hasRefitArtifact: boolean;

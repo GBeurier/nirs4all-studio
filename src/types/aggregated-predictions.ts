@@ -31,6 +31,10 @@ export interface ChainSummary {
   final_test_score: number | null;
   final_train_score: number | null;
   final_scores: unknown | null;
+  // Repetition-aggregated refit scores (when dataset has an aggregate column)
+  final_agg_test_score?: number | null;
+  final_agg_train_score?: number | null;
+  final_agg_scores?: unknown | null;
   // Pipeline status from JOIN
   pipeline_status: string | null;
   // Artifact info (enriched from chains table)

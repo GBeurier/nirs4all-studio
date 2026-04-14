@@ -78,6 +78,10 @@ class ChainSummary(BaseModel):
     final_test_score: float | None = None
     final_train_score: float | None = None
     final_scores: Any | None = None
+    # Repetition-aggregated refit scores (when dataset has an aggregate column)
+    final_agg_test_score: float | None = None
+    final_agg_train_score: float | None = None
+    final_agg_scores: Any | None = None
     # Pipeline status from JOIN
     pipeline_status: str | None = None
     # Artifact info (enriched from chains table)
