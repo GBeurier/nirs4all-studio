@@ -7,15 +7,41 @@
  * key is missing or invalid.
  */
 
-export function hasPersistedPlaygroundPipelineState(storedPipelineState: string | null): boolean {
-  if (!storedPipelineState) {
-    return false;
+export interface PersistedPlaygroundOperator {
+  id: string;
+  name: string;
+  type: 'preprocessing' | 'splitting' | 'filter' | 'augmentation';
+  params: Record<string, unknown>;
+  enabled: boolean;
+}
+
+function parsePersistedPlaygroundOperators(
+  storedState: string | null,
+): PersistedPlaygroundOperator[] | null {
+  if (!storedState) {
+    return null;
   }
 
   try {
-    const parsed = JSON.parse(storedPipelineState);
-    return Array.isArray(parsed);
+    const parsed = JSON.parse(storedState);
+    return Array.isArray(parsed) ? (parsed as PersistedPlaygroundOperator[]) : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function hasPersistedPlaygroundPipelineState(storedPipelineState: string | null): boolean {
+  return parsePersistedPlaygroundOperators(storedPipelineState) !== null;
+}
+
+export function loadPersistedPlaygroundOperators(
+  storedPipelineState: string | null,
+  storedSessionState: string | null,
+): PersistedPlaygroundOperator[] {
+  const dedicatedOperators = parsePersistedPlaygroundOperators(storedPipelineState);
+  if (dedicatedOperators !== null) {
+    return dedicatedOperators;
+  }
+  void storedSessionState;
+  return [];
 }

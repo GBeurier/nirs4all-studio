@@ -197,6 +197,22 @@ const DEFAULT_CONFIG: ChartConfig = {
   barOrientation: 'vertical',
 };
 
+export function getCombinedGroupingNote(
+  folds: Pick<FoldsInfo, 'n_folds' | 'repetition_column' | 'group_by' | 'effective_group_mode' | 'effective_group_label'> | null,
+  colorMode: GlobalColorConfig['mode'] | undefined,
+  metadataKey?: string,
+): string | null {
+  if (!folds || folds.effective_group_mode !== 'combined') {
+    return null;
+  }
+  if (colorMode !== 'metadata' || !metadataKey || !folds.group_by || metadataKey !== folds.group_by) {
+    return null;
+  }
+
+  const effectiveLabel = folds.effective_group_label ?? folds.group_by;
+  return `Splits enforce combined constraints (${effectiveLabel}). Samples sharing either the dataset repetition or ${folds.group_by} stay in the same fold.`;
+}
+
 // ============= Color Helpers =============
 
 /**
@@ -281,6 +297,10 @@ export function FoldDistributionChartV2({
 
   // Determine effective color mode (global or internal)
   const effectiveColorMode = globalColorConfig?.mode ?? 'partition';
+  const combinedGroupingNote = useMemo(
+    () => getCombinedGroupingNote(folds, globalColorConfig?.mode, globalColorConfig?.metadataKey),
+    [folds, globalColorConfig?.metadataKey, globalColorConfig?.mode],
+  );
 
   // Phase 5: Detect if target is classification
   const isClassificationMode = useMemo(() => {
@@ -444,24 +464,11 @@ export function FoldDistributionChartV2({
     };
     const nFolds = folds.n_folds;
 
-    // Detect held-out test samples using multiple methods:
-    // 1. Metadata 'set' column with 'test' values (user's explicit partition)
-    // 2. fold_labels array: -1 indicates samples not in any fold's test set
-    // 3. Indices not present in any fold's train/test indices
+    // Detect held-out test samples without consulting metadata:
+    // 1. fold_labels array: -1 indicates samples not in any fold's test set
+    // 2. Indices not present in any fold's train/test indices
 
-    // Method 1: Check metadata for 'set' column (highest priority - user's explicit partition)
-    const heldOutFromMetadata: number[] = [];
-    if (metadata && 'set' in metadata) {
-      const setColumn = metadata.set as unknown[];
-      setColumn.forEach((value, idx) => {
-        const strValue = String(value).toLowerCase();
-        if (strValue === 'test' || strValue === 'holdout' || strValue === 'held-out') {
-          heldOutFromMetadata.push(idx);
-        }
-      });
-    }
-
-    // Method 2: Use fold_labels if available
+    // Method 1: Use fold_labels if available
     // Backend sets fold_labels[i] = -1 for held-out test samples
     const heldOutFromLabels: number[] = [];
     if (folds.fold_labels && folds.fold_labels.length > 0) {
@@ -472,7 +479,7 @@ export function FoldDistributionChartV2({
       });
     }
 
-    // Method 3: Find indices not in any fold (fallback)
+    // Method 2: Find indices not in any fold (fallback)
     const allFoldIndices = new Set<number>();
     folds.folds.forEach(fold => {
       fold.train_indices.forEach(idx => allFoldIndices.add(idx));
@@ -492,12 +499,9 @@ export function FoldDistributionChartV2({
       }
     }
 
-    // Use metadata method first (user's explicit partition), then fold_labels, then indices
-    const heldOutTestIndices = heldOutFromMetadata.length > 0
-      ? heldOutFromMetadata
-      : heldOutFromLabels.length > 0
-        ? heldOutFromLabels
-        : heldOutFromIndices;
+    const heldOutTestIndices = heldOutFromLabels.length > 0
+      ? heldOutFromLabels
+      : heldOutFromIndices;
 
     // For simple train/test split (n_folds = 1), show Train and Test
     if (nFolds === 1) {
@@ -1541,6 +1545,12 @@ export function FoldDistributionChartV2({
           </TooltipProvider>
         </div>
       </div>
+
+      {combinedGroupingNote && (
+        <p className="mb-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+          {combinedGroupingNote}
+        </p>
+      )}
 
       {/* Chart content */}
       <div className="flex-1 min-h-0">

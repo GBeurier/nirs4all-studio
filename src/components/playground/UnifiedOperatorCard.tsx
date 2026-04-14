@@ -34,20 +34,65 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useSliderWithCommit, useCommittedInput } from '@/lib/playground/debounce';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { UnifiedOperator, OperatorParamInfo, FilterResult } from '@/types/playground';
+import type { UnifiedOperator, OperatorParamInfo } from '@/types/playground';
 import { fetchMetadataColumns, type MetadataColumnInfo } from '@/api/playground';
+import type { SampleMetadata } from '@/types/spectral';
+import {
+  getRuntimeGroupingSummary,
+  RUNTIME_GROUPING_COPY,
+} from '@/lib/runtimeSplitGrouping';
+
+interface SplitRuntimeMetadata {
+  groupRequired: boolean;
+  groupHandling: 'native' | 'wrapper';
+  runtimeOnlyParams?: string[];
+}
+
+function inferMetadataDtype(values: Array<string | number | boolean | null>): string {
+  const firstDefined = values.find((value) => value !== null && value !== undefined);
+  if (firstDefined === undefined) return 'unknown';
+  return typeof firstDefined;
+}
+
+function buildLocalMetadataColumns(metadataRows?: SampleMetadata[]): MetadataColumnInfo[] {
+  if (!metadataRows || metadataRows.length === 0) {
+    return [];
+  }
+
+  const valuesByColumn = new Map<string, Array<string | number | boolean | null>>();
+  for (const row of metadataRows) {
+    for (const [key, value] of Object.entries(row)) {
+      const columnValues = valuesByColumn.get(key) ?? [];
+      columnValues.push(value ?? null);
+      valuesByColumn.set(key, columnValues);
+    }
+  }
+
+  return Array.from(valuesByColumn.entries()).map(([name, values]) => {
+    const uniqueValues = Array.from(new Set(values));
+    return {
+      name,
+      dtype: inferMetadataDtype(uniqueValues),
+      unique_values: uniqueValues.slice(0, 200),
+      n_unique: uniqueValues.length,
+    };
+  });
+}
 
 interface UnifiedOperatorCardProps {
   operator: UnifiedOperator;
   index: number;
   paramDefs?: Record<string, OperatorParamInfo>;
   description?: string;
+  splitMetadata?: SplitRuntimeMetadata;
   /** Filter statistics from execution result - name is optional since we key by operator name externally */
   filterStats?: { removed_count: number; reason?: string; mode?: 'remove' | 'tag' };
   /** Error message if this operator failed during execution */
   errorMessage?: string;
   /** Current dataset ID for dynamic parameter fetching (e.g., MetadataFilter) */
   datasetId?: string;
+  /** Local metadata rows already loaded in the playground */
+  metadataRows?: SampleMetadata[];
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
   onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
@@ -63,9 +108,11 @@ export function UnifiedOperatorCard({
   index,
   paramDefs,
   description,
+  splitMetadata,
   filterStats,
   errorMessage,
   datasetId,
+  metadataRows,
   onUpdate,
   onUpdateParams,
   onRemove,
@@ -81,7 +128,11 @@ export function UnifiedOperatorCard({
   const isSplitter = operator.type === 'splitting';
   const isFilter = operator.type === 'filter';
   const isAugmentation = operator.type === 'augmentation';
-  const hasParams = paramDefs && Object.keys(paramDefs).length > 0;
+  const localMetadataColumns = useMemo(() => buildLocalMetadataColumns(metadataRows), [metadataRows]);
+  const hasRuntimeGroupBy = Boolean(
+    isSplitter && splitMetadata?.runtimeOnlyParams?.includes('group_by')
+  );
+  const hasParams = Boolean(paramDefs && Object.keys(paramDefs).length > 0) || hasRuntimeGroupBy;
   const hasError = !!errorMessage;
 
   // Filter statistics display
@@ -277,13 +328,14 @@ export function UnifiedOperatorCard({
           </div>
         </div>
 
-        {isExpanded && hasParams && paramDefs && (
+        {isExpanded && hasParams && (
           <div className="px-3 pb-3 pt-1 border-t border-border mt-1 space-y-3">
             <DynamicParamRenderer
               params={operator.params}
-              paramDefs={paramDefs}
-              operatorName={operator.name}
+              paramDefs={paramDefs ?? {}}
               datasetId={datasetId}
+              splitMetadata={splitMetadata}
+              localMetadataColumns={localMetadataColumns}
               onUpdate={(key, value) => onUpdateParams(operator.id, { [key]: value })}
             />
           </div>
@@ -333,12 +385,20 @@ export function UnifiedOperatorCard({
 interface DynamicParamRendererProps {
   params: Record<string, unknown>;
   paramDefs: Record<string, OperatorParamInfo>;
-  operatorName?: string;
   datasetId?: string;
+  splitMetadata?: SplitRuntimeMetadata;
+  localMetadataColumns?: MetadataColumnInfo[];
   onUpdate: (key: string, value: unknown) => void;
 }
 
-function DynamicParamRenderer({ params, paramDefs, operatorName, datasetId, onUpdate }: DynamicParamRendererProps) {
+function DynamicParamRenderer({
+  params,
+  paramDefs,
+  datasetId,
+  splitMetadata,
+  localMetadataColumns = [],
+  onUpdate,
+}: DynamicParamRendererProps) {
   // Filter out internal and advanced params, render user-facing ones
   const visibleParams = Object.entries(paramDefs).filter(([key, info]) => {
     if (key.startsWith('_')) return false;
@@ -346,20 +406,31 @@ function DynamicParamRenderer({ params, paramDefs, operatorName, datasetId, onUp
     return true;
   });
 
-  if (visibleParams.length === 0) {
+  const showsGroupBy = Boolean(splitMetadata?.runtimeOnlyParams?.includes('group_by'));
+
+  if (visibleParams.length === 0 && !showsGroupBy) {
     return <p className="text-xs text-muted-foreground">No parameters</p>;
   }
 
   return (
     <>
+      {showsGroupBy && (
+        <GroupByParamInput
+          value={typeof params.group_by === 'string' ? params.group_by : null}
+          datasetId={datasetId}
+          localColumns={localMetadataColumns}
+          groupRequired={splitMetadata?.groupRequired ?? false}
+          onUpdate={onUpdate}
+        />
+      )}
       {visibleParams.map(([key, info]) => (
         <ParamInput
           key={key}
           paramKey={key}
           paramInfo={info}
           value={params[key] ?? info.default}
-          operatorName={operatorName}
           datasetId={datasetId}
+          localMetadataColumns={localMetadataColumns}
           allParams={params}
           onUpdate={onUpdate}
         />
@@ -373,13 +444,21 @@ interface ParamInputProps {
   paramKey: string;
   paramInfo: OperatorParamInfo;
   value: unknown;
-  operatorName?: string;
   datasetId?: string;
+  localMetadataColumns?: MetadataColumnInfo[];
   allParams?: Record<string, unknown>;
   onUpdate: (key: string, value: unknown) => void;
 }
 
-function ParamInput({ paramKey, paramInfo, value, operatorName, datasetId, allParams, onUpdate }: ParamInputProps) {
+function ParamInput({
+  paramKey,
+  paramInfo,
+  value,
+  datasetId,
+  localMetadataColumns = [],
+  allParams,
+  onUpdate,
+}: ParamInputProps) {
   const displayName = paramKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   // Metadata column selector (for MetadataFilter)
@@ -390,6 +469,7 @@ function ParamInput({ paramKey, paramInfo, value, operatorName, datasetId, allPa
         displayName={displayName}
         value={String(value ?? '')}
         datasetId={datasetId}
+        localColumns={localMetadataColumns}
         onUpdate={onUpdate}
       />
     );
@@ -403,6 +483,7 @@ function ParamInput({ paramKey, paramInfo, value, operatorName, datasetId, allPa
         displayName={displayName}
         value={value as (string | number | boolean | null)[] | null}
         datasetId={datasetId}
+        localColumns={localMetadataColumns}
         column={String(allParams?.column ?? '')}
         onUpdate={onUpdate}
       />
@@ -470,6 +551,136 @@ function ParamInput({ paramKey, paramInfo, value, operatorName, datasetId, allPa
       value={String(value ?? '')}
       onUpdate={onUpdate}
     />
+  );
+}
+
+function GroupByParamInput({
+  value,
+  datasetId,
+  localColumns,
+  groupRequired,
+  onUpdate,
+}: {
+  value: string | null;
+  datasetId?: string;
+  localColumns: MetadataColumnInfo[];
+  groupRequired: boolean;
+  onUpdate: (key: string, value: unknown) => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['metadata-columns', datasetId],
+    queryFn: ({ signal }) => fetchMetadataColumns(datasetId!, signal),
+    enabled: !!datasetId,
+    staleTime: 60_000,
+  });
+
+  const availableColumns = useMemo(() => {
+    const byName = new Map<string, MetadataColumnInfo>();
+    for (const column of data?.columns ?? []) {
+      byName.set(column.name, column);
+    }
+    for (const column of localColumns) {
+      if (!byName.has(column.name)) {
+        byName.set(column.name, column);
+      }
+    }
+
+    if (value && !byName.has(value)) {
+      byName.set(value, {
+        name: value,
+        dtype: 'unknown',
+        unique_values: [],
+        n_unique: 0,
+      });
+    }
+
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [data?.columns, localColumns, value]);
+
+  const repetitionColumn = data?.repetition_column ?? null;
+  const isRequired = groupRequired && !repetitionColumn;
+  const hasValue = typeof value === 'string' && value.length > 0;
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5">
+      <div className="flex items-center gap-2">
+        <Label className="text-xs text-muted-foreground">
+          Group By
+          {isRequired && <span className="ml-1 text-destructive">*</span>}
+        </Label>
+        {groupRequired && (
+          <Badge
+            variant="outline"
+            className={cn(
+              'h-4 px-1.5 text-[10px]',
+              isRequired ? 'border-destructive/40 text-destructive' : 'border-amber-500/40 text-amber-700 dark:text-amber-400'
+            )}
+          >
+            {isRequired ? 'Required' : 'Optional with repetition'}
+          </Badge>
+        )}
+      </div>
+
+      <Select
+        value={value ?? '__none__'}
+        onValueChange={(selected) => onUpdate('group_by', selected === '__none__' ? null : selected)}
+      >
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder={isLoading ? 'Loading metadata columns...' : 'Select metadata column'} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__" className="text-xs">
+            No additional group
+          </SelectItem>
+          {availableColumns.length === 0 && !isLoading && (
+            <SelectItem value="__empty__" disabled className="text-xs text-muted-foreground">
+              No metadata columns available
+            </SelectItem>
+          )}
+          {availableColumns.map((column) => (
+            <SelectItem key={column.name} value={column.name} className="text-xs">
+              {column.name}
+              {column.n_unique > 0 ? ` (${column.n_unique} values)` : ''}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        {RUNTIME_GROUPING_COPY.additiveDescription}
+      </p>
+
+      {repetitionColumn && (
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+            Dataset repetition
+          </Badge>
+          <span className="font-mono">{repetitionColumn}</span>
+        </div>
+      )}
+
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        {RUNTIME_GROUPING_COPY.legacyGroupDeprecation}
+      </p>
+
+      {hasValue && (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {getRuntimeGroupingSummary(repetitionColumn, value)}
+        </p>
+      )}
+
+      {groupRequired && !hasValue && repetitionColumn && (
+        <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+          No additional group_by selected. This split will use only the configured dataset repetition.
+        </p>
+      )}
+
+      {groupRequired && !hasValue && !repetitionColumn && (
+        <p className="text-[11px] leading-relaxed text-destructive">
+          This splitter requires an effective group. Select a metadata column.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -609,12 +820,14 @@ function MetadataColumnSelect({
   displayName,
   value,
   datasetId,
+  localColumns,
   onUpdate,
 }: {
   paramKey: string;
   displayName: string;
   value: string;
   datasetId?: string;
+  localColumns?: MetadataColumnInfo[];
   onUpdate: (key: string, value: unknown) => void;
 }) {
   const { data, isLoading } = useQuery({
@@ -624,9 +837,9 @@ function MetadataColumnSelect({
     staleTime: 60_000,
   });
 
-  const columns = data?.columns ?? [];
+  const columns = (localColumns && localColumns.length > 0) ? localColumns : (data?.columns ?? []);
 
-  if (!datasetId) {
+  if (!datasetId && columns.length === 0) {
     return (
       <div>
         <Label className="text-xs text-muted-foreground">{displayName}</Label>
@@ -668,6 +881,7 @@ function MetadataValueSelect({
   displayName,
   value,
   datasetId,
+  localColumns,
   column,
   onUpdate,
 }: {
@@ -675,6 +889,7 @@ function MetadataValueSelect({
   displayName: string;
   value: (string | number | boolean | null)[] | null;
   datasetId?: string;
+  localColumns?: MetadataColumnInfo[];
   column: string;
   onUpdate: (key: string, value: unknown) => void;
 }) {
@@ -686,8 +901,11 @@ function MetadataValueSelect({
   });
 
   const columnInfo = useMemo(
-    () => data?.columns?.find((c) => c.name === column),
-    [data?.columns, column]
+    () => {
+      const columns = (localColumns && localColumns.length > 0) ? localColumns : (data?.columns ?? []);
+      return columns.find((c) => c.name === column);
+    },
+    [data?.columns, localColumns, column]
   );
 
   const uniqueValues = columnInfo?.unique_values ?? [];

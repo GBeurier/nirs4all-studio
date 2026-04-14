@@ -15,6 +15,7 @@ import type {
   PlaygroundStep,
 } from '@/types/playground';
 import type { SpectralData, SampleMetadata } from '@/types/spectral';
+import { getSampleIdsFromMetadata } from '@/lib/playground/repetition';
 
 /**
  * Response from the /api/spectra/{dataset_id} endpoint
@@ -33,6 +34,7 @@ export interface SpectraResponse {
   y?: number[] | null;
   metadata?: Record<string, unknown[]> | null;
   metadata_columns?: string[];
+  repetition_column?: string | null;
 }
 
 /**
@@ -192,8 +194,15 @@ export function buildExecuteRequest(params: {
   splitIndex?: number;
   useCache?: boolean;
   bioSampleColumn?: string;
+  datasetRepetition?: string;
   subsetMode?: 'all' | 'visible';
   maxSamplesDisplayed?: number;
+  /**
+   * Pre-existing train/test partitioning of the uploaded samples. The caller
+   * is responsible for ordering samples train-first / test-last so that the
+   * backend can use `[0, n_train)` / `[n_train, n_train + n_test)` slicing.
+   */
+  sourcePartitions?: { has_test: boolean; n_train: number; n_test: number };
 }): ExecuteRequest {
   return {
     data: {
@@ -220,8 +229,10 @@ export function buildExecuteRequest(params: {
       split_index: params.splitIndex,
       use_cache: params.useCache ?? true,
       bio_sample_column: params.bioSampleColumn,
+      dataset_repetition: params.datasetRepetition,
       subset_mode: params.subsetMode ?? 'all',
       max_samples_displayed: params.maxSamplesDisplayed,
+      source_partitions: params.sourcePartitions,
     },
   };
 }
@@ -353,11 +364,6 @@ export async function loadWorkspaceDataset(
     });
   }
 
-  // Generate sample IDs if not provided
-  const sampleIds = response.spectra.map((_, i) =>
-    `${datasetName || response.dataset_id}_${i + 1}`
-  );
-
   // Use actual Y values from dataset if available, otherwise use indices as fallback
   const y = response.y && response.y.length > 0
     ? response.y
@@ -382,12 +388,17 @@ export async function loadWorkspaceDataset(
     });
   }
 
+  const sampleIds = getSampleIdsFromMetadata(metadata) ?? response.spectra.map((_, i) =>
+    `${datasetName || response.dataset_id}_${i + 1}`
+  );
+
   return {
     wavelengths,
     spectra: response.spectra,
     y,
     sampleIds,
     metadata,
+    repetitionColumn: response.repetition_column ?? null,
     // Propagate the unit detected by nirs4all so spectra charts can label the
     // X axis with the correct quantity ("Wavelength (nm)" vs "Wavenumber
     // (cm⁻¹)") instead of hardcoding "nm". The backend returns "unknown" when
@@ -523,6 +534,7 @@ export interface MetadataColumnInfo {
 
 export interface MetadataColumnsResponse {
   columns: MetadataColumnInfo[];
+  repetition_column?: string | null;
 }
 
 /**

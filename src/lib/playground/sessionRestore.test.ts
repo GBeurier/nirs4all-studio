@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { hasPersistedPlaygroundPipelineState } from './sessionRestore';
+import {
+  hasPersistedPlaygroundPipelineState,
+  loadPersistedPlaygroundOperators,
+} from './sessionRestore';
 
 describe('hasPersistedPlaygroundPipelineState', () => {
   it('returns false when pipeline storage is missing', () => {
@@ -19,5 +22,42 @@ describe('hasPersistedPlaygroundPipelineState', () => {
     expect(
       hasPersistedPlaygroundPipelineState('[{"id":"snv-1","name":"SNV","type":"preprocessing","params":{},"enabled":true}]')
     ).toBe(true);
+  });
+});
+
+describe('loadPersistedPlaygroundOperators', () => {
+  it('prefers dedicated pipeline storage when present', () => {
+    expect(
+      loadPersistedPlaygroundOperators(
+        '[{"id":"split-1","name":"KFold","type":"splitting","params":{"n_splits":5},"enabled":true}]',
+        '{"operators":[{"id":"legacy-1","name":"SNV","type":"preprocessing","params":{},"enabled":true}]}',
+      ),
+    ).toEqual([
+      {
+        id: 'split-1',
+        name: 'KFold',
+        type: 'splitting',
+        params: { n_splits: 5 },
+        enabled: true,
+      },
+    ]);
+  });
+
+  it('ignores legacy session operators when dedicated storage is missing', () => {
+    expect(
+      loadPersistedPlaygroundOperators(
+        null,
+        '{"operators":[{"id":"legacy-1","name":"SNV","type":"preprocessing","params":{},"enabled":true}]}',
+      ),
+    ).toEqual([]);
+  });
+
+  it('treats an empty dedicated pipeline as authoritative over legacy operators', () => {
+    expect(
+      loadPersistedPlaygroundOperators(
+        '[]',
+        '{"operators":[{"id":"legacy-1","name":"KFold","type":"splitting","params":{},"enabled":true}]}',
+      ),
+    ).toEqual([]);
   });
 });

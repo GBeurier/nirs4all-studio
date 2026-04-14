@@ -20,6 +20,7 @@ import {
 import { UnifiedOperatorCard } from './UnifiedOperatorCard';
 import { useNodeRegistryOptional, type NodeDefinition } from '@/components/pipeline-editor/contexts';
 import type { UnifiedOperator, StepError, FilterInfo, OperatorParamInfo } from '@/types/playground';
+import type { SampleMetadata } from '@/types/spectral';
 
 interface PipelineBuilderProps {
   operators: UnifiedOperator[];
@@ -29,6 +30,8 @@ interface PipelineBuilderProps {
   filterInfo?: FilterInfo;
   /** Current dataset ID for dynamic parameter fetching (e.g., MetadataFilter) */
   datasetId?: string;
+  /** Local metadata rows available in the currently loaded playground dataset */
+  metadataRows?: SampleMetadata[];
   onUpdate: (id: string, updates: Partial<UnifiedOperator>) => void;
   onUpdateParams: (id: string, params: Record<string, unknown>) => void;
   onRemove: (id: string) => void;
@@ -77,6 +80,7 @@ export function PipelineBuilder({
   stepErrors = [],
   filterInfo,
   datasetId,
+  metadataRows,
   onUpdate,
   onUpdateParams,
   onRemove,
@@ -243,6 +247,8 @@ export function PipelineBuilder({
               filterStats={filterStats}
               errorMessage={errorMessage}
               datasetId={datasetId}
+              metadataRows={metadataRows}
+              splitMetadata={nodeDef?._webapp_split}
               onUpdate={onUpdate}
               onUpdateParams={onUpdateParams}
               onRemove={onRemove}

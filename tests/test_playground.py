@@ -4,6 +4,7 @@ Tests for the Playground API.
 Phase 1: Backend API testing for Playground V1
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -38,6 +39,10 @@ class _FakeMetadataFrame:
             return 0
         return len(next(iter(self._data.values())))
 
+    @property
+    def columns(self) -> list[str]:
+        return list(self._data.keys())
+
     def to_dict(self, as_series: bool = False) -> dict[str, list[object]]:
         return self._data
 
@@ -49,6 +54,10 @@ class _FakePartitionedDataset:
         X_test: np.ndarray,
         y_train: np.ndarray,
         y_test: np.ndarray,
+        *,
+        metadata_train: dict[str, list[object]] | None = None,
+        metadata_test: dict[str, list[object]] | None = None,
+        repetition: str | None = None,
     ):
         self._X = {
             "train": X_train,
@@ -59,12 +68,17 @@ class _FakePartitionedDataset:
             "test": y_test,
         }
         self._metadata = {
-            "train": _FakeMetadataFrame({"group": [f"train_{i}" for i in range(len(X_train))]}),
-            "test": _FakeMetadataFrame({"group": [f"test_{i}" for i in range(len(X_test))]}),
+            "train": _FakeMetadataFrame(
+                metadata_train or {"group": [f"train_{i}" for i in range(len(X_train))]}
+            ),
+            "test": _FakeMetadataFrame(
+                metadata_test or {"group": [f"test_{i}" for i in range(len(X_test))]}
+            ),
         }
         self._headers = list(range(X_train.shape[1]))
+        self.repetition = repetition
 
-    def x(self, context, layout="2d"):
+    def x(self, context, layout="2d", concat_source=True):
         return self._X[context["partition"]]
 
     def y(self, context):
@@ -316,6 +330,39 @@ class TestSplitters:
         assert len(data["execution_trace"]) == 2
         assert data["folds"] is not None
 
+    def test_raw_metadata_set_does_not_define_source_test_partition(self):
+        """Raw playground payload metadata must not redefine dataset partition semantics."""
+        response = client.post(
+            "/api/playground/execute",
+            json={
+                "data": {
+                    "x": [[0.1, 0.2], [0.2, 0.3], [0.3, 0.4], [0.4, 0.5]],
+                    "y": [1.0, 2.0, 3.0, 4.0],
+                    "wavelengths": [1000, 1001],
+                    "metadata": {
+                        "set": ["train", "train", "test", "test"],
+                    },
+                },
+                "steps": [
+                    {
+                        "id": "s1",
+                        "type": "splitting",
+                        "name": "KFold",
+                        "params": {"n_splits": 2},
+                        "enabled": True,
+                    }
+                ],
+                "options": {"use_cache": False},
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["source_partitions"] is None
+        assert data["folds"]["kind"] == "test_split"
+        assert all(label >= 0 for label in data["folds"]["fold_labels"])
+
     def test_execute_dataset_splitter_only_folds_train_partition(self, monkeypatch):
         """Dataset-backed CV splitters must leave held-out test samples outside the folds."""
         n_train = 12
@@ -369,6 +416,178 @@ class TestSplitters:
 
         assert fold_indices == set(range(n_train))
         assert not any(idx >= n_train for idx in fold_indices)
+
+    def test_execute_dataset_repetition_analysis_uses_dataset_repetition(self, monkeypatch):
+        """Dataset-backed repetition analysis must honor the configured dataset repetition column."""
+        n_train = 8
+        n_features = 6
+        X_train = np.arange(n_train * n_features, dtype=float).reshape(n_train, n_features)
+        y_train = np.linspace(0.0, 1.0, n_train)
+        metadata_train = {
+            "sample_id": [f"hiba_{i}" for i in range(n_train)],
+            "Replicate": ["A", "A", "B", "B", "C", "C", "D", "D"],
+            "batch": ["B1", "B1", "B1", "B1", "B2", "B2", "B2", "B2"],
+        }
+        dataset = _FakePartitionedDataset(
+            X_train,
+            np.empty((0, n_features)),
+            y_train,
+            np.empty((0,)),
+            metadata_train=metadata_train,
+            metadata_test={},
+            repetition="Replicate",
+        )
+        monkeypatch.setattr("api.spectra._load_dataset", lambda _dataset_id: dataset)
+
+        response = client.post(
+            "/api/playground/execute-dataset",
+            json={
+                "dataset_id": "playground-repetition-analysis",
+                "partition": "train",
+                "steps": [],
+                "options": {
+                    "use_cache": False,
+                    "compute_repetitions": True,
+                    "compute_pca": False,
+                    "distance_metric": "euclidean",
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        repetitions = data["repetitions"]
+
+        assert repetitions["has_repetitions"] is True
+        assert repetitions["n_with_reps"] == 4
+        assert repetitions["n_singletons"] == 0
+        assert repetitions["total_repetitions"] == n_train
+        assert {point["bio_sample"] for point in repetitions["data"]} == {"A", "B", "C", "D"}
+        assert {point["sample_id"] for point in repetitions["data"]} == {
+            f"hiba_{i}" for i in range(n_train)
+        }
+
+    def test_execute_dataset_splitter_returns_combined_grouping_context(self, monkeypatch):
+        """Fold payloads should expose combined grouping metadata and raw group exclusivity."""
+        n_train = 16
+        n_features = 6
+        X_train = np.arange(n_train * n_features, dtype=float).reshape(n_train, n_features)
+        y_train = np.linspace(0.0, 1.0, n_train)
+        metadata_train = {
+            "sample_id": [
+                "s1", "s1", "s2", "s2",
+                "s3", "s3", "s4", "s4",
+                "s5", "s5", "s6", "s6",
+                "s7", "s7", "s8", "s8",
+            ],
+            "batch": [
+                "b1", "b1", "b1", "b1",
+                "b2", "b2", "b2", "b2",
+                "b3", "b3", "b3", "b3",
+                "b4", "b4", "b4", "b4",
+            ],
+        }
+        dataset = _FakePartitionedDataset(
+            X_train,
+            np.empty((0, n_features)),
+            y_train,
+            np.empty((0,)),
+            metadata_train=metadata_train,
+            metadata_test={},
+            repetition="sample_id",
+        )
+        monkeypatch.setattr("api.spectra._load_dataset", lambda _dataset_id: dataset)
+
+        response = client.post(
+            "/api/playground/execute-dataset",
+            json={
+                "dataset_id": "playground-combined-grouping",
+                "partition": "train",
+                "steps": [
+                    {
+                        "id": "s1",
+                        "type": "splitting",
+                        "name": "KFold",
+                        "params": {"n_splits": 4, "group_by": "batch"},
+                        "enabled": True,
+                    }
+                ],
+                "options": {"use_cache": False},
+            },
+        )
+
+        assert response.status_code == 200
+        folds = response.json()["folds"]
+        assert folds["repetition_column"] == "sample_id"
+        assert folds["group_by"] == "batch"
+        assert folds["effective_group_mode"] == "combined"
+        assert folds["effective_group_label"] == "sample_id + batch"
+        for fold in folds["folds"]:
+            train_batches = {metadata_train["batch"][idx] for idx in fold["train_indices"]}
+            test_batches = {metadata_train["batch"][idx] for idx in fold["test_indices"]}
+            assert not (train_batches & test_batches)
+
+    def test_spectra_endpoint_exposes_dataset_repetition_column(self, monkeypatch):
+        """Workspace spectra responses should expose the configured repetition column."""
+        from api import spectra as spectra_module
+
+        dataset = _FakePartitionedDataset(
+            np.arange(12, dtype=float).reshape(3, 4),
+            np.empty((0, 4)),
+            np.array([1.0, 2.0, 3.0]),
+            np.empty((0,)),
+            metadata_train={
+                "sample_id": ["s1", "s2", "s3"],
+                "sample_group": ["A", "A", "B"],
+            },
+            metadata_test={},
+            repetition="sample_group",
+        )
+        monkeypatch.setattr(spectra_module, "_load_dataset", lambda _dataset_id: dataset)
+
+        data = asyncio.run(
+            spectra_module.get_spectra(
+                "repetition-contract",
+                start=0,
+                end=None,
+                partition="train",
+                source=0,
+                include_metadata=True,
+                include_y=True,
+            )
+        )
+
+        assert data["repetition_column"] == "sample_group"
+        assert data["metadata_columns"] == ["sample_id", "sample_group"]
+
+    def test_spectra_endpoint_does_not_inject_set_metadata_for_all_partition(self, monkeypatch):
+        """The spectra endpoint must not synthesize a metadata 'set' column for train/test."""
+        from api import spectra as spectra_module
+
+        dataset = _FakePartitionedDataset(
+            np.arange(12, dtype=float).reshape(3, 4),
+            np.arange(8, dtype=float).reshape(2, 4) + 100.0,
+            np.array([1.0, 2.0, 3.0]),
+            np.array([4.0, 5.0]),
+            metadata_train={"sample_id": ["s1", "s2", "s3"]},
+            metadata_test={"sample_id": ["t1", "t2"]},
+        )
+        monkeypatch.setattr(spectra_module, "_load_dataset", lambda _dataset_id: dataset)
+
+        data = asyncio.run(
+            spectra_module.get_spectra(
+                "no-set-injection",
+                start=0,
+                end=None,
+                partition="all",
+                source=0,
+                include_metadata=True,
+                include_y=True,
+            )
+        )
+
+        assert data["metadata_columns"] == ["sample_id"]
+        assert "set" not in (data["metadata"] or {})
 
 
 # ============= Statistics and PCA Tests =============
@@ -426,6 +645,94 @@ class TestStatisticsAndPCA:
         # Coordinates should match sample count
         n_samples = len(simple_spectral_data["x"])
         assert len(data["pca"]["coordinates"]) == n_samples
+
+
+class TestRepetitionAutoDetection:
+    def test_execute_auto_detects_bio_sample_metadata_column(self):
+        """Raw playground execution should auto-detect obvious bio-sample metadata columns."""
+        response = client.post(
+            "/api/playground/execute",
+            json={
+                "data": {
+                    "x": [
+                        [0.10, 0.20],
+                        [0.11, 0.21],
+                        [0.30, 0.40],
+                        [0.31, 0.41],
+                    ],
+                    "y": [1.0, 1.1, 2.0, 2.1],
+                    "wavelengths": [1000, 1001],
+                    "sample_ids": ["Sample_01_r1", "Sample_01_r2", "Sample_02_r1", "Sample_02_r2"],
+                    "metadata": {
+                        "bio_sample": ["Sample_01", "Sample_01", "Sample_02", "Sample_02"],
+                        "repetition": [1, 2, 1, 2],
+                    },
+                },
+                "steps": [],
+                "options": {
+                    "compute_repetitions": True,
+                    "compute_pca": False,
+                    "use_cache": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()["repetitions"]
+        assert data["has_repetitions"] is True
+        assert data["n_with_reps"] == 2
+        assert {point["bio_sample"] for point in data["data"]} == {"Sample_01", "Sample_02"}
+
+    def test_augmentation_preserves_metadata_and_sample_ids_for_repetitions(self):
+        """Augmented rows should inherit source metadata/sample IDs and appear as repetitions."""
+        response = client.post(
+            "/api/playground/execute",
+            json={
+                "data": {
+                    "x": [
+                        [0.10, 0.20, 0.30],
+                        [0.40, 0.50, 0.60],
+                    ],
+                    "y": [1.0, 2.0],
+                    "wavelengths": [1000, 1001, 1002],
+                    "sample_ids": ["Sample_A", "Sample_B"],
+                    "metadata": {
+                        "sample_id": ["Sample_A", "Sample_B"],
+                        "batch": ["B1", "B2"],
+                    },
+                },
+                "steps": [
+                    {
+                        "id": "aug_1",
+                        "type": "augmentation",
+                        "name": "GaussianAdditiveNoise",
+                        "params": {"sigma": 0.01, "random_state": 42, "n_augmented_copies": 1},
+                        "enabled": True,
+                    }
+                ],
+                "options": {
+                    "compute_repetitions": True,
+                    "compute_pca": False,
+                    "dataset_repetition": "sample_id",
+                    "use_cache": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["success"] is True
+        assert payload["processed"]["shape"][0] == 4
+        assert payload["processed"]["sample_ids"] == ["Sample_A", "Sample_B", "Sample_A", "Sample_B"]
+        assert payload["processed"]["metadata"]["sample_id"] == ["Sample_A", "Sample_B", "Sample_A", "Sample_B"]
+        assert payload["processed"]["metadata"]["batch"] == ["B1", "B2", "B1", "B2"]
+        assert payload["processed"]["y"] == [1.0, 2.0, 1.0, 2.0]
+
+        repetitions = payload["repetitions"]
+        assert repetitions["has_repetitions"] is True
+        assert repetitions["n_with_reps"] == 2
+        assert {point["bio_sample"] for point in repetitions["data"]} == {"Sample_A", "Sample_B"}
+        assert {point["sample_id"] for point in repetitions["data"]} == {"Sample_A", "Sample_B"}
 
     def test_pca_with_fold_labels(self, sample_spectral_data):
         """Test that PCA includes fold labels when splitter is used."""

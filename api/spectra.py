@@ -191,9 +191,6 @@ def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: b
     y_chunks: list = []
     meta_columns: dict[str, list] = {}
     meta_seen = False
-    set_labels: list[str] = []
-    loaded_parts: set[str] = set()
-
     for p in parts:
         sel = {"partition": p}
         try:
@@ -207,9 +204,6 @@ def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: b
         if X_p is None or len(X_p) == 0:
             continue
         X_chunks.append(X_p)
-        loaded_parts.add(p)
-        if want_metadata:
-            set_labels.extend([p] * len(X_p))
 
         if want_y:
             try:
@@ -261,14 +255,6 @@ def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: b
             else:
                 normalized.append(y_chunk)
         y_out = np.concatenate(normalized, axis=0) if len(normalized) > 1 else normalized[0]
-
-    # When the response actually contains samples from more than one partition,
-    # inject a synthesized 'set' column so the frontend can distinguish train vs
-    # test rows even if the source dataset has no native 'set' metadata column.
-    # The injection is skipped when only a single partition was actually loaded.
-    if want_metadata and len(loaded_parts) > 1 and set_labels:
-        meta_columns.setdefault("set", set_labels)
-        meta_seen = True
 
     meta_out = meta_columns if want_metadata and meta_seen else None
     return X, y_out, meta_out
@@ -358,6 +344,7 @@ async def get_spectra(
             "spectra": X_slice.tolist(),
             "wavelengths": headers,
             "wavelength_unit": header_unit,
+            "repetition_column": getattr(dataset, "repetition", None),
         }
 
         # Include y values if requested

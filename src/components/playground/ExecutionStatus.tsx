@@ -4,7 +4,7 @@
  * Provides visual feedback during pipeline execution.
  */
 
-import { Loader2, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, AlertTriangle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StepTrace, StepError } from '@/types/playground';
 
@@ -15,6 +15,7 @@ interface ExecutionStatusProps {
   executionTimeMs?: number;
   trace?: StepTrace[];
   errors?: StepError[];
+  warnings?: string[];
   className?: string;
 }
 
@@ -25,11 +26,13 @@ export function ExecutionStatus({
   executionTimeMs,
   trace = [],
   errors = [],
+  warnings = [],
   className,
 }: ExecutionStatusProps) {
   // Determine current state
   const isLoading = isProcessing || isFetching;
   const hasErrors = errors.length > 0;
+  const hasWarnings = warnings.length > 0;
 
   if (isDebouncing) {
     return (
@@ -64,6 +67,17 @@ export function ExecutionStatus({
     );
   }
 
+  if (hasWarnings) {
+    return (
+      <StatusBadge
+        icon={<AlertTriangle className="w-3 h-3" />}
+        text={`${warnings.length} warning${warnings.length > 1 ? 's' : ''}`}
+        variant="warning"
+        className={className}
+      />
+    );
+  }
+
   if (executionTimeMs !== undefined) {
     return (
       <StatusBadge
@@ -81,7 +95,7 @@ export function ExecutionStatus({
 interface StatusBadgeProps {
   icon: React.ReactNode;
   text: string;
-  variant: 'primary' | 'muted' | 'success' | 'destructive';
+  variant: 'primary' | 'muted' | 'success' | 'destructive' | 'warning';
   className?: string;
 }
 
@@ -91,6 +105,7 @@ function StatusBadge({ icon, text, variant, className }: StatusBadgeProps) {
     muted: 'bg-muted text-muted-foreground',
     success: 'bg-green-500/10 text-green-600 dark:text-green-400',
     destructive: 'bg-destructive/10 text-destructive',
+    warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
   };
 
   return (

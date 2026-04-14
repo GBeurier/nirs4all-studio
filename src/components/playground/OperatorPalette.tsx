@@ -8,7 +8,7 @@
  * - Grouped by categories with collapsible sections
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -142,9 +142,21 @@ type PlaygroundTabType = 'preprocessing' | 'augmentation' | 'splitting' | 'filte
 
 /**
  * Get display label for a category.
- * Uses the category name directly since NodeRegistry definitions
- * already use human-readable names (e.g., "NIRS Core", "Noise").
  */
+const CATEGORY_LABELS: Record<string, string> = {
+  'nirs core': 'NIRS Core',
+  'scatter_correction': 'Scatter Correction',
+  'sklearn': 'Scikit-learn',
+  'sklearn-splitters': 'Scikit-learn Splitters',
+};
+
+function humanizeCategoryLabel(category: string): string {
+  return category
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+    .replace(/\bNirs\b/g, 'NIRS')
+    .replace(/\bSklearn\b/g, 'Scikit-learn');
+}
 
 /**
  * Convert NodeDefinition to OperatorDefinition for playground compatibility
@@ -175,6 +187,8 @@ function nodeToOperatorDef(node: NodeDefinition, tabType: PlaygroundTabType): Op
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
 
   return {
+    registryId: node.id,
+    classPath: node.classPath,
     name: node.name,
     display_name: displayName,
     description: node.description,
@@ -186,8 +200,27 @@ function nodeToOperatorDef(node: NodeDefinition, tabType: PlaygroundTabType): Op
 }
 
 function getCategoryLabel(category: string, _type: PlaygroundTabType): string {
-  // NodeRegistry definitions already use human-readable category names
-  return category;
+  const trimmedCategory = category.trim();
+  if (trimmedCategory.length === 0) {
+    return 'Other';
+  }
+
+  const lookupKey = trimmedCategory.toLowerCase();
+  if (CATEGORY_LABELS[lookupKey]) {
+    return CATEGORY_LABELS[lookupKey];
+  }
+
+  if (/[A-Z]/.test(trimmedCategory) || trimmedCategory.includes(' ')) {
+    return trimmedCategory;
+  }
+
+  return humanizeCategoryLabel(trimmedCategory);
+}
+
+function getOperatorKey(operator: OperatorDefinition): string {
+  return operator.registryId
+    ?? operator.classPath
+    ?? `${operator.type}:${operator.source ?? 'unknown'}:${operator.name}`;
 }
 
 /** Tier selector labels */
@@ -216,16 +249,20 @@ function passesTierFilter(node: NodeDefinition, tierLevel: TierLevel): boolean {
 interface OperatorPaletteProps {
   onAddOperator: (definition: OperatorDefinition) => void;
   hasSplitter?: boolean;
+  currentSplitterName?: string | null;
 }
 
 export function OperatorPalette({
   onAddOperator,
   hasSplitter = false,
+  currentSplitterName = null,
 }: OperatorPaletteProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<PlaygroundTabType>('preprocessing');
-  const [expandedCategory, setExpandedCategory] = useState<string | null>('NIRS Core');
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [showSplitterReplacementHint, setShowSplitterReplacementHint] = useState(false);
+  const suppressNextSplitterHintRef = useRef(false);
 
   // Use shared registry and preferences contexts
   const registryContext = useNodeRegistryOptional();
@@ -330,15 +367,42 @@ export function OperatorPalette({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (!hasSplitter) {
+      setShowSplitterReplacementHint(false);
+      return;
+    }
+
+    if (activeTab !== 'splitting') {
+      return;
+    }
+
+    if (suppressNextSplitterHintRef.current) {
+      suppressNextSplitterHintRef.current = false;
+      setShowSplitterReplacementHint(false);
+      return;
+    }
+
+    setShowSplitterReplacementHint(true);
+  }, [activeTab, hasSplitter]);
+
   const toggleCategory = (category: string) => {
     setExpandedCategory(prev => (prev === category ? null : category));
   };
 
   const handleSelect = (definition: OperatorDefinition) => {
+    if (definition.type === 'splitting' && !hasSplitter) {
+      suppressNextSplitterHintRef.current = true;
+      setShowSplitterReplacementHint(false);
+    }
     onAddOperator(definition);
     setSearchOpen(false);
     setSearchQuery('');
   };
+
+  const replacementHint = currentSplitterName
+    ? `Adding another splitter will replace pipeline splitter "${currentSplitterName}".`
+    : 'Adding another splitter will replace the current pipeline splitter.';
 
   // Filter operators based on search
   const filteredOperators = useMemo(() => {
@@ -479,7 +543,7 @@ export function OperatorPalette({
                     const Icon = getOperatorIcon(op.category);
                     return (
                       <CommandItem
-                        key={op.name}
+                        key={getOperatorKey(op)}
                         value={`${op.name} ${op.description}`}
                         onSelect={() => handleSelect(op)}
                         className="gap-2 cursor-pointer"
@@ -505,7 +569,7 @@ export function OperatorPalette({
                     const Icon = getOperatorIcon(op.category);
                     return (
                       <CommandItem
-                        key={op.name}
+                        key={getOperatorKey(op)}
                         value={`${op.name} ${op.description}`}
                         onSelect={() => handleSelect(op)}
                         className="gap-2 cursor-pointer"
@@ -531,7 +595,7 @@ export function OperatorPalette({
                     const Icon = getOperatorIcon(op.category);
                     return (
                       <CommandItem
-                        key={op.name}
+                        key={getOperatorKey(op)}
                         value={`${op.name} ${op.description}`}
                         onSelect={() => handleSelect(op)}
                         className="gap-2 cursor-pointer"
@@ -540,7 +604,7 @@ export function OperatorPalette({
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium">
                             {op.display_name}
-                            {hasSplitter && (
+                            {showSplitterReplacementHint && (
                               <span className="ml-2 text-[10px] text-orange-500">(replaces)</span>
                             )}
                           </div>
@@ -562,7 +626,7 @@ export function OperatorPalette({
                     const Icon = getOperatorIcon(op.category);
                     return (
                       <CommandItem
-                        key={op.name}
+                        key={getOperatorKey(op)}
                         value={`${op.name} ${op.description}`}
                         onSelect={() => handleSelect(op)}
                         className="gap-2 cursor-pointer"
@@ -641,9 +705,9 @@ export function OperatorPalette({
         <TabsContent value="splitting" className="mt-2">
           <ScrollArea className="h-[300px] pr-3">
             <div className="space-y-1">
-              {hasSplitter && (
+              {showSplitterReplacementHint && (
                 <div className="text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded mb-2">
-                  Adding a splitter will replace the existing one
+                  {replacementHint}
                 </div>
               )}
               {Object.entries(splittingByCategory).map(([category, ops]) => (
@@ -655,7 +719,7 @@ export function OperatorPalette({
                   isExpanded={expandedCategory === category}
                   onToggle={() => toggleCategory(category)}
                   onSelect={handleSelect}
-                  hasSplitter={hasSplitter}
+                  hasSplitter={showSplitterReplacementHint}
                 />
               ))}
             </div>
@@ -730,7 +794,7 @@ function CategorySection({
         <div className="flex flex-col gap-1 pt-1 pb-2 pl-5">
           <TooltipProvider delayDuration={300}>
             {operators.map((op) => (
-              <OperatorTooltip key={op.name} operator={op}>
+              <OperatorTooltip key={getOperatorKey(op)} operator={op}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -741,9 +805,6 @@ function CategorySection({
                   <span className="text-[10px] font-medium leading-tight text-left line-clamp-1">
                     {op.display_name}
                   </span>
-                  {hasSplitter && type === 'splitting' && (
-                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-orange-500 rounded-full" />
-                  )}
                 </Button>
               </OperatorTooltip>
             ))}

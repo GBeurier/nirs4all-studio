@@ -56,6 +56,7 @@ interface PlaygroundSidebarProps {
   isDebouncing: boolean;
   executionTimeMs?: number;
   stepErrors?: StepError[];
+  warnings?: string[];
   /** Filter statistics from execution result */
   filterInfo?: FilterInfo;
 
@@ -106,6 +107,7 @@ export function PlaygroundSidebar({
   isDebouncing,
   executionTimeMs,
   stepErrors = [],
+  warnings = [],
   filterInfo,
   onLoadDemo,
   onLoadFromWorkspace,
@@ -127,6 +129,7 @@ export function PlaygroundSidebar({
   onImportPipeline,
 }: PlaygroundSidebarProps) {
   const hasExportOptions = onExportToPipelineEditor || onExportPipelineJson || onExportDataCsv;
+  const currentSplitterName = operators.find((operator) => operator.type === 'splitting')?.name ?? null;
 
   return (
     <TooltipProvider>
@@ -214,6 +217,7 @@ export function PlaygroundSidebar({
               isDebouncing={isDebouncing}
               executionTimeMs={executionTimeMs}
               errors={stepErrors}
+              warnings={warnings}
             />
           </div>
         )}
@@ -241,6 +245,7 @@ export function PlaygroundSidebar({
             <OperatorPalette
               onAddOperator={onAddOperator}
               hasSplitter={hasSplitter}
+              currentSplitterName={currentSplitterName}
             />
 
             <Separator />
@@ -251,6 +256,7 @@ export function PlaygroundSidebar({
               stepErrors={stepErrors}
               filterInfo={filterInfo}
               datasetId={currentDatasetInfo?.datasetId}
+              metadataRows={data?.metadata}
               onUpdate={onUpdateOperator}
               onUpdateParams={onUpdateOperatorParams}
               onRemove={onRemoveOperator}

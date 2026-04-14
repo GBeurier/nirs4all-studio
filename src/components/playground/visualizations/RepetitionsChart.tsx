@@ -116,11 +116,21 @@ interface RepetitionsChartProps {
   configResult?: UseSpectraChartConfigResult;
   /** Whether reference dataset mode is active (affects dataset source visibility) */
   hasReferenceDataset?: boolean;
+  /** Metadata columns indexed by column name (per-sample arrays). */
+  metadata?: Record<string, unknown[]>;
+  /** Ordered list of available metadata column names. */
+  metadataColumns?: string[];
+  /** Sample identifiers for each row in spectraData. */
+  sampleIds?: string[];
 }
 
 interface PlotDataPoint {
   /** X position (bio sample index) */
   x: number;
+  /** Integer index of the bio sample group */
+  groupIndex: number;
+  /** Number of repetitions in this bio sample group */
+  groupSize: number;
   /** Y position (distance) */
   y: number;
   /** Bio sample ID */
@@ -155,6 +165,14 @@ function getDistanceColor(distance: number, maxDistance: number): string {
   return `hsl(${hue}, 70%, 50%)`;
 }
 
+function formatBioSampleLabel(value: string, maxLength: number = 14): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
 // ============= Constants =============
 
 const MIN_PIXELS_PER_SAMPLE = 4;
@@ -169,7 +187,7 @@ const QUANTILE_COLORS: Record<DiffQuantile, string> = {
 };
 
 // Sort options for X-axis ordering
-type SortOption = 'index' | 'distance' | 'distance_desc' | 'variance' | 'variance_desc' | 'color' | 'name';
+type SortOption = 'index' | 'distance' | 'distance_desc' | 'variance' | 'variance_desc' | 'color' | 'name' | 'metadata_column';
 const SORT_OPTIONS: { value: SortOption; label: string; description: string }[] = [
   { value: 'index', label: 'Original Index', description: 'Original sample order' },
   { value: 'name', label: 'Name', description: 'Alphabetical by bio sample' },
@@ -178,6 +196,7 @@ const SORT_OPTIONS: { value: SortOption; label: string; description: string }[] 
   { value: 'variance', label: 'Variance ↑', description: 'Lowest within-group variance first' },
   { value: 'variance_desc', label: 'Variance ↓', description: 'Highest within-group variance first' },
   { value: 'color', label: 'Color Value', description: 'By color/target value' },
+  { value: 'metadata_column', label: 'Metadata Column', description: 'Group samples sharing the same metadata value on the same X' },
 ];
 
 // ============= Component =============
@@ -194,6 +213,9 @@ export function RepetitionsChart({
   colorContext,
   configResult,
   hasReferenceDataset = false,
+  metadata,
+  metadataColumns,
+  sampleIds,
 }: RepetitionsChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -210,6 +232,22 @@ export function RepetitionsChart({
 
   // Sort state
   const [sortBy, setSortBy] = useState<SortOption>('index');
+  // Column used when sortBy === 'metadata_column'
+  const [metadataSortColumn, setMetadataSortColumn] = useState<string | null>(null);
+
+  // Effective metadata column list (filter out columns without usable values).
+  const availableMetadataColumns = useMemo(() => {
+    if (metadataColumns && metadataColumns.length > 0) return metadataColumns;
+    if (metadata) return Object.keys(metadata);
+    return [];
+  }, [metadataColumns, metadata]);
+
+  // If user selected metadata_column sort but no column is set, auto-pick first.
+  useEffect(() => {
+    if (sortBy === 'metadata_column' && !metadataSortColumn && availableMetadataColumns.length > 0) {
+      setMetadataSortColumn(availableMetadataColumns[0]);
+    }
+  }, [sortBy, metadataSortColumn, availableMetadataColumns]);
 
   // Track if initial zoom has been set
   const [initialZoomSet, setInitialZoomSet] = useState(false);
@@ -291,134 +329,273 @@ export function RepetitionsChart({
   // Get display filter from colorContext
   const displayFilteredIndices = colorContext?.displayFilteredIndices;
 
+  // Helper: fetch a metadata value for a sample_index, stringified.
+  const getMetadataValue = useCallback(
+    (sampleIndex: number, column: string | null): string | null => {
+      if (!column || !metadata || !metadata[column]) return null;
+      const raw = metadata[column][sampleIndex];
+      if (raw === null || raw === undefined || raw === '') return null;
+      return String(raw);
+    },
+    [metadata]
+  );
+
   // Transform data for plotting
   const { plotData, bioSampleOrder, yRange, statistics } = useMemo(() => {
-    if (!hasRepetitions || !repetitionData?.data) {
-      return {
-        plotData: [] as PlotDataPoint[],
-        bioSampleOrder: [] as string[],
-        yRange: { min: 0, max: 1 },
-        statistics: null,
-      };
-    }
-
-    let data = repetitionData.data;
-
-    // Apply display filter if active (e.g., "selected only" mode)
-    if (displayFilteredIndices && displayFilteredIndices.size > 0) {
-      data = data.filter(d => displayFilteredIndices.has(d.sample_index));
-    }
-
-    if (data.length === 0) {
-      return {
-        plotData: [] as PlotDataPoint[],
-        bioSampleOrder: [] as string[],
-        yRange: { min: 0, max: 1 },
-        statistics: null,
-      };
-    }
-
     // Use computed distances if available, otherwise fall back to repetitionData distances
-    // Note: distances array corresponds to original data order, need to map by sample_index
     const distanceMap = new Map<number, number>();
-    if (computedDistances?.distances) {
+    if (hasRepetitions && repetitionData?.data && computedDistances?.distances) {
       repetitionData.data.forEach((d, i) => {
         distanceMap.set(d.sample_index, computedDistances.distances[i] ?? d.distance);
       });
     }
 
-    // Get unique bio samples and compute per-group stats for sorting
-    const bioSamplesSet = new Set(data.map(d => d.bio_sample));
-    const bioSampleStats = new Map<string, { meanDist: number; variance: number; meanY: number; firstIndex: number }>();
+    const effectiveSortColumn =
+      sortBy === 'metadata_column' && metadataSortColumn && metadata && metadata[metadataSortColumn]
+        ? metadataSortColumn
+        : null;
 
-    for (const bioSample of bioSamplesSet) {
-      const groupData = data.filter(d => d.bio_sample === bioSample);
-      const distances = groupData.map(d => distanceMap.get(d.sample_index) ?? d.distance);
-      const meanDist = distances.reduce((a, b) => a + b, 0) / distances.length;
-      const variance = distances.length > 1
-        ? distances.reduce((sum, d) => sum + Math.pow(d - meanDist, 2), 0) / (distances.length - 1)
-        : 0;
-      const yValues = groupData.filter(d => d.y !== undefined).map(d => d.y!);
-      const meanY = yValues.length > 0 ? yValues.reduce((a, b) => a + b, 0) / yValues.length : 0;
-      const firstIndex = groupData[0]?.sample_index ?? 0;
-      bioSampleStats.set(bioSample, { meanDist, variance, meanY, firstIndex });
+    // -------- Branch A: repetitions configured, group by bio_sample --------
+    if (hasRepetitions && repetitionData?.data && repetitionData.data.length > 0) {
+      let data = repetitionData.data;
+
+      // Apply display filter if active (e.g., "selected only" mode)
+      if (displayFilteredIndices && displayFilteredIndices.size > 0) {
+        data = data.filter(d => displayFilteredIndices.has(d.sample_index));
+      }
+
+      if (data.length === 0) {
+        return {
+          plotData: [] as PlotDataPoint[],
+          bioSampleOrder: [] as string[],
+          yRange: { min: 0, max: 1 },
+          statistics: null,
+        };
+      }
+
+      const bioSamplesSet = new Set(data.map(d => d.bio_sample));
+      const bioSampleStats = new Map<
+        string,
+        { meanDist: number; variance: number; meanY: number; firstIndex: number; groupSize: number; firstMeta: string | null }
+      >();
+
+      for (const bioSample of bioSamplesSet) {
+        const groupData = data.filter(d => d.bio_sample === bioSample);
+        const distances = groupData.map(d => distanceMap.get(d.sample_index) ?? d.distance);
+        const meanDist = distances.reduce((a, b) => a + b, 0) / distances.length;
+        const variance = distances.length > 1
+          ? distances.reduce((sum, d) => sum + Math.pow(d - meanDist, 2), 0) / (distances.length - 1)
+          : 0;
+        const yValues = groupData.filter(d => d.y !== undefined).map(d => d.y!);
+        const meanY = yValues.length > 0 ? yValues.reduce((a, b) => a + b, 0) / yValues.length : 0;
+        const firstIndex = groupData[0]?.sample_index ?? 0;
+        const firstMeta = effectiveSortColumn ? getMetadataValue(firstIndex, effectiveSortColumn) : null;
+        bioSampleStats.set(bioSample, { meanDist, variance, meanY, firstIndex, groupSize: groupData.length, firstMeta });
+      }
+
+      const bioSampleList = Array.from(bioSamplesSet);
+      switch (sortBy) {
+        case 'name':
+          bioSampleList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          break;
+        case 'distance':
+          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanDist ?? 0) - (bioSampleStats.get(b)?.meanDist ?? 0));
+          break;
+        case 'distance_desc':
+          bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.meanDist ?? 0) - (bioSampleStats.get(a)?.meanDist ?? 0));
+          break;
+        case 'variance':
+          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.variance ?? 0) - (bioSampleStats.get(b)?.variance ?? 0));
+          break;
+        case 'variance_desc':
+          bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.variance ?? 0) - (bioSampleStats.get(a)?.variance ?? 0));
+          break;
+        case 'color':
+          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanY ?? 0) - (bioSampleStats.get(b)?.meanY ?? 0));
+          break;
+        case 'metadata_column':
+          bioSampleList.sort((a, b) => {
+            const av = bioSampleStats.get(a)?.firstMeta ?? '';
+            const bv = bioSampleStats.get(b)?.firstMeta ?? '';
+            return av.localeCompare(bv, undefined, { numeric: true });
+          });
+          break;
+        case 'index':
+        default:
+          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.firstIndex ?? 0) - (bioSampleStats.get(b)?.firstIndex ?? 0));
+          break;
+      }
+
+      const bioSampleIndex = new Map<string, number>();
+      bioSampleList.forEach((bs, i) => bioSampleIndex.set(bs, i));
+
+      const allY = data.filter(d => d.y !== undefined).map(d => d.y!);
+      const yMin = allY.length > 0 ? Math.min(...allY) : 0;
+      const yMax = allY.length > 0 ? Math.max(...allY) : 1;
+
+      const maxDist = computedDistances?.max ?? repetitionData.statistics?.max_distance ?? 1;
+      const p95 = computedDistances?.quantiles?.[95] ?? repetitionData.statistics?.p95_distance ?? maxDist;
+
+      const plotData: PlotDataPoint[] = data.map((d) => {
+        const distance = distanceMap.get(d.sample_index) ?? d.distance;
+        const groupIndex = bioSampleIndex.get(d.bio_sample) ?? 0;
+        const groupSize = bioSampleStats.get(d.bio_sample)?.groupSize ?? 1;
+        const displayDistance = scaleType === 'log' ? Math.log1p(distance) : distance;
+
+        return {
+          x: groupIndex,
+          groupIndex,
+          groupSize,
+          y: displayDistance,
+          bioSample: d.bio_sample,
+          repIndex: d.rep_index,
+          sampleIndex: d.sample_index,
+          sampleId: d.sample_id,
+          targetY: d.y,
+          yMean: d.y_mean,
+          isOutlier: distance > p95,
+          isSelected: selectedSamples.has(d.sample_index),
+        };
+      });
+
+      // Dev-mode sanity check: surface silent backend regression where all
+      // bio_sample ids collapse to one-per-sample even though repetition was
+      // supposedly configured.
+      if (import.meta.env?.DEV && bioSamplesSet.size >= data.length * 0.95 && data.length > 4) {
+        console.warn(
+          '[RepetitionsChart] Repetition data reports', bioSamplesSet.size, 'distinct bio_samples for',
+          data.length, 'points — check that dataset_repetition / bio_sample_column is correctly propagated.'
+        );
+      }
+
+      const stats = computedDistances
+        ? {
+            mean_distance: computedDistances.mean,
+            max_distance: computedDistances.max,
+            p95_distance: computedDistances.quantiles[95] ?? computedDistances.max,
+          }
+        : repetitionData.statistics;
+
+      return {
+        plotData,
+        bioSampleOrder: bioSampleList,
+        yRange: { min: yMin, max: yMax },
+        statistics: stats,
+      };
     }
 
-    // Sort bio samples based on sortBy option
-    const bioSampleList = Array.from(bioSamplesSet);
+    // -------- Branch B: no repetitions configured --------
+    // Synthesize one point per sample. If metadata_column sort is active,
+    // group samples sharing the same value on the same X (like bio_samples).
+    // Otherwise each sample occupies its own X slot, ordered by sortBy.
+    const totalSamples = spectraData?.length ?? y?.length ?? 0;
+    if (totalSamples === 0) {
+      return {
+        plotData: [] as PlotDataPoint[],
+        bioSampleOrder: [] as string[],
+        yRange: { min: 0, max: 1 },
+        statistics: null,
+      };
+    }
+
+    const allIndices: number[] = [];
+    for (let i = 0; i < totalSamples; i++) {
+      if (displayFilteredIndices && displayFilteredIndices.size > 0 && !displayFilteredIndices.has(i)) continue;
+      allIndices.push(i);
+    }
+
+    // Derive a grouping key per sample.
+    // - metadata_column active -> the column value (empty string -> 'unknown')
+    // - otherwise -> sampleId if available, else index-based name
+    const groupKeyFor = (sampleIndex: number): string => {
+      if (effectiveSortColumn) {
+        return getMetadataValue(sampleIndex, effectiveSortColumn) ?? 'unknown';
+      }
+      if (sampleIds && sampleIds[sampleIndex] !== undefined) return String(sampleIds[sampleIndex]);
+      return `Sample_${sampleIndex}`;
+    };
+
+    const groupMembers = new Map<string, number[]>();
+    for (const idx of allIndices) {
+      const key = groupKeyFor(idx);
+      const arr = groupMembers.get(key);
+      if (arr) arr.push(idx);
+      else groupMembers.set(key, [idx]);
+    }
+
+    const groupList = Array.from(groupMembers.keys());
+    const statsForGroup = (key: string) => {
+      const members = groupMembers.get(key) ?? [];
+      const yVals = y ? members.map(i => y[i]).filter(v => v !== undefined && Number.isFinite(v)) as number[] : [];
+      const meanY = yVals.length > 0 ? yVals.reduce((a, b) => a + b, 0) / yVals.length : 0;
+      const firstIndex = members[0] ?? 0;
+      return { meanY, firstIndex, groupSize: members.length };
+    };
+
     switch (sortBy) {
       case 'name':
-        bioSampleList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        break;
-      case 'distance':
-        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanDist ?? 0) - (bioSampleStats.get(b)?.meanDist ?? 0));
-        break;
-      case 'distance_desc':
-        bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.meanDist ?? 0) - (bioSampleStats.get(a)?.meanDist ?? 0));
-        break;
-      case 'variance':
-        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.variance ?? 0) - (bioSampleStats.get(b)?.variance ?? 0));
-        break;
-      case 'variance_desc':
-        bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.variance ?? 0) - (bioSampleStats.get(a)?.variance ?? 0));
+      case 'metadata_column':
+        groupList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
         break;
       case 'color':
-        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanY ?? 0) - (bioSampleStats.get(b)?.meanY ?? 0));
+        groupList.sort((a, b) => statsForGroup(a).meanY - statsForGroup(b).meanY);
         break;
       case 'index':
       default:
-        bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.firstIndex ?? 0) - (bioSampleStats.get(b)?.firstIndex ?? 0));
+        groupList.sort((a, b) => statsForGroup(a).firstIndex - statsForGroup(b).firstIndex);
         break;
     }
 
-    // Create a map of bio sample to X index (after sorting)
-    const bioSampleIndex = new Map<string, number>();
-    bioSampleList.forEach((bs, i) => bioSampleIndex.set(bs, i));
+    const groupIdx = new Map<string, number>();
+    groupList.forEach((key, i) => groupIdx.set(key, i));
 
-    // Get Y range for coloring
-    const allY = data.filter(d => d.y !== undefined).map(d => d.y!);
-    const yMin = allY.length > 0 ? Math.min(...allY) : 0;
-    const yMax = allY.length > 0 ? Math.max(...allY) : 1;
+    const yVals = y ? allIndices.map(i => y[i]).filter(v => v !== undefined && Number.isFinite(v)) as number[] : [];
+    const yMin = yVals.length > 0 ? Math.min(...yVals) : 0;
+    const yMax = yVals.length > 0 ? Math.max(...yVals) : 1;
 
-    const maxDist = computedDistances?.max ?? repetitionData.statistics?.max_distance ?? 1;
-    const p95 = computedDistances?.quantiles?.[95] ?? repetitionData.statistics?.p95_distance ?? maxDist;
-
-    // Transform to plot data
-    const plotData: PlotDataPoint[] = data.map((d) => {
-      const distance = distanceMap.get(d.sample_index) ?? d.distance;
-      // Apply log scale if needed
-      const displayDistance = scaleType === 'log' ? Math.log1p(distance) : distance;
-
+    // In no-repetition mode we do not compute per-sample distances yet;
+    // render as y=0 so the chart remains a purely positional overview.
+    const plotData: PlotDataPoint[] = allIndices.map(idx => {
+      const key = groupKeyFor(idx);
+      const gi = groupIdx.get(key) ?? 0;
+      const groupSize = groupMembers.get(key)?.length ?? 1;
       return {
-        x: bioSampleIndex.get(d.bio_sample) ?? 0,
-        y: displayDistance,
-        bioSample: d.bio_sample,
-        repIndex: d.rep_index,
-        sampleIndex: d.sample_index,
-        sampleId: d.sample_id,
-        targetY: d.y,
-        yMean: d.y_mean,
-        isOutlier: distance > p95,
-        isSelected: selectedSamples.has(d.sample_index),
+        x: gi,
+        groupIndex: gi,
+        groupSize,
+        y: 0,
+        bioSample: key,
+        repIndex: 0,
+        sampleIndex: idx,
+        sampleId: sampleIds?.[idx] ?? `Sample_${idx}`,
+        targetY: y?.[idx],
+        yMean: y?.[idx],
+        isOutlier: false,
+        isSelected: selectedSamples.has(idx),
       };
     });
 
-    // Compute statistics for display
-    const stats = computedDistances
-      ? {
-          mean_distance: computedDistances.mean,
-          max_distance: computedDistances.max,
-          p95_distance: computedDistances.quantiles[95] ?? computedDistances.max,
-        }
-      : repetitionData.statistics;
-
     return {
       plotData,
-      bioSampleOrder: bioSampleList,
+      bioSampleOrder: groupList,
       yRange: { min: yMin, max: yMax },
-      statistics: stats,
+      statistics: null,
     };
-  }, [repetitionData, selectedSamples, hasRepetitions, computedDistances, scaleType, displayFilteredIndices, sortBy]);
+  }, [
+    repetitionData,
+    selectedSamples,
+    hasRepetitions,
+    computedDistances,
+    scaleType,
+    displayFilteredIndices,
+    sortBy,
+    metadataSortColumn,
+    metadata,
+    spectraData,
+    y,
+    sampleIds,
+    getMetadataValue,
+  ]);
 
   // Compute Y domain with 15% padding (needed by event handlers)
   const yDomain = useMemo(() => {
@@ -866,7 +1043,7 @@ export function RepetitionsChart({
   }, [quantiles, computedDistances, statistics, scaleType]);
 
   // Empty states
-  if (!repetitionData) {
+  if (!repetitionData && plotData.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         <div className="text-center">
@@ -877,7 +1054,7 @@ export function RepetitionsChart({
     );
   }
 
-  if (repetitionData.error) {
+  if (repetitionData?.error) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         <div className="text-center">
@@ -889,13 +1066,15 @@ export function RepetitionsChart({
     );
   }
 
-  if (!hasRepetitions) {
+  // Only show the full "No repetitions" placeholder when there is also no
+  // spectra / y data that could be rendered in the no-repetition fallback.
+  if (!hasRepetitions && plotData.length === 0) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
         <div className="text-center max-w-[250px]">
           <Repeat className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
           <p className="font-medium mb-1">No repetitions detected</p>
-          <p className="text-xs">{repetitionData.message || 'Samples appear to be unique measurements.'}</p>
+          <p className="text-xs">{repetitionData?.message || 'Samples appear to be unique measurements.'}</p>
           {onConfigureRepetitions && (
             <Button
               variant="outline"
@@ -914,6 +1093,22 @@ export function RepetitionsChart({
 
   // Compute X domain
   const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
+  const visibleStart = Math.max(0, Math.floor(effectiveXDomain[0]));
+  const visibleEnd = Math.min(bioSampleOrder.length - 1, Math.ceil(effectiveXDomain[1]));
+  const visibleCount = visibleEnd >= visibleStart ? visibleEnd - visibleStart + 1 : 0;
+  const xTickStep = Math.max(1, Math.ceil(Math.max(visibleCount, 1) / 18));
+  const xTicks: number[] = [];
+  for (let index = visibleStart; index <= visibleEnd; index += xTickStep) {
+    xTicks.push(index);
+  }
+  if (visibleEnd >= visibleStart && (xTicks.length === 0 || xTicks[xTicks.length - 1] !== visibleEnd)) {
+    xTicks.push(visibleEnd);
+  }
+
+  const formatXAxisTick = (value: number) => {
+    const label = bioSampleOrder[Math.round(value)];
+    return label ? formatBioSampleLabel(label) : String(value);
+  };
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: PlotDataPoint }> }) => {
@@ -950,8 +1145,21 @@ export function RepetitionsChart({
           <Repeat className="w-4 h-4 text-primary" />
           Repetitions
           <Badge variant="secondary" className="text-[10px] font-normal">
-            {repetitionData.n_with_reps} bio samples
+            {hasRepetitions
+              ? `${repetitionData.n_with_reps ?? 0} bio samples`
+              : `${bioSampleOrder.length} groups`}
           </Badge>
+          {!hasRepetitions && onConfigureRepetitions && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[10px]"
+              onClick={onConfigureRepetitions}
+            >
+              <Settings2 className="w-3 h-3 mr-1" />
+              Configure
+            </Button>
+          )}
           {(isComputing || isLoading) && (
             <span className="text-[10px] text-muted-foreground animate-pulse">Computing...</span>
           )}
@@ -1000,21 +1208,52 @@ export function RepetitionsChart({
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuRadioGroup value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                {SORT_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem
-                    key={option.value}
-                    value={option.value}
-                    className="text-xs"
-                  >
-                    <div className="flex flex-col">
-                      <span>{option.label}</span>
-                      <span className="text-[10px] text-muted-foreground">{option.description}</span>
-                    </div>
-                  </DropdownMenuRadioItem>
-                ))}
+                {SORT_OPTIONS.map(option => {
+                  // Hide metadata_column option when no columns are available.
+                  if (option.value === 'metadata_column' && availableMetadataColumns.length === 0) return null;
+                  return (
+                    <DropdownMenuRadioItem
+                      key={option.value}
+                      value={option.value}
+                      className="text-xs"
+                    >
+                      <div className="flex flex-col">
+                        <span>{option.label}</span>
+                        <span className="text-[10px] text-muted-foreground">{option.description}</span>
+                      </div>
+                    </DropdownMenuRadioItem>
+                  );
+                })}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Column picker visible only when grouping by metadata value */}
+          {sortBy === 'metadata_column' && availableMetadataColumns.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-xs gap-1">
+                  {metadataSortColumn ?? 'Column…'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="start" className="w-48 max-h-72 overflow-y-auto">
+                <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                  Group / sort by column
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={metadataSortColumn ?? ''}
+                  onValueChange={(v) => setMetadataSortColumn(v || null)}
+                >
+                  {availableMetadataColumns.map(col => (
+                    <DropdownMenuRadioItem key={col} value={col} className="text-xs">
+                      {col}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Renderer toggle (SVG/WebGL) */}
           <TooltipProvider delayDuration={200}>
@@ -1206,22 +1445,17 @@ export function RepetitionsChart({
           {/* X-axis labels overlay for WebGL mode */}
           {rendererType === 'webgl' && (
             <div className="absolute left-10 right-0 bottom-0 h-6 pointer-events-none z-[6]">
-              {bioSampleOrder.map((_, sampleIndex) => {
+              {xTicks.map((sampleIndex) => {
                 const xRange = webglBounds.maxX - webglBounds.minX;
                 const xPercent = ((sampleIndex - webglBounds.minX) / xRange) * 100;
-                // Only show if in visible range and not too dense
                 if (xPercent < 0 || xPercent > 100) return null;
-                // Skip labels if too many are visible (show every nth)
-                const visibleCount = Math.ceil(webglBounds.maxX) - Math.floor(webglBounds.minX);
-                const step = Math.max(1, Math.floor(visibleCount / 20));
-                if (sampleIndex % step !== 0) return null;
                 return (
                   <div
                     key={`x-label-${sampleIndex}`}
                     className="absolute text-[9px] text-muted-foreground"
                     style={{ left: `${xPercent}%`, transform: 'translateX(-50%)' }}
                   >
-                    {sampleIndex}
+                    {formatXAxisTick(sampleIndex)}
                   </div>
                 );
               })}
@@ -1327,14 +1561,12 @@ export function RepetitionsChart({
                   type="number"
                   dataKey="x"
                   domain={effectiveXDomain}
-                  ticks={bioSampleOrder.map((_, i) => i).filter(i =>
-                    i >= Math.floor(effectiveXDomain[0]) && i <= Math.ceil(effectiveXDomain[1])
-                  )}
-                  tickFormatter={(value) => String(value)}
+                  ticks={xTicks}
+                  tickFormatter={formatXAxisTick}
                   stroke={CHART_THEME.axisStroke}
                   fontSize={CHART_THEME.axisFontSize}
                   interval={0}
-                  height={25}
+                  height={40}
                   allowDataOverflow
                 />
 
@@ -1435,11 +1667,22 @@ export function RepetitionsChart({
       {!compact && (
         <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
           <div className="flex items-center gap-3">
-            <span>
-              {repetitionData.total_repetitions} measurements from {repetitionData.n_with_reps} samples
-            </span>
-            {repetitionData.n_singletons && repetitionData.n_singletons > 0 && (
-              <span>({repetitionData.n_singletons} singletons hidden)</span>
+            {hasRepetitions && repetitionData ? (
+              <>
+                <span>
+                  {repetitionData.total_repetitions} measurements from {repetitionData.n_with_reps} samples
+                </span>
+                {repetitionData.n_singletons && repetitionData.n_singletons > 0 && (
+                  <span>({repetitionData.n_singletons} singletons hidden)</span>
+                )}
+              </>
+            ) : (
+              <span>
+                {plotData.length} samples
+                {sortBy === 'metadata_column' && metadataSortColumn
+                  ? ` grouped by "${metadataSortColumn}" (${bioSampleOrder.length} groups)`
+                  : ''}
+              </span>
             )}
             <span className="text-muted-foreground/50">
               Scroll to zoom • Right-drag to pan • Left-drag to select • Double-click to reset
@@ -1464,7 +1707,8 @@ export function RepetitionsChart({
       )}
 
       {/* High variability warning */}
-      {repetitionData.high_variability_samples &&
+      {hasRepetitions &&
+       repetitionData?.high_variability_samples &&
        repetitionData.high_variability_samples.length > 0 &&
        !compact && (
         <div className="flex items-center gap-1.5 mt-1 text-[10px] text-amber-600">

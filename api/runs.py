@@ -32,6 +32,10 @@ from .pipeline_canonical import (
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
 )
+from .shared.runtime_grouping import (
+    normalize_split_group_by_mapping,
+    prepare_pipeline_steps_with_runtime_grouping,
+)
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -194,6 +198,7 @@ class DatasetRun(BaseModel):
     """Status of all pipelines for a single dataset."""
     dataset_id: str
     dataset_name: str
+    split_group_by: str | None = None
     pipelines: list[PipelineRun]
 
 
@@ -236,6 +241,7 @@ class ExperimentConfig(BaseModel):
     random_state: int | None = None
     inline_pipeline: InlinePipeline | None = None  # Unsaved pipeline from editor
     project_id: str | None = None  # Project grouping
+    split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
 
 
 class QuickRunRequest(BaseModel):
@@ -246,6 +252,7 @@ class QuickRunRequest(BaseModel):
     export_model: bool = Field(True, description="Save trained model")
     cv_folds: int = Field(default=5, ge=2, le=50)
     random_state: int | None = Field(42, description="Random seed")
+    split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
 
 
 class PreflightRequest(BaseModel):
@@ -536,6 +543,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
     """Create a run from quick run request, expanding variants if applicable."""
     run_id = f"run_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
     now = datetime.now().isoformat()
+    split_group_by = request.split_group_by_by_dataset.get(request.dataset_id)
 
     base_model, base_preprocessing, split_strategy = _extract_pipeline_info(pipeline_config)
     pl_steps = pipeline_config.get("steps", [])
@@ -607,6 +615,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
     dataset_run = DatasetRun(
         dataset_id=request.dataset_id,
         dataset_name=dataset_info.get("name", request.dataset_id),
+        split_group_by=split_group_by,
         pipelines=pipelines,
     )
 
@@ -789,6 +798,7 @@ async def _execute_run(run_id: str):
                         run.cv_folds or 5,
                         run.workspace_path,
                         run_id,
+                        dataset.split_group_by,
                         pipeline_progress_callback if ws_available else None,
                         store_run_id=shared_store_run_id,
                     )
@@ -912,6 +922,7 @@ async def _execute_pipeline_training(
     cv_folds: int,
     workspace_path: str | None,
     run_id: str,
+    split_group_by: str | None = None,
     progress_callback: Any | None = None,
     store_run_id: str | None = None,
 ) -> dict[str, Any]:
@@ -929,6 +940,7 @@ async def _execute_pipeline_training(
         cv_folds: Number of cross-validation folds
         workspace_path: Path to workspace for saving models
         run_id: ID of the parent run
+        split_group_by: Runtime metadata column selected for this dataset
         progress_callback: Optional async callback(progress: float, message: str)
 
     Returns:
@@ -1123,11 +1135,30 @@ async def _execute_pipeline_training(
         try:
             # Build dataset config with proper loading parameters (delimiter, etc.)
             from .nirs4all_adapter import build_dataset_config, ensure_models_dir, expand_pipeline_variants
+            from .spectra import _load_dataset
             try:
                 dataset_config = build_dataset_config(dataset_id)
                 log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
             except Exception as e:
                 raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
+
+            dataset_object = _load_dataset(dataset_id)
+            if dataset_object is None:
+                raise ValueError(f"Dataset '{dataset_id}' could not be loaded for runtime grouping.")
+
+            try:
+                prepared = prepare_pipeline_steps_with_runtime_grouping(
+                    steps,
+                    dataset_object,
+                    split_group_by,
+                )
+            except Exception as e:
+                raise ValueError(f"Runtime split grouping validation failed: {e}") from e
+
+            for warning_message in prepared.warnings:
+                log(f"[WARN] {warning_message}")
+
+            prepared_steps = prepared.steps
             # Build pipeline - handle expanded variants vs full pipelines
             nirs4all_steps = None
             estimated_variants = 1
@@ -1137,11 +1168,11 @@ async def _execute_pipeline_training(
             is_expanded_variant = pipeline.is_expanded_variant or False
             variant_index = pipeline.variant_index
 
-            if steps:
+            if prepared_steps:
                 try:
                     if is_expanded_variant and variant_index is not None:
                         # This is a specific variant - get its pre-expanded steps
-                        variants = expand_pipeline_variants(steps)
+                        variants = expand_pipeline_variants(prepared_steps)
                         if 0 <= variant_index < len(variants):
                             selected_variant = variants[variant_index]
                             nirs4all_steps = selected_variant.steps
@@ -1151,12 +1182,12 @@ async def _execute_pipeline_training(
                             if variants:
                                 nirs4all_steps = variants[0].steps
                             else:
-                                nirs4all_steps = editor_steps_to_runtime_canonical(steps)
+                                nirs4all_steps = editor_steps_to_runtime_canonical(prepared_steps)
                         estimated_variants = 1  # Only running this one variant
                         has_generators = False
                     else:
                         # Full pipeline with generators preserved in canonical form
-                        nirs4all_steps = editor_steps_to_runtime_canonical(steps)
+                        nirs4all_steps = editor_steps_to_runtime_canonical(prepared_steps)
                         if not nirs4all_steps:
                             raise ValueError("Pipeline has no executable steps")
                         estimated_variants = count_runtime_variants(nirs4all_steps)
@@ -1552,9 +1583,18 @@ async def create_run(request: CreateRunRequest):
             detail="At least one pipeline (saved or inline) must be specified"
         )
 
+    try:
+        config.split_group_by_by_dataset = normalize_split_group_by_mapping(
+            config.dataset_ids,
+            config.split_group_by_by_dataset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # Validate that datasets exist
     from .spectra import _load_dataset
     dataset_infos = {}
+    datasets_by_id = {}
     for dataset_id in config.dataset_ids:
         try:
             dataset = _load_dataset(dataset_id)
@@ -1567,6 +1607,7 @@ async def create_run(request: CreateRunRequest):
                 "name": dataset.name if hasattr(dataset, 'name') else dataset_id,
                 "id": dataset_id,
             }
+            datasets_by_id[dataset_id] = dataset
         except HTTPException:
             raise
         except Exception as e:
@@ -1603,6 +1644,28 @@ async def create_run(request: CreateRunRequest):
             "name": config.inline_pipeline.name,
             "steps": config.inline_pipeline.steps,
         }
+
+    for dataset_id in config.dataset_ids:
+        runtime_group_by = config.split_group_by_by_dataset.get(dataset_id)
+        dataset_object = datasets_by_id[dataset_id]
+        for pipeline_id in pipeline_ids_to_use:
+            pipeline_config = pipeline_configs.get(pipeline_id, {})
+            steps = pipeline_config.get("steps", [])
+            try:
+                prepare_pipeline_steps_with_runtime_grouping(
+                    steps,
+                    dataset_object,
+                    runtime_group_by,
+                )
+            except Exception as exc:
+                pipeline_name = pipeline_config.get("name", pipeline_id)
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Dataset '{dataset_id}' cannot run pipeline "
+                        f"'{pipeline_name}': {exc}"
+                    ),
+                ) from exc
 
     # Create run from validated config (use modified pipeline_ids)
     run = _create_run_from_config(config, dataset_infos, pipeline_configs, workspace.path, pipeline_ids_to_use)
@@ -1718,6 +1781,7 @@ def _create_run_from_config(
         dataset_run = DatasetRun(
             dataset_id=ds_id,
             dataset_name=ds_info.get("name", ds_id),
+            split_group_by=config.split_group_by_by_dataset.get(ds_id),
             pipelines=pipelines,
         )
         datasets.append(dataset_run)
@@ -1870,6 +1934,14 @@ async def quick_run(request: QuickRunRequest):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
+    try:
+        request.split_group_by_by_dataset = normalize_split_group_by_mapping(
+            [request.dataset_id],
+            request.split_group_by_by_dataset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # Load pipeline configuration
     from .pipelines import _load_pipeline
     try:
@@ -1888,6 +1960,22 @@ async def quick_run(request: QuickRunRequest):
             status_code=404,
             detail=f"Dataset '{request.dataset_id}' not found",
         )
+
+    runtime_group_by = request.split_group_by_by_dataset.get(request.dataset_id)
+    try:
+        prepare_pipeline_steps_with_runtime_grouping(
+            pipeline_config.get("steps", []),
+            dataset,
+            runtime_group_by,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Dataset '{request.dataset_id}' cannot run pipeline "
+                f"'{pipeline_config.get('name', request.pipeline_id)}': {exc}"
+            ),
+        ) from exc
 
     dataset_info = {
         "name": dataset.name if hasattr(dataset, 'name') else request.dataset_id,
@@ -2045,6 +2133,7 @@ async def retry_run(run_id: str):
         new_dataset = DatasetRun(
             dataset_id=dataset.dataset_id,
             dataset_name=dataset.dataset_name,
+            split_group_by=dataset.split_group_by,
             pipelines=new_pipelines,
         )
         new_datasets.append(new_dataset)

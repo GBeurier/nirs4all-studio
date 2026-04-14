@@ -43,6 +43,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 import { useWizard } from "./WizardContext";
 import { detectFormat } from "@/api/client";
 import type { TaskType, TargetConfig, FoldSource } from "@/types/datasets";
@@ -86,6 +87,7 @@ export function TargetsStep() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detectedColumns, setDetectedColumns] = useState<DetectedColumn[]>([]);
+  const aggregationColumnWarning = getRepeatIndexColumnWarning(state.aggregation.column);
 
   // Parse columns from response data
   // Note: sampleData contains actual data rows (headers are in columnNames)
@@ -589,12 +591,12 @@ export function TargetsStep() {
             {state.aggregation.enabled && (
               <div className="px-4 pb-4 space-y-3">
                 <p className="text-xs text-muted-foreground">
-                  Group repeated measurements of the same sample. Identifies which spectra belong to the same physical sample for proper splitting and aggregation.
+                  Group repeated measurements of the same physical sample. Choose the metadata column whose repeated rows belong to the same biological sample, not the column containing repetition numbers like 1/2/3.
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1 block">Repetition Column</Label>
-                    {state.metadataColumns.length > 0 || state.targets.length > 0 ? (
+                    <Label className="text-xs text-muted-foreground mb-1 block">Sample Group Column</Label>
+                    {state.metadataColumns.length > 0 ? (
                       <Select
                         value={state.aggregation.column || ""}
                         onValueChange={(v) => dispatch({ type: "SET_AGGREGATION", payload: { column: v } })}
@@ -603,22 +605,10 @@ export function TargetsStep() {
                           <SelectValue placeholder="Select..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {state.targets.length > 0 && (
-                            <>
-                              <SelectItem disabled value="__y_header__" className="text-xs font-semibold text-muted-foreground">Y columns</SelectItem>
-                              {state.targets.map((t) => (
-                                <SelectItem key={`y:${t.column}`} value={t.column}>{t.column}</SelectItem>
-                              ))}
-                            </>
-                          )}
-                          {state.metadataColumns.length > 0 && (
-                            <>
-                              <SelectItem disabled value="__meta_header__" className="text-xs font-semibold text-muted-foreground">Metadata columns</SelectItem>
-                              {state.metadataColumns.map((col) => (
-                                <SelectItem key={`m:${col}`} value={col}>{col}</SelectItem>
-                              ))}
-                            </>
-                          )}
+                          <SelectItem disabled value="__meta_header__" className="text-xs font-semibold text-muted-foreground">Metadata columns</SelectItem>
+                          {state.metadataColumns.map((col) => (
+                            <SelectItem key={`m:${col}`} value={col}>{col}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -628,6 +618,11 @@ export function TargetsStep() {
                         placeholder="sample_id"
                         className="h-8"
                       />
+                    )}
+                    {aggregationColumnWarning && (
+                      <p className="mt-2 text-xs text-amber-600">
+                        {aggregationColumnWarning}
+                      </p>
                     )}
                   </div>
                   <div>

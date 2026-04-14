@@ -105,12 +105,25 @@ export interface ExecuteOptions {
   split_index?: number;
   use_cache?: boolean;
   bio_sample_column?: string;
+  dataset_repetition?: string;
   /** Subset mode: 'all' processes all samples (default), 'visible' pre-samples for faster processing */
   subset_mode?: 'all' | 'visible';
   /** Max samples to display in 'visible' subset mode (default 200) */
   max_samples_displayed?: number;
   /** Whether to compute repetition analysis (default true) */
   compute_repetitions?: boolean;
+  /**
+   * Pre-existing train/test partition of the uploaded samples. Samples MUST be
+   * ordered train-first / test-last in the payload. The backend uses this to
+   * drive CV-on-train-subset logic when a splitter is present. Datasets loaded
+   * server-side (/execute-dataset) set this from the SpectroDataset partition
+   * layout; uploaded/demo payloads can set it explicitly here.
+   */
+  source_partitions?: {
+    has_test: boolean;
+    n_train: number;
+    n_test: number;
+  };
 }
 
 /**
@@ -198,6 +211,10 @@ export interface FoldsInfo {
   fold_labels?: number[];
   split_index?: number;
   kind?: "test_split" | "cv_folds";
+  repetition_column?: string | null;
+  group_by?: string | null;
+  effective_group_mode?: "none" | "repetition_only" | "group_by_only" | "combined";
+  effective_group_label?: string | null;
 }
 
 /**
@@ -231,6 +248,9 @@ export interface DataSection {
   spectra: number[][];
   wavelengths: number[];
   sample_indices?: number[];
+  sample_ids?: string[];
+  metadata?: Record<string, unknown[]>;
+  y?: number[];
   shape: number[];
   statistics?: SpectrumStats;
   /**
@@ -478,6 +498,7 @@ export interface ExecuteResponse {
   subset_info?: SubsetInfo;
   execution_trace: StepTrace[];
   step_errors: StepError[];
+  warnings?: string[];
   is_raw_data?: boolean;
   source_partitions?: SourcePartitions;
 }
@@ -529,6 +550,8 @@ export interface OperatorParamInfo {
  * Operator definition from the backend registry
  */
 export interface OperatorDefinition {
+  registryId?: string;
+  classPath?: string;
   name: string;
   display_name: string;
   description: string;
@@ -635,5 +658,6 @@ export interface PlaygroundResult {
   executionTimeMs: number;
   trace: StepTrace[];
   errors: StepError[];
+  warnings?: string[];
   isRawData?: boolean;
 }

@@ -23,6 +23,10 @@ import {
   hashPipeline,
 } from '@/lib/playground/hashing';
 import { unifiedToPlaygroundSteps } from '@/lib/playground/operatorFormat';
+import {
+  getColumnarMetadata,
+  getSpectralRepetitionColumn,
+} from '@/lib/playground/repetition';
 import type {
   UnifiedOperator,
   ExecuteResponse,
@@ -94,6 +98,7 @@ function transformResponse(response: ExecuteResponse): PlaygroundResult {
     executionTimeMs: response.execution_time_ms,
     trace: response.execution_trace,
     errors: response.step_errors,
+    warnings: response.warnings ?? [],
     isRawData: response.is_raw_data,
   };
 }
@@ -156,6 +161,25 @@ export function usePlaygroundQuery(
     seed: samplingOpts?.seed || 42,
   }), [samplingOpts?.method, samplingOpts?.n_samples, samplingOpts?.seed]);
 
+  const repetitionColumn = useMemo(() => getSpectralRepetitionColumn(data), [data]);
+  const metadataSignature = useMemo(() => {
+    if (!data?.metadata || data.metadata.length === 0) {
+      return null;
+    }
+
+    const firstRow = data.metadata[0] ?? {};
+    const lastRow = data.metadata[data.metadata.length - 1] ?? {};
+
+    return JSON.stringify({
+      repetitionColumn: repetitionColumn ?? null,
+      keys: Object.keys(firstRow),
+      first: repetitionColumn ? firstRow[repetitionColumn] ?? null : null,
+      last: repetitionColumn ? lastRow[repetitionColumn] ?? null : null,
+      sampleFirst: data.sampleIds?.[0] ?? null,
+      sampleLast: data.sampleIds?.[data.sampleIds.length - 1] ?? null,
+    });
+  }, [data?.metadata, data?.sampleIds, repetitionColumn]);
+
   // Memoize operators for stable reference when hash matches
   const stableOperatorsRef = useRef(operators);
   if (hashPipeline(stableOperatorsRef.current) !== debouncedPipelineHash) {
@@ -172,7 +196,8 @@ export function usePlaygroundQuery(
       data.y,
       stableOperatorsRef.current,
       sampling,
-      executeOptions
+      executeOptions,
+      metadataSignature,
     );
 
     // Add datasetId and datasetPartition to distinguish dataset-ref queries
@@ -181,7 +206,10 @@ export function usePlaygroundQuery(
     }
 
     return baseKey;
-  }, [data, debouncedPipelineHash, sampling, executeOptions, datasetId, datasetPartition]);
+    // stableOperatorsRef.current is refreshed from debouncedPipelineHash above;
+    // keep the hash here so the query key tracks the debounced pipeline state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, debouncedPipelineHash, sampling, executeOptions, datasetId, datasetPartition, metadataSignature]);
 
   // Query function with abort support
   const queryFn = useCallback(async (): Promise<PlaygroundResult> => {
@@ -200,7 +228,6 @@ export function usePlaygroundQuery(
     abortControllerRef.current = controller;
 
     const steps = unifiedToPlaygroundSteps(stableOperatorsRef.current);
-
     try {
       let response: ExecuteResponse;
 
@@ -224,6 +251,8 @@ export function usePlaygroundQuery(
               max_wavelengths_returned: executeOptions?.max_wavelengths_returned,
               split_index: executeOptions?.split_index,
               use_cache: executeOptions?.use_cache ?? true,
+              bio_sample_column: repetitionColumn,
+              dataset_repetition: repetitionColumn,
               subset_mode: executeOptions?.subset_mode ?? 'all',
               max_samples_displayed: executeOptions?.max_samples_displayed,
             },
@@ -232,16 +261,7 @@ export function usePlaygroundQuery(
         );
       } else {
         // Fallback: send full data (for uploads, demos, non-workspace data)
-        let metadata: Record<string, unknown[]> | undefined;
-        if (data.metadata && data.metadata.length > 0) {
-          metadata = {};
-          const keys = Object.keys(data.metadata[0]);
-          for (const key of keys) {
-            metadata[key] = data.metadata.map(m => m[key]);
-          }
-        }
-
-        const hasBioSample = metadata && 'bio_sample' in metadata;
+        const metadata = getColumnarMetadata(data.metadata);
 
         const request = buildExecuteRequest({
           spectra: data.spectra,
@@ -261,9 +281,11 @@ export function usePlaygroundQuery(
           maxWavelengths: executeOptions?.max_wavelengths_returned,
           splitIndex: executeOptions?.split_index,
           useCache: executeOptions?.use_cache ?? true,
-          bioSampleColumn: hasBioSample ? 'bio_sample' : undefined,
+          bioSampleColumn: repetitionColumn,
+          datasetRepetition: repetitionColumn,
           subsetMode: executeOptions?.subset_mode ?? 'all',
           maxSamplesDisplayed: executeOptions?.max_samples_displayed,
+          sourcePartitions: data.sourcePartitions,
         });
 
         response = await executePlayground(request, controller.signal);
@@ -287,6 +309,9 @@ export function usePlaygroundQuery(
         abortControllerRef.current = null;
       }
     }
+    // stableOperatorsRef.current is intentionally synchronized via
+    // debouncedPipelineHash before this callback executes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, datasetId, datasetPartition, debouncedPipelineHash, sampling, executeOptions]);
 
   // Parallel chart queries are disabled — PCA and repetitions are computed

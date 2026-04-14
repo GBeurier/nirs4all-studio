@@ -140,19 +140,14 @@ export const folds: {
 const categories = ['A', 'B', 'C', 'D'];
 const sources = ['Lab1', 'Lab2', 'Lab3'];
 
-// Determine train/test split: last NUM_TEST_SAMPLES bio samples are test
-const testSampleStart = NUM_BIO_SAMPLES - NUM_TEST_SAMPLES;
-
-// Generate metadata with bio_sample, repetition, and set (train/test)
+// Generate metadata with semantic columns only. Train/test partition is
+// carried by the dataset's source_partitions, not by a metadata column.
 export const metadata: Record<string, (string | number)[]> = {
   // Bio sample ID (e.g., Sample_001, Sample_002, ...)
   bio_sample: [],
 
   // Repetition number (1-4)
   repetition: [],
-
-  // Set: train or test
-  set: [],
 
   // Categorical: category assignment (per bio sample)
   category: [],
@@ -170,14 +165,12 @@ export const metadata: Record<string, (string | number)[]> = {
 // Populate metadata arrays
 for (let bioIdx = 0; bioIdx < NUM_BIO_SAMPLES; bioIdx++) {
   const bioId = String(bioIdx + 1).padStart(3, '0');
-  const isTest = bioIdx >= testSampleStart;
   const bioCategory = categories[Math.floor(random() * categories.length)];
   const bioSource = sources[Math.floor(random() * sources.length)];
 
   for (let rep = 0; rep < NUM_REPS; rep++) {
     metadata.bio_sample.push(`Sample_${bioId}`);
     metadata.repetition.push(rep + 1);
-    metadata.set.push(isTest ? 'test' : 'train');
     metadata.category.push(bioCategory);
     metadata.source.push(bioSource);
     metadata.quality.push(Math.round((random() * 40 + 60) * 10) / 10);
@@ -200,18 +193,17 @@ export const outlierResult = {
   method: 'iqr',
 };
 
-// ============= Compute Train/Test Indices from Metadata =============
+// ============= Compute Train/Test Indices =============
 
-// Train indices: samples where metadata.set === 'train'
-const trainIndices: number[] = [];
-const testIndices: number[] = [];
-for (let i = 0; i < NUM_SAMPLES; i++) {
-  if (metadata.set[i] === 'train') {
-    trainIndices.push(i);
-  } else {
-    testIndices.push(i);
-  }
-}
+// Samples are emitted train-first / test-last (matches the source_partitions
+// contract used elsewhere), so indices [0, n_train) are train and the rest
+// are held-out test.
+const nTrain = (NUM_BIO_SAMPLES - NUM_TEST_SAMPLES) * NUM_REPS;
+const trainIndices: number[] = Array.from({ length: nTrain }, (_, i) => i);
+const testIndices: number[] = Array.from(
+  { length: NUM_SAMPLES - nTrain },
+  (_, i) => nTrain + i
+);
 
 // ============= Combined Test Data Export =============
 
@@ -313,17 +305,6 @@ export const testScenarios = [
       'Each category should have a distinct color',
       '4 categories = 4 colors from categorical palette',
       'All reps of the same bio sample share the same category',
-    ],
-  },
-  {
-    name: 'Metadata Mode (set)',
-    mode: 'metadata' as const,
-    metadataKey: 'set',
-    description: 'Samples should show train vs test based on metadata',
-    verification: [
-      'Train samples should have one color',
-      'Test samples should have another color',
-      '80% train (560 samples), 20% test (140 samples)',
     ],
   },
   {

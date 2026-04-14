@@ -42,6 +42,7 @@ import {
   useDatasetPreviewQuery,
 } from "@/hooks/useDatasetQueries";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
+import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -132,6 +133,7 @@ export default function DatasetDetail() {
   }
 
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
+  const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
   const taskLabel = dataset.task_type === "regression"
     ? "Regression"
     : dataset.task_type === "classification"
@@ -230,6 +232,11 @@ export default function DatasetDetail() {
                     {repetitionColumn && (
                       <Badge variant="outline">
                         Repetition: {repetitionColumn}
+                      </Badge>
+                    )}
+                    {repetitionColumnWarning && (
+                      <Badge variant="destructive">
+                        Repetition config needs review
                       </Badge>
                     )}
                     {Array.from(new Set(dataset.signal_types ?? [])).map((signalType) => (

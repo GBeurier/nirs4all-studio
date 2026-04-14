@@ -10,6 +10,24 @@ import type {
   OperatorDefinition,
 } from '@/types/playground';
 
+const PLAYGROUND_RUNTIME_ONLY_SPLITTER_PARAMS = new Set([
+  'group_by',
+  'group',
+  'ignore_repetition',
+  'aggregation',
+  'y_aggregation',
+]);
+
+function stripRuntimeOnlyExportParams(operator: UnifiedOperator): Record<string, unknown> {
+  if (operator.type !== 'splitting') {
+    return { ...operator.params };
+  }
+
+  return Object.fromEntries(
+    Object.entries(operator.params).filter(([key]) => !PLAYGROUND_RUNTIME_ONLY_SPLITTER_PARAMS.has(key))
+  );
+}
+
 // ============= Unified to API Conversion =============
 
 /**
@@ -60,7 +78,7 @@ export function unifiedToEditorStep(operator: UnifiedOperator): PipelineEditorSt
     id: operator.id,
     type,
     name: operator.name,
-    params: operator.params,
+    params: stripRuntimeOnlyExportParams(operator),
   };
 }
 

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, get_type_hints
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .pipeline_canonical import (
     canonical_to_editor,
@@ -36,6 +36,10 @@ from .pipeline_canonical import (
 )
 from .preset_loader import list_presets, load_preset
 from .shared.logger import get_logger
+from .shared.runtime_grouping import (
+    normalize_split_group_by_mapping,
+    prepare_pipeline_steps_with_runtime_grouping,
+)
 from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
@@ -1474,6 +1478,7 @@ class PipelineRunRequest(BaseModel):
     model_name: str | None = None
     refit: Any | None = True
     refit_params: dict[str, Any] | None = None
+    split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
 
 
 class PipelineExportRequest(BaseModel):
@@ -1503,15 +1508,47 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
+    try:
+        request.split_group_by_by_dataset = normalize_split_group_by_mapping(
+            [request.dataset_id],
+            request.split_group_by_by_dataset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # Load pipeline
     pipeline = _load_pipeline(pipeline_id)
 
     # Validate dataset exists
     from .nirs4all_adapter import resolve_dataset_path
+    from .spectra import _load_dataset
     try:
         dataset_path = resolve_dataset_path(request.dataset_id)
     except HTTPException:
         raise
+
+    dataset = _load_dataset(request.dataset_id)
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dataset '{request.dataset_id}' not found",
+        )
+
+    runtime_group_by = request.split_group_by_by_dataset.get(request.dataset_id)
+    try:
+        prepare_pipeline_steps_with_runtime_grouping(
+            pipeline.get("steps", []),
+            dataset,
+            runtime_group_by,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Dataset '{request.dataset_id}' cannot run pipeline "
+                f"'{pipeline.get('name', pipeline_id)}': {exc}"
+            ),
+        ) from exc
 
     # Build refit configuration
     refit_value = request.refit
@@ -1532,6 +1569,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
         "model_name": request.model_name or f"model_{pipeline_id}",
         "workspace_path": workspace.path,
         "refit": refit_value,
+        "split_group_by": runtime_group_by,
     }
 
     # Create and submit job
@@ -1564,13 +1602,33 @@ def _run_pipeline_task(job, progress_callback):
     config = job.config
     steps = config.get("pipeline_steps", [])
     dataset_path = config.get("dataset_path")
+    dataset_id = config.get("dataset_id")
     workspace_path = config.get("workspace_path")
+    split_group_by = config.get("split_group_by")
 
     # Report starting
     progress_callback(5, "Building pipeline...")
 
     try:
-        pipeline_steps = editor_steps_to_runtime_canonical(steps)
+        from .spectra import _load_dataset
+
+        dataset = _load_dataset(dataset_id)
+        if dataset is None:
+            raise ValueError(f"Dataset '{dataset_id}' not found")
+
+        prepared = prepare_pipeline_steps_with_runtime_grouping(
+            steps,
+            dataset,
+            split_group_by,
+        )
+        for warning_message in prepared.warnings:
+            logger.warning(
+                "Runtime grouping warning for pipeline %s on dataset %s: %s",
+                config.get("pipeline_name", config.get("pipeline_id", "unknown")),
+                dataset_id,
+                warning_message,
+            )
+        pipeline_steps = editor_steps_to_runtime_canonical(prepared.steps)
         estimated_variants = count_runtime_variants(pipeline_steps)
 
         if not pipeline_steps:

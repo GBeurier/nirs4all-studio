@@ -149,7 +149,8 @@ export function createPlaygroundQueryKey(
   y: number[] | undefined,
   operators: UnifiedOperator[],
   sampling?: SamplingOptions,
-  executeOptions?: ExecuteOptions
+  executeOptions?: ExecuteOptions,
+  dataSignature?: string | null,
 ): readonly unknown[] {
   if (!spectra) {
     return ['playground', 'execute', null] as const;
@@ -165,6 +166,7 @@ export function createPlaygroundQueryKey(
     dataHash,
     pipelineHash,
     optionsHash,
+    dataSignature ?? null,
   ] as const;
 }
 

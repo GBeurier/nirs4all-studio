@@ -27,6 +27,10 @@ _preprocessing_cache: dict[str, type] | None = None
 _splitter_cache: dict[str, tuple[str, str]] | None = None
 _augmentation_cache: dict[str, type] | None = None
 
+_RUNTIME_ONLY_PARAMS_BY_OPERATOR_TYPE: dict[str, set[str]] = {
+    "splitting": {"group_by", "group", "ignore_repetition", "aggregation", "y_aggregation"},
+}
+
 
 def _build_preprocessing_cache() -> dict[str, type]:
     """Build cache of preprocessing operators from nirs4all.operators.transforms.
@@ -493,6 +497,17 @@ def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def strip_runtime_only_params(
+    params: dict[str, Any],
+    operator_type: str,
+) -> dict[str, Any]:
+    """Remove execution-time params that must not reach constructors."""
+    runtime_only = _RUNTIME_ONLY_PARAMS_BY_OPERATOR_TYPE.get(operator_type)
+    if not runtime_only:
+        return dict(params)
+    return {k: v for k, v in params.items() if k not in runtime_only}
+
+
 def instantiate_operator(
     name: str,
     params: dict[str, Any],
@@ -515,6 +530,7 @@ def instantiate_operator(
     if operator_cls is None:
         return None
 
+    params = strip_runtime_only_params(params, operator_type)
     params = normalize_params(name, params)
 
     try:
@@ -582,6 +598,8 @@ def validate_step_params(
     if operator_cls is None:
         errors.append(f"Unknown {operator_type} operator: {name}")
         return False, errors, warnings
+
+    params = strip_runtime_only_params(params, operator_type)
 
     # Get valid parameter names via introspection
     try:

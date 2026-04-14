@@ -114,6 +114,9 @@ export const DataSectionSchema = z.object({
   spectra: z.array(z.array(z.number())),
   wavelengths: z.array(z.number()),
   sample_indices: z.array(z.number()).optional(),
+  sample_ids: z.array(z.string()).optional(),
+  metadata: z.record(z.array(z.unknown())).optional(),
+  y: z.array(z.number()).optional(),
   shape: z.array(z.number()),
   statistics: SpectrumStatsSchema.optional(),
 });

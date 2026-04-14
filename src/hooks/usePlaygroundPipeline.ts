@@ -9,7 +9,7 @@
  * - Supports step-by-step comparison mode
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type {
   UnifiedOperator,
@@ -37,13 +37,8 @@ const PIPELINE_STORAGE_KEY = 'playground-pipeline-state';
  */
 function loadPersistedState(): UnifiedOperator[] {
   try {
-    const stored = sessionStorage.getItem(PIPELINE_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
+    // Playground operators should never reappear implicitly across launches.
+    sessionStorage.removeItem(PIPELINE_STORAGE_KEY);
   } catch (e) {
     console.warn('Failed to load persisted pipeline state:', e);
   }
@@ -55,7 +50,12 @@ function loadPersistedState(): UnifiedOperator[] {
  */
 function persistState(operators: UnifiedOperator[]): void {
   try {
-    sessionStorage.setItem(PIPELINE_STORAGE_KEY, JSON.stringify(operators));
+    if (operators.length === 0) {
+      sessionStorage.removeItem(PIPELINE_STORAGE_KEY);
+      return;
+    }
+    // Do not persist operators across refreshes/restarts.
+    sessionStorage.removeItem(PIPELINE_STORAGE_KEY);
   } catch (e) {
     // sessionStorage might be full or disabled
     console.warn('Failed to persist pipeline state:', e);
@@ -152,10 +152,15 @@ export function usePlaygroundPipeline(
     datasetPartition,
   } = options;
 
+  const initialOperators = useMemo(() => loadPersistedState(), []);
+
   // Pipeline state - initialize from sessionStorage
-  const [operators, setOperatorsRaw] = useState<UnifiedOperator[]>(() => loadPersistedState());
-  const [history, setHistory] = useState<UnifiedOperator[][]>(() => [loadPersistedState()]);
+  const [operators, setOperatorsRaw] = useState<UnifiedOperator[]>(() => [...initialOperators]);
+  const [history, setHistory] = useState<UnifiedOperator[][]>(() => [[...initialOperators]]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const operatorsRef = useRef<UnifiedOperator[]>([...initialOperators]);
+  const historyRef = useRef<UnifiedOperator[][]>([[...initialOperators]]);
+  const historyIndexRef = useRef(0);
 
   // UMAP computation state
   const [computeUmap, setComputeUmap] = useState(externalExecuteOptions?.compute_umap ?? false);
@@ -165,6 +170,7 @@ export function usePlaygroundPipeline(
 
   // Wrapper to persist state on every change
   const setOperators = useCallback((newOperators: UnifiedOperator[]) => {
+    operatorsRef.current = newOperators;
     setOperatorsRaw(newOperators);
     persistState(newOperators);
   }, []);
@@ -258,19 +264,23 @@ export function usePlaygroundPipeline(
   // UMAP is loading if we requested it and the query is still fetching
   const isUmapLoading = computeUmap && isFetching;
 
-  // Helper to save to history
-  const saveToHistory = useCallback((newOperators: UnifiedOperator[]) => {
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push([...newOperators]);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-        return newHistory;
-      }
-      return newHistory;
-    });
-    setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY - 1));
-  }, [historyIndex]);
+  // Helper to persist operators and push a matching history entry atomically.
+  const commitOperators = useCallback((newOperators: UnifiedOperator[]) => {
+    setOperators(newOperators);
+
+    const nextHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
+    nextHistory.push([...newOperators]);
+    if (nextHistory.length > MAX_HISTORY) {
+      nextHistory.shift();
+    }
+
+    historyRef.current = nextHistory;
+    setHistory(nextHistory);
+
+    const nextHistoryIndex = nextHistory.length - 1;
+    historyIndexRef.current = nextHistoryIndex;
+    setHistoryIndex(nextHistoryIndex);
+  }, [setOperators]);
 
   // Count splitters
   const splitterCount = useMemo(() => countSplitters(operators), [operators]);
@@ -278,27 +288,28 @@ export function usePlaygroundPipeline(
 
   // Add operator from definition
   const addOperator = useCallback((definition: OperatorDefinition) => {
+    const currentOperators = operatorsRef.current;
+    const currentSplitterCount = countSplitters(currentOperators);
+
     // Check single splitter constraint
-    if (definition.type === 'splitting' && splitterCount > 0) {
+    if (definition.type === 'splitting' && currentSplitterCount > 0) {
       // Replace existing splitter instead of adding
       toast.warning('Only one splitter allowed', {
         description: 'The existing splitter will be replaced.',
       });
 
       // Find and replace existing splitter
-      const newOperators = operators.filter(op => !isSplitter(op));
+      const newOperators = currentOperators.filter(op => !isSplitter(op));
       const newOperator = createOperatorFromDefinition(definition);
       newOperators.push(newOperator);
-      setOperators(newOperators);
-      saveToHistory(newOperators);
+      commitOperators(newOperators);
       return;
     }
 
     const newOperator = createOperatorFromDefinition(definition);
-    const newOperators = [...operators, newOperator];
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, splitterCount, saveToHistory]);
+    const newOperators = [...currentOperators, newOperator];
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Add operator by name (for presets and imports)
   const addOperatorByName = useCallback((
@@ -306,13 +317,16 @@ export function usePlaygroundPipeline(
     type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter',
     params: Record<string, unknown> = {}
   ) => {
+    const currentOperators = operatorsRef.current;
+    const currentSplitterCount = countSplitters(currentOperators);
+
     // Check single splitter constraint
-    if (type === 'splitting' && splitterCount > 0) {
+    if (type === 'splitting' && currentSplitterCount > 0) {
       toast.warning('Only one splitter allowed', {
         description: 'The existing splitter will be replaced.',
       });
 
-      const newOperators = operators.filter(op => !isSplitter(op));
+      const newOperators = currentOperators.filter(op => !isSplitter(op));
       const newOperator: UnifiedOperator = {
         id: `${name}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         type,
@@ -321,8 +335,7 @@ export function usePlaygroundPipeline(
         enabled: true,
       };
       newOperators.push(newOperator);
-      setOperators(newOperators);
-      saveToHistory(newOperators);
+      commitOperators(newOperators);
       return;
     }
 
@@ -333,77 +346,72 @@ export function usePlaygroundPipeline(
       params,
       enabled: true,
     };
-    const newOperators = [...operators, newOperator];
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, splitterCount, saveToHistory]);
+    const newOperators = [...currentOperators, newOperator];
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Remove operator
   const removeOperator = useCallback((id: string) => {
-    const newOperators = operators.filter(op => op.id !== id);
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, saveToHistory]);
+    const newOperators = operatorsRef.current.filter(op => op.id !== id);
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Update operator (full update)
   const updateOperator = useCallback((id: string, updates: Partial<UnifiedOperator>) => {
-    const newOperators = operators.map(op =>
+    const newOperators = operatorsRef.current.map(op =>
       op.id === id ? { ...op, ...updates } : op
     );
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, saveToHistory]);
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Update operator params only (common case, avoids saving full operator)
   const updateOperatorParams = useCallback((id: string, params: Record<string, unknown>) => {
-    const newOperators = operators.map(op =>
+    const newOperators = operatorsRef.current.map(op =>
       op.id === id ? { ...op, params: { ...op.params, ...params } } : op
     );
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, saveToHistory]);
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Toggle operator enabled state
   const toggleOperator = useCallback((id: string) => {
-    const newOperators = operators.map(op =>
+    const newOperators = operatorsRef.current.map(op =>
       op.id === id ? { ...op, enabled: !op.enabled } : op
     );
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, saveToHistory]);
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Reorder operators
   const reorderOperators = useCallback((fromIndex: number, toIndex: number) => {
-    const newOperators = [...operators];
+    const newOperators = [...operatorsRef.current];
     const [moved] = newOperators.splice(fromIndex, 1);
     newOperators.splice(toIndex, 0, moved);
-    setOperators(newOperators);
-    saveToHistory(newOperators);
-  }, [operators, saveToHistory]);
+    commitOperators(newOperators);
+  }, [commitOperators]);
 
   // Clear pipeline
   const clearPipeline = useCallback(() => {
-    setOperators([]);
-    saveToHistory([]);
-  }, [saveToHistory]);
+    commitOperators([]);
+  }, [commitOperators]);
 
   // Undo
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
+    if (historyIndexRef.current > 0) {
+      const newIndex = historyIndexRef.current - 1;
+      historyIndexRef.current = newIndex;
       setHistoryIndex(newIndex);
-      setOperators([...history[newIndex]]);
+      setOperators([...historyRef.current[newIndex]]);
     }
-  }, [history, historyIndex]);
+  }, [setOperators]);
 
   // Redo
   const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
+    if (historyIndexRef.current < historyRef.current.length - 1) {
+      const newIndex = historyIndexRef.current + 1;
+      historyIndexRef.current = newIndex;
       setHistoryIndex(newIndex);
-      setOperators([...history[newIndex]]);
+      setOperators([...historyRef.current[newIndex]]);
     }
-  }, [history, historyIndex]);
+  }, [setOperators]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;

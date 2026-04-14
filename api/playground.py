@@ -18,6 +18,7 @@ import importlib.util
 import json
 import sys
 import time
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -200,6 +201,7 @@ class ExecuteResponse(BaseModel):
     subset_info: dict[str, Any] | None = Field(None, description="Subset mode info: subset_mode, total_samples, displayed_samples")
     execution_trace: list[StepTrace] = Field(default_factory=list, description="Per-step execution info")
     step_errors: list[dict[str, Any]] = Field(default_factory=list, description="Any step-level errors")
+    warnings: list[str] = Field(default_factory=list, description="Non-blocking execution warnings")
     is_raw_data: bool = Field(default=False, description="True if no operators were applied")
     source_partitions: dict[str, Any] | None = Field(
         None,
@@ -291,6 +293,21 @@ class PlaygroundExecutor:
         elif data.metadata:
             metadata = {k: np.array(v) for k, v in data.metadata.items()}
 
+        # Raw playground payloads do not carry a SpectroDataset instance, so the
+        # repetition column must be inferred from the same bio-sample metadata
+        # used by the repetitions chart. This keeps split preview aligned with
+        # dataset-backed execution, where repetition already comes from the dataset.
+        if not options.get("dataset_repetition"):
+            bio_sample_column = options.get("bio_sample_column")
+            if (
+                isinstance(bio_sample_column, str)
+                and bio_sample_column
+                and metadata
+                and bio_sample_column in metadata
+            ):
+                options = dict(options)
+                options["dataset_repetition"] = bio_sample_column
+
         # Subset mode: when 'visible', select a representative subset BEFORE processing
         subset_mode = options.get("subset_mode", "all")
         subset_info = None
@@ -311,6 +328,36 @@ class PlaygroundExecutor:
                         subset_indices = random_sample(total_samples, n_select, seed=42)
                 else:
                     subset_indices = random_sample(total_samples, n_select, seed=42)
+
+                # If the caller provided source_partitions, reorder the subset to
+                # keep train rows before test rows so indices [0, n_train) stay
+                # train and [n_train, n_train + n_test) stay test. Update the
+                # partition counts for the subset.
+                pre_subset_source_partitions = (options or {}).get("source_partitions")
+                if pre_subset_source_partitions and pre_subset_source_partitions.get("has_test"):
+                    orig_n_train = int(pre_subset_source_partitions.get("n_train", 0) or 0)
+                    if 0 < orig_n_train < total_samples:
+                        in_train = subset_indices < orig_n_train
+                        n_train_subset = int(in_train.sum())
+                        n_test_subset = int((~in_train).sum())
+                        if n_train_subset > 0 and n_test_subset > 0:
+                            subset_indices = np.concatenate([
+                                subset_indices[in_train],
+                                subset_indices[~in_train],
+                            ])
+                            options = dict(options)
+                            options["source_partitions"] = {
+                                "has_test": True,
+                                "n_train": n_train_subset,
+                                "n_test": n_test_subset,
+                            }
+                        else:
+                            options = dict(options)
+                            options["source_partitions"] = {
+                                "has_test": False,
+                                "n_train": n_train_subset,
+                                "n_test": 0,
+                            }
 
                 # Apply subset to the original data before any processing
                 X_original = X_original[subset_indices]
@@ -341,11 +388,64 @@ class PlaygroundExecutor:
 
         # Apply sampling if needed (post-subset sampling, usually 'all' when subset_mode is active)
         sample_indices = self._apply_sampling(X_original, y, sampling)
+
+        # Source partitions are authoritative and must come from the caller.
+        # /execute-dataset derives them from the loaded SpectroDataset; uploaded
+        # data (e.g. demo) sets them explicitly via options. There is no
+        # metadata-based fallback: partitions belong to the dataset, not to an
+        # ad-hoc metadata column.
+        source_partitions = options.get("source_partitions") if options else None
+
+        # Sampling may shuffle sample_indices away from the train-first / test-last
+        # order required by `source_partitions`. Re-sort the sampled indices so
+        # train rows come before test rows, then recompute n_train / n_test on
+        # the sampled subset.
+        if source_partitions and source_partitions.get("has_test"):
+            total_rows = X_original.shape[0]
+            orig_n_train = int(source_partitions.get("n_train", 0) or 0)
+            orig_n_test = int(source_partitions.get("n_test", 0) or 0)
+            if 0 < orig_n_train and orig_n_train + orig_n_test == total_rows:
+                in_train = sample_indices < orig_n_train
+                in_test = (sample_indices >= orig_n_train) & (sample_indices < total_rows)
+                n_train_sampled = int(in_train.sum())
+                n_test_sampled = int(in_test.sum())
+                if n_train_sampled > 0 and n_test_sampled > 0:
+                    sample_indices = np.concatenate([
+                        sample_indices[in_train],
+                        sample_indices[in_test],
+                    ])
+                    source_partitions = {
+                        "has_test": True,
+                        "n_train": n_train_sampled,
+                        "n_test": n_test_sampled,
+                    }
+                    # Keep options in sync for _execute_splitter.
+                    options = dict(options)
+                    options["source_partitions"] = source_partitions
+                else:
+                    # Sampling dropped one side entirely: the partition structure
+                    # no longer exists on the sampled subset.
+                    source_partitions = {"has_test": False, "n_train": n_train_sampled, "n_test": 0}
+                    options = dict(options)
+                    options["source_partitions"] = source_partitions
+
         X_sampled = X_original[sample_indices]
         y_sampled = y[sample_indices] if y is not None else None
+        original_y_sampled = y_sampled.copy() if y_sampled is not None else None
+
+        sample_ids_sampled = None
+        if data.sample_ids:
+            sample_ids_sampled = [data.sample_ids[i] for i in sample_indices]
+        original_sample_ids = list(sample_ids_sampled) if sample_ids_sampled is not None else None
+
         metadata_sampled = None
         if metadata:
             metadata_sampled = {k: v[sample_indices] for k, v in metadata.items()}
+        original_metadata_sampled = (
+            {k: v.copy() for k, v in metadata_sampled.items()}
+            if metadata_sampled is not None
+            else None
+        )
 
         # Check if we have any enabled operators (raw data mode check)
         enabled_steps = [s for s in steps if s.enabled]
@@ -355,13 +455,9 @@ class PlaygroundExecutor:
         X_processed = X_sampled.copy()
         execution_trace: list[StepTrace] = []
         step_errors: list[dict[str, Any]] = []
+        execution_warnings: list[str] = []
         fold_info = None
         filter_info = None
-        # Source partitions: forwarded from caller (execute-dataset detects whether
-        # the dataset already has a test partition). Used to label the first
-        # splitter's kind: when the source has no test partition, the first split
-        # creates one (kind="test_split"); subsequent splits produce CV folds.
-        source_partitions = options.get("source_partitions") if options else None
         pre_has_test = bool(source_partitions and source_partitions.get("has_test"))
         splitter_count = 0
         augmentation_info = None
@@ -390,8 +486,12 @@ class PlaygroundExecutor:
                     cached_meta = cached_state.get("metadata")
                     if cached_meta is not None:
                         metadata_sampled = {k: v.copy() for k, v in cached_meta.items()}
+                    cached_sample_ids = cached_state.get("sample_ids")
+                    if cached_sample_ids is not None:
+                        sample_ids_sampled = list(cached_sample_ids)
                     execution_trace = list(cached_state.get("trace", []))
                     step_errors = list(cached_state.get("errors", []))
+                    execution_warnings = list(cached_state.get("warnings", []))
                     splitter_applied = cached_state.get("splitter_applied", False)
                     splitter_count = cached_state.get("splitter_count", 0)
                     pre_has_test = cached_state.get("pre_has_test", pre_has_test)
@@ -417,10 +517,11 @@ class PlaygroundExecutor:
                     # splits (or any split when test already exists) produce CV folds.
                     splitter_count += 1
                     splitter_kind = "cv_folds" if (pre_has_test or splitter_count > 1) else "test_split"
-                    fold_info = self._execute_splitter(
+                    fold_info, splitter_warnings = self._execute_splitter(
                         step, X_processed, y_sampled, options, metadata_sampled,
                         kind=splitter_kind,
                     )
+                    execution_warnings.extend(splitter_warnings)
                     if splitter_kind == "test_split":
                         # Once the first split has run, the dataset effectively has
                         # a test partition for any subsequent splitter steps.
@@ -471,6 +572,12 @@ class PlaygroundExecutor:
                         X_processed = X_processed[step_mask]
                         if y_sampled is not None:
                             y_sampled = y_sampled[step_mask]
+                        if sample_ids_sampled is not None:
+                            sample_ids_sampled = [
+                                sample_id
+                                for sample_id, keep in zip(sample_ids_sampled, step_mask, strict=False)
+                                if keep
+                            ]
                         if metadata_sampled is not None:
                             metadata_sampled = {k: v[step_mask] for k, v in metadata_sampled.items()}
 
@@ -496,14 +603,26 @@ class PlaygroundExecutor:
                     X_processed, y_sampled, aug_meta = self._execute_augmentation(
                         step, X_processed, y_sampled, wavelengths, n_augmented_copies=n_copies
                     )
-                    # Extend metadata to match augmented sample count
+                    copies_added = (
+                        aug_meta["augmented_count"] // aug_meta["original_count"]
+                        if aug_meta["original_count"] > 0
+                        else 0
+                    )
+                    if sample_ids_sampled is not None and copies_added > 0:
+                        current_sample_ids = list(sample_ids_sampled)
+                        sample_ids_sampled = current_sample_ids + [
+                            sample_id
+                            for _ in range(copies_added)
+                            for sample_id in current_sample_ids
+                        ]
+                    # Extend metadata to match augmented sample count by copying
+                    # the source rows so augmented samples keep the same metadata.
                     if metadata_sampled is not None:
-                        n_orig_meta = next(iter(metadata_sampled.values())).shape[0]
-                        n_new = X_processed.shape[0] - n_orig_meta
-                        if n_new > 0:
+                        current_metadata = {k: v.copy() for k, v in metadata_sampled.items()}
+                        if copies_added > 0:
                             metadata_sampled = {
-                                k: np.concatenate([v, np.full(n_new, np.nan)])
-                                for k, v in metadata_sampled.items()
+                                k: np.concatenate([values] + [values.copy() for _ in range(copies_added)])
+                                for k, values in current_metadata.items()
                             }
                     # Extend filter_mask and kept_indices for augmented samples
                     old_len = filter_mask.shape[0]
@@ -548,6 +667,7 @@ class PlaygroundExecutor:
                     "X": X_processed.copy(),
                     "y": y_sampled.copy() if y_sampled is not None else None,
                     "metadata": {k: v.copy() for k, v in metadata_sampled.items()} if metadata_sampled else None,
+                    "sample_ids": list(sample_ids_sampled) if sample_ids_sampled is not None else None,
                     "fold_info": fold_info,
                     "filter_info": filter_info,
                     "augmentation_info": augmentation_info,
@@ -555,6 +675,7 @@ class PlaygroundExecutor:
                     "kept_indices": kept_indices.copy(),
                     "trace": list(execution_trace),
                     "errors": list(step_errors),
+                    "warnings": list(execution_warnings),
                     "splitter_applied": splitter_applied,
                     "splitter_count": splitter_count,
                     "pre_has_test": pre_has_test,
@@ -620,14 +741,9 @@ class PlaygroundExecutor:
         repetition_result = None
         if compute_repetitions:
             try:
-                # Get sample IDs for the sampled subset
-                sampled_sample_ids = None
-                if data.sample_ids:
-                    sampled_sample_ids = [data.sample_ids[i] for i in sample_indices]
-
                 repetition_result = self._compute_repetition_analysis(
                     X=X_processed,
-                    sample_ids=sampled_sample_ids,
+                    sample_ids=sample_ids_sampled,
                     metadata=metadata_sampled,
                     pca_result=pca_result,
                     umap_result=umap_result,
@@ -679,6 +795,12 @@ class PlaygroundExecutor:
                 "shape": list(X_sampled.shape),
                 "statistics": original_stats,
                 "header_unit": resolved_header_unit,
+                "sample_ids": original_sample_ids,
+                "metadata": {
+                    k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    for k, v in original_metadata_sampled.items()
+                } if original_metadata_sampled is not None else None,
+                "y": original_y_sampled.tolist() if original_y_sampled is not None else None,
             },
             processed={
                 "spectra": X_processed_out.tolist(),
@@ -686,6 +808,12 @@ class PlaygroundExecutor:
                 "shape": list(X_processed.shape),
                 "statistics": processed_stats,
                 "header_unit": resolved_header_unit,
+                "sample_ids": sample_ids_sampled,
+                "metadata": {
+                    k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    for k, v in metadata_sampled.items()
+                } if metadata_sampled is not None else None,
+                "y": y_sampled.tolist() if y_sampled is not None else None,
             },
             pca=pca_result,
             umap=umap_result,
@@ -697,6 +825,7 @@ class PlaygroundExecutor:
             subset_info=subset_info,
             execution_trace=execution_trace,
             step_errors=step_errors,
+            warnings=execution_warnings,
             is_raw_data=is_raw_data,
             source_partitions=source_partitions,
         )
@@ -911,7 +1040,7 @@ class PlaygroundExecutor:
         metadata: dict[str, Any] | None = None,
         *,
         kind: str = "cv_folds",
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], list[str]]:
         """Execute a splitter step.
 
         Args:
@@ -919,21 +1048,23 @@ class PlaygroundExecutor:
             X: Input data
             y: Target values (may be required by some splitters)
             options: Execution options (split_index for ShuffleSplit-like)
-            metadata: Optional metadata columns; the first column is used as
-                the group vector for group-aware splitters when present.
+            metadata: Optional metadata columns aligned with X rows.
 
         Returns:
-            Fold information dict
+            Tuple of (fold information dict, non-blocking warnings)
         """
+        import inspect
         import numpy as np
+        import pandas as pd
+
+        from nirs4all.controllers.splitters.split import resolve_split_groups
+        from nirs4all.data.dataset import SpectroDataset
+        from nirs4all.operators.splitters import GroupedSplitterWrapper
+
         operator = instantiate_operator(step.name, step.params, "splitting")
         if operator is None:
             raise ValueError(f"Unknown splitter: {step.name}")
-
-        def _is_held_out_partition(value: Any) -> bool:
-            if value is None:
-                return False
-            return str(value).strip().lower() in {"test", "holdout", "held-out"}
+        base_splitter_name = operator.__class__.__name__
 
         # When the playground is previewing a dataset that already has a held-out
         # test partition, CV splitters must only operate on the train subset.
@@ -944,92 +1075,130 @@ class PlaygroundExecutor:
         y_for_split = y
         metadata_for_split = metadata
 
-        if kind == "cv_folds" and metadata:
-            partition_values = None
-            for key in ("set", "partition"):
-                values = metadata.get(key)
-                if values is not None and len(values) == X.shape[0]:
-                    partition_values = np.asarray(values)
-                    break
+        source_partitions = options.get("source_partitions") if options else None
+        if kind == "cv_folds" and source_partitions and source_partitions.get("has_test"):
+            n_train = int(source_partitions.get("n_train", 0) or 0)
+            n_test = int(source_partitions.get("n_test", 0) or 0)
+            total_expected = n_train + n_test
 
-            if partition_values is not None:
-                held_out_mask = np.array(
-                    [_is_held_out_partition(value) for value in partition_values],
-                    dtype=bool,
-                )
-                if held_out_mask.any() and (~held_out_mask).any():
-                    split_indices = np.flatnonzero(~held_out_mask)
-                    X_for_split = X[split_indices]
-                    y_for_split = y[split_indices] if y is not None else None
-                    metadata_for_split = {
-                        key: value[split_indices]
+            if 0 < n_train < X.shape[0] and total_expected == X.shape[0]:
+                split_indices = np.arange(n_train, dtype=int)
+                X_for_split = X[:n_train]
+                y_for_split = y[:n_train] if y is not None else None
+                metadata_for_split = (
+                    {
+                        key: value[:n_train]
                         if value is not None and len(value) == X.shape[0]
                         else value
                         for key, value in metadata.items()
                     }
-
-        # Prepare arguments for split()
-        kwargs = {}
-        import inspect
-        sig = inspect.signature(operator.split)
-
-        if y_for_split is not None and "y" in sig.parameters:
-            # For stratified splitters with continuous y, bin into classes
-            if "Stratified" in step.name:
-                # Bin continuous y into quantile-based classes
-                n_bins = min(5, len(np.unique(y_for_split)))
-                if n_bins > 1:
-                    y_binned = np.digitize(
-                        y_for_split,
-                        np.percentile(y_for_split, np.linspace(0, 100, n_bins + 1)[1:-1]),
-                    )
-                    kwargs["y"] = y_binned
-                else:
-                    kwargs["y"] = y_for_split
-            else:
-                kwargs["y"] = y_for_split
-
-        # Group-aware splitters require a `groups` array. Derive it from the
-        # first available metadata column; fall back to a quantile-binned y so
-        # the playground can preview the splitter without user configuration.
-        # Detect group-aware splitters by name (sklearn's KFold/ShuffleSplit
-        # also accept a `groups` kwarg but ignore it with a warning).
-        is_group_aware = (
-            "Group" in step.name
-            or "LeavePGroupsOut" in step.name
-            or "LeaveOneGroupOut" in step.name
-        )
-        if is_group_aware and "groups" in sig.parameters:
-            groups = None
-            if metadata_for_split:
-                first_key = next(
-                    (
-                        key
-                        for key in metadata_for_split
-                        if key.lower() not in {"set", "partition"}
-                    ),
-                    None,
+                    if metadata
+                    else None
                 )
-                if first_key is None:
-                    first_key = next(iter(metadata_for_split.keys()), None)
-                if first_key is not None:
-                    groups = np.asarray(metadata_for_split[first_key])
-                    if groups.shape[0] != X_for_split.shape[0]:
-                        groups = None
-            if groups is None and y_for_split is not None:
-                n_bins = min(5, len(np.unique(y_for_split)))
+
+        # Mirror the library contract: resolve effective groups from dataset
+        # repetition + explicit group_by, then decide native groups vs wrapper.
+        temp_dataset = SpectroDataset(name=f"playground_{step.name}")
+        temp_dataset.add_samples(X_for_split, {"partition": "train"})
+        if y_for_split is not None:
+            temp_dataset.add_targets(y_for_split)
+
+        if metadata_for_split:
+            aligned_metadata: dict[str, list[Any]] = {}
+            for key, value in metadata_for_split.items():
+                if value is None:
+                    continue
+                values = np.asarray(value)
+                if values.shape[0] != X_for_split.shape[0]:
+                    continue
+                aligned_metadata[key] = values.tolist()
+            if aligned_metadata:
+                temp_dataset.add_metadata(pd.DataFrame(aligned_metadata))
+
+        dataset_repetition = options.get("dataset_repetition")
+        if dataset_repetition:
+            temp_dataset.set_repetition(dataset_repetition)
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            resolved_groups = resolve_split_groups(
+                dataset=temp_dataset,
+                splitter=operator,
+                group_by=step.params.get("group_by"),
+                legacy_group=step.params.get("group"),
+                ignore_repetition=bool(step.params.get("ignore_repetition", False)),
+                context={"partition": "train"},
+                include_augmented=False,
+            )
+
+        split_warnings: list[str] = []
+        for caught in caught_warnings:
+            message = str(caught.message)
+            if message not in split_warnings:
+                split_warnings.append(message)
+
+        groups = resolved_groups.effective_groups
+        if groups is not None and len(groups) != X_for_split.shape[0]:
+            raise ValueError(
+                f"Effective groups array length ({len(groups)}) doesn't match X rows ({X_for_split.shape[0]})"
+            )
+
+        if resolved_groups.uses_repetition and resolved_groups.uses_group_by:
+            effective_group_mode = "combined"
+        elif resolved_groups.uses_repetition:
+            effective_group_mode = "repetition_only"
+        elif resolved_groups.uses_group_by:
+            effective_group_mode = "group_by_only"
+        else:
+            effective_group_mode = "none"
+
+        resolved_group_by = resolved_groups.group_by
+        if isinstance(resolved_group_by, str):
+            response_group_by: str | None = resolved_group_by
+            group_parts = [resolved_group_by]
+        elif resolved_group_by:
+            response_group_by = " + ".join(resolved_group_by)
+            group_parts = list(resolved_group_by)
+        else:
+            response_group_by = None
+            group_parts = []
+
+        repetition_column = dataset_repetition or None
+        effective_group_label: str | None = None
+        if effective_group_mode == "combined" and repetition_column:
+            effective_group_label = " + ".join([repetition_column, *group_parts])
+        elif effective_group_mode == "repetition_only":
+            effective_group_label = repetition_column
+        elif effective_group_mode == "group_by_only":
+            effective_group_label = response_group_by
+
+        split_y = y_for_split
+        if split_y is not None and "Stratified" in base_splitter_name:
+            finite_mask = np.isfinite(split_y) if np.issubdtype(np.asarray(split_y).dtype, np.number) else None
+            if finite_mask is None or bool(np.all(finite_mask)):
+                unique_y = np.unique(split_y)
+                n_bins = min(5, len(unique_y))
                 if n_bins > 1:
-                    groups = np.digitize(
-                        y_for_split,
-                        np.percentile(y_for_split, np.linspace(0, 100, n_bins + 1)[1:-1]),
+                    split_y = np.digitize(
+                        split_y,
+                        np.percentile(split_y, np.linspace(0, 100, n_bins + 1)[1:-1]),
                     )
-                else:
-                    groups = np.zeros(X_for_split.shape[0], dtype=int)
-            if groups is None:
-                # No metadata, no y — synthesize a balanced group label so the
-                # splitter can still produce folds for visualization.
-                n_groups = max(2, min(5, X_for_split.shape[0]))
-                groups = np.arange(X_for_split.shape[0]) % n_groups
+
+        requires_wrapper = resolved_groups.requires_wrapper
+        if requires_wrapper:
+            operator = GroupedSplitterWrapper(
+                splitter=operator,
+                aggregation=step.params.get("aggregation", "mean"),
+                y_aggregation=step.params.get("y_aggregation"),
+            )
+
+        kwargs: dict[str, Any] = {}
+        sig = inspect.signature(operator.split)
+        if split_y is not None and "y" in sig.parameters:
+            kwargs["y"] = split_y
+        elif groups is not None and split_y is not None:
+            kwargs["y"] = split_y
+        if groups is not None:
             kwargs["groups"] = groups
 
         # Generate folds
@@ -1093,7 +1262,11 @@ class PlaygroundExecutor:
             "fold_labels": fold_labels.tolist(),
             "split_index": split_index,
             "kind": kind,
-        }
+            "repetition_column": repetition_column,
+            "group_by": response_group_by,
+            "effective_group_mode": effective_group_mode,
+            "effective_group_label": effective_group_label,
+        }, split_warnings
 
     def _compute_statistics(self, X) -> dict[str, Any]:
         """Compute per-wavelength statistics.
@@ -1282,17 +1455,80 @@ class PlaygroundExecutor:
 
         import numpy as np
 
+        def _normalize_metadata_name(name: Any) -> str:
+            return re.sub(r"[^a-z0-9]+", "", str(name).strip().lower())
+
+        def _looks_like_repeat_index(name: str) -> bool:
+            return (
+                name in {"rep", "reps"}
+                or name.startswith("replicate")
+                or name.startswith("repeat")
+                or name.startswith("repetition")
+                or name.startswith("technicalrep")
+            )
+
+        def _auto_detect_metadata_group_column(metadata_dict: dict[str, Any]) -> str | None:
+            candidates: list[tuple[int, int, int, str]] = []
+            for column_name, raw_values in metadata_dict.items():
+                normalized_name = _normalize_metadata_name(column_name)
+                if normalized_name in {"set", "partition", "fold", "foldid"} or _looks_like_repeat_index(normalized_name):
+                    continue
+
+                values = np.asarray(raw_values, dtype=object)
+                counts: dict[str, int] = {}
+                for value in values:
+                    if value is None or value == "":
+                        continue
+                    token = str(value)
+                    counts[token] = counts.get(token, 0) + 1
+
+                repeated_groups = sum(1 for count in counts.values() if count >= 2)
+                repeated_measurements = sum(count for count in counts.values() if count >= 2)
+                if repeated_groups == 0:
+                    continue
+
+                is_preferred = int(
+                    normalized_name in {"biosample", "biosampleid", "biologicalsample", "biologicalsampleid", "samplegroup", "groupid"}
+                    or ("bio" in normalized_name and "sample" in normalized_name)
+                    or ("sample" in normalized_name and "group" in normalized_name)
+                )
+                if not is_preferred:
+                    continue
+                candidates.append((is_preferred, repeated_groups, repeated_measurements, str(column_name)))
+
+            if not candidates:
+                return None
+
+            candidates.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
+            return candidates[0][3]
+
         # Get configuration
         bio_sample_column = options.get("bio_sample_column")
+        if not bio_sample_column:
+            # Dataset-backed playground execution forwards the configured dataset
+            # repetition under ``dataset_repetition``. Use it here so repetition
+            # analysis stays aligned with the dataset's grouping contract even
+            # when raw sample IDs are not present in the request payload.
+            bio_sample_column = options.get("dataset_repetition")
         bio_sample_pattern = options.get("bio_sample_pattern")
         auto_detect = options.get("auto_detect_repetitions", True)
         distance_metric = options.get("distance_metric", "pca")
 
         n_samples = X.shape[0]
 
-        # Generate sample IDs if not provided
+        # Normalize sample IDs to match the processed sample count so
+        # repetition analysis stays robust after augmentation/filtering.
         if sample_ids is None:
             sample_ids = [f"Sample_{i}" for i in range(n_samples)]
+        else:
+            normalized_sample_ids = []
+            for idx, value in enumerate(sample_ids[:n_samples]):
+                normalized_sample_ids.append(f"Sample_{idx}" if value is None else str(value))
+            if len(normalized_sample_ids) < n_samples:
+                normalized_sample_ids.extend(
+                    f"Sample_{idx}" for idx in range(len(normalized_sample_ids), n_samples)
+                )
+            sample_ids = normalized_sample_ids
 
         # Try to identify biological sample grouping
         bio_sample_map: dict[str, list[int]] = defaultdict(list)
@@ -1302,6 +1538,13 @@ class PlaygroundExecutor:
             bio_col = metadata[bio_sample_column]
             for idx, bio_id in enumerate(bio_col):
                 bio_sample_map[str(bio_id)].append(idx)
+        elif auto_detect and metadata:
+            detected_metadata_column = _auto_detect_metadata_group_column(metadata)
+            if detected_metadata_column:
+                bio_col = metadata[detected_metadata_column]
+                bio_sample_column = detected_metadata_column
+                for idx, bio_id in enumerate(bio_col):
+                    bio_sample_map[str(bio_id)].append(idx)
         elif bio_sample_pattern:
             # Use regex pattern on sample IDs
             try:
@@ -2022,8 +2265,6 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
                 else:
                     metadata_np = {}
 
-                # Inject a 'set' column so the existing 'set' metadata path also lights up.
-                metadata_np["set"] = np.array(["train"] * n_train + ["test"] * n_test, dtype=object)
             else:
                 X = X_train
                 y_array = y_train
@@ -2084,6 +2325,23 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
                    f"Consider resampling or cropping wavelengths."
         )
 
+    dataset_sample_ids = None
+    if metadata_np:
+        for candidate in ("sample_id", "sample", "id"):
+            values = metadata_np.get(candidate)
+            if values is None or len(values) != n_samples:
+                continue
+
+            normalized_ids = []
+            for idx, value in enumerate(values):
+                if value is None:
+                    normalized_ids.append(f"Sample_{idx}")
+                else:
+                    normalized_ids.append(str(value))
+
+            dataset_sample_ids = normalized_ids
+            break
+
     # Build a minimal PlaygroundData for cache key and sample_ids access
     # IMPORTANT: We do NOT call X.tolist() — numpy arrays are passed directly
     # to the executor via the X_np fast path.
@@ -2091,25 +2349,27 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
         x=[],  # Empty — not used, numpy passed directly
         y=None,
         wavelengths=wavelengths,
+        sample_ids=dataset_sample_ids,
     )
 
+    # Forward source partition and dataset repetition info to the executor so
+    # split preview uses the same grouping contract as the library.
+    exec_options = dict(request.options or {})
+    exec_options["source_partitions"] = source_partitions
+    exec_options["dataset_repetition"] = getattr(dataset, "repetition", None)
+
     # Check cache using a fast fingerprint (not requiring .tolist())
-    use_cache = request.options.get("use_cache", True)
+    use_cache = exec_options.get("use_cache", True)
     cache_key = None
 
     if use_cache:
-        cache_key = _compute_dataset_cache_key(request.dataset_id, request.steps, request.options)
+        cache_key = _compute_dataset_cache_key(request.dataset_id, request.steps, exec_options)
         cached = _get_cached(cache_key)
         if cached:
             return _negotiate_response(cached, http_request)
 
     # Execute pipeline — pass numpy arrays directly (no list conversion)
     executor = PlaygroundExecutor(verbose=0)
-
-    # Forward source partition info to the executor so the splitter step can
-    # decide whether the first split represents the test partition or CV folds.
-    exec_options = dict(request.options or {})
-    exec_options["source_partitions"] = source_partitions
 
     try:
         result = executor.execute(
@@ -2163,7 +2423,10 @@ async def get_metadata_columns(dataset_id: str):
     try:
         meta_df = dataset.metadata({"partition": "train"})
         if meta_df is None or len(meta_df) == 0:
-            return {"columns": []}
+            return {
+                "columns": [],
+                "repetition_column": getattr(dataset, "repetition", None),
+            }
 
         columns = []
         for col in meta_df.columns:
@@ -2176,7 +2439,10 @@ async def get_metadata_columns(dataset_id: str):
                 "unique_values": unique_raw[:200],
                 "n_unique": len(unique_raw),
             })
-        return {"columns": columns}
+        return {
+            "columns": columns,
+            "repetition_column": getattr(dataset, "repetition", None),
+        }
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -2314,32 +2580,63 @@ async def compute_repetitions_chart(request: ChartComputeRequest, http_request: 
     if cached_state is not None:
         X_processed = cached_state["X"]
         executor = PlaygroundExecutor()
+        chart_options = dict(request.options or {})
 
         # Load additional data needed for repetition analysis
-        sample_ids = None
-        metadata_sampled = None
-        y_sampled = None
+        sample_ids = list(cached_state.get("sample_ids") or []) or None
+        cached_metadata = cached_state.get("metadata")
+        metadata_sampled = (
+            {col: values.tolist() if hasattr(values, "tolist") else list(values) for col, values in cached_metadata.items()}
+            if cached_metadata
+            else None
+        )
+        cached_y = cached_state.get("y")
+        y_sampled = cached_y.tolist() if hasattr(cached_y, "tolist") else cached_y
+        sample_indices = None
 
         if request.dataset_id and NIRS4ALL_AVAILABLE:
             try:
                 from .spectra import _load_dataset
                 dataset = _load_dataset(request.dataset_id)
                 if dataset:
+                    chart_options.setdefault("dataset_repetition", getattr(dataset, "repetition", None))
+
+                    X_full = dataset.x({"partition": "train"}, layout="2d")
+                    if isinstance(X_full, list):
+                        X_full = X_full[0]
+                    if (
+                        request.sampling
+                        and request.sampling.method != "all"
+                        and X_full is not None
+                        and len(X_full) > 0
+                    ):
+                        sample_indices = executor._apply_sampling(X_full, None, request.sampling)
+
                     y_raw = dataset.y({"partition": "train"})
-                    if y_raw is not None and len(y_raw) > 0:
+                    if y_sampled is None and y_raw is not None and len(y_raw) > 0:
                         y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
-                        # Apply the same sampling to y so it matches X_processed
-                        if len(y_sampled) != X_processed.shape[0] and request.sampling and request.sampling.method != "all":
-                            try:
-                                X_full = dataset.x({"partition": "train"}, layout="2d")
-                                if isinstance(X_full, list):
-                                    X_full = X_full[0]
-                                sample_indices = executor._apply_sampling(X_full, y_sampled, request.sampling)
-                                y_sampled = y_sampled[sample_indices]
-                            except Exception:
-                                y_sampled = None
+                        if sample_indices is not None:
+                            y_sampled = y_sampled[sample_indices]
                         elif len(y_sampled) != X_processed.shape[0]:
                             y_sampled = None
+
+                    meta_df = dataset.metadata({"partition": "train"})
+                    if metadata_sampled is None and meta_df is not None and len(meta_df) > 0:
+                        raw_metadata = meta_df.to_dict(as_series=False)
+                        if sample_indices is not None:
+                            metadata_sampled = {
+                                col: [values[i] for i in sample_indices]
+                                for col, values in raw_metadata.items()
+                            }
+                        elif len(next(iter(raw_metadata.values()), [])) == X_processed.shape[0]:
+                            metadata_sampled = raw_metadata
+
+                        if sample_ids is None and metadata_sampled:
+                            for candidate in ("sample_id", "sample", "id"):
+                                values = metadata_sampled.get(candidate)
+                                if values is not None and len(values) == X_processed.shape[0]:
+                                    sample_ids = [f"Sample_{i}" if value is None else str(value) for i, value in enumerate(values)]
+                                    break
             except Exception:
                 pass
 
@@ -2351,7 +2648,7 @@ async def compute_repetitions_chart(request: ChartComputeRequest, http_request: 
                 pca_result=None,
                 umap_result=None,
                 y=y_sampled,
-                options=request.options,
+                options=chart_options,
             )
             return _negotiate_response({"success": True, "repetitions": repetitions_result}, http_request)
         except Exception as e:

@@ -92,6 +92,7 @@ export interface PipelineRun {
 export interface DatasetRun {
   dataset_id: string;
   dataset_name: string;
+  split_group_by?: string | null;
   pipelines: PipelineRun[];
 }
 
@@ -217,12 +218,15 @@ export const runStatusConfig = {
   },
 } as const;
 
+export type SplitGroupByByDataset = Record<string, string | null>;
+
 // Experiment configuration for creating new runs
 export interface ExperimentConfig {
   name: string;
   description?: string;
   dataset_ids: string[];
   pipeline_ids: string[];
+  split_group_by_by_dataset?: SplitGroupByByDataset;
   /** Inline pipeline from editor (for unsaved pipelines) */
   inline_pipeline?: {
     name: string;

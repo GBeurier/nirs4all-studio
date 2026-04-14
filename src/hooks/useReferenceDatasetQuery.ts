@@ -13,6 +13,10 @@ import { executePlayground, buildExecuteRequest } from '@/api/playground';
 import { useDebouncedValue, DEBOUNCE_DELAYS } from '@/lib/playground/debounce';
 import { hashPipeline } from '@/lib/playground/hashing';
 import { unifiedToPlaygroundSteps } from '@/lib/playground/operatorFormat';
+import {
+  getColumnarMetadata,
+  getSpectralRepetitionColumn,
+} from '@/lib/playground/repetition';
 import type { UnifiedOperator, PlaygroundResult, ExecuteResponse } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
 
@@ -94,6 +98,28 @@ export function useReferenceDatasetQuery(
     return stableOperatorsRef.current.filter(op => op.enabled);
   }, [debouncedPipelineHash]);
 
+  const repetitionColumn = useMemo(
+    () => getSpectralRepetitionColumn(referenceData),
+    [referenceData],
+  );
+
+  const referenceSignature = useMemo(() => {
+    if (!referenceData) {
+      return null;
+    }
+
+    const firstRow = referenceData.metadata?.[0] ?? {};
+    const lastRow = referenceData.metadata?.[referenceData.metadata.length - 1] ?? {};
+
+    return JSON.stringify({
+      repetitionColumn: repetitionColumn ?? null,
+      sampleFirst: referenceData.sampleIds?.[0] ?? null,
+      sampleLast: referenceData.sampleIds?.[referenceData.sampleIds.length - 1] ?? null,
+      first: repetitionColumn ? firstRow[repetitionColumn] ?? null : null,
+      last: repetitionColumn ? lastRow[repetitionColumn] ?? null : null,
+    });
+  }, [referenceData, repetitionColumn]);
+
   // Build query key
   const queryKey = useMemo(() => {
     if (!referenceData) return ['reference-playground', 'no-data'];
@@ -102,8 +128,9 @@ export function useReferenceDatasetQuery(
       referenceData.spectra.length,
       referenceData.wavelengths.length,
       debouncedPipelineHash,
+      referenceSignature,
     ];
-  }, [referenceData, debouncedPipelineHash]);
+  }, [referenceData, debouncedPipelineHash, referenceSignature]);
 
   // Query function
   const queryFn = async ({ signal }: { signal?: AbortSignal }): Promise<PlaygroundResult> => {
@@ -118,17 +145,21 @@ export function useReferenceDatasetQuery(
     abortControllerRef.current = new AbortController();
 
     const steps = unifiedToPlaygroundSteps(effectiveOperators);
-
     const request = buildExecuteRequest({
       spectra: referenceData.spectra,
       wavelengths: referenceData.wavelengths,
+      wavelengthUnit: referenceData.wavelengthUnit,
       y: referenceData.y,
       sampleIds: referenceData.sampleIds,
+      metadata: getColumnarMetadata(referenceData.metadata),
       steps,
       samplingMethod: 'all', // Process all reference samples
       computePca: true,
       computeUmap: false, // Skip UMAP for reference to save time
       computeStatistics: true,
+      computeRepetitions: true,
+      bioSampleColumn: repetitionColumn,
+      datasetRepetition: repetitionColumn,
     });
 
     const response = await executePlayground(

@@ -72,6 +72,7 @@ import { usePlaygroundExport, type ChartRefs } from './hooks/usePlaygroundExport
 import { useStaggeredChartMount } from './hooks/useStaggeredChartMount';
 import { useSpectraChartConfig } from '@/lib/playground/useSpectraChartConfig';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
+import { hasSpectralRepetitionGroups } from '@/lib/playground/repetition';
 
 import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, PerChartLoadingState, SubsetInfo } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
@@ -388,23 +389,15 @@ export function MainCanvas({
   const deferredResult = useDeferredValue(result);
   const isSecondaryChartsStale = deferredResult !== result;
 
-  // Check if we have metadata partition
-  const hasMetadataPartition = useMemo(() => {
-    if (!rawData?.metadata || rawData.metadata.length === 0) return false;
-    const first = rawData.metadata[0];
-    return first && 'set' in first;
-  }, [rawData?.metadata]);
-
   // Partition coloring is available when:
   //   1. The source dataset already has a test partition (set on /execute-dataset),
-  //   2. The pipeline contains a first splitter (kind="test_split" creates the test partition), or
-  //   3. The raw data carries a 'set' metadata column.
+  //   2. The pipeline contains a first splitter (kind="test_split" creates the test partition).
   // It is intentionally INDEPENDENT from CV-fold availability.
   const hasPartition = useMemo(() => {
     if (result?.source_partitions?.has_test) return true;
     if (result?.folds?.kind === 'test_split') return true;
-    return hasMetadataPartition;
-  }, [result?.source_partitions, result?.folds, hasMetadataPartition]);
+    return false;
+  }, [result?.source_partitions, result?.folds]);
 
   // Fold coloring is available whenever the backend returned real fold
   // assignments. Do not rely only on kind, because some responses omit it
@@ -418,59 +411,11 @@ export function MainCanvas({
   }, [result?.folds]);
 
   const hasRawRepetitions = useMemo(() => {
-    const metadata = rawData?.metadata;
-    if (Array.isArray(metadata) && metadata.length > 1) {
-      const first = metadata[0];
-      if (first && typeof first === 'object') {
-        const metadataKeys = Object.keys(first).filter(
-          (key) => !['set', 'partition', 'fold', 'fold_id'].includes(key.toLowerCase())
-        );
-
-        for (const key of metadataKeys) {
-          const counts = new Map<string, number>();
-          for (const row of metadata) {
-            const value = row?.[key as keyof typeof row];
-            if (value === null || value === undefined || value === '') {
-              continue;
-            }
-            const token = String(value);
-            counts.set(token, (counts.get(token) ?? 0) + 1);
-          }
-          if (Array.from(counts.values()).some((count) => count >= 2)) {
-            return true;
-          }
-        }
-      }
-    }
-
-    const sampleIds = rawData?.sampleIds;
-    if (Array.isArray(sampleIds) && sampleIds.length > 1) {
-      const patterns = [
-        /^(.+?)[-_][Rr]ep\d+$/,
-        /^(.+?)[-_]\d+$/,
-        /^(.+?)[-_][A-Za-z]$/,
-        /^(.+?)\s*\(\d+\)$/,
-      ];
-
-      for (const pattern of patterns) {
-        const groups = new Map<string, number>();
-        for (const sampleId of sampleIds) {
-          const value = String(sampleId);
-          const match = pattern.exec(value);
-          const key = match ? match[1] : value;
-          groups.set(key, (groups.get(key) ?? 0) + 1);
-        }
-        if (Array.from(groups.values()).some((count) => count >= 2)) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }, [rawData?.metadata, rawData?.sampleIds]);
+    return hasSpectralRepetitionGroups(rawData);
+  }, [rawData]);
 
   const hasRepetitions = useMemo(() => {
-    return result?.repetitions?.has_repetitions ?? hasRawRepetitions;
+    return Boolean(result?.repetitions?.has_repetitions) || hasRawRepetitions;
   }, [result?.repetitions, hasRawRepetitions]);
 
   // The fold-distribution chart is shown for either CV folds OR a train/test partition,
@@ -483,11 +428,12 @@ export function MainCanvas({
     if (!showFoldsChart && visible.has('folds')) {
       visible.delete('folds');
     }
-    if (!hasRepetitions && visible.has('repetitions')) {
-      visible.delete('repetitions');
-    }
+    // Keep 'repetitions' visible even when no repetitions are detected, since
+    // the chart now also renders samples in a "no repetition" fallback mode
+    // (one point per sample, with optional metadata-column grouping). The user
+    // toggles visibility explicitly from the sidebar.
     return visible;
-  }, [visibleCharts, showFoldsChart, hasRepetitions]);
+  }, [visibleCharts, showFoldsChart]);
 
   // OPT-8: Staggered chart mounting to avoid rendering burst
   const hasData = !!(rawData || result);
@@ -595,8 +541,8 @@ export function MainCanvas({
 
   // Get Y values
   const yValues = useMemo(() => {
-    if (result?.processed?.spectra && rawData?.y) {
-      return rawData.y;
+    if (result?.processed?.y && result.processed.y.length > 0) {
+      return result.processed.y;
     }
     return rawData?.y ?? [];
   }, [result, rawData]);
@@ -617,26 +563,6 @@ export function MainCanvas({
     return { yMin: min, yMax: max };
   }, [yValues]);
 
-  // Get train/test indices from metadata 'set' column if available
-  // This is computed separately from folds to support synthetic fold creation
-  const metadataPartition = useMemo(() => {
-    if (rawData?.metadata && rawData.metadata.length > 0 && 'set' in rawData.metadata[0]) {
-      const train = new Set<number>();
-      const test = new Set<number>();
-      rawData.metadata.forEach((m, i) => {
-        if (m.set === 'train') {
-          train.add(i);
-        } else if (m.set === 'test') {
-          test.add(i);
-        }
-      });
-      if (train.size > 0 || test.size > 0) {
-        return { trainIndices: train, testIndices: test };
-      }
-    }
-    return null;
-  }, [rawData?.metadata]);
-
   // Merge outlier indices from explicit detection AND from OutliersContext (filter tag mode)
   const { allOutliers: contextOutliers } = useOutliers();
   const outlierIndicesSet = useMemo(() => {
@@ -649,6 +575,9 @@ export function MainCanvas({
 
   // Convert metadata format
   const columnMetadata = useMemo((): Record<string, unknown[]> | undefined => {
+    if (result?.processed?.metadata && Object.keys(result.processed.metadata).length > 0) {
+      return result.processed.metadata;
+    }
     if (!rawData?.metadata || !Array.isArray(rawData.metadata) || rawData.metadata.length === 0) {
       return undefined;
     }
@@ -658,19 +587,18 @@ export function MainCanvas({
         Object.keys(item).forEach(key => keys.add(key));
       }
     });
-    const result: Record<string, unknown[]> = {};
+    const metadataByColumn: Record<string, unknown[]> = {};
     keys.forEach(key => {
-      result[key] = rawData.metadata!.map(item => item?.[key] ?? null);
+      metadataByColumn[key] = rawData.metadata!.map(item => item?.[key] ?? null);
     });
-    return Object.keys(result).length > 0 ? result : undefined;
-  }, [rawData?.metadata]);
+    return Object.keys(metadataByColumn).length > 0 ? metadataByColumn : undefined;
+  }, [result?.processed?.metadata, rawData?.metadata]);
 
   const metadataColumns = useMemo(() => {
     return columnMetadata ? Object.keys(columnMetadata) : undefined;
   }, [columnMetadata]);
 
-  // Create effective folds - either from result, synthesized from source_partitions,
-  // or synthesized from a metadata partition column.
+  // Create effective folds - either from result or synthesized from source_partitions.
   const effectiveFolds = useMemo(() => {
     // If we have folds from splitter, use them
     if (result?.folds && result.folds.n_folds > 0) {
@@ -743,76 +671,14 @@ export function MainCanvas({
       };
     }
 
-    // If we have metadata partition, create a synthetic folds object
-    if (metadataPartition) {
-      const trainArray = Array.from(metadataPartition.trainIndices);
-      const testArray = Array.from(metadataPartition.testIndices);
-
-      // Compute Y stats if y values are available
-      let yTrainStats = undefined;
-      let yTestStats = undefined;
-      if (rawData?.y && rawData.y.length > 0) {
-        const yTrain = trainArray.map(i => rawData.y[i]).filter(v => v !== undefined);
-        const yTest = testArray.map(i => rawData.y[i]).filter(v => v !== undefined);
-
-        if (yTrain.length > 0) {
-          const mean = yTrain.reduce((a, b) => a + b, 0) / yTrain.length;
-          const std = Math.sqrt(yTrain.reduce((a, b) => a + (b - mean) ** 2, 0) / yTrain.length);
-          yTrainStats = {
-            mean,
-            std,
-            min: Math.min(...yTrain),
-            max: Math.max(...yTrain),
-          };
-        }
-        if (yTest.length > 0) {
-          const mean = yTest.reduce((a, b) => a + b, 0) / yTest.length;
-          const std = Math.sqrt(yTest.reduce((a, b) => a + (b - mean) ** 2, 0) / yTest.length);
-          yTestStats = {
-            mean,
-            std,
-            min: Math.min(...yTest),
-            max: Math.max(...yTest),
-          };
-        }
-      }
-
-      // NOTE: Don't create fold_labels for simple train/test split
-      // fold_labels should only exist for actual K-fold cross-validation
-      // This prevents "by fold" mode from treating train/test as 2 folds
-
-      return {
-        splitter_name: 'Metadata Partition',
-        n_folds: 1,
-        folds: [{
-          fold_index: 0,
-          train_count: trainArray.length,
-          test_count: testArray.length,
-          train_indices: trainArray,
-          test_indices: testArray,
-          y_train_stats: yTrainStats,
-          y_test_stats: yTestStats,
-        }],
-        // fold_labels is undefined for simple train/test - only actual K-fold has fold labels
-        fold_labels: undefined,
-      };
-    }
-
     return null;
-  }, [result?.folds, result?.source_partitions, metadataPartition, rawData?.spectra?.length, rawData?.y]);
+  }, [result?.folds, result?.source_partitions, rawData?.spectra?.length, rawData?.y]);
 
   // Derive train/test indices for partition coloring. Prefer explicit source
   // partitions over fold data so held-out test samples stay visible when CV
   // folds are generated only on the training subset. Do not treat the first CV
   // fold as a global train/test partition.
   const { trainIndices, testIndices } = useMemo(() => {
-    if (metadataPartition) {
-      return {
-        trainIndices: metadataPartition.trainIndices,
-        testIndices: metadataPartition.testIndices,
-      };
-    }
-
     const sp = result?.source_partitions;
     if (sp?.has_test && sp.n_train + sp.n_test > 0) {
       const train = new Set<number>();
@@ -828,12 +694,28 @@ export function MainCanvas({
       const test = new Set<number>(firstFold.test_indices ?? []);
       return { trainIndices: train, testIndices: test };
     }
+
+    // Multi-fold CV with held-out test: fold_labels[i] === -1 marks held-out
+    // samples. Everything else is in the train portion covered by CV folds.
+    const labels = effectiveFolds?.fold_labels;
+    if (labels && labels.length > 0 && labels.some((label) => label === -1)) {
+      const train = new Set<number>();
+      const test = new Set<number>();
+      labels.forEach((label, idx) => {
+        if (label === -1) test.add(idx);
+        else train.add(idx);
+      });
+      if (test.size > 0) {
+        return { trainIndices: train, testIndices: test };
+      }
+    }
+
     return { trainIndices: undefined, testIndices: undefined };
-  }, [metadataPartition, result?.source_partitions, effectiveFolds]);
+  }, [result?.source_partitions, effectiveFolds]);
 
   // Total sample count
   const totalSamples = useMemo(() => {
-    return rawData?.spectra?.length ?? result?.processed?.spectra?.length ?? 0;
+    return result?.processed?.spectra?.length ?? rawData?.spectra?.length ?? rawData?.y?.length ?? 0;
   }, [rawData, result]);
 
   // Get partition-filtered indices
@@ -1308,7 +1190,7 @@ export function MainCanvas({
         )}
 
         {/* Repetitions Chart */}
-        {shouldRenderChart('repetitions') && hasRepetitions && (
+        {shouldRenderChart('repetitions') && (
           <ChartPanel
             ref={repetitionsChartRef}
             chartType="repetitions"
@@ -1323,21 +1205,20 @@ export function MainCanvas({
           >
             {showSkeletons || !isChartMounted('repetitions') ? (
               <ChartSkeleton type="histogram" />
-            ) : deferredResult?.repetitions ? (
+            ) : (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
                 <RepetitionsChart
-                  repetitionData={deferredResult.repetitions}
-                  spectraData={deferredResult.processed?.spectra}
+                  repetitionData={deferredResult?.repetitions ?? null}
+                  spectraData={deferredResult?.processed?.spectra ?? rawData?.spectra}
                   y={yValues}
                   useSelectionContext
                   globalColorConfig={colorConfig}
                   colorContext={colorContext}
                   configResult={spectraConfigResult}
+                  metadata={columnMetadata}
+                  metadataColumns={metadataColumns}
+                  sampleIds={result?.processed?.sample_ids ?? rawData?.sampleIds}
                 />
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                No repetitions detected
               </div>
             )}
           </ChartPanel>

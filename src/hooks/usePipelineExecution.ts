@@ -8,9 +8,10 @@
  * - Export pipeline to various formats
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useJobUpdates } from "./useWebSocket";
-import { apiClient } from "@/api/client";
+import { apiClient, listDatasets } from "@/api/client";
+import type { Dataset as DatasetInfo } from "@/types/datasets";
 
 // ============================================================================
 // Types
@@ -22,6 +23,7 @@ export interface ExecutionConfig {
   verbose?: number;
   exportModel?: boolean;
   modelName?: string;
+  splitGroupByByDataset?: Record<string, string | null>;
 }
 
 export interface ExecutionResult {
@@ -122,6 +124,7 @@ export function usePipelineExecution() {
           verbose: config.verbose ?? 1,
           export_model: config.exportModel ?? true,
           model_name: config.modelName,
+          split_group_by_by_dataset: config.splitGroupByByDataset ?? {},
         });
 
         if (response.data.success) {
@@ -278,6 +281,8 @@ export interface Dataset {
   numSamples?: number;
   numFeatures?: number;
   hasTarget?: boolean;
+  metadataColumns?: string[];
+  repetitionColumn?: string | null;
 }
 
 export function useDatasetSelection() {
@@ -293,10 +298,20 @@ export function useDatasetSelection() {
     setError(null);
 
     try {
-      const response = await apiClient.get<{ datasets: Dataset[] }>(
-        "/datasets"
-      );
-      setDatasets(response.data.datasets || []);
+      const response = await listDatasets();
+      setDatasets((response.datasets || []).map((dataset: DatasetInfo) => ({
+        id: dataset.id,
+        name: dataset.name,
+        path: dataset.path,
+        numSamples: dataset.num_samples,
+        numFeatures: dataset.num_features,
+        hasTarget: dataset.has_targets,
+        metadataColumns: dataset.metadata_columns ?? [],
+        repetitionColumn:
+          dataset.config?.aggregation?.enabled && dataset.config.aggregation.column
+            ? dataset.config.aggregation.column
+            : dataset.config?.repetition ?? null,
+      })));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load datasets";
       setError(message);

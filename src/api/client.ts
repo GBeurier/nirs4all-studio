@@ -882,6 +882,7 @@ import type {
   RunStatsResponse,
   RunActionResponse,
   ExperimentConfig,
+  SplitGroupByByDataset,
 } from "@/types/runs";
 
 export async function listRuns(): Promise<RunListResponse> {
@@ -912,6 +913,7 @@ export interface QuickRunRequest {
   export_model?: boolean;
   cv_folds?: number;
   random_state?: number;
+  split_group_by_by_dataset?: SplitGroupByByDataset;
 }
 
 export async function quickRun(request: QuickRunRequest): Promise<Run> {

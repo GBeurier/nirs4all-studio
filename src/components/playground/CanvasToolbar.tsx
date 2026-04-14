@@ -99,7 +99,7 @@ export interface CanvasToolbarProps {
   /**
    * True when partition coloring should be enabled — independent from folds.
    * Set when the source dataset has a test partition, when the first splitter
-   * has produced one, or when raw data carries a 'set' metadata column.
+   * has produced one.
    */
   hasPartition: boolean;
   /** True when the partition/fold distribution chart should be shown. */

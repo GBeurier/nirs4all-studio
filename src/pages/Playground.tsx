@@ -23,14 +23,14 @@ import { FilterProvider } from '@/context/FilterContext';
 import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
 import { OutliersProvider } from '@/context/OutliersContext';
 import {
-  serializeOperators,
   type PlaygroundSessionState,
 } from '@/context/PlaygroundSessionContext';
 import { NodeRegistryProvider, PipelineEditorPreferencesProvider } from '@/components/pipeline-editor/contexts';
-import { useSpectralData } from '@/hooks/useSpectralData';
+import { useSpectralData, type WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
+import type { PartitionKey } from '@/types/datasets';
 import {
   exportToPipelineEditor,
   prepareExportToPipelineEditor,
@@ -38,11 +38,9 @@ import {
   getPlaygroundExportData,
   clearPlaygroundExportData,
 } from '@/lib/playground/operatorFormat';
-import { hasPersistedPlaygroundPipelineState } from '@/lib/playground/sessionRestore';
 import type { OperatorDefinition } from '@/types/playground';
 
 const PLAYGROUND_SESSION_STORAGE_KEY = 'playground-session-state';
-const PLAYGROUND_PIPELINE_STORAGE_KEY = 'playground-pipeline-state';
 
 export default function Playground() {
   const navigate = useNavigate();
@@ -333,9 +331,6 @@ export default function Playground() {
 
     try {
       const session: PlaygroundSessionState = JSON.parse(stored);
-      const hasDedicatedPipelineState = hasPersistedPlaygroundPipelineState(
-        sessionStorage.getItem(PLAYGROUND_PIPELINE_STORAGE_KEY)
-      );
 
       // Check if session is still valid (not older than 24 hours)
       if (Date.now() - session.savedAt > 24 * 60 * 60 * 1000) {
@@ -365,20 +360,11 @@ export default function Playground() {
       } else if (session.dataSource === 'demo') {
         loadDemoData();
       }
-
-      // Restore operators (after a small delay to ensure data is loaded)
-      if (!hasDedicatedPipelineState && session.operators && session.operators.length > 0) {
-        setTimeout(() => {
-          session.operators.forEach(op => {
-            addOperatorByName(op.name, op.type, op.params);
-          });
-        }, 100);
-      }
     } catch (e) {
       console.warn('Failed to restore playground session:', e);
       sessionStorage.removeItem(PLAYGROUND_SESSION_STORAGE_KEY);
     }
-  }, [loadFromWorkspace, loadDemoData, addOperatorByName, setStepComparisonEnabled, setActiveStep]);
+  }, [loadFromWorkspace, loadDemoData, setStepComparisonEnabled, setActiveStep]);
 
   // Persist session on state changes
   useEffect(() => {
@@ -387,7 +373,7 @@ export default function Playground() {
         datasetId: currentDatasetInfo?.datasetId || null,
         datasetName: currentDatasetInfo?.datasetName || null,
         dataSource: dataSource,
-        operators: serializeOperators(operators),
+        operators: [],
         chartVisibility,
         renderMode,
         stepComparisonEnabled,
@@ -631,6 +617,34 @@ function PlaygroundContent({
   // View context — needed to sync keyboard shortcut chart toggles with the view state
   const viewContext = usePlaygroundView();
 
+  const resetPipelineForDatasetChange = useCallback(() => {
+    if (operators.length > 0) {
+      clearPipeline();
+    }
+    setStepComparisonEnabled(false);
+    setActiveStep(0);
+  }, [operators.length, clearPipeline, setStepComparisonEnabled, setActiveStep]);
+
+  const handleLoadDemoData = useCallback(() => {
+    resetPipelineForDatasetChange();
+    loadDemoData();
+  }, [resetPipelineForDatasetChange, loadDemoData]);
+
+  const handleLoadFromWorkspace = useCallback((
+    datasetId: string,
+    datasetName: string,
+    partition?: PartitionKey,
+    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
+  ) => {
+    resetPipelineForDatasetChange();
+    loadFromWorkspace(datasetId, datasetName, partition, datasetInfo);
+  }, [resetPipelineForDatasetChange, loadFromWorkspace]);
+
+  const handleClearData = useCallback(() => {
+    resetPipelineForDatasetChange();
+    clearData();
+  }, [resetPipelineForDatasetChange, clearData]);
+
   // Phase 8: Outliers context for mark-as-outliers functionality
   const { toggleOutliers, setDetectedOutliers, clearDetectedOutliers } = useOutliers();
 
@@ -719,12 +733,13 @@ function PlaygroundContent({
         isDebouncing={isDebouncing}
         executionTimeMs={result?.executionTimeMs}
         stepErrors={result?.errors}
+        warnings={result?.warnings}
         filterInfo={result?.filterInfo}
 
         // Data handlers
-        onLoadDemo={loadDemoData}
-        onLoadFromWorkspace={loadFromWorkspace}
-        onClearData={clearData}
+        onLoadDemo={handleLoadDemoData}
+        onLoadFromWorkspace={handleLoadFromWorkspace}
+        onClearData={handleClearData}
 
         // Dataset selector
         showDatasetSelector={showDatasetSelector}

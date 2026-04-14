@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
-import { Target, Info, FileSpreadsheet, Clock } from "lucide-react";
+import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
+import { Target, Info, FileSpreadsheet, Clock, GitBranch } from "lucide-react";
 import { TargetHistogram } from "../charts";
 import { buildTargetHistogramData } from "../charts/TargetHistogram";
 import { PartitionToggle } from "../PartitionToggle";
@@ -43,6 +44,7 @@ function formatCount(value: number | null | undefined): string {
 
 export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps) {
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
+  const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
 
   const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
   const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
@@ -223,6 +225,37 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
+            <GitBranch className="h-4 w-4" />
+            Splitting & Grouping
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {repetitionColumn ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">Configured repetition</Badge>
+                <code className="rounded bg-muted px-2 py-1 text-xs">{repetitionColumn}</code>
+              </div>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                This dataset repetition is always applied during splitting. If a runtime <code>group_by</code> is selected in the playground or run wizard, it adds an extra split constraint on top of <code>{repetitionColumn}</code>. Samples sharing either value stay in the same fold. The runtime <code>group_by</code> never replaces dataset repetition.
+              </p>
+              {repetitionColumnWarning && (
+                <p className="text-sm leading-relaxed text-amber-700 dark:text-amber-400">
+                  {repetitionColumnWarning}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              No dataset repetition is currently configured. Group-required splitters will need an explicit runtime <code>group_by</code> unless a repetition column is configured later.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
             <Info className="h-4 w-4" />
             Dataset Information
           </CardTitle>
@@ -269,7 +302,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
             )}
             {repetitionColumn && (
               <div>
-                <p className="text-sm text-muted-foreground">Repetition Column</p>
+                <p className="text-sm text-muted-foreground">Repetition Group Column</p>
                 <p className="font-mono text-sm font-medium mt-1" title={repetitionColumn}>
                   {repetitionColumn}
                 </p>
