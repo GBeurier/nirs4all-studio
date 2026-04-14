@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -40,6 +41,12 @@ router = APIRouter(prefix="/config", tags=["config"])
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/GBeurier/nirs4all-webapp/main/recommended-config.json"
+TORCH_PACKAGE = "torch"
+TORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu"
+TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124"
+TORCH_CUDA_PROFILE = "gpu-cuda-torch"
+TORCH_MPS_PROFILE = "gpu-mps"
+DEFAULT_PROFILE = "cpu"
 
 
 # ============= Data Models =============
@@ -145,6 +152,17 @@ class CompleteSetupRequest(BaseModel):
     optional_packages: list[str] = []
 
 
+@dataclass
+class ResolvedInstallSpec:
+    """Concrete pip install instruction derived from a profile package spec."""
+
+    package: str
+    version: str | None
+    display_spec: str
+    extra_pip_args: list[str]
+    force_reinstall: bool = False
+
+
 # ============= Config Cache =============
 
 
@@ -245,6 +263,49 @@ async def _fetch_remote_config() -> dict[str, Any] | None:
     return None
 
 
+def _load_active_raw_config() -> dict[str, Any]:
+    """Load the active config source used for comparisons and alignment."""
+    cached = _config_cache.get_cached_config()
+    return cached if cached else _load_bundled_config()
+
+
+def _is_profile_platform_compatible(raw: dict[str, Any], profile_id: str) -> bool:
+    """Return whether a profile exists and supports the current platform."""
+    profile = raw.get("profiles", {}).get(profile_id)
+    if not profile:
+        return False
+    platforms = profile.get("platforms", [])
+    return not platforms or sys.platform in platforms
+
+
+def _get_available_profile_ids(raw: dict[str, Any]) -> list[str]:
+    """List supported profile ids for the current platform."""
+    return [
+        profile_id
+        for profile_id in raw.get("profiles", {})
+        if _is_profile_platform_compatible(raw, profile_id)
+    ]
+
+
+def _get_profile_managed_packages(raw: dict[str, Any]) -> set[str]:
+    """Return normalized package names managed by compute profiles."""
+    managed: set[str] = set()
+    for profile_data in raw.get("profiles", {}).values():
+        for pkg_name in profile_data.get("packages", {}):
+            managed.add(_normalize_pkg_name(pkg_name))
+    return managed
+
+
+def _get_filtered_optional_config(raw: dict[str, Any]) -> dict[str, Any]:
+    """Return optional packages excluding anything managed by profiles."""
+    managed = _get_profile_managed_packages(raw)
+    return {
+        name: data
+        for name, data in raw.get("optional", {}).items()
+        if _normalize_pkg_name(name) not in managed
+    }
+
+
 def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse:
     """Parse raw config dict into response model.
 
@@ -274,7 +335,7 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
         ))
 
     optional = []
-    for name, odata in raw.get("optional", {}).items():
+    for name, odata in _get_filtered_optional_config(raw).items():
         # v1.2 uses "min" field; v1.1 uses "version" field
         min_spec = odata.get("min", odata.get("version", ""))
         optional.append(OptionalPackageInfo(
@@ -313,6 +374,183 @@ def _get_installed_packages() -> dict[str, str]:
 def _normalize_pkg_name(name: str) -> str:
     """Normalize package name for comparison (PEP 503)."""
     return re.sub(r"[-_.]+", "_", name).lower()
+
+
+def _parse_package_spec(pkg_raw: Any) -> tuple[str, str | None]:
+    """Return (min_spec, recommended_version) from a raw package entry."""
+    if isinstance(pkg_raw, dict):
+        return pkg_raw.get("min", ""), pkg_raw.get("recommended")
+    return str(pkg_raw), None
+
+
+def _torch_variant_tag(profile_id: str) -> str:
+    """Human-readable torch variant label for the active profile."""
+    if profile_id == TORCH_CUDA_PROFILE:
+        return "cu124"
+    if profile_id == TORCH_MPS_PROFILE:
+        return "mps"
+    return "cpu"
+
+
+def _describe_required_package(profile_id: str, pkg_name: str, pkg_raw: Any) -> str:
+    """Render a package spec string for UI/debug output."""
+    min_spec, recommended_ver = _parse_package_spec(pkg_raw)
+    base = f"{pkg_name}=={recommended_ver}" if recommended_ver else f"{pkg_name}{min_spec}"
+    if _normalize_pkg_name(pkg_name) != TORCH_PACKAGE:
+        return base
+    return f"{base} ({_torch_variant_tag(profile_id)})"
+
+
+def _torch_variant_matches(profile_id: str, installed_version: str | None, gpu_info: GPUDetectionResponse) -> bool:
+    """Return whether the installed torch build matches the requested profile."""
+    if installed_version is None:
+        return False
+
+    installed_lower = installed_version.lower()
+    has_cuda_suffix = "+cu" in installed_lower
+
+    if profile_id == TORCH_CUDA_PROFILE:
+        return has_cuda_suffix or gpu_info.torch_cuda_available
+    if profile_id == TORCH_MPS_PROFILE:
+        return sys.platform == "darwin" and gpu_info.has_metal
+    if sys.platform == "darwin":
+        return not gpu_info.torch_cuda_available
+    return not has_cuda_suffix and not gpu_info.torch_cuda_available
+
+
+def _resolve_profile_from_environment(
+    raw: dict[str, Any],
+    installed: dict[str, str] | None = None,
+    gpu_info: GPUDetectionResponse | None = None,
+) -> str:
+    """Infer the most likely profile from the installed runtime."""
+    available_profiles = _get_available_profile_ids(raw)
+    if not available_profiles:
+        return DEFAULT_PROFILE
+
+    installed_packages = installed if installed is not None else _get_installed_packages()
+    detected_gpu = gpu_info if gpu_info is not None else _detect_gpu()
+    torch_version = installed_packages.get(TORCH_PACKAGE)
+
+    if torch_version:
+        torch_lower = torch_version.lower()
+        if TORCH_CUDA_PROFILE in available_profiles and ("+cu" in torch_lower or detected_gpu.torch_cuda_available):
+            return TORCH_CUDA_PROFILE
+        if TORCH_MPS_PROFILE in available_profiles and detected_gpu.has_metal:
+            return TORCH_MPS_PROFILE
+
+    if DEFAULT_PROFILE in available_profiles:
+        return DEFAULT_PROFILE
+
+    return available_profiles[0]
+
+
+def _resolve_effective_setup_status(raw: dict[str, Any]) -> dict[str, Any]:
+    """Resolve and persist the active compute profile if setup state is missing."""
+    stored = _config_cache.get_setup_status()
+    selected_profile = stored.get("selected_profile")
+    if (
+        stored.get("setup_completed")
+        and isinstance(selected_profile, str)
+        and _is_profile_platform_compatible(raw, selected_profile)
+    ):
+        return stored
+
+    inferred_profile = _resolve_profile_from_environment(raw)
+    _config_cache.set_setup_status(inferred_profile)
+    repaired = _config_cache.get_setup_status()
+    if repaired.get("setup_completed") and repaired.get("selected_profile") == inferred_profile:
+        return repaired
+    return {
+        "setup_completed": True,
+        "selected_profile": inferred_profile,
+        "completed_at": datetime.now().isoformat(),
+    }
+
+
+def _resolve_effective_profile(raw: dict[str, Any]) -> str:
+    """Return the active profile, recovering it if persisted state is missing."""
+    setup = _resolve_effective_setup_status(raw)
+    return str(setup.get("selected_profile") or DEFAULT_PROFILE)
+
+
+def _resolve_torch_install_spec(
+    profile_id: str,
+    pkg_raw: Any,
+    installed_version: str | None,
+    gpu_info: GPUDetectionResponse,
+) -> ResolvedInstallSpec | None:
+    """Build the concrete install plan for torch for a given profile."""
+    min_spec, recommended_ver = _parse_package_spec(pkg_raw)
+    if installed_version is not None and _version_satisfies(installed_version, min_spec):
+        if _torch_variant_matches(profile_id, installed_version, gpu_info):
+            return None
+
+    version = recommended_ver
+    if version is None:
+        raise ValueError("Torch profile packages must pin a recommended version")
+
+    extra_pip_args: list[str] = []
+    force_reinstall = False
+    if profile_id == TORCH_CUDA_PROFILE:
+        extra_pip_args = ["--index-url", TORCH_CUDA_INDEX_URL]
+        force_reinstall = installed_version is not None
+    elif profile_id == DEFAULT_PROFILE and sys.platform != "darwin":
+        extra_pip_args = ["--index-url", TORCH_CPU_INDEX_URL]
+        force_reinstall = installed_version is not None and not _torch_variant_matches(profile_id, installed_version, gpu_info)
+
+    return ResolvedInstallSpec(
+        package=TORCH_PACKAGE,
+        version=version,
+        display_spec=_describe_required_package(profile_id, TORCH_PACKAGE, pkg_raw),
+        extra_pip_args=extra_pip_args,
+        force_reinstall=force_reinstall,
+    )
+
+
+def _resolve_required_install_spec(
+    profile_id: str,
+    pkg_name: str,
+    pkg_raw: Any,
+    installed_version: str | None,
+    gpu_info: GPUDetectionResponse,
+) -> ResolvedInstallSpec | None:
+    """Resolve whether a profile package needs installation or upgrade."""
+    if _normalize_pkg_name(pkg_name) == TORCH_PACKAGE:
+        return _resolve_torch_install_spec(profile_id, pkg_raw, installed_version, gpu_info)
+
+    min_spec, recommended_ver = _parse_package_spec(pkg_raw)
+    if installed_version is not None and _version_satisfies(installed_version, min_spec):
+        return None
+
+    return ResolvedInstallSpec(
+        package=pkg_name,
+        version=recommended_ver,
+        display_spec=_describe_required_package(profile_id, pkg_name, pkg_raw),
+        extra_pip_args=[],
+        force_reinstall=False,
+    )
+
+
+def _resolve_optional_install_spec(
+    pkg_name: str,
+    pkg_raw: Any,
+    installed_version: str | None,
+) -> ResolvedInstallSpec | None:
+    """Resolve whether an optional package needs installation or upgrade."""
+    min_spec = pkg_raw.get("min", pkg_raw.get("version", ""))
+    recommended_ver = pkg_raw.get("recommended")
+    if installed_version is not None and (not min_spec or _version_satisfies(installed_version, min_spec)):
+        return None
+
+    display_spec = f"{pkg_name}=={recommended_ver}" if recommended_ver else f"{pkg_name}{min_spec}"
+    return ResolvedInstallSpec(
+        package=pkg_name,
+        version=recommended_ver,
+        display_spec=display_spec,
+        extra_pip_args=[],
+        force_reinstall=False,
+    )
 
 
 def _version_satisfies(installed: str, spec: str) -> bool:
@@ -443,25 +681,25 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
     """
     # Load config
     try:
-        cached = _config_cache.get_cached_config()
-        raw_config = cached if cached else _load_bundled_config()
+        raw_config = _load_active_raw_config()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No recommended config available")
 
     # Determine profile
     if not profile:
-        setup = _config_cache.get_setup_status()
-        profile = setup.get("selected_profile", "cpu") or "cpu"
+        profile = _resolve_effective_profile(raw_config)
 
-    profile_data = raw_config.get("profiles", {}).get(profile)
-    if not profile_data:
+    if not _is_profile_platform_compatible(raw_config, profile):
         raise HTTPException(status_code=400, detail=f"Unknown profile: {profile}")
 
+    profile_data = raw_config.get("profiles", {}).get(profile)
     profile_label = profile_data.get("label", profile)
     required_packages = profile_data.get("packages", {})
+    optional_config = _get_filtered_optional_config(raw_config)
 
     # Get installed packages
     installed = _get_installed_packages()
+    gpu_info = _detect_gpu()
 
     # Build diff
     diffs: list[PackageDiff] = []
@@ -471,12 +709,15 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
 
     # Parse profile packages from raw config (may be v1.1 string or v1.2 dict)
     for pkg_name, pkg_raw in required_packages.items():
-        if isinstance(pkg_raw, dict):
-            version_spec = pkg_raw.get("min", "")
-        else:
-            version_spec = str(pkg_raw)
+        min_spec, recommended_ver = _parse_package_spec(pkg_raw)
+        version_spec = _describe_required_package(profile, pkg_name, pkg_raw)
         norm_name = _normalize_pkg_name(pkg_name)
         installed_ver = installed.get(norm_name)
+        is_variant_misaligned = (
+            norm_name == TORCH_PACKAGE
+            and installed_ver is not None
+            and not _torch_variant_matches(profile, installed_ver, gpu_info)
+        )
 
         if installed_ver is None:
             diffs.append(PackageDiff(
@@ -487,7 +728,7 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
                 action="install",
             ))
             missing_count += 1
-        elif _version_satisfies(installed_ver, version_spec):
+        elif _version_satisfies(installed_ver, min_spec) and not is_variant_misaligned:
             diffs.append(PackageDiff(
                 name=pkg_name,
                 installed_version=installed_ver,
@@ -508,7 +749,6 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
 
     # Include optional packages that are installed
     if include_optional:
-        optional_config = raw_config.get("optional", {})
         for opt_name, opt_data in optional_config.items():
             norm_name = _normalize_pkg_name(opt_name)
             installed_ver = installed.get(norm_name)
@@ -555,58 +795,53 @@ async def align_config(request: AlignConfigRequest):
     """
     # Load config
     try:
-        cached = _config_cache.get_cached_config()
-        raw_config = cached if cached else _load_bundled_config()
+        raw_config = _load_active_raw_config()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No recommended config available")
 
-    profile_data = raw_config.get("profiles", {}).get(request.profile)
-    if not profile_data:
+    if not _is_profile_platform_compatible(raw_config, request.profile):
         raise HTTPException(status_code=400, detail=f"Unknown profile: {request.profile}")
 
+    profile_data = raw_config.get("profiles", {}).get(request.profile)
     required_packages = profile_data.get("packages", {})
-    optional_config = raw_config.get("optional", {})
+    optional_config = _get_filtered_optional_config(raw_config)
+    managed_optional_names = _get_profile_managed_packages(raw_config)
 
     # Build list of packages to install/upgrade
-    to_install: list[str] = []
+    to_install: list[ResolvedInstallSpec] = []
     installed = _get_installed_packages()
+    gpu_info = _detect_gpu()
 
     for pkg_name, pkg_raw in required_packages.items():
-        # Parse v1.1 (string) or v1.2 (dict with min/recommended)
-        if isinstance(pkg_raw, dict):
-            min_spec = pkg_raw.get("min", "")
-            recommended_ver = pkg_raw.get("recommended")
-        else:
-            min_spec = str(pkg_raw)
-            recommended_ver = None
         norm_name = _normalize_pkg_name(pkg_name)
         installed_ver = installed.get(norm_name)
-        if installed_ver is None or not _version_satisfies(installed_ver, min_spec):
-            # Prefer recommended (pinned) version; fall back to min spec
-            if recommended_ver:
-                to_install.append(f"{pkg_name}=={recommended_ver}")
-            else:
-                to_install.append(f"{pkg_name}{min_spec}")
+        install_spec = _resolve_required_install_spec(
+            request.profile,
+            pkg_name,
+            pkg_raw,
+            installed_ver,
+            gpu_info,
+        )
+        if install_spec is not None:
+            to_install.append(install_spec)
 
     for opt_name in request.optional_packages:
+        if _normalize_pkg_name(opt_name) in managed_optional_names:
+            logger.info("Ignoring profile-managed optional package request for %s", opt_name)
+            continue
         opt_data = optional_config.get(opt_name)
         if opt_data:
             norm_name = _normalize_pkg_name(opt_name)
             installed_ver = installed.get(norm_name)
-            # v1.2 uses "min", v1.1 uses "version"
-            min_spec = opt_data.get("min", opt_data.get("version", ""))
-            recommended_ver = opt_data.get("recommended")
-            if installed_ver is None or (min_spec and not _version_satisfies(installed_ver, min_spec)):
-                if recommended_ver:
-                    to_install.append(f"{opt_name}=={recommended_ver}")
-                else:
-                    to_install.append(f"{opt_name}{min_spec}")
+            install_spec = _resolve_optional_install_spec(opt_name, opt_data, installed_ver)
+            if install_spec is not None:
+                to_install.append(install_spec)
 
     if request.dry_run:
         return AlignConfigResponse(
             success=True,
             message=f"Dry run: would install/upgrade {len(to_install)} packages",
-            installed=to_install,
+            installed=[spec.display_spec for spec in to_install],
             dry_run=True,
         )
 
@@ -621,23 +856,28 @@ async def align_config(request: AlignConfigRequest):
     upgraded_pkgs = []
     failed_pkgs = []
 
-    for pkg_spec in to_install:
+    for install_spec in to_install:
         try:
-            success, message, output = venv_manager.install_package(pkg_spec, upgrade=True)
+            success, message, output = venv_manager.install_package(
+                install_spec.package,
+                version=install_spec.version,
+                upgrade=True,
+                extra_pip_args=install_spec.extra_pip_args,
+                force_reinstall=install_spec.force_reinstall,
+            )
             if not success:
-                logger.error("Failed to install %s: %s", pkg_spec, message)
-                failed_pkgs.append(pkg_spec)
+                logger.error("Failed to install %s: %s", install_spec.display_spec, message)
+                failed_pkgs.append(install_spec.display_spec)
                 continue
             # Determine if it was install or upgrade
-            pkg_base = re.split(r"[><=!]", pkg_spec)[0]
-            norm_name = _normalize_pkg_name(pkg_base)
+            norm_name = _normalize_pkg_name(install_spec.package)
             if norm_name in installed:
-                upgraded_pkgs.append(pkg_spec)
+                upgraded_pkgs.append(install_spec.display_spec)
             else:
-                installed_pkgs.append(pkg_spec)
+                installed_pkgs.append(install_spec.display_spec)
         except Exception as e:
-            logger.error("Failed to install %s: %s", pkg_spec, e)
-            failed_pkgs.append(pkg_spec)
+            logger.error("Failed to install %s: %s", install_spec.display_spec, e)
+            failed_pkgs.append(install_spec.display_spec)
 
     success = len(failed_pkgs) == 0
     parts = []
@@ -647,6 +887,9 @@ async def align_config(request: AlignConfigRequest):
         parts.append(f"Upgraded {len(upgraded_pkgs)} packages")
     if failed_pkgs:
         parts.append(f"{len(failed_pkgs)} failed")
+
+    if success:
+        _config_cache.set_setup_status(request.profile)
 
     return AlignConfigResponse(
         success=success,
@@ -660,7 +903,13 @@ async def align_config(request: AlignConfigRequest):
 @router.get("/setup-status", response_model=SetupStatusResponse)
 async def get_setup_status():
     """Check if first-launch setup has been completed."""
-    data = _config_cache.get_setup_status()
+    try:
+        raw_config = _load_active_raw_config()
+    except FileNotFoundError:
+        data = _config_cache.get_setup_status()
+        return SetupStatusResponse(**data)
+
+    data = _resolve_effective_setup_status(raw_config)
     return SetupStatusResponse(**data)
 
 
@@ -670,6 +919,14 @@ async def complete_setup(request: CompleteSetupRequest):
 
     Stores the selected profile. Optionally triggers package alignment.
     """
+    try:
+        raw_config = _load_active_raw_config()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="No recommended config available")
+
+    if not _is_profile_platform_compatible(raw_config, request.profile):
+        raise HTTPException(status_code=400, detail=f"Unknown profile: {request.profile}")
+
     _config_cache.set_setup_status(request.profile)
 
     return SetupStatusResponse(

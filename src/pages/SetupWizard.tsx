@@ -45,6 +45,7 @@ import {
 } from "@/hooks/useRecommendedConfig";
 import { alignConfig, getDependencies } from "@/api/client";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/client";
+import { getVisibleOptionalPackages } from "@/lib/setup-config";
 
 const electronApi = (window as unknown as { electronApi?: { platform: string } }).electronApi;
 
@@ -76,6 +77,7 @@ export default function SetupWizard() {
   // Pre-check optional packages already installed in the environment
   useEffect(() => {
     if (!config || configLoading) return;
+    const visibleOptionalPackages = getVisibleOptionalPackages(config);
     getDependencies().then((deps) => {
       const installedNames = new Set(
         deps.categories
@@ -83,7 +85,7 @@ export default function SetupWizard() {
           .filter((pkg) => pkg.is_installed)
           .map((pkg) => pkg.name),
       );
-      const preSelected = config.optional
+      const preSelected = visibleOptionalPackages
         .filter((pkg) => installedNames.has(pkg.name))
         .map((pkg) => pkg.name);
       if (preSelected.length > 0) {
@@ -106,6 +108,18 @@ export default function SetupWizard() {
       }
     }
   }, [gpuInfo, gpuLoading]);
+
+  const visibleOptionalPackages = getVisibleOptionalPackages(config);
+
+  useEffect(() => {
+    const visiblePackages = getVisibleOptionalPackages(config);
+    if (visiblePackages.length === 0) {
+      setSelectedExtras([]);
+      return;
+    }
+    const visibleNames = new Set(visiblePackages.map((pkg) => pkg.name));
+    setSelectedExtras((prev) => prev.filter((name) => visibleNames.has(name)));
+  }, [config]);
 
   const currentStepIndex = STEPS.indexOf(currentStep);
 
@@ -391,7 +405,7 @@ export default function SetupWizard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {config?.optional.map((pkg: OptionalPackageInfo) => (
+                  {visibleOptionalPackages.map((pkg: OptionalPackageInfo) => (
                     <div
                       key={pkg.name}
                       className="flex items-start gap-3 p-3 rounded-lg border"

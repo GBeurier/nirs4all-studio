@@ -6,7 +6,7 @@ Development backlog for nirs4all Studio. Items are organized by area.
 > Presets + page presets
 > Review delete predictions
 > Fix webpage examples python
-
+> limite les datasets au tasktype du pipeline dans le wizard
 
 
 

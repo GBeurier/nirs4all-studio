@@ -51,9 +51,20 @@ RESTART_REQUIRED_PACKAGES = {
     "nirs4all", "numpy", "scipy", "scikit-learn", "pandas",
     "pydantic", "fastapi", "uvicorn",
 }
+PROFILE_MANAGED_DEPENDENCIES = {"torch"}
 
 
 # ============= nirs4all Optional Dependencies Definition =============
+
+
+def _normalize_dependency_name(name: str) -> str:
+    """Normalize dependency names for comparisons."""
+    return name.replace("-", "_").lower()
+
+
+def _is_profile_managed_dependency(name: str) -> bool:
+    """Return whether a dependency is managed by the compute profile."""
+    return _normalize_dependency_name(name) in PROFILE_MANAGED_DEPENDENCIES
 
 
 def _load_optional_deps_from_config() -> dict[str, Any]:
@@ -80,9 +91,17 @@ def _load_optional_deps_from_config() -> dict[str, Any]:
         if not optional:
             continue
 
+        profile_managed = {
+            _normalize_dependency_name(pkg_name)
+            for profile in config.get("profiles", {}).values()
+            for pkg_name in profile.get("packages", {})
+        }
+
         # Group packages by category
         groups: dict[str, Any] = {}
         for pkg_name, pkg_data in optional.items():
+            if _normalize_dependency_name(pkg_name) in profile_managed:
+                continue
             cat_id = pkg_data.get("category", "other")
             if cat_id not in groups:
                 cat_meta = categories_meta.get(cat_id, {})
@@ -116,7 +135,6 @@ NIRS4ALL_OPTIONAL_DEPS: dict[str, Any] = _load_optional_deps_from_config() or {
         "name": "Deep Learning",
         "description": "Deep learning frameworks for neural network models",
         "packages": [
-            {"name": "torch", "min_version": "2.1.0", "recommended_version": "2.6.0", "description": "PyTorch deep learning framework"},
             {"name": "keras", "min_version": "3.0.0", "recommended_version": "3.8.0", "description": "High-level neural networks API"},
             {"name": "jax", "min_version": "0.4.20", "recommended_version": "0.4.38", "description": "JAX numerical computing library"},
             {"name": "jaxlib", "min_version": "0.4.20", "recommended_version": "0.4.38", "description": "JAX backend library"},
@@ -1581,6 +1599,25 @@ async def _get_pypi_version(package: str) -> str | None:
     return None
 
 
+def _filter_profile_managed_categories(categories: list[DependencyCategory]) -> list[DependencyCategory]:
+    """Remove profile-managed packages from dependency category payloads."""
+    filtered_categories: list[DependencyCategory] = []
+    for category in categories:
+        filtered_packages = [
+            pkg for pkg in category.packages
+            if not _is_profile_managed_dependency(pkg.name)
+        ]
+        filtered_categories.append(DependencyCategory(
+            id=category.id,
+            name=category.name,
+            description=category.description,
+            packages=filtered_packages,
+            installed_count=sum(1 for pkg in filtered_packages if pkg.is_installed),
+            total_count=len(filtered_packages),
+        ))
+    return filtered_categories
+
+
 @router.get("/dependencies")
 async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     """
@@ -1599,15 +1636,20 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
             if not isinstance(current_nirs4all_version, str):
                 current_nirs4all_version = cached.get("nirs4all_version")
             current_nirs4all_installed = current_nirs4all_version is not None
+            cached_categories = _filter_profile_managed_categories(
+                [DependencyCategory(**cat) for cat in cached.get("categories", [])]
+            )
+            total_installed = sum(cat.installed_count for cat in cached_categories)
+            total_packages = sum(cat.total_count for cat in cached_categories)
             # Return cached data
             return DependenciesResponse(
-                categories=[DependencyCategory(**cat) for cat in cached.get("categories", [])],
+                categories=cached_categories,
                 venv_valid=venv_info.is_valid,
                 venv_path=venv_path,
                 nirs4all_installed=current_nirs4all_installed,
                 nirs4all_version=current_nirs4all_version,
-                total_installed=cached.get("total_installed", 0),
-                total_packages=cached.get("total_packages", 0),
+                total_installed=total_installed,
+                total_packages=total_packages,
                 cached_at=cached.get("cached_at"),
             )
 
@@ -1736,6 +1778,12 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     """
     _check_not_standalone()
 
+    if _is_profile_managed_dependency(request.package):
+        raise HTTPException(
+            status_code=400,
+            detail="torch is managed by the active compute profile. Use Config Alignment or rerun setup to switch CPU/GPU variants.",
+        )
+
     # Ensure venv exists
     if not venv_manager.get_venv_info().is_valid:
         success, message = venv_manager.create_venv()
@@ -1841,6 +1889,12 @@ async def revert_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
     """Revert a package to its recommended version."""
     _check_not_standalone()
 
+    if _is_profile_managed_dependency(request.package):
+        raise HTTPException(
+            status_code=400,
+            detail="torch is managed by the active compute profile. Use Config Alignment or rerun setup to switch CPU/GPU variants.",
+        )
+
     pkg_info = None
     for _cat_id, cat_data in NIRS4ALL_OPTIONAL_DEPS.items():
         for pkg_def in cat_data.get("packages", []):
@@ -1885,6 +1939,12 @@ async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
         Update result with new version
     """
     _check_not_standalone()
+
+    if _is_profile_managed_dependency(request.package):
+        raise HTTPException(
+            status_code=400,
+            detail="torch is managed by the active compute profile. Use Config Alignment or rerun setup to switch CPU/GPU variants.",
+        )
 
     # Ensure venv exists
     if not venv_manager.get_venv_info().is_valid:

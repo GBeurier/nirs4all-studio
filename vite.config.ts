@@ -9,7 +9,7 @@ const isElectron = process.env.ELECTRON === "true";
 const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
 
-/** Copy static electron assets (splash.html, logo) to dist-electron during build */
+/** Copy static electron assets needed at runtime to dist-electron during build */
 function copyElectronAssets(): Plugin {
   return {
     name: "copy-electron-assets",
@@ -18,6 +18,7 @@ function copyElectronAssets(): Plugin {
       fs.mkdirSync(outDir, { recursive: true });
       const assets = [
         { src: "electron/splash.html", dest: "splash.html" },
+        { src: "public/nirs4all.ico", dest: "nirs4all.ico" },
         { src: "public/nirs4all_logo.png", dest: "nirs4all_logo.png" },
       ];
       for (const { src, dest } of assets) {

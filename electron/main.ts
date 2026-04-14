@@ -118,6 +118,13 @@ function closeSplash(): void {
   splashWindow = null;
 }
 
+function getMainWindowIconPath(): string {
+  const iconFileName = process.platform === "win32" ? "nirs4all.ico" : "nirs4all_logo.png";
+  return isDev
+    ? path.join(__dirname, "..", "public", iconFileName)
+    : path.join(__dirname, iconFileName);
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -136,7 +143,7 @@ async function createWindow() {
       // through the validated IPC handlers below.
       sandbox: true,
     },
-    icon: path.join(__dirname, "../public/icon.png"),
+    icon: getMainWindowIconPath(),
     show: false, // Show after ready-to-show
   });
 

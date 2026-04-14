@@ -357,6 +357,8 @@ class VenvManager:
         version: str | None = None,
         extras: list[str] | None = None,
         upgrade: bool = False,
+        extra_pip_args: list[str] | None = None,
+        force_reinstall: bool = False,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> tuple[bool, str, list[str]]:
         """
@@ -367,6 +369,8 @@ class VenvManager:
             version: Optional version specifier (e.g., "0.7.0")
             extras: Optional list of extras (e.g., ["tensorflow", "torch"])
             upgrade: If True, upgrade to latest version
+            extra_pip_args: Optional extra pip flags (e.g., index URLs)
+            force_reinstall: If True, force reinstall even when version matches
             progress_callback: Optional callback for progress updates
 
         Returns:
@@ -389,6 +393,10 @@ class VenvManager:
         cmd = [str(self.python_executable), "-m", "pip", "install"]
         if upgrade:
             cmd.append("--upgrade")
+        if force_reinstall:
+            cmd.append("--force-reinstall")
+        if extra_pip_args:
+            cmd.extend(extra_pip_args)
         cmd.append(pkg_spec)
 
         output_lines = []

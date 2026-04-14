@@ -55,6 +55,7 @@ import {
   type ProfileInfo,
   type OptionalPackageInfo,
 } from "@/api/client";
+import { getVisibleOptionalPackages } from "@/lib/setup-config";
 
 // --- Types ---
 
@@ -251,6 +252,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     }
     if (configResult) {
       setConfig(configResult);
+      const visibleOptionalPackages = getVisibleOptionalPackages(configResult);
       void getDependencies().then((depsResult) => {
         const installedNames = new Set(
           depsResult.categories
@@ -258,7 +260,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
             .filter((pkg) => pkg.is_installed)
             .map((pkg) => pkg.name),
         );
-        const preSelected = configResult.optional
+        const preSelected = visibleOptionalPackages
           .filter((pkg) => installedNames.has(pkg.name))
           .map((pkg) => pkg.name);
         if (preSelected.length > 0) {
@@ -466,6 +468,17 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
   const filteredProfiles = config?.profiles.filter(
     (p: ProfileInfo) => p.platforms.length === 0 || p.platforms.includes(platform),
   ) ?? [];
+  const visibleOptionalPackages = getVisibleOptionalPackages(config);
+
+  useEffect(() => {
+    const visiblePackages = getVisibleOptionalPackages(config);
+    if (visiblePackages.length === 0) {
+      setSelectedExtras([]);
+      return;
+    }
+    const visibleNames = new Set(visiblePackages.map((pkg) => pkg.name));
+    setSelectedExtras((prev) => prev.filter((name) => visibleNames.has(name)));
+  }, [config]);
 
   // --- Render ---
 
@@ -815,7 +828,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                   <CardDescription>{t("setupWizard.extras.description")}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {config?.optional.map((pkg: OptionalPackageInfo) => (
+                  {visibleOptionalPackages.map((pkg: OptionalPackageInfo) => (
                     <div
                       key={pkg.name}
                       className="flex items-start gap-3 p-3 rounded-lg border"

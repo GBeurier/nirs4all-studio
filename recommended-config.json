@@ -70,12 +70,6 @@
     }
   },
   "optional": {
-    "torch": {
-      "min": ">=2.1.0",
-      "recommended": "2.6.0",
-      "description": "PyTorch deep learning framework",
-      "category": "deep_learning"
-    },
     "keras": {
       "min": ">=3.0.0",
       "recommended": "3.8.0",

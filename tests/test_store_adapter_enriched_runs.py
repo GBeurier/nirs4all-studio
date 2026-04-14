@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
-
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -43,8 +42,8 @@ def test_get_enriched_runs_recovers_from_missing_aggregated_metric():
                 "name": "Legacy Run",
                 "status": "completed",
                 "project_id": None,
-                "created_at": datetime(2026, 4, 1, 8, 0, tzinfo=timezone.utc),
-                "completed_at": datetime(2026, 4, 1, 8, 5, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 4, 1, 8, 0, tzinfo=UTC),
+                "completed_at": datetime(2026, 4, 1, 8, 5, tzinfo=UTC),
                 "datasets": '[{"name":"dataset_a","n_samples":12,"n_features":4}]',
                 "config": '{"n_pipelines": 1}',
                 "error": None,
