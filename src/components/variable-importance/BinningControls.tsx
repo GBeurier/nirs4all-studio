@@ -33,7 +33,7 @@ export const BinningControls = memo(function BinningControls({
   const [binSize, setBinSize] = useState(initialBinSize);
   const [binStride, setBinStride] = useState(initialBinStride);
   const [binAggregation, setBinAggregation] = useState<BinAggregation>(
-    (initialAggregation as BinAggregation) || 'sum',
+    (initialAggregation as BinAggregation) || 'mean_abs',
   );
   const [isRebinning, setIsRebinning] = useState(false);
   const [rebinError, setRebinError] = useState<string | null>(null);

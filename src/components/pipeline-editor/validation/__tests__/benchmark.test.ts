@@ -180,17 +180,38 @@ function benchmark<T>(
   medianMs: number;
   p95Ms: number;
 } {
+  const MIN_SAMPLE_DURATION_MS = 1;
+  const MAX_BATCH_SIZE = 1024;
+  let batchSize = 1;
+
+  function runBatch(): T {
+    let batchResult = fn();
+    for (let i = 1; i < batchSize; i++) {
+      batchResult = fn();
+    }
+    return batchResult;
+  }
+
+  // Calibrate to keep each sample above the timer-noise floor.
+  while (batchSize < MAX_BATCH_SIZE) {
+    const { timeMs } = measureTime(runBatch);
+    if (timeMs >= MIN_SAMPLE_DURATION_MS) {
+      break;
+    }
+    batchSize *= 2;
+  }
+
   // Warmup: discard initial runs to stabilize JIT/caching
   let result: T | undefined;
   for (let i = 0; i < warmup; i++) {
-    result = fn();
+    result = runBatch();
   }
 
   const times: number[] = [];
   for (let i = 0; i < iterations; i++) {
-    const { result: r, timeMs } = measureTime(fn);
+    const { result: r, timeMs } = measureTime(runBatch);
     result = r;
-    times.push(timeMs);
+    times.push(timeMs / batchSize);
   }
 
   times.sort((a, b) => a - b);

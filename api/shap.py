@@ -108,7 +108,7 @@ class ShapComputeRequest(BaseModel):
     n_background: int = Field(100, ge=10, le=500, description="Background samples for KernelExplainer")
     bin_size: int = Field(20, ge=5, le=100, description="Bin size for spectral aggregation")
     bin_stride: int = Field(10, ge=1, le=50, description="Stride between bins")
-    bin_aggregation: Literal["sum", "sum_abs", "mean", "mean_abs"] = Field("sum", description="Aggregation method")
+    bin_aggregation: Literal["sum", "sum_abs", "mean", "mean_abs"] = Field("mean_abs", description="Aggregation method")
 
 
 class ShapComputeResponse(BaseModel):
@@ -122,7 +122,7 @@ class RebinRequest(BaseModel):
     """Request model for rebinning SHAP results."""
     bin_size: int = Field(20, ge=5, le=100)
     bin_stride: int = Field(10, ge=1, le=50)
-    bin_aggregation: Literal["sum", "sum_abs", "mean", "mean_abs"] = Field("sum")
+    bin_aggregation: Literal["sum", "sum_abs", "mean", "mean_abs"] = Field("mean_abs")
 
 
 class SpectralImportanceData(BaseModel):
@@ -575,7 +575,7 @@ def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) ->
         n_background=config.get("n_background", 100),
         bin_size=config.get("bin_size", 20),
         bin_stride=config.get("bin_stride", 10),
-        bin_aggregation=config.get("bin_aggregation", "sum"),
+        bin_aggregation=config.get("bin_aggregation", "mean_abs"),
         output_dir=None, visualizations=None, plots_visible=False
     )
 
@@ -600,7 +600,7 @@ def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) ->
         sample_indices=sample_indices, X=X,
         bin_size=config.get("bin_size", 20),
         bin_stride=config.get("bin_stride", 10),
-        bin_aggregation=config.get("bin_aggregation", "sum"),
+        bin_aggregation=config.get("bin_aggregation", "mean_abs"),
         execution_time_ms=execution_time
     )
     processed["_y_true"] = y_true

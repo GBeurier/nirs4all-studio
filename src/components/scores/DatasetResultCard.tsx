@@ -336,7 +336,7 @@ export function DatasetResultCard({
             <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteDataset} disabled={deleteBusy}>
               {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-              Delete dataset
+              Delete predictions
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

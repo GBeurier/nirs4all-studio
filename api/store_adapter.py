@@ -62,6 +62,15 @@ def _sanitize_dict(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _coerce_metric_name(metric_name: Any, default: str | None = "r2") -> str | None:
+    """Normalize nullable metric names read from historical store rows."""
+    if isinstance(metric_name, str):
+        normalized = metric_name.strip()
+        if normalized:
+            return normalized
+    return default
+
+
 def _parse_json_maybe(value: Any) -> Any:
     """Parse JSON strings, otherwise return the input unchanged."""
     if isinstance(value, str):
@@ -946,6 +955,15 @@ class StoreAdapter:
             enriched_datasets = []
             for ds_name, agg_list in datasets_map.items():
                 ds_meta = datasets_meta_map.get(ds_name, {})
+                pred_row: dict[str, Any] | None = None
+                task_type = None
+                try:
+                    pred_df = store.query_predictions(run_id=run_id, dataset_name=ds_name, limit=1)
+                    if len(pred_df) > 0:
+                        pred_row = pred_df.row(0, named=True)
+                        task_type = pred_row.get("task_type")
+                except Exception:
+                    pred_row = None
 
                 if not agg_list:
                     enriched_datasets.append({
@@ -962,8 +980,24 @@ class StoreAdapter:
                     })
                     continue
 
-                # Determine metric from first entry
-                metric = agg_list[0].get("metric", "r2")
+                # Prefer a non-empty aggregated metric, then persisted run config,
+                # then the raw prediction row used for task-type fallback.
+                metric = next(
+                    (
+                        metric_name
+                        for metric_name in (
+                            _coerce_metric_name(agg.get("metric"), default=None)
+                            for agg in agg_list
+                        )
+                        if metric_name is not None
+                    ),
+                    None,
+                )
+                metric = (
+                    metric
+                    or _coerce_metric_name(run_config_data.get("metric"), default=None)
+                    or _coerce_metric_name(pred_row.get("metric") if pred_row else None, default="r2")
+                )
 
                 # Determine sort direction
                 from nirs4all.pipeline.run import get_metric_info
@@ -1105,20 +1139,10 @@ class StoreAdapter:
                         "is_refit_only": True,
                     }))
 
-                # Get task_type from first prediction
-                task_type = None
-                try:
-                    pred_df = store.query_predictions(run_id=run_id, dataset_name=ds_name, limit=1)
-                    if len(pred_df) > 0:
-                        task_type = pred_df.row(0, named=True).get("task_type")
-                except Exception:
-                    pass
-
                 # Dataset sample/feature counts from metadata, fallback to prediction data
                 n_samples = ds_meta.get("n_samples")
                 n_features = ds_meta.get("n_features")
-                if (n_samples is None or n_features is None) and len(pred_df) > 0:
-                    pred_row = pred_df.row(0, named=True)
+                if (n_samples is None or n_features is None) and pred_row is not None:
                     n_samples = n_samples or pred_row.get("n_samples")
                     n_features = n_features or pred_row.get("n_features")
 
@@ -1209,11 +1233,26 @@ class StoreAdapter:
                 if len(cv_info_df) > 0:
                     cv_info = cv_info_df.row(0, named=True)
                     run_cv_config["cv_folds"] = cv_info.get("fold_count", 0) or 0
-                    run_cv_config["metric"] = cv_info.get("metric")
+                    run_cv_config["metric"] = _coerce_metric_name(cv_info.get("metric"), default=None)
             except Exception:
                 pass
             # Stored config takes priority
             run_cv_config.update({k: v for k, v in run_config_data.items() if v is not None})
+            run_cv_config["metric"] = (
+                _coerce_metric_name(run_cv_config.get("metric"), default=None)
+                or next(
+                    (
+                        metric_name
+                        for metric_name in (
+                            _coerce_metric_name(dataset.get("metric"), default=None)
+                            for dataset in enriched_datasets
+                        )
+                        if metric_name is not None
+                    ),
+                    None,
+                )
+                or "r2"
+            )
 
             enriched_runs.append(_sanitize_dict({
                 "run_id": run_id,
@@ -1672,7 +1711,7 @@ class StoreAdapter:
                 return result
 
             # Get metric
-            result["metric"] = df.row(0, named=True).get("metric", "r2")
+            result["metric"] = _coerce_metric_name(df.row(0, named=True).get("metric"), default="r2")
 
             # Build histogram per partition type
             for part_name, score_col, filter_fn in [

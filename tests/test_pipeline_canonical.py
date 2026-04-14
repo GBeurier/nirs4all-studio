@@ -17,9 +17,9 @@ from api.pipeline_canonical import (
     editor_to_canonical,
 )
 from api.pipelines import (
-    PipelineCreate,
     PipelineCanonicalImportRequest,
     PipelineCanonicalRenderRequest,
+    PipelineCreate,
     PipelineExportRequest,
     _semantic_pipeline_template,
     create_pipeline,

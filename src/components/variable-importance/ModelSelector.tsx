@@ -102,6 +102,33 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     return score.toFixed(4);
   };
 
+  const buildChainLabel = (chain: AvailableChain) => {
+    const modelLabel = chain.model_name || shortModelClass(chain.model_class);
+    return chain.preprocessings ? `${chain.preprocessings} → ${modelLabel}` : modelLabel;
+  };
+
+  const buildChainTooltip = (chain: AvailableChain) => {
+    const metric = (chain.metric || '').toLowerCase();
+    const metricLabel = metric ? metric.toUpperCase() : 'SCORE';
+    const lines = [`Full chain: ${buildChainLabel(chain)}`];
+
+    const finalScore = formatScore(chain.final_test_score);
+    if (finalScore) {
+      lines.push(`${metric === 'rmse' ? 'RMSEP' : `Final ${metricLabel}`}: ${finalScore}`);
+    }
+
+    const cvScore = formatScore(chain.cv_val_score);
+    if (cvScore) {
+      lines.push(`${metric === 'rmse' ? 'RMSECV' : `CV ${metricLabel}`}: ${cvScore}`);
+    }
+
+    return lines.join('\n');
+  };
+
+  const getVisibleScore = (chain: AvailableChain) => (
+    formatScore(chain.final_test_score ?? chain.cv_val_score)
+  );
+
   return (
     <Select value={selectedChainId || ''} onValueChange={handleSelect}>
       <SelectTrigger>
@@ -117,24 +144,27 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
                 <span className="text-xs text-muted-foreground">({ds.metric})</span>
               )}
             </SelectLabel>
-            {ds.chains.map((chain: AvailableChain) => (
-              <SelectItem key={chain.chain_id} value={chain.chain_id}>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate max-w-[140px]">
-                    {chain.preprocessings ? `${chain.preprocessings} → ` : ''}
-                    {shortModelClass(chain.model_class)}
-                  </span>
-                  <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
-                    refit
-                  </Badge>
-                  {formatScore(chain.cv_val_score) && (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatScore(chain.cv_val_score)}
-                    </span>
-                  )}
-                </div>
-              </SelectItem>
-            ))}
+            {ds.chains.map((chain: AvailableChain) => {
+              const chainLabel = buildChainLabel(chain);
+              const chainTooltip = buildChainTooltip(chain);
+              const visibleScore = getVisibleScore(chain);
+
+              return (
+                <SelectItem key={chain.chain_id} value={chain.chain_id}>
+                  <div className="flex items-center gap-2 min-w-0" title={chainTooltip}>
+                    <span className="truncate max-w-[160px]">{chainLabel}</span>
+                    <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
+                      refit
+                    </Badge>
+                    {visibleScore && (
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {visibleScore}
+                      </span>
+                    )}
+                  </div>
+                </SelectItem>
+              );
+            })}
           </SelectGroup>
         ))}
         {data?.bundles && data.bundles.length > 0 && (

@@ -34,6 +34,75 @@ function downsample<T>(arr: T[], maxN: number): T[] {
   return result;
 }
 
+type HighlightRegion = {
+  start: number;
+  end: number;
+  normalized: number;
+};
+
+function normalizeHighlightRegions(
+  regions: Array<{ start: number; end: number; score: number }>
+): HighlightRegion[] {
+  if (!regions.length) return [];
+  const maxScore = Math.max(...regions.map((region) => region.score), 1e-9);
+  return regions
+    .map((region) => ({
+      start: region.start,
+      end: region.end,
+      normalized: region.score / maxScore,
+    }))
+    .filter((region) => region.normalized > 0.2);
+}
+
+function buildFallbackBinRanges(
+  wavelengths: number[],
+  binSize: number,
+  binStride: number,
+): Array<[number, number]> {
+  if (!wavelengths.length) return [];
+  const resolvedBinSize = Math.max(1, Math.min(binSize || wavelengths.length, wavelengths.length));
+  const resolvedBinStride = Math.max(1, binStride || resolvedBinSize);
+  const ranges: Array<[number, number]> = [];
+
+  for (let startIndex = 0; startIndex < wavelengths.length; startIndex += resolvedBinStride) {
+    const endIndex = Math.min(startIndex + resolvedBinSize - 1, wavelengths.length - 1);
+    ranges.push([wavelengths[startIndex], wavelengths[endIndex]]);
+    if (endIndex === wavelengths.length - 1) break;
+  }
+
+  return ranges;
+}
+
+function buildHighlightRegionsFromCurve(
+  wavelengths: number[],
+  shapValues: number[],
+  ranges: Array<[number, number]>,
+): HighlightRegion[] {
+  const scoredRegions = ranges
+    .map((range) => {
+      let total = 0;
+      let count = 0;
+
+      for (let idx = 0; idx < wavelengths.length; idx += 1) {
+        const wavelength = wavelengths[idx];
+        if (wavelength < range[0] || wavelength > range[1]) continue;
+        total += Math.abs(shapValues[idx] ?? 0);
+        count += 1;
+      }
+
+      if (count === 0) return null;
+
+      return {
+        start: range[0],
+        end: range[1],
+        score: total / count,
+      };
+    })
+    .filter((region): region is { start: number; end: number; score: number } => region !== null && region.score > 0);
+
+  return normalizeHighlightRegions(scoredRegions);
+}
+
 export const SpectralImportanceChart = memo(function SpectralImportanceChart({
   jobId,
   results,
@@ -90,15 +159,28 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
 
   // Binned regions for highlighting (use abs for normalization since signed aggregations can be negative)
   const significantRegions = useMemo(() => {
-    const maxAbs = Math.max(...activeBinned.bin_values.map(Math.abs), 1e-9);
-    return activeBinned.bin_ranges
-      .map((range, idx) => ({
-        start: range[0],
-        end: range[1],
-        normalized: Math.abs(activeBinned.bin_values[idx]) / maxAbs,
-      }))
-      .filter((r) => r.normalized > 0.2);
-  }, [activeBinned]);
+    const binnedRegions = normalizeHighlightRegions(
+      activeBinned.bin_ranges
+        .map((range, idx) => {
+          const value = activeBinned.bin_values[idx];
+          if (!range || !Number.isFinite(value)) return null;
+          return {
+            start: range[0],
+            end: range[1],
+            score: Math.abs(value),
+          };
+        })
+        .filter((region): region is { start: number; end: number; score: number } => region !== null),
+    );
+
+    if (binnedRegions.length > 0) return binnedRegions;
+
+    const fallbackRanges = activeBinned.bin_ranges.length > 0
+      ? activeBinned.bin_ranges
+      : buildFallbackBinRanges(results.wavelengths, activeBinned.bin_size, activeBinned.bin_stride);
+
+    return buildHighlightRegionsFromCurve(results.wavelengths, activeShap, fallbackRanges);
+  }, [activeBinned, activeShap, results.wavelengths]);
 
   const getImportanceColor = (normalized: number): string => {
     if (normalized > 0.8) return 'rgba(13, 148, 136, 0.7)';

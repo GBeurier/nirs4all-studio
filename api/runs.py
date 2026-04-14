@@ -1813,11 +1813,23 @@ def _estimate_pipeline_variants(pipeline_config: dict, cv_folds: int | None = No
     editor-structure estimates for UI progress metadata.
     """
     steps = pipeline_config.get("steps", [])
-    canonical_steps = editor_steps_to_runtime_canonical(steps)
-    estimated_variants = count_runtime_variants(canonical_steps)
-    has_generators = contains_generators(canonical_steps)
     fold_count = _estimate_fold_count(steps, cv_folds=cv_folds)
     branch_count = _estimate_branch_count(steps)
+
+    try:
+        canonical_steps = editor_steps_to_runtime_canonical(steps)
+        estimated_variants = count_runtime_variants(canonical_steps)
+        has_generators = contains_generators(canonical_steps)
+    except Exception as exc:
+        pipeline_name = pipeline_config.get("name") or pipeline_config.get("id") or "<unknown>"
+        logger.warning(
+            "Falling back to default pipeline estimate for %s because canonicalization failed: %s",
+            pipeline_name,
+            exc,
+        )
+        estimated_variants = 1
+        has_generators = False
+
     total_model_count = fold_count * branch_count * estimated_variants
 
     parts = []

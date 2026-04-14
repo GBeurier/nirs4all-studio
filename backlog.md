@@ -2,8 +2,17 @@
 
 Development backlog for nirs4all Studio. Items are organized by area.
 
+> Group selection in run and playground
+> Presets + page presets
+> Review delete predictions
+> Fix webpage examples python
+
+
+
 
 > [TaskType] Ensure tasktype correctly detected or customized
+
+
 
 ## Priority / Next
 
