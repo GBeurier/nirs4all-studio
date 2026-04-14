@@ -34,6 +34,36 @@ const KNOWN_PARAMETERLESS = new Set([
   "splitting.leave_one_out",
 ]);
 
+const EXPECTED_SPLIT_GROUPING: Record<
+  string,
+  { groupRequired: boolean; groupHandling: "native" | "wrapper" }
+> = {
+  "splitting.kfold": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.repeated_kfold": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.shuffle_split": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.stratified_kfold": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.leave_one_out": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.group_kfold": { groupRequired: true, groupHandling: "native" },
+  "splitting.group_shuffle_split": { groupRequired: true, groupHandling: "native" },
+  "splitting.leave_one_group_out": { groupRequired: true, groupHandling: "native" },
+  "splitting.leave_p_groups_out": { groupRequired: true, groupHandling: "native" },
+  "splitting.leave_p_out": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.predefined_split": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.repeated_stratified_k_fold": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.stratified_group_k_fold": { groupRequired: true, groupHandling: "native" },
+  "splitting.stratified_shuffle_split": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.time_series_split": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.kennard_stone": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.spxy": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.spxy_gfold": { groupRequired: true, groupHandling: "native" },
+  "splitting.kmeans_splitter": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.split_splitter": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.kbins_stratified": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.binned_stratified_group_kfold": { groupRequired: true, groupHandling: "native" },
+  "splitting.systematic_circular": { groupRequired: false, groupHandling: "wrapper" },
+  "splitting.spxy_fold": { groupRequired: false, groupHandling: "wrapper" },
+};
+
 describe("Node Definitions - Structural validation", () => {
   it("has at least 320 curated nodes", () => {
     expect(allNodes.length).toBeGreaterThanOrEqual(320);
@@ -115,6 +145,28 @@ describe("Node Definitions - Structural validation", () => {
     const ids = allNodes.map((n) => n.id);
     const unique = new Set(ids);
     expect(ids.length).toBe(unique.size);
+  });
+
+  it("all curated splitters expose webapp grouping metadata", () => {
+    const splitters = allNodes.filter((n) => n.type === "splitting");
+    expect(splitters.length).toBe(Object.keys(EXPECTED_SPLIT_GROUPING).length);
+
+    for (const splitter of splitters) {
+      expect(splitter._webapp_split, `${splitter.id} missing _webapp_split`).toBeDefined();
+      expect(splitter._webapp_split?.runtimeOnlyParams).toContain("group_by");
+      expect(["native", "wrapper"]).toContain(splitter._webapp_split?.groupHandling);
+    }
+  });
+
+  it("splitter grouping metadata matches the library contract", () => {
+    for (const [nodeId, expected] of Object.entries(EXPECTED_SPLIT_GROUPING)) {
+      const splitter = allNodes.find((node) => node.id === nodeId);
+      expect(splitter, `${nodeId} missing from curated registry`).toBeDefined();
+      expect(splitter?._webapp_split).toEqual({
+        ...expected,
+        runtimeOnlyParams: ["group_by"],
+      });
+    }
   });
 });
 

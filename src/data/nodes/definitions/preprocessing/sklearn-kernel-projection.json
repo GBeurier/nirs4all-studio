@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.kernel_approximation.AdditiveChi2Sampler",
     "description": "Approximate feature map for additive chi2 kernel.",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "sklearn",
       "transformer",
@@ -37,7 +37,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.kernel_approximation.Nystroem",
     "description": "Approximate a kernel map using a subset of the training data.",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "sklearn",
       "transformer",
@@ -122,7 +122,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.kernel_approximation.PolynomialCountSketch",
     "description": "Polynomial kernel approximation via Tensor Sketch.",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "sklearn",
       "transformer",
@@ -182,7 +182,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.kernel_approximation.RBFSampler",
     "description": "Approximate a RBF kernel feature map using random Fourier features.",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "sklearn",
       "transformer",
@@ -224,7 +224,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.kernel_approximation.SkewedChi2Sampler",
     "description": "Approximate feature map for \"skewed chi-squared\" kernel.",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "sklearn",
       "transformer",

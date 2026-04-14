@@ -24,6 +24,7 @@ export {
   NodeRegistry,
   createNodeRegistry,
   createEmptyRegistry,
+  mergeNodeDefinitions,
   mergeRegistries,
   type NodeRegistryOptions,
   type ValidationResult,

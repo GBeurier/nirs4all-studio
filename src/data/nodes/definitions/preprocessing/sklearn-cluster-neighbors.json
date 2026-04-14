@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.cluster._birch.Birch",
     "description": "Implements the BIRCH clustering algorithm.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",
@@ -55,7 +55,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.cluster._bisect_k_means.BisectingKMeans",
     "description": "Bisecting K-Means clustering.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",
@@ -134,7 +134,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.cluster._agglomerative.FeatureAgglomeration",
     "description": "Agglomerate features.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",
@@ -210,7 +210,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.cluster._kmeans.KMeans",
     "description": "K-Means clustering.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",
@@ -283,7 +283,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.neighbors._graph.KNeighborsTransformer",
     "description": "Transform X into a (weighted) graph of k nearest neighbors.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",
@@ -350,7 +350,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.cluster._kmeans.MiniBatchKMeans",
     "description": "Mini-Batch K-Means clustering.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",
@@ -440,7 +440,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.neighbors._graph.RadiusNeighborsTransformer",
     "description": "Transform X into a (weighted) graph of neighbors nearer than a radius.",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "sklearn",
       "transformer",

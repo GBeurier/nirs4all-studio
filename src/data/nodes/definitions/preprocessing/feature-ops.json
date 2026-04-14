@@ -171,7 +171,7 @@
     "classPath": "nirs4all.operators.transforms.CropTransformer",
     "description": "Trim wavelength range",
     "longDescription": "Crops spectra to a specific wavelength range by index.",
-    "category": "Feature Ops",
+    "category": "Feature Engineering",
     "tags": [
       "crop",
       "trim",
@@ -207,7 +207,7 @@
     "classPath": "nirs4all.operators.transforms.Resampler",
     "description": "Wavelength resampling/interpolation",
     "longDescription": "Resamples spectra to a specified number of points using interpolation.",
-    "category": "Feature Ops",
+    "category": "Feature Engineering",
     "tags": [
       "resample",
       "interpolation",
@@ -254,7 +254,7 @@
     "classPath": "sklearn.preprocessing.Normalizer",
     "description": "L1/L2/Max normalization",
     "longDescription": "Normalizes samples individually to unit norm.",
-    "category": "Normalization",
+    "category": "Scaling",
     "tags": [
       "normalization",
       "l1",
@@ -299,7 +299,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.features.FlattenPreprocessing",
     "description": "Flatten the preprocessing dimension of a 3D feature array.",
-    "category": "feature-engineering",
+    "category": "Feature Engineering",
     "tags": [
       "flattening",
       "preprocessing-fusion",

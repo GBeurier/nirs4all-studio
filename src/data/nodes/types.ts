@@ -99,6 +99,31 @@ export type ContainerTypeExtended =
  */
 export type NodeSourceExtended = NodeSource | "editor";
 
+/**
+ * How a splitter consumes effective groups at runtime.
+ */
+export type SplitGroupHandling = "native" | "wrapper";
+
+/**
+ * Frontend-facing grouping capability metadata for splitters.
+ */
+export interface WebappSplitMetadata {
+  /** Whether the splitter requires an effective group to exist. */
+  groupRequired: boolean;
+  /** Whether the splitter consumes groups natively or via wrapper logic. */
+  groupHandling: SplitGroupHandling;
+  /** Parameters that are execution-time only and must not be passed to the constructor. */
+  runtimeOnlyParams?: string[];
+}
+
+/**
+ * Additional webapp-only metadata for definitions.
+ */
+export interface WebappNodeMetadata {
+  skipAudit?: boolean;
+  skipReason?: string;
+}
+
 // ============================================================================
 // Parameter Types
 // ============================================================================
@@ -395,6 +420,12 @@ export interface NodeDefinition {
   maxVersion?: string;
   /** Previous class paths for backwards compatibility */
   legacyClassPaths?: string[];
+
+  /** Existing webapp-only metadata for audit and curation. */
+  _webapp_meta?: WebappNodeMetadata;
+
+  /** Splitter-specific webapp metadata for runtime grouping behavior. */
+  _webapp_split?: WebappSplitMetadata;
 }
 
 // ============================================================================

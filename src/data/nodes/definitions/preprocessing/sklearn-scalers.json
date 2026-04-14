@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._data.Binarizer",
     "description": "Binarize data (set feature values to 0 or 1) according to a threshold.",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "sklearn",
       "transformer",
@@ -30,7 +30,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._function_transformer.FunctionTransformer",
     "description": "Constructs a transformer from an arbitrary callable.",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "sklearn",
       "transformer",
@@ -91,7 +91,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._data.Normalizer",
     "description": "Normalize samples individually to unit norm.",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "sklearn",
       "transformer",
@@ -128,7 +128,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._polynomial.PolynomialFeatures",
     "description": "Generate polynomial and interaction features.",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "sklearn",
       "transformer",
@@ -178,7 +178,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._polynomial.SplineTransformer",
     "description": "Generate univariate B-spline bases for features.",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "sklearn",
       "transformer",

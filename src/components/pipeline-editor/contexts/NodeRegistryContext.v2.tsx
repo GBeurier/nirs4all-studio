@@ -29,10 +29,12 @@ import {
   NodeRegistry,
   createNodeRegistry,
   CustomNodeStorage,
+  mergeNodeDefinitions,
   type NodeDefinition as JsonNodeDefinition,
   type ParameterDefinition,
   type NodeType,
   type CategoryConfig,
+  type WebappSplitMetadata,
 } from "@/data/nodes";
 
 // ============================================================================
@@ -95,6 +97,8 @@ export interface NodeDefinition {
   generatorKind?: "or" | "cartesian";
   /** Visibility tier for UI filtering */
   tier?: "core" | "standard" | "advanced";
+  /** Splitter-specific runtime metadata for group handling */
+  _webapp_split?: WebappSplitMetadata;
 }
 
 /**
@@ -190,6 +194,7 @@ function jsonNodeToNodeDefinition(node: JsonNodeDefinition): NodeDefinition {
     isContainer: node.isContainer,
     isGenerator: node.isGenerator,
     tier: node.tier,
+    _webapp_split: node._webapp_split,
   };
 }
 
@@ -338,12 +343,16 @@ export function NodeRegistryProvider({
     const baseRegistry = baseRegistryRef.current;
     if (!baseRegistry) return;
 
-    // Merge ordering (first wins on duplicate IDs): base > custom > extended
-    const mergedNodes: JsonNodeDefinition[] = [
+    const preferredNodes: JsonNodeDefinition[] = [
       ...baseRegistry.getAll(),
       ...customNodes,
-      ...(extendedMode ? (extendedNodes ?? []) : []),
     ];
+
+    // Extended registry is append-only, but curated/custom nodes win when an
+    // operator already exists under another ID or class-path alias.
+    const mergedNodes = extendedMode
+      ? mergeNodeDefinitions(preferredNodes, extendedNodes ?? [])
+      : preferredNodes;
 
     const mergedRegistry = new NodeRegistry(mergedNodes, {
       validateOnLoad: import.meta.env.DEV,

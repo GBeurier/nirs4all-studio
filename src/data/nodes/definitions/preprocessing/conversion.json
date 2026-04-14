@@ -187,7 +187,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.signal_conversion.FractionToPercent",
     "description": "Convert fractional [0, 1] values to percentage [0, 100] range.",
-    "category": "signal-conversion",
+    "category": "Conversion",
     "tags": [
       "signal-conversion",
       "fraction",
@@ -204,7 +204,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.signal_conversion.PercentToFraction",
     "description": "Convert percentage values to fractional [0, 1] range.",
-    "category": "signal-conversion",
+    "category": "Conversion",
     "tags": [
       "signal-conversion",
       "percent",
@@ -221,7 +221,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.signal_conversion.SignalTypeConverter",
     "description": "General-purpose signal type converter.",
-    "category": "signal-conversion",
+    "category": "Conversion",
     "tags": [
       "signal-conversion",
       "general-purpose",

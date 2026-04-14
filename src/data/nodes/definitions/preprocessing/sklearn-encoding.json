@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._discretization.KBinsDiscretizer",
     "description": "Bin continuous data into intervals.",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "sklearn",
       "transformer",
@@ -113,7 +113,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._encoders.OneHotEncoder",
     "description": "Encode categorical features as a one-hot numeric array.",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "sklearn",
       "transformer",
@@ -175,7 +175,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._encoders.OrdinalEncoder",
     "description": "Encode categorical features as an integer array.",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "sklearn",
       "transformer",
@@ -230,7 +230,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.preprocessing._target_encoder.TargetEncoder",
     "description": "Target Encoder for regression and classification targets.",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "sklearn",
       "transformer",

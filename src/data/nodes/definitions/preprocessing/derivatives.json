@@ -216,7 +216,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.scalers.Derivate",
     "description": "nirs4all preprocessing Derivate",
-    "category": "derivatives",
+    "category": "Derivatives",
     "tags": [
       "derivative",
       "gradient",

@@ -6,13 +6,20 @@
     "classPath": "sklearn.model_selection.KFold",
     "description": "K-fold cross validation",
     "longDescription": "Splits data into K consecutive folds for cross-validation.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "kfold",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -51,7 +58,7 @@
     "classPath": "sklearn.model_selection.RepeatedKFold",
     "description": "Repeated K-fold CV",
     "longDescription": "Repeats K-fold cross-validation multiple times with different randomization.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "kfold",
@@ -59,6 +66,13 @@
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -100,13 +114,20 @@
     "classPath": "sklearn.model_selection.ShuffleSplit",
     "description": "Random repeated train/test splits",
     "longDescription": "Generates random train/test indices for multiple iterations.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "shuffle",
       "random"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -149,7 +170,7 @@
     "classPath": "sklearn.model_selection.StratifiedKFold",
     "description": "Stratified K-fold CV (classification)",
     "longDescription": "K-fold cross-validation with stratification for classification problems.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "stratified",
@@ -157,6 +178,13 @@
       "classification"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -195,13 +223,20 @@
     "classPath": "sklearn.model_selection.LeaveOneOut",
     "description": "Leave-one-out cross validation",
     "longDescription": "Each sample is used once as test set while remaining samples form training set.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "loo",
       "leave-one-out"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [],
     "supportsParameterSweeps": false,
     "legacyClassPaths": [
@@ -216,13 +251,20 @@
     "classPath": "sklearn.model_selection.GroupKFold",
     "description": "Group-aware K-fold",
     "longDescription": "K-fold cross-validation ensuring samples from the same group are not in both train and test sets.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "group",
       "kfold"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -247,13 +289,20 @@
     "classPath": "sklearn.model_selection.GroupShuffleSplit",
     "description": "Group-aware shuffle split",
     "longDescription": "Random train/test splits with group awareness.",
-    "category": "sklearn",
+    "category": "Scikit-learn",
     "tags": [
       "splitting",
       "group",
       "shuffle"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -284,13 +333,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.LeaveOneGroupOut",
     "description": "Leave One Group Out cross-validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "standard",
     "parameters": []
   },
@@ -300,13 +356,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.LeavePGroupsOut",
     "description": "Leave P Group(s) Out cross-validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "advanced",
     "parameters": [
       {
@@ -323,13 +386,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.LeavePOut",
     "description": "Leave-P-Out cross-validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "advanced",
     "parameters": [
       {
@@ -346,7 +416,7 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.PredefinedSplit",
     "description": "Predefined split cross-validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
@@ -356,6 +426,13 @@
     "_webapp_meta": {
       "skipAudit": true,
       "skipReason": "Requires user-provided test_fold array; no sensible default."
+    },
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
     },
     "tier": "advanced",
     "parameters": [
@@ -372,13 +449,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.RepeatedStratifiedKFold",
     "description": "Repeated class-wise stratified K-Fold cross validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "standard",
     "parameters": [
       {
@@ -407,13 +491,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.StratifiedGroupKFold",
     "description": "Class-wise stratified K-Fold iterator variant with non-overlapping groups.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "standard",
     "parameters": [
       {
@@ -441,13 +532,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.StratifiedShuffleSplit",
     "description": "Class-wise stratified ShuffleSplit cross-validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "standard",
     "parameters": [
       {
@@ -479,13 +577,20 @@
     "type": "splitting",
     "classPath": "sklearn.model_selection._split.TimeSeriesSplit",
     "description": "Time Series cross-validator.",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "sklearn",
       "splitter",
       "cross-validation"
     ],
     "source": "sklearn",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "tier": "standard",
     "parameters": [
       {

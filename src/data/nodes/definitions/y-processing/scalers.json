@@ -187,7 +187,7 @@
     "type": "y_processing",
     "classPath": "nirs4all.operators.transforms.targets.IntegerKBinsDiscretizer",
     "description": "KBinsDiscretizer qui retourne des entiers au lieu de floats",
-    "category": "scaling",
+    "category": "Scaling",
     "tags": [
       "discretization",
       "binning",
@@ -274,7 +274,7 @@
     "type": "y_processing",
     "classPath": "nirs4all.operators.transforms.targets.RangeDiscretizer",
     "description": "nirs4all y_processing RangeDiscretizer",
-    "category": "scaling",
+    "category": "Scaling",
     "tags": [
       "discretization",
       "binning",

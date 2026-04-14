@@ -147,7 +147,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.feature_selection.FlexiblePCA",
     "description": "PCA with flexible component specification.",
-    "category": "feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "dimensionality-reduction",
       "pca",
@@ -213,7 +213,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.feature_selection.FlexibleSVD",
     "description": "Truncated SVD with flexible component specification.",
-    "category": "feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "dimensionality-reduction",
       "svd",

@@ -14,6 +14,13 @@
       "distance"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "test_size",
@@ -73,6 +80,13 @@
       "xy"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "test_size",
@@ -103,6 +117,13 @@
       "cross-validation"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -134,6 +155,13 @@
       "clustering"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_clusters",
@@ -170,6 +198,13 @@
       "optimized"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "test_size",
@@ -200,6 +235,13 @@
       "regression"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_bins",
@@ -240,6 +282,13 @@
       "bins"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": true,
+      "groupHandling": "native",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",
@@ -277,6 +326,13 @@
       "circular"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "test_size",
@@ -307,6 +363,13 @@
       "spatial"
     ],
     "source": "nirs4all",
+    "_webapp_split": {
+      "groupRequired": false,
+      "groupHandling": "wrapper",
+      "runtimeOnlyParams": [
+        "group_by"
+      ]
+    },
     "parameters": [
       {
         "name": "n_splits",

@@ -434,6 +434,103 @@ def get_model_subcategory(module: str) -> str:
 
 
 # ============================================================================
+# Category Canonicalization (webapp display)
+# ============================================================================
+#
+# Raw categories emitted by discovery (from sklearn module prefixes and
+# nirs4all `_webapp_meta`) use kebab-case / inconsistent casing. The webapp
+# displays one category section per distinct string, so we map raw labels
+# to a uniform Title Case taxonomy before writing the registry.
+
+CATEGORY_CANONICAL_MAP: dict[str, str] = {
+    # Preprocessing
+    "scikit-scalers": "Scaling",
+    "nirs-scalers": "Scaling",
+    "scaling": "Scaling",
+    "scikit-encoding": "Encoding",
+    "scikit-dimensionality": "Dimensionality Reduction",
+    "scikit-cluster-neighbors": "Clustering & Neighbors",
+    "scikit-kernel-projection": "Kernel Projection",
+    "scikit-feature-selection": "Feature Selection",
+    "feature-selection": "Feature Selection",
+    "scikit-feature-extraction": "Feature Engineering",
+    "feature-engineering": "Feature Engineering",
+    "resampling-alignment": "Feature Engineering",
+    "scikit-imputation": "Imputation",
+    "scikit-misc-transformers": "Other",
+    "scikit-meta-transformers": "Other",
+    "signal-conversion": "Conversion",
+    "spectral-transforms": "Wavelet",
+    "scatter-correction": "NIRS Core",
+    "nirs": "NIRS",
+    "baseline-correction": "Baseline",
+    "baseline": "Baseline",
+    "derivatives": "Derivatives",
+    "smoothing": "Smoothing",
+    "spectral-smoothing": "Smoothing",
+    "pls": "PLS",
+    # Splitting
+    "sklearn": "Scikit-learn",
+    "sklearn-splitters": "Scikit-learn",
+    "nirs-splitters": "NIRS",
+    # Augmentation
+    "noise": "Noise",
+    "spectral-noise": "Noise",
+    "edge-artifacts": "Edge Artifacts",
+    "edge-artifacts-augmentation": "Edge Artifacts",
+    "spline": "Spline",
+    "synthesis": "Synthesis",
+    "synthesis-augmentation": "Synthesis",
+    "wavelength": "Wavelength",
+    "spectral-wavelength": "Wavelength",
+    "scattering": "Scattering",
+    "scattering-augmentation": "Scattering",
+    "spectral-scatter": "Scattering",
+    "drift": "Baseline",
+    "spectral-baseline": "Baseline",
+    "masking": "Spectral",
+    "spectral-masking": "Spectral",
+    "spectral-augmentation": "Spectral",
+    "mixing": "Mixing",
+    "spectral-mixing": "Mixing",
+    "environmental": "Environmental",
+    "environmental-augmentation": "Environmental",
+    "random": "Random",
+    # Filter
+    "outlier-detection": "Outlier",
+    "metadata": "Selection",
+    "quality": "Quality",
+    # Model (sklearn)
+    "sklearn-linear": "Linear",
+    "sklearn-svm": "SVM",
+    "sklearn-tree": "Tree",
+    "sklearn-ensemble": "Ensemble",
+    "sklearn-neighbors": "Neighbors",
+    "sklearn-naive-bayes": "Naive Bayes",
+    "sklearn-discriminant": "Discriminant",
+    "sklearn-gaussian-process": "Gaussian Process",
+    "sklearn-kernel": "Kernel",
+    "sklearn-neural": "Neural",
+    "sklearn-probabilistic": "Probabilistic",
+    "sklearn-cross-decomposition": "PLS",
+    "sklearn-meta": "Meta",
+    "sklearn-semi-supervised": "Semi-Supervised",
+    "sklearn-baseline": "Baseline",
+    "sklearn-misc-models": "Other",
+    # y_processing
+    "target-transforms": "Target Transforms",
+}
+
+
+def canonicalize_categories(nodes: list[dict[str, Any]]) -> None:
+    """In-place rewrite of each node's `category` through CATEGORY_CANONICAL_MAP."""
+    for node in nodes:
+        raw = node.get("category")
+        if isinstance(raw, str) and raw in CATEGORY_CANONICAL_MAP:
+            node["category"] = CATEGORY_CANONICAL_MAP[raw]
+
+
+# ============================================================================
 # nirs4all Operator Auto-Discovery
 # ============================================================================
 
@@ -1079,6 +1176,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     nodes = generate_all_nodes(skip_tensorflow=args.skip_tensorflow, repo_root=repo_root)
+    canonicalize_categories(nodes)
 
     # Write the registry
     out_path.write_text(

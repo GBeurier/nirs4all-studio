@@ -570,28 +570,12 @@
     "tier": "standard"
   },
   {
-    "id": "preprocessing.baseline",
-    "name": "Baseline",
-    "type": "preprocessing",
-    "classPath": "nirs4all.operators.transforms.signal.Baseline",
-    "description": "Removes baseline (mean) from each spectrum.",
-    "category": "baseline",
-    "tags": [
-      "baseline",
-      "mean-centering",
-      "preprocessing"
-    ],
-    "source": "nirs4all",
-    "tier": "standard",
-    "parameters": []
-  },
-  {
     "id": "preprocessing.beads",
     "name": "BEADS",
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.nirs.BEADS",
     "description": "Baseline Estimation And Denoising with Sparsity.",
-    "category": "baseline",
+    "category": "Baseline",
     "tags": [
       "baseline-correction",
       "beads",
@@ -639,7 +623,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.nirs.IASLS",
     "description": "Improved Asymmetric Least Squares baseline correction.",
-    "category": "baseline",
+    "category": "Baseline",
     "tags": [
       "baseline-correction",
       "iasls",

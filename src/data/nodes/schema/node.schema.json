@@ -222,6 +222,14 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Previous class paths for backwards compatibility"
+    },
+    "_webapp_meta": {
+      "$ref": "#/definitions/WebappNodeMetadata",
+      "description": "Additional webapp-only metadata for curation and audit controls."
+    },
+    "_webapp_split": {
+      "$ref": "#/definitions/WebappSplitMetadata",
+      "description": "Splitter-specific webapp metadata for runtime grouping behavior."
     }
   },
   "definitions": {
@@ -269,6 +277,35 @@
         "active": { "type": "string" },
         "gradient": { "type": "string" }
       }
+    },
+    "WebappNodeMetadata": {
+      "type": "object",
+      "properties": {
+        "skipAudit": { "type": "boolean" },
+        "skipReason": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "WebappSplitMetadata": {
+      "type": "object",
+      "required": ["groupRequired", "groupHandling"],
+      "properties": {
+        "groupRequired": {
+          "type": "boolean",
+          "description": "Whether the splitter requires an effective group."
+        },
+        "groupHandling": {
+          "type": "string",
+          "enum": ["native", "wrapper"],
+          "description": "How the splitter consumes groups at runtime."
+        },
+        "runtimeOnlyParams": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Execution-time params that must not be passed to the constructor."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

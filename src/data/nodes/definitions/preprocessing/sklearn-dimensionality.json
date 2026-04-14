@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._dict_learning.DictionaryLearning",
     "description": "Dictionary learning.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -118,7 +118,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._factor_analysis.FactorAnalysis",
     "description": "Factor Analysis (FA).",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -187,7 +187,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._fastica.FastICA",
     "description": "FastICA: a fast algorithm for Independent Component Analysis.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -266,7 +266,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._incremental_pca.IncrementalPCA",
     "description": "Incremental principal components analysis (IPCA).",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -305,7 +305,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.manifold._isomap.Isomap",
     "description": "Isomap Embedding.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -400,7 +400,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._kernel_pca.KernelPCA",
     "description": "Kernel Principal component analysis (KPCA).",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -528,7 +528,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.manifold._locally_linear.LocallyLinearEmbedding",
     "description": "Locally Linear Embedding.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -634,7 +634,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._dict_learning.MiniBatchDictionaryLearning",
     "description": "Mini-batch dictionary learning.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -760,7 +760,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._sparse_pca.MiniBatchSparsePCA",
     "description": "Mini-batch Sparse Principal Components Analysis.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -856,7 +856,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.cross_decomposition._pls.PLSSVD",
     "description": "Partial Least Square SVD.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -892,7 +892,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.decomposition._sparse_pca.SparsePCA",
     "description": "Sparse Principal Components Analysis (SparsePCA).",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",
@@ -975,7 +975,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.manifold._t_sne.TSNE",
     "description": "T-distributed Stochastic Neighbor Embedding.",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "sklearn",
       "transformer",

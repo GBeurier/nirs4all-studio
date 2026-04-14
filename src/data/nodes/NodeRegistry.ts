@@ -40,6 +40,121 @@ export interface ValidationResult {
   warnings: string[];
 }
 
+function cloneNodeDefinition(node: NodeDefinition): NodeDefinition {
+  return {
+    ...node,
+    legacyClassPaths: node.legacyClassPaths ? [...node.legacyClassPaths] : undefined,
+  };
+}
+
+function normalizeClassPath(path: string | undefined): string | null {
+  const normalized = path?.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
+function getClassPathAliases(node: NodeDefinition): string[] {
+  const aliases = new Set<string>();
+  const classPath = normalizeClassPath(node.classPath);
+  if (classPath) {
+    aliases.add(classPath);
+  }
+  for (const legacyPath of node.legacyClassPaths ?? []) {
+    const normalized = normalizeClassPath(legacyPath);
+    if (normalized) {
+      aliases.add(normalized);
+    }
+  }
+  return Array.from(aliases);
+}
+
+function getTypeNameKey(node: NodeDefinition): string {
+  return `${String(node.type).toLowerCase()}::${node.name.toLowerCase()}`;
+}
+
+function mergeClassPathAliases(target: NodeDefinition, incoming: NodeDefinition): void {
+  const targetClassPath = normalizeClassPath(target.classPath);
+  const existingLegacy = new Set((target.legacyClassPaths ?? []).map((path) => path.toLowerCase()));
+  const mergedLegacy = [...(target.legacyClassPaths ?? [])];
+
+  const maybeAdd = (path: string | undefined) => {
+    const normalized = normalizeClassPath(path);
+    if (!normalized || normalized === targetClassPath || existingLegacy.has(normalized)) {
+      return;
+    }
+    mergedLegacy.push(path!);
+    existingLegacy.add(normalized);
+  };
+
+  maybeAdd(incoming.classPath);
+  for (const legacyPath of incoming.legacyClassPaths ?? []) {
+    maybeAdd(legacyPath);
+  }
+
+  target.legacyClassPaths = mergedLegacy.length > 0 ? mergedLegacy : undefined;
+}
+
+/**
+ * Merge incoming node definitions into a preferred set while suppressing
+ * semantic duplicates. Preferred nodes always win.
+ *
+ * Duplicate detection is based on:
+ * - exact node ID
+ * - any overlapping classPath / legacyClassPaths alias
+ * - matching type + name (case-insensitive)
+ *
+ * When a duplicate is skipped, any new classPath aliases from the incoming
+ * node are merged into the preferred node's `legacyClassPaths`.
+ */
+export function mergeNodeDefinitions(
+  preferredNodes: NodeDefinition[],
+  incomingNodes: NodeDefinition[]
+): NodeDefinition[] {
+  const mergedNodes = preferredNodes.map(cloneNodeDefinition);
+  const nodesById = new Map<string, number>();
+  const nodesByAlias = new Map<string, number>();
+  const nodesByTypeName = new Map<string, number>();
+
+  const registerNode = (node: NodeDefinition, index: number) => {
+    nodesById.set(node.id, index);
+    nodesByTypeName.set(getTypeNameKey(node), index);
+    for (const alias of getClassPathAliases(node)) {
+      nodesByAlias.set(alias, index);
+    }
+  };
+
+  mergedNodes.forEach((node, index) => registerNode(node, index));
+
+  for (const incomingNode of incomingNodes) {
+    const candidate = cloneNodeDefinition(incomingNode);
+    let duplicateIndex = nodesById.get(candidate.id);
+
+    if (duplicateIndex === undefined) {
+      for (const alias of getClassPathAliases(candidate)) {
+        duplicateIndex = nodesByAlias.get(alias);
+        if (duplicateIndex !== undefined) {
+          break;
+        }
+      }
+    }
+
+    if (duplicateIndex === undefined) {
+      duplicateIndex = nodesByTypeName.get(getTypeNameKey(candidate));
+    }
+
+    if (duplicateIndex !== undefined) {
+      mergeClassPathAliases(mergedNodes[duplicateIndex], candidate);
+      registerNode(mergedNodes[duplicateIndex], duplicateIndex);
+      continue;
+    }
+
+    const nextIndex = mergedNodes.length;
+    mergedNodes.push(candidate);
+    registerNode(candidate, nextIndex);
+  }
+
+  return mergedNodes;
+}
+
 /**
  * NodeRegistry - Central registry for node definitions
  */

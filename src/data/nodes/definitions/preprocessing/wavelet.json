@@ -221,7 +221,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.nirs.WaveletFeatures",
     "description": "Discrete Wavelet Transform feature extractor for spectral data.",
-    "category": "spectral-transforms",
+    "category": "Wavelet",
     "tags": [
       "wavelet",
       "feature-extraction",
@@ -257,7 +257,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.nirs.WaveletSVD",
     "description": "Multi-scale SVD on wavelet coefficients.",
-    "category": "spectral-transforms",
+    "category": "Wavelet",
     "tags": [
       "wavelet",
       "svd",

@@ -164,7 +164,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.nirs.AreaNormalization",
     "description": "Area normalization of spectra.",
-    "category": "scaling",
+    "category": "Scaling",
     "tags": [
       "normalization",
       "area",
@@ -202,7 +202,7 @@
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.scalers.SimpleScale",
     "description": "nirs4all preprocessing SimpleScale",
-    "category": "scaling",
+    "category": "Scaling",
     "tags": [
       "scaling",
       "min-max",

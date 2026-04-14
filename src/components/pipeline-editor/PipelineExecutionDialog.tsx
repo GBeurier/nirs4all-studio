@@ -12,9 +12,9 @@
  * - Persisted runs with model export
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "@/lib/motion";
 import {
   Dialog,
@@ -49,7 +49,6 @@ import {
   FileText,
   Loader2,
   Database,
-  TrendingUp,
   Trophy,
   Wifi,
   WifiOff,
@@ -68,7 +67,12 @@ import {
   ExecutionResult,
   ExportResult,
 } from "@/hooks/usePipelineExecution";
-import { quickRun, runPreflight } from "@/api/client";
+import { getPipeline, quickRun, runPreflight } from "@/api/client";
+import {
+  analyzeSelectedPipelinesRuntimeGrouping,
+  evaluateDatasetRuntimeGrouping,
+  RUNTIME_GROUPING_COPY,
+} from "@/lib/runtimeSplitGrouping";
 
 // ============================================================================
 // Types
@@ -263,10 +267,8 @@ function ResultsDisplay({ result }: { result: ExecutionResult }) {
 /** Export panel with format options */
 function ExportPanel({
   pipelineId,
-  pipelineName,
 }: {
   pipelineId: string;
-  pipelineName: string;
 }) {
   const { isExporting, exportPipeline, downloadExport, copyToClipboard } =
     usePipelineExport();
@@ -367,9 +369,15 @@ export function PipelineExecutionDialog({
   const [runName, setRunName] = useState<string>(`${pipelineName} Run`);
   const [activeTab, setActiveTab] = useState<"execute" | "export">("execute");
   const [isQuickRunning, setIsQuickRunning] = useState(false);
+  const [splitGroupByByDataset, setSplitGroupByByDataset] = useState<Record<string, string | null>>({});
 
   // Hooks
   const { datasets, isLoading: isLoadingDatasets } = useDatasetSelection();
+  const { data: pipelineData, isLoading: isLoadingPipeline } = useQuery({
+    queryKey: ["pipeline", pipelineId],
+    queryFn: () => getPipeline(pipelineId),
+    enabled: open,
+  });
   const {
     status,
     jobId,
@@ -390,13 +398,67 @@ export function PipelineExecutionDialog({
       setRunName(`${pipelineName} Run`);
       setActiveTab("execute");
       setIsQuickRunning(false);
+      setSplitGroupByByDataset({});
     }
   }, [open, reset, pipelineName]);
+
+  const groupingSelection = useMemo(
+    () =>
+      analyzeSelectedPipelinesRuntimeGrouping(
+        pipelineData
+          ? [{ id: pipelineId, name: pipelineData.name || pipelineName, steps: pipelineData.steps }]
+          : [],
+      ),
+    [pipelineData, pipelineId, pipelineName],
+  );
+
+  const selectedDatasetInfo = useMemo(
+    () => datasets.find((dataset) => dataset.id === selectedDataset) ?? null,
+    [datasets, selectedDataset],
+  );
+
+  const selectedDatasetGroupingState = useMemo(() => {
+    if (!selectedDatasetInfo) {
+      return null;
+    }
+
+    return evaluateDatasetRuntimeGrouping(
+      {
+        metadata_columns: selectedDatasetInfo.metadataColumns ?? [],
+        config: {
+          repetition: selectedDatasetInfo.repetitionColumn ?? undefined,
+          aggregation: selectedDatasetInfo.repetitionColumn
+            ? {
+                enabled: true,
+                column: selectedDatasetInfo.repetitionColumn,
+                method: "mean",
+              }
+            : undefined,
+        },
+      },
+      groupingSelection,
+      splitGroupByByDataset[selectedDatasetInfo.id] ?? null,
+    );
+  }, [groupingSelection, selectedDatasetInfo, splitGroupByByDataset]);
+
+  const canRun =
+    Boolean(selectedDataset) &&
+    !isLoadingPipeline &&
+    !groupingSelection.hasPersistedGroupConflict &&
+    !selectedDatasetGroupingState?.hasBlockingError;
 
   // Handle execution (inline mode)
   const handleExecute = async () => {
     if (!selectedDataset) {
       toast.error("Please select a dataset");
+      return;
+    }
+    if (groupingSelection.hasPersistedGroupConflict) {
+      toast.error(RUNTIME_GROUPING_COPY.conflictToast);
+      return;
+    }
+    if (selectedDatasetGroupingState?.hasBlockingError) {
+      toast.error(selectedDatasetGroupingState.blockingMessage || "Runtime grouping is required for this dataset.");
       return;
     }
 
@@ -416,6 +478,9 @@ export function PipelineExecutionDialog({
       pipelineId,
       datasetId: selectedDataset,
       exportModel: true,
+      splitGroupByByDataset: {
+        [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
+      },
     });
   };
 
@@ -423,6 +488,14 @@ export function PipelineExecutionDialog({
   const handleQuickRun = async () => {
     if (!selectedDataset) {
       toast.error("Please select a dataset");
+      return;
+    }
+    if (groupingSelection.hasPersistedGroupConflict) {
+      toast.error(RUNTIME_GROUPING_COPY.conflictToast);
+      return;
+    }
+    if (selectedDatasetGroupingState?.hasBlockingError) {
+      toast.error(selectedDatasetGroupingState.blockingMessage || "Runtime grouping is required for this dataset.");
       return;
     }
 
@@ -447,6 +520,9 @@ export function PipelineExecutionDialog({
         name: runName.trim() || `${pipelineName} Run`,
         export_model: true,
         cv_folds: 5,
+        split_group_by_by_dataset: {
+          [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
+        },
       });
 
       // Invalidate runs queries so the new run appears in the list
@@ -468,6 +544,14 @@ export function PipelineExecutionDialog({
       toast.error("Please select a dataset");
       return;
     }
+    if (groupingSelection.hasPersistedGroupConflict) {
+      toast.error(RUNTIME_GROUPING_COPY.conflictToast);
+      return;
+    }
+    if (selectedDatasetGroupingState?.hasBlockingError) {
+      toast.error(selectedDatasetGroupingState.blockingMessage || "Runtime grouping is required for this dataset.");
+      return;
+    }
 
     setIsQuickRunning(true);
     try {
@@ -490,6 +574,9 @@ export function PipelineExecutionDialog({
         name: runName.trim() || `${pipelineName} Run`,
         export_model: true,
         cv_folds: 5,
+        split_group_by_by_dataset: {
+          [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
+        },
       });
 
       // Invalidate runs queries so the new run appears in the list
@@ -572,7 +659,12 @@ export function PipelineExecutionDialog({
               </label>
               <Select
                 value={selectedDataset}
-                onValueChange={setSelectedDataset}
+                onValueChange={(datasetId) => {
+                  setSelectedDataset(datasetId);
+                  setSplitGroupByByDataset((current) =>
+                    datasetId in current ? current : { ...current, [datasetId]: null },
+                  );
+                }}
                 disabled={status === "running" || status === "starting"}
               >
                 <SelectTrigger>
@@ -604,6 +696,118 @@ export function PipelineExecutionDialog({
                 </SelectContent>
               </Select>
             </div>
+
+            {groupingSelection.hasPersistedGroupConflict && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
+                  <div className="space-y-1">
+                    <p className="font-medium text-destructive">
+                      {RUNTIME_GROUPING_COPY.conflictTitle}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {RUNTIME_GROUPING_COPY.conflictDescription}
+                    </p>
+                    {groupingSelection.conflictingPipelines.map((pipeline) => (
+                      <p key={pipeline.id} className="text-xs text-muted-foreground">
+                        {pipeline.name}: {pipeline.steps.join(", ")}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedDatasetInfo && groupingSelection.hasSplitters && !groupingSelection.hasPersistedGroupConflict && (
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-sm font-medium">Runtime Grouping</label>
+                  {selectedDatasetGroupingState?.requiresExplicitGroup ? (
+                    <Badge variant="destructive">Required</Badge>
+                  ) : groupingSelection.hasRequiredSplitters ? (
+                    <Badge variant="outline">Optional with repetition</Badge>
+                  ) : (
+                    <Badge variant="outline">Optional</Badge>
+                  )}
+                </div>
+
+                <Select
+                  value={(splitGroupByByDataset[selectedDataset] ?? "__none__") || "__none__"}
+                  onValueChange={(value) =>
+                    setSplitGroupByByDataset((current) => ({
+                      ...current,
+                      [selectedDataset]: value === "__none__" ? null : value,
+                    }))
+                  }
+                  disabled={status === "running" || status === "starting"}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select metadata column..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No additional group</SelectItem>
+                    {(selectedDatasetGroupingState?.metadataColumns ?? []).map((column) => (
+                      <SelectItem key={column} value={column}>
+                        {column}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {RUNTIME_GROUPING_COPY.additiveDescription}
+                </p>
+
+                {selectedDatasetGroupingState?.repetitionColumn && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary">Dataset repetition</Badge>
+                    <code>{selectedDatasetGroupingState.repetitionColumn}</code>
+                  </div>
+                )}
+
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {RUNTIME_GROUPING_COPY.legacyGroupDeprecation}
+                </p>
+
+                {selectedDatasetGroupingState?.hasBlockingError && (
+                  <p className="text-xs text-destructive">
+                    {selectedDatasetGroupingState.blockingMessage}
+                  </p>
+                )}
+
+                {selectedDatasetGroupingState?.repetitionOnlyWarning && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    {selectedDatasetGroupingState.repetitionOnlyWarning}
+                  </p>
+                )}
+
+                {selectedDatasetGroupingState?.optionalPropagationWarning && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    {selectedDatasetGroupingState.optionalPropagationWarning}
+                  </p>
+                )}
+
+                {!selectedDatasetGroupingState?.hasBlockingError &&
+                  (selectedDatasetGroupingState?.metadataColumns.length ?? 0) === 0 &&
+                  !selectedDatasetGroupingState?.repetitionColumn && (
+                    <p className="text-xs text-muted-foreground">
+                      No metadata columns are available on this dataset.
+                    </p>
+                  )}
+              </div>
+            )}
+
+            {selectedDatasetInfo && isLoadingPipeline && (
+              <p className="text-xs text-muted-foreground">
+                Loading pipeline split requirements...
+              </p>
+            )}
+
+            {selectedDatasetInfo && !isLoadingPipeline && !groupingSelection.hasSplitters && (
+              <p className="text-xs text-muted-foreground">
+                {RUNTIME_GROUPING_COPY.noSplitterPipeline}
+              </p>
+            )}
 
             {/* Progress display */}
             <AnimatePresence mode="wait">
@@ -652,7 +856,7 @@ export function PipelineExecutionDialog({
           </TabsContent>
 
           <TabsContent value="export" className="mt-4">
-            <ExportPanel pipelineId={pipelineId} pipelineName={pipelineName} />
+            <ExportPanel pipelineId={pipelineId} />
           </TabsContent>
         </Tabs>
 
@@ -665,7 +869,7 @@ export function PipelineExecutionDialog({
               <Button
                 variant="outline"
                 onClick={handleBackgroundRun}
-                disabled={!selectedDataset}
+                disabled={!canRun}
                 className="gap-2"
               >
                 <Play className="h-4 w-4" />
@@ -674,7 +878,7 @@ export function PipelineExecutionDialog({
               <Button
                 variant="outline"
                 onClick={handleQuickRun}
-                disabled={!selectedDataset}
+                disabled={!canRun}
                 className="gap-2"
               >
                 <ExternalLink className="h-4 w-4" />
@@ -682,7 +886,7 @@ export function PipelineExecutionDialog({
               </Button>
               <Button
                 onClick={handleExecute}
-                disabled={!selectedDataset}
+                disabled={!canRun}
                 className="gap-2"
               >
                 <Play className="h-4 w-4" />

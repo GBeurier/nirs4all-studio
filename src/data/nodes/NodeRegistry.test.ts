@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   createNodeRegistry,
   createEmptyRegistry,
+  mergeNodeDefinitions,
   NodeRegistry,
 } from "@/data/nodes/NodeRegistry";
 import { allNodes } from "@/data/nodes/definitions";
+import type { NodeDefinition } from "@/data/nodes/types";
 
 describe("NodeRegistry - Initialization", () => {
   const registry = createNodeRegistry({ validateOnLoad: true, warnOnDuplicates: true });
@@ -289,5 +291,87 @@ describe("NodeRegistry - Stats", () => {
     expect(stats.classPathCount).toBeGreaterThanOrEqual(stats.totalNodes);
     expect(stats.nodesByType).toHaveProperty("preprocessing");
     expect(stats.nodesByType).toHaveProperty("model");
+  });
+});
+
+describe("NodeRegistry - mergeNodeDefinitions", () => {
+  const makeNode = (overrides: Partial<NodeDefinition>): NodeDefinition => ({
+    id: "splitting.example",
+    name: "ExampleSplitter",
+    type: "splitting",
+    description: "Example splitter",
+    parameters: [],
+    source: "sklearn",
+    ...overrides,
+  });
+
+  it("skips extended duplicates that match a preferred legacy class path", () => {
+    const preferred = [
+      makeNode({
+        id: "splitting.stratified_kfold",
+        name: "StratifiedKFold",
+        classPath: "sklearn.model_selection.StratifiedKFold",
+        legacyClassPaths: ["sklearn.model_selection._split.StratifiedKFold"],
+      }),
+    ];
+
+    const incoming = [
+      makeNode({
+        id: "splitting.stratified_k_fold",
+        name: "StratifiedKFold",
+        classPath: "sklearn.model_selection._split.StratifiedKFold",
+      }),
+    ];
+
+    const merged = mergeNodeDefinitions(preferred, incoming);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe("splitting.stratified_kfold");
+  });
+
+  it("preserves alternate class path aliases when deduplicating by type and name", () => {
+    const preferred = [
+      makeNode({
+        id: "splitting.kfold_private",
+        name: "KFold",
+        classPath: "sklearn.model_selection._split.KFold",
+      }),
+    ];
+
+    const incoming = [
+      makeNode({
+        id: "splitting.kfold_public",
+        name: "KFold",
+        classPath: "sklearn.model_selection.KFold",
+      }),
+    ];
+
+    const merged = mergeNodeDefinitions(preferred, incoming);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].legacyClassPaths).toContain("sklearn.model_selection.KFold");
+  });
+
+  it("keeps distinct nodes when neither aliases nor names overlap", () => {
+    const preferred = [
+      makeNode({
+        id: "splitting.kfold",
+        name: "KFold",
+        classPath: "sklearn.model_selection.KFold",
+      }),
+    ];
+
+    const incoming = [
+      makeNode({
+        id: "splitting.group_kfold",
+        name: "GroupKFold",
+        classPath: "sklearn.model_selection.GroupKFold",
+      }),
+    ];
+
+    const merged = mergeNodeDefinitions(preferred, incoming);
+
+    expect(merged).toHaveLength(2);
+    expect(merged.map((node) => node.name)).toEqual(["KFold", "GroupKFold"]);
   });
 });

@@ -167,6 +167,101 @@ def build_parameters(cls: type) -> list[dict[str, Any]]:
 
 
 # ============================================================================
+# Category Canonicalization (webapp display)
+# ============================================================================
+#
+# Raw categories emitted below use kebab-case per sklearn module prefix or
+# nirs4all metadata. The webapp renders one section per distinct string, so
+# we normalize to a single Title Case taxonomy before writing.
+
+_CATEGORY_CANONICAL_MAP: dict[str, str] = {
+    # Preprocessing
+    "scikit-scalers": "Scaling",
+    "nirs-scalers": "Scaling",
+    "scaling": "Scaling",
+    "scikit-encoding": "Encoding",
+    "scikit-dimensionality": "Dimensionality Reduction",
+    "scikit-cluster-neighbors": "Clustering & Neighbors",
+    "scikit-kernel-projection": "Kernel Projection",
+    "scikit-feature-selection": "Feature Selection",
+    "feature-selection": "Feature Selection",
+    "scikit-feature-extraction": "Feature Engineering",
+    "feature-engineering": "Feature Engineering",
+    "resampling-alignment": "Feature Engineering",
+    "scikit-imputation": "Imputation",
+    "scikit-misc-transformers": "Other",
+    "scikit-meta-transformers": "Other",
+    "signal-conversion": "Conversion",
+    "spectral-transforms": "Wavelet",
+    "scatter-correction": "NIRS Core",
+    "nirs": "NIRS",
+    "baseline-correction": "Baseline",
+    "baseline": "Baseline",
+    "derivatives": "Derivatives",
+    "smoothing": "Smoothing",
+    "spectral-smoothing": "Smoothing",
+    "pls": "PLS",
+    # Splitting
+    "sklearn": "Scikit-learn",
+    "sklearn-splitters": "Scikit-learn",
+    "nirs-splitters": "NIRS",
+    # Augmentation
+    "noise": "Noise",
+    "spectral-noise": "Noise",
+    "edge-artifacts": "Edge Artifacts",
+    "edge-artifacts-augmentation": "Edge Artifacts",
+    "spline": "Spline",
+    "synthesis": "Synthesis",
+    "synthesis-augmentation": "Synthesis",
+    "wavelength": "Wavelength",
+    "spectral-wavelength": "Wavelength",
+    "scattering": "Scattering",
+    "scattering-augmentation": "Scattering",
+    "spectral-scatter": "Scattering",
+    "drift": "Baseline",
+    "spectral-baseline": "Baseline",
+    "masking": "Spectral",
+    "spectral-masking": "Spectral",
+    "spectral-augmentation": "Spectral",
+    "mixing": "Mixing",
+    "spectral-mixing": "Mixing",
+    "environmental": "Environmental",
+    "environmental-augmentation": "Environmental",
+    "random": "Random",
+    # Filter
+    "outlier-detection": "Outlier",
+    "metadata": "Selection",
+    "quality": "Quality",
+    # Model (sklearn)
+    "sklearn-linear": "Linear",
+    "sklearn-svm": "SVM",
+    "sklearn-tree": "Tree",
+    "sklearn-ensemble": "Ensemble",
+    "sklearn-neighbors": "Neighbors",
+    "sklearn-naive-bayes": "Naive Bayes",
+    "sklearn-discriminant": "Discriminant",
+    "sklearn-gaussian-process": "Gaussian Process",
+    "sklearn-kernel": "Kernel",
+    "sklearn-neural": "Neural",
+    "sklearn-probabilistic": "Probabilistic",
+    "sklearn-cross-decomposition": "PLS",
+    "sklearn-meta": "Meta",
+    "sklearn-semi-supervised": "Semi-Supervised",
+    "sklearn-baseline": "Baseline",
+    "sklearn-misc-models": "Other",
+    # y_processing
+    "target-transforms": "Target Transforms",
+}
+
+
+def _canonicalize_categories(nodes: list) -> None:
+    for node in nodes:
+        raw = node.get("category")
+        if isinstance(raw, str) and raw in _CATEGORY_CANONICAL_MAP:
+            node["category"] = _CATEGORY_CANONICAL_MAP[raw]
+
+
+# ============================================================================
 # Subcategory Mappings
 # ============================================================================
 
@@ -1015,6 +1110,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     nodes = generate_all_nodes(skip_tensorflow=args.skip_tensorflow)
+    _canonicalize_categories(nodes)
 
     out_path.write_text(
         json.dumps(nodes, indent=2, ensure_ascii=False, allow_nan=False) + "\n",

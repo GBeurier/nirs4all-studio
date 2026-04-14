@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.impute._knn.KNNImputer",
     "description": "Imputation for completing missing values using k-Nearest Neighbors.",
-    "category": "scikit-imputation",
+    "category": "Imputation",
     "tags": [
       "sklearn",
       "transformer",
@@ -76,7 +76,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.impute._base.MissingIndicator",
     "description": "Binary indicators for missing values.",
-    "category": "scikit-imputation",
+    "category": "Imputation",
     "tags": [
       "sklearn",
       "transformer",
@@ -117,7 +117,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.impute._base.SimpleImputer",
     "description": "Univariate imputer for completing missing values with simple strategies.",
-    "category": "scikit-imputation",
+    "category": "Imputation",
     "tags": [
       "sklearn",
       "transformer",

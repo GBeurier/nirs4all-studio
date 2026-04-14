@@ -212,7 +212,7 @@ function passesTierFilter(opt: StepOption, tierLevel: TierLevel): boolean {
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
-  const [openSections, setOpenSections] = useState<Set<StepType>>(new Set(["preprocessing"]));
+  const [openSections, setOpenSections] = useState<Set<StepType>>(new Set());
   const prefs = usePipelineEditorPreferencesOptional();
   const [tierLevelFallback, setTierLevelFallback] = useState<TierLevel>("standard");
 

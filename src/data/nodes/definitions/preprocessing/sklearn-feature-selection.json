@@ -5,7 +5,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._univariate_selection.GenericUnivariateSelect",
     "description": "Univariate feature selector with configurable strategy.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -40,7 +40,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._rfe.RFE",
     "description": "Feature ranking with recursive feature elimination.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -80,7 +80,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._rfe.RFECV",
     "description": "Recursive feature elimination with cross-validation to select features.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -131,7 +131,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectFdr",
     "description": "Filter: Select the p-values for an estimated false discovery rate.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -160,7 +160,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectFpr",
     "description": "Filter: Select the pvalues below alpha based on a FPR test.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -189,7 +189,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._from_model.SelectFromModel",
     "description": "Meta-transformer for selecting features based on importance weights.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -239,7 +239,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectFwe",
     "description": "Filter: Select the p-values corresponding to Family-wise error rate.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -268,7 +268,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectKBest",
     "description": "Select features according to the k highest scores.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -297,7 +297,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectPercentile",
     "description": "Select features according to a percentile of the highest scores.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -326,7 +326,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._sequential.SequentialFeatureSelector",
     "description": "Transformer that performs Sequential Feature Selection.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",
@@ -377,7 +377,7 @@
     "type": "preprocessing",
     "classPath": "sklearn.feature_selection._variance_threshold.VarianceThreshold",
     "description": "Feature selector that removes all low-variance features.",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "sklearn",
       "transformer",

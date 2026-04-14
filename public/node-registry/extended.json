@@ -21,7 +21,7 @@
         "name": "learning_rate",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "algorithm",
@@ -38,7 +38,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._weight_boosting.AdaBoostClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -70,7 +70,7 @@
         "name": "learning_rate",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "loss",
@@ -87,7 +87,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._weight_boosting.AdaBoostRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -119,25 +119,25 @@
         "name": "alpha_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "alpha_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "lambda_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "lambda_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "compute_score",
@@ -149,7 +149,7 @@
         "name": "threshold_lambda",
         "type": "float",
         "isAdvanced": true,
-        "default": 10000.0
+        "default": 10000
       },
       {
         "name": "fit_intercept",
@@ -172,7 +172,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._bayes.ARDRegression",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -204,13 +204,13 @@
         "name": "max_samples",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "bootstrap",
@@ -257,7 +257,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._bagging.BaggingClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -289,13 +289,13 @@
         "name": "max_samples",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "bootstrap",
@@ -342,7 +342,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._bagging.BaggingRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -374,25 +374,25 @@
         "name": "alpha_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "alpha_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "lambda_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "lambda_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "alpha_init",
@@ -433,7 +433,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._bayes.BayesianRidge",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -453,7 +453,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "force_alpha",
@@ -465,7 +465,7 @@
         "name": "binarize",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "fit_prior",
@@ -482,7 +482,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.naive_bayes.BernoulliNB",
-    "category": "sklearn-naive-bayes",
+    "category": "Naive Bayes",
     "tags": [
       "generated",
       "sklearn",
@@ -530,7 +530,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.calibration.CalibratedClassifierCV",
-    "category": "sklearn-probabilistic",
+    "category": "Probabilistic",
     "tags": [
       "generated",
       "sklearn",
@@ -549,7 +549,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "force_alpha",
@@ -578,7 +578,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.naive_bayes.CategoricalNB",
-    "category": "sklearn-naive-bayes",
+    "category": "Naive Bayes",
     "tags": [
       "generated",
       "sklearn",
@@ -615,7 +615,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "copy",
@@ -626,7 +626,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cross_decomposition._pls.CCA",
-    "category": "sklearn-cross-decomposition",
+    "category": "PLS",
     "tags": [
       "generated",
       "sklearn",
@@ -687,7 +687,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multioutput.ClassifierChain",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -706,7 +706,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "force_alpha",
@@ -735,7 +735,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.naive_bayes.ComplementNB",
-    "category": "sklearn-naive-bayes",
+    "category": "Naive Bayes",
     "tags": [
       "generated",
       "sklearn",
@@ -784,7 +784,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
@@ -808,7 +808,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "class_weight",
@@ -820,7 +820,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "monotonic_cst",
@@ -831,7 +831,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.tree._classes.DecisionTreeClassifier",
-    "category": "sklearn-tree",
+    "category": "Tree",
     "tags": [
       "generated",
       "sklearn",
@@ -881,7 +881,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
@@ -905,13 +905,13 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "monotonic_cst",
@@ -922,7 +922,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.tree._classes.DecisionTreeRegressor",
-    "category": "sklearn-tree",
+    "category": "Tree",
     "tags": [
       "generated",
       "sklearn",
@@ -959,7 +959,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.dummy.DummyClassifier",
-    "category": "sklearn-baseline",
+    "category": "Baseline",
     "tags": [
       "generated",
       "sklearn",
@@ -995,7 +995,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.dummy.DummyRegressor",
-    "category": "sklearn-baseline",
+    "category": "Baseline",
     "tags": [
       "generated",
       "sklearn",
@@ -1014,7 +1014,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "l1_ratio",
@@ -1079,7 +1079,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.ElasticNet",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -1188,7 +1188,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.ElasticNetCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -1238,7 +1238,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
@@ -1262,7 +1262,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "class_weight",
@@ -1274,7 +1274,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "monotonic_cst",
@@ -1285,7 +1285,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.tree._classes.ExtraTreeClassifier",
-    "category": "sklearn-tree",
+    "category": "Tree",
     "tags": [
       "generated",
       "sklearn",
@@ -1335,13 +1335,13 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "random_state",
@@ -1353,7 +1353,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_leaf_nodes",
@@ -1365,7 +1365,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "monotonic_cst",
@@ -1376,7 +1376,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.tree._classes.ExtraTreeRegressor",
-    "category": "sklearn-tree",
+    "category": "Tree",
     "tags": [
       "generated",
       "sklearn",
@@ -1426,7 +1426,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
@@ -1444,7 +1444,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "bootstrap",
@@ -1492,7 +1492,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_samples",
@@ -1509,7 +1509,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._forest.ExtraTreesClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -1559,13 +1559,13 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "max_leaf_nodes",
@@ -1577,7 +1577,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "bootstrap",
@@ -1619,7 +1619,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_samples",
@@ -1636,7 +1636,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._forest.ExtraTreesRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -1679,7 +1679,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._classification_threshold.FixedThresholdClassifier",
-    "category": "sklearn-probabilistic",
+    "category": "Probabilistic",
     "tags": [
       "generated",
       "sklearn",
@@ -1699,7 +1699,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -1740,7 +1740,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._glm.glm.GammaRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -1766,12 +1766,12 @@
         "name": "var_smoothing",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-09
+        "default": 1e-9
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.naive_bayes.GaussianNB",
-    "category": "sklearn-naive-bayes",
+    "category": "Naive Bayes",
     "tags": [
       "generated",
       "sklearn",
@@ -1843,7 +1843,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.gaussian_process._gpc.GaussianProcessClassifier",
-    "category": "sklearn-gaussian-process",
+    "category": "Gaussian Process",
     "tags": [
       "generated",
       "sklearn",
@@ -1910,7 +1910,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.gaussian_process._gpr.GaussianProcessRegressor",
-    "category": "sklearn-gaussian-process",
+    "category": "Gaussian Process",
     "tags": [
       "generated",
       "sklearn",
@@ -1948,7 +1948,7 @@
         "name": "subsample",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "criterion",
@@ -1972,7 +1972,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_depth",
@@ -1984,7 +1984,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "init",
@@ -2044,12 +2044,12 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._gb.GradientBoostingClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -2087,7 +2087,7 @@
         "name": "subsample",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "criterion",
@@ -2111,7 +2111,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_depth",
@@ -2123,7 +2123,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "init",
@@ -2189,12 +2189,12 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._gb.GradientBoostingRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -2250,13 +2250,13 @@
         "name": "l2_regularization",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "max_bins",
@@ -2316,7 +2316,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-07
+        "default": 1e-7
       },
       {
         "name": "verbose",
@@ -2339,7 +2339,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -2401,13 +2401,13 @@
         "name": "l2_regularization",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "max_bins",
@@ -2467,7 +2467,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-07
+        "default": 1e-7
       },
       {
         "name": "verbose",
@@ -2484,7 +2484,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -2534,12 +2534,12 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-05
+        "default": 0.00001
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._huber.HuberRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -2582,7 +2582,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.isotonic.IsotonicRegression",
-    "category": "sklearn-probabilistic",
+    "category": "Probabilistic",
     "tags": [
       "generated",
       "sklearn",
@@ -2648,7 +2648,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._classification.KNeighborsClassifier",
-    "category": "sklearn-neighbors",
+    "category": "Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -2715,7 +2715,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._regression.KNeighborsRegressor",
-    "category": "sklearn-neighbors",
+    "category": "Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -2770,7 +2770,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.kernel_ridge.KernelRidge",
-    "category": "sklearn-kernel",
+    "category": "Kernel",
     "tags": [
       "generated",
       "sklearn",
@@ -2824,7 +2824,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.semi_supervised._label_propagation.LabelPropagation",
-    "category": "sklearn-semi-supervised",
+    "category": "Semi-Supervised",
     "tags": [
       "generated",
       "sklearn",
@@ -2885,7 +2885,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.semi_supervised._label_propagation.LabelSpreading",
-    "category": "sklearn-semi-supervised",
+    "category": "Semi-Supervised",
     "tags": [
       "generated",
       "sklearn",
@@ -2958,7 +2958,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._least_angle.Lars",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3031,7 +3031,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._least_angle.LarsCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3051,7 +3051,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -3110,7 +3110,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.Lasso",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3213,7 +3213,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.LassoCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3233,7 +3233,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -3298,7 +3298,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._least_angle.LassoLars",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3377,7 +3377,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._least_angle.LassoLarsCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3450,7 +3450,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._least_angle.LassoLarsIC",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3511,7 +3511,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.discriminant_analysis.LinearDiscriminantAnalysis",
-    "category": "sklearn-discriminant",
+    "category": "Discriminant",
     "tags": [
       "generated",
       "sklearn",
@@ -3542,7 +3542,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "n_jobs",
@@ -3559,7 +3559,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._base.LinearRegression",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3603,7 +3603,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "multi_class",
@@ -3650,7 +3650,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.svm._classes.LinearSVC",
-    "category": "sklearn-svm",
+    "category": "SVM",
     "tags": [
       "generated",
       "sklearn",
@@ -3670,7 +3670,7 @@
         "name": "epsilon",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "tol",
@@ -3682,7 +3682,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "loss",
@@ -3700,7 +3700,7 @@
         "name": "intercept_scaling",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "dual",
@@ -3729,7 +3729,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.svm._classes.LinearSVR",
-    "category": "sklearn-svm",
+    "category": "SVM",
     "tags": [
       "generated",
       "sklearn",
@@ -3767,7 +3767,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -3838,7 +3838,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._logistic.LogisticRegression",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -3936,7 +3936,7 @@
         "name": "intercept_scaling",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "multi_class",
@@ -3959,7 +3959,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._logistic.LogisticRegressionCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -4101,7 +4101,7 @@
         "name": "epsilon",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-08
+        "default": 1e-8
       },
       {
         "name": "n_iter_no_change",
@@ -4118,7 +4118,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neural_network._multilayer_perceptron.MLPClassifier",
-    "category": "sklearn-neural",
+    "category": "Neural",
     "tags": [
       "generated",
       "sklearn",
@@ -4266,7 +4266,7 @@
         "name": "epsilon",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-08
+        "default": 1e-8
       },
       {
         "name": "n_iter_no_change",
@@ -4283,7 +4283,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neural_network._multilayer_perceptron.MLPRegressor",
-    "category": "sklearn-neural",
+    "category": "Neural",
     "tags": [
       "generated",
       "sklearn",
@@ -4314,7 +4314,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multioutput.MultiOutputClassifier",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -4344,7 +4344,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multioutput.MultiOutputRegressor",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -4363,7 +4363,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "l1_ratio",
@@ -4416,7 +4416,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskElasticNet",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -4513,7 +4513,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskElasticNetCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -4533,7 +4533,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -4580,7 +4580,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskLasso",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -4671,7 +4671,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskLassoCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -4691,7 +4691,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "force_alpha",
@@ -4714,7 +4714,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.naive_bayes.MultinomialNB",
-    "category": "sklearn-naive-bayes",
+    "category": "Naive Bayes",
     "tags": [
       "generated",
       "sklearn",
@@ -4750,7 +4750,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._nearest_centroid.NearestCentroid",
-    "category": "sklearn-neighbors",
+    "category": "Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -4794,7 +4794,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "shrinking",
@@ -4859,7 +4859,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.svm._classes.NuSVC",
-    "category": "sklearn-svm",
+    "category": "SVM",
     "tags": [
       "generated",
       "sklearn",
@@ -4885,7 +4885,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "kernel",
@@ -4909,7 +4909,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "shrinking",
@@ -4944,7 +4944,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.svm._classes.NuSVR",
-    "category": "sklearn-svm",
+    "category": "SVM",
     "tags": [
       "generated",
       "sklearn",
@@ -4975,7 +4975,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multiclass.OneVsOneClassifier",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -5011,7 +5011,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multiclass.OneVsRestClassifier",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -5053,7 +5053,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._omp.OrthogonalMatchingPursuit",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5108,7 +5108,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._omp.OrthogonalMatchingPursuitCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5151,7 +5151,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multiclass.OutputCodeClassifier",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -5170,7 +5170,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -5259,7 +5259,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._passive_aggressive.PassiveAggressiveClassifier",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5279,7 +5279,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -5362,7 +5362,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._passive_aggressive.PassiveAggressiveRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5430,7 +5430,7 @@
         "name": "eta0",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "n_jobs",
@@ -5477,7 +5477,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._perceptron.Perceptron",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5521,7 +5521,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "copy",
@@ -5532,7 +5532,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cross_decomposition._pls.PLSCanonical",
-    "category": "sklearn-cross-decomposition",
+    "category": "PLS",
     "tags": [
       "generated",
       "sklearn",
@@ -5570,7 +5570,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "copy",
@@ -5581,7 +5581,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cross_decomposition._pls.PLSRegression",
-    "category": "sklearn-cross-decomposition",
+    "category": "PLS",
     "tags": [
       "generated",
       "sklearn",
@@ -5601,7 +5601,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -5642,7 +5642,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._glm.glm.PoissonRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5668,7 +5668,7 @@
         "name": "reg_param",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "store_covariance",
@@ -5685,7 +5685,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.discriminant_analysis.QuadraticDiscriminantAnalysis",
-    "category": "sklearn-discriminant",
+    "category": "Discriminant",
     "tags": [
       "generated",
       "sklearn",
@@ -5710,7 +5710,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -5733,7 +5733,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._quantile.QuantileRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -5753,7 +5753,7 @@
         "name": "radius",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "weights",
@@ -5806,7 +5806,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._classification.RadiusNeighborsClassifier",
-    "category": "sklearn-neighbors",
+    "category": "Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -5826,7 +5826,7 @@
         "name": "radius",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "weights",
@@ -5873,7 +5873,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._regression.RadiusNeighborsRegressor",
-    "category": "sklearn-neighbors",
+    "category": "Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -5923,7 +5923,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
@@ -5941,7 +5941,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "bootstrap",
@@ -5989,7 +5989,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_samples",
@@ -6006,7 +6006,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._forest.RandomForestClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -6056,13 +6056,13 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "max_leaf_nodes",
@@ -6074,7 +6074,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "bootstrap",
@@ -6116,7 +6116,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_samples",
@@ -6133,7 +6133,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._forest.RandomForestRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -6221,7 +6221,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._ransac.RANSACRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6276,7 +6276,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.multioutput.RegressorChain",
-    "category": "sklearn-meta",
+    "category": "Meta",
     "tags": [
       "generated",
       "sklearn",
@@ -6295,7 +6295,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -6342,7 +6342,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._ridge.Ridge",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6362,7 +6362,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -6415,7 +6415,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._ridge.RidgeClassifier",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6437,8 +6437,8 @@
         "isAdvanced": true,
         "default": [
           0.1,
-          1.0,
-          10.0
+          1,
+          10
         ]
       },
       {
@@ -6474,7 +6474,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._ridge.RidgeClassifierCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6496,8 +6496,8 @@
         "isAdvanced": true,
         "default": [
           0.1,
-          1.0,
-          10.0
+          1,
+          10
         ]
       },
       {
@@ -6539,7 +6539,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._ridge.RidgeCV",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6600,7 +6600,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.semi_supervised._self_training.SelfTrainingClassifier",
-    "category": "sklearn-semi-supervised",
+    "category": "Semi-Supervised",
     "tags": [
       "generated",
       "sklearn",
@@ -6698,7 +6698,7 @@
         "name": "eta0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "power_t",
@@ -6745,7 +6745,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._stochastic_gradient.SGDClassifier",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6878,7 +6878,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._stochastic_gradient.SGDRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -6939,7 +6939,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._stacking.StackingClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -6994,7 +6994,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._stacking.StackingRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -7014,7 +7014,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "kernel",
@@ -7038,7 +7038,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "shrinking",
@@ -7103,7 +7103,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.svm._classes.SVC",
-    "category": "sklearn-svm",
+    "category": "SVM",
     "tags": [
       "generated",
       "sklearn",
@@ -7141,7 +7141,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "tol",
@@ -7153,7 +7153,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "epsilon",
@@ -7188,7 +7188,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.svm._classes.SVR",
-    "category": "sklearn-svm",
+    "category": "SVM",
     "tags": [
       "generated",
       "sklearn",
@@ -7220,7 +7220,7 @@
         "name": "max_subpopulation",
         "type": "float",
         "isAdvanced": true,
-        "default": 10000.0
+        "default": 10000
       },
       {
         "name": "n_subsamples",
@@ -7261,7 +7261,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._theil_sen.TheilSenRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -7310,7 +7310,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.compose._target.TransformedTargetRegressor",
-    "category": "sklearn-misc-models",
+    "category": "Other",
     "tags": [
       "generated",
       "sklearn",
@@ -7383,7 +7383,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._classification_threshold.TunedThresholdClassifierCV",
-    "category": "sklearn-probabilistic",
+    "category": "Probabilistic",
     "tags": [
       "generated",
       "sklearn",
@@ -7403,13 +7403,13 @@
         "name": "power",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -7456,7 +7456,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.linear_model._glm.glm.TweedieRegressor",
-    "category": "sklearn-linear",
+    "category": "Linear",
     "tags": [
       "generated",
       "sklearn",
@@ -7511,7 +7511,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._voting.VotingClassifier",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -7554,7 +7554,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._voting.VotingRegressor",
-    "category": "sklearn-ensemble",
+    "category": "Ensemble",
     "tags": [
       "generated",
       "sklearn",
@@ -7585,7 +7585,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.kernel_approximation.AdditiveChi2Sampler",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -7609,7 +7609,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.signal.Baseline",
-    "category": "baseline-correction",
+    "category": "Baseline",
     "tags": [
       "generated",
       "nirs4all",
@@ -7662,7 +7662,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neural_network._rbm.BernoulliRBM",
-    "category": "scikit-misc-transformers",
+    "category": "Other",
     "tags": [
       "generated",
       "sklearn",
@@ -7682,7 +7682,7 @@
         "name": "threshold",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "copy",
@@ -7693,7 +7693,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.Binarizer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -7742,7 +7742,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cluster._birch.Birch",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -7821,7 +7821,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cluster._bisect_k_means.BisectingKMeans",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -7888,7 +7888,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.compose._column_transformer.ColumnTransformer",
-    "category": "scikit-meta-transformers",
+    "category": "Other",
     "tags": [
       "generated",
       "sklearn",
@@ -7919,7 +7919,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.features.CropTransformer",
-    "category": "resampling-alignment",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "nirs4all",
@@ -7954,7 +7954,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.scalers.Derivate",
-    "category": "derivatives",
+    "category": "Derivatives",
     "tags": [
       "generated",
       "nirs4all",
@@ -7983,7 +7983,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.signal.Detrend",
-    "category": "baseline-correction",
+    "category": "Baseline",
     "tags": [
       "generated",
       "nirs4all",
@@ -8023,7 +8023,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_extraction._dict_vectorizer.DictVectorizer",
-    "category": "scikit-feature-extraction",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "sklearn",
@@ -8061,7 +8061,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-08
+        "default": 1e-8
       },
       {
         "name": "fit_algorithm",
@@ -8150,7 +8150,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._dict_learning.DictionaryLearning",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -8223,7 +8223,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._factor_analysis.FactorAnalysis",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -8302,7 +8302,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._fastica.FastICA",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -8374,7 +8374,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cluster._agglomerative.FeatureAgglomeration",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -8416,7 +8416,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_extraction._hash.FeatureHasher",
-    "category": "scikit-feature-extraction",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "sklearn",
@@ -8465,7 +8465,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.pipeline.FeatureUnion",
-    "category": "scikit-meta-transformers",
+    "category": "Other",
     "tags": [
       "generated",
       "sklearn",
@@ -8484,7 +8484,7 @@
         "name": "delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "edge_order",
@@ -8501,7 +8501,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.nirs.FirstDerivative",
-    "category": "derivatives",
+    "category": "Derivatives",
     "tags": [
       "generated",
       "nirs4all",
@@ -8566,7 +8566,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._function_transformer.FunctionTransformer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -8603,7 +8603,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.signal.Gaussian",
-    "category": "smoothing",
+    "category": "Smoothing",
     "tags": [
       "generated",
       "nirs4all",
@@ -8644,7 +8644,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.random_projection.GaussianRandomProjection",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -8674,12 +8674,12 @@
         "name": "param",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-05
+        "default": 0.00001
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._univariate_selection.GenericUnivariateSelect",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -8704,7 +8704,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.nirs.Haar",
-    "category": "spectral-transforms",
+    "category": "Wavelet",
     "tags": [
       "generated",
       "nirs4all",
@@ -8819,7 +8819,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_extraction.text.HashingVectorizer",
-    "category": "scikit-feature-extraction",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "sklearn",
@@ -8862,7 +8862,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._incremental_pca.IncrementalPCA",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -8953,7 +8953,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.manifold._isomap.Isomap",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -9014,7 +9014,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._discretization.KBinsDiscretizer",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -9087,7 +9087,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cluster._kmeans.KMeans",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -9154,7 +9154,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._graph.KNeighborsTransformer",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -9172,7 +9172,7 @@
     "parameters": [],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.KernelCenterer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -9228,7 +9228,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "fit_inverse_transform",
@@ -9287,7 +9287,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._kernel_pca.KernelPCA",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -9347,7 +9347,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.impute._knn.KNNImputer",
-    "category": "scikit-imputation",
+    "category": "Imputation",
     "tags": [
       "generated",
       "sklearn",
@@ -9384,7 +9384,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._label.LabelBinarizer",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -9402,7 +9402,7 @@
     "parameters": [],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._label.LabelEncoder",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -9452,7 +9452,7 @@
         "name": "learning_offset",
         "type": "float",
         "isAdvanced": true,
-        "default": 10.0
+        "default": 10
       },
       {
         "name": "max_iter",
@@ -9476,7 +9476,7 @@
         "name": "total_samples",
         "type": "float",
         "isAdvanced": true,
-        "default": 1000000.0
+        "default": 1000000
       },
       {
         "name": "perp_tol",
@@ -9517,7 +9517,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._lda.LatentDirichletAllocation",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -9561,7 +9561,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-06
+        "default": 0.000001
       },
       {
         "name": "max_iter",
@@ -9608,7 +9608,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.manifold._locally_linear.LocallyLinearEmbedding",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -9634,7 +9634,7 @@
         "name": "offset",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "auto_offset",
@@ -9646,7 +9646,7 @@
         "name": "min_value",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-08
+        "default": 1e-8
       },
       {
         "name": "copy",
@@ -9657,7 +9657,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.nirs.LogTransform",
-    "category": "spectral-transforms",
+    "category": "Wavelet",
     "tags": [
       "generated",
       "nirs4all",
@@ -9680,7 +9680,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.MaxAbsScaler",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -9720,7 +9720,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.MinMaxScaler",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -9859,7 +9859,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._dict_learning.MiniBatchDictionaryLearning",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -9921,7 +9921,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_no_improvement",
@@ -9950,7 +9950,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cluster._kmeans.MiniBatchKMeans",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -10012,7 +10012,7 @@
         "name": "alpha_W",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "alpha_H",
@@ -10024,7 +10024,7 @@
         "name": "l1_ratio",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "forget_factor",
@@ -10065,7 +10065,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._nmf.MiniBatchNMF",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -10162,7 +10162,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._sparse_pca.MiniBatchSparsePCA",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -10204,7 +10204,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.impute._base.MissingIndicator",
-    "category": "scikit-imputation",
+    "category": "Imputation",
     "tags": [
       "generated",
       "sklearn",
@@ -10235,7 +10235,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection",
-    "category": "scatter-correction",
+    "category": "NIRS Core",
     "tags": [
       "generated",
       "nirs4all",
@@ -10264,7 +10264,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._label.MultiLabelBinarizer",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -10308,7 +10308,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-05
+        "default": 0.00001
       },
       {
         "name": "callback",
@@ -10331,7 +10331,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._nca.NeighborhoodComponentsAnalysis",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -10393,7 +10393,7 @@
         "name": "alpha_W",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "alpha_H",
@@ -10405,7 +10405,7 @@
         "name": "l1_ratio",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "verbose",
@@ -10422,7 +10422,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._nmf.NMF",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -10456,7 +10456,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.scalers.Normalize",
-    "category": "nirs-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "nirs4all",
@@ -10485,7 +10485,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.Normalizer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -10552,7 +10552,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.kernel_approximation.Nystroem",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -10617,7 +10617,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._encoders.OneHotEncoder",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -10676,7 +10676,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._encoders.OrdinalEncoder",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -10713,7 +10713,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_extraction.image.PatchExtractor",
-    "category": "scikit-feature-extraction",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "sklearn",
@@ -10757,7 +10757,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "iterated_power",
@@ -10786,7 +10786,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._pca.PCA",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -10823,7 +10823,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.cross_decomposition._pls.PLSSVD",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -10843,7 +10843,7 @@
         "name": "gamma",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "degree",
@@ -10872,7 +10872,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.kernel_approximation.PolynomialCountSketch",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -10914,7 +10914,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._polynomial.PolynomialFeatures",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -10951,7 +10951,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.PowerTransformer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -11006,7 +11006,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.QuantileTransformer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -11032,7 +11032,7 @@
         "name": "radius",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "algorithm",
@@ -11073,7 +11073,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.neighbors._graph.RadiusNeighborsTransformer",
-    "category": "scikit-cluster-neighbors",
+    "category": "Clustering & Neighbors",
     "tags": [
       "generated",
       "sklearn",
@@ -11117,7 +11117,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "max_leaf_nodes",
@@ -11129,7 +11129,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "sparse_output",
@@ -11164,7 +11164,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.ensemble._forest.RandomTreesEmbedding",
-    "category": "scikit-misc-transformers",
+    "category": "Other",
     "tags": [
       "generated",
       "sklearn",
@@ -11184,7 +11184,7 @@
         "name": "gamma",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "n_components",
@@ -11201,7 +11201,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.kernel_approximation.RBFSampler",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -11225,7 +11225,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.features.ResampleTransformer",
-    "category": "resampling-alignment",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "nirs4all",
@@ -11261,7 +11261,7 @@
         "name": "fill_value",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "bounds_error",
@@ -11278,7 +11278,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.resampler.Resampler",
-    "category": "resampling-alignment",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "nirs4all",
@@ -11325,7 +11325,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._rfe.RFE",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11392,7 +11392,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._rfe.RFECV",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11410,7 +11410,7 @@
     "parameters": [],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.scalers.RobustNormalVariate",
-    "category": "scatter-correction",
+    "category": "NIRS Core",
     "tags": [
       "generated",
       "nirs4all",
@@ -11441,8 +11441,8 @@
         "type": "array",
         "isAdvanced": true,
         "default": [
-          25.0,
-          75.0
+          25,
+          75
         ]
       },
       {
@@ -11460,7 +11460,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.RobustScaler",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -11498,7 +11498,7 @@
         "name": "delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "copy",
@@ -11509,7 +11509,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.nirs.SavitzkyGolay",
-    "category": "smoothing",
+    "category": "Smoothing",
     "tags": [
       "generated",
       "nirs4all",
@@ -11527,7 +11527,7 @@
         "name": "delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "edge_order",
@@ -11544,7 +11544,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.nirs.SecondDerivative",
-    "category": "derivatives",
+    "category": "Derivatives",
     "tags": [
       "generated",
       "nirs4all",
@@ -11572,7 +11572,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectFdr",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11602,7 +11602,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectFpr",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11657,7 +11657,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._from_model.SelectFromModel",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11687,7 +11687,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectFwe",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11717,7 +11717,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectKBest",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11747,7 +11747,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._univariate_selection.SelectPercentile",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11808,7 +11808,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._sequential.SequentialFeatureSelector",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -11862,7 +11862,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.impute._base.SimpleImputer",
-    "category": "scikit-imputation",
+    "category": "Imputation",
     "tags": [
       "generated",
       "sklearn",
@@ -11887,7 +11887,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.scalers.SimpleScale",
-    "category": "nirs-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "nirs4all",
@@ -11905,7 +11905,7 @@
         "name": "skewedness",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "n_components",
@@ -11922,7 +11922,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.kernel_approximation.SkewedChi2Sampler",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -11988,7 +11988,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._dict_learning.SparseCoder",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -12032,7 +12032,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-08
+        "default": 1e-8
       },
       {
         "name": "method",
@@ -12073,7 +12073,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._sparse_pca.SparsePCA",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -12128,7 +12128,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.random_projection.SparseRandomProjection",
-    "category": "scikit-kernel-projection",
+    "category": "Kernel Projection",
     "tags": [
       "generated",
       "sklearn",
@@ -12188,7 +12188,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._polynomial.SplineTransformer",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -12237,7 +12237,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.scalers.StandardNormalVariate",
-    "category": "scatter-correction",
+    "category": "NIRS Core",
     "tags": [
       "generated",
       "nirs4all",
@@ -12272,7 +12272,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._data.StandardScaler",
-    "category": "scikit-scalers",
+    "category": "Scaling",
     "tags": [
       "generated",
       "sklearn",
@@ -12327,7 +12327,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.preprocessing._target_encoder.TargetEncoder",
-    "category": "scikit-encoding",
+    "category": "Encoding",
     "tags": [
       "generated",
       "sklearn",
@@ -12370,7 +12370,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_extraction.text.TfidfTransformer",
-    "category": "scikit-feature-extraction",
+    "category": "Feature Engineering",
     "tags": [
       "generated",
       "sklearn",
@@ -12426,12 +12426,12 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.decomposition._truncated_svd.TruncatedSVD",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -12457,13 +12457,13 @@
         "name": "perplexity",
         "type": "float",
         "isAdvanced": true,
-        "default": 30.0
+        "default": 30
       },
       {
         "name": "early_exaggeration",
         "type": "float",
         "isAdvanced": true,
-        "default": 12.0
+        "default": 12
       },
       {
         "name": "learning_rate",
@@ -12487,7 +12487,7 @@
         "name": "min_grad_norm",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-07
+        "default": 1e-7
       },
       {
         "name": "metric",
@@ -12540,7 +12540,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.manifold._t_sne.TSNE",
-    "category": "scikit-dimensionality",
+    "category": "Dimensionality Reduction",
     "tags": [
       "generated",
       "sklearn",
@@ -12560,12 +12560,12 @@
         "name": "threshold",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       }
     ],
     "source": "sklearn",
     "classPath": "sklearn.feature_selection._variance_threshold.VarianceThreshold",
-    "category": "scikit-feature-selection",
+    "category": "Feature Selection",
     "tags": [
       "generated",
       "sklearn",
@@ -12602,7 +12602,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.GroupKFold",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12644,7 +12644,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.GroupShuffleSplit",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12692,7 +12692,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.splitters.splitters.KBinsStratifiedSplitter",
-    "category": "nirs-splitters",
+    "category": "NIRS",
     "tags": [
       "generated",
       "nirs4all",
@@ -12727,7 +12727,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.KFold",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12769,7 +12769,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.splitters.splitters.KMeansSplitter",
-    "category": "nirs-splitters",
+    "category": "NIRS",
     "tags": [
       "generated",
       "nirs4all",
@@ -12810,7 +12810,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.splitters.splitters.KennardStoneSplitter",
-    "category": "nirs-splitters",
+    "category": "NIRS",
     "tags": [
       "generated",
       "nirs4all",
@@ -12826,7 +12826,7 @@
     "parameters": [],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.LeaveOneGroupOut",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12843,7 +12843,7 @@
     "parameters": [],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.LeaveOneOut",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12867,7 +12867,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.LeavePGroupsOut",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12891,7 +12891,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.LeavePOut",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12915,7 +12915,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.PredefinedSplit",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12951,7 +12951,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.RepeatedKFold",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -12987,7 +12987,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.RepeatedStratifiedKFold",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -13017,7 +13017,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.splitters.splitters.SPlitSplitter",
-    "category": "nirs-splitters",
+    "category": "NIRS",
     "tags": [
       "generated",
       "nirs4all",
@@ -13058,7 +13058,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.ShuffleSplit",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -13100,7 +13100,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.splitters.splitters.SPXYSplitter",
-    "category": "nirs-splitters",
+    "category": "NIRS",
     "tags": [
       "generated",
       "nirs4all",
@@ -13135,7 +13135,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.StratifiedGroupKFold",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -13171,7 +13171,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.StratifiedKFold",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -13213,7 +13213,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.StratifiedShuffleSplit",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -13243,7 +13243,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.splitters.splitters.SystematicCircularSplitter",
-    "category": "nirs-splitters",
+    "category": "NIRS",
     "tags": [
       "generated",
       "nirs4all",
@@ -13284,7 +13284,7 @@
     ],
     "source": "sklearn",
     "classPath": "sklearn.model_selection._split.TimeSeriesSplit",
-    "category": "sklearn-splitters",
+    "category": "Scikit-learn",
     "tags": [
       "generated",
       "sklearn",
@@ -13332,7 +13332,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.BandMasking",
-    "category": "spectral-masking",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -13394,7 +13394,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.BandPerturbation",
-    "category": "spectral-masking",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -13441,7 +13441,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.synthesis.BatchEffectAugmenter",
-    "category": "synthesis-augmentation",
+    "category": "Synthesis",
     "tags": [
       "generated",
       "nirs4all",
@@ -13476,7 +13476,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.ChannelDropout",
-    "category": "spectral-masking",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -13515,7 +13515,7 @@
         "name": "probability",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "random_state",
@@ -13532,7 +13532,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.synthesis.DeadBandAugmenter",
-    "category": "synthesis-augmentation",
+    "category": "Synthesis",
     "tags": [
       "generated",
       "nirs4all",
@@ -13556,7 +13556,7 @@
         "name": "effect_strength",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "noise_amplification",
@@ -13579,7 +13579,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.edge_artifacts.DetectorRollOffAugmenter",
-    "category": "edge-artifacts-augmentation",
+    "category": "Edge Artifacts",
     "tags": [
       "generated",
       "nirs4all",
@@ -13621,7 +13621,7 @@
         "name": "overall_strength",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "detector_model",
@@ -13638,7 +13638,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.edge_artifacts.EdgeArtifactsAugmenter",
-    "category": "edge-artifacts-augmentation",
+    "category": "Edge Artifacts",
     "tags": [
       "generated",
       "nirs4all",
@@ -13668,7 +13668,7 @@
         "name": "asymmetry",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.0
+        "default": 0
       },
       {
         "name": "edge_focus",
@@ -13685,7 +13685,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.edge_artifacts.EdgeCurvatureAugmenter",
-    "category": "edge-artifacts-augmentation",
+    "category": "Edge Artifacts",
     "tags": [
       "generated",
       "nirs4all",
@@ -13744,7 +13744,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.scattering.EMSCDistortionAugmenter",
-    "category": "scattering-augmentation",
+    "category": "Scattering",
     "tags": [
       "generated",
       "nirs4all",
@@ -13785,7 +13785,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.GaussianAdditiveNoise",
-    "category": "spectral-noise",
+    "category": "Noise",
     "tags": [
       "generated",
       "nirs4all",
@@ -13805,7 +13805,7 @@
         "isAdvanced": true,
         "default": [
           0.5,
-          2.0
+          2
         ]
       },
       {
@@ -13823,7 +13823,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.GaussianSmoothingJitter",
-    "category": "spectral-smoothing",
+    "category": "Smoothing",
     "tags": [
       "generated",
       "nirs4all",
@@ -13864,7 +13864,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.synthesis.HeteroscedasticNoiseAugmenter",
-    "category": "synthesis-augmentation",
+    "category": "Synthesis",
     "tags": [
       "generated",
       "nirs4all",
@@ -13882,7 +13882,7 @@
         "name": "fwhm",
         "type": "float",
         "isAdvanced": true,
-        "default": 3.0
+        "default": 3
       },
       {
         "name": "fwhm_range",
@@ -13905,7 +13905,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.synthesis.InstrumentalBroadeningAugmenter",
-    "category": "synthesis-augmentation",
+    "category": "Synthesis",
     "tags": [
       "generated",
       "nirs4all",
@@ -13946,7 +13946,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.LinearBaselineDrift",
-    "category": "spectral-baseline",
+    "category": "Baseline",
     "tags": [
       "generated",
       "nirs4all",
@@ -13984,7 +13984,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.LocalClipping",
-    "category": "spectral-masking",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14019,7 +14019,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.LocalMixupAugmenter",
-    "category": "spectral-mixing",
+    "category": "Mixing",
     "tags": [
       "generated",
       "nirs4all",
@@ -14043,7 +14043,7 @@
         "name": "max_shift",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "random_state",
@@ -14054,7 +14054,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.LocalWavelengthWarp",
-    "category": "spectral-wavelength",
+    "category": "Wavelength",
     "tags": [
       "generated",
       "nirs4all",
@@ -14083,7 +14083,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.MixupAugmenter",
-    "category": "spectral-mixing",
+    "category": "Mixing",
     "tags": [
       "generated",
       "nirs4all",
@@ -14125,7 +14125,7 @@
         "name": "bound_water_shift",
         "type": "float",
         "isAdvanced": true,
-        "default": 25.0
+        "default": 25
       },
       {
         "name": "moisture_content",
@@ -14154,7 +14154,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.environmental.MoistureAugmenter",
-    "category": "environmental-augmentation",
+    "category": "Environmental",
     "tags": [
       "generated",
       "nirs4all",
@@ -14195,7 +14195,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.MultiplicativeNoise",
-    "category": "spectral-noise",
+    "category": "Noise",
     "tags": [
       "generated",
       "nirs4all",
@@ -14213,13 +14213,13 @@
         "name": "mean_size_um",
         "type": "float",
         "isAdvanced": true,
-        "default": 50.0
+        "default": 50
       },
       {
         "name": "size_variation_um",
         "type": "float",
         "isAdvanced": true,
-        "default": 15.0
+        "default": 15
       },
       {
         "name": "size_range_um",
@@ -14231,7 +14231,7 @@
         "name": "reference_size_um",
         "type": "float",
         "isAdvanced": true,
-        "default": 50.0
+        "default": 50
       },
       {
         "name": "wavelength_exponent",
@@ -14266,7 +14266,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.scattering.ParticleSizeAugmenter",
-    "category": "scattering-augmentation",
+    "category": "Scattering",
     "tags": [
       "generated",
       "nirs4all",
@@ -14307,7 +14307,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.synthesis.PathLengthAugmenter",
-    "category": "synthesis-augmentation",
+    "category": "Synthesis",
     "tags": [
       "generated",
       "nirs4all",
@@ -14342,7 +14342,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.PolynomialBaselineDrift",
-    "category": "spectral-baseline",
+    "category": "Baseline",
     "tags": [
       "generated",
       "nirs4all",
@@ -14379,7 +14379,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.random.Random_X_Operation",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14414,7 +14414,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.random.Rotate_Translate",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14461,7 +14461,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.ScatterSimulationMSC",
-    "category": "spectral-scatter",
+    "category": "Scattering",
     "tags": [
       "generated",
       "nirs4all",
@@ -14499,7 +14499,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.SmoothMagnitudeWarp",
-    "category": "spectral-wavelength",
+    "category": "Wavelength",
     "tags": [
       "generated",
       "nirs4all",
@@ -14546,7 +14546,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.SpikeNoise",
-    "category": "spectral-noise",
+    "category": "Noise",
     "tags": [
       "generated",
       "nirs4all",
@@ -14581,7 +14581,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.splines.Spline_Curve_Simplification",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14604,7 +14604,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.splines.Spline_Smoothing",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14648,7 +14648,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.splines.Spline_X_Perturbations",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14683,7 +14683,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.splines.Spline_X_Simplification",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14718,7 +14718,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.splines.Spline_Y_Perturbations",
-    "category": "spectral-augmentation",
+    "category": "Spectral",
     "tags": [
       "generated",
       "nirs4all",
@@ -14742,7 +14742,7 @@
         "name": "edge_enhancement",
         "type": "float",
         "isAdvanced": true,
-        "default": 2.0
+        "default": 2
       },
       {
         "name": "edge_width",
@@ -14765,7 +14765,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.edge_artifacts.StrayLightAugmenter",
-    "category": "edge-artifacts-augmentation",
+    "category": "Edge Artifacts",
     "tags": [
       "generated",
       "nirs4all",
@@ -14783,7 +14783,7 @@
         "name": "temperature_delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 5.0
+        "default": 5
       },
       {
         "name": "temperature_range",
@@ -14795,7 +14795,7 @@
         "name": "reference_temperature",
         "type": "float",
         "isAdvanced": true,
-        "default": 25.0
+        "default": 25
       },
       {
         "name": "enable_shift",
@@ -14830,7 +14830,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.environmental.TemperatureAugmenter",
-    "category": "environmental-augmentation",
+    "category": "Environmental",
     "tags": [
       "generated",
       "nirs4all",
@@ -14889,7 +14889,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.edge_artifacts.TruncatedPeakAugmenter",
-    "category": "edge-artifacts-augmentation",
+    "category": "Edge Artifacts",
     "tags": [
       "generated",
       "nirs4all",
@@ -14916,7 +14916,7 @@
         "name": "sigma",
         "type": "float",
         "isAdvanced": true,
-        "default": 1.0
+        "default": 1
       },
       {
         "name": "kernel_width",
@@ -14933,7 +14933,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.UnsharpSpectralMask",
-    "category": "spectral-smoothing",
+    "category": "Smoothing",
     "tags": [
       "generated",
       "nirs4all",
@@ -14952,8 +14952,8 @@
         "type": "array",
         "isAdvanced": true,
         "default": [
-          -2.0,
-          2.0
+          -2,
+          2
         ]
       },
       {
@@ -14965,7 +14965,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.WavelengthShift",
-    "category": "spectral-wavelength",
+    "category": "Wavelength",
     "tags": [
       "generated",
       "nirs4all",
@@ -14997,7 +14997,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.augmentation.spectral.WavelengthStretch",
-    "category": "spectral-wavelength",
+    "category": "Wavelength",
     "tags": [
       "generated",
       "nirs4all",
@@ -15032,7 +15032,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.targets.IntegerKBinsDiscretizer",
-    "category": "target-transforms",
+    "category": "Target Transforms",
     "tags": [
       "generated",
       "nirs4all",
@@ -15055,7 +15055,7 @@
     ],
     "source": "nirs4all",
     "classPath": "nirs4all.operators.transforms.targets.RangeDiscretizer",
-    "category": "target-transforms",
+    "category": "Target Transforms",
     "tags": [
       "generated",
       "nirs4all",

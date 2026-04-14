@@ -137,7 +137,7 @@
     "type": "model",
     "classPath": "nirs4all.operators.models.sklearn.nlpls.KernelPLS",
     "description": "Nonlinear PLS using Kernel Methods (Kernel PLS / NL-PLS).",
-    "category": "pls",
+    "category": "PLS",
     "tags": [
       "pls",
       "kernel",
@@ -239,7 +239,7 @@
     "type": "model",
     "classPath": "nirs4all.operators.models.sklearn.mbpls.MBPLS",
     "description": "Multiblock PLS (MB-PLS) regressor.",
-    "category": "pls",
+    "category": "PLS",
     "tags": [
       "pls",
       "multiblock",
@@ -305,7 +305,7 @@
     "type": "model",
     "classPath": "nirs4all.operators.models.sklearn.oklmpls.OKLMPLS",
     "description": "Online Koopman Latent-Mode Partial Least Squares (OKLM-PLS).",
-    "category": "pls",
+    "category": "PLS",
     "tags": [
       "pls",
       "koopman",
