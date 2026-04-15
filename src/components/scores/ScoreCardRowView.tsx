@@ -31,7 +31,7 @@ import {
 import { foldBadgeClasses, foldLabel, foldLabelShort, safeNumber } from "@/lib/fold-utils";
 import { formatBestParams } from "@/lib/score-adapters";
 import { cardTypeBorderClass } from "./ScoreColumns";
-import { ModelActionMenu } from "./ModelActionMenu";
+import { ModelActionMenu, type ModelActionChartView } from "./ModelActionMenu";
 import type { ScoreCardRow } from "@/types/score-cards";
 
 // ============================================================================
@@ -49,6 +49,7 @@ interface ScoreCardRowViewProps {
   onToggleExpand?: () => void;
   onViewDetails?: () => void;
   onViewPrediction?: (predictionId: string) => void;
+  onOpenChart?: (row: ScoreCardRow, view: ModelActionChartView) => void;
   indent?: number;
   maxTableMetrics?: number;
 }
@@ -326,7 +327,7 @@ function CardTypeBadge({ row }: { row: ScoreCardRow }) {
 // ============================================================================
 
 function InlineRow({
-  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, indent = 0,
+  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, onOpenChart, indent = 0,
 }: ScoreCardRowViewProps) {
   const borderClass = cardTypeBorderClass(row.cardType);
   const isRefit = row.cardType === "refit";
@@ -398,10 +399,12 @@ function InlineRow({
                 modelName={row.modelName}
                 datasetName={row.datasetName}
                 runId={row.runId}
+                taskType={row.taskType}
                 hasRefit={row.hasRefitArtifact}
                 workspaceId={workspaceId}
                 deleteScope="chain"
                 onViewDetails={onViewDetails}
+                onOpenChart={onOpenChart ? (view) => onOpenChart(row, view) : undefined}
               />
             )}
           </div>
@@ -417,7 +420,7 @@ function InlineRow({
 
 function TableRowVariant({
   row, selectedMetrics, workspaceId, rank, expanded, onToggleExpand,
-  onViewDetails, onViewPrediction,
+  onViewDetails, onViewPrediction, onOpenChart,
 }: ScoreCardRowViewProps) {
   const isRefit = row.cardType === "refit";
   const metric = row.metric || "rmse";
@@ -462,11 +465,13 @@ function TableRowVariant({
             modelName={row.modelName}
             datasetName={row.datasetName}
             runId={row.runId}
+            taskType={row.taskType}
             hasRefit={row.hasRefitArtifact}
             workspaceId={workspaceId}
             deleteScope="group"
             foldId={row.foldId}
             onViewDetails={onViewDetails}
+            onOpenChart={onOpenChart ? (view) => onOpenChart(row, view) : undefined}
           />
         </div>
       </TableCell>

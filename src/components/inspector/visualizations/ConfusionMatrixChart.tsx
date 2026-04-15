@@ -72,17 +72,29 @@ function StateCard({
 }
 
 export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<HoveredCell | null>(null);
   const [dims, setDims] = useState({ width: 500, height: 400 });
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!viewportRef.current) return;
+    const updateDims = (element: HTMLDivElement) => {
+      setDims({
+        width: Math.max(1, element.clientWidth),
+        height: Math.max(1, element.clientHeight),
+      });
+    };
+    updateDims(viewportRef.current);
     const obs = new ResizeObserver(entries => {
       const entry = entries[0];
-      if (entry) setDims({ width: entry.contentRect.width, height: entry.contentRect.height });
+      if (entry) {
+        setDims({
+          width: Math.max(1, entry.contentRect.width),
+          height: Math.max(1, entry.contentRect.height),
+        });
+      }
     });
-    obs.observe(containerRef.current);
+    obs.observe(viewportRef.current);
     return () => obs.disconnect();
   }, []);
 
@@ -183,7 +195,7 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
   const cellLabelThreshold = cellW > 38 && cellH > 28;
 
   return (
-    <div ref={containerRef} className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">Classification confusion matrix</span>
         <span>{matrixData.partition}</span>
@@ -203,7 +215,7 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border/60 bg-card/40">
+      <div ref={viewportRef} className="min-h-0 flex-1 overflow-auto rounded-lg border border-border/60 bg-card/40">
         <svg width={svgW} height={svgH} className="select-none">
           <text
             x={marginLeft + plotW / 2}

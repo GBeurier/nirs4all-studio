@@ -35,11 +35,12 @@ import {
   cardTypeColorClass,
 } from "./ScoreColumns";
 import { ScoreCardTree } from "./ScoreCardTree";
-import { ModelDetailSheet } from "@/components/runs/ModelDetailSheet";
+import { ModelDetailSheet, type ModelDetailSheetTab } from "@/components/runs/ModelDetailSheet";
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 import type { TopChainResult, EnrichedDatasetRun, AllChainEntry } from "@/types/enriched-runs";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import type { ScoreCardRow } from "@/types/score-cards";
+import type { ModelActionChartView } from "./ModelActionMenu";
 
 // ============================================================================
 // Props
@@ -108,6 +109,8 @@ export function DatasetResultCard({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [detailChain, setDetailChain] = useState<TopChainResult | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailInitialTab, setDetailInitialTab] = useState<ModelDetailSheetTab>("overview");
+  const [detailInitialFoldId, setDetailInitialFoldId] = useState<string | null>(null);
   const [quickViewPred, setQuickViewPred] = useState<PartitionPrediction | null>(null);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -149,6 +152,8 @@ export function DatasetResultCard({
   const handleViewDetails = (row: ScoreCardRow) => {
     const chain = chains.find(c => c.chain_id === row.chainId);
     if (chain) {
+      setDetailInitialTab("overview");
+      setDetailInitialFoldId(row.foldId ?? null);
       setDetailChain(
         hasBestParams(chain.best_params) || !hasBestParams(row.bestParams)
           ? chain
@@ -156,6 +161,19 @@ export function DatasetResultCard({
       );
       setDetailOpen(true);
     }
+  };
+
+  const handleOpenChart = (row: ScoreCardRow, view: ModelActionChartView) => {
+    const chain = chains.find(c => c.chain_id === row.chainId);
+    if (!chain) return;
+    setDetailInitialTab(view);
+    setDetailInitialFoldId(row.foldId ?? null);
+    setDetailChain(
+      hasBestParams(chain.best_params) || !hasBestParams(row.bestParams)
+        ? chain
+        : { ...chain, best_params: row.bestParams },
+    );
+    setDetailOpen(true);
   };
 
   const handleViewPrediction = (_predictionId: string, prediction?: PartitionPrediction) => {
@@ -277,7 +295,13 @@ export function DatasetResultCard({
                       variant="ghost"
                       size="sm"
                       className="h-6 text-xs gap-1"
-                      onClick={(e) => { e.stopPropagation(); setDetailChain(topChain); setDetailOpen(true); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailInitialTab("overview");
+                        setDetailInitialFoldId(bestRow?.foldId ?? null);
+                        setDetailChain(topChain);
+                        setDetailOpen(true);
+                      }}
                     >
                       <Eye className="h-3 w-3" /> details
                     </Button>
@@ -307,6 +331,7 @@ export function DatasetResultCard({
                 variant="card"
                 onViewDetails={handleViewDetails}
                 onViewPrediction={handleViewPrediction}
+                onOpenChart={handleOpenChart}
                 showNonRefitSection
                 startCollapsed={!defaultExpanded}
               />
@@ -319,6 +344,8 @@ export function DatasetResultCard({
         chain={detailChain}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+        initialTab={detailInitialTab}
+        initialFoldId={detailInitialFoldId}
         taskType={dataset.task_type}
         datasetName={dataset.dataset_name}
       />

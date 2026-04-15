@@ -49,11 +49,14 @@ import {
 // ============================================================================
 
 type ChainLike = (TopChainResult | AllChainEntry) & { metric?: string | null };
+export type ModelDetailSheetTab = "overview" | "folds" | "scatter" | "residuals" | "confusion";
 
 interface ModelDetailSheetProps {
   chain: ChainLike | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialTab?: ModelDetailSheetTab;
+  initialFoldId?: string | null;
   taskType?: string | null;
   datasetName?: string;
 }
@@ -131,6 +134,36 @@ function exportPointsCsv(
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const filename = `${sanitizeFilename(modelName)}_${sanitizeFilename(foldId)}_${mode}.csv`;
   downloadBlob(blob, filename);
+}
+
+function exportConfusionMatrixCsv(
+  data: ConfusionMatrixResponse,
+  modelName: string | null | undefined,
+  foldId: string | undefined,
+): void {
+  if (data.cells.length === 0) return;
+  const header = ["partition", "normalize", "true_label", "predicted_label", "count", "normalized"].join(",");
+  const lines = data.cells.map((cell) => [
+    csvEscape(data.partition),
+    csvEscape(data.normalize),
+    csvEscape(cell.true_label),
+    csvEscape(cell.pred_label),
+    csvEscape(cell.count),
+    csvEscape(cell.normalized),
+  ].join(","));
+  const csv = [header, ...lines].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const filename = `${sanitizeFilename(modelName)}_${sanitizeFilename(foldId)}_confusion.csv`;
+  downloadBlob(blob, filename);
+}
+
+function resolveInitialTab(requestedTab: ModelDetailSheetTab | undefined, classification: boolean): ModelDetailSheetTab {
+  if (classification) {
+    if (requestedTab === "overview" || requestedTab === "folds") return requestedTab;
+    return "confusion";
+  }
+  if (requestedTab === "confusion") return "scatter";
+  return requestedTab ?? "overview";
 }
 
 /** Serialize a chart's SVG to PNG via canvas. */
@@ -222,11 +255,20 @@ function toChainScores(chain: ChainLike) {
 // Component
 // ============================================================================
 
-export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetName }: ModelDetailSheetProps) {
+export function ModelDetailSheet({
+  chain,
+  open,
+  onOpenChange,
+  initialTab,
+  initialFoldId,
+  taskType,
+  datasetName,
+}: ModelDetailSheetProps) {
   const [detail, setDetail] = useState<ChainDetailResponse | null>(null);
   const [partitionRows, setPartitionRows] = useState<PartitionPrediction[]>([]);
   const [partitionFilter, setPartitionFilter] = useState("all");
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<ModelDetailSheetTab>("overview");
 
   const [selectedFoldId, setSelectedFoldId] = useState<string>("");
   const [activePartitions, setActivePartitions] = useState<Set<string>>(new Set(["train", "val", "test"]));
@@ -262,7 +304,10 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
             };
             return toOrderValue(a) - toOrderValue(b);
           });
-        setSelectedFoldId(foldIds[0] || "");
+        const preferredFoldId = initialFoldId && foldIds.includes(initialFoldId)
+          ? initialFoldId
+          : foldIds[0] || "";
+        setSelectedFoldId(preferredFoldId);
       } catch (err) {
         console.error("Failed to load chain detail:", err);
       } finally {
@@ -270,7 +315,7 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
       }
     }
     load();
-  }, [open, chain, datasetName]);
+  }, [open, chain, datasetName, initialFoldId]);
 
   const filteredRows = partitionFilter === "all"
     ? partitionRows
@@ -376,6 +421,18 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
     return () => { cancelled = true; };
   }, [arraysByPredictionId, foldRows, selectedFoldId]);
 
+  const resolvedTaskType = taskType ?? chain?.task_type ?? detail?.summary?.task_type ?? partitionRows[0]?.task_type ?? null;
+  const showClassificationView = isClassificationTask(resolvedTaskType);
+  const resolvedInitialTab = useMemo(
+    () => resolveInitialTab(initialTab, showClassificationView),
+    [initialTab, showClassificationView],
+  );
+
+  useEffect(() => {
+    if (!open || !chain) return;
+    setActiveTab(resolvedInitialTab);
+  }, [open, chain, resolvedInitialTab]);
+
   if (!chain) return null;
 
   const hasFinal = chain.final_test_score != null;
@@ -383,8 +440,6 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
   const finalMetrics = extractFinalMetrics(chainScores, taskType ?? null);
   const cvMetrics = hasFinal ? extractCVMetrics(chainScores, taskType ?? null) : extractCVOnlyMetrics(chainScores, taskType ?? null);
   const bestParams = chain.best_params as Record<string, unknown> | null | undefined;
-  const resolvedTaskType = taskType ?? chain.task_type ?? detail?.summary?.task_type ?? partitionRows[0]?.task_type ?? null;
-  const showClassificationView = isClassificationTask(resolvedTaskType);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -403,7 +458,7 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
           </div>
         </SheetHeader>
 
-        <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ModelDetailSheetTab)} className="flex-1 flex flex-col overflow-hidden">
           <TabsList className={cn("grid w-full shrink-0", showClassificationView ? "grid-cols-3" : "grid-cols-4")}>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="folds">Folds</TabsTrigger>
@@ -589,6 +644,7 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
                 onTogglePartition={togglePartition}
                 arraysByPredictionId={arraysByPredictionId}
                 loadingArrays={loadingFoldArrays}
+                modelName={chain.model_name}
               />
             </TabsContent>
           ) : (
@@ -776,6 +832,7 @@ function ClassificationTabContent({
   onTogglePartition,
   arraysByPredictionId,
   loadingArrays,
+  modelName,
 }: {
   partitionRows: PartitionPrediction[];
   foldIds: string[];
@@ -785,6 +842,7 @@ function ClassificationTabContent({
   onTogglePartition: (partition: string) => void;
   arraysByPredictionId: Record<string, PredictionArraysResponse>;
   loadingArrays: boolean;
+  modelName?: string | null;
 }) {
   const [normalize, setNormalize] = useState<ConfusionMatrixNormalize>("none");
 
@@ -869,7 +927,34 @@ function ClassificationTabContent({
       </div>
 
       <div className="min-h-0 flex-1 rounded-lg border border-border/60 bg-card/30 p-3">
+        {confusionData.cells.length > 0 && (
+          <div className="mb-2 flex justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="Export confusion matrix as CSV"
+              onClick={() => exportConfusionMatrixCsv(confusionData, modelName, selectedFoldId)}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="Export chart as PNG"
+              onClick={() => {
+                const chartContainer = document.getElementById(`confusion-matrix-${sanitizeFilename(modelName)}-${sanitizeFilename(selectedFoldId)}`);
+                exportChartPng(chartContainer, `${sanitizeFilename(modelName)}_${sanitizeFilename(selectedFoldId)}_confusion.png`);
+              }}
+            >
+              <ImageDown className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+        <div id={`confusion-matrix-${sanitizeFilename(modelName)}-${sanitizeFilename(selectedFoldId)}`} className="h-full min-h-0">
         <ConfusionMatrixChart data={confusionData} isLoading={loadingArrays} />
+        </div>
       </div>
     </div>
   );

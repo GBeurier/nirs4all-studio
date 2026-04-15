@@ -34,17 +34,22 @@ import {
   formatPredictionDeletionSummary,
   invalidatePredictionRelatedQueries,
 } from "@/lib/prediction-deletion";
+import { isClassificationTaskType } from "@/lib/scores";
+
+export type ModelActionChartView = "scatter" | "residuals" | "confusion";
 
 interface ModelActionMenuProps {
   chainId: string;
   modelName: string;
   datasetName?: string;
   runId?: string;
+  taskType?: string | null;
   hasRefit: boolean;
   workspaceId?: string;
   deleteScope?: "chain" | "group";
   foldId?: string;
   onViewDetails?: () => void;
+  onOpenChart?: (view: ModelActionChartView) => void;
   onExport?: () => void;
   onDeleted?: () => void;
 }
@@ -72,12 +77,13 @@ function sanitizeFilename(value: string | null | undefined): string {
 
 export function ModelActionMenu({
   chainId, modelName, datasetName, runId,
-  hasRefit, workspaceId, deleteScope, foldId, onViewDetails, onExport, onDeleted,
+  taskType, hasRefit, workspaceId, deleteScope, foldId, onViewDetails, onOpenChart, onExport, onDeleted,
 }: ModelActionMenuProps) {
   const queryClient = useQueryClient();
   const [csvBusy, setCsvBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const isClassification = isClassificationTaskType(taskType);
 
   const predictionsUrl = `/predictions?${new URLSearchParams({
     ...(runId ? { run_id: runId } : {}),
@@ -95,6 +101,8 @@ export function ModelActionMenu({
     ? `This removes the ${foldId || "selected"} prediction group for ${modelName}, including linked arrays. Empty chains and orphaned artifacts will be cleaned automatically.`
     : `This removes all predictions for ${modelName}. Empty chains, pipelines, arrays, and orphaned artifacts will be cleaned automatically.`;
   const deleteLabel = deleteScope === "group" ? "Delete prediction" : "Delete model";
+  const canOpenChartsInline = typeof onOpenChart === "function";
+  const scatterActionLabel = isClassification ? "Confusion matrix" : "Scatter plot";
 
   const handleCsvExport = async () => {
     if (!chainId) {
@@ -124,6 +132,11 @@ export function ModelActionMenu({
     } finally {
       setCsvBusy(false);
     }
+  };
+
+  const openChart = (requestedView: "scatter" | "residuals") => {
+    if (!onOpenChart) return;
+    onOpenChart(isClassification ? "confusion" : requestedView);
   };
 
   const handleDelete = async () => {
@@ -168,16 +181,31 @@ export function ModelActionMenu({
               <Eye className="h-4 w-4 mr-2" /> View details
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem asChild>
-            <Link to={predictionsUrl}>
-              <ScatterChart className="h-4 w-4 mr-2" /> Scatter plot
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link to={predictionsUrl}>
-              <BarChart3 className="h-4 w-4 mr-2" /> Residual analysis
-            </Link>
-          </DropdownMenuItem>
+          {canOpenChartsInline ? (
+            <>
+              <DropdownMenuItem onSelect={(event) => { event.preventDefault(); openChart("scatter"); }}>
+                <ScatterChart className="h-4 w-4 mr-2" /> {scatterActionLabel}
+              </DropdownMenuItem>
+              {!isClassification && (
+                <DropdownMenuItem onSelect={(event) => { event.preventDefault(); openChart("residuals"); }}>
+                  <BarChart3 className="h-4 w-4 mr-2" /> Residual analysis
+                </DropdownMenuItem>
+              )}
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem asChild>
+                <Link to={predictionsUrl}>
+                  <ScatterChart className="h-4 w-4 mr-2" /> Scatter plot
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to={predictionsUrl}>
+                  <BarChart3 className="h-4 w-4 mr-2" /> Residual analysis
+                </Link>
+              </DropdownMenuItem>
+            </>
+          )}
 
           {hasRefit && (
             <>

@@ -28,6 +28,7 @@ import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspace
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
+import type { ModelActionChartView } from "@/components/scores/ModelActionMenu";
 import { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-adapters";
 import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -45,6 +46,7 @@ import {
 } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
+import type { PredictionQuickViewTab } from "@/components/predictions/PredictionQuickView";
 
 const FETCH_PAGE_SIZE = 1000;
 const ALL_FOLD_TYPES = ["folds", "refits", "averages"] as const;
@@ -188,6 +190,7 @@ export default function Predictions() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [quickViewPrediction, setQuickViewPrediction] = useState<PredictionRecord | null>(null);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
+  const [quickViewInitialTab, setQuickViewInitialTab] = useState<PredictionQuickViewTab>("scatter");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [metricTaskFilter, setMetricTaskFilter] = useState<MetricTaskFilter>("regression");
@@ -456,6 +459,15 @@ export default function Predictions() {
   const handleQuickView = (predictionId: string) => {
     const prediction = rawPredictions.find(record => record.id === predictionId);
     if (!prediction) return;
+    setQuickViewInitialTab("scatter");
+    setQuickViewPrediction(prediction);
+    setQuickViewOpen(true);
+  };
+
+  const handleOpenChart = (row: ScoreCardRow, view: ModelActionChartView) => {
+    const prediction = rawPredictions.find(record => record.id === row.id);
+    if (!prediction) return;
+    setQuickViewInitialTab(view);
     setQuickViewPrediction(prediction);
     setQuickViewOpen(true);
   };
@@ -805,6 +817,7 @@ export default function Predictions() {
                       rank={startIndex + index + 1}
                       variant="table-row"
                       onViewPrediction={handleQuickView}
+                      onOpenChart={handleOpenChart}
                     />
                   ))
                 )}
@@ -872,6 +885,7 @@ export default function Predictions() {
           prediction={quickViewPrediction}
           open={quickViewOpen}
           onOpenChange={setQuickViewOpen}
+          initialTab={quickViewInitialTab}
           workspaceId={activeWorkspace.id}
         />
     </motion.div>

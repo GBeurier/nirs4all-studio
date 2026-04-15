@@ -44,6 +44,8 @@ import {
   isClassificationTask,
 } from "@/components/runs/modelDetailClassification";
 
+export type PredictionQuickViewTab = "scatter" | "residuals" | "confusion" | "metrics";
+
 /** Minimal info needed to display the quick view header. */
 interface QuickViewTarget {
   id: string;
@@ -98,6 +100,34 @@ function exportRowsCsv<T extends Record<string, unknown>>(rows: T[], header: (ke
   const csv = [headerLine, ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   downloadBlob(blob, filename);
+}
+
+function exportConfusionMatrixCsv(data: ConfusionMatrixResponse, filename: string): void {
+  if (data.cells.length === 0) return;
+  exportRowsCsv(
+    data.cells.map((cell) => ({
+      partition: data.partition,
+      normalize: data.normalize,
+      true_label: cell.true_label,
+      predicted_label: cell.pred_label,
+      count: cell.count,
+      normalized: cell.normalized,
+    })),
+    ["partition", "normalize", "true_label", "predicted_label", "count", "normalized"],
+    filename,
+  );
+}
+
+function resolveQuickViewTab(
+  requestedTab: PredictionQuickViewTab | undefined,
+  classification: boolean,
+): PredictionQuickViewTab {
+  if (classification) {
+    if (requestedTab === "metrics") return "metrics";
+    return "confusion";
+  }
+  if (requestedTab === "confusion") return "scatter";
+  return requestedTab ?? "scatter";
 }
 
 /** Serialize a chart's SVG inside `container` to PNG via canvas. */
@@ -174,15 +204,24 @@ interface PredictionQuickViewProps {
   prediction?: PredictionRecord | null;
   /** PartitionPrediction from tree/aggregated view (alternative to prediction). */
   partitionPrediction?: PartitionPrediction | null;
+  initialTab?: PredictionQuickViewTab;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId?: string;
 }
 
-export function PredictionQuickView({ prediction, partitionPrediction, open, onOpenChange, workspaceId }: PredictionQuickViewProps) {
+export function PredictionQuickView({
+  prediction,
+  partitionPrediction,
+  initialTab,
+  open,
+  onOpenChange,
+  workspaceId,
+}: PredictionQuickViewProps) {
   const [scatterData, setScatterData] = useState<PredictionScatterResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PredictionQuickViewTab>("scatter");
   const scatterChartRef = useRef<HTMLDivElement>(null);
   const residualsChartRef = useRef<HTMLDivElement>(null);
   const confusionChartRef = useRef<HTMLDivElement>(null);
@@ -195,8 +234,20 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
   }, [prediction, partitionPrediction]);
 
   const targetId = target?.id;
+  const targetPartition = target?.partition || "";
+  const targetModelName = target?.model_name || "";
+  const targetDatasetName = target?.dataset_name || "";
   const useAggregatedApi = !!partitionPrediction;
   const showClassificationView = isClassificationTask(target?.task_type);
+  const resolvedInitialTab = useMemo(
+    () => resolveQuickViewTab(initialTab, showClassificationView),
+    [initialTab, showClassificationView],
+  );
+
+  useEffect(() => {
+    if (!open || !targetId) return;
+    setActiveTab(resolvedInitialTab);
+  }, [open, targetId, resolvedInitialTab]);
 
   // Fetch prediction arrays when dialog opens.
   useEffect(() => {
@@ -210,9 +261,9 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
             y_true: r.y_true || [],
             y_pred: r.y_pred || [],
             n_samples: r.n_samples,
-            partition: target?.partition || "",
-            model_name: target?.model_name || "",
-            dataset_name: target?.dataset_name || "",
+            partition: targetPartition,
+            model_name: targetModelName,
+            dataset_name: targetDatasetName,
           } satisfies PredictionScatterResponse))
         : workspaceId
           ? getN4AWorkspacePredictionScatter(workspaceId, targetId)
@@ -233,7 +284,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
       setScatterData(null);
       setError(null);
     }
-  }, [open, targetId, workspaceId, useAggregatedApi]);
+  }, [open, targetDatasetName, targetId, targetModelName, targetPartition, workspaceId, useAggregatedApi]);
 
   // Transform scatter data for charts
   const predictionChartData = useMemo(() => {
@@ -349,8 +400,8 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
         </div>
 
         <Tabs
-          key={`${target.id}-${showClassificationView ? "classification" : "regression"}`}
-          defaultValue={showClassificationView ? "confusion" : "scatter"}
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as PredictionQuickViewTab)}
           className="mt-4"
         >
           <TabsList className="w-fit">
@@ -582,6 +633,18 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
                 <CardContent className="pt-6">
                   {confusionData.cells.length > 0 && (
                     <div className="flex justify-end gap-1 -mt-2 mb-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Export confusion matrix as CSV"
+                        onClick={() => exportConfusionMatrixCsv(
+                          confusionData,
+                          `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_confusion.csv`,
+                        )}
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
