@@ -1,15 +1,13 @@
 # Backlog
 
-> cm-1 charts are not displayed correctly in
-
-> Review delete predictions
-> Verifier suppression qui laisse des traces
-
-> starting backend progress bar on bottom
+> full zip version
 > Presets + page presets
 
+> Review delete predictions
+
+> Verifier suppression qui laisse des traces
 > Fix Edit pipeline, from prediction. Operators are deserialized incorrectly.
-> Inspector en classification
+
 
 
 - ajouter Y et Y bins dans les groups potentiels

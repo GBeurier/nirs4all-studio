@@ -322,10 +322,14 @@ test.describe("Runs Redesign", () => {
     await expect(page.getByText("Ferment_X_Val")).toHaveCount(0);
     await expect(page.getByText("Ferment_X_cal")).toHaveCount(0);
 
-    await expect(page.getByText(/Best Refit RMSEP/i)).toBeVisible();
-    await expect(page.getByText(/RMSECV/i).first()).toBeVisible();
+    await expect(page.getByText(/^Best Refit$/)).toBeVisible();
+    await expect(page.getByText(/^RMSEP$/).first()).toBeVisible();
     await expect(page.getByText(/Show all trained models/i)).toHaveCount(0);
+
+    await page.getByRole("heading", { name: DATASET_NAME }).click();
     await expect(page.getByText(/CV models \(not refit\)/i)).toBeVisible();
+    await page.getByRole("button", { name: /PLSRegression/i }).first().click();
+    await expect(page.getByText(/RMSECV/i).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /PLSRegression Fold fold_0/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /PLSRegression Fold fold_1/i })).toBeVisible();
     await expect(page.getByText(/^Val$/).first()).toBeVisible();
