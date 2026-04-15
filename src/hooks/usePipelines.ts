@@ -8,6 +8,7 @@ import { api } from "@/api/client";
 import type {
   Pipeline,
   PipelinePreset,
+  PipelinePresetVariantId,
   PipelineOperators,
   PipelineListResponse,
   PipelinePresetsResponse,
@@ -125,12 +126,13 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
   // Create from preset
   const createFromPreset = useCallback(async (
     presetId: string,
+    variant?: PipelinePresetVariantId,
     name?: string
   ): Promise<Pipeline | null> => {
     try {
       const response = await api.post<{ success: boolean; pipeline: Pipeline }>(
         `/pipelines/from-preset/${presetId}`,
-        { name }
+        { name, variant }
       );
 
       if (response.success) {

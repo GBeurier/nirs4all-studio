@@ -28,18 +28,24 @@ class TestListPresets:
         ids = {entry["id"] for entry in entries}
         assert ids == LISTED_PRESET_IDS
 
-    def test_listing_entries_omit_pipeline_block(self):
+    def test_listing_entries_expose_variants_and_default_pipeline(self):
         for entry in preset_loader.list_presets():
-            assert "pipeline" not in entry
             assert "steps" not in entry
+            assert "pipeline" in entry
+            assert "default_variant" in entry
+            assert "available_variants" in entry
+            assert "variants" in entry
             assert isinstance(entry["steps_count"], int)
             assert entry["steps_count"] > 0
+            assert entry["default_variant"] in entry["available_variants"]
+            assert entry["pipeline"] == entry["variants"][entry["default_variant"]]["pipeline"]
 
     def test_listing_entries_have_required_metadata(self):
         for entry in preset_loader.list_presets():
             assert entry["task_type"] in ("regression", "classification")
             assert entry["name"]
             assert entry["description"]
+            assert set(entry["available_variants"]).issubset({"regression", "classification"})
 
 
 class TestLoadPreset:
@@ -49,6 +55,13 @@ class TestLoadPreset:
             assert preset["id"] == preset_id
             assert isinstance(preset["pipeline"], list)
             assert len(preset["pipeline"]) > 0
+            assert preset["variant"] in preset["available_variants"]
+
+    def test_load_specific_variant(self):
+        preset = preset_loader.load_preset("pls_basic", "classification")
+        assert preset["variant"] == "classification"
+        assert preset["task_type"] == "classification"
+        assert "classification" in preset["available_variants"]
 
     def test_load_unknown_preset_raises_404(self):
         with pytest.raises(HTTPException) as exc:
@@ -128,16 +141,27 @@ class TestPresetFileParsing:
                     "id": "demo_json",
                     "name": "Demo JSON",
                     "description": "JSON demo",
-                    "task_type": "classification",
-                    "pipeline": ["sklearn.preprocessing._data.StandardScaler"],
+                    "default_variant": "classification",
+                    "variants": {
+                        "regression": {
+                            "format": "json",
+                            "pipeline": ["sklearn.preprocessing._data.StandardScaler"],
+                        },
+                        "classification": {
+                            "format": "json",
+                            "pipeline": ["sklearn.preprocessing._data.MinMaxScaler"],
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
         )
         monkeypatch.setattr(preset_loader, "PRESETS_DIR", custom_dir)
 
-        preset = preset_loader.load_preset("demo_json")
+        preset = preset_loader.load_preset("demo_json", "classification")
         assert preset["task_type"] == "classification"
+        assert preset["variant"] == "classification"
+        assert preset["pipeline"][0] == "sklearn.preprocessing._data.MinMaxScaler"
 
     def test_invalid_file_is_skipped(self, tmp_path, monkeypatch):
         custom_dir = tmp_path / "presets"
@@ -170,8 +194,13 @@ class TestPresetFileParsing:
                     "id": "bad_task",
                     "name": "Bad",
                     "description": "x",
-                    "task_type": "magic",
-                    "pipeline": ["sklearn.preprocessing._data.StandardScaler"],
+                    "default_variant": "magic",
+                    "variants": {
+                        "magic": {
+                            "format": "yaml",
+                            "pipeline": ["sklearn.preprocessing._data.StandardScaler"],
+                        }
+                    },
                 }
             ),
             encoding="utf-8",

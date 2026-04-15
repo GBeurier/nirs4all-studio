@@ -24,7 +24,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { getChainPartitionDetail } from "@/api/client";
 import { buildFoldTrainCards, enrichCrossvalRow } from "@/lib/score-adapters";
 import { ScoreCardRowView } from "./ScoreCardRowView";
-import type { ModelActionChartView } from "./ModelActionMenu";
 import type { ScoreCardRow } from "@/types/score-cards";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 
@@ -39,7 +38,6 @@ interface ScoreCardTreeProps {
   variant: "card" | "table";
   onViewDetails?: (row: ScoreCardRow) => void;
   onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
-  onOpenChart?: (row: ScoreCardRow, view: ModelActionChartView) => void;
   showNonRefitSection?: boolean;
   maxTableMetrics?: number;
   startCollapsed?: boolean;
@@ -57,7 +55,6 @@ function CrossvalExpandable({
   variant,
   onViewDetails,
   onViewPrediction,
-  onOpenChart,
   maxTableMetrics,
   indent = 0,
   defaultExpanded = false,
@@ -69,7 +66,6 @@ function CrossvalExpandable({
   variant: "card" | "table";
   onViewDetails?: (row: ScoreCardRow) => void;
   onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
-  onOpenChart?: (row: ScoreCardRow, view: ModelActionChartView) => void;
   maxTableMetrics?: number;
   indent?: number;
   defaultExpanded?: boolean;
@@ -123,7 +119,6 @@ function CrossvalExpandable({
           expanded={expanded}
           onToggleExpand={() => setExpanded(!expanded)}
           onViewDetails={onViewDetails ? () => onViewDetails(displayRow) : undefined}
-          onOpenChart={onOpenChart}
           indent={indent}
         />
         {expanded && (
@@ -165,7 +160,6 @@ function CrossvalExpandable({
         expanded={expanded}
         onToggleExpand={() => setExpanded(!expanded)}
         onViewDetails={onViewDetails ? () => onViewDetails(displayRow) : undefined}
-        onOpenChart={onOpenChart}
         maxTableMetrics={maxTableMetrics}
       />
       {expanded && (
@@ -210,7 +204,6 @@ function RefitExpandable({
   variant,
   onViewDetails,
   onViewPrediction,
-  onOpenChart,
   maxTableMetrics,
   defaultExpanded = false,
 }: {
@@ -221,7 +214,6 @@ function RefitExpandable({
   variant: "card" | "table";
   onViewDetails?: (row: ScoreCardRow) => void;
   onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
-  onOpenChart?: (row: ScoreCardRow, view: ModelActionChartView) => void;
   maxTableMetrics?: number;
   defaultExpanded?: boolean;
 }) {
@@ -243,7 +235,6 @@ function RefitExpandable({
           expanded={expanded}
           onToggleExpand={() => setExpanded(!expanded)}
           onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
-          onOpenChart={onOpenChart}
         />
         {expanded && (
           <div className="ml-4 mt-0.5 space-y-0.5">
@@ -256,7 +247,6 @@ function RefitExpandable({
                 variant="card"
                 onViewDetails={onViewDetails}
                 onViewPrediction={onViewPrediction}
-                onOpenChart={onOpenChart}
                 maxTableMetrics={maxTableMetrics}
                 indent={1}
                 defaultExpanded
@@ -284,7 +274,6 @@ function RefitExpandable({
         expanded={expanded}
         onToggleExpand={() => setExpanded(!expanded)}
         onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
-        onOpenChart={onOpenChart}
         maxTableMetrics={maxTableMetrics}
       />
       {expanded && (
@@ -300,7 +289,6 @@ function RefitExpandable({
                   variant="card"
                   onViewDetails={onViewDetails}
                   onViewPrediction={onViewPrediction}
-                  onOpenChart={onOpenChart}
                   maxTableMetrics={maxTableMetrics}
                 />
               ))}
@@ -326,7 +314,6 @@ export function ScoreCardTree({
   variant,
   onViewDetails,
   onViewPrediction,
-  onOpenChart,
   showNonRefitSection = true,
   maxTableMetrics,
   startCollapsed = false,
@@ -360,7 +347,6 @@ export function ScoreCardTree({
                 variant="card"
                 onViewDetails={onViewDetails}
                 onViewPrediction={onViewPrediction}
-                onOpenChart={onOpenChart}
                 maxTableMetrics={maxTableMetrics}
                 defaultExpanded={!startCollapsed}
               />
@@ -394,7 +380,6 @@ export function ScoreCardTree({
                     variant="card"
                     onViewDetails={onViewDetails}
                     onViewPrediction={onViewPrediction}
-                    onOpenChart={onOpenChart}
                     maxTableMetrics={maxTableMetrics}
                   />
                 ))}
@@ -437,7 +422,6 @@ export function ScoreCardTree({
           variant="table"
           onViewDetails={onViewDetails}
           onViewPrediction={onViewPrediction}
-          onOpenChart={onOpenChart}
           maxTableMetrics={maxTableMetrics}
         />
       ))}
@@ -464,7 +448,6 @@ export function ScoreCardTree({
         variant="table"
         onViewDetails={onViewDetails}
         onViewPrediction={onViewPrediction}
-        onOpenChart={onOpenChart}
         maxTableMetrics={maxTableMetrics}
       />
       ))}

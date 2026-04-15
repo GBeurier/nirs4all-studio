@@ -5,6 +5,8 @@
 
 export type PipelineCategory = "user" | "preset" | "shared";
 export type PipelineRunStatus = "success" | "failed" | "running" | "pending";
+export type PipelinePresetVariantId = "regression" | "classification";
+export type PipelinePresetFormat = "json" | "yaml";
 
 /**
  * Pipeline step types matching nirs4all operator categories.
@@ -100,10 +102,18 @@ export interface PipelinePreset {
   id: string;
   name: string;
   description: string;
-  task_type: "regression" | "classification";
+  task_type?: PipelinePresetVariantId;
+  default_variant: PipelinePresetVariantId;
+  available_variants: PipelinePresetVariantId[];
+  variants: Partial<Record<PipelinePresetVariantId, PipelinePresetVariant>>;
   steps_count: number;
   /** Canonical nirs4all pipeline (passed through from the backend so the UI can compute stats). */
   pipeline?: unknown[];
+}
+
+export interface PipelinePresetVariant {
+  format: PipelinePresetFormat;
+  pipeline: unknown[];
 }
 
 export interface PipelineOperator {

@@ -21,6 +21,7 @@ from api.pipelines import (
     PipelineCanonicalRenderRequest,
     PipelineCreate,
     PipelineExportRequest,
+    PipelineFromPresetRequest,
     _semantic_pipeline_template,
     create_pipeline,
     create_pipeline_from_preset,
@@ -57,6 +58,28 @@ def _load_payload(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _canonical_wrapper_from_payload(
+    payload: dict,
+    variant: str | None = None,
+) -> dict[str, object]:
+    """Return a canonical `{name, description, pipeline}` wrapper."""
+    if "pipeline" in payload:
+        return {
+            "name": payload.get("name", ""),
+            "description": payload.get("description", ""),
+            "pipeline": payload["pipeline"],
+        }
+
+    variants = payload.get("variants") or {}
+    selected_variant = variant or payload.get("default_variant") or next(iter(variants))
+    selected_payload = variants[selected_variant]
+    return {
+        "name": payload.get("name", ""),
+        "description": payload.get("description", ""),
+        "pipeline": selected_payload["pipeline"],
+    }
+
+
 @pytest.fixture
 def pipelines_workspace(tmp_path, monkeypatch):
     pipelines_dir = tmp_path / "pipelines"
@@ -78,7 +101,8 @@ def pipelines_workspace(tmp_path, monkeypatch):
     ],
 )
 def test_canonical_roundtrip_matches_library_semantics(path: Path):
-    payload = _load_payload(path)
+    raw_payload = _load_payload(path)
+    payload = _canonical_wrapper_from_payload(raw_payload)
     editor_steps = canonical_to_editor(payload)
     roundtrip = editor_to_canonical(
         editor_steps,
@@ -286,11 +310,17 @@ def test_import_check_accepts_boosting_classifier_names_without_classpath():
 def test_create_pipeline_from_advanced_preset_preserves_generators_and_search_space(
     pipelines_workspace,
 ):
-    result = asyncio.run(create_pipeline_from_preset("pls_spxy_cartesian_finetune"))
+    result = asyncio.run(
+        create_pipeline_from_preset(
+            "pls_spxy_cartesian_finetune",
+            PipelineFromPresetRequest(variant="regression"),
+        )
+    )
     pipeline = result["pipeline"]
     steps = pipeline["steps"]
 
     assert pipeline["category"] == "preset"
+    assert pipeline["task_type"] == "regression"
     assert steps[1]["generatorKind"] == "cartesian"
     assert steps[1]["subType"] == "generator"
 
@@ -299,8 +329,28 @@ def test_create_pipeline_from_advanced_preset_preserves_generators_and_search_sp
     assert steps[-1]["finetuneSampler"] == "binary"
 
 
+def test_create_pipeline_from_preset_persists_selected_classification_variant(
+    pipelines_workspace,
+):
+    result = asyncio.run(
+        create_pipeline_from_preset(
+            "pls_basic",
+            PipelineFromPresetRequest(variant="classification"),
+        )
+    )
+    pipeline = result["pipeline"]
+
+    assert pipeline["task_type"] == "classification"
+    assert pipeline["steps"][-1]["name"] in {"PLSDA", "LogisticRegression"}
+
+
 def test_export_and_reimport_pipeline_json_uses_canonical_contract(pipelines_workspace):
-    created = asyncio.run(create_pipeline_from_preset("pls_spxy_cartesian_finetune"))
+    created = asyncio.run(
+        create_pipeline_from_preset(
+            "pls_spxy_cartesian_finetune",
+            PipelineFromPresetRequest(variant="regression"),
+        )
+    )
     pipeline_id = created["pipeline"]["id"]
 
     exported = asyncio.run(
@@ -332,7 +382,8 @@ def test_export_and_reimport_pipeline_json_uses_canonical_contract(pipelines_wor
 
 
 def test_preview_pipeline_import_supports_yaml_content():
-    yaml_content = _PRESET_ADVANCED.read_text(encoding="utf-8")
+    payload = _canonical_wrapper_from_payload(_load_payload(_PRESET_ADVANCED))
+    yaml_content = yaml.safe_dump(payload, sort_keys=False)
 
     preview = asyncio.run(
         preview_pipeline_import(
@@ -353,7 +404,12 @@ def test_preview_pipeline_import_supports_yaml_content():
 
 
 def test_render_canonical_pipeline_preview_matches_export_payload(pipelines_workspace):
-    created = asyncio.run(create_pipeline_from_preset("pls_spxy_cartesian_finetune"))
+    created = asyncio.run(
+        create_pipeline_from_preset(
+            "pls_spxy_cartesian_finetune",
+            PipelineFromPresetRequest(variant="regression"),
+        )
+    )
     pipeline = created["pipeline"]
 
     preview = asyncio.run(
@@ -373,7 +429,7 @@ def test_render_canonical_pipeline_preview_matches_export_payload(pipelines_work
 
 
 def test_runtime_canonical_count_matches_library_for_advanced_preset():
-    payload = _load_payload(_PRESET_ADVANCED)
+    payload = _canonical_wrapper_from_payload(_load_payload(_PRESET_ADVANCED))
     editor_steps = canonical_to_editor(payload)
     runtime_pipeline = editor_steps_to_runtime_canonical(editor_steps)
 
@@ -462,8 +518,7 @@ def test_editor_to_canonical_serializes_function_models_from_classpath():
     canonical = editor_to_canonical(editor_steps)
 
     model_payload = canonical[0]["model"]
-    assert model_payload["function"] == "nirs4all.operators.models.pytorch.nicon.nicon"
-    assert model_payload["framework"] == "pytorch"
+    assert model_payload["function"] == "nirs4all.operators.models.nicon"
     assert model_payload["params"] == {"dropout": 0.2}
 
 
@@ -602,7 +657,7 @@ def test_render_canonical_pipeline_rejects_unknown_model_definition():
 
 
 def test_variant_expansion_returns_fully_expanded_canonical_variants(monkeypatch):
-    payload = _load_payload(_PRESET_ADVANCED)
+    payload = _canonical_wrapper_from_payload(_load_payload(_PRESET_ADVANCED))
     editor_steps = canonical_to_editor(payload)
     monkeypatch.setattr("api.nirs4all_adapter.require_nirs4all", lambda: None)
     variants = expand_pipeline_variants(editor_steps)

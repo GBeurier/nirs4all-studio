@@ -115,6 +115,13 @@ class PipelineCanonicalRenderRequest(BaseModel):
     description: str | None = None
 
 
+class PipelineFromPresetRequest(BaseModel):
+    """Request model for creating a pipeline from a preset variant."""
+
+    name: str | None = None
+    variant: str | None = None
+
+
 router = APIRouter()
 
 
@@ -411,6 +418,7 @@ async def create_pipeline(pipeline_data: PipelineCreate):
             "name": pipeline_data.name,
             "description": pipeline_data.description or "",
             "category": pipeline_data.category,
+            "task_type": pipeline_data.task_type,
             "steps": normalized_steps,
             "is_favorite": False,
             "created_at": now,
@@ -446,6 +454,8 @@ async def update_pipeline(pipeline_id: str, update_data: PipelineUpdate):
             )
         if update_data.is_favorite is not None:
             pipeline["is_favorite"] = update_data.is_favorite
+        if update_data.task_type is not None:
+            pipeline["task_type"] = update_data.task_type
 
         pipeline["updated_at"] = datetime.now().isoformat()
 
@@ -1387,7 +1397,10 @@ async def prepare_pipeline_execution(
 
 
 @router.post("/pipelines/from-preset/{preset_id}")
-async def create_pipeline_from_preset(preset_id: str, name: str | None = None):
+async def create_pipeline_from_preset(
+    preset_id: str,
+    request: PipelineFromPresetRequest | None = None,
+):
     """
     Create a new pipeline from a preset template.
 
@@ -1396,7 +1409,8 @@ async def create_pipeline_from_preset(preset_id: str, name: str | None = None):
     preserved via ``rawNirs4all`` passthrough so preset import does not fail
     just because the editor cannot fully edit a construct yet.
     """
-    preset = load_preset(preset_id)  # raises 404 if missing
+    request = request or PipelineFromPresetRequest()
+    preset = load_preset(preset_id, request.variant)  # raises 404 if missing
     editor_steps = canonical_to_editor(
         {
             "name": preset.get("name", ""),
@@ -1406,7 +1420,7 @@ async def create_pipeline_from_preset(preset_id: str, name: str | None = None):
     )
 
     pipeline_data = PipelineCreate(
-        name=name or preset["name"],
+        name=request.name or preset["name"],
         description=preset.get("description", ""),
         steps=editor_steps,
         category="preset",

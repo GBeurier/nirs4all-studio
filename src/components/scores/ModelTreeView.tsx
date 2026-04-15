@@ -24,7 +24,7 @@ interface ModelTreeViewProps {
   selectedMetrics: string[];
   metric: string | null;
   foldArtifacts?: Record<string, string> | null;
-  onViewPrediction?: (predictionId: string, prediction: PartitionPrediction) => void;
+  onViewPrediction?: (predictionId: string, siblings: PartitionPrediction[]) => void;
   defaultExpanded?: boolean;
 }
 
@@ -73,7 +73,12 @@ export function ModelTreeView({
   const handleViewPred = (predictionId: string) => {
     if (!onViewPrediction) return;
     const pred = predictions.find(p => p.prediction_id === predictionId);
-    if (pred) onViewPrediction(predictionId, pred);
+    if (!pred) return;
+    // Collect all predictions for the same fold so the viewer shows all partitions
+    const siblings = pred.fold_id
+      ? predictions.filter(p => p.fold_id === pred.fold_id)
+      : [pred];
+    onViewPrediction(predictionId, siblings);
   };
 
   return (

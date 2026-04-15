@@ -24,6 +24,7 @@ import {
   deleteWorkspaceDatasetPredictions,
   getAllChainsForDataset,
   getAllChainsForResultsDataset,
+  getChainPartitionDetail,
 } from "@/api/client";
 import {
   formatPredictionDeletionSummary,
@@ -36,11 +37,14 @@ import {
 } from "./ScoreColumns";
 import { ScoreCardTree } from "./ScoreCardTree";
 import { ModelDetailSheet, type ModelDetailSheetTab } from "@/components/runs/ModelDetailSheet";
-import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
+import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
+import type {
+  ViewerHeader,
+  ViewerPartitionTarget,
+} from "@/components/predictions/viewer/types";
 import type { TopChainResult, EnrichedDatasetRun, AllChainEntry } from "@/types/enriched-runs";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import type { ScoreCardRow } from "@/types/score-cards";
-import type { ModelActionChartView } from "./ModelActionMenu";
 
 // ============================================================================
 // Props
@@ -163,25 +167,61 @@ export function DatasetResultCard({
     }
   };
 
-  const handleOpenChart = (row: ScoreCardRow, view: ModelActionChartView) => {
-    const chain = chains.find(c => c.chain_id === row.chainId);
-    if (!chain) return;
-    setDetailInitialTab(view);
-    setDetailInitialFoldId(row.foldId ?? null);
-    setDetailChain(
-      hasBestParams(chain.best_params) || !hasBestParams(row.bestParams)
-        ? chain
-        : { ...chain, best_params: row.bestParams },
-    );
-    setDetailOpen(true);
-  };
-
   const handleViewPrediction = (_predictionId: string, prediction?: PartitionPrediction) => {
     if (prediction) {
       setQuickViewPred(prediction);
       setQuickViewOpen(true);
     }
   };
+
+  // Piggyback on the (already-cached) chain-detail query that ScoreCardTree
+  // fetched when the row was expanded to view predictions, so the viewer can
+  // show sibling partitions with proper partition coloring. This is a
+  // cache-read in the common path; if the cache is cold it triggers a fetch
+  // only while the viewer is open.
+  const quickViewChainId = quickViewPred?.chain_id ?? null;
+  const { data: quickViewChainDetail } = useQuery({
+    queryKey: ["chain-partition-detail", quickViewChainId],
+    queryFn: () => getChainPartitionDetail(quickViewChainId!),
+    enabled: quickViewOpen && !!quickViewChainId,
+    staleTime: 60000,
+  });
+
+  const viewerPartitions = useMemo<ViewerPartitionTarget[]>(() => {
+    if (!quickViewPred) return [];
+    const siblings = quickViewChainDetail?.predictions?.filter(
+      p => p.fold_id === quickViewPred.fold_id,
+    );
+    const source = siblings && siblings.length > 0 ? siblings : [quickViewPred];
+    return source.map(p => ({
+      predictionId: p.prediction_id,
+      partition: (p.partition ?? "").toLowerCase(),
+      label: p.partition ?? "",
+      source: "aggregated" as const,
+    }));
+  }, [quickViewPred, quickViewChainDetail]);
+
+  const viewerHeader = useMemo<ViewerHeader>(() => {
+    if (!quickViewPred) {
+      return {
+        datasetName: dataset.dataset_name,
+        modelName: null,
+        taskType: dataset.task_type,
+      };
+    }
+    return {
+      datasetName: quickViewPred.dataset_name,
+      modelName: quickViewPred.model_name,
+      preprocessings: quickViewPred.preprocessings,
+      foldId: quickViewPred.fold_id,
+      taskType: quickViewPred.task_type,
+      valScore: quickViewPred.val_score,
+      testScore: quickViewPred.test_score,
+      trainScore: quickViewPred.train_score,
+      nSamples: quickViewPred.n_samples,
+      nFeatures: quickViewPred.n_features,
+    };
+  }, [quickViewPred, dataset.dataset_name, dataset.task_type]);
 
   // Best row for header summary
   const bestRow = summaryRows[0];
@@ -330,7 +370,6 @@ export function DatasetResultCard({
                 variant="card"
                 onViewDetails={handleViewDetails}
                 onViewPrediction={handleViewPrediction}
-                onOpenChart={handleOpenChart}
                 showNonRefitSection
                 startCollapsed={!defaultExpanded}
               />
@@ -349,10 +388,12 @@ export function DatasetResultCard({
         datasetName={dataset.dataset_name}
       />
 
-      <PredictionQuickView
-        partitionPrediction={quickViewPred}
+      <PredictionViewer
         open={quickViewOpen}
         onOpenChange={setQuickViewOpen}
+        header={viewerHeader}
+        partitions={viewerPartitions}
+        workspaceId={workspaceId}
       />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

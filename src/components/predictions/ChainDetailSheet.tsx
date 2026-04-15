@@ -5,7 +5,7 @@
  * individual fold/partition rows with drill-down to prediction arrays.
  */
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import {
   Sheet,
   SheetContent,
@@ -51,12 +51,27 @@ import type {
   PartitionPrediction,
   PredictionArraysResponse,
 } from "@/types/aggregated-predictions";
+import { PredictionPreview } from "@/components/predictions/viewer/PredictionPreview";
+import type {
+  ChartKind,
+  ViewerHeader,
+  ViewerPartitionTarget,
+} from "@/components/predictions/viewer/types";
 
 interface ChainDetailSheetProps {
   /** Pre-loaded chain summary row (from the list page). */
   prediction: ChainSummary | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Invoked when the user clicks a preview thumbnail — should open the
+   * full PredictionViewer at the page level (on top of this sheet).
+   */
+  onOpenViewer?: (
+    partitions: ViewerPartitionTarget[],
+    header: ViewerHeader,
+    kind: ChartKind,
+  ) => void;
 }
 
 function formatScore(value: number | null | undefined): string {
@@ -85,7 +100,7 @@ function PartitionBadge({ partition }: { partition: string }) {
   );
 }
 
-export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetailSheetProps) {
+export function ChainDetailSheet({ prediction, open, onOpenChange, onOpenViewer }: ChainDetailSheetProps) {
   const [detail, setDetail] = useState<ChainDetailResponse | null>(null);
   const [partitionRows, setPartitionRows] = useState<PartitionPrediction[]>([]);
   const [partitionFilter, setPartitionFilter] = useState<string>("all");
@@ -148,6 +163,46 @@ export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetail
   const filteredRows = partitionFilter === "all"
     ? partitionRows
     : partitionRows.filter((r) => r.partition === partitionFilter);
+
+  // Compute sibling partitions for the selected prediction (same fold_id)
+  // so the preview renders train/val/test together when present.
+  const selectedPrediction = useMemo(
+    () => partitionRows.find((r) => r.prediction_id === selectedPredictionId) ?? null,
+    [partitionRows, selectedPredictionId],
+  );
+
+  const previewSiblings = useMemo<PartitionPrediction[]>(() => {
+    if (!selectedPrediction) return [];
+    const foldId = selectedPrediction.fold_id;
+    return partitionRows.filter((r) => r.fold_id === foldId);
+  }, [partitionRows, selectedPrediction]);
+
+  const previewTargets = useMemo<ViewerPartitionTarget[]>(
+    () =>
+      previewSiblings.map((p) => ({
+        predictionId: p.prediction_id,
+        partition: (p.partition ?? "").toLowerCase(),
+        label: p.partition ?? "",
+        source: "aggregated" as const,
+      })),
+    [previewSiblings],
+  );
+
+  const previewHeader = useMemo<ViewerHeader | null>(() => {
+    if (!selectedPrediction || !prediction) return null;
+    return {
+      datasetName: selectedPrediction.dataset_name ?? prediction.dataset_name ?? "",
+      modelName: selectedPrediction.model_name ?? prediction.model_name ?? null,
+      preprocessings: selectedPrediction.preprocessings ?? prediction.preprocessings ?? null,
+      foldId: selectedPrediction.fold_id ?? null,
+      taskType: selectedPrediction.task_type ?? prediction.task_type ?? null,
+      valScore: selectedPrediction.val_score ?? null,
+      testScore: selectedPrediction.test_score ?? null,
+      trainScore: selectedPrediction.train_score ?? null,
+      nSamples: selectedPrediction.n_samples ?? null,
+      nFeatures: selectedPrediction.n_features ?? null,
+    };
+  }, [selectedPrediction, prediction]);
 
   if (!prediction) return null;
 
@@ -412,31 +467,16 @@ export function ChainDetailSheet({ prediction, open, onOpenChange }: ChainDetail
                   )}
                 </div>
 
-                {/* Simple scatter preview */}
-                {arrayData.y_true && arrayData.y_pred && (
+                {previewHeader && previewTargets.length > 0 && (
                   <>
                     <Separator />
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Predicted vs Actual (first 50)</h4>
-                      <div className="grid grid-cols-3 gap-1 text-xs font-mono max-h-[200px] overflow-y-auto">
-                        <div className="font-medium text-muted-foreground sticky top-0 bg-background">
-                          #
-                        </div>
-                        <div className="font-medium text-muted-foreground sticky top-0 bg-background">
-                          True
-                        </div>
-                        <div className="font-medium text-muted-foreground sticky top-0 bg-background">
-                          Pred
-                        </div>
-                        {arrayData.y_true.slice(0, 50).map((yt, i) => (
-                          <Fragment key={i}>
-                            <div className="text-muted-foreground">{i}</div>
-                            <div>{yt.toFixed(3)}</div>
-                            <div>{arrayData.y_pred![i]?.toFixed(3) ?? "—"}</div>
-                          </Fragment>
-                        ))}
-                      </div>
-                    </div>
+                    <PredictionPreview
+                      header={previewHeader}
+                      partitions={previewTargets}
+                      onOpenViewer={(kind) => {
+                        onOpenViewer?.(previewTargets, previewHeader, kind);
+                      }}
+                    />
                   </>
                 )}
               </div>

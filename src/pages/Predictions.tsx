@@ -25,10 +25,14 @@ import {
   getN4AWorkspacePredictionsData,
 } from "@/api/client";
 import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspaces";
-import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
+import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
+import type {
+  ChartKind,
+  ViewerHeader,
+  ViewerPartitionTarget,
+} from "@/components/predictions/viewer/types";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
-import type { ModelActionChartView } from "@/components/scores/ModelActionMenu";
 import { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-adapters";
 import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -47,7 +51,6 @@ import {
 } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
-import type { PredictionQuickViewTab } from "@/components/predictions/PredictionQuickView";
 
 const FETCH_PAGE_SIZE = 1000;
 const ALL_FOLD_TYPES = ["folds", "refits", "averages"] as const;
@@ -237,8 +240,9 @@ export default function Predictions() {
   const [sortField, setSortField] = useState<SortField>("test_score");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [quickViewPrediction, setQuickViewPrediction] = useState<PredictionRecord | null>(null);
+  const [quickViewSiblings, setQuickViewSiblings] = useState<PredictionRecord[]>([]);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
-  const [quickViewInitialTab, setQuickViewInitialTab] = useState<PredictionQuickViewTab>("scatter");
+  const [quickViewInitialKind, setQuickViewInitialKind] = useState<ChartKind>("scatter");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [metricTaskFilter, setMetricTaskFilter] = useState<MetricTaskFilter>("regression");
@@ -548,16 +552,13 @@ export default function Predictions() {
   const handleQuickView = (predictionId: string) => {
     const prediction = rawPredictions.find(record => record.id === predictionId);
     if (!prediction) return;
-    setQuickViewInitialTab("scatter");
-    setQuickViewPrediction(prediction);
-    setQuickViewOpen(true);
-  };
-
-  const handleOpenChart = (row: ScoreCardRow, view: ModelActionChartView) => {
-    const prediction = rawPredictions.find(record => record.id === row.id);
-    if (!prediction) return;
-    setQuickViewInitialTab(view);
-    setQuickViewPrediction(prediction);
+    // Collect all records that belong to the same (dataset, pipeline, fold) group
+    const key = predictionGroupKey(prediction);
+    const siblings = rawPredictions.filter(r => predictionGroupKey(r) === key);
+    const primary = siblings.find(r => r.partition === "test") ?? siblings.find(r => r.partition === "val") ?? prediction;
+    setQuickViewInitialKind("scatter");
+    setQuickViewPrediction(primary);
+    setQuickViewSiblings(siblings.length > 0 ? siblings : [prediction]);
     setQuickViewOpen(true);
   };
 
@@ -907,7 +908,6 @@ export default function Predictions() {
                       rank={startIndex + index + 1}
                       variant="table-row"
                       onViewPrediction={handleQuickView}
-                      onOpenChart={handleOpenChart}
                     />
                   ))
                 )}
@@ -971,13 +971,36 @@ export default function Predictions() {
           </DialogContent>
         </Dialog>
 
-        <PredictionQuickView
-          prediction={quickViewPrediction}
-          open={quickViewOpen}
-          onOpenChange={setQuickViewOpen}
-          initialTab={quickViewInitialTab}
-          workspaceId={activeWorkspace.id}
-        />
+        {quickViewPrediction && (() => {
+          const viewerPartitions: ViewerPartitionTarget[] = quickViewSiblings.map(r => ({
+            predictionId: r.id,
+            partition: (r.partition || "").toLowerCase(),
+            label: r.partition || "",
+            source: "workspace" as const,
+          }));
+          const viewerHeader: ViewerHeader = {
+            datasetName: quickViewPrediction.source_dataset || quickViewPrediction.dataset_name || "",
+            modelName: quickViewPrediction.model_name || null,
+            preprocessings: quickViewPrediction.preprocessings || null,
+            foldId: quickViewPrediction.fold_id || null,
+            taskType: quickViewPrediction.task_type || null,
+            valScore: quickViewPrediction.val_score ?? null,
+            testScore: quickViewPrediction.test_score ?? null,
+            trainScore: quickViewPrediction.train_score ?? null,
+            nSamples: quickViewPrediction.n_samples ?? null,
+            nFeatures: quickViewPrediction.n_features ?? null,
+          };
+          return (
+            <PredictionViewer
+              open={quickViewOpen}
+              onOpenChange={setQuickViewOpen}
+              header={viewerHeader}
+              partitions={viewerPartitions}
+              workspaceId={activeWorkspace.id}
+              initialKind={quickViewInitialKind}
+            />
+          );
+        })()}
     </motion.div>
   );
 }

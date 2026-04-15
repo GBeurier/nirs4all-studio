@@ -33,7 +33,7 @@ import {
 import { foldBadgeClasses, foldLabel, foldLabelShort, safeNumber } from "@/lib/fold-utils";
 import { formatBestParams } from "@/lib/score-adapters";
 import { cardTypeBorderClass } from "./ScoreColumns";
-import { ModelActionMenu, type ModelActionChartView } from "./ModelActionMenu";
+import { ModelActionMenu } from "./ModelActionMenu";
 import type { ScoreCardRow, ScoreCardType } from "@/types/score-cards";
 
 // ============================================================================
@@ -51,7 +51,6 @@ interface ScoreCardRowViewProps {
   onToggleExpand?: () => void;
   onViewDetails?: () => void;
   onViewPrediction?: (predictionId: string) => void;
-  onOpenChart?: (row: ScoreCardRow, view: ModelActionChartView) => void;
   indent?: number;
   maxTableMetrics?: number;
 }
@@ -351,7 +350,7 @@ function rowDetailClass(cardType: ScoreCardType): string {
 // ============================================================================
 
 function InlineRow({
-  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, onOpenChart, indent = 0,
+  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, indent = 0,
 }: ScoreCardRowViewProps) {
   const borderClass = cardTypeBorderClass(row.cardType);
   const isRefit = row.cardType === "refit";
@@ -418,32 +417,26 @@ function InlineRow({
         </div>
 
         <div className="mt-1 flex items-center justify-end gap-0.5 px-2 lg:mt-0 lg:px-0">
-          {onViewPrediction && isTrain && (
-            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onViewPrediction(row.id); }} title="View prediction">
-              <Eye className="h-3 w-3" />
-            </Button>
-          )}
           {row.hasRefitArtifact && (
             <Button variant="ghost" size="sm" className="h-5 w-5 p-0" asChild title="Predict">
               <Link to={`/predict?model_id=${encodeURIComponent(row.predictChainId || row.chainId)}&source=chain`}><Zap className="h-3 w-3 text-emerald-500" /></Link>
             </Button>
           )}
           {isRefit && !row.hasRefitArtifact && <span className="block h-5 w-5 shrink-0" aria-hidden="true" />}
-          {!isTrain && (
-            <ModelActionMenu
-              chainId={row.chainId}
-              predictChainId={row.predictChainId}
-              modelName={row.modelName}
-              datasetName={row.datasetName}
-              runId={row.runId}
-              taskType={row.taskType}
-              hasRefit={row.hasRefitArtifact}
-              workspaceId={workspaceId}
-              deleteScope="chain"
-              onViewDetails={onViewDetails}
-              onOpenChart={onOpenChart ? (view) => onOpenChart(row, view) : undefined}
-            />
-          )}
+          <ModelActionMenu
+            chainId={row.chainId}
+            predictChainId={row.predictChainId}
+            modelName={row.modelName}
+            datasetName={row.datasetName}
+            runId={row.runId}
+            taskType={row.taskType}
+            hasRefit={row.hasRefitArtifact}
+            workspaceId={workspaceId}
+            deleteScope={isTrain ? "group" : "chain"}
+            foldId={isTrain ? row.foldId : undefined}
+            onViewDetails={!isTrain ? onViewDetails : undefined}
+            onViewChart={onViewPrediction ? () => onViewPrediction(row.id) : undefined}
+          />
         </div>
       </div>
     </div>
@@ -456,7 +449,7 @@ function InlineRow({
 
 function TableRowVariant({
   row, selectedMetrics, workspaceId, rank, expanded, onToggleExpand,
-  onViewDetails, onViewPrediction, onOpenChart, maxTableMetrics,
+  onViewDetails, onViewPrediction, maxTableMetrics,
 }: ScoreCardRowViewProps) {
   const isRefit = row.cardType === "refit";
   const metric = canonicalMetricKey(row.metric || "rmse") || "rmse";
@@ -509,7 +502,6 @@ function TableRowVariant({
             deleteScope="group"
             foldId={row.foldId}
             onViewDetails={onViewDetails}
-            onOpenChart={onOpenChart ? (view) => onOpenChart(row, view) : undefined}
           />
         </div>
       </TableCell>

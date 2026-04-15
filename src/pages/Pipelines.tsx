@@ -5,7 +5,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpDown,
-  ChevronDown,
   Clock3,
   FileEdit,
   LayoutGrid,
@@ -49,7 +48,13 @@ import {
   DeletePipelineDialog,
   ExportPipelineDialog,
 } from "@/components/pipelines";
-import type { Pipeline, PipelinePreset, SortBy, ViewMode } from "@/types/pipelines";
+import type {
+  Pipeline,
+  PipelinePreset,
+  PipelinePresetVariantId,
+  SortBy,
+  ViewMode,
+} from "@/types/pipelines";
 import type { Run } from "@/types/runs";
 
 type PageView = "my-pipelines" | "favorites" | "templates" | "recent";
@@ -80,10 +85,11 @@ function matchesPipelineSearch(pipeline: Pipeline, query: string) {
 
 function matchesPresetSearch(preset: PipelinePreset, query: string) {
   if (!query) return true;
+  const variants = preset.available_variants?.join(" ") ?? preset.task_type ?? "";
   return (
     preset.name.toLowerCase().includes(query) ||
     preset.description.toLowerCase().includes(query) ||
-    preset.task_type.toLowerCase().includes(query)
+    variants.toLowerCase().includes(query)
   );
 }
 
@@ -285,8 +291,6 @@ export default function Pipelines() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
   const [exportJson, setExportJson] = useState<string | null>(null);
-  const [templatesExpanded, setTemplatesExpanded] = useState<boolean | null>(null);
-
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
 
@@ -338,10 +342,6 @@ export default function Pipelines() {
       d.state.pipelineName.toLowerCase().includes(normalizedQuery)
     );
   }, [drafts, normalizedQuery]);
-
-  // Templates strip: default collapsed when user already has pipelines, expanded otherwise.
-  const templatesDefaultOpen = savedCount === 0 && drafts.length === 0;
-  const templatesOpen = templatesExpanded ?? templatesDefaultOpen;
 
   const collectionViews = [
     {
@@ -396,8 +396,8 @@ export default function Pipelines() {
     setExportDialogOpen(true);
   }, [exportPipeline]);
 
-  const handlePresetSelect = useCallback(async (presetId: string) => {
-    const created = await createFromPreset(presetId);
+  const handlePresetSelect = useCallback(async (presetId: string, variant: PipelinePresetVariantId) => {
+    const created = await createFromPreset(presetId, variant);
     if (!created) {
       toast.error("Failed to create pipeline from template");
       return;
@@ -706,8 +706,6 @@ export default function Pipelines() {
     }
   };
 
-  const showTemplatesStrip = pageView === "my-pipelines";
-
   return (
     <div className="space-y-6 pb-8 text-foreground container mx-auto">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-border/40 pb-4 pt-6">
@@ -770,46 +768,6 @@ export default function Pipelines() {
           </Button>
         </div>
       </div>
-
-      {showTemplatesStrip && (templatePipelines.length > 0 || presetsLoading) && (
-        <section className="rounded-xl border border-border/40 bg-background/40">
-          <button
-            type="button"
-            onClick={() => setTemplatesExpanded(!templatesOpen)}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
-            aria-expanded={templatesOpen}
-          >
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-foreground">
-                Start from a template
-              </span>
-              {!presetsLoading && (
-                <Badge variant="secondary" className="text-xs">
-                  {templatePipelines.length}
-                </Badge>
-              )}
-            </div>
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform",
-                templatesOpen && "rotate-180"
-              )}
-            />
-          </button>
-          {templatesOpen && (
-            <div className="border-t border-border/40 px-4 py-3">
-              <PresetSelector
-                variant="strip"
-                presets={templatePipelines.slice(0, 8)}
-                onSelect={handlePresetSelect}
-                loading={presetsLoading}
-                onSeeAll={() => setCollectionView("templates")}
-              />
-            </div>
-          )}
-        </section>
-      )}
 
       <Tabs value={pageView} onValueChange={(v) => setCollectionView(v as PageView)} className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

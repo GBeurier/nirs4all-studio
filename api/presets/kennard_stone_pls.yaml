@@ -1,13 +1,28 @@
 id: kennard_stone_pls
 name: Kennard-Stone PLS
-description: PLS with Kennard-Stone sample selection
-task_type: regression
-pipeline:
-- nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
-- class: nirs4all.operators.splitters.splitters.KennardStoneSplitter
-  params:
-    test_size: 0.2
-- model:
-    class: sklearn.cross_decomposition._pls.PLSRegression
-    params:
-      n_components: 10
+description: PLS templates with sample selection
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+    - class: nirs4all.operators.splitters.splitters.KennardStoneSplitter
+      params:
+        test_size: 0.2
+    - model:
+        class: sklearn.cross_decomposition._pls.PLSRegression
+        params:
+          n_components: 10
+  classification:
+    format: yaml
+    pipeline:
+    - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        shuffle: true
+        random_state: 42
+    - model:
+        class: nirs4all.operators.models.sklearn.plsda.PLSDA
+        params:
+          n_components: 10

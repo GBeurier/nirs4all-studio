@@ -272,10 +272,12 @@ class TestPipelinesEndpoints:
         assert "description" in preset
         assert "task_type" in preset
         assert "steps_count" in preset
+        assert "default_variant" in preset
+        assert "available_variants" in preset
+        assert "variants" in preset
         assert isinstance(preset["steps_count"], int)
-        # The full pipeline block is intentionally NOT included in the listing
         assert "steps" not in preset
-        assert "pipeline" not in preset
+        assert "pipeline" in preset
 
     def test_list_operators(self, client):
         """Test listing available operators."""

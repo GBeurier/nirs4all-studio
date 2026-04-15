@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { PipelinePreset } from "@/types/pipelines";
+import type { PipelinePreset, PipelinePresetVariantId } from "@/types/pipelines";
 import { buildPipelinePreview, computePipelineStats } from "@/lib/pipelineStats";
 import { importFromNirs4all } from "@/utils/pipelineConverter";
 
@@ -25,7 +25,7 @@ export type PresetSelectorVariant = "full" | "strip";
 
 interface PresetSelectorProps {
   presets: PipelinePreset[];
-  onSelect: (presetId: string) => void;
+  onSelect: (presetId: string, variant: PipelinePresetVariantId) => void;
   loading?: boolean;
   variant?: PresetSelectorVariant;
   onSeeAll?: () => void;
@@ -46,6 +46,32 @@ const categoryColors: Record<string, string> = {
   default: "bg-muted text-muted-foreground",
 };
 
+const variantLabels: Record<PipelinePresetVariantId, string> = {
+  regression: "Regression",
+  classification: "Classification",
+};
+
+const variantButtonToneStyles: Record<PipelinePresetVariantId, string> = {
+  regression: cn(
+    "border-emerald-500/25 bg-emerald-500/[0.10] text-emerald-700",
+    "hover:border-emerald-500/45 hover:bg-emerald-500/[0.16] hover:text-emerald-800",
+    "dark:border-emerald-400/30 dark:bg-emerald-400/[0.12] dark:text-emerald-200",
+    "dark:hover:border-emerald-400/45 dark:hover:bg-emerald-400/[0.18] dark:hover:text-emerald-100"
+  ),
+  classification: cn(
+    "border-sky-500/25 bg-sky-500/[0.10] text-sky-700",
+    "hover:border-sky-500/45 hover:bg-sky-500/[0.16] hover:text-sky-800",
+    "dark:border-sky-400/30 dark:bg-sky-400/[0.12] dark:text-sky-200",
+    "dark:hover:border-sky-400/45 dark:hover:bg-sky-400/[0.18] dark:hover:text-sky-100"
+  ),
+};
+
+const compactVariantButtonClass =
+  "h-6 rounded-full px-2.5 text-[10px] font-semibold leading-none shadow-none whitespace-nowrap [&_svg]:size-3";
+
+const fullVariantButtonClass =
+  "h-8 rounded-full px-3 text-[11px] font-semibold leading-none shadow-none whitespace-nowrap [&_svg]:size-3.5";
+
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
@@ -61,10 +87,32 @@ const itemVariants = {
  * same stats/preview helpers used for saved pipelines work here too. Returns
  * an empty array on any parse failure — caller falls back to `steps_count`.
  */
-function deriveEditorStepsFromPreset(preset: PipelinePreset): unknown[] {
-  if (!preset.pipeline) return [];
+function getPresetVariants(preset: PipelinePreset): PipelinePresetVariantId[] {
+  if (preset.available_variants?.length > 0) {
+    return preset.available_variants;
+  }
+  if (preset.task_type) {
+    return [preset.task_type];
+  }
+  return ["regression"];
+}
+
+function getPresetPrimaryVariant(preset: PipelinePreset): PipelinePresetVariantId {
+  return preset.default_variant ?? preset.task_type ?? getPresetVariants(preset)[0];
+}
+
+function getPresetPipeline(preset: PipelinePreset, variant: PipelinePresetVariantId): unknown[] {
+  return preset.variants?.[variant]?.pipeline ?? preset.pipeline ?? [];
+}
+
+function deriveEditorStepsFromPreset(
+  preset: PipelinePreset,
+  variant: PipelinePresetVariantId
+): unknown[] {
+  const pipeline = getPresetPipeline(preset, variant);
+  if (!pipeline) return [];
   try {
-    return importFromNirs4all(preset.pipeline as Parameters<typeof importFromNirs4all>[0]);
+    return importFromNirs4all(pipeline as Parameters<typeof importFromNirs4all>[0]);
   } catch {
     return [];
   }
@@ -144,22 +192,33 @@ export function PresetSelector({
         {presets.map((preset) => {
           const Icon = presetIcons[preset.id] || presetIcons.default;
           const colorClass = categoryColors[preset.task_type] || categoryColors.default;
+          const variants = getPresetVariants(preset);
           return (
-            <button
+            <div
               key={preset.id}
-              type="button"
-              onClick={() => onSelect(preset.id)}
-              className="group flex flex-shrink-0 items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1.5 text-sm transition-colors hover:border-primary/40 hover:bg-primary/5"
+              className="flex flex-shrink-0 items-center gap-3 rounded-full border border-border/60 bg-background/60 px-3 py-1.5 text-sm"
             >
               <span className={`rounded-full p-1 ${colorClass}`}>
                 <Icon className="h-3 w-3" />
               </span>
               <span className="font-medium text-foreground">{preset.name}</span>
-              <Badge variant="outline" className="text-[10px]">
-                {preset.task_type}
-              </Badge>
-              <ArrowRight className="h-3 w-3 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-            </button>
+              <div className="flex items-center gap-1">
+                {variants.map((variantId) => (
+                  <Button
+                    key={variantId}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSelect(preset.id, variantId)}
+                    className={cn(
+                      compactVariantButtonClass,
+                      variantButtonToneStyles[variantId]
+                    )}
+                  >
+                    {variantLabels[variantId]}
+                  </Button>
+                ))}
+              </div>
+            </div>
           );
         })}
         {onSeeAll && (
@@ -181,33 +240,30 @@ export function PresetSelector({
     >
       {presets.map((preset) => {
         const Icon = presetIcons[preset.id] || presetIcons.default;
-        const editorSteps = deriveEditorStepsFromPreset(preset);
+        const variants = getPresetVariants(preset);
+        const primaryVariant = getPresetPrimaryVariant(preset);
+        const editorSteps = deriveEditorStepsFromPreset(preset, primaryVariant);
         const stats = computePipelineStats(editorSteps);
         const preview = buildPipelinePreview(editorSteps, 5);
 
         return (
           <motion.div key={preset.id} variants={itemVariants}>
             <div className="step-card group flex h-full flex-col">
-              <div className="mb-3 flex items-start justify-between gap-2">
+              <div className="mb-3 flex items-start gap-2">
                 <div className="flex items-center gap-2 rounded bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                   <Icon className="h-3 w-3" />
                   Template
                 </div>
-                <Badge variant="outline" className="text-[10px] capitalize">
-                  {preset.task_type}
-                </Badge>
               </div>
 
-              <button type="button" onClick={() => onSelect(preset.id)} className="text-left">
-                <h3 className="truncate text-base font-semibold text-foreground transition-colors group-hover:text-primary">
-                  {preset.name}
-                </h3>
-                {preset.description && (
-                  <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
-                    {preset.description}
-                  </p>
-                )}
-              </button>
+              <h3 className="truncate text-base font-semibold text-foreground">
+                {preset.name}
+              </h3>
+              {preset.description && (
+                <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+                  {preset.description}
+                </p>
+              )}
 
               <div className="mt-3 grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
                 <StatCell
@@ -253,16 +309,28 @@ export function PresetSelector({
                 </ul>
               )}
 
-              <div className="mt-auto pt-3">
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={() => onSelect(preset.id)}
-                  className="w-full"
-                >
-                  Use template
-                  <ArrowRight className="ml-2 h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Button>
+              <div
+                className={cn(
+                  "mt-auto pt-3",
+                  variants.length > 1 ? "grid grid-cols-2 gap-2" : "flex"
+                )}
+              >
+                {variants.map((variantId) => (
+                  <Button
+                    key={variantId}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSelect(preset.id, variantId)}
+                    className={cn(
+                      fullVariantButtonClass,
+                      "w-full",
+                      variants.length === 1 && "flex-1",
+                      variantButtonToneStyles[variantId]
+                    )}
+                  >
+                    {variantLabels[variantId]}
+                  </Button>
+                ))}
               </div>
             </div>
           </motion.div>

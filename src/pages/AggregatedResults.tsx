@@ -52,6 +52,7 @@ import {
   getAggregatedPredictions,
   downloadAggregatedDatasetParquet,
   runAggregatedPredictionsQuery,
+  getChainPartitionDetail,
 } from "@/api/client";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import { useMlReadiness } from "@/context/MlReadinessContext";
@@ -66,7 +67,13 @@ import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
 import { ModelTreeView } from "@/components/scores/ModelTreeView";
 import { ModelActionMenu } from "@/components/scores/ModelActionMenu";
-import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
+import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
+import { isClassificationTask } from "@/components/runs/modelDetailClassification";
+import type {
+  ChartKind,
+  ViewerHeader,
+  ViewerPartitionTarget,
+} from "@/components/predictions/viewer/types";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 const containerVariants = {
@@ -127,8 +134,10 @@ export default function AggregatedResults() {
   const [selectedPrediction, setSelectedPrediction] = useState<ChainSummary | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [expandedChainId, setExpandedChainId] = useState<string | null>(null);
-  const [quickViewPred, setQuickViewPred] = useState<PartitionPrediction | null>(null);
-  const [quickViewOpen, setQuickViewOpen] = useState(false);
+  const [viewerPartitions, setViewerPartitions] = useState<ViewerPartitionTarget[]>([]);
+  const [viewerHeader, setViewerHeader] = useState<ViewerHeader | null>(null);
+  const [viewerInitialKind, setViewerInitialKind] = useState<ChartKind | undefined>(undefined);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [sql, setSql] = useState("SELECT dataset_name, COUNT(*) AS predictions FROM predictions GROUP BY 1 ORDER BY 2 DESC");
   const [sqlLoading, setSqlLoading] = useState(false);
   const [sqlError, setSqlError] = useState<string | null>(null);
@@ -270,9 +279,63 @@ export default function AggregatedResults() {
     return { refitFiltered: refit, cvFiltered: cv };
   }, [filtered]);
 
-  const handleViewPrediction = (_predictionId: string, prediction: PartitionPrediction) => {
-    setQuickViewPred(prediction);
-    setQuickViewOpen(true);
+  const handleViewPrediction = (_predictionId: string, siblings: PartitionPrediction[]) => {
+    if (siblings.length === 0) return;
+    const primary = siblings.find(s => s.partition === "test") ?? siblings.find(s => s.partition === "val") ?? siblings[0];
+    const targets: ViewerPartitionTarget[] = siblings.map(s => ({
+      predictionId: s.prediction_id,
+      partition: (s.partition ?? "").toLowerCase(),
+      label: s.partition ?? "",
+      source: "aggregated" as const,
+    }));
+    const header: ViewerHeader = {
+      datasetName: primary.dataset_name,
+      modelName: primary.model_name ?? null,
+      preprocessings: primary.preprocessings ?? null,
+      foldId: primary.fold_id ?? null,
+      taskType: primary.task_type ?? null,
+      valScore: primary.val_score ?? null,
+      testScore: primary.test_score ?? null,
+      trainScore: primary.train_score ?? null,
+      nSamples: primary.n_samples ?? null,
+      nFeatures: primary.n_features ?? null,
+    };
+    setViewerPartitions(targets);
+    setViewerHeader(header);
+    setViewerInitialKind(
+      isClassificationTask(primary.task_type) ? "confusion" : "scatter",
+    );
+    setViewerOpen(true);
+  };
+
+  const handleViewChainChart = async (pred: ChainSummary) => {
+    try {
+      const detail = await getChainPartitionDetail(pred.chain_id);
+      const allPreds: PartitionPrediction[] = detail.predictions || [];
+      if (allPreds.length === 0) {
+        toast.error("No predictions found for this model");
+        return;
+      }
+      // Group by fold_id and pick the best group (prefer "final" refit fold)
+      const foldGroups = new Map<string, PartitionPrediction[]>();
+      for (const p of allPreds) {
+        const fk = p.fold_id || "unknown";
+        if (!foldGroups.has(fk)) foldGroups.set(fk, []);
+        foldGroups.get(fk)!.push(p);
+      }
+      let bestGroup = allPreds;
+      if (foldGroups.has("final")) {
+        bestGroup = foldGroups.get("final")!;
+      } else {
+        let maxSize = 0;
+        for (const group of foldGroups.values()) {
+          if (group.length > maxSize) { maxSize = group.length; bestGroup = group; }
+        }
+      }
+      handleViewPrediction("", bestGroup);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load predictions");
+    }
   };
 
   // Stats
@@ -623,6 +686,7 @@ export default function AggregatedResults() {
                                 hasRefit
                                 workspaceId={activeWorkspace?.id}
                                 deleteScope="chain"
+                                onViewChart={() => { void handleViewChainChart(pred); }}
                                 onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }}
                                 onDeleted={() => { void loadData(); }}
                               />
@@ -680,6 +744,7 @@ export default function AggregatedResults() {
                                 hasRefit={false}
                                 workspaceId={activeWorkspace?.id}
                                 deleteScope="chain"
+                                onViewChart={() => { void handleViewChainChart(pred); }}
                                 onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }}
                                 onDeleted={() => { void loadData(); }}
                               />
@@ -721,14 +786,25 @@ export default function AggregatedResults() {
         prediction={selectedPrediction}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        onOpenViewer={(partitions, header, kind) => {
+          setViewerPartitions(partitions);
+          setViewerHeader(header);
+          setViewerInitialKind(kind);
+          setViewerOpen(true);
+        }}
       />
 
-      {/* Prediction quick view from tree */}
-      <PredictionQuickView
-        partitionPrediction={quickViewPred}
-        open={quickViewOpen}
-        onOpenChange={setQuickViewOpen}
-      />
+      {/* Unified prediction viewer */}
+      {viewerHeader && (
+        <PredictionViewer
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+          header={viewerHeader}
+          partitions={viewerPartitions}
+          workspaceId={activeWorkspace?.id}
+          initialKind={viewerInitialKind}
+        />
+      )}
     </motion.div>
   );
 }
