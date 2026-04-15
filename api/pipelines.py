@@ -1493,6 +1493,7 @@ class PipelineRunRequest(BaseModel):
     refit: Any | None = True
     refit_params: dict[str, Any] | None = None
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
+    inline_pipeline: dict[str, Any] | None = None
 
 
 class PipelineExportRequest(BaseModel):
@@ -1531,7 +1532,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Load pipeline
-    pipeline = _load_pipeline(pipeline_id)
+    pipeline = request.inline_pipeline if request.inline_pipeline else _load_pipeline(pipeline_id)
 
     # Validate dataset exists
     from .nirs4all_adapter import resolve_dataset_path

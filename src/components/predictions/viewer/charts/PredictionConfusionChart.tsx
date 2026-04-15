@@ -5,7 +5,7 @@
  *  - Outer flex container centers the SVG in both axes.
  *  - SVG is always square: size = min(containerW, containerH) - labelReserve.
  *
- * Honors config.confusionNormalize, confusionColorScale, confusionShowTotals,
+ * Honors config.confusionNormalize, confusionGradient, confusionShowTotals,
  * confusionShowPercent. Reuses buildConfusionMatrixFromVectors for the math.
  */
 
@@ -16,7 +16,7 @@ import {
   type ConfusionMatrixNormalize,
 } from "@/components/runs/modelDetailClassification";
 import type { ConfusionMatrixCell } from "@/types/inspector";
-import { getSequentialScale, sampleSequential } from "../palettes";
+import { getConfusionFillColor, getContrastTextColor } from "../palettes";
 import type { ChartConfig, PartitionDataset } from "../types";
 
 interface PredictionConfusionChartProps {
@@ -37,10 +37,6 @@ interface HoveredCell {
 
 function formatLabel(label: string, maxLength = 12): string {
   return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label;
-}
-
-function getTextColor(intensity: number): string {
-  return intensity > 0.55 ? "#ffffff" : "#0f172a";
 }
 
 function toMatrixNormalize(n: ChartConfig["confusionNormalize"]): ConfusionMatrixNormalize {
@@ -115,8 +111,6 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
         totalSamples: matrix.total_samples,
       };
     }, [matrix]);
-
-    const scaleStops = getSequentialScale(config.palette, config.confusionColorScale);
 
     if (matrix.cells.length === 0 || matrix.labels.length === 0) {
       return (
@@ -256,8 +250,8 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                       : maxValue > 0
                       ? count / maxValue
                       : 0;
-                  const color = sampleSequential(scaleStops, intensityValue);
-                  const textCol = getTextColor(intensityValue);
+                  const color = getConfusionFillColor(intensityValue, config.confusionGradient);
+                  const textCol = getContrastTextColor(color);
                   const isHov =
                     hovered?.true_label === trueLabel && hovered?.pred_label === predLabel;
                   const isDiagonal = ri === ci;
@@ -288,7 +282,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                         opacity={isHov ? 1 : isEmpty ? 0.65 : 0.92}
                         rx={4}
                         stroke={
-                          isHov ? "#ffffff" : isDiagonal ? "#3b82f6" : "#e2e8f0"
+                          isHov ? "#0f172a" : isDiagonal ? config.confusionGradient.high : "#e2e8f0"
                         }
                         strokeWidth={isHov ? 2 : isDiagonal ? 1 : 0.7}
                         onMouseEnter={(e) =>

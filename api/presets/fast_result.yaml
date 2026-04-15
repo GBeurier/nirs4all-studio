@@ -1,0 +1,60 @@
+id: fast_result
+name: Fast Result
+description: Quick SPXY-oriented preset with simple preprocessing, AOM-PLS, and TabPFN
+  for fast first results.
+complexity: 2
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - _or_:
+      - nirs4all.operators.transforms.scalers.StandardNormalVariate
+      - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+      - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          window_length: 15
+          polyorder: 2
+          deriv: 1
+    - class: nirs4all.operators.splitters.splitters.SPXYFold
+      params:
+        n_splits: 3
+        random_state: 42
+    - model:
+        class: nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor
+        params:
+          n_components: 12
+          center: true
+          scale: false
+      name: AOM-PLS
+    - model:
+        class: tabpfn.regressor.TabPFNRegressor
+        params:
+          ignore_pretraining_limits: true
+      name: TabPFN
+  classification:
+    format: yaml
+    pipeline:
+    - _or_:
+      - nirs4all.operators.transforms.scalers.StandardNormalVariate
+      - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+      - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          window_length: 15
+          polyorder: 2
+          deriv: 1
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
+    - model:
+        class: nirs4all.operators.models.sklearn.aom_pls_classifier.AOMPLSClassifier
+        params:
+          n_components: 12
+      name: AOM-PLS
+    - model:
+        class: tabpfn.classifier.TabPFNClassifier
+        params:
+          ignore_pretraining_limits: true
+      name: TabPFN

@@ -12,7 +12,7 @@
  * - Persisted runs with model export
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "@/lib/motion";
@@ -59,6 +59,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+import { MissingNodesConfirmDialog } from "./MissingNodesConfirmDialog";
 import {
   usePipelineExecution,
   usePipelineExport,
@@ -68,11 +69,17 @@ import {
   ExportResult,
 } from "@/hooks/usePipelineExecution";
 import { getPipeline, quickRun, runPreflight } from "@/api/client";
+import type { PipelineStep as EditorPipelineStep } from "./types";
 import {
   analyzeSelectedPipelinesRuntimeGrouping,
   evaluateDatasetRuntimeGrouping,
   RUNTIME_GROUPING_COPY,
 } from "@/lib/runtimeSplitGrouping";
+import {
+  filterMissingOperatorIssues,
+  pruneUnavailableSteps,
+  type MissingOperatorIssue,
+} from "@/lib/pipelineOperatorAvailability";
 
 // ============================================================================
 // Types
@@ -84,6 +91,7 @@ export interface PipelineExecutionDialogProps {
   pipelineId: string;
   pipelineName: string;
   variantCount?: number;
+  pipelineSteps?: EditorPipelineStep[];
 }
 
 // ============================================================================
@@ -362,6 +370,7 @@ export function PipelineExecutionDialog({
   pipelineId,
   pipelineName,
   variantCount,
+  pipelineSteps,
 }: PipelineExecutionDialogProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -370,13 +379,17 @@ export function PipelineExecutionDialog({
   const [activeTab, setActiveTab] = useState<"execute" | "export">("execute");
   const [isQuickRunning, setIsQuickRunning] = useState(false);
   const [splitGroupByByDataset, setSplitGroupByByDataset] = useState<Record<string, string | null>>({});
+  const [showMissingNodesDialog, setShowMissingNodesDialog] = useState(false);
+  const [pendingMissingIssues, setPendingMissingIssues] = useState<MissingOperatorIssue[]>([]);
+  const [pendingLaunchMode, setPendingLaunchMode] = useState<"execute" | "quick" | "background" | null>(null);
+  const [pendingPrunedInlinePipeline, setPendingPrunedInlinePipeline] = useState<{ name: string; steps: unknown[] } | null>(null);
 
   // Hooks
   const { datasets, isLoading: isLoadingDatasets } = useDatasetSelection();
   const { data: pipelineData, isLoading: isLoadingPipeline } = useQuery({
     queryKey: ["pipeline", pipelineId],
     queryFn: () => getPipeline(pipelineId),
-    enabled: open,
+    enabled: open && !pipelineSteps,
   });
   const {
     status,
@@ -399,17 +412,27 @@ export function PipelineExecutionDialog({
       setActiveTab("execute");
       setIsQuickRunning(false);
       setSplitGroupByByDataset({});
+      setShowMissingNodesDialog(false);
+      setPendingMissingIssues([]);
+      setPendingLaunchMode(null);
+      setPendingPrunedInlinePipeline(null);
     }
   }, [open, reset, pipelineName]);
+
+  const effectivePipelineName = pipelineData?.name || pipelineName;
+  const effectivePipelineSteps = useMemo(
+    () => pipelineSteps ?? (pipelineData?.steps as EditorPipelineStep[] | undefined),
+    [pipelineData?.steps, pipelineSteps],
+  );
 
   const groupingSelection = useMemo(
     () =>
       analyzeSelectedPipelinesRuntimeGrouping(
-        pipelineData
-          ? [{ id: pipelineId, name: pipelineData.name || pipelineName, steps: pipelineData.steps }]
+        effectivePipelineSteps
+          ? [{ id: pipelineId, name: effectivePipelineName, steps: effectivePipelineSteps }]
           : [],
       ),
-    [pipelineData, pipelineId, pipelineName],
+    [effectivePipelineName, effectivePipelineSteps, pipelineId],
   );
 
   const selectedDatasetInfo = useMemo(
@@ -447,8 +470,90 @@ export function PipelineExecutionDialog({
     !groupingSelection.hasPersistedGroupConflict &&
     !selectedDatasetGroupingState?.hasBlockingError;
 
-  // Handle execution (inline mode)
-  const handleExecute = async () => {
+  const resolveInlinePipeline = useCallback(
+    (stepsOverride?: unknown[]) => {
+      const stepsToUse = stepsOverride ?? effectivePipelineSteps;
+      return stepsToUse ? { name: effectivePipelineName, steps: stepsToUse } : undefined;
+    },
+    [effectivePipelineName, effectivePipelineSteps],
+  );
+
+  const executeLaunchMode = useCallback(async (
+    mode: "execute" | "quick" | "background",
+    inlinePipeline?: { name: string; steps: unknown[] },
+  ) => {
+    if (!selectedDataset) {
+      return;
+    }
+
+    if (mode === "execute") {
+      await execute({
+        pipelineId,
+        datasetId: selectedDataset,
+        exportModel: true,
+        splitGroupByByDataset: {
+          [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
+        },
+        inlinePipeline,
+      });
+      return;
+    }
+
+    setIsQuickRunning(true);
+    try {
+      const run = await quickRun({
+        pipeline_id: pipelineId,
+        dataset_id: selectedDataset,
+        name: runName.trim() || `${pipelineName} Run`,
+        export_model: true,
+        cv_folds: 5,
+        split_group_by_by_dataset: {
+          [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
+        },
+        inline_pipeline: inlinePipeline,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["run-stats"] });
+
+      if (mode === "quick") {
+        toast.success("Run started! Redirecting to progress page...");
+        onOpenChange(false);
+        navigate(`/runs/${run.id}`);
+        return;
+      }
+
+      toast.success(
+        <div className="flex flex-col gap-1">
+          <span>Run started in background!</span>
+          <button
+            onClick={() => navigate(`/runs/${run.id}`)}
+            className="text-xs text-primary underline text-left"
+          >
+            View Progress →
+          </button>
+        </div>,
+        { duration: 5000 }
+      );
+      onOpenChange(false);
+    } catch {
+      toast.error("Failed to start run");
+    } finally {
+      setIsQuickRunning(false);
+    }
+  }, [
+    execute,
+    navigate,
+    onOpenChange,
+    pipelineId,
+    pipelineName,
+    queryClient,
+    runName,
+    selectedDataset,
+    selectedDatasetGroupingState?.selectedGroupBy,
+  ]);
+
+  const handleLaunch = async (mode: "execute" | "quick" | "background") => {
     if (!selectedDataset) {
       toast.error("Please select a dataset");
       return;
@@ -464,143 +569,58 @@ export function PipelineExecutionDialog({
 
     // Preflight check
     try {
-      const preflight = await runPreflight([pipelineId]);
+      const inlinePipeline = resolveInlinePipeline();
+      const preflight = await runPreflight(
+        inlinePipeline ? [] : [pipelineId],
+        inlinePipeline,
+      );
       if (!preflight.ready) {
-        const messages = preflight.issues.map((i: { message: string }) => i.message).join("\n");
-        toast.error("Cannot start execution", { description: messages });
+        const missingIssues = filterMissingOperatorIssues(preflight.issues);
+        const blockingIssues = preflight.issues.filter((issue) => issue.type !== "missing_module");
+
+        if (blockingIssues.length > 0) {
+          const messages = preflight.issues.map((issue) => issue.message).join("\n");
+          toast.error("Cannot start run", { description: messages });
+          return;
+        }
+
+        if (missingIssues.length > 0 && inlinePipeline) {
+          const pruned = pruneUnavailableSteps(inlinePipeline.steps as EditorPipelineStep[], missingIssues);
+          if (pruned.steps.length === 0) {
+            toast.error("The pipeline would be empty after removing unavailable nodes.");
+            return;
+          }
+
+          setPendingMissingIssues(missingIssues);
+          setPendingLaunchMode(mode);
+          setPendingPrunedInlinePipeline({
+            name: inlinePipeline.name,
+            steps: pruned.steps,
+          });
+          setShowMissingNodesDialog(true);
+          return;
+        }
+
+        const messages = preflight.issues.map((issue) => issue.message).join("\n");
+        toast.error("Cannot start run", { description: messages });
         return;
       }
     } catch {
       toast.warning("Preflight check unavailable — dependency verification was skipped");
     }
 
-    await execute({
-      pipelineId,
-      datasetId: selectedDataset,
-      exportModel: true,
-      splitGroupByByDataset: {
-        [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
-      },
-    });
+    await executeLaunchMode(mode, resolveInlinePipeline());
   };
 
-  // Handle Quick Run (navigates to progress page)
-  const handleQuickRun = async () => {
-    if (!selectedDataset) {
-      toast.error("Please select a dataset");
+  const handleConfirmPrunedLaunch = async () => {
+    if (!pendingLaunchMode || !pendingPrunedInlinePipeline) {
       return;
     }
-    if (groupingSelection.hasPersistedGroupConflict) {
-      toast.error(RUNTIME_GROUPING_COPY.conflictToast);
-      return;
-    }
-    if (selectedDatasetGroupingState?.hasBlockingError) {
-      toast.error(selectedDatasetGroupingState.blockingMessage || "Runtime grouping is required for this dataset.");
-      return;
-    }
-
-    setIsQuickRunning(true);
-    try {
-      // Preflight check
-      try {
-        const preflight = await runPreflight([pipelineId]);
-        if (!preflight.ready) {
-          const messages = preflight.issues.map((i) => i.message).join("\n");
-          toast.error("Cannot start run", { description: messages });
-          setIsQuickRunning(false);
-          return;
-        }
-      } catch {
-        toast.warning("Preflight check unavailable — dependency verification was skipped");
-      }
-
-      const run = await quickRun({
-        pipeline_id: pipelineId,
-        dataset_id: selectedDataset,
-        name: runName.trim() || `${pipelineName} Run`,
-        export_model: true,
-        cv_folds: 5,
-        split_group_by_by_dataset: {
-          [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
-        },
-      });
-
-      // Invalidate runs queries so the new run appears in the list
-      queryClient.invalidateQueries({ queryKey: ["runs"] });
-      queryClient.invalidateQueries({ queryKey: ["run-stats"] });
-
-      toast.success("Run started! Redirecting to progress page...");
-      onOpenChange(false);
-      navigate(`/runs/${run.id}`);
-    } catch (err) {
-      toast.error("Failed to start run");
-      setIsQuickRunning(false);
-    }
-  };
-
-  // Handle background run (starts run but stays on current page)
-  const handleBackgroundRun = async () => {
-    if (!selectedDataset) {
-      toast.error("Please select a dataset");
-      return;
-    }
-    if (groupingSelection.hasPersistedGroupConflict) {
-      toast.error(RUNTIME_GROUPING_COPY.conflictToast);
-      return;
-    }
-    if (selectedDatasetGroupingState?.hasBlockingError) {
-      toast.error(selectedDatasetGroupingState.blockingMessage || "Runtime grouping is required for this dataset.");
-      return;
-    }
-
-    setIsQuickRunning(true);
-    try {
-      // Preflight check
-      try {
-        const preflight = await runPreflight([pipelineId]);
-        if (!preflight.ready) {
-          const messages = preflight.issues.map((i) => i.message).join("\n");
-          toast.error("Cannot start run", { description: messages });
-          setIsQuickRunning(false);
-          return;
-        }
-      } catch {
-        toast.warning("Preflight check unavailable — dependency verification was skipped");
-      }
-
-      const run = await quickRun({
-        pipeline_id: pipelineId,
-        dataset_id: selectedDataset,
-        name: runName.trim() || `${pipelineName} Run`,
-        export_model: true,
-        cv_folds: 5,
-        split_group_by_by_dataset: {
-          [selectedDataset]: selectedDatasetGroupingState?.selectedGroupBy ?? null,
-        },
-      });
-
-      // Invalidate runs queries so the new run appears in the list
-      queryClient.invalidateQueries({ queryKey: ["runs"] });
-      queryClient.invalidateQueries({ queryKey: ["run-stats"] });
-
-      toast.success(
-        <div className="flex flex-col gap-1">
-          <span>Run started in background!</span>
-          <button
-            onClick={() => navigate(`/runs/${run.id}`)}
-            className="text-xs text-primary underline text-left"
-          >
-            View Progress →
-          </button>
-        </div>,
-        { duration: 5000 }
-      );
-      onOpenChange(false);
-    } catch (err) {
-      toast.error("Failed to start run");
-    } finally {
-      setIsQuickRunning(false);
-    }
+    setShowMissingNodesDialog(false);
+    await executeLaunchMode(pendingLaunchMode, pendingPrunedInlinePipeline);
+    setPendingLaunchMode(null);
+    setPendingMissingIssues([]);
+    setPendingPrunedInlinePipeline(null);
   };
 
   // Can close if not starting (allow closing during running - it's background)
@@ -868,7 +888,7 @@ export function PipelineExecutionDialog({
               </Button>
               <Button
                 variant="outline"
-                onClick={handleBackgroundRun}
+                onClick={() => void handleLaunch("background")}
                 disabled={!canRun}
                 className="gap-2"
               >
@@ -877,7 +897,7 @@ export function PipelineExecutionDialog({
               </Button>
               <Button
                 variant="outline"
-                onClick={handleQuickRun}
+                onClick={() => void handleLaunch("quick")}
                 disabled={!canRun}
                 className="gap-2"
               >
@@ -885,7 +905,7 @@ export function PipelineExecutionDialog({
                 Run & Track Progress
               </Button>
               <Button
-                onClick={handleExecute}
+                onClick={() => void handleLaunch("execute")}
                 disabled={!canRun}
                 className="gap-2"
               >
@@ -929,6 +949,19 @@ export function PipelineExecutionDialog({
           )}
         </DialogFooter>
       </DialogContent>
+      <MissingNodesConfirmDialog
+        open={showMissingNodesDialog}
+        onOpenChange={(open) => {
+          setShowMissingNodesDialog(open);
+          if (!open) {
+            setPendingLaunchMode(null);
+            setPendingMissingIssues([]);
+            setPendingPrunedInlinePipeline(null);
+          }
+        }}
+        issues={pendingMissingIssues}
+        onConfirm={() => { void handleConfirmPrunedLaunch(); }}
+      />
     </Dialog>
   );
 }

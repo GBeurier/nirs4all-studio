@@ -1,0 +1,416 @@
+id: deep_nonlinear_exploration
+name: Deep Non-Linear Exploration
+description: Large cartesian preprocessing with tuned gradient-boosted trees, tuned
+  NICON, and TabPFN.
+complexity: 9
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - _cartesian_:
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.scalers.StandardNormalVariate
+        - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+        - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+          params:
+            degree: 1
+        - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      - _or_:
+        - null
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            deriv: 2
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+            sigma: 2
+        - class: nirs4all.operators.transforms.wavelet_denoise.WaveletDenoise
+          params:
+            level: 3
+        - nirs4all.operators.transforms.wavelet_denoise.WaveletDenoise
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.nirs.ASLSBaseline
+        - class: nirs4all.operators.transforms.nirs.ASLSBaseline
+          params:
+            lam: 100000.0
+        - nirs4all.operators.transforms.signal.Detrend
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.orthogonalization.OSC
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 2
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 3
+        - class: nirs4all.operators.transforms.feature_selection.FlexiblePCA
+          params:
+            n_components: 0.25
+      count: 80
+    - class: nirs4all.operators.splitters.splitters.SPXYFold
+      params:
+        n_splits: 3
+        random_state: 42
+    - sklearn.preprocessing._data.StandardScaler
+    - model:
+        class: lightgbm.sklearn.LGBMRegressor
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Finetuned
+      finetune_params:
+        n_trials: 25
+        sampler: tpe
+        model_params:
+          n_estimators:
+          - int
+          - 100
+          - 600
+          max_depth:
+          - int
+          - 3
+          - 12
+          learning_rate:
+          - float_log
+          - 0.01
+          - 0.2
+          num_leaves:
+          - int
+          - 15
+          - 127
+          subsample:
+          - float
+          - 0.7
+          - 1.0
+    - model:
+        class: xgboost.sklearn.XGBRegressor
+        params:
+          random_state: 42
+          verbosity: 0
+      name: XGBoost-Finetuned
+      finetune_params:
+        n_trials: 25
+        sampler: tpe
+        model_params:
+          n_estimators:
+          - int
+          - 100
+          - 600
+          max_depth:
+          - int
+          - 3
+          - 10
+          learning_rate:
+          - float_log
+          - 0.01
+          - 0.2
+          subsample:
+          - float
+          - 0.7
+          - 1.0
+          colsample_bytree:
+          - float
+          - 0.6
+          - 1.0
+    - model:
+        function: nirs4all.operators.models.pytorch.nicon.customizable_nicon
+        framework: pytorch
+      name: NICON-CNN
+      finetune_params:
+        n_trials: 25
+        sampler: tpe
+        pruner: hyperband
+        approach: grouped
+        model_params:
+          spatial_dropout:
+          - float
+          - 0.01
+          - 0.5
+          filters1:
+          - categorical
+          - - 4
+            - 8
+            - 16
+            - 32
+          dropout_rate:
+          - float
+          - 0.01
+          - 0.5
+          filters2:
+          - categorical
+          - - 32
+            - 64
+            - 128
+            - 256
+          filters3:
+          - categorical
+          - - 8
+            - 16
+            - 32
+            - 64
+          dense_units:
+          - categorical
+          - - 8
+            - 16
+            - 32
+            - 64
+        train_params:
+          epochs: 60
+          patience: 25
+          learning_rate: 0.005
+          verbose: 0
+      train_params:
+        epochs: 400
+        patience: 100
+        cyclic_lr: true
+        cyclic_lr_mode: triangular2
+        base_lr: 0.0005
+        max_lr: 0.01
+        step_size: 120
+    - model:
+        class: tabpfn.regressor.TabPFNRegressor
+        params:
+          ignore_pretraining_limits: true
+      name: TabPFN
+  classification:
+    format: yaml
+    pipeline:
+    - _cartesian_:
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.scalers.StandardNormalVariate
+        - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+        - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+          params:
+            degree: 1
+        - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      - _or_:
+        - null
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            deriv: 2
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+            sigma: 2
+        - class: nirs4all.operators.transforms.wavelet_denoise.WaveletDenoise
+          params:
+            level: 3
+        - nirs4all.operators.transforms.wavelet_denoise.WaveletDenoise
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.nirs.ASLSBaseline
+        - class: nirs4all.operators.transforms.nirs.ASLSBaseline
+          params:
+            lam: 100000.0
+        - nirs4all.operators.transforms.signal.Detrend
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.orthogonalization.OSC
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 2
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 3
+        - class: nirs4all.operators.transforms.feature_selection.FlexiblePCA
+          params:
+            n_components: 0.25
+      count: 80
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
+    - sklearn.preprocessing._data.StandardScaler
+    - model:
+        class: lightgbm.sklearn.LGBMClassifier
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Finetuned
+      finetune_params:
+        n_trials: 25
+        sampler: tpe
+        model_params:
+          n_estimators:
+          - int
+          - 100
+          - 600
+          max_depth:
+          - int
+          - 3
+          - 12
+          learning_rate:
+          - float_log
+          - 0.01
+          - 0.2
+          num_leaves:
+          - int
+          - 15
+          - 127
+          subsample:
+          - float
+          - 0.7
+          - 1.0
+    - model:
+        class: xgboost.sklearn.XGBClassifier
+        params:
+          random_state: 42
+          verbosity: 0
+      name: XGBoost-Finetuned
+      finetune_params:
+        n_trials: 25
+        sampler: tpe
+        model_params:
+          n_estimators:
+          - int
+          - 100
+          - 600
+          max_depth:
+          - int
+          - 3
+          - 10
+          learning_rate:
+          - float_log
+          - 0.01
+          - 0.2
+          subsample:
+          - float
+          - 0.7
+          - 1.0
+          colsample_bytree:
+          - float
+          - 0.6
+          - 1.0
+    - model:
+        function: nirs4all.operators.models.pytorch.nicon.customizable_nicon_classification
+        framework: pytorch
+      name: NICON-CNN
+      finetune_params:
+        n_trials: 25
+        sampler: tpe
+        pruner: hyperband
+        approach: grouped
+        model_params:
+          spatial_dropout:
+          - float
+          - 0.01
+          - 0.5
+          filters1:
+          - categorical
+          - - 4
+            - 8
+            - 16
+            - 32
+          dropout_rate:
+          - float
+          - 0.01
+          - 0.5
+          filters2:
+          - categorical
+          - - 32
+            - 64
+            - 128
+            - 256
+          filters3:
+          - categorical
+          - - 8
+            - 16
+            - 32
+            - 64
+          dense_units:
+          - categorical
+          - - 8
+            - 16
+            - 32
+            - 64
+        train_params:
+          epochs: 60
+          patience: 25
+          learning_rate: 0.005
+          verbose: 0
+      train_params:
+        epochs: 400
+        patience: 100
+        cyclic_lr: true
+        cyclic_lr_mode: triangular2
+        base_lr: 0.0005
+        max_lr: 0.01
+        step_size: 120
+    - model:
+        class: tabpfn.classifier.TabPFNClassifier
+        params:
+          ignore_pretraining_limits: true
+      name: TabPFN

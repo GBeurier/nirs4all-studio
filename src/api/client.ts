@@ -975,6 +975,11 @@ export async function createRun(config: ExperimentConfig): Promise<Run> {
   return api.post("/runs", { config });
 }
 
+export interface InlinePipelinePayload {
+  name: string;
+  steps: unknown[];
+}
+
 // Quick Run (Run A) - Single pipeline execution
 export interface QuickRunRequest {
   pipeline_id: string;
@@ -984,6 +989,7 @@ export interface QuickRunRequest {
   cv_folds?: number;
   random_state?: number;
   split_group_by_by_dataset?: SplitGroupByByDataset;
+  inline_pipeline?: InlinePipelinePayload;
 }
 
 export async function quickRun(request: QuickRunRequest): Promise<Run> {
@@ -1014,7 +1020,7 @@ export async function deleteRun(runId: string): Promise<RunActionResponse> {
 export interface PreflightIssue {
   type: string;
   message: string;
-  details?: Record<string, string>;
+  details?: Record<string, string | null | undefined>;
 }
 
 export interface PreflightResult {
@@ -1024,11 +1030,13 @@ export interface PreflightResult {
 
 export async function runPreflight(
   pipelineIds: string[],
-  inlinePipeline?: { name: string; steps: unknown[] },
+  inlinePipeline?: InlinePipelinePayload,
+  inlinePipelines?: InlinePipelinePayload[],
 ): Promise<PreflightResult> {
   return api.post("/runs/preflight", {
     pipeline_ids: pipelineIds,
     inline_pipeline: inlinePipeline ?? null,
+    inline_pipelines: inlinePipelines ?? [],
   });
 }
 
@@ -1514,6 +1522,27 @@ export async function getSystemInfo(): Promise<SystemInfoResponse> {
  */
 export async function getSystemCapabilities(): Promise<SystemCapabilitiesResponse> {
   return api.get("/system/capabilities");
+}
+
+export interface OperatorAvailabilityEntry {
+  id: string;
+  name: string;
+  type: string;
+  class_path?: string | null;
+  function_path?: string | null;
+  error?: string | null;
+}
+
+export interface OperatorAvailabilityResponse {
+  registry_version?: string;
+  generated_at?: string;
+  computed_at: string;
+  checked_count: number;
+  unavailable: OperatorAvailabilityEntry[];
+}
+
+export async function getOperatorAvailability(): Promise<OperatorAvailabilityResponse> {
+  return api.get("/system/operator-availability");
 }
 
 /**

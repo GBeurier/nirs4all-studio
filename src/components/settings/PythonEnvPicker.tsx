@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { resetBackendUrl } from "@/api/client";
+import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 
 interface EnvInfo {
   status: string;
@@ -219,6 +220,7 @@ export function PythonEnvPicker() {
         resetBackendUrl();
         setNeedsRestart(false);
         await loadEnvInfo();
+        dispatchOperatorAvailabilityInvalidated();
         window.dispatchEvent(new CustomEvent("backend-restarted"));
       } else {
         setSetupError(result.error || "Setup failed");
@@ -249,6 +251,7 @@ export function PythonEnvPicker() {
         resetBackendUrl();
         setNeedsRestart(false);
         // Notify other settings components to refresh their data
+        dispatchOperatorAvailabilityInvalidated();
         window.dispatchEvent(new CustomEvent("backend-restarted"));
       }
     } catch {

@@ -285,6 +285,7 @@ class ExperimentConfig(BaseModel):
     shuffle: bool = True
     random_state: int | None = None
     inline_pipeline: InlinePipeline | None = None  # Unsaved pipeline from editor
+    inline_pipelines: list[InlinePipeline] = Field(default_factory=list)
     project_id: str | None = None  # Project grouping
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
 
@@ -298,12 +299,14 @@ class QuickRunRequest(BaseModel):
     cv_folds: int = Field(default=5, ge=2, le=50)
     random_state: int | None = Field(42, description="Random seed")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
+    inline_pipeline: InlinePipeline | None = None
 
 
 class PreflightRequest(BaseModel):
     """Request body for pre-run import/environment check."""
     pipeline_ids: list[str] = Field(default_factory=list)
     inline_pipeline: InlinePipeline | None = None
+    inline_pipelines: list[InlinePipeline] = Field(default_factory=list)
 
 
 class CreateRunRequest(BaseModel):
@@ -1613,13 +1616,13 @@ async def run_preflight(request: PreflightRequest) -> dict[str, Any]:
         pass  # Non-fatal — coherence check failure shouldn't block preflight
 
     # Collect all pipeline steps to check
-    pipeline_steps: list[tuple[str, list[dict[str, Any]]]] = []
+    pipeline_steps: list[tuple[str, str | None, list[dict[str, Any]]]] = []
 
     for pipeline_id in request.pipeline_ids:
         try:
             pipeline_config = _load_pipeline(pipeline_id)
             steps = pipeline_config.get("steps", [])
-            pipeline_steps.append((pipeline_config.get("name", pipeline_id), steps))
+            pipeline_steps.append((pipeline_config.get("name", pipeline_id), pipeline_id, steps))
         except HTTPException as exc:
             if exc.status_code == 404:
                 issues.append({
@@ -1637,17 +1640,25 @@ async def run_preflight(request: PreflightRequest) -> dict[str, Any]:
                     "message": f"Failed to load pipeline '{pipeline_id}': {exc.detail}",
                 })
 
+    inline_pipelines = list(request.inline_pipelines)
     if request.inline_pipeline:
-        pipeline_steps.append((request.inline_pipeline.name, request.inline_pipeline.steps))
+        inline_pipelines.insert(0, request.inline_pipeline)
+
+    for inline_pipeline in inline_pipelines:
+        pipeline_steps.append((inline_pipeline.name, None, inline_pipeline.steps))
 
     # Check imports for each pipeline
-    for pipeline_name, steps in pipeline_steps:
+    for pipeline_name, pipeline_ref, steps in pipeline_steps:
         import_issues = check_pipeline_imports(steps)
         for issue in import_issues:
             issues.append({
                 "type": "missing_module",
                 "message": f"Pipeline '{pipeline_name}': {issue['error']}. Install it via Settings > Advanced > Dependencies.",
-                "details": issue,
+                "details": {
+                    **issue,
+                    "pipeline_name": pipeline_name,
+                    "pipeline_id": pipeline_ref,
+                },
             })
 
     return {
@@ -1667,7 +1678,7 @@ async def create_run(request: CreateRunRequest):
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Validate that at least one pipeline is specified (either saved or inline)
-    if not config.pipeline_ids and not config.inline_pipeline:
+    if not config.pipeline_ids and not config.inline_pipeline and not config.inline_pipelines:
         raise HTTPException(
             status_code=422,
             detail="At least one pipeline (saved or inline) must be specified"
@@ -1726,13 +1737,17 @@ async def create_run(request: CreateRunRequest):
                 detail=f"Pipeline '{pipeline_id}' not found: {str(e)}"
             )
 
-    # Handle inline pipeline from editor
+    inline_pipelines = list(config.inline_pipelines)
     if config.inline_pipeline:
-        inline_id = "__inline__"
+        inline_pipelines.insert(0, config.inline_pipeline)
+
+    # Handle inline pipelines from editor/pruned launches
+    for index, inline_pipeline in enumerate(inline_pipelines):
+        inline_id = "__inline__" if index == 0 else f"__inline_{index}__"
         pipeline_ids_to_use.append(inline_id)
         pipeline_configs[inline_id] = {
-            "name": config.inline_pipeline.name,
-            "steps": config.inline_pipeline.steps,
+            "name": inline_pipeline.name,
+            "steps": inline_pipeline.steps,
         }
 
     for dataset_id in config.dataset_ids:
@@ -2033,14 +2048,20 @@ async def quick_run(request: QuickRunRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Load pipeline configuration
-    from .pipelines import _load_pipeline
-    try:
-        pipeline_config = _load_pipeline(request.pipeline_id)
-    except HTTPException:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Pipeline '{request.pipeline_id}' not found",
-        )
+    if request.inline_pipeline:
+        pipeline_config = {
+            "name": request.inline_pipeline.name,
+            "steps": request.inline_pipeline.steps,
+        }
+    else:
+        from .pipelines import _load_pipeline
+        try:
+            pipeline_config = _load_pipeline(request.pipeline_id)
+        except HTTPException:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Pipeline '{request.pipeline_id}' not found",
+            )
 
     # Load dataset info
     from .spectra import _load_dataset

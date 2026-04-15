@@ -1,0 +1,313 @@
+id: ultra_slow
+name: Ultra Slow
+description: Heavy Cartesian preset mixing tuned PLS, tuned Ridge, tuned AOM-PLS,
+  tuned LightGBM, and TabPFN.
+complexity: 10
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - _cartesian_:
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.scalers.StandardNormalVariate
+        - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+        - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+          params:
+            degree: 1
+        - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      - _or_:
+        - null
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            deriv: 2
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+            sigma: 2
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.nirs.ASLSBaseline
+        - nirs4all.operators.transforms.signal.Detrend
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.orthogonalization.OSC
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 2
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 3
+      count: 90
+    - class: nirs4all.operators.splitters.splitters.SPXYFold
+      params:
+        n_splits: 3
+        random_state: 42
+    - class: sklearn.preprocessing._data.StandardScaler
+      params:
+        with_std: false
+    - model:
+        class: sklearn.cross_decomposition._pls.PLSRegression
+        params:
+          scale: false
+      name: PLS-Finetuned
+      finetune_params:
+        n_trials: 40
+        sampler: binary
+        model_params:
+          n_components:
+          - int
+          - 1
+          - 30
+    - model: sklearn.linear_model._ridge.Ridge
+      name: Ridge-Finetuned
+      finetune_params:
+        n_trials: 60
+        sampler: tpe
+        model_params:
+          alpha:
+          - float_log
+          - 1.0e-05
+          - 10000.0
+          fit_intercept:
+          - categorical
+          - - true
+            - false
+          solver:
+          - categorical
+          - - auto
+            - svd
+            - cholesky
+            - lsqr
+    - model:
+        class: lightgbm.sklearn.LGBMRegressor
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Finetuned
+      finetune_params:
+        n_trials: 30
+        sampler: tpe
+        model_params:
+          n_estimators:
+          - int
+          - 100
+          - 600
+          max_depth:
+          - int
+          - 3
+          - 12
+          learning_rate:
+          - float_log
+          - 0.01
+          - 0.2
+          num_leaves:
+          - int
+          - 15
+          - 127
+          subsample:
+          - float
+          - 0.7
+          - 1.0
+    - model:
+        class: nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor
+        params:
+          center: true
+          scale: false
+      name: AOM-PLS-Finetuned
+      finetune_params:
+        n_trials: 80
+        sampler: tpe
+        model_params:
+          n_components:
+          - int
+          - 1
+          - 27
+          n_orth:
+          - int
+          - 0
+          - 5
+          operator_index:
+          - int
+          - 0
+          - 120
+    - model:
+        class: tabpfn.regressor.TabPFNRegressor
+        params:
+          ignore_pretraining_limits: true
+      name: TabPFN
+  classification:
+    format: yaml
+    pipeline:
+    - _cartesian_:
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.scalers.StandardNormalVariate
+        - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+        - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+          params:
+            degree: 1
+        - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      - _or_:
+        - null
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            deriv: 2
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+            sigma: 2
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.nirs.ASLSBaseline
+        - nirs4all.operators.transforms.signal.Detrend
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.orthogonalization.OSC
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 2
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 3
+      count: 90
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
+    - class: sklearn.preprocessing._data.StandardScaler
+      params:
+        with_std: false
+    - model: nirs4all.operators.models.sklearn.plsda.PLSDA
+      name: PLSDA-Finetuned
+      finetune_params:
+        n_trials: 35
+        sampler: binary
+        model_params:
+          n_components:
+          - int
+          - 1
+          - 30
+    - model: sklearn.linear_model._ridge.RidgeClassifier
+      name: RidgeClassifier-Finetuned
+      finetune_params:
+        n_trials: 40
+        sampler: tpe
+        model_params:
+          alpha:
+          - float_log
+          - 1.0e-05
+          - 10000.0
+          fit_intercept:
+          - categorical
+          - - true
+            - false
+    - model:
+        class: lightgbm.sklearn.LGBMClassifier
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Finetuned
+      finetune_params:
+        n_trials: 30
+        sampler: tpe
+        model_params:
+          n_estimators:
+          - int
+          - 100
+          - 600
+          max_depth:
+          - int
+          - 3
+          - 12
+          learning_rate:
+          - float_log
+          - 0.01
+          - 0.2
+          num_leaves:
+          - int
+          - 15
+          - 127
+          subsample:
+          - float
+          - 0.7
+          - 1.0
+    - model: nirs4all.operators.models.sklearn.aom_pls_classifier.AOMPLSClassifier
+      name: AOM-PLS-Finetuned
+      finetune_params:
+        n_trials: 30
+        sampler: tpe
+        model_params:
+          n_components:
+          - int
+          - 1
+          - 25
+    - model:
+        class: tabpfn.classifier.TabPFNClassifier
+        params:
+          ignore_pretraining_limits: true
+      name: TabPFN

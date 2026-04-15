@@ -9,6 +9,7 @@
 
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -20,14 +21,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { listPalettes } from "./palettes";
+import {
+  getConfusionGradientColors,
+  getConfusionGradientCss,
+  getConfusionGradientLabel,
+  getPaletteLabel,
+  getPartitionPaletteColors,
+  isConfusionGradientPresetId,
+  isPartitionPalettePreset,
+  listConfusionGradients,
+  listPalettes,
+  normalizeColorToHex,
+} from "./palettes";
 import type {
   ChartConfig,
   ChartKind,
-  ConfusionColorScale,
   ConfusionNormalize,
   ExportTheme,
-  PaletteId,
+  ViewerGradientColors,
+  ViewerPartitionColors,
 } from "./types";
 
 interface ChartConfigPopoverProps {
@@ -49,6 +61,58 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="flex items-center justify-between gap-3">{children}</div>;
 }
 
+function MiniDiscretePalette({ colors }: { colors: readonly string[] }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {colors.map((color, index) => (
+        <span
+          key={`${color}-${index}`}
+          aria-hidden
+          className="h-3 w-3 rounded-sm border border-border/50"
+          style={{ backgroundColor: color }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MiniGradientBar({ gradient }: { gradient: ViewerGradientColors }) {
+  return (
+    <span
+      aria-hidden
+      className="h-3 w-16 rounded-sm border border-border/50"
+      style={{ backgroundImage: getConfusionGradientCss(gradient) }}
+    />
+  );
+}
+
+function ColorInputRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[84px_minmax(0,1fr)] items-center gap-2">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-8 w-10 cursor-pointer overflow-hidden rounded-md border border-input bg-transparent p-1"
+        />
+        <div className="min-w-0 flex-1 rounded-md border border-border/70 bg-muted/30 px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-foreground/80">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChartConfigPopover({
   kind,
   config,
@@ -59,6 +123,60 @@ export function ChartConfigPopover({
     onChange((prev) => ({ ...prev, [key]: value }));
   };
 
+  const currentPaletteColors = [
+    config.partitionColors.train,
+    config.partitionColors.val,
+    config.partitionColors.test,
+  ] as const;
+
+  const applyPartitionPalette = (value: string) => {
+    if (!isPartitionPalettePreset(value)) {
+      update("palette", "custom");
+      return;
+    }
+
+    onChange((prev) => ({
+      ...prev,
+      palette: value,
+      partitionColors: getPartitionPaletteColors(value),
+    }));
+  };
+
+  const updatePartitionColor = (key: keyof ViewerPartitionColors, value: string) => {
+    onChange((prev) => ({
+      ...prev,
+      palette: "custom",
+      partitionColors: {
+        ...prev.partitionColors,
+        [key]: normalizeColorToHex(value, prev.partitionColors[key]),
+      },
+    }));
+  };
+
+  const applyConfusionGradientPreset = (value: string) => {
+    if (!isConfusionGradientPresetId(value)) {
+      update("confusionGradientPreset", "custom");
+      return;
+    }
+
+    onChange((prev) => ({
+      ...prev,
+      confusionGradientPreset: value,
+      confusionGradient: getConfusionGradientColors(value),
+    }));
+  };
+
+  const updateConfusionGradient = (key: keyof ViewerGradientColors, value: string) => {
+    onChange((prev) => ({
+      ...prev,
+      confusionGradientPreset: "custom",
+      confusionGradient: {
+        ...prev.confusionGradient,
+        [key]: normalizeColorToHex(value, prev.confusionGradient[key]),
+      },
+    }));
+  };
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -67,7 +185,7 @@ export function ChartConfigPopover({
           <span className="text-xs">Configure</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-4 space-y-4">
+      <PopoverContent align="end" className="w-[23rem] space-y-4 p-4">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold">Chart settings</div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onReset}>
@@ -77,24 +195,61 @@ export function ChartConfigPopover({
 
         <div className="space-y-3">
           <SectionHeader>Global</SectionHeader>
-          <Row>
-            <Label className="text-xs">Palette</Label>
+          {kind !== "confusion" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Partition palette</Label>
             <Select
               value={config.palette}
-              onValueChange={(value) => update("palette", value as PaletteId)}
+              onValueChange={applyPartitionPalette}
             >
-              <SelectTrigger className="h-8 w-40 text-xs">
-                <SelectValue />
+              <SelectTrigger className="h-9 w-full text-xs">
+                <div className="flex min-w-0 items-center gap-2">
+                  <MiniDiscretePalette colors={currentPaletteColors} />
+                  <span className="truncate">{getPaletteLabel(config.palette)}</span>
+                </div>
               </SelectTrigger>
               <SelectContent>
                 {listPalettes().map((p) => (
                   <SelectItem key={p.id} value={p.id} className="text-xs">
-                    {p.label}
+                    <div className="flex items-center gap-2">
+                      <MiniDiscretePalette colors={p.colors} />
+                      <span>{p.label}</span>
+                    </div>
                   </SelectItem>
                 ))}
+                <SelectItem value="custom" className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <MiniDiscretePalette colors={currentPaletteColors} />
+                    <span>Custom</span>
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
-          </Row>
+            <p className="text-[10px] leading-4 text-muted-foreground">
+              Uses the same discrete palette family as Playground classification targets. Choosing a preset updates the three editable colors below.
+            </p>
+          </div>
+          )}
+          {kind !== "confusion" && (
+          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+            <ColorInputRow
+              label="Train"
+              value={config.partitionColors.train}
+              onChange={(value) => updatePartitionColor("train", value)}
+            />
+            <ColorInputRow
+              label="Validation"
+              value={config.partitionColors.val}
+              onChange={(value) => updatePartitionColor("val", value)}
+            />
+            <ColorInputRow
+              label="Test"
+              value={config.partitionColors.test}
+              onChange={(value) => updatePartitionColor("test", value)}
+            />
+          </div>
+          )}
+          {kind !== "confusion" && (
           <Row>
             <Label className="text-xs">Partition coloring</Label>
             <Switch
@@ -102,6 +257,7 @@ export function ChartConfigPopover({
               onCheckedChange={(v) => update("partitionColoring", v)}
             />
           </Row>
+          )}
           <Row>
             <Label className="text-xs">PNG export theme</Label>
             <Select
@@ -227,22 +383,51 @@ export function ChartConfigPopover({
                 </SelectContent>
               </Select>
             </Row>
-            <Row>
-              <Label className="text-xs">Color scale</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Gradient preset</Label>
               <Select
-                value={config.confusionColorScale}
-                onValueChange={(value) => update("confusionColorScale", value as ConfusionColorScale)}
+                value={config.confusionGradientPreset}
+                onValueChange={applyConfusionGradientPreset}
               >
-                <SelectTrigger className="h-8 w-40 text-xs">
-                  <SelectValue />
+                <SelectTrigger className="h-9 w-full text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <MiniGradientBar gradient={config.confusionGradient} />
+                    <span className="truncate">{getConfusionGradientLabel(config.confusionGradientPreset)}</span>
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="blue" className="text-xs">Sequential blue</SelectItem>
-                  <SelectItem value="teal" className="text-xs">Sequential teal</SelectItem>
-                  <SelectItem value="diverging" className="text-xs">Diverging</SelectItem>
+                  {listConfusionGradients().map((gradient) => (
+                    <SelectItem key={gradient.id} value={gradient.id} className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <MiniGradientBar gradient={gradient.colors} />
+                        <span>{gradient.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom" className="text-xs">
+                    <div className="flex items-center gap-2">
+                      <MiniGradientBar gradient={config.confusionGradient} />
+                      <span>Custom</span>
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
-            </Row>
+              <p className="text-[10px] leading-4 text-muted-foreground">
+                Presets seed the gradient, then you can fine-tune the low and high stops for the matrix.
+              </p>
+            </div>
+            <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+              <ColorInputRow
+                label="Low cells"
+                value={config.confusionGradient.low}
+                onChange={(value) => updateConfusionGradient("low", value)}
+              />
+              <ColorInputRow
+                label="High cells"
+                value={config.confusionGradient.high}
+                onChange={(value) => updateConfusionGradient("high", value)}
+              />
+            </div>
             <Row>
               <Label className="text-xs">Show row/col totals</Label>
               <Switch

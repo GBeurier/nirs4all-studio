@@ -25,6 +25,7 @@ interface ModelTreeViewProps {
   metric: string | null;
   foldArtifacts?: Record<string, string> | null;
   onViewPrediction?: (predictionId: string, siblings: PartitionPrediction[]) => void;
+  onViewDetails?: () => void;
   defaultExpanded?: boolean;
 }
 
@@ -38,6 +39,7 @@ export function ModelTreeView({
   metric,
   foldArtifacts,
   onViewPrediction,
+  onViewDetails,
   defaultExpanded = true,
 }: ModelTreeViewProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -100,6 +102,7 @@ export function ModelTreeView({
               selectedMetrics={selectedMetrics}
               variant="inline"
               onViewPrediction={handleViewPred}
+              onViewDetails={onViewDetails}
             />
           </div>
         </div>
@@ -117,6 +120,7 @@ export function ModelTreeView({
                   variant="inline"
                   indent={1}
                   onViewPrediction={handleViewPred}
+                  onViewDetails={onViewDetails}
                 />
               );
             })}

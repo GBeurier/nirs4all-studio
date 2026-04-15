@@ -4,29 +4,29 @@
  * See plan at C:\Users\U108-N257\.claude\plans\glimmering-fluttering-deer.md
  */
 
+import type { CategoricalPalette } from "@/lib/playground/colorConfig";
+
 export type ChartKind = "scatter" | "residuals" | "confusion";
 
 export type TaskKind = "regression" | "classification";
 
-export type PaletteId = "default" | "viridis" | "colorblind" | "highContrast";
+export type PaletteId = CategoricalPalette | "custom";
 
 export type ExportTheme = "inherit" | "light" | "dark";
 
 export type ConfusionNormalize = "none" | "row" | "col";
 
-export type ConfusionColorScale = "blue" | "teal" | "diverging";
+export type ConfusionGradientPreset = "ocean" | "lagoon" | "ember" | "orchid" | "moss" | "custom";
 
-export interface PaletteDefinition {
-  id: PaletteId;
-  label: string;
-  /** Partition-label → color. Lower-case keys. */
-  partitions: Record<string, string>;
-  /** Fallback color for partitions not in the map. */
-  fallback: string;
-  /** Sequential stops used by confusion color scales. */
-  sequentialBlue: string[];
-  sequentialTeal: string[];
-  sequentialDiverging: string[];
+export interface ViewerPartitionColors {
+  train: string;
+  val: string;
+  test: string;
+}
+
+export interface ViewerGradientColors {
+  low: string;
+  high: string;
 }
 
 export interface ViewerPartitionTarget {
@@ -59,6 +59,7 @@ export interface ViewerHeader {
 
 export interface ChartConfig {
   palette: PaletteId;
+  partitionColors: ViewerPartitionColors;
   partitionColoring: boolean;
   exportTheme: ExportTheme;
   rescaleToVisible: boolean;
@@ -72,13 +73,19 @@ export interface ChartConfig {
   sigmaBand: boolean;     // default false (residuals)
 
   confusionNormalize: ConfusionNormalize;
-  confusionColorScale: ConfusionColorScale;
+  confusionGradientPreset: ConfusionGradientPreset;
+  confusionGradient: ViewerGradientColors;
   confusionShowTotals: boolean;   // default true
   confusionShowPercent: boolean;  // default false
 }
 
 export const DEFAULT_CHART_CONFIG: ChartConfig = {
   palette: "default",
+  partitionColors: {
+    train: "#17cfb9",
+    val: "#266bd9",
+    test: "#1cca5b",
+  },
   partitionColoring: true,
   exportTheme: "inherit",
   rescaleToVisible: false,
@@ -92,7 +99,11 @@ export const DEFAULT_CHART_CONFIG: ChartConfig = {
   sigmaBand: false,
 
   confusionNormalize: "none",
-  confusionColorScale: "blue",
+  confusionGradientPreset: "ocean",
+  confusionGradient: {
+    low: "#eef6ff",
+    high: "#1d4ed8",
+  },
   confusionShowTotals: true,
   confusionShowPercent: false,
 };

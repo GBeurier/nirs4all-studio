@@ -121,6 +121,29 @@ class TestPreflightReady:
         assert data["ready"] is True
         mock_imports.assert_called_once()
 
+    @patch(PATCH_CHECK_IMPORTS, side_effect=[[], []])
+    @patch(PATCH_COHERENCE, new_callable=AsyncMock, return_value=_coherent_response())
+    def test_ready_with_multiple_inline_pipelines(self, mock_coherence, mock_imports):
+        """Multiple inline pipelines are checked and supported."""
+        response = client.post("/api/runs/preflight", json={
+            "pipeline_ids": [],
+            "inline_pipelines": [
+                {
+                    "name": "Inline A",
+                    "steps": [{"id": "1", "type": "preprocessing", "name": "SNV", "params": {}}],
+                },
+                {
+                    "name": "Inline B",
+                    "steps": [{"id": "2", "type": "model", "name": "PLSRegression", "params": {}}],
+                },
+            ],
+        })
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["ready"] is True
+        assert mock_imports.call_count == 2
+
 
 # ============= Environment Mismatch =============
 
@@ -175,6 +198,8 @@ class TestPreflightMissingModules:
         assert len(missing) == 1
         assert "details" in missing[0]
         assert missing[0]["details"]["step_name"] == "PyTorchModel"
+        assert missing[0]["details"]["pipeline_id"] == "test_dl"
+        assert missing[0]["details"]["pipeline_name"] == "Test Pipeline"
         assert "Install it via Settings" in missing[0]["message"]
 
     @patch(PATCH_CHECK_IMPORTS)

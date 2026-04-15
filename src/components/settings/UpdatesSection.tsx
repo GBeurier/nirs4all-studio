@@ -79,6 +79,7 @@ import {
   type ConfigSnapshot,
   type ChangelogEntry,
 } from "@/api/client";
+import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 
 export function UpdatesSection() {
   const queryClient = useQueryClient();
@@ -262,11 +263,13 @@ export function UpdatesSection() {
                     if (result.success) {
                       resetBackendUrl();
                       setNeedsRestart(false);
+                      dispatchOperatorAvailabilityInvalidated();
                       window.dispatchEvent(new CustomEvent("backend-restarted"));
                     }
                   } else {
                     await requestRestart();
                     setNeedsRestart(false);
+                    dispatchOperatorAvailabilityInvalidated();
                   }
                 }}
               >

@@ -160,6 +160,7 @@ vi.mock("@/components/pipeline-editor", () => {
 vi.mock("@/components/pipeline-editor/contexts", () => ({
   DatasetBindingProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   NodeRegistryProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  OperatorAvailabilityProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   PipelineEditorPreferencesProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 

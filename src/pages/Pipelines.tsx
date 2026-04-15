@@ -109,18 +109,8 @@ function sortPipelineItems(pipelines: Pipeline[], sortBy: SortBy) {
   });
 }
 
-function sortPresetItems(presets: PipelinePreset[], sortBy: SortBy) {
-  return [...presets].sort((a, b) => {
-    switch (sortBy) {
-      case "steps":
-        return b.steps_count - a.steps_count;
-      case "name":
-      case "lastModified":
-      case "runCount":
-      default:
-        return a.name.localeCompare(b.name);
-    }
-  });
+function sortPresetItems(presets: PipelinePreset[]) {
+  return [...presets].sort((a, b) => a.complexity - b.complexity);
 }
 
 interface RecentRunEntry {
@@ -320,10 +310,9 @@ export default function Pipelines() {
   );
   const templatePipelines = useMemo(
     () => sortPresetItems(
-      presets.filter((preset) => matchesPresetSearch(preset, normalizedQuery)),
-      sortBy
+      presets.filter((preset) => matchesPresetSearch(preset, normalizedQuery))
     ),
-    [presets, normalizedQuery, sortBy]
+    [presets, normalizedQuery]
   );
 
   const filteredRecentRuns = useMemo(() => {
@@ -787,7 +776,7 @@ export default function Pipelines() {
             </TabsList>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
-            {pageView !== "recent" && (
+            {pageView !== "recent" && pageView !== "templates" && (
               <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
                 <SelectTrigger className="h-9 w-[140px] bg-background/50">
                   <ArrowUpDown className="mr-2 h-4 w-4" />

@@ -1,0 +1,119 @@
+id: simple_trees_boosting
+name: Simple Trees / Boosting
+description: Same lightweight preprocessing pattern as Simple PLS, with LightGBM and
+  RandomForest sweeps.
+complexity: 3
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - _or_:
+      - nirs4all.operators.transforms.scalers.StandardNormalVariate
+      - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+      - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          window_length: 15
+          polyorder: 2
+          deriv: 1
+    - class: sklearn.model_selection._split.KFold
+      params:
+        shuffle: true
+        random_state: 42
+    - model:
+        class: lightgbm.sklearn.LGBMRegressor
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Sweep
+      finetune_params:
+        n_trials: 6
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 100
+          - 200
+          - 400
+          max_depth:
+          - 6
+          - 10
+          learning_rate:
+          - 0.05
+    - model:
+        class: sklearn.ensemble._forest.RandomForestRegressor
+        params:
+          random_state: 42
+      name: RandomForest-Sweep
+      finetune_params:
+        n_trials: 6
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 200
+          - 400
+          - 800
+          max_depth:
+          - 8
+          - 16
+  classification:
+    format: yaml
+    pipeline:
+    - _or_:
+      - nirs4all.operators.transforms.scalers.StandardNormalVariate
+      - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+      - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          window_length: 15
+          polyorder: 2
+          deriv: 1
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        shuffle: true
+        random_state: 42
+    - model:
+        class: lightgbm.sklearn.LGBMClassifier
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Sweep
+      finetune_params:
+        n_trials: 6
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 100
+          - 200
+          - 400
+          max_depth:
+          - 6
+          - 10
+          learning_rate:
+          - 0.05
+    - model:
+        class: sklearn.ensemble._forest.RandomForestClassifier
+        params:
+          random_state: 42
+      name: RandomForest-Sweep
+      finetune_params:
+        n_trials: 6
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 200
+          - 400
+          - 800
+          max_depth:
+          - 8
+          - 16

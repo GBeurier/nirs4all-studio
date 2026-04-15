@@ -17,10 +17,15 @@ export interface PipelineEditorPreferences {
   tierLevel: TierLevel;
   /** Set the tier level */
   setTierLevel: (value: TierLevel) => void;
+  /** Whether unavailable operators should stay visible in the palette */
+  showUnavailableOperators: boolean;
+  /** Toggle unavailable operator visibility in the palette */
+  setShowUnavailableOperators: (value: boolean) => void;
 }
 
 const STORAGE_KEY_EXTENDED_MODE = "pipelineEditor.extendedMode";
 const STORAGE_KEY_TIER_LEVEL = "pipelineEditor.tierLevel";
+const STORAGE_KEY_SHOW_UNAVAILABLE = "pipelineEditor.showUnavailableOperators";
 
 const VALID_TIERS: TierLevel[] = ["core", "standard", "all"];
 
@@ -79,6 +84,9 @@ export function PipelineEditorPreferencesProvider({
   const [tierLevel, setTierLevelState] = useState<TierLevel>(() =>
     initTierLevel(defaultExtendedMode)
   );
+  const [showUnavailableOperators, setShowUnavailableOperatorsState] = useState<boolean>(() =>
+    readStoredBoolean(STORAGE_KEY_SHOW_UNAVAILABLE, true)
+  );
 
   // Derive extendedMode from tierLevel for backwards compatibility
   const extendedMode = tierLevel === "all";
@@ -91,20 +99,40 @@ export function PipelineEditorPreferencesProvider({
 
     window.dispatchEvent(
       new CustomEvent("pipeline-editor-preferences", {
-        detail: { tierLevel: value, extendedMode: value === "all" },
+        detail: {
+          tierLevel: value,
+          extendedMode: value === "all",
+          showUnavailableOperators,
+        },
       })
     );
-  }, []);
+  }, [showUnavailableOperators]);
 
   const setExtendedMode = useCallback((value: boolean) => {
     setTierLevel(value ? "all" : "standard");
   }, [setTierLevel]);
+
+  const setShowUnavailableOperators = useCallback((value: boolean) => {
+    setShowUnavailableOperatorsState(value);
+    writeStoredString(STORAGE_KEY_SHOW_UNAVAILABLE, value ? "true" : "false");
+    window.dispatchEvent(
+      new CustomEvent("pipeline-editor-preferences", {
+        detail: {
+          tierLevel,
+          extendedMode: tierLevel === "all",
+          showUnavailableOperators: value,
+        },
+      })
+    );
+  }, [tierLevel]);
 
   // Listen for cross-tab updates.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY_TIER_LEVEL) {
         setTierLevelState(readStoredTier(STORAGE_KEY_TIER_LEVEL, "standard"));
+      } else if (e.key === STORAGE_KEY_SHOW_UNAVAILABLE) {
+        setShowUnavailableOperatorsState(readStoredBoolean(STORAGE_KEY_SHOW_UNAVAILABLE, true));
       } else if (e.key === STORAGE_KEY_EXTENDED_MODE) {
         // Only fallback to extendedMode key if tierLevel key is missing
         const tier = readStoredTier(STORAGE_KEY_TIER_LEVEL, "" as TierLevel);
@@ -117,6 +145,7 @@ export function PipelineEditorPreferencesProvider({
 
     const onCustom = () => {
       setTierLevelState(readStoredTier(STORAGE_KEY_TIER_LEVEL, "standard"));
+      setShowUnavailableOperatorsState(readStoredBoolean(STORAGE_KEY_SHOW_UNAVAILABLE, true));
     };
 
     window.addEventListener("storage", onStorage);
@@ -133,8 +162,17 @@ export function PipelineEditorPreferencesProvider({
       setExtendedMode,
       tierLevel,
       setTierLevel,
+      showUnavailableOperators,
+      setShowUnavailableOperators,
     }),
-    [extendedMode, setExtendedMode, tierLevel, setTierLevel]
+    [
+      extendedMode,
+      setExtendedMode,
+      setShowUnavailableOperators,
+      setTierLevel,
+      showUnavailableOperators,
+      tierLevel,
+    ]
   );
 
   return (

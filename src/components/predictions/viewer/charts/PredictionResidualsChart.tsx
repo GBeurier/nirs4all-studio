@@ -166,7 +166,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
 
             {series.map(({ dataset, points }) => {
               const color = config.partitionColoring
-                ? getPartitionColor(dataset.partition, config.palette)
+                ? getPartitionColor(dataset.partition, config.palette, config.partitionColors)
                 : "hsl(var(--chart-2))";
               const radius = Math.max(1, config.pointSize / 2);
               return (

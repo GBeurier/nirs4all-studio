@@ -51,6 +51,7 @@ interface ScoreCardRowViewProps {
   onToggleExpand?: () => void;
   onViewDetails?: () => void;
   onViewPrediction?: (predictionId: string) => void;
+  onViewChart?: () => void;
   indent?: number;
   maxTableMetrics?: number;
 }
@@ -350,7 +351,7 @@ function rowDetailClass(cardType: ScoreCardType): string {
 // ============================================================================
 
 function InlineRow({
-  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, indent = 0,
+  row, selectedMetrics, workspaceId, rank, expandable, expanded, onToggleExpand, onViewDetails, onViewPrediction, onViewChart, indent = 0,
 }: ScoreCardRowViewProps) {
   const borderClass = cardTypeBorderClass(row.cardType);
   const isRefit = row.cardType === "refit";
@@ -434,8 +435,8 @@ function InlineRow({
             workspaceId={workspaceId}
             deleteScope={isTrain ? "group" : "chain"}
             foldId={isTrain ? row.foldId : undefined}
-            onViewDetails={!isTrain ? onViewDetails : undefined}
-            onViewChart={onViewPrediction ? () => onViewPrediction(row.id) : undefined}
+            onViewDetails={onViewDetails}
+            onViewChart={onViewChart ?? (onViewPrediction ? () => onViewPrediction(row.id) : undefined)}
           />
         </div>
       </div>
@@ -449,7 +450,7 @@ function InlineRow({
 
 function TableRowVariant({
   row, selectedMetrics, workspaceId, rank, expanded, onToggleExpand,
-  onViewDetails, onViewPrediction, maxTableMetrics,
+  onViewDetails, onViewPrediction, onViewChart, maxTableMetrics,
 }: ScoreCardRowViewProps) {
   const isRefit = row.cardType === "refit";
   const metric = canonicalMetricKey(row.metric || "rmse") || "rmse";
@@ -502,6 +503,7 @@ function TableRowVariant({
             deleteScope="group"
             foldId={row.foldId}
             onViewDetails={onViewDetails}
+            onViewChart={onViewChart ?? (onViewPrediction ? () => onViewPrediction(row.id) : undefined)}
           />
         </div>
       </TableCell>

@@ -69,6 +69,7 @@ import {
   getBuildInfo,
   revertDependency,
 } from "@/api/client";
+import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import type {
   DependenciesResponse,
   DependencyCategory,
@@ -493,6 +494,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       });
       if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
+      dispatchOperatorAvailabilityInvalidated();
     } catch (err) {
       setLastAction({
         type: "install",
@@ -518,6 +520,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       });
       if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
+      dispatchOperatorAvailabilityInvalidated();
     } catch (err) {
       setLastAction({
         type: "uninstall",
@@ -543,6 +546,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       });
       if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
+      dispatchOperatorAvailabilityInvalidated();
     } catch (err) {
       setLastAction({
         type: "update",
@@ -568,6 +572,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       });
       if (result.requires_restart) setNeedsRestart(true);
       await loadDependencies(true);
+      dispatchOperatorAvailabilityInvalidated();
     } catch (err) {
       setLastAction({
         type: "update",
@@ -801,11 +806,13 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
                     if (result.success) {
                       resetBackendUrl();
                       setNeedsRestart(false);
+                      dispatchOperatorAvailabilityInvalidated();
                       window.dispatchEvent(new CustomEvent("backend-restarted"));
                     }
                   } else {
                     await requestRestart();
                     setNeedsRestart(false);
+                    dispatchOperatorAvailabilityInvalidated();
                   }
                 }}
               >

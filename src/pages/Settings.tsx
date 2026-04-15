@@ -94,6 +94,7 @@ import {
   requestRestart,
   resetBackendUrl,
 } from "@/api/client";
+import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
   useLinkedWorkspacesQuery,
   useInvalidateDatasets,
@@ -554,10 +555,12 @@ export default function Settings() {
                           if (result.success) {
                             resetBackendUrl();
                             if (result.port) setBackendUrl(`http://127.0.0.1:${result.port}`);
+                            dispatchOperatorAvailabilityInvalidated();
                             window.dispatchEvent(new CustomEvent("backend-restarted"));
                           }
                         } else {
                           await requestRestart();
+                          dispatchOperatorAvailabilityInvalidated();
                         }
                       } finally {
                         setIsRestarting(false);

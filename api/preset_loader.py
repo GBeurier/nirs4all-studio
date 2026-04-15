@@ -32,11 +32,21 @@ REQUIRED_PRESET_KEYS = ("id", "name", "description")
 VALID_PRESET_VARIANTS = {"regression", "classification"}
 VALID_PRESET_FORMATS = {"json", "yaml", "yml"}
 DEFAULT_PRESET_VARIANT = "regression"
+DEFAULT_PRESET_COMPLEXITY = 5
 
 
 def _normalize_variant_name(value: Any) -> str:
     """Return a normalized preset variant identifier."""
     return str(value).strip().lower()
+
+
+def _normalize_complexity(value: Any) -> int:
+    """Return a clamped 1-10 preset complexity score."""
+    try:
+        complexity = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_PRESET_COMPLEXITY
+    return max(1, min(10, complexity))
 
 
 def _normalize_variant_payload(raw: Any, *, preset_id: str, variant_name: str) -> dict[str, Any]:
@@ -117,6 +127,7 @@ def _normalize_preset_data(data: dict[str, Any], *, source_name: str) -> dict[st
     normalized["variants"] = normalized_variants
     normalized["available_variants"] = list(normalized_variants.keys())
     normalized["default_variant"] = default_variant
+    normalized["complexity"] = _normalize_complexity(data.get("complexity"))
     normalized["task_type"] = default_variant
     normalized["pipeline"] = normalized_variants[default_variant]["pipeline"]
     normalized["format"] = normalized_variants[default_variant]["format"]
@@ -162,7 +173,8 @@ def list_presets() -> list[dict[str, Any]]:
     """Return all valid presets as listing entries.
 
     Each entry exposes ``id``, ``name``, ``description``, ``default_variant``,
-    ``available_variants``, ``variants``, and a default ``pipeline`` payload
+    ``available_variants``, ``variants``, ``complexity``, and a default
+    ``pipeline`` payload
     for preview/stats rendering.
 
     Files that fail to parse or validate are logged and skipped (the listing
@@ -185,13 +197,14 @@ def list_presets() -> list[dict[str, Any]]:
                 "default_variant": selected_variant,
                 "available_variants": data["available_variants"],
                 "variants": data["variants"],
+                "complexity": data["complexity"],
                 "steps_count": data["steps_count"],
                 # Include the default canonical pipeline so the frontend can render
                 "pipeline": data["pipeline"],
             }
         )
 
-    entries.sort(key=lambda e: (e.get("order", 0), e["id"]))
+    entries.sort(key=lambda e: e.get("complexity", DEFAULT_PRESET_COMPLEXITY))
     return entries
 
 
@@ -229,6 +242,7 @@ def load_preset(preset_id: str, variant: str | None = None) -> dict[str, Any]:
                 "default_variant": data["default_variant"],
                 "available_variants": data["available_variants"],
                 "variants": data["variants"],
+                "complexity": data["complexity"],
                 "variant": selected_variant,
                 "format": selected_payload["format"],
                 "pipeline": selected_payload["pipeline"],

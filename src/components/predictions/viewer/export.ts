@@ -40,6 +40,53 @@ export function exportRowsCsv<T extends Record<string, unknown>>(
 }
 
 /**
+ * CSS properties that control the visual appearance of SVG text / shapes.
+ * When we clone the SVG for export, Tailwind classes and CSS custom properties
+ * no longer resolve — the browser renders with its default serif + black fill.
+ * We copy the computed style for these properties to inline `style=""` attrs
+ * on the clone so the standalone SVG renders identically to the live DOM.
+ */
+const INLINED_STYLE_PROPS = [
+  "font-family",
+  "font-size",
+  "font-weight",
+  "font-style",
+  "font-variant",
+  "letter-spacing",
+  "text-anchor",
+  "dominant-baseline",
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-width",
+  "stroke-opacity",
+  "stroke-dasharray",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "opacity",
+  "color",
+] as const;
+
+function inlineComputedStyles(original: SVGSVGElement, clone: SVGSVGElement): void {
+  const originalNodes: Element[] = [original, ...Array.from(original.querySelectorAll("*"))];
+  const cloneNodes: Element[] = [clone, ...Array.from(clone.querySelectorAll("*"))];
+  const count = Math.min(originalNodes.length, cloneNodes.length);
+  for (let i = 0; i < count; i++) {
+    const orig = originalNodes[i];
+    const cln = cloneNodes[i] as SVGElement;
+    const computed = window.getComputedStyle(orig);
+    let styleStr = cln.getAttribute("style") ?? "";
+    for (const prop of INLINED_STYLE_PROPS) {
+      const value = computed.getPropertyValue(prop);
+      if (value && value !== "normal" && value !== "none") {
+        styleStr += `${prop}:${value};`;
+      }
+    }
+    if (styleStr) cln.setAttribute("style", styleStr);
+  }
+}
+
+/**
  * Serialize the first SVG inside `container` to PNG via canvas and download it.
  *
  * @param backgroundColor Optional explicit canvas background (default "#ffffff").
@@ -58,6 +105,9 @@ export function exportChartPng(
   if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", String(rect.width));
   clone.setAttribute("height", String(rect.height));
+  // Inline computed styles so the standalone SVG renders with the app's
+  // font-family and resolved colors (not the browser's default serif + black).
+  inlineComputedStyles(svg, clone);
   const xml = new XMLSerializer().serializeToString(clone);
   const svg64 = btoa(unescape(encodeURIComponent(xml)));
   const image64 = `data:image/svg+xml;base64,${svg64}`;

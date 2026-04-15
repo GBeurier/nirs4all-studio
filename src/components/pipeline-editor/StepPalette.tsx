@@ -18,6 +18,7 @@ import {
 import { motion } from "@/lib/motion";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import {
   Collapsible,
   CollapsibleContent,
@@ -40,6 +41,7 @@ import {
 } from "./types";
 import { useNodeRegistryOptional, type NodeDefinition } from "./contexts/NodeRegistryContext";
 import { usePipelineEditorPreferencesOptional, type TierLevel } from "./contexts/PipelineEditorPreferencesContext";
+import { useOperatorAvailabilityOptional } from "./contexts/OperatorAvailabilityContext";
 import { parametersToDefaultParams } from "@/data/nodes";
 
 const stepIcons: Record<StepType, typeof Waves> = {
@@ -71,6 +73,7 @@ function nodeDefToStepOption(node: NodeDefinition): StepOption {
     name: node.name,
     description: node.description,
     defaultParams: parametersToDefaultParams(node.parameters ?? []),
+    classPath: node.classPath,
     category: node.category,
     isDeepLearning: node.isDeepLearning,
     isAdvanced: node.isAdvanced,
@@ -86,9 +89,18 @@ interface DraggableStepProps {
   option: StepOption;
   onDoubleClick: () => void;
   isCompact?: boolean;
+  isUnavailable?: boolean;
+  unavailableReason?: string;
 }
 
-function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: DraggableStepProps) {
+function DraggableStep({
+  stepType,
+  option,
+  onDoubleClick,
+  isCompact = false,
+  isUnavailable = false,
+  unavailableReason,
+}: DraggableStepProps) {
   const { isDragging: globalIsDragging } = usePipelineDnd();
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -125,6 +137,7 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
             ${colors.border} ${colors.bg} ${colors.hover}
             ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
             ${option.isDeepLearning ? "border-l-2 border-l-violet-500" : ""}
+            ${isUnavailable ? "border-dashed border-amber-500/60 bg-amber-50/70 opacity-75 dark:bg-amber-950/20" : ""}
           `}
         >
           <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/50" />
@@ -134,6 +147,11 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
           <div className="min-w-0 flex-1 w-0">
             <div className="flex items-center gap-1">
               <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
+              {isUnavailable && (
+                <Badge variant="outline" className="h-4 px-1 text-[9px] text-amber-700 border-amber-500/50 dark:text-amber-300">
+                  Unavailable
+                </Badge>
+              )}
               {option.isDeepLearning && (
                 <Star className="h-2.5 w-2.5 text-violet-500 flex-shrink-0" />
               )}
@@ -157,6 +175,11 @@ function DraggableStep({ stepType, option, onDoubleClick, isCompact = false }: D
             )}
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">{option.description}</p>
+          {isUnavailable && unavailableReason && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-50 px-2 py-1 text-[10px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+              {unavailableReason}
+            </div>
+          )}
           {option.isDeepLearning && (
              <div className="flex items-center gap-1.5 pt-1">
                <div className="h-1.5 w-1.5 rounded-full bg-violet-500" />
@@ -259,9 +282,12 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<PaletteGroupKey>>(new Set());
   const prefs = usePipelineEditorPreferencesOptional();
+  const availability = useOperatorAvailabilityOptional();
   const [tierLevelFallback, setTierLevelFallback] = useState<TierLevel>("standard");
+  const [showUnavailableFallback, setShowUnavailableFallback] = useState(true);
 
   const tierLevel: TierLevel = prefs?.tierLevel ?? tierLevelFallback;
+  const showUnavailableOperators = prefs?.showUnavailableOperators ?? showUnavailableFallback;
   const setTierLevel = useCallback(
     (value: TierLevel) => {
       if (prefs) {
@@ -269,6 +295,16 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         return;
       }
       setTierLevelFallback(value);
+    },
+    [prefs]
+  );
+  const setShowUnavailableOperators = useCallback(
+    (value: boolean) => {
+      if (prefs) {
+        prefs.setShowUnavailableOperators(value);
+        return;
+      }
+      setShowUnavailableFallback(value);
     },
     [prefs]
   );
@@ -301,20 +337,43 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     return opts;
   }, [getStepOptionsForType]);
 
+  const hasAvailabilitySnapshot = Boolean(availability?.operatorAvailability);
+  const getOptionAvailability = useCallback(
+    (actualType: StepType, option: StepOption) => {
+      if (!availability) {
+        return { available: true };
+      }
+      const nodeDef = registryContext?.getNodeDefinition(actualType, option.name);
+      return availability.getNodeAvailability({
+        id: nodeDef?.id,
+        type: actualType,
+        name: option.name,
+        classPath: option.classPath ?? nodeDef?.classPath,
+        functionPath: option.functionPath,
+      });
+    },
+    [availability, registryContext]
+  );
+
   const filteredOptions = useCallback(
     (key: PaletteGroupKey) => {
       const allOptions = getOptionsForGroup(key);
       return allOptions.filter(
-        ({ option: opt }) =>
-          passesTierFilter(opt, tierLevel) &&
-          (
+        ({ option: opt, actualType }) => {
+          const optionAvailability = getOptionAvailability(actualType, opt);
+          return (
+            passesTierFilter(opt, tierLevel) &&
+            (showUnavailableOperators || !hasAvailabilitySnapshot || optionAvailability.available) &&
+            (
             opt.name.toLowerCase().includes(search.toLowerCase()) ||
             opt.description.toLowerCase().includes(search.toLowerCase()) ||
             (opt.category?.toLowerCase().includes(search.toLowerCase()) ?? false)
-          )
+            )
+          );
+        }
       );
     },
-    [search, getOptionsForGroup, tierLevel]
+    [getOptionAvailability, getOptionsForGroup, hasAvailabilitySnapshot, search, showUnavailableOperators, tierLevel]
   );
 
   // Keep the open sections consistent when toggling extended mode during an active search.
@@ -378,6 +437,24 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   // Threshold for showing subcategories (if total options in a section < this, show flat list)
   const SUBMENU_THRESHOLD = 10;
 
+  const renderDraggableStep = useCallback(
+    (actualType: StepType, option: StepOption, isCompact = false) => {
+      const optionAvailability = getOptionAvailability(actualType, option);
+      return (
+        <DraggableStep
+          key={`${actualType}-${option.name}`}
+          stepType={actualType}
+          option={option}
+          onDoubleClick={() => onAddStep(actualType, option)}
+          isCompact={isCompact}
+          isUnavailable={!optionAvailability.available}
+          unavailableReason={optionAvailability.entry?.error ?? optionAvailability.issue?.details?.error}
+        />
+      );
+    },
+    [getOptionAvailability, onAddStep]
+  );
+
   return (
     <div className="h-full flex flex-col bg-card border-r border-border">
       {/* Header */}
@@ -422,6 +499,9 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         {registryContext?.extendedError && (
           <div className="text-[10px] text-amber-600 dark:text-amber-400">Extended operators unavailable</div>
         )}
+        {availability?.operatorsError && (
+          <div className="text-[10px] text-amber-600 dark:text-amber-400">{availability.operatorsError}</div>
+        )}
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -431,6 +511,20 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-8 h-8 text-sm"
           />
+        </div>
+
+        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+          <label htmlFor="show-unavailable-operators" className="flex items-center gap-2 cursor-pointer">
+            <Switch
+              id="show-unavailable-operators"
+              checked={showUnavailableOperators}
+              onCheckedChange={setShowUnavailableOperators}
+            />
+            <span>Show unavailable operators</span>
+          </label>
+          {availability?.isLoadingOperators && (
+            <span>Checking dependencies...</span>
+          )}
         </div>
       </div>
 
@@ -497,15 +591,9 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                               <span className="text-[10px] font-medium uppercase tracking-wide opacity-70">{category}</span>
                             </div>
                             <div className="space-y-1">
-                              {categoryItems.map(({ option, actualType }) => (
-                                <DraggableStep
-                                  key={`${actualType}-${option.name}`}
-                                  stepType={actualType}
-                                  option={option}
-                                  onDoubleClick={() => onAddStep(actualType, option)}
-                                  isCompact={categoryItems.length > 8}
-                                />
-                              ))}
+                              {categoryItems.map(({ option, actualType }) =>
+                                renderDraggableStep(actualType, option, categoryItems.length > 8)
+                              )}
                             </div>
                           </div>
                         );
@@ -513,14 +601,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                     ) : (
                       // Flat list (no categories, searching, or below threshold)
                       <div className="space-y-1">
-                        {options.map(({ option, actualType }) => (
-                          <DraggableStep
-                            key={`${actualType}-${option.name}`}
-                            stepType={actualType}
-                            option={option}
-                            onDoubleClick={() => onAddStep(actualType, option)}
-                          />
-                        ))}
+                        {options.map(({ option, actualType }) => renderDraggableStep(actualType, option))}
                       </div>
                     )}
                   </div>

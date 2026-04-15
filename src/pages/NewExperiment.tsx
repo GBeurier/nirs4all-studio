@@ -9,11 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { InlineError, InlineLoading, NoDatasetsState, NoPipelinesState } from "@/components/ui/state-display";
+import { MissingNodesConfirmDialog } from "@/components/pipeline-editor/MissingNodesConfirmDialog";
 import { AlertCircle, ArrowLeft, ArrowRight, Check, Database, Filter, GitBranch, Loader2, Play, Search, Star } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { createRun, listPipelines, runPreflight } from "@/api/client";
+import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 import {
   analyzeSelectedPipelinesRuntimeGrouping,
@@ -23,6 +25,11 @@ import {
   getRuntimeGroupingSummary,
   RUNTIME_GROUPING_COPY,
 } from "@/lib/runtimeSplitGrouping";
+import {
+  filterMissingOperatorIssues,
+  pruneUnavailableSteps,
+  type MissingOperatorIssue,
+} from "@/lib/pipelineOperatorAvailability";
 import type { PipelineInfo } from "@/api/client";
 import type { Dataset } from "@/types/datasets";
 import type { ExperimentConfig } from "@/types/runs";
@@ -57,6 +64,9 @@ export default function NewExperiment() {
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [pipelineFilter, setPipelineFilter] = useState<"all" | "favorites" | "presets">("all");
   const [isPreflighting, setIsPreflighting] = useState(false);
+  const [pendingPrunedLaunchConfig, setPendingPrunedLaunchConfig] = useState<ExperimentConfig | null>(null);
+  const [pendingMissingIssues, setPendingMissingIssues] = useState<MissingOperatorIssue[]>([]);
+  const [showMissingNodesDialog, setShowMissingNodesDialog] = useState(false);
   const [currentEditedPipeline, setCurrentEditedPipeline] = useState<{
     id?: string;
     name: string;
@@ -225,6 +235,67 @@ export default function NewExperiment() {
     return true;
   };
 
+  const buildLaunchConfig = (missingIssues: MissingOperatorIssue[] = []): ExperimentConfig => {
+    const issuesByPipelineId = new Map<string, MissingOperatorIssue[]>();
+    const issuesByPipelineName = new Map<string, MissingOperatorIssue[]>();
+
+    for (const issue of missingIssues) {
+      const pipelineId = issue.details?.pipeline_id;
+      const pipelineName = issue.details?.pipeline_name;
+      if (pipelineId) {
+        const bucket = issuesByPipelineId.get(pipelineId) ?? [];
+        bucket.push(issue);
+        issuesByPipelineId.set(pipelineId, bucket);
+      }
+      if (pipelineName) {
+        const bucket = issuesByPipelineName.get(pipelineName) ?? [];
+        bucket.push(issue);
+        issuesByPipelineName.set(pipelineName, bucket);
+      }
+    }
+
+    const pipelineIds: string[] = [];
+    const inlinePipelines: Array<{ name: string; steps: unknown[] }> = [];
+
+    for (const pipeline of selectedPipelineConfigs) {
+      const pipelineIssues =
+        issuesByPipelineId.get(pipeline.id) ??
+        issuesByPipelineName.get(pipeline.name) ??
+        [];
+
+      if (pipelineIssues.length === 0) {
+        if (pipeline.id === "__current_edited__") {
+          inlinePipelines.push({ name: pipeline.name, steps: pipeline.steps });
+        } else {
+          pipelineIds.push(pipeline.id);
+        }
+        continue;
+      }
+
+      const pruned = pruneUnavailableSteps(pipeline.steps as EditorPipelineStep[], pipelineIssues);
+      if (pruned.steps.length === 0) {
+        throw new Error(`Pipeline "${pipeline.name}" would be empty after removing unavailable nodes.`);
+      }
+
+      inlinePipelines.push({
+        name: pipeline.name,
+        steps: pruned.steps,
+      });
+    }
+
+    const [inlinePipeline, ...additionalInlinePipelines] = inlinePipelines;
+
+    return {
+      name: experimentName,
+      description: experimentDescription || undefined,
+      dataset_ids: selectedDatasets,
+      pipeline_ids: pipelineIds,
+      inline_pipeline: inlinePipeline,
+      inline_pipelines: additionalInlinePipelines,
+      split_group_by_by_dataset: selectedGroupingPayload,
+    };
+  };
+
   const toggleDataset = (id: string) => {
     setSelectedDatasets((current) => {
       const selected = current.includes(id);
@@ -250,14 +321,36 @@ export default function NewExperiment() {
       setCurrentStep(3);
       return;
     }
-    const regularPipelineIds = selectedPipelines.filter((id) => id !== "__current_edited__");
-    const inlinePipeline = selectedPipelines.includes("__current_edited__") && currentEditedPipeline
-      ? { name: currentEditedPipeline.name, steps: currentEditedPipeline.steps }
-      : undefined;
+    const launchConfig = buildLaunchConfig();
     try {
       setIsPreflighting(true);
-      const preflight = await runPreflight(regularPipelineIds, inlinePipeline);
+      const preflight = await runPreflight(
+        launchConfig.pipeline_ids,
+        launchConfig.inline_pipeline,
+        launchConfig.inline_pipelines,
+      );
       if (!preflight.ready) {
+        const missingIssues = filterMissingOperatorIssues(preflight.issues);
+        const blockingIssues = preflight.issues.filter((issue) => issue.type !== "missing_module");
+
+        if (blockingIssues.length > 0) {
+          toast.error("Cannot start experiment", { description: preflight.issues.map((issue) => issue.message).join("\n") });
+          return;
+        }
+
+        if (missingIssues.length > 0) {
+          try {
+            const prunedLaunchConfig = buildLaunchConfig(missingIssues);
+            setPendingPrunedLaunchConfig(prunedLaunchConfig);
+            setPendingMissingIssues(missingIssues);
+            setShowMissingNodesDialog(true);
+            return;
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Cannot remove missing nodes from this launch.");
+            return;
+          }
+        }
+
         toast.error("Cannot start experiment", { description: preflight.issues.map((issue) => issue.message).join("\n") });
         return;
       }
@@ -266,14 +359,17 @@ export default function NewExperiment() {
     } finally {
       setIsPreflighting(false);
     }
-    createRunMutation.mutate({
-      name: experimentName,
-      description: experimentDescription || undefined,
-      dataset_ids: selectedDatasets,
-      pipeline_ids: regularPipelineIds,
-      inline_pipeline: inlinePipeline,
-      split_group_by_by_dataset: selectedGroupingPayload,
-    });
+    createRunMutation.mutate(launchConfig);
+  };
+
+  const handleConfirmPrunedLaunch = () => {
+    if (!pendingPrunedLaunchConfig) {
+      return;
+    }
+    setShowMissingNodesDialog(false);
+    createRunMutation.mutate(pendingPrunedLaunchConfig);
+    setPendingPrunedLaunchConfig(null);
+    setPendingMissingIssues([]);
   };
 
   return (
@@ -511,6 +607,21 @@ export default function NewExperiment() {
           <Button onClick={() => setCurrentStep((step) => Math.min(5, step + 1))} disabled={!canProceed()}>Next<ArrowRight className="ml-2 h-4 w-4" /></Button>
         </motion.div>
       )}
+      <MissingNodesConfirmDialog
+        open={showMissingNodesDialog}
+        onOpenChange={(open) => {
+          setShowMissingNodesDialog(open);
+          if (!open) {
+            setPendingPrunedLaunchConfig(null);
+            setPendingMissingIssues([]);
+          }
+        }}
+        issues={pendingMissingIssues}
+        onConfirm={handleConfirmPrunedLaunch}
+        title="Launch experiment without missing nodes?"
+        description="Unavailable operators will be removed from temporary copies of the affected pipelines before the experiment starts. Saved pipelines stay unchanged."
+        confirmLabel="Launch Experiment"
+      />
     </motion.div>
   );
 }

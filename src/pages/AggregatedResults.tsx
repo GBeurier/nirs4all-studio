@@ -697,7 +697,7 @@ export default function AggregatedResults() {
                           <tr>
                             <td colSpan={8} className="p-0">
                               <div className="border-t bg-muted/10 p-3">
-                                <ModelTreeView chainId={pred.chain_id} selectedMetrics={[pred.metric || "rmse"]} metric={pred.metric || null} foldArtifacts={pred.fold_artifacts} onViewPrediction={handleViewPrediction} />
+                                <ModelTreeView chainId={pred.chain_id} selectedMetrics={[pred.metric || "rmse"]} metric={pred.metric || null} foldArtifacts={pred.fold_artifacts} onViewPrediction={handleViewPrediction} onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }} />
                               </div>
                             </td>
                           </tr>
@@ -755,7 +755,7 @@ export default function AggregatedResults() {
                           <tr>
                             <td colSpan={8} className="p-0">
                               <div className="border-t bg-muted/10 p-3">
-                                <ModelTreeView chainId={pred.chain_id} selectedMetrics={[pred.metric || "rmse"]} metric={pred.metric || null} foldArtifacts={pred.fold_artifacts} onViewPrediction={handleViewPrediction} />
+                                <ModelTreeView chainId={pred.chain_id} selectedMetrics={[pred.metric || "rmse"]} metric={pred.metric || null} foldArtifacts={pred.fold_artifacts} onViewPrediction={handleViewPrediction} onViewDetails={() => { setSelectedPrediction(pred); setSheetOpen(true); }} />
                               </div>
                             </td>
                           </tr>

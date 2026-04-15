@@ -240,6 +240,7 @@ export function PredictionViewer({
             visible={visible}
             onToggle={toggleVisible}
             palette={config.palette}
+            colors={config.partitionColors}
           />
         </div>
 

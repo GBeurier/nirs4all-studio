@@ -93,7 +93,7 @@ import {
   DatasetBinding,
   PipelineYAMLView,
 } from "@/components/pipeline-editor";
-import { DatasetBindingProvider, NodeRegistryProvider, PipelineEditorPreferencesProvider } from "@/components/pipeline-editor/contexts";
+import { DatasetBindingProvider, NodeRegistryProvider, OperatorAvailabilityProvider, PipelineEditorPreferencesProvider } from "@/components/pipeline-editor/contexts";
 import { useKeyboardNavigation, KEYBOARD_SHORTCUTS, formatShortcut } from "@/hooks/useKeyboardNavigation";
 import type { DragData, DropIndicator } from "@/components/pipeline-editor/types";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
@@ -1109,75 +1109,77 @@ export default function PipelineEditor() {
           {/* Main Content: 3-Panel Layout */}
           <PipelineEditorPreferencesProvider>
             <NodeRegistryProvider useJsonRegistry>
-              <DatasetBindingProvider
-                steps={steps}
-                boundDataset={boundDataset}
-                datasets={datasets}
-                isLoading={isDatasetsLoading}
-                onBind={bindDataset}
-                onClear={clearBinding}
-                onSelectTarget={selectTarget}
-                onRefresh={refreshDatasets}
-              >
-                <div className="flex-1 flex z-0 min-h-0">
-                {/* Left Panel: Step Palette */}
-                <div
-                  ref={panelRefs.palette}
-                  className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
-                  onClick={() => setFocusedPanel("palette")}
+              <OperatorAvailabilityProvider steps={steps} pipelineName={pipelineName}>
+                <DatasetBindingProvider
+                  steps={steps}
+                  boundDataset={boundDataset}
+                  datasets={datasets}
+                  isLoading={isDatasetsLoading}
+                  onBind={bindDataset}
+                  onClear={clearBinding}
+                  onSelectTarget={selectTarget}
+                  onRefresh={refreshDatasets}
                 >
-                  <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
-                  <StepPalette onAddStep={addStep} />
-                </div>
+                  <div className="flex-1 flex z-0 min-h-0">
+                  {/* Left Panel: Step Palette */}
+                  <div
+                    ref={panelRefs.palette}
+                    className="w-72 flex-shrink-0 relative z-10 overflow-hidden"
+                    onClick={() => setFocusedPanel("palette")}
+                  >
+                    <FocusPanelRing isFocused={focusedPanel === "palette"} color="blue" />
+                    <StepPalette onAddStep={addStep} />
+                  </div>
 
-                {/* Center: Pipeline Tree or Code View */}
-                <div
-                  ref={panelRefs.tree}
-                  className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
-                  onClick={() => setFocusedPanel("tree")}
-                >
-                  <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
-                  {viewMode === "code" ? (
-                    <PipelineYAMLView
-                      steps={steps}
-                      pipelineName={pipelineName}
-                      randomState={pipelineConfig.seed}
-                      className="h-full"
-                    />
-                  ) : (
-                    <PipelineTree
-                      steps={steps}
-                      selectedStepId={selectedStepId}
+                  {/* Center: Pipeline Tree or Code View */}
+                  <div
+                    ref={panelRefs.tree}
+                    className="flex-1 min-w-0 min-h-0 flex flex-col relative overflow-hidden"
+                    onClick={() => setFocusedPanel("tree")}
+                  >
+                    <FocusPanelRing isFocused={focusedPanel === "tree"} color="emerald" />
+                    {viewMode === "code" ? (
+                      <PipelineYAMLView
+                        steps={steps}
+                        pipelineName={pipelineName}
+                        randomState={pipelineConfig.seed}
+                        className="h-full"
+                      />
+                    ) : (
+                      <PipelineTree
+                        steps={steps}
+                        selectedStepId={selectedStepId}
+                        onSelectStep={setSelectedStepId}
+                        onRemoveStep={removeStep}
+                        onDuplicateStep={duplicateStep}
+                        onAddBranch={addBranch}
+                        onRemoveBranch={removeBranch}
+                        onAddChild={addChild}
+                        onRemoveChild={removeChild}
+                      />
+                    )}
+                  </div>
+
+                  {/* Right Panel: Configuration */}
+                  <div
+                    ref={panelRefs.config}
+                    className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
+                    onClick={() => setFocusedPanel("config")}
+                  >
+                    <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />
+                    <StepConfigPanel
+                      step={selectedStep}
+                      onUpdate={updateStep}
+                      onRemove={removeStep}
+                      onDuplicate={duplicateStep}
                       onSelectStep={setSelectedStepId}
-                      onRemoveStep={removeStep}
-                      onDuplicateStep={duplicateStep}
-                      onAddBranch={addBranch}
-                      onRemoveBranch={removeBranch}
                       onAddChild={addChild}
                       onRemoveChild={removeChild}
                     />
-                  )}
-                </div>
-
-                {/* Right Panel: Configuration */}
-                <div
-                  ref={panelRefs.config}
-                  className="w-80 flex-shrink-0 border-l border-border relative overflow-hidden"
-                  onClick={() => setFocusedPanel("config")}
-                >
-                  <FocusPanelRing isFocused={focusedPanel === "config"} color="purple" />
-                  <StepConfigPanel
-                    step={selectedStep}
-                    onUpdate={updateStep}
-                    onRemove={removeStep}
-                    onDuplicate={duplicateStep}
-                    onSelectStep={setSelectedStepId}
-                    onAddChild={addChild}
-                    onRemoveChild={removeChild}
-                  />
-                </div>
-                </div>
-              </DatasetBindingProvider>
+                  </div>
+                  </div>
+                </DatasetBindingProvider>
+              </OperatorAvailabilityProvider>
             </NodeRegistryProvider>
           </PipelineEditorPreferencesProvider>
 

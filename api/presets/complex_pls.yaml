@@ -1,15 +1,13 @@
-id: pls_spxy_cartesian_finetune
-name: Advanced PLS Pipeline
-description: PLS finetuning with Cartesian preprocessing variants
+id: complex_pls
+name: Complex PLS
+description: Benchmark-style cartesian preprocessing with fixed PLS, tuned PLS, tuned
+  Ridge, and AOM-PLS.
+complexity: 4
 default_variant: regression
 variants:
   regression:
     format: yaml
     pipeline:
-    - class: nirs4all.operators.splitters.splitters.SPXYFold
-      params:
-        n_splits: 3
-        random_state: 42
     - _cartesian_:
       - _or_:
         - null
@@ -73,14 +71,25 @@ variants:
           params:
             n_components: 3
       count: 150
+    - class: sklearn.model_selection._split.KFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
     - class: sklearn.preprocessing._data.StandardScaler
       params:
         with_std: false
     - model:
         class: sklearn.cross_decomposition._pls.PLSRegression
         params:
+          n_components: 12
           scale: false
-      name: PLS
+      name: PLS-12
+    - model:
+        class: sklearn.cross_decomposition._pls.PLSRegression
+        params:
+          scale: false
+      name: PLS-Finetuned
       finetune_params:
         n_trials: 25
         sampler: binary
@@ -89,14 +98,36 @@ variants:
           - int
           - 1
           - 25
+    - model: sklearn.linear_model._ridge.Ridge
+      name: Ridge-Finetuned
+      finetune_params:
+        n_trials: 40
+        sampler: tpe
+        model_params:
+          alpha:
+          - float_log
+          - 1.0e-05
+          - 10000.0
+          fit_intercept:
+          - categorical
+          - - true
+            - false
+          solver:
+          - categorical
+          - - auto
+            - svd
+            - cholesky
+            - lsqr
+    - model:
+        class: nirs4all.operators.models.sklearn.aom_pls.AOMPLSRegressor
+        params:
+          n_components: 12
+          center: true
+          scale: false
+      name: AOM-PLS
   classification:
     format: yaml
     pipeline:
-    - class: sklearn.model_selection._split.StratifiedKFold
-      params:
-        n_splits: 3
-        shuffle: true
-        random_state: 42
     - _cartesian_:
       - _or_:
         - null
@@ -160,14 +191,21 @@ variants:
           params:
             n_components: 3
       count: 150
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
     - class: sklearn.preprocessing._data.StandardScaler
       params:
         with_std: false
     - model:
         class: nirs4all.operators.models.sklearn.plsda.PLSDA
         params:
-          n_components: 8
-      name: PLSDA
+          n_components: 12
+      name: PLSDA-12
+    - model: nirs4all.operators.models.sklearn.plsda.PLSDA
+      name: PLSDA-Finetuned
       finetune_params:
         n_trials: 25
         sampler: binary
@@ -176,3 +214,22 @@ variants:
           - int
           - 1
           - 25
+    - model: sklearn.linear_model._ridge.RidgeClassifier
+      name: RidgeClassifier-Finetuned
+      finetune_params:
+        n_trials: 30
+        sampler: tpe
+        model_params:
+          alpha:
+          - float_log
+          - 1.0e-05
+          - 10000.0
+          fit_intercept:
+          - categorical
+          - - true
+            - false
+    - model:
+        class: nirs4all.operators.models.sklearn.aom_pls_classifier.AOMPLSClassifier
+        params:
+          n_components: 12
+      name: AOM-PLS

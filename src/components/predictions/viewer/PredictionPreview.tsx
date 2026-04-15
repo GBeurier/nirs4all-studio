@@ -11,35 +11,29 @@ import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isClassificationTask } from "@/components/runs/modelDetailClassification";
 import { getPartitionColor } from "./palettes";
-import { DEFAULT_CHART_CONFIG, type ChartKind, type PredictionPreviewProps } from "./types";
+import {
+  type ChartConfig,
+  type ChartKind,
+  type PredictionPreviewProps,
+} from "./types";
 import { usePartitionsData } from "./fetchPartitionData";
+import { usePredictionChartConfig } from "./usePredictionChartConfig";
 import { PredictionScatterChart } from "./charts/PredictionScatterChart";
 import { PredictionResidualsChart } from "./charts/PredictionResidualsChart";
 import { PredictionConfusionChart } from "./charts/PredictionConfusionChart";
 
-const PREVIEW_CONFIG = {
-  ...DEFAULT_CHART_CONFIG,
-  pointSize: 3,
-  pointOpacity: 0.7,
-  partitionColoring: true,
-  // Disable visual extras for compact previews.
-  regressionLine: false,
-  sigmaBand: false,
-  confusionShowTotals: false,
-};
-
 function PartitionLegend({
   datasets,
-  palette,
+  config,
 }: {
   datasets: { partition: string; label: string; predictionId: string }[];
-  palette: typeof DEFAULT_CHART_CONFIG.palette;
+  config: Pick<ChartConfig, "palette" | "partitionColors">;
 }) {
   if (datasets.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 pt-1">
       {datasets.map((d) => {
-        const color = getPartitionColor(d.partition, palette);
+        const color = getPartitionColor(d.partition, config.palette, config.partitionColors);
         return (
           <div
             key={`${d.predictionId}-${d.partition}`}
@@ -64,11 +58,19 @@ export function PredictionPreview({
   workspaceId,
   onOpenViewer,
 }: PredictionPreviewProps) {
+  const [sharedConfig] = usePredictionChartConfig();
   const { data: datasets, isLoading, error } = usePartitionsData({
     partitions,
     workspaceId,
     enabled: partitions.length > 0,
   });
+
+  const previewConfig = useMemo<ChartConfig>(() => ({
+    ...sharedConfig,
+    regressionLine: false,
+    sigmaBand: false,
+    confusionShowTotals: false,
+  }), [sharedConfig]);
 
   const taskKind = useMemo<"regression" | "classification">(() => {
     return isClassificationTask(header.taskType) ? "classification" : "regression";
@@ -117,10 +119,10 @@ export function PredictionPreview({
         >
           <div className="flex h-[220px] w-full items-center justify-center">
             <div style={{ width: "min(100%, 220px)", height: "100%" }}>
-              <PredictionConfusionChart datasets={datasets} config={PREVIEW_CONFIG} compact />
+              <PredictionConfusionChart datasets={datasets} config={previewConfig} compact />
             </div>
           </div>
-          <PartitionLegend datasets={datasets} palette={PREVIEW_CONFIG.palette} />
+          <PartitionLegend datasets={datasets} config={previewConfig} />
         </button>
       ) : (
         <div className="flex flex-col gap-2">
@@ -134,9 +136,9 @@ export function PredictionPreview({
               Pred vs Actual
             </div>
             <div style={{ height: 140 }} className="w-full">
-              <PredictionScatterChart datasets={datasets} config={PREVIEW_CONFIG} compact />
+              <PredictionScatterChart datasets={datasets} config={previewConfig} compact />
             </div>
-            <PartitionLegend datasets={datasets} palette={PREVIEW_CONFIG.palette} />
+            <PartitionLegend datasets={datasets} config={previewConfig} />
           </button>
           <button
             type="button"
@@ -148,9 +150,9 @@ export function PredictionPreview({
               Residuals
             </div>
             <div style={{ height: 140 }} className="w-full">
-              <PredictionResidualsChart datasets={datasets} config={PREVIEW_CONFIG} compact />
+              <PredictionResidualsChart datasets={datasets} config={previewConfig} compact />
             </div>
-            <PartitionLegend datasets={datasets} palette={PREVIEW_CONFIG.palette} />
+            <PartitionLegend datasets={datasets} config={previewConfig} />
           </button>
         </div>
       )}

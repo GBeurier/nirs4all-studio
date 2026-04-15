@@ -234,6 +234,11 @@ export interface ExperimentConfig {
     name: string;
     steps: unknown[];
   };
+  /** Additional inline pipelines (used for pruned launch copies) */
+  inline_pipelines?: Array<{
+    name: string;
+    steps: unknown[];
+  }>;
 }
 
 // API responses

@@ -1,0 +1,51 @@
+id: simple_pls
+name: Simple PLS
+description: Three classic preprocessing choices, KFold, and a single n_components
+  sweep for PLS.
+complexity: 1
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - _or_:
+      - nirs4all.operators.transforms.scalers.StandardNormalVariate
+      - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+      - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          window_length: 15
+          polyorder: 2
+          deriv: 1
+    - class: sklearn.model_selection._split.KFold
+      params:
+        shuffle: true
+        random_state: 42
+    - model: sklearn.cross_decomposition._pls.PLSRegression
+      name: PLS-Sweep
+      _range_:
+      - 2
+      - 30
+      - 4
+      param: n_components
+  classification:
+    format: yaml
+    pipeline:
+    - _or_:
+      - nirs4all.operators.transforms.scalers.StandardNormalVariate
+      - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+      - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+        params:
+          window_length: 15
+          polyorder: 2
+          deriv: 1
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        shuffle: true
+        random_state: 42
+    - model: nirs4all.operators.models.sklearn.plsda.PLSDA
+      name: PLSDA-Sweep
+      _range_:
+      - 2
+      - 30
+      - 4
+      param: n_components

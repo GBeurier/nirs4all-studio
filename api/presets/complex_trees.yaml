@@ -1,0 +1,287 @@
+id: complex_trees
+name: Complex Trees
+description: Cartesian preprocessing with LightGBM, RandomForest, and XGBoost tree/boosting
+  grids.
+complexity: 5
+default_variant: regression
+variants:
+  regression:
+    format: yaml
+    pipeline:
+    - _cartesian_:
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.scalers.StandardNormalVariate
+        - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+        - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+          params:
+            degree: 1
+        - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      - _or_:
+        - null
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            deriv: 2
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+            sigma: 2
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.nirs.ASLSBaseline
+        - nirs4all.operators.transforms.signal.Detrend
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.orthogonalization.OSC
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 2
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 3
+      count: 40
+    - class: sklearn.model_selection._split.KFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
+    - model:
+        class: lightgbm.sklearn.LGBMRegressor
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Sweep
+      finetune_params:
+        n_trials: 12
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 150
+          - 300
+          - 600
+          max_depth:
+          - 6
+          - 10
+          learning_rate:
+          - 0.03
+          - 0.05
+    - model:
+        class: sklearn.ensemble._forest.RandomForestRegressor
+        params:
+          random_state: 42
+      name: RandomForest-Sweep
+      finetune_params:
+        n_trials: 12
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 300
+          - 600
+          max_depth:
+          - 8
+          - 12
+          - 20
+          min_samples_leaf:
+          - 1
+          - 3
+    - model:
+        class: xgboost.sklearn.XGBRegressor
+        params:
+          random_state: 42
+          verbosity: 0
+      name: XGBoost-Sweep
+      finetune_params:
+        n_trials: 18
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 150
+          - 300
+          - 600
+          max_depth:
+          - 4
+          - 6
+          - 8
+          learning_rate:
+          - 0.03
+          - 0.05
+  classification:
+    format: yaml
+    pipeline:
+    - _cartesian_:
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.scalers.StandardNormalVariate
+        - nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection
+        - class: nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+          params:
+            degree: 1
+        - nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection
+      - _or_:
+        - null
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            polyorder: 2
+            deriv: 1
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 15
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 21
+            deriv: 2
+        - class: nirs4all.operators.transforms.nirs.SavitzkyGolay
+          params:
+            window_length: 31
+            deriv: 2
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+        - class: nirs4all.operators.transforms.signal.Gaussian
+          params:
+            order: 0
+            sigma: 2
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.nirs.ASLSBaseline
+        - nirs4all.operators.transforms.signal.Detrend
+      - _or_:
+        - null
+        - nirs4all.operators.transforms.orthogonalization.OSC
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 2
+        - class: nirs4all.operators.transforms.orthogonalization.OSC
+          params:
+            n_components: 3
+      count: 40
+    - class: sklearn.model_selection._split.StratifiedKFold
+      params:
+        n_splits: 3
+        shuffle: true
+        random_state: 42
+    - model:
+        class: lightgbm.sklearn.LGBMClassifier
+        params:
+          random_state: 42
+          verbose: -1
+      name: LightGBM-Sweep
+      finetune_params:
+        n_trials: 12
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 150
+          - 300
+          - 600
+          max_depth:
+          - 6
+          - 10
+          learning_rate:
+          - 0.03
+          - 0.05
+    - model:
+        class: sklearn.ensemble._forest.RandomForestClassifier
+        params:
+          random_state: 42
+      name: RandomForest-Sweep
+      finetune_params:
+        n_trials: 12
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 300
+          - 600
+          max_depth:
+          - 8
+          - 12
+          - 20
+          min_samples_leaf:
+          - 1
+          - 3
+    - model:
+        class: xgboost.sklearn.XGBClassifier
+        params:
+          random_state: 42
+          verbosity: 0
+      name: XGBoost-Sweep
+      finetune_params:
+        n_trials: 18
+        sampler: grid
+        approach: single
+        eval_mode: best
+        verbose: 0
+        model_params:
+          n_estimators:
+          - 150
+          - 300
+          - 600
+          max_depth:
+          - 4
+          - 6
+          - 8
+          learning_rate:
+          - 0.03
+          - 0.05

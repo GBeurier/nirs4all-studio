@@ -192,6 +192,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
                 stroke="hsl(var(--muted-foreground))"
                 strokeDasharray="5 5"
                 strokeOpacity={0.55}
+                ifOverflow="extendDomain"
               />
             )}
             {config.regressionLine && regressionSegment && (
@@ -200,12 +201,13 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
                 stroke="hsl(var(--primary))"
                 strokeWidth={1.5}
                 strokeOpacity={0.85}
+                ifOverflow="extendDomain"
               />
             )}
 
             {series.map(({ dataset, points }) => {
               const color = config.partitionColoring
-                ? getPartitionColor(dataset.partition, config.palette)
+                ? getPartitionColor(dataset.partition, config.palette, config.partitionColors)
                 : "hsl(var(--primary))";
               const radius = Math.max(1, config.pointSize / 2);
               return (

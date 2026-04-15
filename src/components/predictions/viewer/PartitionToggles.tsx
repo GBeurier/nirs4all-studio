@@ -7,13 +7,14 @@
 
 import { cn } from "@/lib/utils";
 import { getPartitionColor } from "./palettes";
-import type { PaletteId, ViewerPartitionTarget } from "./types";
+import type { PaletteId, ViewerPartitionColors, ViewerPartitionTarget } from "./types";
 
 interface PartitionTogglesProps {
   partitions: ViewerPartitionTarget[];
   visible: Set<string>;
   onToggle: (partition: string) => void;
   palette: PaletteId;
+  colors: ViewerPartitionColors;
 }
 
 export function PartitionToggles({
@@ -21,6 +22,7 @@ export function PartitionToggles({
   visible,
   onToggle,
   palette,
+  colors,
 }: PartitionTogglesProps) {
   if (partitions.length === 0) return null;
   const interactive = partitions.length > 1;
@@ -29,7 +31,7 @@ export function PartitionToggles({
     <div className="flex flex-wrap items-center gap-1.5">
       {partitions.map((target) => {
         const isVisible = visible.has(target.partition);
-        const color = getPartitionColor(target.partition, palette);
+        const color = getPartitionColor(target.partition, palette, colors);
         const label = target.label ?? target.partition;
         return (
           <button

@@ -106,6 +106,17 @@ function CrossvalExpandable({
     onViewPrediction(predictionId, pred);
   };
 
+  const handleViewChainChart = () => {
+    if (!onViewPrediction || !foldData?.predictions || foldData.predictions.length === 0) return;
+    const preds = foldData.predictions;
+    const pick = preds.find(p => p.fold_id === "final")
+      ?? preds.find(p => p.fold_id === "avg")
+      ?? preds.find(p => p.fold_id === "w_avg")
+      ?? preds.find(p => p.partition === "test")
+      ?? preds[0];
+    onViewPrediction(pick.prediction_id, pick);
+  };
+
   if (variant === "card") {
     return (
       <div>
@@ -119,6 +130,7 @@ function CrossvalExpandable({
           expanded={expanded}
           onToggleExpand={() => setExpanded(!expanded)}
           onViewDetails={onViewDetails ? () => onViewDetails(displayRow) : undefined}
+          onViewChart={onViewPrediction ? handleViewChainChart : undefined}
           indent={indent}
         />
         {expanded && (
@@ -136,6 +148,7 @@ function CrossvalExpandable({
                 workspaceId={workspaceId}
                 variant="inline"
                 onViewPrediction={onViewPrediction ? handleViewPred : undefined}
+                onViewDetails={onViewDetails ? () => onViewDetails(child) : undefined}
               />
             ))}
             {!isLoading && trainChildren.length === 0 && (
@@ -160,6 +173,7 @@ function CrossvalExpandable({
         expanded={expanded}
         onToggleExpand={() => setExpanded(!expanded)}
         onViewDetails={onViewDetails ? () => onViewDetails(displayRow) : undefined}
+        onViewChart={onViewPrediction ? handleViewChainChart : undefined}
         maxTableMetrics={maxTableMetrics}
       />
       {expanded && (
@@ -179,6 +193,7 @@ function CrossvalExpandable({
                   workspaceId={workspaceId}
                   variant="inline"
                   onViewPrediction={onViewPrediction ? handleViewPred : undefined}
+                  onViewDetails={onViewDetails ? () => onViewDetails(child) : undefined}
                 />
               ))}
               {!isLoading && trainChildren.length === 0 && (
@@ -222,6 +237,25 @@ function RefitExpandable({
   // Pre-attached CROSSVAL children (from topChainToRows / chainSummaryToRow)
   const crossvalChildren = row.children?.filter(c => c.cardType === "crossval") || [];
 
+  // Fetch chain detail so "Chart view" can open the viewer with all partitions
+  const { data: foldData } = useQuery({
+    queryKey: ["chain-partition-detail", row.chainId],
+    queryFn: () => getChainPartitionDetail(row.chainId),
+    enabled: !!row.chainId,
+    staleTime: 60000,
+  });
+
+  const handleViewChainChart = () => {
+    if (!onViewPrediction || !foldData?.predictions || foldData.predictions.length === 0) return;
+    const preds = foldData.predictions;
+    const pick = preds.find(p => p.fold_id === "final")
+      ?? preds.find(p => p.fold_id === "avg")
+      ?? preds.find(p => p.fold_id === "w_avg")
+      ?? preds.find(p => p.partition === "test")
+      ?? preds[0];
+    onViewPrediction(pick.prediction_id, pick);
+  };
+
   if (variant === "card") {
     return (
       <div>
@@ -235,6 +269,7 @@ function RefitExpandable({
           expanded={expanded}
           onToggleExpand={() => setExpanded(!expanded)}
           onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
+          onViewChart={onViewPrediction ? handleViewChainChart : undefined}
         />
         {expanded && (
           <div className="ml-4 mt-0.5 space-y-0.5">
@@ -274,6 +309,7 @@ function RefitExpandable({
         expanded={expanded}
         onToggleExpand={() => setExpanded(!expanded)}
         onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
+        onViewChart={onViewPrediction ? handleViewChainChart : undefined}
         maxTableMetrics={maxTableMetrics}
       />
       {expanded && (

@@ -102,6 +102,8 @@ export interface PipelinePreset {
   id: string;
   name: string;
   description: string;
+  /** Relative runtime / search breadth score from 1 (simple) to 10 (slowest). */
+  complexity: number;
   task_type?: PipelinePresetVariantId;
   default_variant: PipelinePresetVariantId;
   available_variants: PipelinePresetVariantId[];

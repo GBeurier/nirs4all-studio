@@ -29,6 +29,7 @@ from .pipeline_canonical import (
     contains_generators,
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
+    resolve_editor_class_path,
 )
 from .workspace_manager import workspace_manager
 
@@ -305,7 +306,25 @@ def _model_reference_from_step(step: dict[str, Any]) -> str:
 
     class_path = step.get("classPath")
     if isinstance(class_path, str) and "." in class_path:
-        return class_path
+        resolved = resolve_editor_class_path("model", step_name, class_path)
+        if "." in resolved:
+            return resolved
+
+    return step_name
+
+
+def _operator_reference_from_step(step: dict[str, Any], step_type: str) -> str:
+    """Resolve the best import reference for an editor step."""
+    step_name = str(step.get("name", "") or "")
+
+    if step_type == "model":
+        return _model_reference_from_step(step)
+
+    class_path = step.get("classPath")
+    if isinstance(class_path, str) and "." in class_path:
+        resolved = resolve_editor_class_path(step_type, step_name, class_path)
+        if "." in resolved:
+            return resolved
 
     return step_name
 
@@ -401,7 +420,7 @@ NIRS4ALL_AUGMENTATION_MODULES = [
 
 
 def _resolve_operator_class(name: str, step_type: str) -> Any:
-    if step_type == "model" and "." in name:
+    if "." in name and step_type in {"model", "preprocessing", "splitting", "filter", "augmentation"}:
         return _import_operator_reference(name, step_type)
 
     lookup_name = name
@@ -468,7 +487,7 @@ def build_pipeline_steps(steps: list[dict[str, Any]]) -> PipelineBuildResult:
                 metrics.append(step_name)
             continue
 
-        reference = _model_reference_from_step(step) if step_type == "model" else step_name
+        reference = _operator_reference_from_step(step, step_type)
         operator_class = _resolve_operator_class(reference, step_type)
         normalized_params = _normalize_params(
             PREPROCESSING_ALIASES.get(step_name, step_name),
@@ -1972,7 +1991,7 @@ def _build_native_finetune_params(finetune_config: dict[str, Any]) -> dict[str, 
 # ============================================================================
 
 
-def check_pipeline_imports(steps: list[dict[str, Any]]) -> list[dict[str, str]]:
+def check_pipeline_imports(steps: list[dict[str, Any]]) -> list[dict[str, str | None]]:
     """Check if all pipeline step operator classes can be resolved (imported).
 
     Walks the step tree and attempts to resolve each operator class without
@@ -1986,7 +2005,7 @@ def check_pipeline_imports(steps: list[dict[str, Any]]) -> list[dict[str, str]]:
         List of issues.  Each issue is a dict with ``step_name``, ``step_type``,
         and ``error`` keys.  An empty list means all imports succeed.
     """
-    issues: list[dict[str, str]] = []
+    issues: list[dict[str, str | None]] = []
 
     for step in steps:
         _check_step_imports(step, issues)
@@ -1994,8 +2013,9 @@ def check_pipeline_imports(steps: list[dict[str, Any]]) -> list[dict[str, str]]:
     return issues
 
 
-def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str]]) -> None:
+def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str | None]]) -> None:
     """Recursively check a single step and its children/branches."""
+    step_id = str(step.get("id", "") or "")
     step_type = step.get("type", "")
     step_name = step.get("name", "")
     sub_type = step.get("subType", "")
@@ -2038,13 +2058,16 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str]]) -> N
         if resolve_type == "y_processing":
             resolve_type = "preprocessing"
 
-        reference = _model_reference_from_step(step) if resolve_type == "model" else step_name
+        reference = _operator_reference_from_step(step, resolve_type)
         try:
             _resolve_operator_class(reference, resolve_type)
         except HTTPException as exc:
             issues.append({
+                "step_id": step_id or None,
                 "step_name": step_name,
                 "step_type": step_type,
+                "class_path": str(step.get("classPath", "") or "") or None,
+                "function_path": str(step.get("functionPath", "") or "") or None,
                 "error": str(exc.detail),
             })
 

@@ -28,6 +28,10 @@ export interface ExecutionConfig {
   exportModel?: boolean;
   modelName?: string;
   splitGroupByByDataset?: Record<string, string | null>;
+  inlinePipeline?: {
+    name: string;
+    steps: unknown[];
+  };
 }
 
 export interface ExecutionResult {
@@ -129,6 +133,7 @@ export function usePipelineExecution() {
           export_model: config.exportModel ?? true,
           model_name: config.modelName,
           split_group_by_by_dataset: config.splitGroupByByDataset ?? {},
+          inline_pipeline: config.inlinePipeline ?? null,
         });
 
         if (response.data.success) {

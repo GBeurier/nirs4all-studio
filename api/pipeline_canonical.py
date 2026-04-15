@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .node_registry_loader import load_editor_registry_nodes
+
 SEARCH_SPACE_TOKENS = {"int", "float", "categorical", "log_float"}
 SEPARATION_BRANCH_KEYS = ("by_tag", "by_metadata", "by_filter", "by_source")
 GENERATOR_KEYWORDS = {
@@ -188,32 +190,8 @@ def unwrap_canonical_payload(payload: Any) -> tuple[str, str, list[Any]]:
 
 
 @lru_cache(maxsize=1)
-def _registry_paths() -> tuple[Path, ...]:
-    generated_dir = (
-        Path(__file__).resolve().parent.parent
-        / "src"
-        / "data"
-        / "nodes"
-        / "generated"
-    )
-    return (
-        generated_dir / "node-reference.json",
-        generated_dir / "canonical-registry.json",
-    )
-
-
-@lru_cache(maxsize=1)
 def _load_registry_nodes() -> list[dict[str, Any]]:
-    for path in _registry_paths():
-        if not path.exists():
-            continue
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict) and isinstance(data.get("nodes"), list):
-            return data["nodes"]
-    return []
+    return load_editor_registry_nodes()
 
 
 def _class_name_from_path(class_path: str) -> str:
@@ -260,6 +238,8 @@ def _reference_lookup() -> dict[str, list[dict[str, Any]]]:
         register(node.get("name"), node)
         register(node.get("classPath"), node)
         register(_class_name_from_path(str(node.get("classPath") or "")), node)
+        for legacy_path in node.get("legacyClassPaths") or []:
+            register(legacy_path, node)
         for alias in node.get("aliases") or []:
             register(alias, node)
 
@@ -344,10 +324,11 @@ def resolve_class_reference(
     )
 
     if node:
+        canonical_class_path = str(node.get("classPath") or ref)
         return {
             "name": str(node.get("name") or class_name or ref),
             "type": forced_type or str(node.get("type") or _infer_type_from_path(ref)),
-            "classPath": ref if "." in ref else node.get("classPath"),
+            "classPath": canonical_class_path if "." in canonical_class_path else (ref if "." in ref else None),
         }
 
     if "." in ref:
@@ -375,12 +356,17 @@ def resolve_editor_class_path(
     name: str,
     class_path: str | None = None,
 ) -> str:
+    explicit = str(class_path or "").strip()
+    explicit_candidate: str | None = None
+    if "." in explicit:
+        resolved_explicit = resolve_class_reference(explicit, forced_type=step_type)
+        explicit_class_path = resolved_explicit.get("classPath")
+        if isinstance(explicit_class_path, str) and "." in explicit_class_path:
+            explicit_candidate = explicit_class_path
+
     normalized_name = str(name or "").strip()
     if not normalized_name:
-        return str(class_path or "")
-
-    if class_path and step_type != "model":
-        return str(class_path)
+        return explicit_candidate or explicit
 
     lookup = _name_type_lookup()
     candidate = lookup.get((step_type, normalized_name.lower()))
@@ -396,8 +382,11 @@ def resolve_editor_class_path(
         if model_class_path:
             return model_class_path
 
-    if class_path:
-        return str(class_path)
+    if explicit_candidate:
+        return explicit_candidate
+
+    if explicit:
+        return explicit
 
     resolved = resolve_class_reference(normalized_name, forced_type=step_type)
     resolved_class_path = resolved.get("classPath")

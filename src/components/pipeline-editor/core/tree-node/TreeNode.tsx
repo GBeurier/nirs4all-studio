@@ -36,6 +36,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { usePipelineDnd } from "../../PipelineDndContext";
+import { useOperatorAvailabilityOptional } from "../../contexts/OperatorAvailabilityContext";
 import { getStepColor } from "../../types";
 import type { TreeNodeProps } from "./types";
 import {
@@ -81,6 +82,7 @@ export function TreeNode({
   onUpdateStep,
 }: TreeNodeProps) {
   const { isDragging, activeId } = usePipelineDnd();
+  const operatorAvailability = useOperatorAvailabilityOptional();
   const isBeingDragged = activeId === step.id;
   const [isBranchesExpanded, setIsBranchesExpanded] = useState(true);
   const [isChildrenExpanded, setIsChildrenExpanded] = useState(true);
@@ -113,6 +115,8 @@ export function TreeNode({
 
   const Icon = getStepIcon(step);
   const colors = getStepColor(step);
+  const stepAvailability = operatorAvailability?.getStepAvailability(step) ?? { available: true };
+  const isUnavailable = !stepAvailability.available;
 
   // Use memoized computed values from utilities
   const sweepInfo = useMemo(() => computeSweepInfo(step), [step.paramSweeps, step.stepGenerator]);
@@ -137,9 +141,13 @@ export function TreeNode({
       className={`
         group flex items-center gap-2 py-1.5 px-2 rounded-lg border transition-all duration-100
         ${isBeingDragged ? "opacity-30" : "opacity-100"}
-        ${isSelected
-          ? colors.selected
-          : `${colors.border} ${colors.bg} ${colors.hover}`
+        ${isUnavailable
+          ? isSelected
+            ? "border-amber-500 bg-amber-50/80 ring-1 ring-amber-500/30 dark:bg-amber-950/20"
+            : "border-dashed border-amber-500/60 bg-amber-50/60 hover:bg-amber-50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30"
+          : isSelected
+            ? colors.selected
+            : `${colors.border} ${colors.bg} ${colors.hover}`
         }
         ${isOver && !isBeingDragged ? "ring-1 ring-primary/50" : ""}
       `}
@@ -205,6 +213,8 @@ export function TreeNode({
         generatorOptionCount={generatorInfo.optionCount}
         generatorSelectionSummary={generatorInfo.selectionSummary}
         generatorOptionNames={generatorInfo.optionNames}
+        isUnavailable={isUnavailable}
+        unavailableIssue={stepAvailability.issue ?? null}
       />
 
       {/* Quick Actions */}

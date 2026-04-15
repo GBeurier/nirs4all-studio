@@ -34,6 +34,13 @@ export {
   type TierLevel,
 } from "./PipelineEditorPreferencesContext";
 
+export {
+  OperatorAvailabilityProvider,
+  useOperatorAvailability,
+  useOperatorAvailabilityOptional,
+  type OperatorAvailabilityProviderProps,
+} from "./OperatorAvailabilityContext";
+
 // Phase 4: Pipeline Integration
 export {
   DatasetBindingProvider,

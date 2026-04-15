@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from .node_registry_loader import load_editor_registry_reference
 from .shared.gpu_detection import detect_gpu_hardware
 from .venv_manager import venv_manager
 from .workspace_manager import workspace_manager
@@ -111,6 +112,17 @@ def _get_package_versions() -> dict[str, str]:
             pass
 
     return packages
+
+
+def _load_operator_reference() -> dict[str, Any]:
+    """Load the backend's authoritative editor operator registry reference."""
+    reference = load_editor_registry_reference()
+    if not reference.get("nodes"):
+        raise HTTPException(
+            status_code=500,
+            detail="Operator registry reference could not be loaded from node definitions",
+        )
+    return reference
 
 
 @router.get("/health")
@@ -340,6 +352,51 @@ async def system_capabilities():
         pass
 
     return {"capabilities": capabilities}
+
+
+@router.get("/system/operator-availability")
+async def system_operator_availability():
+    """Get backend-authoritative availability for executable editor operators."""
+    from .nirs4all_adapter import check_pipeline_imports
+
+    reference = _load_operator_reference()
+    executable_types = {"preprocessing", "y_processing", "splitting", "model", "filter", "augmentation"}
+    unavailable: list[dict[str, str | None]] = []
+    checked_count = 0
+
+    for node in reference.get("nodes", []):
+        node_type = str(node.get("type", "") or "")
+        if node_type not in executable_types:
+            continue
+
+        checked_count += 1
+        issues = check_pipeline_imports([{
+            "id": node.get("id"),
+            "name": node.get("name"),
+            "type": node_type,
+            "classPath": node.get("classPath"),
+            "functionPath": node.get("functionPath"),
+        }])
+        if not issues:
+            continue
+
+        issue = issues[0]
+        unavailable.append({
+            "id": str(node.get("id", "") or ""),
+            "name": str(node.get("name", "") or ""),
+            "type": node_type,
+            "class_path": str(node.get("classPath", "") or "") or None,
+            "function_path": str(node.get("functionPath", "") or "") or None,
+            "error": issue.get("error"),
+        })
+
+    return {
+        "registry_version": reference.get("version"),
+        "generated_at": reference.get("generatedAt"),
+        "computed_at": datetime.now().isoformat(),
+        "checked_count": checked_count,
+        "unavailable": unavailable,
+    }
 
 
 @router.get("/system/paths")

@@ -16,9 +16,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Repeat, Sparkles, Package, Layers } from "lucide-react";
+import { Repeat, Sparkles, Package, Layers, AlertTriangle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { GeneratorKind, PipelineStep } from "../../types";
+import type { MissingOperatorIssue } from "@/lib/pipelineOperatorAvailability";
 
 interface NodeHeaderProps {
   step: PipelineStep;
@@ -49,6 +50,8 @@ interface NodeHeaderProps {
   generatorOptionCount?: number;
   generatorSelectionSummary?: string;
   generatorOptionNames?: string[];
+  isUnavailable?: boolean;
+  unavailableIssue?: MissingOperatorIssue | null;
 }
 
 /**
@@ -75,6 +78,8 @@ export function NodeHeader({
   generatorOptionCount,
   generatorSelectionSummary,
   generatorOptionNames,
+  isUnavailable = false,
+  unavailableIssue = null,
 }: NodeHeaderProps) {
   return (
     <div className="flex-1 min-w-0 overflow-hidden">
@@ -86,6 +91,22 @@ export function NodeHeader({
         <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
           {step.type}
         </Badge>
+        {isUnavailable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge className="h-4 shrink-0 gap-1 bg-amber-500 px-1 py-0 text-[9px] text-white hover:bg-amber-600">
+                <AlertTriangle className="h-2.5 w-2.5" />
+                Unavailable
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-[260px]">
+              <div className="space-y-1 text-xs">
+                <div className="font-semibold">Missing dependency</div>
+                <p>{unavailableIssue?.details?.error ?? unavailableIssue?.message ?? `${step.name} is unavailable.`}</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Sweep indicator - with Popover for details */}
         {hasSweeps && (
