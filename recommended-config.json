@@ -9,7 +9,8 @@
       "platforms": ["win32", "linux", "darwin"],
       "packages": {
         "nirs4all": { "min": ">=0.8.11", "recommended": "0.8.11" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" }
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
+        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" }
       }
     },
     "gpu-cuda-torch": {
@@ -18,7 +19,8 @@
       "platforms": ["win32", "linux"],
       "packages": {
         "nirs4all": { "min": ">=0.8.11", "recommended": "0.8.11" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" }
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
+        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" }
       }
     },
     "gpu-mps": {
@@ -27,7 +29,8 @@
       "platforms": ["darwin"],
       "packages": {
         "nirs4all": { "min": ">=0.8.11", "recommended": "0.8.11" },
-        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" }
+        "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
+        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" }
       }
     }
   },
@@ -102,6 +105,13 @@
       "recommended": "2.0.3",
       "description": "TabPFN tabular data model",
       "category": "deep_learning"
+    },
+    "tabicl": {
+      "min": ">=2.0.0",
+      "recommended": "2.0.3",
+      "description": "TabICL in-context learning model for tabular data",
+      "category": "deep_learning",
+      "show_when_profile_managed": true
     },
     "ikpls": {
       "min": ">=1.1.0",

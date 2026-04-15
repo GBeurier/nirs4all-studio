@@ -12,6 +12,7 @@ All data is read from the workspace's SQLite store via
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 import shutil
@@ -46,6 +47,38 @@ except ImportError:
 
 
 router = APIRouter(prefix="/aggregated-predictions", tags=["aggregated-predictions"])
+
+CHAIN_CANONICAL_STEP_KEYS = {
+    "class",
+    "function",
+    "model",
+    "y_processing",
+    "branch",
+    "merge",
+    "sample_augmentation",
+    "feature_augmentation",
+    "sample_filter",
+    "concat_transform",
+    "chart_2d",
+    "chart_y",
+    "preprocessing",
+    "exclude",
+    "tag",
+    "_or_",
+    "_range_",
+    "_log_range_",
+    "_grid_",
+    "_cartesian_",
+    "_zip_",
+    "_chain_",
+    "_sample_",
+}
+CHAIN_LEGACY_REFERENCE_ALIASES = {
+    "xgboost.sklearn.xgbregressor": "xgboost.XGBRegressor",
+    "xgboost.sklearn.xgbclassifier": "xgboost.XGBClassifier",
+    "lightgbm.sklearn.lgbmregressor": "lightgbm.LGBMRegressor",
+    "lightgbm.sklearn.lgbmclassifier": "lightgbm.LGBMClassifier",
+}
 
 
 # ============================================================================
@@ -433,6 +466,72 @@ def _resolve_chain_id(store: Any, chain_id: str) -> str | None:
     return None
 
 
+def _normalize_chain_reference(reference: Any) -> Any:
+    if not isinstance(reference, str):
+        return reference
+    normalized = reference.strip()
+    if not normalized:
+        return normalized
+    return CHAIN_LEGACY_REFERENCE_ALIASES.get(normalized.lower(), normalized)
+
+
+def _normalize_chain_payload(payload: Any) -> Any:
+    if isinstance(payload, list):
+        return [_normalize_chain_payload(item) for item in payload]
+
+    if not isinstance(payload, dict):
+        return payload
+
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in {"class", "function"}:
+            normalized[key] = _normalize_chain_reference(value)
+        elif key in {"model", "y_processing"} and isinstance(value, str):
+            normalized[key] = _normalize_chain_reference(value)
+        else:
+            normalized[key] = _normalize_chain_payload(value)
+    return normalized
+
+
+def _looks_like_canonical_chain_payload(value: Any) -> bool:
+    return isinstance(value, dict) and any(key in value for key in CHAIN_CANONICAL_STEP_KEYS)
+
+
+def _chain_step_to_canonical(step: dict[str, Any], *, is_model: bool) -> Any | None:
+    """Rebuild a canonical step payload from a stored chain step.
+
+    Chain rows often persist the original canonical operator config inside the
+    ``params`` field. Prefer that payload when present instead of re-wrapping
+    the short ``operator_class`` label, which loses both type fidelity and the
+    original parameter shape.
+    """
+    operator_class = _normalize_chain_reference(step.get("operator_class", ""))
+    params = copy.deepcopy(step.get("params"))
+
+    if _looks_like_canonical_chain_payload(params):
+        payload = params
+    elif is_model:
+        if isinstance(params, dict) and ("class" in params or "function" in params):
+            payload = {"model": params}
+        elif params:
+            payload = {"model": {"class": operator_class, "params": params}}
+        elif operator_class:
+            payload = {"model": operator_class}
+        else:
+            payload = None
+    else:
+        if isinstance(params, dict) and ("class" in params or "function" in params):
+            payload = params
+        elif params:
+            payload = {"class": operator_class, "params": params}
+        elif operator_class:
+            payload = operator_class
+        else:
+            payload = None
+
+    return _normalize_chain_payload(payload)
+
+
 def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
     """For refit chains missing CV scores, copy them from a matching CV sibling.
 
@@ -715,11 +814,10 @@ async def get_chain_pipeline_steps(chain_id: str):
                     other_model_indices.add(idx)
 
         # Convert chain steps to nirs4all canonical format
-        canonical_steps: list[dict] = []
+        canonical_steps: list[Any] = []
         for step in chain_steps:
             step_idx = step.get("step_idx")
             operator_class = step.get("operator_class", "")
-            params = step.get("params") or {}
 
             # Skip steps that are model steps of other chains
             if step_idx in other_model_indices:
@@ -733,10 +831,13 @@ async def get_chain_pipeline_steps(chain_id: str):
             if " object at 0x" in operator_class:
                 continue
 
-            if step_idx == model_step_idx:
-                canonical_steps.append({"model": {"class": operator_class, "params": params}})
-            else:
-                canonical_steps.append({"class": operator_class, "params": params})
+            canonical_step = _chain_step_to_canonical(
+                step,
+                is_model=step_idx == model_step_idx,
+            )
+            if canonical_step is None:
+                continue
+            canonical_steps.append(canonical_step)
 
         # Derive a human-readable name
         preprocessings = chain.get("preprocessings") or ""

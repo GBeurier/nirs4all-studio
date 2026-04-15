@@ -116,7 +116,7 @@ export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineS
   }
 
   return (
-    <div className="flex items-center gap-2.5 flex-wrap">
+    <div className="flex min-w-0 items-start gap-1.5 flex-wrap">
       {visibleMetrics.map(k => {
         const val = scores[k];
         const safeVal = val != null && Number.isFinite(val) ? val : null;
@@ -124,12 +124,17 @@ export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineS
         const isPrimary = kl === pm
           || ((kl === "rmse" || kl === "rmsep" || kl === "rmsecv") && (pm === "rmse" || pm === "rmsep" || pm === "rmsecv"));
         return (
-            <span key={k} className="inline-flex items-center gap-0.5 text-[11px]">
-            <span className={cn("uppercase text-[9px]", isPrimary ? "font-bold text-foreground" : "text-muted-foreground font-medium")}>
+          <span key={k} className="inline-flex w-[4.5rem] shrink-0 flex-col items-center justify-center text-center">
+            <span
+              className={cn(
+                "min-h-[0.75rem] uppercase text-[8px] leading-none",
+                isPrimary ? "font-bold text-foreground" : "text-muted-foreground font-medium",
+              )}
+            >
               {getScoreContextLabel(k, row.cardType, row.metric, row.taskType)}
             </span>
             <span className={cn(
-              "font-mono tabular-nums",
+              "font-mono tabular-nums text-[11px] leading-tight",
               isPrimary ? "font-bold" : "font-semibold",
               colorClass || "text-foreground/80",
             )}>

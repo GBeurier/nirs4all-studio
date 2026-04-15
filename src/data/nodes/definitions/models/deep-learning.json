@@ -677,5 +677,55 @@
     "supportsParameterSweeps": false,
     "supportsFinetuning": false,
     "tier": "advanced"
+  },
+  {
+    "id": "model.tabicl_regressor",
+    "name": "TabICLRegressor",
+    "type": "model",
+    "classPath": "tabicl.TabICLRegressor",
+    "description": "TabICL Regressor",
+    "longDescription": "TabICL v2 foundation model for tabular regression with a scikit-learn-compatible API.",
+    "requires": [
+      "tabicl"
+    ],
+    "category": "Deep Learning",
+    "tags": [
+      "deep-learning",
+      "tabicl",
+      "transformer",
+      "foundation-model",
+      "regression"
+    ],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [],
+    "supportsParameterSweeps": false,
+    "supportsFinetuning": false,
+    "tier": "advanced"
+  },
+  {
+    "id": "model.tabicl_classifier",
+    "name": "TabICLClassifier",
+    "type": "model",
+    "classPath": "tabicl.TabICLClassifier",
+    "description": "TabICL Classifier",
+    "longDescription": "TabICL v2 foundation model for tabular classification with a scikit-learn-compatible API.",
+    "requires": [
+      "tabicl"
+    ],
+    "category": "Deep Learning",
+    "tags": [
+      "deep-learning",
+      "tabicl",
+      "transformer",
+      "foundation-model",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [],
+    "supportsParameterSweeps": false,
+    "supportsFinetuning": false,
+    "tier": "advanced"
   }
 ]

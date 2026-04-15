@@ -29,6 +29,7 @@ export function getVisibleOptionalPackages(
   }
 
   const managed = collectProfileManagedPackages(config.profiles);
-  return config.optional.filter((pkg) => !managed.has(normalizePackageName(pkg.name)));
+  return config.optional.filter(
+    (pkg) => pkg.show_when_profile_managed === true || !managed.has(normalizePackageName(pkg.name)),
+  );
 }
-

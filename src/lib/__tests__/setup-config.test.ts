@@ -38,6 +38,15 @@ const config: RecommendedConfigResponse = {
       category: "deep_learning",
       note: null,
     },
+    {
+      name: "tabicl",
+      min: ">=2.0.0",
+      recommended: "2.0.3",
+      description: "TabICL",
+      category: "deep_learning",
+      note: null,
+      show_when_profile_managed: true,
+    },
   ],
 };
 
@@ -49,9 +58,9 @@ describe("setup-config helpers", () => {
     expect(managed.has("torch")).toBe(true);
   });
 
-  it("filters profile-managed packages from visible optional extras", () => {
+  it("keeps explicitly visible profile-managed optional extras", () => {
     const optional = getVisibleOptionalPackages(config);
 
-    expect(optional.map((pkg) => pkg.name)).toEqual(["keras"]);
+    expect(optional.map((pkg) => pkg.name)).toEqual(["keras", "tabicl"]);
   });
 });

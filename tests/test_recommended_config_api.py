@@ -17,8 +17,13 @@ def test_recommended_config_prefers_cached_data_without_remote(monkeypatch):
         },
         "optional": {},
     }
+    bundled = {
+        **cached,
+        "app_version": "0.2.9",
+    }
 
     monkeypatch.setattr(rc._config_cache, "get_cached_config", lambda: cached)
+    monkeypatch.setattr(rc, "_load_bundled_config", lambda: bundled)
 
     async def _unexpected_remote():
         raise AssertionError("Remote fetch should not run when cache is available")
@@ -30,6 +35,47 @@ def test_recommended_config_prefers_cached_data_without_remote(monkeypatch):
     assert result.fetched_from == "remote"
     assert result.app_version == "0.3.0"
     assert result.profiles[0].id == "cpu"
+
+
+def test_recommended_config_prefers_bundled_data_when_cache_is_same_version(monkeypatch):
+    from api import recommended_config as rc
+
+    cached = {
+        "schema_version": "1.2",
+        "app_version": "0.5.0",
+        "nirs4all": "0.8.9",
+        "profiles": {
+            "cpu": {
+                "label": "CPU",
+                "description": "CPU profile",
+                "packages": {"nirs4all": {"min": ">=0.8.9"}},
+            }
+        },
+        "optional": {},
+    }
+    bundled = {
+        **cached,
+        "optional": {
+            "tabicl": {
+                "min": ">=2.0.0",
+                "recommended": "2.0.3",
+                "show_when_profile_managed": True,
+            }
+        },
+    }
+
+    monkeypatch.setattr(rc._config_cache, "get_cached_config", lambda: cached)
+    monkeypatch.setattr(rc, "_load_bundled_config", lambda: bundled)
+
+    async def _unexpected_remote():
+        raise AssertionError("Remote fetch should not run when cache is available")
+
+    monkeypatch.setattr(rc, "_fetch_remote_config", _unexpected_remote)
+
+    result = asyncio.run(rc.get_recommended_config())
+
+    assert result.fetched_from == "bundled"
+    assert [pkg.name for pkg in result.optional] == ["tabicl"]
 
 
 def test_recommended_config_uses_bundled_fallback_without_remote_on_startup(monkeypatch):
@@ -562,3 +608,87 @@ def test_align_config_ignores_torch_when_passed_as_optional(monkeypatch):
     assert result.success is True
     assert [call[0] for call in install_calls].count("torch") == 1
     assert [call[0] for call in install_calls].count("keras") == 1
+
+
+def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_package():
+    from api import recommended_config as rc
+
+    raw = {
+        "profiles": {
+            "cpu": {
+                "packages": {
+                    "nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"},
+                    "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+                    "tabicl": {"min": ">=2.0.0", "recommended": "2.0.3"},
+                },
+            },
+        },
+        "optional": {
+            "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+            "tabicl": {
+                "min": ">=2.0.0",
+                "recommended": "2.0.3",
+                "show_when_profile_managed": True,
+            },
+            "keras": {"min": ">=3.0.0", "recommended": "3.8.0"},
+        },
+    }
+
+    filtered = rc._get_filtered_optional_config(raw)
+
+    assert set(filtered) == {"tabicl", "keras"}
+
+
+def test_compare_config_does_not_duplicate_visible_profile_managed_optional(monkeypatch):
+    from api import recommended_config as rc
+
+    monkeypatch.setattr(
+        rc,
+        "_load_active_raw_config",
+        lambda: {
+            "profiles": {
+                "cpu": {
+                    "label": "CPU",
+                    "platforms": ["win32", "linux", "darwin"],
+                    "packages": {
+                        "nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"},
+                        "tabicl": {"min": ">=2.0.0", "recommended": "2.0.3"},
+                    },
+                },
+            },
+            "optional": {
+                "tabicl": {
+                    "min": ">=2.0.0",
+                    "recommended": "2.0.3",
+                    "show_when_profile_managed": True,
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(
+        rc,
+        "_get_installed_packages",
+        lambda: {
+            "nirs4all": "0.8.9",
+            "tabicl": "2.0.3",
+        },
+    )
+    monkeypatch.setattr(
+        rc,
+        "_detect_gpu",
+        lambda: rc.GPUDetectionResponse(
+            has_cuda=False,
+            has_metal=False,
+            cuda_version=None,
+            gpu_name=None,
+            driver_version=None,
+            torch_cuda_available=False,
+            torch_version=None,
+            detection_source=None,
+            recommended_profiles=["cpu"],
+        ),
+    )
+
+    result = asyncio.run(rc.compare_config(profile="cpu", include_optional=True))
+
+    assert [pkg.name for pkg in result.packages].count("tabicl") == 1

@@ -212,6 +212,8 @@ const CLASS_PATH_MAPPINGS: Record<string, { name: string; type: StepType }> = {
   "sklearn.linear_model.ElasticNet": { name: "ElasticNet", type: "model" },
   "sklearn.svm._classes.SVR": { name: "SVR", type: "model" },
   "sklearn.svm.SVR": { name: "SVR", type: "model" },
+  "tabicl.TabICLRegressor": { name: "TabICLRegressor", type: "model" },
+  "tabicl.TabICLClassifier": { name: "TabICLClassifier", type: "model" },
 
   // nirs4all transforms (both internal and public API paths)
   "nirs4all.operators.transforms.scalers.StandardNormalVariate": { name: "SNV", type: "preprocessing" },
@@ -327,6 +329,8 @@ const NAME_TO_CLASS_PATH: Record<string, string> = {
   "model:nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
   "model:NICoN": "nirs4all.operators.models.pytorch.nicon.nicon",
   "model:CNN1D": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
+  "model:TabICLRegressor": "tabicl.TabICLRegressor",
+  "model:TabICLClassifier": "tabicl.TabICLClassifier",
 
   // Augmentation
   "augmentation:GaussianNoise": "nirs4all.operators.transforms.GaussianAdditiveNoise",

@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MoreVertical, Eye, ScatterChart, BarChart3, Zap,
-  Download, FileSpreadsheet, ExternalLink,
+  Download, FileSpreadsheet,
   Database, Pencil, Loader2, Trash2,
 } from "lucide-react";
 import {
@@ -232,13 +232,6 @@ export function ModelActionMenu({
 
           <DropdownMenuSeparator />
 
-          {pipelineEditorUrl && (
-            <DropdownMenuItem asChild>
-              <Link to={pipelineEditorUrl}>
-                <ExternalLink className="h-4 w-4 mr-2" /> Goto pipeline
-              </Link>
-            </DropdownMenuItem>
-          )}
           {pipelineEditorUrl && (
             <DropdownMenuItem asChild>
               <Link to={pipelineEditorUrl}>

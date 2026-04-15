@@ -229,9 +229,8 @@ export function DatasetResultCard({
         <Collapsible open={expanded} onOpenChange={setExpanded}>
           <CollapsibleTrigger asChild>
             <CardHeader className="p-3 cursor-pointer hover:bg-muted/30 transition-colors">
-              <div className="flex items-center gap-3">
-                {/* Left: chevron + icon + name */}
-                <div className="flex items-center gap-2 min-w-0 shrink-0">
+              <div className="flex items-center gap-3 lg:grid lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto] lg:items-center">
+                <div className="flex items-center gap-2 min-w-0">
                   {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
                   <div className="p-1.5 rounded-md bg-primary/10">
                     <Database className="h-4 w-4 text-primary" />
@@ -249,33 +248,33 @@ export function DatasetResultCard({
                   </div>
                 </div>
 
-                {/* Center: inline scores for best model */}
-                <div className="flex-1 min-w-0 hidden md:flex items-center justify-center">
+                <div className="hidden min-w-0 md:flex lg:justify-self-stretch">
                   {bestRow && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {bestSummaryLabel}
-                      </span>
-                      {delta != null && delta > 0 && (
-                        <Badge variant="outline" className="text-[9px] text-emerald-500 border-emerald-500/20 gap-0.5">
-                          <TrendingDown className="h-2.5 w-2.5" />
-                          {isLowerBetter(dataset.metric) ? "↓" : "↑"}{Math.abs(delta).toFixed(4)}
-                        </Badge>
-                      )}
+                    <div className="flex min-w-0 items-center gap-2 lg:grid lg:grid-cols-[minmax(0,6rem)_minmax(0,1fr)_minmax(0,7rem)] lg:items-center">
+                      <div className="min-w-0 shrink-0">
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {bestSummaryLabel}
+                        </div>
+                        {delta != null && delta > 0 && (
+                          <Badge variant="outline" className="mt-1 h-4 gap-0.5 px-1 text-[9px] text-emerald-500 border-emerald-500/20">
+                            <TrendingDown className="h-2.5 w-2.5" />
+                            {isLowerBetter(dataset.metric) ? "↓" : "↑"}{Math.abs(delta).toFixed(4)}
+                          </Badge>
+                        )}
+                      </div>
                       <InlineScoreDisplay
                         row={bestRow}
                         selectedMetrics={selectedMetrics}
                         colorClass={cardTypeColorClass(bestContext)}
                       />
-                      <span className="text-[9px] text-muted-foreground font-mono truncate max-w-[120px]" title={bestRow.preprocessings || ""}>
+                      <span className="truncate text-right text-[9px] text-muted-foreground font-mono" title={bestRow.preprocessings || ""}>
                         {bestRow.modelName}
                       </span>
                     </div>
                   )}
                 </div>
 
-                {/* Right: details + link */}
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="ml-auto flex items-center gap-1 shrink-0 lg:ml-0 lg:justify-self-end">
                   {workspaceId && (
                     <Button
                       variant="ghost"

@@ -75,6 +75,7 @@ class OptionalPackageInfo(BaseModel):
     description: str
     category: str
     note: str | None = None
+    show_when_profile_managed: bool = False
 
 
 class RecommendedConfigResponse(BaseModel):
@@ -270,7 +271,46 @@ async def _fetch_remote_config() -> dict[str, Any] | None:
 def _load_active_raw_config() -> dict[str, Any]:
     """Load the active config source used for comparisons and alignment."""
     cached = _config_cache.get_cached_config()
-    return cached if cached else _load_bundled_config()
+    try:
+        bundled = _load_bundled_config()
+    except FileNotFoundError:
+        bundled = None
+    selected, _source = _select_preferred_config(cached, bundled)
+    return selected
+
+
+def _select_preferred_config(
+    cached: dict[str, Any] | None,
+    bundled: dict[str, Any] | None,
+) -> tuple[dict[str, Any], str]:
+    """Choose the config source to expose.
+
+    A newer cached remote manifest wins. On version ties, prefer the bundled
+    config shipped with the running app so local/package integrations are not
+    masked by stale cache content.
+    """
+    if cached is None:
+        if bundled is None:
+            raise FileNotFoundError("No recommended config available")
+        return bundled, "bundled"
+    if bundled is None:
+        return cached, "remote"
+
+    cached_version = str(cached.get("app_version", "")).strip()
+    bundled_version = str(bundled.get("app_version", "")).strip()
+
+    try:
+        from packaging import version as pkg_version
+        if cached_version and bundled_version:
+            if pkg_version.parse(cached_version) > pkg_version.parse(bundled_version):
+                return cached, "remote"
+            return bundled, "bundled"
+    except Exception:
+        logger.debug("Could not compare cached and bundled config versions", exc_info=True)
+
+    if cached_version and not bundled_version:
+        return cached, "remote"
+    return bundled, "bundled"
 
 
 def _is_profile_platform_compatible(raw: dict[str, Any], profile_id: str) -> bool:
@@ -300,13 +340,21 @@ def _get_profile_managed_packages(raw: dict[str, Any]) -> set[str]:
     return managed
 
 
+def _show_optional_when_profile_managed(data: dict[str, Any]) -> bool:
+    """Return whether a profile-managed optional package should stay visible."""
+    return bool(data.get("show_when_profile_managed", False))
+
+
 def _get_filtered_optional_config(raw: dict[str, Any]) -> dict[str, Any]:
-    """Return optional packages excluding anything managed by profiles."""
+    """Return optional packages, hiding profile-managed entries unless flagged visible."""
     managed = _get_profile_managed_packages(raw)
     return {
         name: data
         for name, data in raw.get("optional", {}).items()
-        if _normalize_pkg_name(name) not in managed
+        if (
+            _normalize_pkg_name(name) not in managed
+            or _show_optional_when_profile_managed(data)
+        )
     }
 
 
@@ -349,6 +397,7 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
             description=odata.get("description", ""),
             category=odata.get("category", "other"),
             note=odata.get("note"),
+            show_when_profile_managed=odata.get("show_when_profile_managed", False),
         ))
 
     return RecommendedConfigResponse(
@@ -647,13 +696,15 @@ async def get_recommended_config(force_refresh: bool = False):
     """
     if not force_refresh:
         cached = _config_cache.get_cached_config()
-        if cached:
-            return _parse_config(cached, "remote")
         try:
             bundled = _load_bundled_config()
-            return _parse_config(bundled, "bundled")
         except FileNotFoundError:
-            pass
+            bundled = None
+        try:
+            selected, source = _select_preferred_config(cached, bundled)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="No recommended config available")
+        return _parse_config(selected, source)
 
     # Explicit refresh path: try remote first, then fall back to any local data.
     remote = await _fetch_remote_config()
@@ -662,15 +713,17 @@ async def get_recommended_config(force_refresh: bool = False):
         return _parse_config(remote, "remote")
 
     cached = _config_cache.get_cached_config()
-    if cached:
-        return _parse_config(cached, "remote")
-
-    # Final fallback: bundled config packaged with the app
     try:
         bundled = _load_bundled_config()
-        return _parse_config(bundled, "bundled")
+    except FileNotFoundError:
+        bundled = None
+
+    try:
+        selected, source = _select_preferred_config(cached, bundled)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No recommended config available")
+
+    return _parse_config(selected, source)
 
 
 @router.get("/diff", response_model=ConfigComparisonResponse)
@@ -712,6 +765,10 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
     missing_count = 0
 
     # Parse profile packages from raw config (may be v1.1 string or v1.2 dict)
+    required_package_names = {
+        _normalize_pkg_name(pkg_name)
+        for pkg_name in required_packages
+    }
     for pkg_name, pkg_raw in required_packages.items():
         min_spec, recommended_ver = _parse_package_spec(pkg_raw)
         version_spec = _describe_required_package(profile, pkg_name, pkg_raw)
@@ -755,6 +812,8 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
     if include_optional:
         for opt_name, opt_data in optional_config.items():
             norm_name = _normalize_pkg_name(opt_name)
+            if norm_name in required_package_names:
+                continue
             installed_ver = installed.get(norm_name)
             if installed_ver is None:
                 continue  # Skip uninstalled optional packages
@@ -809,7 +868,10 @@ async def align_config(request: AlignConfigRequest):
     profile_data = raw_config.get("profiles", {}).get(request.profile)
     required_packages = profile_data.get("packages", {})
     optional_config = _get_filtered_optional_config(raw_config)
-    managed_optional_names = _get_profile_managed_packages(raw_config)
+    active_profile_managed_names = {
+        _normalize_pkg_name(pkg_name)
+        for pkg_name in required_packages
+    }
 
     # Build list of packages to install/upgrade
     to_install: list[ResolvedInstallSpec] = []
@@ -830,7 +892,7 @@ async def align_config(request: AlignConfigRequest):
             to_install.append(install_spec)
 
     for opt_name in request.optional_packages:
-        if _normalize_pkg_name(opt_name) in managed_optional_names:
+        if _normalize_pkg_name(opt_name) in active_profile_managed_names:
             logger.info("Ignoring profile-managed optional package request for %s", opt_name)
             continue
         opt_data = optional_config.get(opt_name)

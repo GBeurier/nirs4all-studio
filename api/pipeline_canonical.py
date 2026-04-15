@@ -47,9 +47,17 @@ FUNCTION_MODEL_CLASS_PATHS = {
 }
 MODEL_CLASS_PATH_ALIASES = {
     "xgboost": "xgboost.XGBRegressor",
+    "xgbregressor": "xgboost.XGBRegressor",
     "xgboostclassifier": "xgboost.XGBClassifier",
+    "xgbclassifier": "xgboost.XGBClassifier",
+    "xgboost.sklearn.xgbregressor": "xgboost.XGBRegressor",
+    "xgboost.sklearn.xgbclassifier": "xgboost.XGBClassifier",
     "lightgbm": "lightgbm.LGBMRegressor",
     "lightgbmclassifier": "lightgbm.LGBMClassifier",
+    "lgbmregressor": "lightgbm.LGBMRegressor",
+    "lgbmclassifier": "lightgbm.LGBMClassifier",
+    "lightgbm.sklearn.lgbmregressor": "lightgbm.LGBMRegressor",
+    "lightgbm.sklearn.lgbmclassifier": "lightgbm.LGBMClassifier",
 }
 KNOWN_FINETUNE_KEYS = {
     "n_trials",
@@ -162,25 +170,32 @@ def unwrap_canonical_payload(payload: Any) -> tuple[str, str, list[Any]]:
 
 
 @lru_cache(maxsize=1)
-def _registry_path() -> Path:
-    return (
+def _registry_paths() -> tuple[Path, ...]:
+    generated_dir = (
         Path(__file__).resolve().parent.parent
         / "src"
         / "data"
         / "nodes"
         / "generated"
-        / "canonical-registry.json"
+    )
+    return (
+        generated_dir / "node-reference.json",
+        generated_dir / "canonical-registry.json",
     )
 
 
 @lru_cache(maxsize=1)
 def _load_registry_nodes() -> list[dict[str, Any]]:
-    path = _registry_path()
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    return data if isinstance(data, list) else []
+    for path in _registry_paths():
+        if not path.exists():
+            continue
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and isinstance(data.get("nodes"), list):
+            return data["nodes"]
+    return []
 
 
 def _class_name_from_path(class_path: str) -> str:
@@ -299,7 +314,8 @@ def resolve_class_reference(
     forced_type: str | None = None,
 ) -> dict[str, Any]:
     """Resolve a class/function reference using the generated registry first."""
-    ref = str(reference or "")
+    raw_ref = str(reference or "").strip()
+    ref = MODEL_CLASS_PATH_ALIASES.get(raw_ref.lower(), raw_ref)
     candidates = _reference_lookup().get(ref.strip().lower(), [])
     node = _select_registry_node(candidates, forced_type=forced_type)
     class_name = _class_name_from_path(ref)

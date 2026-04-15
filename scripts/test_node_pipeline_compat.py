@@ -33,6 +33,8 @@ CLASS_ALIASES = {
     "nirs4all.operators.models.LSTM": None,  # Skip - function-based
     "nirs4all.operators.models.Transformer": None,  # Skip - function-based
     "nirs4all.operators.models.TabPFN": None,  # Skip - optional dependency
+    "tabicl.TabICLClassifier": None,  # Skip - optional dependency
+    "tabicl.TabICLRegressor": None,  # Skip - optional dependency
     "nirs4all.operators.models.MetaModel": None,  # Skip - special
     "nirs4all.operators.models.PCR": None,  # Skip - composite
     # XGBoost/LightGBM are optional

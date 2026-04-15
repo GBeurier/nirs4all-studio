@@ -32,7 +32,7 @@ import { foldBadgeClasses, foldLabel, foldLabelShort, safeNumber } from "@/lib/f
 import { formatBestParams } from "@/lib/score-adapters";
 import { cardTypeBorderClass } from "./ScoreColumns";
 import { ModelActionMenu, type ModelActionChartView } from "./ModelActionMenu";
-import type { ScoreCardRow } from "@/types/score-cards";
+import type { ScoreCardRow, ScoreCardType } from "@/types/score-cards";
 
 // ============================================================================
 // Props
@@ -66,8 +66,8 @@ function ScorePair({ label, value, metric, colorClass }: {
 }) {
   const val = safeNumber(value);
   return (
-    <div className="flex flex-col items-center min-w-[38px]">
-      <span className="text-muted-foreground uppercase text-[7px] font-medium tracking-wide leading-none">{label}</span>
+    <div className="flex w-[4.1rem] shrink-0 flex-col items-center text-center">
+      <span className="min-h-[0.75rem] text-muted-foreground uppercase text-[7px] font-medium tracking-wide leading-none">{label}</span>
       <span className={cn("font-mono text-[11px] tabular-nums leading-tight", colorClass || "text-foreground/70")}>
         {val != null ? formatMetricValue(val, metric) : "\u2014"}
       </span>
@@ -115,7 +115,7 @@ function RefitScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetr
 
   if (isClassificationTaskType(row.taskType)) {
     return (
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
         <ScorePair
           label={getMetricAbbreviation(primaryMetric)}
           value={row.primaryTestScore ?? getTestScore(row, primaryMetric)}
@@ -140,7 +140,7 @@ function RefitScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetr
     : getMetricAbbreviation(primaryMetric);
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
       <ScorePair
         label={primaryLabel}
         value={row.primaryTestScore ?? getTestScore(row, primaryMetric)}
@@ -171,7 +171,7 @@ function CrossvalScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedM
     const primaryLabel = getMetricAbbreviation(primaryMetric);
 
     return (
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
         <ScorePair
           label={`${primaryLabel} CV`}
           value={row.primaryValScore ?? safeNumber(row.avgValScores?.[primaryMetric])}
@@ -211,7 +211,7 @@ function CrossvalScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedM
   const avgTest = row.primaryTestScore ?? safeNumber(row.avgTestScores?.[primaryMetric]) ?? safeNumber(row.avgTestScores?.rmse);
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
       <ScorePair label={rmseLike ? "RMSECV" : "CV"} value={row.primaryValScore ?? safeNumber(row.avgValScores?.[primaryMetric]) ?? safeNumber(row.avgValScores?.rmse)} metric={primaryKey} colorClass="text-chart-1 font-semibold" />
       <ScorePair label="Mean Val" value={meanVal} metric={primaryKey} colorClass="text-blue-400" />
       <ScorePair label="Min Val" value={minVal} metric={primaryKey} colorClass="text-blue-400" />
@@ -234,7 +234,7 @@ function TrainScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetr
 
   if (isClassificationTaskType(row.taskType)) {
     return (
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
         <ScorePair
           label={getMetricAbbreviation(primaryMetric)}
           value={row.primaryTestScore ?? getAnyScore(row, primaryMetric)}
@@ -259,7 +259,7 @@ function TrainScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetr
     : getMetricAbbreviation(primaryMetric);
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
       <ScorePair
         label={primaryLabel}
         value={row.primaryTestScore ?? getTestScore(row, primaryMetric)}
@@ -322,6 +322,28 @@ function CardTypeBadge({ row }: { row: ScoreCardRow }) {
   return null;
 }
 
+function rowShellClass(cardType: ScoreCardType): string {
+  switch (cardType) {
+    case "refit":
+      return "lg:grid lg:grid-cols-[25.5rem_minmax(0,1fr)_auto] lg:items-center lg:gap-2";
+    case "crossval":
+      return "lg:grid lg:grid-cols-[26rem_minmax(0,1fr)_auto] lg:items-center lg:gap-2";
+    case "train":
+      return "lg:grid lg:grid-cols-[23rem_minmax(0,1fr)_auto] lg:items-center lg:gap-2";
+  }
+}
+
+function rowDetailClass(cardType: ScoreCardType): string {
+  switch (cardType) {
+    case "refit":
+      return "lg:grid lg:grid-cols-[14rem_10.5rem] lg:items-center lg:gap-2";
+    case "crossval":
+      return "lg:grid lg:grid-cols-[14rem_11rem] lg:items-center lg:gap-2";
+    case "train":
+      return "lg:grid lg:grid-cols-[12rem_10rem] lg:items-center lg:gap-2";
+  }
+}
+
 // ============================================================================
 // InlineRow — card-style row for Runs/Results pages
 // ============================================================================
@@ -338,76 +360,87 @@ function InlineRow({
 
   return (
     <div className={cn("rounded-md border", borderClass, expanded && "bg-muted/5", indent > 0 && "ml-4")}>
-      {/* Identity line */}
-      <div className="flex items-center gap-1 min-h-[32px]">
+      <div className={cn("min-h-[32px] p-1", rowShellClass(row.cardType))}>
         <button
-          className="flex items-center gap-1.5 shrink-0 py-1 px-2 text-left hover:bg-muted/30 rounded-l-md transition-colors"
+          className={cn(
+            "w-full min-w-0 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/30",
+            rowDetailClass(row.cardType),
+            expandable || onToggleExpand ? "cursor-pointer" : "cursor-default",
+          )}
           onClick={onToggleExpand}
         >
-          {expandable ? (
-            expanded
-              ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-              : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
-          ) : (
-            <span className="w-3 shrink-0" />
-          )}
+          <div className="flex min-w-0 items-center gap-1.5">
+            {expandable ? (
+              expanded
+                ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+            ) : (
+              <span className="w-3 shrink-0" />
+            )}
 
-          {isRefit && <Award className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
+            {isRefit && <Award className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
 
-          {rank != null && (
-            <span className={cn("text-xs font-bold shrink-0", isRefit ? "text-emerald-600" : "text-muted-foreground")}>#{rank}</span>
-          )}
+            {rank != null && (
+              <span className={cn("text-xs font-bold shrink-0", isRefit ? "text-emerald-600" : "text-muted-foreground")}>#{rank}</span>
+            )}
 
-          <Badge variant="outline" className={cn(
-            "text-[10px] font-mono shrink-0",
-            isRefit && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
-            isCrossval && "border-chart-1/30 text-chart-1",
-          )}>
-            <Box className="h-2.5 w-2.5 mr-0.5" />{row.modelName}
-          </Badge>
+            <Badge variant="outline" className={cn(
+              "min-w-0 max-w-full text-[10px] font-mono",
+              isRefit && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+              isCrossval && "border-chart-1/30 text-chart-1",
+            )}>
+              <Box className="mr-0.5 h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{row.modelName}</span>
+            </Badge>
+          </div>
 
-          <CardTypeBadge row={row} />
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 flex-wrap lg:mt-0 lg:flex-nowrap">
+            <CardTypeBadge row={row} />
 
-          {paramLabel && <span className="text-[10px] text-muted-foreground truncate max-w-[120px]" title={paramLabel}>{paramLabel}</span>}
+            {paramLabel && (
+              <span className="min-w-0 truncate text-[10px] text-muted-foreground" title={paramLabel}>
+                {paramLabel}
+              </span>
+            )}
 
-          {isTrain && row.partition && <Badge variant="secondary" className="text-[9px] shrink-0">{row.partition}</Badge>}
-          {row.nSamplesEval != null && <span className="text-[10px] text-muted-foreground shrink-0">n={row.nSamplesEval}</span>}
-          {isCrossval && row.foldCount != null && row.foldCount > 0 && <span className="text-[10px] text-muted-foreground shrink-0">{row.foldCount} folds</span>}
+            {isTrain && row.partition && <Badge variant="secondary" className="text-[9px] shrink-0">{row.partition}</Badge>}
+            {row.nSamplesEval != null && <span className="text-[10px] text-muted-foreground shrink-0">n={row.nSamplesEval}</span>}
+            {isCrossval && row.foldCount != null && row.foldCount > 0 && <span className="text-[10px] text-muted-foreground shrink-0">{row.foldCount} folds</span>}
+          </div>
         </button>
 
-        {/* Scores area */}
-        <div className="flex-1 min-w-0 flex items-center justify-end gap-2 pr-2">
+        <div className="mt-1 flex min-w-0 items-center justify-start gap-2 px-2 lg:mt-0 lg:justify-end lg:px-0">
           {isRefit && <RefitScores row={row} selectedMetrics={selectedMetrics} />}
           {isCrossval && <CrossvalScores row={row} selectedMetrics={selectedMetrics} />}
           {isTrain && <TrainScores row={row} selectedMetrics={selectedMetrics} />}
+        </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-0.5 shrink-0 ml-1">
-            {onViewPrediction && isTrain && (
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onViewPrediction(row.id); }} title="View prediction">
-                <Eye className="h-3 w-3" />
-              </Button>
-            )}
-            {row.hasRefitArtifact && (
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" asChild title="Predict">
-                <Link to={`/predict?model_id=${encodeURIComponent(row.chainId)}&source=chain`}><Zap className="h-3 w-3 text-emerald-500" /></Link>
-              </Button>
-            )}
-            {!isTrain && (
-              <ModelActionMenu
-                chainId={row.chainId}
-                modelName={row.modelName}
-                datasetName={row.datasetName}
-                runId={row.runId}
-                taskType={row.taskType}
-                hasRefit={row.hasRefitArtifact}
-                workspaceId={workspaceId}
-                deleteScope="chain"
-                onViewDetails={onViewDetails}
-                onOpenChart={onOpenChart ? (view) => onOpenChart(row, view) : undefined}
-              />
-            )}
-          </div>
+        <div className="mt-1 flex items-center justify-end gap-0.5 px-2 lg:mt-0 lg:px-0">
+          {onViewPrediction && isTrain && (
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); onViewPrediction(row.id); }} title="View prediction">
+              <Eye className="h-3 w-3" />
+            </Button>
+          )}
+          {row.hasRefitArtifact && (
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" asChild title="Predict">
+              <Link to={`/predict?model_id=${encodeURIComponent(row.chainId)}&source=chain`}><Zap className="h-3 w-3 text-emerald-500" /></Link>
+            </Button>
+          )}
+          {isRefit && !row.hasRefitArtifact && <span className="block h-5 w-5 shrink-0" aria-hidden="true" />}
+          {!isTrain && (
+            <ModelActionMenu
+              chainId={row.chainId}
+              modelName={row.modelName}
+              datasetName={row.datasetName}
+              runId={row.runId}
+              taskType={row.taskType}
+              hasRefit={row.hasRefitArtifact}
+              workspaceId={workspaceId}
+              deleteScope="chain"
+              onViewDetails={onViewDetails}
+              onOpenChart={onOpenChart ? (view) => onOpenChart(row, view) : undefined}
+            />
+          )}
         </div>
       </div>
     </div>

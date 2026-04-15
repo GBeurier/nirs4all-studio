@@ -89,6 +89,84 @@ function primaryRefitLabel(metric: string | null, taskType: string | null | unde
   return getPrimaryContextMetricLabel(metric, "refit", taskType);
 }
 
+function RunSummaryStrip({
+  run,
+  datasets,
+  bestDataset,
+  showBestScore = true,
+  className,
+}: {
+  run: EnrichedRun;
+  datasets: EnrichedDatasetRun[];
+  bestDataset: EnrichedDatasetRun | null;
+  showBestScore?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex items-center gap-2 text-xs text-muted-foreground flex-wrap", className)}>
+      <TooltipProvider>
+        <Tooltip><TooltipTrigger asChild>
+          <span className="flex items-center gap-0.5"><Database className="h-3 w-3" />{datasets.length}</span>
+        </TooltipTrigger><TooltipContent>Datasets</TooltipContent></Tooltip>
+      </TooltipProvider>
+      <span className="text-muted-foreground/40">|</span>
+      <TooltipProvider>
+        <Tooltip><TooltipTrigger asChild>
+          <span className="flex items-center gap-0.5"><Layers className="h-3 w-3" />{run.pipeline_runs_count}</span>
+        </TooltipTrigger><TooltipContent>Pipeline runs</TooltipContent></Tooltip>
+      </TooltipProvider>
+      <span className="text-muted-foreground/40">|</span>
+      <TooltipProvider>
+        <Tooltip><TooltipTrigger asChild>
+          <span className="flex items-center gap-0.5"><Target className="h-3 w-3" />{run.final_models_count}</span>
+        </TooltipTrigger><TooltipContent>Final models</TooltipContent></Tooltip>
+      </TooltipProvider>
+      <span className="text-muted-foreground/40">|</span>
+      <TooltipProvider>
+        <Tooltip><TooltipTrigger asChild>
+          <span className="flex items-center gap-0.5"><Box className="h-3 w-3" />{run.total_models_trained}</span>
+        </TooltipTrigger><TooltipContent>Models trained</TooltipContent></Tooltip>
+      </TooltipProvider>
+      <span className="text-muted-foreground/40">|</span>
+      <TooltipProvider>
+        <Tooltip><TooltipTrigger asChild>
+          <span className="flex items-center gap-0.5"><Layers className="h-3 w-3 rotate-90" />{run.total_folds}</span>
+        </TooltipTrigger><TooltipContent>Total folds</TooltipContent></Tooltip>
+      </TooltipProvider>
+      {run.model_classes && run.model_classes.length > 0 && (
+        <>
+          <span className="text-muted-foreground/40">|</span>
+          <TooltipProvider>
+            <Tooltip><TooltipTrigger asChild>
+              <span className="flex items-center gap-1">
+                {run.model_classes.map((mc) => (
+                  <Badge key={mc.name} variant="outline" className="text-[10px] bg-teal-500/10 text-teal-600 border-teal-500/30 py-0 h-4">
+                    {mc.name}{mc.count > 1 ? ` ×${mc.count}` : ""}
+                  </Badge>
+                ))}
+              </span>
+            </TooltipTrigger><TooltipContent>Trained model classes</TooltipContent></Tooltip>
+          </TooltipProvider>
+        </>
+      )}
+      {showBestScore && bestDataset && (bestDataset.best_final_score ?? bestDataset.best_avg_val_score) != null && (
+        <>
+          <span className="text-muted-foreground/40">|</span>
+          <span className={cn(
+            "font-mono font-bold",
+            bestDataset.best_final_score != null ? "text-emerald-500" : "text-chart-1",
+          )}>
+            {bestDataset.best_final_score != null
+              ? primaryRefitLabel(bestDataset.metric, bestDataset.task_type)
+              : `CV ${getPrimaryContextMetricLabel(bestDataset.metric, "crossval", bestDataset.task_type)}`}{" "}
+            {formatMetricValue(bestDataset.best_final_score ?? bestDataset.best_avg_val_score, bestDataset.metric || "score")}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
 // RunItem — main component
 // ============================================================================
@@ -144,8 +222,8 @@ export function RunItem({
         {/* Header — always visible, acts as collapse trigger */}
         <CollapsibleTrigger asChild>
           <CardHeader className="p-4 pb-2 cursor-pointer hover:bg-muted/20 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="flex items-start gap-3 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)_auto] lg:items-start">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
                 <div className={cn("p-2 rounded-lg shrink-0 relative", config.bg)}>
                   <StatusIcon className={cn("h-4 w-4", config.color, config.iconClass)} />
                 </div>
@@ -163,74 +241,25 @@ export function RunItem({
                       </Badge>
                     )}
                   </div>
-                  {/* Compact stats row */}
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                    <TooltipProvider>
-                      <Tooltip><TooltipTrigger asChild>
-                        <span className="flex items-center gap-0.5"><Database className="h-3 w-3" />{datasets.length}</span>
-                      </TooltipTrigger><TooltipContent>Datasets</TooltipContent></Tooltip>
-                    </TooltipProvider>
-                    <span className="text-muted-foreground/40">|</span>
-                    <TooltipProvider>
-                      <Tooltip><TooltipTrigger asChild>
-                        <span className="flex items-center gap-0.5"><Layers className="h-3 w-3" />{run.pipeline_runs_count}</span>
-                      </TooltipTrigger><TooltipContent>Pipeline runs</TooltipContent></Tooltip>
-                    </TooltipProvider>
-                    <span className="text-muted-foreground/40">|</span>
-                    <TooltipProvider>
-                      <Tooltip><TooltipTrigger asChild>
-                        <span className="flex items-center gap-0.5"><Target className="h-3 w-3" />{run.final_models_count}</span>
-                      </TooltipTrigger><TooltipContent>Final models</TooltipContent></Tooltip>
-                    </TooltipProvider>
-                    <span className="text-muted-foreground/40">|</span>
-                    <TooltipProvider>
-                      <Tooltip><TooltipTrigger asChild>
-                        <span className="flex items-center gap-0.5"><Box className="h-3 w-3" />{run.total_models_trained}</span>
-                      </TooltipTrigger><TooltipContent>Models trained</TooltipContent></Tooltip>
-                    </TooltipProvider>
-                    <span className="text-muted-foreground/40">|</span>
-                    <TooltipProvider>
-                      <Tooltip><TooltipTrigger asChild>
-                        <span className="flex items-center gap-0.5"><Layers className="h-3 w-3 rotate-90" />{run.total_folds}</span>
-                      </TooltipTrigger><TooltipContent>Total folds</TooltipContent></Tooltip>
-                    </TooltipProvider>
-                    {/* Model classes trained */}
-                    {run.model_classes && run.model_classes.length > 0 && (
-                      <>
-                        <span className="text-muted-foreground/40">|</span>
-                        <TooltipProvider>
-                          <Tooltip><TooltipTrigger asChild>
-                            <span className="flex items-center gap-1">
-                              {run.model_classes.map((mc) => (
-                                <Badge key={mc.name} variant="outline" className="text-[10px] bg-teal-500/10 text-teal-600 border-teal-500/30 py-0 h-4">
-                                  {mc.name}{mc.count > 1 ? ` ×${mc.count}` : ""}
-                                </Badge>
-                              ))}
-                            </span>
-                          </TooltipTrigger><TooltipContent>Trained model classes</TooltipContent></Tooltip>
-                        </TooltipProvider>
-                      </>
-                    )}
-                    {/* Inline best score when collapsed */}
-                    {!expanded && bestDataset && (bestDataset.best_final_score ?? bestDataset.best_avg_val_score) != null && (
-                      <>
-                        <span className="text-muted-foreground/40">|</span>
-                        <span className={cn(
-                          "font-mono font-bold",
-                          bestDataset.best_final_score != null ? "text-emerald-500" : "text-chart-1",
-                        )}>
-                          {bestDataset.best_final_score != null
-                            ? primaryRefitLabel(bestDataset.metric, bestDataset.task_type)
-                            : `CV ${getPrimaryContextMetricLabel(bestDataset.metric, "crossval", bestDataset.task_type)}`}{" "}
-                          {formatMetricValue(bestDataset.best_final_score ?? bestDataset.best_avg_val_score, bestDataset.metric || "score")}
-                        </span>
-                      </>
-                    )}
-                  </div>
+                  <RunSummaryStrip
+                    run={run}
+                    datasets={datasets}
+                    bestDataset={bestDataset}
+                    showBestScore={!expanded}
+                    className="mt-0.5 lg:hidden"
+                  />
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 shrink-0">
+              <RunSummaryStrip
+                run={run}
+                datasets={datasets}
+                bestDataset={bestDataset}
+                showBestScore={!expanded}
+                className="hidden min-w-0 self-center lg:flex"
+              />
+
+              <div className="ml-auto flex items-center gap-3 shrink-0 lg:ml-0 lg:justify-self-end">
                 <div className="hidden md:flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1" title="Duration">
                     <Timer className="h-3 w-3" />

@@ -2679,6 +2679,7 @@ export interface OptionalPackageInfo {
   description: string;
   category: string;
   note?: string | null;
+  show_when_profile_managed?: boolean;
 }
 
 export interface RecommendedConfigResponse {

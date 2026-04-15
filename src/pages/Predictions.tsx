@@ -276,11 +276,7 @@ export default function Predictions() {
       && visibleDataKinds.includes(rowDataVisibility(row)),
     );
 
-    const referenceMetric = rows.find(row => row.metric)?.metric || "rmse";
     const metricSortKey = sortField.startsWith("metric:") ? sortField.slice("metric:".length) : null;
-    const scoreMetricForSort = metricSortKey
-      ?? (sortField === "test_score" || sortField === "val_score" ? referenceMetric : null);
-    const naturalScoreOrder: SortOrder = isLowerBetter(scoreMetricForSort || referenceMetric) ? "asc" : "desc";
     const scoreValue = (row: ScoreCardRow, key: string, partition: "test" | "val"): number => {
       const maps = partition === "test"
         ? [row.testScores, row.aggregatedTestScores, row.avgTestScores, row.wAvgTestScores, row.meanTestScores]
@@ -326,10 +322,6 @@ export default function Predictions() {
         }
       }
 
-      const isScoreSort = metricSortKey != null || sortField === "test_score" || sortField === "val_score";
-      if (isScoreSort && sortOrder !== naturalScoreOrder) {
-        return -cmp;
-      }
       return sortOrder === "asc" ? cmp : -cmp;
     });
   }, [allRows, filterDataset, filterModel, filterTaskType, metricTaskFilter, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
@@ -560,8 +552,9 @@ export default function Predictions() {
       onClick={() => handleSort(field)}
     >
       <div className={cn("flex items-center gap-1", align === "right" && "justify-end")}>
+        {align === "right" && sortField === field && <ArrowUpDown className={cn("h-3 w-3", sortOrder === "asc" && "rotate-180")} />}
         {children}
-        {sortField === field && <ArrowUpDown className={cn("h-3 w-3", sortOrder === "asc" && "rotate-180")} />}
+        {align !== "right" && sortField === field && <ArrowUpDown className={cn("h-3 w-3", sortOrder === "asc" && "rotate-180")} />}
       </div>
     </TableHead>
   );
@@ -784,9 +777,9 @@ export default function Predictions() {
                   <SortableHeader field="model_name">Model</SortableHeader>
                   <SortableHeader field="dataset_name">Dataset</SortableHeader>
                   <SortableHeader field="preproc">Preproc</SortableHeader>
-                  <SortableHeader field="test_score">{primaryMetricLabel}</SortableHeader>
-                  <SortableHeader field="val_score">Val</SortableHeader>
-                  <SortableHeader field="fold">Fold</SortableHeader>
+                  <SortableHeader field="test_score" align="right" className="text-right">{primaryMetricLabel}</SortableHeader>
+                  <SortableHeader field="val_score" align="right" className="text-right">Val</SortableHeader>
+                  <SortableHeader field="fold" align="right" className="text-right">Fold</SortableHeader>
                   {selectedMetrics.slice(0, 4).map(metric => (
                     <SortableHeader
                       key={metric}

@@ -67,6 +67,11 @@ def _is_profile_managed_dependency(name: str) -> bool:
     return _normalize_dependency_name(name) in PROFILE_MANAGED_DEPENDENCIES
 
 
+def _show_optional_when_profile_managed(pkg_data: dict[str, Any]) -> bool:
+    """Return whether a profile-managed optional package should stay visible."""
+    return bool(pkg_data.get("show_when_profile_managed", False))
+
+
 def _load_optional_deps_from_config() -> dict[str, Any]:
     """Load optional dependencies from recommended-config.json.
 
@@ -100,7 +105,10 @@ def _load_optional_deps_from_config() -> dict[str, Any]:
         # Group packages by category
         groups: dict[str, Any] = {}
         for pkg_name, pkg_data in optional.items():
-            if _normalize_dependency_name(pkg_name) in profile_managed:
+            if (
+                _normalize_dependency_name(pkg_name) in profile_managed
+                and not _show_optional_when_profile_managed(pkg_data)
+            ):
                 continue
             cat_id = pkg_data.get("category", "other")
             if cat_id not in groups:
@@ -140,6 +148,7 @@ NIRS4ALL_OPTIONAL_DEPS: dict[str, Any] = _load_optional_deps_from_config() or {
             {"name": "jaxlib", "min_version": "0.4.20", "recommended_version": "0.4.38", "description": "JAX backend library"},
             {"name": "flax", "min_version": "0.8.0", "recommended_version": "0.10.4", "description": "Flax neural network library for JAX"},
             {"name": "tabpfn", "min_version": "2.0.0", "recommended_version": "2.0.3", "description": "TabPFN tabular data model"},
+            {"name": "tabicl", "min_version": "2.0.0", "recommended_version": "2.0.3", "description": "TabICL in-context learning model for tabular data"},
         ],
     },
     "pls_variants": {

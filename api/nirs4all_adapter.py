@@ -81,6 +81,8 @@ THIRDPARTY_MODEL_MODULES = [
     "xgboost",
     "lightgbm.sklearn",
     "catboost",
+    "tabpfn",
+    "tabicl",
 ]
 
 NIRS4ALL_PREPROCESSING_MODULES = [
@@ -290,6 +292,24 @@ def _looks_like_function_model_path(reference: Any) -> bool:
     return bool(leaf_name) and leaf_name[0].islower()
 
 
+def _model_reference_from_step(step: dict[str, Any]) -> str:
+    """Resolve the best import reference for a model step.
+
+    Prefer explicit dotted paths from the editor payload so optional third-party
+    models do not depend on bare-name module whitelists.
+    """
+    step_name = str(step.get("name", "") or "")
+    function_path = step.get("functionPath")
+    if isinstance(function_path, str) and "." in function_path:
+        return function_path
+
+    class_path = step.get("classPath")
+    if isinstance(class_path, str) and "." in class_path:
+        return class_path
+
+    return step_name
+
+
 def _infer_model_framework(reference_or_callable: Any) -> str | None:
     if isinstance(reference_or_callable, str):
         normalized = reference_or_callable.lower()
@@ -448,7 +468,8 @@ def build_pipeline_steps(steps: list[dict[str, Any]]) -> PipelineBuildResult:
                 metrics.append(step_name)
             continue
 
-        operator_class = _resolve_operator_class(step_name, step_type)
+        reference = _model_reference_from_step(step) if step_type == "model" else step_name
+        operator_class = _resolve_operator_class(reference, step_type)
         normalized_params = _normalize_params(
             PREPROCESSING_ALIASES.get(step_name, step_name),
             params,
@@ -911,7 +932,8 @@ def build_full_step(step: dict[str, Any]) -> Any:
         return {"merge": merge_type}
 
     # Build base operator
-    operator_class = _resolve_operator_class(step_name, step_type)
+    reference = _model_reference_from_step(step) if step_type == "model" else step_name
+    operator_class = _resolve_operator_class(reference, step_type)
     normalized_params = _normalize_params(
         PREPROCESSING_ALIASES.get(step_name, step_name),
         params,
@@ -2016,14 +2038,7 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str]]) -> N
         if resolve_type == "y_processing":
             resolve_type = "preprocessing"
 
-        reference = step_name
-        if resolve_type == "model":
-            function_path = step.get("functionPath")
-            class_path = step.get("classPath")
-            if isinstance(function_path, str) and "." in function_path:
-                reference = function_path
-            elif _looks_like_function_model_path(class_path):
-                reference = class_path
+        reference = _model_reference_from_step(step) if resolve_type == "model" else step_name
         try:
             _resolve_operator_class(reference, resolve_type)
         except HTTPException as exc:

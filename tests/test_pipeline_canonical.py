@@ -9,7 +9,7 @@ import yaml
 from nirs4all.pipeline.config.generator import count_combinations
 
 import api.pipelines as pipelines_api
-from api.nirs4all_adapter import check_pipeline_imports, expand_pipeline_variants
+from api.nirs4all_adapter import build_full_pipeline, check_pipeline_imports, expand_pipeline_variants
 from api.pipeline_canonical import (
     canonical_to_editor,
     count_runtime_variants,
@@ -164,6 +164,70 @@ def test_shared_separation_branch_roundtrips_to_list_steps():
     assert len(editor_steps[0]["branches"]) == 1
 
     assert editor_to_canonical(editor_steps) == source
+
+
+def test_canonical_to_editor_resolves_saved_chain_short_class_names():
+    editor_steps = canonical_to_editor(
+        [
+            {"class": "StandardNormalVariate"},
+            {
+                "class": "KennardStoneSplitter",
+                "params": {"test_size": 0.2, "metric": "euclidean"},
+            },
+            {
+                "model": {
+                    "class": "PLSRegression",
+                    "params": {"n_components": 8},
+                }
+            },
+        ]
+    )
+
+    assert [step["type"] for step in editor_steps] == [
+        "preprocessing",
+        "splitting",
+        "model",
+    ]
+    assert editor_steps[0]["name"] == "SNV"
+    assert (
+        editor_steps[0]["classPath"]
+        == "nirs4all.operators.transforms.scalers.StandardNormalVariate"
+    )
+    assert editor_steps[1]["name"] == "KennardStone"
+    assert (
+        editor_steps[1]["classPath"]
+        == "nirs4all.operators.splitters.KennardStoneSplitter"
+    )
+    assert editor_steps[2]["name"] == "PLSRegression"
+    assert (
+        editor_steps[2]["classPath"]
+        == "sklearn.cross_decomposition.PLSRegression"
+    )
+    assert editor_steps[2]["params"] == {"n_components": 8}
+
+
+def test_canonical_to_editor_normalizes_legacy_boosting_model_paths():
+    editor_steps = canonical_to_editor(
+        [
+            {
+                "model": {
+                    "class": "xgboost.sklearn.XGBClassifier",
+                    "params": {"n_estimators": 25},
+                }
+            },
+            {
+                "model": {
+                    "class": "lightgbm.sklearn.LGBMRegressor",
+                    "params": {"n_estimators": 10},
+                }
+            },
+        ]
+    )
+
+    assert editor_steps[0]["name"] == "XGBoostClassifier"
+    assert editor_steps[0]["classPath"] == "xgboost.XGBClassifier"
+    assert editor_steps[1]["name"] == "LightGBM"
+    assert editor_steps[1]["classPath"] == "lightgbm.LGBMRegressor"
 
 
 def test_editor_runtime_canonical_resolves_boosting_classifier_names_without_classpath():
@@ -403,6 +467,47 @@ def test_editor_to_canonical_serializes_function_models_from_classpath():
     assert model_payload["params"] == {"dropout": 0.2}
 
 
+def test_editor_to_canonical_preserves_tabicl_class_model_path():
+    editor_steps = [
+        {
+            "id": "step-tabicl-clf",
+            "type": "model",
+            "name": "TabICLClassifier",
+            "classPath": "tabicl.TabICLClassifier",
+            "params": {},
+        }
+    ]
+
+    canonical = editor_to_canonical(editor_steps)
+
+    assert canonical == [
+        {
+            "model": {
+                "class": "tabicl.TabICLClassifier",
+            }
+        }
+    ]
+
+
+def test_canonical_to_editor_keeps_tabicl_model_as_model_step():
+    editor_steps = canonical_to_editor(
+        [
+            {
+                "model": {
+                    "class": "tabicl.TabICLRegressor",
+                }
+            }
+        ]
+    )
+
+    assert len(editor_steps) == 1
+    assert editor_steps[0]["type"] == "model"
+    assert editor_steps[0]["name"] == "TabICLRegressor"
+    assert editor_steps[0]["classPath"] == "tabicl.TabICLRegressor"
+    assert editor_steps[0]["modelStyle"] == "class_dict"
+    assert editor_steps[0]["params"] == {}
+
+
 def test_check_pipeline_imports_prefers_function_model_classpath(monkeypatch):
     seen: list[tuple[str, str]] = []
 
@@ -424,6 +529,57 @@ def test_check_pipeline_imports_prefers_function_model_classpath(monkeypatch):
 
     assert issues == []
     assert seen == [("nirs4all.operators.models.pytorch.nicon.nicon", "model")]
+
+
+def test_check_pipeline_imports_prefers_class_model_classpath(monkeypatch):
+    seen: list[tuple[str, str]] = []
+
+    def fake_resolve(name: str, step_type: str):
+        seen.append((name, step_type))
+        return object()
+
+    monkeypatch.setattr("api.nirs4all_adapter._resolve_operator_class", fake_resolve)
+
+    issues = check_pipeline_imports([
+        {
+            "id": "step-tabicl",
+            "type": "model",
+            "name": "TabICLClassifier",
+            "classPath": "tabicl.TabICLClassifier",
+            "params": {},
+        }
+    ])
+
+    assert issues == []
+    assert seen == [("tabicl.TabICLClassifier", "model")]
+
+
+def test_build_full_pipeline_prefers_class_model_classpath(monkeypatch):
+    seen: list[tuple[str, str]] = []
+
+    class DummyModel:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    def fake_resolve(name: str, step_type: str):
+        seen.append((name, step_type))
+        return DummyModel
+
+    monkeypatch.setattr("api.nirs4all_adapter._resolve_operator_class", fake_resolve)
+
+    result = build_full_pipeline([
+        {
+            "id": "step-tabicl",
+            "type": "model",
+            "name": "TabICLClassifier",
+            "classPath": "tabicl.TabICLClassifier",
+            "params": {},
+        }
+    ])
+
+    assert seen == [("tabicl.TabICLClassifier", "model")]
+    assert len(result.steps) == 1
+    assert isinstance(result.steps[0]["model"], DummyModel)
 
 
 def test_render_canonical_pipeline_rejects_unknown_model_definition():
