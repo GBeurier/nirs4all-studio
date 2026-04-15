@@ -20,7 +20,10 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import { prefetchDatasetsList } from "@/hooks/useDatasetQueries";
+import {
+  datasetQueryKeys,
+  prefetchDatasetsList,
+} from "@/hooks/useDatasetQueries";
 
 interface MlReadiness {
   coreReady: boolean;
@@ -34,6 +37,16 @@ interface MlReadiness {
    * while datasets/runs/predictions endpoints are still empty.
    */
   workspaceReady: boolean;
+  /**
+   * True once the dataset list query has data (either hydrated from
+   * localStorage at boot or fetched successfully). The backend flips
+   * `workspaceReady` the moment `set_active_workspace()` returns, but React
+   * Query still needs a round-trip to repopulate the `['datasets', 'list']`
+   * cache after the invalidation that follows. The startup banner uses this
+   * flag to stay visible through that gap so the Datasets page is not left
+   * with only its small in-card spinner.
+   */
+  datasetsPrimed: boolean;
 }
 
 const MlReadinessContext = createContext<MlReadiness>({
@@ -42,6 +55,7 @@ const MlReadinessContext = createContext<MlReadiness>({
   mlLoading: true,
   mlError: null,
   workspaceReady: false,
+  datasetsPrimed: false,
 });
 
 export function useMlReadiness() {
@@ -70,14 +84,19 @@ const electronApi = (
 ).electronApi;
 
 export function MlReadinessProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<MlReadiness>({
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<MlReadiness>(() => ({
     coreReady: false,
     mlReady: false,
     mlLoading: true,
     mlError: null,
     workspaceReady: false,
-  });
-  const queryClient = useQueryClient();
+    // Seed synchronously from any cache that `hydrateDatasetCachesFromStorage`
+    // populated at boot — on warm starts the banner should not wait for a
+    // fetch we do not need.
+    datasetsPrimed:
+      queryClient.getQueryData(datasetQueryKeys.list()) !== undefined,
+  }));
   const coreReadyFired = useRef(false);
   const workspaceReadyFired = useRef(false);
 
@@ -109,6 +128,29 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries();
     }
   }, [state.workspaceReady, queryClient]);
+
+  // Flip `datasetsPrimed` true as soon as the dataset list cache holds data.
+  // The startup banner stays visible until both `workspaceReady` AND this are
+  // true, so the user is never left with only the in-card spinner during the
+  // React Query refetch that follows the post-workspace invalidation.
+  useEffect(() => {
+    if (state.datasetsPrimed) return;
+    const cache = queryClient.getQueryCache();
+    const check = () => {
+      if (queryClient.getQueryData(datasetQueryKeys.list()) !== undefined) {
+        setState((prev) =>
+          prev.datasetsPrimed ? prev : { ...prev, datasetsPrimed: true }
+        );
+        return true;
+      }
+      return false;
+    };
+    if (check()) return;
+    const unsubscribe = cache.subscribe(() => {
+      if (check()) unsubscribe();
+    });
+    return unsubscribe;
+  }, [state.datasetsPrimed, queryClient]);
 
   // In Electron: listen for IPC notifications
   useEffect(() => {

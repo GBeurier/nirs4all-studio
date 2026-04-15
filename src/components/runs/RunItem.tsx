@@ -25,8 +25,8 @@ import { cn } from "@/lib/utils";
 import { deleteN4AWorkspaceRun } from "@/api/client";
 import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import {
-  formatMetricName,
   formatMetricValue,
+  getPrimaryContextMetricLabel,
   isBetterScore,
   DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
 } from "@/lib/scores";
@@ -85,11 +85,8 @@ const statusIcons: Record<string, typeof Clock> = {
   paused: Pause,
 };
 
-function primaryRefitLabel(metric: string | null): string {
-  const normalized = (metric || "").toLowerCase();
-  if (normalized === "rmse" || normalized === "rmsep") return "RMSEP";
-  if (normalized === "r2") return "R²";
-  return formatMetricName(metric) || "Final";
+function primaryRefitLabel(metric: string | null, taskType: string | null | undefined): string {
+  return getPrimaryContextMetricLabel(metric, "refit", taskType);
 }
 
 // ============================================================================
@@ -223,8 +220,8 @@ export function RunItem({
                           bestDataset.best_final_score != null ? "text-emerald-500" : "text-chart-1",
                         )}>
                           {bestDataset.best_final_score != null
-                            ? primaryRefitLabel(bestDataset.metric)
-                            : `CV ${formatMetricName(bestDataset.metric) || "Score"}`}{" "}
+                            ? primaryRefitLabel(bestDataset.metric, bestDataset.task_type)
+                            : `CV ${getPrimaryContextMetricLabel(bestDataset.metric, "crossval", bestDataset.task_type)}`}{" "}
                           {formatMetricValue(bestDataset.best_final_score ?? bestDataset.best_avg_val_score, bestDataset.metric || "score")}
                         </span>
                       </>

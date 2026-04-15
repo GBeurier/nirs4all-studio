@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
@@ -33,9 +33,15 @@ import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   collectPresentMetricKeys,
+  getAvailableMetricKeysForTaskTypes,
+  getDefaultSelectedMetricsForTaskTypes,
+  getDefaultSelectionUpgradeCandidatesForTaskTypes,
   getMetricAbbreviation,
+  getMetricDefinitions,
+  getLegacySelectedMetricsForTaskTypes,
   isClassificationTaskType,
   isLowerBetter,
+  orderMetricKeys,
 } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
@@ -45,10 +51,22 @@ const ALL_FOLD_TYPES = ["folds", "refits", "averages"] as const;
 const ALL_DATA_KINDS = ["raw", "aggregated"] as const;
 const toggleItemClass = "h-7 px-2 text-[11px] border-border/60 hover:bg-muted/60 hover:text-foreground data-[state=on]:border-primary/40 data-[state=on]:bg-primary/10 data-[state=on]:text-primary";
 
-type SortField = "model_name" | "dataset_name" | "fold" | "val_score" | "test_score" | "n_samples";
+type SortField =
+  | "model_name"
+  | "dataset_name"
+  | "fold"
+  | "val_score"
+  | "test_score"
+  | "n_samples"
+  | "card_type"
+  | "preproc"
+  | `metric:${string}`;
 type SortOrder = "asc" | "desc";
 type FoldVisibility = typeof ALL_FOLD_TYPES[number];
 type DataVisibility = typeof ALL_DATA_KINDS[number];
+type MetricTaskFilter = "regression" | "classification";
+
+const CARD_TYPE_ORDER: Record<string, number> = { refit: 0, crossval: 1, train: 2 };
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -172,6 +190,7 @@ export default function Predictions() {
   const [quickViewOpen, setQuickViewOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [metricTaskFilter, setMetricTaskFilter] = useState<MetricTaskFilter>("regression");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
@@ -244,44 +263,83 @@ export default function Predictions() {
     if (filterModel !== "all") rows = rows.filter(row => row.modelName === filterModel || row.modelClass === filterModel);
     if (filterTaskType !== "all") rows = rows.filter(row => row.taskType === filterTaskType);
 
+    rows = rows.filter(row => {
+      const isClass = isClassificationTaskType(row.taskType);
+      return metricTaskFilter === "classification" ? isClass : !isClass;
+    });
+
     rows = rows.filter(row =>
       visibleFoldTypes.includes(rowFoldVisibility(row))
       && visibleDataKinds.includes(rowDataVisibility(row)),
     );
 
     const referenceMetric = rows.find(row => row.metric)?.metric || "rmse";
-    const naturalScoreOrder: SortOrder = isLowerBetter(referenceMetric) ? "asc" : "desc";
+    const metricSortKey = sortField.startsWith("metric:") ? sortField.slice("metric:".length) : null;
+    const scoreMetricForSort = metricSortKey
+      ?? (sortField === "test_score" || sortField === "val_score" ? referenceMetric : null);
+    const naturalScoreOrder: SortOrder = isLowerBetter(scoreMetricForSort || referenceMetric) ? "asc" : "desc";
+    const scoreValue = (row: ScoreCardRow, key: string, partition: "test" | "val"): number => {
+      const maps = partition === "test"
+        ? [row.testScores, row.aggregatedTestScores, row.avgTestScores, row.wAvgTestScores, row.meanTestScores]
+        : [row.valScores, row.avgValScores, row.meanValScores];
+      for (const map of maps) {
+        const value = map?.[key];
+        if (value != null && Number.isFinite(value)) return value;
+      }
+      return Number.POSITIVE_INFINITY;
+    };
 
     return [...rows].sort((a, b) => {
       let cmp = 0;
 
-      switch (sortField) {
-        case "test_score":
-          cmp = (a.primaryTestScore ?? Number.POSITIVE_INFINITY) - (b.primaryTestScore ?? Number.POSITIVE_INFINITY);
-          break;
-        case "val_score":
-          cmp = (a.primaryValScore ?? Number.POSITIVE_INFINITY) - (b.primaryValScore ?? Number.POSITIVE_INFINITY);
-          break;
-        case "n_samples":
-          cmp = (a.nSamplesEval ?? 0) - (b.nSamplesEval ?? 0);
-          break;
-        case "fold":
-          cmp = foldSortValue(a.foldId) - foldSortValue(b.foldId);
-          break;
-        case "model_name":
-          cmp = a.modelName.localeCompare(b.modelName);
-          break;
-        case "dataset_name":
-          cmp = (a.datasetName || "").localeCompare(b.datasetName || "");
-          break;
+      if (metricSortKey) {
+        cmp = scoreValue(a, metricSortKey, "test") - scoreValue(b, metricSortKey, "test");
+      } else {
+        switch (sortField) {
+          case "test_score":
+            cmp = (a.primaryTestScore ?? Number.POSITIVE_INFINITY) - (b.primaryTestScore ?? Number.POSITIVE_INFINITY);
+            break;
+          case "val_score":
+            cmp = (a.primaryValScore ?? Number.POSITIVE_INFINITY) - (b.primaryValScore ?? Number.POSITIVE_INFINITY);
+            break;
+          case "n_samples":
+            cmp = (a.nSamplesEval ?? 0) - (b.nSamplesEval ?? 0);
+            break;
+          case "fold":
+            cmp = foldSortValue(a.foldId) - foldSortValue(b.foldId);
+            break;
+          case "model_name":
+            cmp = a.modelName.localeCompare(b.modelName);
+            break;
+          case "dataset_name":
+            cmp = (a.datasetName || "").localeCompare(b.datasetName || "");
+            break;
+          case "card_type":
+            cmp = (CARD_TYPE_ORDER[a.cardType] ?? 99) - (CARD_TYPE_ORDER[b.cardType] ?? 99);
+            break;
+          case "preproc":
+            cmp = (a.preprocessings || "").localeCompare(b.preprocessings || "");
+            break;
+        }
       }
 
-      if ((sortField === "test_score" || sortField === "val_score") && sortOrder !== naturalScoreOrder) {
+      const isScoreSort = metricSortKey != null || sortField === "test_score" || sortField === "val_score";
+      if (isScoreSort && sortOrder !== naturalScoreOrder) {
         return -cmp;
       }
       return sortOrder === "asc" ? cmp : -cmp;
     });
-  }, [allRows, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
+  }, [allRows, filterDataset, filterModel, filterTaskType, metricTaskFilter, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
+
+  const didInitMetricFilter = useRef(false);
+  useEffect(() => {
+    if (didInitMetricFilter.current) return;
+    if (allRows.length === 0) return;
+    const hasClassification = allRows.some(row => isClassificationTaskType(row.taskType));
+    const hasRegression = allRows.some(row => row.taskType && !isClassificationTaskType(row.taskType));
+    if (hasClassification && !hasRegression) setMetricTaskFilter("classification");
+    didInitMetricFilter.current = true;
+  }, [allRows]);
 
   const metricContext = useMemo(() => {
     const taskTypes = new Set<string>();
@@ -328,17 +386,37 @@ export default function Predictions() {
 
     return {
       taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
-      availableMetricKeys: [...availableMetricKeys],
+      taskTypes: [...taskTypes],
+      availableMetricKeys: orderMetricKeys([
+        ...availableMetricKeys,
+        ...getAvailableMetricKeysForTaskTypes(taskTypes),
+      ]),
     };
   }, [allRows, filteredRows]);
 
+  const effectiveMetricContext = useMemo(() => {
+    const filteredKeys = orderMetricKeys(
+      metricContext.availableMetricKeys.filter(key => {
+        const def = getMetricDefinitions([key])[0];
+        if (!def) return true;
+        return def.group === "general" || def.group === metricTaskFilter;
+      }),
+    );
+    return {
+      taskType: metricTaskFilter,
+      taskTypes: [metricTaskFilter],
+      availableMetricKeys: filteredKeys,
+    };
+  }, [metricContext, metricTaskFilter]);
+
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
     "predictions",
-    metricContext.taskType,
-    undefined,
-    undefined,
-    undefined,
-    metricContext.availableMetricKeys,
+    effectiveMetricContext.taskType,
+    getDefaultSelectedMetricsForTaskTypes(effectiveMetricContext.taskTypes),
+    getLegacySelectedMetricsForTaskTypes(effectiveMetricContext.taskTypes),
+    `task-aware-defaults-v1:${metricTaskFilter}`,
+    effectiveMetricContext.availableMetricKeys,
+    getDefaultSelectionUpgradeCandidatesForTaskTypes(effectiveMetricContext.taskTypes),
   );
 
   const totalCount = filteredRows.length;
@@ -352,23 +430,27 @@ export default function Predictions() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, sortField, sortOrder]);
+  }, [searchQuery, filterDataset, filterModel, filterTaskType, metricTaskFilter, visibleDataKinds, visibleFoldTypes, sortField, sortOrder]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
   const handleSort = (field: SortField) => {
-    const referenceMetric = filteredRows.find(row => row.metric)?.metric || "rmse";
-    const naturalScoreOrder: SortOrder = isLowerBetter(referenceMetric) ? "asc" : "desc";
-
     if (sortField === field) {
       setSortOrder(prev => (prev === "asc" ? "desc" : "asc"));
       return;
     }
 
+    const metricSortKey = field.startsWith("metric:") ? field.slice("metric:".length) : null;
+    const referenceMetric = filteredRows.find(row => row.metric)?.metric || "rmse";
+    const scoreMetric = metricSortKey
+      ?? (field === "test_score" || field === "val_score" ? referenceMetric : null);
+    const isScoreSort = metricSortKey != null || field === "test_score" || field === "val_score";
+    const naturalScoreOrder: SortOrder = isLowerBetter(scoreMetric || referenceMetric) ? "asc" : "desc";
+
     setSortField(field);
-    setSortOrder(field === "test_score" || field === "val_score" ? naturalScoreOrder : "asc");
+    setSortOrder(isScoreSort ? naturalScoreOrder : "asc");
   };
 
   const handleQuickView = (predictionId: string) => {
@@ -450,9 +532,22 @@ export default function Predictions() {
     refetchPredictions();
   };
 
-  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <TableHead className="cursor-pointer hover:text-foreground transition-colors" onClick={() => handleSort(field)}>
-      <div className="flex items-center gap-1">
+  const SortableHeader = ({
+    field,
+    children,
+    align = "left",
+    className,
+  }: {
+    field: SortField;
+    children: React.ReactNode;
+    align?: "left" | "right";
+    className?: string;
+  }) => (
+    <TableHead
+      className={cn("cursor-pointer hover:text-foreground transition-colors select-none", className)}
+      onClick={() => handleSort(field)}
+    >
+      <div className={cn("flex items-center gap-1", align === "right" && "justify-end")}>
         {children}
         {sortField === field && <ArrowUpDown className={cn("h-3 w-3", sortOrder === "asc" && "rotate-180")} />}
       </div>
@@ -515,7 +610,7 @@ export default function Predictions() {
 
   const primaryMetricKey = filteredRows.find(row => row.metric)?.metric
     || selectedMetrics[0]
-    || (isClassificationTaskType(metricContext.taskType) ? "accuracy" : "rmse");
+    || (isClassificationTaskType(effectiveMetricContext.taskType) ? "accuracy" : "rmse");
   const primaryMetricLabel = getMetricAbbreviation(primaryMetricKey);
 
   return (
@@ -529,11 +624,32 @@ export default function Predictions() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ToggleGroup
+            type="single"
+            value={metricTaskFilter}
+            onValueChange={value => { if (value) setMetricTaskFilter(value as MetricTaskFilter); }}
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-md border border-primary/40 bg-primary/5 p-0.5"
+          >
+            <ToggleGroupItem
+              value="regression"
+              className="h-8 px-4 text-xs font-semibold border-0 rounded-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              Regression
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="classification"
+              className="h-8 px-4 text-xs font-semibold border-0 rounded-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              Classification
+            </ToggleGroupItem>
+          </ToggleGroup>
           <MetricSelector
-            taskType={metricContext.taskType}
+            taskType={effectiveMetricContext.taskType}
             selectedMetrics={selectedMetrics}
             onSelectedMetricsChange={setSelectedMetrics}
-            availableMetricKeys={metricContext.availableMetricKeys}
+            availableMetricKeys={effectiveMetricContext.availableMetricKeys}
           />
           <Button variant="outline" onClick={handleRefresh} size="sm">
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
@@ -544,29 +660,29 @@ export default function Predictions() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-4">
         <Card className="glass-card">
-          <CardContent className="p-3">
+          <CardContent className="flex items-center justify-between px-3 py-1.5">
             <p className="text-[10px] text-muted-foreground uppercase font-medium">Total</p>
-            <p className="text-xl font-bold">{stats.total.toLocaleString()}</p>
+            <p className="text-sm font-bold">{stats.total.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-3">
+          <CardContent className="flex items-center justify-between px-3 py-1.5">
             <p className="text-[10px] text-muted-foreground uppercase font-medium">Datasets</p>
-            <p className="text-xl font-bold">{stats.datasets}</p>
+            <p className="text-sm font-bold">{stats.datasets}</p>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-3">
+          <CardContent className="flex items-center justify-between px-3 py-1.5">
             <p className="text-[10px] text-muted-foreground uppercase font-medium">Models</p>
-            <p className="text-xl font-bold">{stats.models}</p>
+            <p className="text-sm font-bold">{stats.models}</p>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-3">
+          <CardContent className="flex items-center justify-between px-3 py-1.5">
             <p className="text-[10px] text-muted-foreground uppercase font-medium">Pipelines</p>
-            <p className="text-xl font-bold">{stats.pipelines}</p>
+            <p className="text-sm font-bold">{stats.pipelines}</p>
           </CardContent>
         </Card>
       </div>
@@ -652,15 +768,22 @@ export default function Predictions() {
               <TableHeader>
                 <TableRow className="hover:bg-transparent text-[11px]">
                   <TableHead className="w-8">#</TableHead>
-                  <TableHead className="w-16">Type</TableHead>
+                  <SortableHeader field="card_type">Type</SortableHeader>
                   <SortableHeader field="model_name">Model</SortableHeader>
                   <SortableHeader field="dataset_name">Dataset</SortableHeader>
-                  <TableHead>Preproc</TableHead>
+                  <SortableHeader field="preproc">Preproc</SortableHeader>
                   <SortableHeader field="test_score">{primaryMetricLabel}</SortableHeader>
                   <SortableHeader field="val_score">Val</SortableHeader>
                   <SortableHeader field="fold">Fold</SortableHeader>
                   {selectedMetrics.slice(0, 4).map(metric => (
-                    <TableHead key={metric} className="text-right text-[10px]">{getMetricAbbreviation(metric)}</TableHead>
+                    <SortableHeader
+                      key={metric}
+                      field={`metric:${metric}` as SortField}
+                      align="right"
+                      className="text-right"
+                    >
+                      <span className="text-[10px]">{getMetricAbbreviation(metric)}</span>
+                    </SortableHeader>
                   ))}
                   <TableHead className="w-8"></TableHead>
                 </TableRow>
@@ -699,7 +822,7 @@ export default function Predictions() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[25, 50, 100, 200].map(size => <SelectItem key={size} value={String(size)}>{size}/page</SelectItem>)}
+                  {[10, 25, 50, 100, 200, 500, 1000].map(size => <SelectItem key={size} value={String(size)}>{size}/page</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

@@ -497,13 +497,13 @@ const zh = {
       connectingTitle: "正在连接后端...",
       errorTitle: "后端启动中断",
       loadingTitle: "正在加载分析后端...",
-      workspaceTitle: "正在恢复工作区...",
+      workspaceTitle: "正在加载工作区...",
       connectingDescription:
         "后端仍在启动中。缓存内容可能会先显示，但操作将受到限制，直到 API 响应。",
       loadingDescription:
         "nirs4all 及其 ML 依赖项正在后台初始化。高级分析功能将自动解锁。",
       workspaceDescription:
-        "后端正在恢复活动工作区。启动完成后，数据集、运行、结果和预测视图将刷新。",
+        "后端正在加载活动工作区。启动完成后，数据集、运行、结果和预测视图将刷新。",
       errorBadge: "启动问题",
       badge: "后端加载中",
       apiLabel: "API",
@@ -517,7 +517,7 @@ const zh = {
       workspaceLabel: "工作区",
       workspaceBlocked: "等待后端恢复",
       workspaceReady: "就绪",
-      workspaceLoading: "正在恢复数据集和运行状态",
+      workspaceLoading: "正在加载数据集和运行状态",
       workspaceWaiting: "等待 ML 启动后执行",
       loaderAlt: "后端加载动画",
     },

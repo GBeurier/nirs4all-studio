@@ -34,9 +34,15 @@ import {
   Bar,
   Cell,
 } from "recharts";
+import { ConfusionMatrixChart } from "@/components/inspector/visualizations/ConfusionMatrixChart";
 import type { PredictionRecord } from "@/types/linked-workspaces";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
+import type { ConfusionMatrixResponse } from "@/types/inspector";
 import { getN4AWorkspacePredictionScatter, getPredictionArrays, type PredictionScatterResponse } from "@/api/client";
+import {
+  buildConfusionMatrixFromVectors,
+  isClassificationTask,
+} from "@/components/runs/modelDetailClassification";
 
 /** Minimal info needed to display the quick view header. */
 interface QuickViewTarget {
@@ -179,6 +185,7 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
   const [error, setError] = useState<string | null>(null);
   const scatterChartRef = useRef<HTMLDivElement>(null);
   const residualsChartRef = useRef<HTMLDivElement>(null);
+  const confusionChartRef = useRef<HTMLDivElement>(null);
 
   // Resolve the target from either prop
   const target: QuickViewTarget | null = useMemo(() => {
@@ -189,8 +196,9 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
 
   const targetId = target?.id;
   const useAggregatedApi = !!partitionPrediction;
+  const showClassificationView = isClassificationTask(target?.task_type);
 
-  // Fetch scatter data when dialog opens
+  // Fetch prediction arrays when dialog opens.
   useEffect(() => {
     if (open && targetId) {
       setIsLoading(true);
@@ -216,8 +224,8 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
           setIsLoading(false);
         })
         .catch((err) => {
-          console.error("Failed to fetch scatter data:", err);
-          setError("Could not load scatter data");
+          console.error("Failed to fetch prediction data:", err);
+          setError("Could not load prediction data");
           setScatterData(null);
           setIsLoading(false);
         });
@@ -284,6 +292,26 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
     return { primaryScore, rmse, meanResidual: 0, stdResidual: rmse };
   }, [target, scatterData]);
 
+  const confusionData = useMemo<ConfusionMatrixResponse>(() => {
+    if (error) {
+      return {
+        cells: [],
+        labels: [],
+        total_samples: 0,
+        partition: target?.partition || "",
+        normalize: "none",
+        reason: error,
+      };
+    }
+
+    return buildConfusionMatrixFromVectors({
+      yTrue: scatterData?.y_true ?? [],
+      yPred: scatterData?.y_pred ?? [],
+      normalize: "none",
+      partitionLabel: target?.partition || "",
+    });
+  }, [error, scatterData, target?.partition]);
+
   if (!target) return null;
 
   const hasScatterData = scatterData && scatterData.y_true.length > 0;
@@ -320,216 +348,261 @@ export function PredictionQuickView({ prediction, partitionPrediction, open, onO
           )}
         </div>
 
-        <Tabs defaultValue="scatter" className="mt-4">
+        <Tabs
+          key={`${target.id}-${showClassificationView ? "classification" : "regression"}`}
+          defaultValue={showClassificationView ? "confusion" : "scatter"}
+          className="mt-4"
+        >
           <TabsList className="w-fit">
-            <TabsTrigger value="scatter" className="gap-1.5">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Pred vs Actual
-            </TabsTrigger>
-            <TabsTrigger value="residuals" className="gap-1.5">
-              <ScatterIcon className="h-3.5 w-3.5" />
-              Residuals
-            </TabsTrigger>
-<TabsTrigger value="metrics" className="gap-1.5">
+            {showClassificationView ? (
+              <TabsTrigger value="confusion" className="gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Confusion Matrix
+              </TabsTrigger>
+            ) : (
+              <>
+                <TabsTrigger value="scatter" className="gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  Pred vs Actual
+                </TabsTrigger>
+                <TabsTrigger value="residuals" className="gap-1.5">
+                  <ScatterIcon className="h-3.5 w-3.5" />
+                  Residuals
+                </TabsTrigger>
+              </>
+            )}
+            <TabsTrigger value="metrics" className="gap-1.5">
               <BarChart3 className="h-3.5 w-3.5" />
               Metrics
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="scatter" className="mt-4">
-            <Card>
-              <CardContent className="pt-6">
-                {hasScatterData && (
-                  <div className="flex justify-end gap-1 -mt-2 mb-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Export points as CSV"
-                      onClick={() => exportRowsCsv(
-                        predictionChartData.map((p) => ({ actual: p.actual, predicted: p.predicted, residual: p.actual - p.predicted })),
-                        ["actual", "predicted", "residual"],
-                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_scatter.csv`,
-                      )}
-                    >
-                      <FileSpreadsheet className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Export chart as PNG"
-                      onClick={() => exportChartPng(
-                        scatterChartRef.current,
-                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_scatter.png`,
-                      )}
-                    >
-                      <ImageDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
-                {isLoading ? (
-                  <div className="h-[320px] flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : error || !hasScatterData ? (
-                  <div className="h-[320px] flex flex-col items-center justify-center text-muted-foreground">
-                    <AlertCircle className="h-8 w-8 mb-2" />
-                    <p>{error || "No scatter data available"}</p>
-                  </div>
-                ) : (
-                  <div className="h-[320px]" ref={scatterChartRef}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                        <XAxis
-                          dataKey="actual"
-                          type="number"
-                          name="Actual"
-                          domain={['auto', 'auto']}
-                          label={{ value: 'Actual', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                          tickFormatter={formatTick}
-                        />
-                        <YAxis
-                          dataKey="predicted"
-                          type="number"
-                          name="Predicted"
-                          domain={['auto', 'auto']}
-                          label={{ value: 'Predicted', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                          tickFormatter={formatTick}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'hsl(var(--card))',
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '8px',
-                            fontSize: '12px'
-                          }}
-                          formatter={(value: number) => value.toFixed(3)}
-                        />
-                        <ReferenceLine
-                          segment={[
-                            { x: Math.min(...predictionChartData.map(d => d.actual)), y: Math.min(...predictionChartData.map(d => d.actual)) },
-                            { x: Math.max(...predictionChartData.map(d => d.actual)), y: Math.max(...predictionChartData.map(d => d.actual)) }
-                          ]}
-                          stroke="hsl(var(--muted-foreground))"
-                          strokeDasharray="5 5"
-                          strokeOpacity={0.5}
-                        />
-                        <Scatter
-                          data={predictionChartData}
-                          fill="hsl(var(--primary))"
-                          opacity={0.7}
-                          shape={(props: { cx?: number; cy?: number; fill?: string }) => (
-                            <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.7} />
+          {!showClassificationView && (
+            <>
+              <TabsContent value="scatter" className="mt-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    {hasScatterData && (
+                      <div className="flex justify-end gap-1 -mt-2 mb-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Export points as CSV"
+                          onClick={() => exportRowsCsv(
+                            predictionChartData.map((p) => ({ actual: p.actual, predicted: p.predicted, residual: p.actual - p.predicted })),
+                            ["actual", "predicted", "residual"],
+                            `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_scatter.csv`,
                           )}
-                        />
-                      </ScatterChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-                <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
-                  <span>R² = {primaryScore.toFixed(4)}</span>
-                  <span>RMSE = {rmse.toFixed(4)}</span>
-                  <span>n = {actualSampleCount} samples</span>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Export chart as PNG"
+                          onClick={() => exportChartPng(
+                            scatterChartRef.current,
+                            `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_scatter.png`,
+                          )}
+                        >
+                          <ImageDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                    {isLoading ? (
+                      <div className="h-[320px] flex items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : error || !hasScatterData ? (
+                      <div className="h-[320px] flex flex-col items-center justify-center text-muted-foreground">
+                        <AlertCircle className="h-8 w-8 mb-2" />
+                        <p>{error || "No scatter data available"}</p>
+                      </div>
+                    ) : (
+                      <div className="h-[320px]" ref={scatterChartRef}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                            <XAxis
+                              dataKey="actual"
+                              type="number"
+                              name="Actual"
+                              domain={['auto', 'auto']}
+                              label={{ value: 'Actual', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                              tickFormatter={formatTick}
+                            />
+                            <YAxis
+                              dataKey="predicted"
+                              type="number"
+                              name="Predicted"
+                              domain={['auto', 'auto']}
+                              label={{ value: 'Predicted', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                              tickFormatter={formatTick}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--card))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px',
+                                fontSize: '12px'
+                              }}
+                              formatter={(value: number) => value.toFixed(3)}
+                            />
+                            <ReferenceLine
+                              segment={[
+                                { x: Math.min(...predictionChartData.map(d => d.actual)), y: Math.min(...predictionChartData.map(d => d.actual)) },
+                                { x: Math.max(...predictionChartData.map(d => d.actual)), y: Math.max(...predictionChartData.map(d => d.actual)) }
+                              ]}
+                              stroke="hsl(var(--muted-foreground))"
+                              strokeDasharray="5 5"
+                              strokeOpacity={0.5}
+                            />
+                            <Scatter
+                              data={predictionChartData}
+                              fill="hsl(var(--primary))"
+                              opacity={0.7}
+                              shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                                <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.7} />
+                              )}
+                            />
+                          </ScatterChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                    <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
+                      <span>R² = {primaryScore.toFixed(4)}</span>
+                      <span>RMSE = {rmse.toFixed(4)}</span>
+                      <span>n = {actualSampleCount} samples</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-          <TabsContent value="residuals" className="mt-4">
-            <Card>
-              <CardContent className="pt-6">
-                {hasScatterData && (
-                  <div className="flex justify-end gap-1 -mt-2 mb-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Export points as CSV"
-                      onClick={() => exportRowsCsv(
-                        residualChartData,
-                        ["predicted", "residual"],
-                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_residuals.csv`,
-                      )}
-                    >
-                      <FileSpreadsheet className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Export chart as PNG"
-                      onClick={() => exportChartPng(
-                        residualsChartRef.current,
-                        `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_residuals.png`,
-                      )}
-                    >
-                      <ImageDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
-                {isLoading ? (
-                  <div className="h-[320px] flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : error || !hasScatterData ? (
-                  <div className="h-[320px] flex flex-col items-center justify-center text-muted-foreground">
-                    <AlertCircle className="h-8 w-8 mb-2" />
-                    <p>{error || "No residual data available"}</p>
-                  </div>
-                ) : (
-                  <div className="h-[320px]" ref={residualsChartRef}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                        <XAxis
-                          dataKey="predicted"
-                          type="number"
-                          domain={['auto', 'auto']}
-                          label={{ value: 'Predicted', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                          tickFormatter={formatTick}
-                        />
-                        <YAxis
-                          dataKey="residual"
-                          type="number"
-                          domain={['auto', 'auto']}
-                          label={{ value: 'Residual', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
-                          tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                          tickFormatter={formatTick}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'hsl(var(--card))',
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '8px',
-                            fontSize: '12px'
-                          }}
-                          formatter={(value: number) => value.toFixed(3)}
-                        />
-                        <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" />
-                        <Scatter
-                          data={residualChartData}
-                          fill="hsl(var(--chart-2))"
-                          opacity={0.7}
-                          shape={(props: { cx?: number; cy?: number; fill?: string }) => (
-                            <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.7} />
+              <TabsContent value="residuals" className="mt-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    {hasScatterData && (
+                      <div className="flex justify-end gap-1 -mt-2 mb-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Export points as CSV"
+                          onClick={() => exportRowsCsv(
+                            residualChartData,
+                            ["predicted", "residual"],
+                            `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_residuals.csv`,
                           )}
-                        />
-                      </ScatterChart>
-                    </ResponsiveContainer>
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Export chart as PNG"
+                          onClick={() => exportChartPng(
+                            residualsChartRef.current,
+                            `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_residuals.png`,
+                          )}
+                        >
+                          <ImageDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                    {isLoading ? (
+                      <div className="h-[320px] flex items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : error || !hasScatterData ? (
+                      <div className="h-[320px] flex flex-col items-center justify-center text-muted-foreground">
+                        <AlertCircle className="h-8 w-8 mb-2" />
+                        <p>{error || "No residual data available"}</p>
+                      </div>
+                    ) : (
+                      <div className="h-[320px]" ref={residualsChartRef}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 50 }}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                            <XAxis
+                              dataKey="predicted"
+                              type="number"
+                              domain={['auto', 'auto']}
+                              label={{ value: 'Predicted', position: 'bottom', offset: 20, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                              tickFormatter={formatTick}
+                            />
+                            <YAxis
+                              dataKey="residual"
+                              type="number"
+                              domain={['auto', 'auto']}
+                              label={{ value: 'Residual', angle: -90, position: 'left', offset: 35, style: { fill: 'hsl(var(--muted-foreground))' } }}
+                              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                              tickFormatter={formatTick}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--card))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px',
+                                fontSize: '12px'
+                              }}
+                              formatter={(value: number) => value.toFixed(3)}
+                            />
+                            <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" />
+                            <Scatter
+                              data={residualChartData}
+                              fill="hsl(var(--chart-2))"
+                              opacity={0.7}
+                              shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                                <circle cx={props.cx} cy={props.cy} r={2.5} fill={props.fill} fillOpacity={0.7} />
+                              )}
+                            />
+                          </ScatterChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                    <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
+                      <span>Mean Residual = {meanResidual.toFixed(4)}</span>
+                      <span>Std = {stdResidual.toFixed(4)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </>
+          )}
+
+          {showClassificationView && (
+            <TabsContent value="confusion" className="mt-4">
+              <Card>
+                <CardContent className="pt-6">
+                  {confusionData.cells.length > 0 && (
+                    <div className="flex justify-end gap-1 -mt-2 mb-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Export chart as PNG"
+                        onClick={() => exportChartPng(
+                          confusionChartRef.current,
+                          `${sanitizeFilename(target.dataset_name)}_${sanitizeFilename(target.model_name)}_confusion.png`,
+                        )}
+                      >
+                        <ImageDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                  <div className="h-[360px]" ref={confusionChartRef}>
+                    <ConfusionMatrixChart data={confusionData} isLoading={isLoading} />
                   </div>
-                )}
-                <div className="flex justify-center gap-6 mt-4 text-xs text-muted-foreground">
-                  <span>Mean Residual = {meanResidual.toFixed(4)}</span>
-                  <span>Std = {stdResidual.toFixed(4)}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           <TabsContent value="metrics" className="mt-4">
             <Card>

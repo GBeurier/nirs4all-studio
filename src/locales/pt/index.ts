@@ -499,13 +499,13 @@ const pt = {
       connectingTitle: "Conectando ao backend...",
       errorTitle: "Início do backend paralisado",
       loadingTitle: "Carregando backend de análise...",
-      workspaceTitle: "Restaurando espaço de trabalho...",
+      workspaceTitle: "Carregando espaço de trabalho...",
       connectingDescription:
         "O backend ainda está iniciando. O conteúdo em cache pode aparecer primeiro, mas as ações ficam limitadas até que a API responda.",
       loadingDescription:
         "nirs4all e suas dependências de ML estão sendo inicializadas em segundo plano. Os recursos de análise avançada serão desbloqueados automaticamente.",
       workspaceDescription:
-        "O backend está restaurando o espaço de trabalho ativo. As visualizações de conjuntos de dados, execuções, resultados e previsões serão atualizadas quando o início for concluído.",
+        "O backend está carregando o espaço de trabalho ativo. As visualizações de conjuntos de dados, execuções, resultados e previsões serão atualizadas quando o início for concluído.",
       errorBadge: "Problema de início",
       badge: "Backend carregando",
       apiLabel: "API",
@@ -519,7 +519,7 @@ const pt = {
       workspaceLabel: "Espaço de trabalho",
       workspaceBlocked: "Bloqueado até o backend se recuperar",
       workspaceReady: "Pronto",
-      workspaceLoading: "Restaurando conjuntos de dados e estado de execuções",
+      workspaceLoading: "Carregando conjuntos de dados e estado de execuções",
       workspaceWaiting: "Na fila após o início do ML",
       loaderAlt: "Animação de carregamento do backend",
     },

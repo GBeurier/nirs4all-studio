@@ -194,7 +194,7 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
         <span>•</span>
         <span>{totalSamples} samples</span>
         <span>•</span>
-        <span>diag accuracy {accuracy.toFixed(1)}%</span>
+        <span>diag accuracy {(accuracy * 100).toFixed(1)}%</span>
       </div>
 
       {reason && (

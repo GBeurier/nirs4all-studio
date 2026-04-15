@@ -19,7 +19,7 @@ import {
   ChevronDown, ChevronRight, Database, Eye, ExternalLink, Loader2, TrendingDown, Trash2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { isLowerBetter } from "@/lib/scores";
+import { isClassificationTaskType, isLowerBetter } from "@/lib/scores";
 import {
   deleteWorkspaceDatasetPredictions,
   getAllChainsForDataset,
@@ -32,7 +32,6 @@ import {
 import { datasetChainsToRows } from "@/lib/score-adapters";
 import {
   InlineScoreDisplay,
-  getScoreContextLabel,
   cardTypeColorClass,
 } from "./ScoreColumns";
 import { ScoreCardTree } from "./ScoreCardTree";
@@ -169,9 +168,7 @@ export function DatasetResultCard({
   // Best row for header summary
   const bestRow = summaryRows[0];
   const bestContext = bestRow?.cardType === "refit" ? "refit" as const : "crossval" as const;
-  const bestSummaryLabel = bestContext === "refit"
-    ? `Best Refit ${getScoreContextLabel(dataset.metric || "score", "refit", dataset.metric)}`
-    : `Best CV ${getScoreContextLabel(dataset.metric || "score", "crossval", dataset.metric)}`;
+  const bestSummaryLabel = bestContext === "refit" ? "Best Refit" : "Best CV";
 
   const topRefitRow = summaryRows.find(row => row.cardType === "refit");
   const pairedCvRow = topRefitRow?.children?.find(child => child.cardType === "crossval");
@@ -183,7 +180,6 @@ export function DatasetResultCard({
 
   const topChain = bestRow ? chains.find(chain => chain.chain_id === bestRow.chainId) ?? null : null;
   const refitCount = summaryRows.filter(row => row.cardType === "refit").length;
-  const visibleModelCount = summaryRows.length;
 
   const handleDeleteDataset = async () => {
     if (!workspaceId) {
@@ -226,9 +222,6 @@ export function DatasetResultCard({
                     <h3 className="font-semibold text-sm text-foreground">{dataset.dataset_name}</h3>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                       {dataset.task_type && <span className="capitalize">{dataset.task_type}</span>}
-                      {dataset.metric && <><span>·</span><span>{dataset.metric.toUpperCase()}</span></>}
-                      <span>·</span>
-                      <span>{visibleModelCount} models</span>
                       {refitCount > 0 && (
                         <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-emerald-500/10 text-emerald-600">
                           {refitCount} refit

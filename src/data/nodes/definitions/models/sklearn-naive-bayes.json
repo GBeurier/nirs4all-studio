@@ -183,7 +183,7 @@
       {
         "name": "var_smoothing",
         "type": "float",
-        "default": 1e-9,
+        "default": 1e-09,
         "isAdvanced": true
       }
     ]

@@ -119,7 +119,7 @@ export interface PredictionArraysResponse {
   prediction_id: string;
   y_true: number[] | null;
   y_pred: number[] | null;
-  y_proba: number[] | null;
+  y_proba: number[] | number[][] | null;
   sample_indices: number[] | null;
   weights: number[] | null;
   n_samples: number;

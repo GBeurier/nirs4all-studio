@@ -500,13 +500,13 @@ const de = {
       connectingTitle: "Verbindung zum Backend...",
       errorTitle: "Backend-Start fehlgeschlagen",
       loadingTitle: "Analyse-Backend wird geladen...",
-      workspaceTitle: "Arbeitsbereich wird wiederhergestellt...",
+      workspaceTitle: "Arbeitsbereich wird geladen...",
       connectingDescription:
         "Das Backend wird noch gestartet. Zwischengespeicherte Inhalte können zuerst erscheinen, aber Aktionen sind eingeschränkt, bis die API antwortet.",
       loadingDescription:
         "nirs4all und seine ML-Abhängigkeiten werden im Hintergrund initialisiert. Erweiterte Analysefunktionen werden automatisch freigeschaltet.",
       workspaceDescription:
-        "Das Backend stellt den aktiven Arbeitsbereich wieder her. Datensatz-, Ausführungs-, Ergebnis- und Vorhersageansichten werden nach dem Start aktualisiert.",
+        "Das Backend lädt den aktiven Arbeitsbereich. Datensatz-, Ausführungs-, Ergebnis- und Vorhersageansichten werden nach dem Start aktualisiert.",
       errorBadge: "Startproblem",
       badge: "Backend wird geladen",
       apiLabel: "API",
@@ -520,7 +520,7 @@ const de = {
       workspaceLabel: "Arbeitsbereich",
       workspaceBlocked: "Blockiert bis Backend wiederhergestellt ist",
       workspaceReady: "Bereit",
-      workspaceLoading: "Datensätze und Ausführungsstatus werden wiederhergestellt",
+      workspaceLoading: "Datensätze und Ausführungsstatus werden geladen",
       workspaceWaiting: "In der Warteschlange hinter ML-Start",
       loaderAlt: "Backend-Ladeanimation",
     },

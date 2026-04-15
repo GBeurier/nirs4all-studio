@@ -1100,7 +1100,7 @@
       {
         "name": "tol",
         "type": "float",
-        "default": 1e-7,
+        "default": 1e-07,
         "isAdvanced": true
       },
       {
@@ -1266,7 +1266,7 @@
       {
         "name": "tol",
         "type": "float",
-        "default": 1e-7,
+        "default": 1e-07,
         "isAdvanced": true
       },
       {

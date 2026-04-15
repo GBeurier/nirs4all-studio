@@ -6,7 +6,13 @@
  */
 
 import { cn } from "@/lib/utils";
-import { formatMetricValue, isLowerBetter, getMetricAbbreviation } from "@/lib/scores";
+import {
+  formatMetricValue,
+  getMetricAbbreviation,
+  getPrimaryContextMetricLabel,
+  isClassificationTaskType,
+  isLowerBetter,
+} from "@/lib/scores";
 import { safeNumber } from "@/lib/fold-utils";
 import { TableCell } from "@/components/ui/table";
 import type { ScoreCardRow, ScoreCardType } from "@/types/score-cards";
@@ -16,9 +22,20 @@ import type { ScoreCardRow, ScoreCardType } from "@/types/score-cards";
 // ============================================================================
 
 /** Get the display label for a metric key based on card type. */
-export function getScoreContextLabel(key: string, cardType: ScoreCardType, primaryMetric: string | null): string {
+export function getScoreContextLabel(
+  key: string,
+  cardType: ScoreCardType,
+  primaryMetric: string | null,
+  taskType?: string | null,
+): string {
   const k = key.toLowerCase();
   const pm = (primaryMetric || "").toLowerCase();
+  const isPrimaryMetric = k === pm || ((k === "rmse" || k === "rmsep" || k === "rmsecv") && pm === "rmse");
+
+  if ((cardType === "refit" || cardType === "crossval") && isPrimaryMetric) {
+    return getPrimaryContextMetricLabel(primaryMetric || key, cardType, taskType);
+  }
+
   if ((k === "rmse" || k === pm) && isLowerBetter(key)) {
     if (cardType === "refit") return "RMSEP";
     if (cardType === "crossval") return "RMSECV";
@@ -84,8 +101,15 @@ interface InlineScoreDisplayProps {
 }
 
 export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineScoreDisplayProps) {
-  const scores = extractDisplayScores(row, selectedMetrics);
-  const visibleMetrics = selectedMetrics.filter(metric => scores[metric] != null);
+  const isClassification = isClassificationTaskType(row.taskType);
+  const pm = (row.metric || "").toLowerCase();
+  const filteredMetrics = selectedMetrics.filter(metric => {
+    const kl = metric.toLowerCase();
+    if (isClassification && (kl === "rmse" || kl === "rmsep" || kl === "rmsecv")) return false;
+    return true;
+  });
+  const scores = extractDisplayScores(row, filteredMetrics);
+  const visibleMetrics = filteredMetrics.filter(metric => scores[metric] != null);
 
   if (visibleMetrics.length === 0) {
     return null;
@@ -96,12 +120,19 @@ export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineS
       {visibleMetrics.map(k => {
         const val = scores[k];
         const safeVal = val != null && Number.isFinite(val) ? val : null;
+        const kl = k.toLowerCase();
+        const isPrimary = kl === pm
+          || ((kl === "rmse" || kl === "rmsep" || kl === "rmsecv") && (pm === "rmse" || pm === "rmsep" || pm === "rmsecv"));
         return (
-          <span key={k} className="inline-flex items-center gap-0.5 text-[11px]">
-            <span className="text-muted-foreground uppercase text-[9px] font-medium">
-              {getScoreContextLabel(k, row.cardType, row.metric)}
+            <span key={k} className="inline-flex items-center gap-0.5 text-[11px]">
+            <span className={cn("uppercase text-[9px]", isPrimary ? "font-bold text-foreground" : "text-muted-foreground font-medium")}>
+              {getScoreContextLabel(k, row.cardType, row.metric, row.taskType)}
             </span>
-            <span className={cn("font-mono font-semibold tabular-nums", colorClass || "text-foreground/80")}>
+            <span className={cn(
+              "font-mono tabular-nums",
+              isPrimary ? "font-bold" : "font-semibold",
+              colorClass || "text-foreground/80",
+            )}>
               {safeVal != null ? formatMetricValue(safeVal, k) : "\u2014"}
             </span>
           </span>

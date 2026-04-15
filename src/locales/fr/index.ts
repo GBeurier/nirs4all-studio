@@ -502,13 +502,13 @@ const fr = {
       connectingTitle: "Connexion au backend...",
       errorTitle: "Démarrage du backend bloqué",
       loadingTitle: "Chargement du backend d'analyse...",
-      workspaceTitle: "Restauration de l'espace de travail...",
+      workspaceTitle: "Chargement de l'espace de travail...",
       connectingDescription:
         "Le backend est en cours de démarrage. Le contenu mis en cache peut apparaître en premier, mais les actions restent limitées jusqu'à ce que l'API réponde.",
       loadingDescription:
         "nirs4all et ses dépendances ML s'initialisent en arrière-plan. Les fonctionnalités d'analyse avancées se déverrouilleront automatiquement.",
       workspaceDescription:
-        "Le backend restaure l'espace de travail actif. Les vues des jeux de données, des exécutions, des résultats et des prédictions se rafraîchiront à la fin du démarrage.",
+        "Le backend charge l'espace de travail actif. Les vues des jeux de données, des exécutions, des résultats et des prédictions se rafraîchiront à la fin du démarrage.",
       errorBadge: "Problème de démarrage",
       badge: "Backend en chargement",
       apiLabel: "API",
@@ -522,7 +522,7 @@ const fr = {
       workspaceLabel: "Espace de travail",
       workspaceBlocked: "Bloqué jusqu'à la récupération du backend",
       workspaceReady: "Prêt",
-      workspaceLoading: "Restauration des jeux de données et des exécutions",
+      workspaceLoading: "Chargement des jeux de données et des exécutions",
       workspaceWaiting: "En attente du démarrage ML",
       loaderAlt: "Animation de chargement du backend",
     },

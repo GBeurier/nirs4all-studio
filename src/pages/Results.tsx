@@ -16,11 +16,14 @@ import {
   isBetterScore,
   formatScore,
   formatMetricName,
+  getAvailableMetricKeysForTaskTypes,
   getBestCvEntry,
   getBestFinalEntry,
-  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
-  LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+  getDefaultSelectedMetricsForTaskTypes,
+  getDefaultSelectionUpgradeCandidatesForTaskTypes,
+  getLegacySelectedMetricsForTaskTypes,
   isClassificationTaskType,
+  orderMetricKeys,
 } from "@/lib/scores";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import { getWorkspaceResultsSummary } from "@/api/client";
@@ -144,17 +147,22 @@ export default function Results() {
 
     return {
       taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
-      availableMetricKeys: [...availableMetricKeys],
+      taskTypes: [...taskTypes],
+      availableMetricKeys: orderMetricKeys([
+        ...availableMetricKeys,
+        ...getAvailableMetricKeysForTaskTypes(taskTypes),
+      ]),
     };
   }, [metricSourceDatasets]);
 
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
     "results",
     metricContext.taskType,
-    isClassificationTaskType(metricContext.taskType) ? undefined : DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
-    isClassificationTaskType(metricContext.taskType) ? undefined : LEGACY_DATASET_ITEM_REGRESSION_METRICS,
-    "defaults-reset-v1",
+    getDefaultSelectedMetricsForTaskTypes(metricContext.taskTypes),
+    getLegacySelectedMetricsForTaskTypes(metricContext.taskTypes),
+    "task-aware-defaults-v1",
     metricContext.availableMetricKeys,
+    getDefaultSelectionUpgradeCandidatesForTaskTypes(metricContext.taskTypes),
   );
 
   // Loading

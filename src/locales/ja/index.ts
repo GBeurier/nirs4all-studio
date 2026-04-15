@@ -498,13 +498,13 @@ const ja = {
       connectingTitle: "バックエンドに接続中...",
       errorTitle: "バックエンドの起動が停止しました",
       loadingTitle: "解析バックエンドを読み込み中...",
-      workspaceTitle: "ワークスペースを復元中...",
+      workspaceTitle: "ワークスペースを読み込み中...",
       connectingDescription:
         "バックエンドはまだ起動中です。キャッシュされたコンテンツが最初に表示される場合がありますが、APIが応答するまでアクションは制限されます。",
       loadingDescription:
         "nirs4allとそのML依存関係がバックグラウンドで初期化されています。高度な分析機能は自動的に利用可能になります。",
       workspaceDescription:
-        "バックエンドはアクティブなワークスペースを復元しています。起動完了後、データセット、実行、結果、予測のビューが更新されます。",
+        "バックエンドはアクティブなワークスペースを読み込んでいます。起動完了後、データセット、実行、結果、予測のビューが更新されます。",
       errorBadge: "起動エラー",
       badge: "バックエンド読み込み中",
       apiLabel: "API",
@@ -518,7 +518,7 @@ const ja = {
       workspaceLabel: "ワークスペース",
       workspaceBlocked: "バックエンドの復旧まで待機中",
       workspaceReady: "準備完了",
-      workspaceLoading: "データセットと実行状態を復元中",
+      workspaceLoading: "データセットと実行状態を読み込み中",
       workspaceWaiting: "ML起動後に実行予定",
       loaderAlt: "バックエンド読み込みアニメーション",
     },

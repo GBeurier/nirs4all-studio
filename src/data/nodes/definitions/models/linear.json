@@ -27,12 +27,24 @@
           {
             "label": "Light (0.01-1)",
             "type": "choices",
-            "values": [0.01, 0.1, 0.5, 1.0]
+            "values": [
+              0.01,
+              0.1,
+              0.5,
+              1.0
+            ]
           },
           {
             "label": "Full range",
             "type": "choices",
-            "values": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+            "values": [
+              0.001,
+              0.01,
+              0.1,
+              1.0,
+              10.0,
+              100.0
+            ]
           }
         ],
         "finetunable": true,
@@ -87,12 +99,24 @@
           {
             "label": "Light (0.01-1)",
             "type": "choices",
-            "values": [0.01, 0.1, 0.5, 1.0]
+            "values": [
+              0.01,
+              0.1,
+              0.5,
+              1.0
+            ]
           },
           {
             "label": "Full range",
             "type": "choices",
-            "values": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+            "values": [
+              0.001,
+              0.01,
+              0.1,
+              1.0,
+              10.0,
+              100.0
+            ]
           }
         ],
         "finetunable": true,
@@ -156,12 +180,24 @@
           {
             "label": "Light (0.01-1)",
             "type": "choices",
-            "values": [0.01, 0.1, 0.5, 1.0]
+            "values": [
+              0.01,
+              0.1,
+              0.5,
+              1.0
+            ]
           },
           {
             "label": "Full range",
             "type": "choices",
-            "values": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+            "values": [
+              0.001,
+              0.01,
+              0.1,
+              1.0,
+              10.0,
+              100.0
+            ]
           }
         ],
         "finetunable": true,
@@ -184,7 +220,13 @@
           {
             "label": "Standard",
             "type": "choices",
-            "values": [0.1, 0.3, 0.5, 0.7, 0.9]
+            "values": [
+              0.1,
+              0.3,
+              0.5,
+              0.7,
+              0.9
+            ]
           }
         ],
         "finetunable": true,

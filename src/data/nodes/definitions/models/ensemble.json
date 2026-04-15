@@ -329,7 +329,143 @@
           {
             "label": "Standard",
             "type": "choices",
-            "values": [0.01, 0.05, 0.1, 0.3]
+            "values": [
+              0.01,
+              0.05,
+              0.1,
+              0.3
+            ]
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.01,
+          0.5
+        ]
+      },
+      {
+        "name": "max_depth",
+        "type": "int",
+        "default": 6,
+        "min": 1,
+        "max": 20,
+        "description": "Maximum tree depth",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard (3-15)",
+            "type": "range",
+            "values": {
+              "from": 3,
+              "to": 15,
+              "step": 3
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          3,
+          15
+        ]
+      },
+      {
+        "name": "min_child_weight",
+        "type": "int",
+        "default": 1,
+        "min": 1,
+        "max": 10,
+        "description": "Minimum sum of instance weight in a child",
+        "isAdvanced": true
+      },
+      {
+        "name": "subsample",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.5,
+        "max": 1.0,
+        "step": 0.1,
+        "description": "Subsample ratio of training instances",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "tier": "standard"
+  },
+  {
+    "id": "model.xgboost_classifier",
+    "name": "XGBoostClassifier",
+    "type": "model",
+    "classPath": "xgboost.XGBClassifier",
+    "description": "XGBoost Gradient Boosting Classifier",
+    "longDescription": "Extreme Gradient Boosting for classification - optimized distributed gradient boosting library.",
+    "category": "Ensemble",
+    "tags": [
+      "ensemble",
+      "xgboost",
+      "boosting",
+      "gradient",
+      "classification"
+    ],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of boosting rounds",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (50-200)",
+            "type": "range",
+            "values": {
+              "from": 50,
+              "to": 200,
+              "step": 50
+            }
+          },
+          {
+            "label": "Extended (100-500)",
+            "type": "range",
+            "values": {
+              "from": 100,
+              "to": 500,
+              "step": 100
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "min": 0.001,
+        "max": 1,
+        "step": 0.01,
+        "description": "Boosting learning rate",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [
+              0.01,
+              0.05,
+              0.1,
+              0.3
+            ]
           }
         ],
         "finetunable": true,
@@ -455,7 +591,143 @@
           {
             "label": "Standard",
             "type": "choices",
-            "values": [0.01, 0.05, 0.1, 0.3]
+            "values": [
+              0.01,
+              0.05,
+              0.1,
+              0.3
+            ]
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.01,
+          0.5
+        ]
+      },
+      {
+        "name": "num_leaves",
+        "type": "int",
+        "default": 31,
+        "min": 2,
+        "max": 256,
+        "description": "Maximum number of leaves in one tree",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard (15-63)",
+            "type": "range",
+            "values": {
+              "from": 15,
+              "to": 63,
+              "step": 16
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          10,
+          100
+        ]
+      },
+      {
+        "name": "max_depth",
+        "type": "int",
+        "default": -1,
+        "min": -1,
+        "max": 20,
+        "description": "Max tree depth (-1 for no limit)",
+        "isAdvanced": true
+      },
+      {
+        "name": "min_child_samples",
+        "type": "int",
+        "default": 20,
+        "min": 5,
+        "max": 100,
+        "description": "Minimum number of data in one leaf",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "supportsStepGenerator": true,
+    "tier": "standard"
+  },
+  {
+    "id": "model.lightgbm_classifier",
+    "name": "LightGBMClassifier",
+    "type": "model",
+    "classPath": "lightgbm.LGBMClassifier",
+    "description": "LightGBM Gradient Boosting Classifier",
+    "longDescription": "Light Gradient Boosting Machine for classification - fast, distributed, high-performance gradient boosting.",
+    "category": "Ensemble",
+    "tags": [
+      "ensemble",
+      "lightgbm",
+      "boosting",
+      "gradient",
+      "fast",
+      "classification"
+    ],
+    "source": "sklearn",
+    "parameters": [
+      {
+        "name": "n_estimators",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of boosting iterations",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Quick (50-200)",
+            "type": "range",
+            "values": {
+              "from": 50,
+              "to": 200,
+              "step": 50
+            }
+          },
+          {
+            "label": "Extended (100-500)",
+            "type": "range",
+            "values": {
+              "from": 100,
+              "to": 500,
+              "step": 100
+            }
+          }
+        ],
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.1,
+        "min": 0.001,
+        "max": 1,
+        "step": 0.01,
+        "description": "Boosting learning rate",
+        "sweepable": true,
+        "sweepPresets": [
+          {
+            "label": "Standard",
+            "type": "choices",
+            "values": [
+              0.01,
+              0.05,
+              0.1,
+              0.3
+            ]
           }
         ],
         "finetunable": true,

@@ -888,6 +888,23 @@ class TestGetPredictionArrays:
         assert data["sample_indices"] is None
         assert data["n_samples"] == 2
 
+    def test_arrays_classification_probability_matrix(self, client, patched_endpoints):
+        """Classification predictions may return per-class probabilities."""
+        patched_endpoints.get_prediction_arrays.return_value = {
+            "y_true": np.array([0.0, 1.0]),
+            "y_pred": np.array([0.0, 1.0]),
+            "y_proba": np.array([[0.8, 0.2], [0.1, 0.9]]),
+            "weights": np.array([np.nan]),
+            "sample_indices": np.array([10, 11]),
+        }
+
+        resp = client.get("/api/aggregated-predictions/pred-001/arrays")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["y_proba"] == [[0.8, 0.2], [0.1, 0.9]]
+        assert data["weights"] is None
+        assert data["sample_indices"] == [10, 11]
+
 
 # ---------------------------------------------------------------------------
 # Error handling tests

@@ -502,13 +502,13 @@ const en = {
       connectingTitle: "Connecting to backend...",
       errorTitle: "Backend startup stalled",
       loadingTitle: "Loading analysis backend...",
-      workspaceTitle: "Restoring workspace...",
+      workspaceTitle: "Loading workspace...",
       connectingDescription:
         "The backend is still starting. Cached content may appear first, but actions stay limited until the API responds.",
       loadingDescription:
         "nirs4all and its ML dependencies are initializing in the background. Heavy analysis features will unlock automatically.",
       workspaceDescription:
-        "The backend is restoring the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes.",
+        "The backend is loading the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes.",
       errorBadge: "Startup issue",
       badge: "Backend loading",
       apiLabel: "API",
@@ -522,7 +522,7 @@ const en = {
       workspaceLabel: "Workspace",
       workspaceBlocked: "Blocked until backend recovers",
       workspaceReady: "Ready",
-      workspaceLoading: "Restoring datasets and run state",
+      workspaceLoading: "Loading datasets and run state",
       workspaceWaiting: "Queued behind ML startup",
       loaderAlt: "Backend loading animation",
     },

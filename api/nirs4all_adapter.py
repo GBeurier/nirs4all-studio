@@ -54,7 +54,9 @@ SPLITTER_ALIASES = {
 MODEL_ALIASES = {
     "RandomForest": "RandomForestRegressor",
     "LightGBM": "LGBMRegressor",
+    "LightGBMClassifier": "LGBMClassifier",
     "XGBoost": "XGBRegressor",
+    "XGBoostClassifier": "XGBClassifier",
     "nicon": "nicon",
     "cnn1d": "customizable_nicon",
 }

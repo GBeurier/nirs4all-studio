@@ -381,6 +381,9 @@ export interface StepOption {
   defaultParams: PipelineParams;
   defaultBranches?: PipelineStep[][];
   generatorKind?: GeneratorKind;
+  classPath?: string;
+  functionPath?: string;
+  framework?: string;
   category?: string;        // Subcategory for palette organization
   isDeepLearning?: boolean; // Flag for DL models (show training config)
   isAdvanced?: boolean;     // Flag for advanced/expert options
@@ -1365,6 +1368,9 @@ export function createStepFromOption(type: StepType, option: StepOption): Pipeli
     subType,
     name: option.name,
     params: { ...option.defaultParams },
+    classPath: option.classPath,
+    functionPath: option.functionPath,
+    framework: option.framework,
     branches: scalarGeneratorConfig
       ? undefined
       : option.defaultBranches

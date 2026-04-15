@@ -6,7 +6,9 @@
     "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
     "description": "NICoN (NIRS Convolutional Network) — PyTorch-based",
     "longDescription": "PyTorch-based deep convolutional neural network designed specifically for NIR spectroscopy. Requires PyTorch.",
-    "requires": ["torch"],
+    "requires": [
+      "torch"
+    ],
     "category": "Deep Learning",
     "tags": [
       "deep-learning",
@@ -36,7 +38,7 @@
         "name": "learning_rate",
         "type": "float",
         "default": 0.001,
-        "min": 0.00001,
+        "min": 1e-05,
         "max": 0.1,
         "description": "Learning rate",
         "sweepable": true,
@@ -66,13 +68,80 @@
     "tier": "advanced"
   },
   {
+    "id": "model.nicon_classifier",
+    "name": "NICoNClassifier",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.pytorch.nicon.nicon_classification",
+    "description": "NICoN Classifier (NIRS Convolutional Network) — PyTorch-based",
+    "longDescription": "PyTorch-based deep convolutional neural network for NIR spectroscopy classification. Requires PyTorch.",
+    "requires": [
+      "torch"
+    ],
+    "category": "Deep Learning",
+    "tags": [
+      "deep-learning",
+      "cnn",
+      "nirs",
+      "neural-network",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 1e-05,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "sweepable": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
     "id": "model.cnn1d",
     "name": "CNN1D",
     "type": "model",
     "classPath": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
     "description": "1D Convolutional Neural Network — PyTorch-based",
     "longDescription": "PyTorch-based customizable 1D CNN architecture (NICoN family) for spectral data. Requires PyTorch.",
-    "requires": ["torch"],
+    "requires": [
+      "torch"
+    ],
     "category": "Deep Learning",
     "tags": [
       "deep-learning",
@@ -102,7 +171,7 @@
         "name": "learning_rate",
         "type": "float",
         "default": 0.001,
-        "min": 0.00001,
+        "min": 1e-05,
         "max": 0.1,
         "description": "Learning rate",
         "sweepable": true,
@@ -160,6 +229,99 @@
     "tier": "advanced"
   },
   {
+    "id": "model.cnn1d_classifier",
+    "name": "CNN1DClassifier",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.pytorch.nicon.customizable_nicon_classification",
+    "description": "1D Convolutional Neural Network Classifier — PyTorch-based",
+    "longDescription": "PyTorch-based customizable 1D CNN architecture (NICoN family) for spectral classification. Requires PyTorch.",
+    "requires": [
+      "torch"
+    ],
+    "category": "Deep Learning",
+    "tags": [
+      "deep-learning",
+      "cnn",
+      "neural-network",
+      "1d",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 1e-05,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
+      },
+      {
+        "name": "n_filters",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Number of convolutional filters",
+        "sweepable": true
+      },
+      {
+        "name": "kernel_size",
+        "type": "int",
+        "default": 7,
+        "min": 3,
+        "max": 31,
+        "description": "Convolution kernel size",
+        "sweepable": true
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "isAdvanced": true
+      },
+      {
+        "name": "dropout",
+        "type": "float",
+        "default": 0.2,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.05,
+        "description": "Dropout rate",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
     "id": "model.mlp",
     "name": "MLPRegressor",
     "type": "model",
@@ -196,7 +358,7 @@
         "name": "learning_rate_init",
         "type": "float",
         "default": 0.001,
-        "min": 0.00001,
+        "min": 1e-05,
         "max": 0.1,
         "description": "Initial learning rate",
         "sweepable": true,
@@ -264,7 +426,9 @@
     "classPath": "nirs4all.operators.models.pytorch.spectral_transformer.spectral_transformer",
     "description": "Spectral Transformer — PyTorch-based",
     "longDescription": "PyTorch-based attention-based transformer architecture (SpectralTransformer) for spectral data. Requires PyTorch.",
-    "requires": ["torch"],
+    "requires": [
+      "torch"
+    ],
     "category": "Deep Learning",
     "tags": [
       "deep-learning",
@@ -321,7 +485,7 @@
         "name": "learning_rate",
         "type": "float",
         "default": 0.001,
-        "min": 0.00001,
+        "min": 1e-05,
         "max": 0.1,
         "description": "Learning rate",
         "sweepable": true,
@@ -361,13 +525,117 @@
     "tier": "advanced"
   },
   {
+    "id": "model.transformer_classifier",
+    "name": "TransformerClassifier",
+    "type": "model",
+    "classPath": "nirs4all.operators.models.pytorch.spectral_transformer.spectral_transformer_classification",
+    "description": "Spectral Transformer Classifier — PyTorch-based",
+    "longDescription": "PyTorch-based attention-based transformer architecture (SpectralTransformer) for spectral classification. Requires PyTorch.",
+    "requires": [
+      "torch"
+    ],
+    "category": "Deep Learning",
+    "tags": [
+      "deep-learning",
+      "transformer",
+      "attention",
+      "neural-network",
+      "classification"
+    ],
+    "source": "nirs4all",
+    "isDeepLearning": true,
+    "parameters": [
+      {
+        "name": "epochs",
+        "type": "int",
+        "default": 100,
+        "min": 10,
+        "max": 1000,
+        "description": "Number of training epochs",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "int",
+        "finetuneRange": [
+          50,
+          500
+        ]
+      },
+      {
+        "name": "d_model",
+        "type": "int",
+        "default": 64,
+        "min": 16,
+        "max": 512,
+        "description": "Model dimension",
+        "sweepable": true
+      },
+      {
+        "name": "nhead",
+        "type": "int",
+        "default": 4,
+        "min": 1,
+        "max": 16,
+        "description": "Number of attention heads",
+        "sweepable": true
+      },
+      {
+        "name": "num_layers",
+        "type": "int",
+        "default": 2,
+        "min": 1,
+        "max": 8,
+        "description": "Number of transformer layers",
+        "sweepable": true
+      },
+      {
+        "name": "learning_rate",
+        "type": "float",
+        "default": 0.001,
+        "min": 1e-05,
+        "max": 0.1,
+        "description": "Learning rate",
+        "sweepable": true,
+        "finetunable": true,
+        "finetuneType": "log_float",
+        "finetuneRange": [
+          0.0001,
+          0.01
+        ]
+      },
+      {
+        "name": "batch_size",
+        "type": "int",
+        "default": 32,
+        "min": 8,
+        "max": 256,
+        "description": "Training batch size",
+        "isAdvanced": true
+      },
+      {
+        "name": "dropout",
+        "type": "float",
+        "default": 0.1,
+        "min": 0,
+        "max": 0.5,
+        "step": 0.05,
+        "description": "Dropout rate",
+        "isAdvanced": true
+      }
+    ],
+    "supportsParameterSweeps": true,
+    "supportsFinetuning": true,
+    "tier": "advanced"
+  },
+  {
     "id": "model.tabpfn",
     "name": "TabPFN",
     "type": "model",
     "classPath": "tabpfn.TabPFNRegressor",
     "description": "TabPFN (Prior-Data Fitted Network)",
     "longDescription": "Pre-trained transformer for tabular data - no hyperparameter tuning needed.",
-    "requires": ["tabpfn"],
+    "requires": [
+      "tabpfn"
+    ],
     "category": "Deep Learning",
     "tags": [
       "deep-learning",
@@ -379,6 +647,31 @@
     "legacyClassPaths": [
       "nirs4all.operators.models.TabPFN"
     ],
+    "isDeepLearning": true,
+    "parameters": [],
+    "supportsParameterSweeps": false,
+    "supportsFinetuning": false,
+    "tier": "advanced"
+  },
+  {
+    "id": "model.tabpfn_classifier",
+    "name": "TabPFNClassifier",
+    "type": "model",
+    "classPath": "tabpfn.TabPFNClassifier",
+    "description": "TabPFN Classifier (Prior-Data Fitted Network)",
+    "longDescription": "Pre-trained transformer for tabular classification - no hyperparameter tuning needed.",
+    "requires": [
+      "tabpfn"
+    ],
+    "category": "Deep Learning",
+    "tags": [
+      "deep-learning",
+      "tabpfn",
+      "transformer",
+      "pretrained",
+      "classification"
+    ],
+    "source": "nirs4all",
     "isDeepLearning": true,
     "parameters": [],
     "supportsParameterSweeps": false,

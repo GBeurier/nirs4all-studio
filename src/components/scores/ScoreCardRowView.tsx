@@ -20,7 +20,14 @@ import {
   ChevronDown, ChevronRight, Award, Box, Zap, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatMetricValue, getMetricAbbreviation, isClassificationTaskType } from "@/lib/scores";
+import {
+  filterMetricsForTaskType,
+  formatMetricValue,
+  getDefaultSelectedMetrics,
+  getMetricAbbreviation,
+  isClassificationTaskType,
+  orderMetricKeys,
+} from "@/lib/scores";
 import { foldBadgeClasses, foldLabel, foldLabelShort, safeNumber } from "@/lib/fold-utils";
 import { formatBestParams } from "@/lib/score-adapters";
 import { cardTypeBorderClass } from "./ScoreColumns";
@@ -81,24 +88,31 @@ function getAnyScore(row: ScoreCardRow, key: string): number | null {
   return safeNumber(row.testScores[key]) ?? safeNumber(row.valScores[key]) ?? safeNumber(row.trainScores[key]);
 }
 
+function getPrimaryMetric(row: ScoreCardRow): string {
+  return (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+}
+
+function getRelevantMetricKeys(row: ScoreCardRow, selectedMetrics: string[]): string[] {
+  const primaryMetric = getPrimaryMetric(row);
+  const scopedSelection = filterMetricsForTaskType(selectedMetrics, row.taskType);
+  const fallbackSelection = filterMetricsForTaskType(getDefaultSelectedMetrics(row.taskType ?? null), row.taskType);
+  const relevantMetrics = scopedSelection.length > 0 ? scopedSelection : fallbackSelection;
+
+  return orderMetricKeys([primaryMetric, ...relevantMetrics]);
+}
+
 // ============================================================================
 // Type-specific score displays
 // ============================================================================
 
 /** REFIT: RMSEP | Train_RMSE | R² | SEP | RPD | BIAS | MAE | NRMSE */
-function RefitScores({ row }: { row: ScoreCardRow }) {
-  const primaryMetric = (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+function RefitScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetrics: string[] }) {
+  const primaryMetric = getPrimaryMetric(row);
+  const secondaryMetrics = getRelevantMetricKeys(row, selectedMetrics)
+    .filter(metric => metric !== primaryMetric)
+    .map(metric => ({ key: metric, label: getMetricAbbreviation(metric) }));
 
   if (isClassificationTaskType(row.taskType)) {
-    const secondaryMetrics = [
-      { key: "f1", label: "F1" },
-      { key: "roc_auc", label: "AUC" },
-      { key: "balanced_accuracy", label: "BalAcc" },
-      { key: "precision", label: "Prec" },
-      { key: "recall", label: "Recall" },
-      { key: "matthews_corrcoef", label: "MCC" },
-    ].filter(metric => metric.key !== primaryMetric);
-
     return (
       <div className="flex items-center gap-1.5 flex-wrap">
         <ScorePair
@@ -120,14 +134,6 @@ function RefitScores({ row }: { row: ScoreCardRow }) {
     );
   }
 
-  const secondaryMetrics = [
-    { key: "r2", label: "R²" },
-    { key: "sep", label: "SEP" },
-    { key: "rpd", label: "RPD" },
-    { key: "bias", label: "BIAS" },
-    { key: "mae", label: "MAE" },
-    { key: "nrmse", label: "NRMSE" },
-  ].filter(metric => metric.key !== primaryMetric);
   const primaryLabel = primaryMetric === "rmse" || primaryMetric === "rmsep"
     ? "RMSEP"
     : getMetricAbbreviation(primaryMetric);
@@ -154,17 +160,13 @@ function RefitScores({ row }: { row: ScoreCardRow }) {
 }
 
 /** CROSSVAL: RMSECV | Mean_Val | Min_Val | Max_Val | RMSEP_Avg | RMSEP_W-Avg | Mean_RMSEP | Min_Test | Max_Test */
-function CrossvalScores({ row }: { row: ScoreCardRow }) {
-  const primaryMetric = (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+function CrossvalScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetrics: string[] }) {
+  const primaryMetric = getPrimaryMetric(row);
+  const secondaryMetrics = getRelevantMetricKeys(row, selectedMetrics)
+    .filter(metric => metric !== primaryMetric)
+    .map(metric => ({ key: metric, label: getMetricAbbreviation(metric) }));
 
   if (isClassificationTaskType(row.taskType)) {
-    const secondaryMetrics = [
-      { key: "roc_auc", label: "AUC" },
-      { key: "f1", label: "F1" },
-      { key: "balanced_accuracy", label: "BalAcc" },
-      { key: "precision", label: "Prec" },
-      { key: "recall", label: "Recall" },
-    ].filter(metric => metric.key !== primaryMetric);
     const primaryLabel = getMetricAbbreviation(primaryMetric);
 
     return (
@@ -223,19 +225,13 @@ function CrossvalScores({ row }: { row: ScoreCardRow }) {
 }
 
 /** TRAIN (fold): RMSEP | Val_RMSE | R² | SEP | RPD | BIAS | MAE | NRMSE */
-function TrainScores({ row }: { row: ScoreCardRow }) {
-  const primaryMetric = (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+function TrainScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedMetrics: string[] }) {
+  const primaryMetric = getPrimaryMetric(row);
+  const secondaryMetrics = getRelevantMetricKeys(row, selectedMetrics)
+    .filter(metric => metric !== primaryMetric)
+    .map(metric => ({ key: metric, label: getMetricAbbreviation(metric) }));
 
   if (isClassificationTaskType(row.taskType)) {
-    const secondaryMetrics = [
-      { key: "f1", label: "F1" },
-      { key: "roc_auc", label: "AUC" },
-      { key: "balanced_accuracy", label: "BalAcc" },
-      { key: "precision", label: "Prec" },
-      { key: "recall", label: "Recall" },
-      { key: "matthews_corrcoef", label: "MCC" },
-    ].filter(metric => metric.key !== primaryMetric);
-
     return (
       <div className="flex items-center gap-1.5 flex-wrap">
         <ScorePair
@@ -257,14 +253,6 @@ function TrainScores({ row }: { row: ScoreCardRow }) {
     );
   }
 
-  const secondaryMetrics = [
-    { key: "r2", label: "R²" },
-    { key: "sep", label: "SEP" },
-    { key: "rpd", label: "RPD" },
-    { key: "bias", label: "BIAS" },
-    { key: "mae", label: "MAE" },
-    { key: "nrmse", label: "NRMSE" },
-  ].filter(metric => metric.key !== primaryMetric);
   const primaryLabel = primaryMetric === "rmse" || primaryMetric === "rmsep"
     ? "RMSEP"
     : getMetricAbbreviation(primaryMetric);
@@ -388,9 +376,9 @@ function InlineRow({
 
         {/* Scores area */}
         <div className="flex-1 min-w-0 flex items-center justify-end gap-2 pr-2">
-          {isRefit && <RefitScores row={row} />}
-          {isCrossval && <CrossvalScores row={row} />}
-          {isTrain && <TrainScores row={row} />}
+          {isRefit && <RefitScores row={row} selectedMetrics={selectedMetrics} />}
+          {isCrossval && <CrossvalScores row={row} selectedMetrics={selectedMetrics} />}
+          {isTrain && <TrainScores row={row} selectedMetrics={selectedMetrics} />}
 
           {/* Actions */}
           <div className="flex items-center gap-0.5 shrink-0 ml-1">

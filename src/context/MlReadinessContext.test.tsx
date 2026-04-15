@@ -20,6 +20,15 @@ vi.mock("@/api/client", () => ({
 
 vi.mock("@/hooks/useDatasetQueries", () => ({
   prefetchDatasetsList: mocks.prefetchDatasetsList,
+  datasetQueryKeys: {
+    all: ["datasets"],
+    list: () => ["datasets", "list"],
+    detail: (id: string | null | undefined) => ["datasets", "detail", id],
+    preview: (id: string | null | undefined, n: number) =>
+      ["datasets", "preview", id, n],
+    linkedWorkspaces: () => ["workspaces", "linked"],
+    scores: (wsId: string | null | undefined) => ["workspaces", wsId, "scores"],
+  },
 }));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })

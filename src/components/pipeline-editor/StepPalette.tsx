@@ -173,17 +173,62 @@ interface StepPaletteProps {
   onAddStep: (stepType: StepType, option: StepOption) => void;
 }
 
+/**
+ * Palette group key — superset of StepType, with the "model" group split into
+ * two display-only buckets (regression vs classification). Drag-and-drop and
+ * pipeline data still use the real StepType ("model").
+ */
+type PaletteGroupKey = StepType | "model_regression" | "model_classification";
+
 // Order of step types in the palette (most commonly used first)
-const stepTypeOrder: StepType[] = [
+const stepTypeOrder: PaletteGroupKey[] = [
   "preprocessing",
   "splitting",
-  "model",
+  "model_regression",
+  "model_classification",
   "y_processing",
   "flow",
   "filter",
   "augmentation",
   "utility",
 ];
+
+/** Group-level display labels (overrides stepTypeLabels for virtual groups). */
+const paletteGroupLabels: Partial<Record<PaletteGroupKey, string>> = {
+  model_regression: "Regression Models",
+  model_classification: "Classification Models",
+};
+
+/** Keywords that mark a model option as classification-oriented. */
+const CLASSIFIER_NAME_PATTERNS = [
+  /classifier$/i,
+  /classification$/i,
+  /^svc$/i,
+  /^nusvc$/i,
+  /^linearsvc$/i,
+  /^logisticregression(cv)?$/i,
+  /da$/i,                 // PLSDA, OPLSDA, LDA, QDA, LinearDiscriminantAnalysis (ends in "Analysis" — handled below)
+  /discriminantanalysis$/i,
+  /^(bernoulli|categorical|complement|gaussian|multinomial)nb$/i,
+  /^nearestcentroid$/i,
+  /^label(propagation|spreading)$/i,
+];
+
+/** Decide if a StepOption of type "model" is a classifier. */
+function isClassifierModel(opt: StepOption): boolean {
+  if (opt.tags?.some((t) => t.toLowerCase() === "classification")) return true;
+  const name = opt.name || "";
+  return CLASSIFIER_NAME_PATTERNS.some((re) => re.test(name));
+}
+
+/**
+ * Resolve a palette group key to the underlying StepType used for data lookup.
+ * Both virtual model groups map to the real "model" step type.
+ */
+function resolveStepType(key: PaletteGroupKey): StepType {
+  if (key === "model_regression" || key === "model_classification") return "model";
+  return key;
+}
 
 /** Tier selector labels */
 const TIER_LABELS: Record<TierLevel, string> = {
@@ -212,7 +257,7 @@ function passesTierFilter(opt: StepOption, tierLevel: TierLevel): boolean {
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
-  const [openSections, setOpenSections] = useState<Set<StepType>>(new Set());
+  const [openSections, setOpenSections] = useState<Set<PaletteGroupKey>>(new Set());
   const prefs = usePipelineEditorPreferencesOptional();
   const [tierLevelFallback, setTierLevelFallback] = useState<TierLevel>("standard");
 
@@ -243,14 +288,22 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     return stepOptions[type] ?? [];
   }, [useRegistry, registryContext]);
 
-  // Get all options for a type
-  const getOptionsForType = useCallback((type: StepType): { option: StepOption; actualType: StepType }[] => {
-    return getStepOptionsForType(type).map(opt => ({ option: opt, actualType: type }));
+  // Get all options for a palette group (virtual model groups filter by classifier/regressor).
+  const getOptionsForGroup = useCallback((key: PaletteGroupKey): { option: StepOption; actualType: StepType }[] => {
+    const stepType = resolveStepType(key);
+    const opts = getStepOptionsForType(stepType).map((opt) => ({ option: opt, actualType: stepType }));
+    if (key === "model_regression") {
+      return opts.filter(({ option }) => !isClassifierModel(option));
+    }
+    if (key === "model_classification") {
+      return opts.filter(({ option }) => isClassifierModel(option));
+    }
+    return opts;
   }, [getStepOptionsForType]);
 
   const filteredOptions = useCallback(
-    (type: StepType) => {
-      const allOptions = getOptionsForType(type);
+    (key: PaletteGroupKey) => {
+      const allOptions = getOptionsForGroup(key);
       return allOptions.filter(
         ({ option: opt }) =>
           passesTierFilter(opt, tierLevel) &&
@@ -261,16 +314,16 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
           )
       );
     },
-    [search, getOptionsForType, tierLevel]
+    [search, getOptionsForGroup, tierLevel]
   );
 
   // Keep the open sections consistent when toggling extended mode during an active search.
   useEffect(() => {
     if (!search.trim()) return;
-    const matchingSections = new Set<StepType>();
-    stepTypeOrder.forEach((type) => {
-      const matches = filteredOptions(type);
-      if (matches.length > 0) matchingSections.add(type);
+    const matchingSections = new Set<PaletteGroupKey>();
+    stepTypeOrder.forEach((key) => {
+      const matches = filteredOptions(key);
+      if (matches.length > 0) matchingSections.add(key);
     });
     setOpenSections(matchingSections);
   }, [tierLevel, search, filteredOptions]);
@@ -280,34 +333,34 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     setSearch(value);
     if (value.trim()) {
       // Open all sections that have matches
-      const matchingSections = new Set<StepType>();
-      stepTypeOrder.forEach((type) => {
-        const matches = filteredOptions(type);
+      const matchingSections = new Set<PaletteGroupKey>();
+      stepTypeOrder.forEach((key) => {
+        const matches = filteredOptions(key);
         if (matches.length > 0) {
-          matchingSections.add(type);
+          matchingSections.add(key);
         }
       });
       setOpenSections(matchingSections);
     }
   };
 
-  const toggleSection = (type: StepType) => {
+  const toggleSection = (key: PaletteGroupKey) => {
     setOpenSections((prev) => {
       // If search is active, allow multiple sections
       if (search) {
         const next = new Set(prev);
-        if (next.has(type)) {
-          next.delete(type);
+        if (next.has(key)) {
+          next.delete(key);
         } else {
-          next.add(type);
+          next.add(key);
         }
         return next;
       }
       // Otherwise, exclusive mode - only one section open at a time
-      if (prev.has(type)) {
-        return new Set<StepType>();
+      if (prev.has(key)) {
+        return new Set<PaletteGroupKey>();
       }
-      return new Set<StepType>([type]);
+      return new Set<PaletteGroupKey>([key]);
     });
   };
 
@@ -384,13 +437,14 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       {/* Step Categories */}
       <ScrollArea className="flex-1">
         <div className="pl-4 py-4 pr-5 space-y-3">
-          {stepTypeOrder.map((type) => {
-            const Icon = stepIcons[type];
-            const colors = stepColors[type];
-            const options = filteredOptions(type);
+          {stepTypeOrder.map((key) => {
+            const underlyingType = resolveStepType(key);
+            const Icon = stepIcons[underlyingType];
+            const colors = stepColors[underlyingType];
+            const options = filteredOptions(key);
             if (options.length === 0 && search) return null;
 
-            const displayLabel = stepTypeLabels[type];
+            const displayLabel = paletteGroupLabels[key] ?? stepTypeLabels[underlyingType];
 
             // Group by category
             const groupedMap = new Map<string, { option: StepOption; actualType: StepType }[]>();
@@ -403,15 +457,15 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
             }
 
             const hasCategories = groupedMap.size > 1 || !groupedMap.has("General");
-            const isExpanded = openSections.has(type);
+            const isExpanded = openSections.has(key);
             // Only show subcategories if we have more than SUBMENU_THRESHOLD options
             const shouldShowSubcategories = hasCategories && !search && options.length >= SUBMENU_THRESHOLD;
 
             return (
               <Collapsible
-                key={type}
+                key={key}
                 open={isExpanded}
-                onOpenChange={() => toggleSection(type)}
+                onOpenChange={() => toggleSection(key)}
                 className="mb-1"
               >
                 <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-1.5 hover:bg-muted/50 rounded px-2 -mx-2 transition-colors group">
@@ -435,7 +489,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
                     {shouldShowSubcategories ? (
                       // Render grouped by category
                       Array.from(groupedMap.entries()).map(([category, categoryItems]) => {
-                        const categoryKey = `${type}-${category}`;
+                        const categoryKey = `${key}-${category}`;
 
                         return (
                           <div key={categoryKey} className="mb-2">

@@ -29,7 +29,16 @@ import { getChainDetail, getChainPartitionDetail, getPredictionArrays } from "@/
 import type {
   ChainDetailResponse, PartitionPrediction, PredictionArraysResponse,
 } from "@/types/aggregated-predictions";
+import { ConfusionMatrixChart } from "@/components/inspector/visualizations/ConfusionMatrixChart";
 import type { TopChainResult, AllChainEntry } from "@/types/enriched-runs";
+import type { ConfusionMatrixResponse } from "@/types/inspector";
+import {
+  buildConfusionMatrixData,
+  type ConfusionMatrixNormalize,
+  formatPartitionLabel,
+  isClassificationTask,
+  sortPartitions,
+} from "./modelDetailClassification";
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Cell, ReferenceLine, ResponsiveContainer,
@@ -374,6 +383,8 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
   const finalMetrics = extractFinalMetrics(chainScores, taskType ?? null);
   const cvMetrics = hasFinal ? extractCVMetrics(chainScores, taskType ?? null) : extractCVOnlyMetrics(chainScores, taskType ?? null);
   const bestParams = chain.best_params as Record<string, unknown> | null | undefined;
+  const resolvedTaskType = taskType ?? chain.task_type ?? detail?.summary?.task_type ?? partitionRows[0]?.task_type ?? null;
+  const showClassificationView = isClassificationTask(resolvedTaskType);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -393,11 +404,17 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
         </SheetHeader>
 
         <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-4 shrink-0">
+          <TabsList className={cn("grid w-full shrink-0", showClassificationView ? "grid-cols-3" : "grid-cols-4")}>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="folds">Folds</TabsTrigger>
-            <TabsTrigger value="scatter">Scatter</TabsTrigger>
-            <TabsTrigger value="residuals">Residuals</TabsTrigger>
+            {showClassificationView ? (
+              <TabsTrigger value="confusion">Confusion</TabsTrigger>
+            ) : (
+              <>
+                <TabsTrigger value="scatter">Scatter</TabsTrigger>
+                <TabsTrigger value="residuals">Residuals</TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           {/* ===== Overview Tab ===== */}
@@ -561,37 +578,54 @@ export function ModelDetailSheet({ chain, open, onOpenChange, taskType, datasetN
             )}
           </TabsContent>
 
-          {/* ===== Scatter Tab (Obs vs Pred) ===== */}
-          <TabsContent value="scatter" className="flex-1 overflow-y-auto mt-3">
-            <ScatterTabContent
-              partitionRows={partitionRows}
-              foldIds={foldIds}
-              selectedFoldId={selectedFoldId}
-              onSelectFold={setSelectedFoldId}
-              activePartitions={activePartitions}
-              onTogglePartition={togglePartition}
-              arraysByPredictionId={arraysByPredictionId}
-              loadingArrays={loadingFoldArrays}
-              mode="scatter"
-              modelName={chain.model_name}
-            />
-          </TabsContent>
+          {showClassificationView ? (
+            <TabsContent value="confusion" className="flex-1 overflow-hidden mt-3 flex flex-col">
+              <ClassificationTabContent
+                partitionRows={partitionRows}
+                foldIds={foldIds}
+                selectedFoldId={selectedFoldId}
+                onSelectFold={setSelectedFoldId}
+                activePartitions={activePartitions}
+                onTogglePartition={togglePartition}
+                arraysByPredictionId={arraysByPredictionId}
+                loadingArrays={loadingFoldArrays}
+              />
+            </TabsContent>
+          ) : (
+            <>
+              {/* ===== Scatter Tab (Obs vs Pred) ===== */}
+              <TabsContent value="scatter" className="flex-1 overflow-y-auto mt-3">
+                <ScatterTabContent
+                  partitionRows={partitionRows}
+                  foldIds={foldIds}
+                  selectedFoldId={selectedFoldId}
+                  onSelectFold={setSelectedFoldId}
+                  activePartitions={activePartitions}
+                  onTogglePartition={togglePartition}
+                  arraysByPredictionId={arraysByPredictionId}
+                  loadingArrays={loadingFoldArrays}
+                  mode="scatter"
+                  modelName={chain.model_name}
+                />
+              </TabsContent>
 
-          {/* ===== Residuals Tab ===== */}
-          <TabsContent value="residuals" className="flex-1 overflow-y-auto mt-3">
-            <ScatterTabContent
-              partitionRows={partitionRows}
-              foldIds={foldIds}
-              selectedFoldId={selectedFoldId}
-              onSelectFold={setSelectedFoldId}
-              activePartitions={activePartitions}
-              onTogglePartition={togglePartition}
-              arraysByPredictionId={arraysByPredictionId}
-              loadingArrays={loadingFoldArrays}
-              mode="residuals"
-              modelName={chain.model_name}
-            />
-          </TabsContent>
+              {/* ===== Residuals Tab ===== */}
+              <TabsContent value="residuals" className="flex-1 overflow-y-auto mt-3">
+                <ScatterTabContent
+                  partitionRows={partitionRows}
+                  foldIds={foldIds}
+                  selectedFoldId={selectedFoldId}
+                  onSelectFold={setSelectedFoldId}
+                  activePartitions={activePartitions}
+                  onTogglePartition={togglePartition}
+                  arraysByPredictionId={arraysByPredictionId}
+                  loadingArrays={loadingFoldArrays}
+                  mode="residuals"
+                  modelName={chain.model_name}
+                />
+              </TabsContent>
+            </>
+          )}
         </Tabs>
       </SheetContent>
     </Sheet>
@@ -729,6 +763,114 @@ function ScatterTabContent({
           ? <ObsPredChart points={points} foldId={selectedFoldId} modelName={modelName} />
           : <ResidualsChart points={points} foldId={selectedFoldId} modelName={modelName} />
       )}
+    </div>
+  );
+}
+
+function ClassificationTabContent({
+  partitionRows,
+  foldIds,
+  selectedFoldId,
+  onSelectFold,
+  activePartitions,
+  onTogglePartition,
+  arraysByPredictionId,
+  loadingArrays,
+}: {
+  partitionRows: PartitionPrediction[];
+  foldIds: string[];
+  selectedFoldId: string;
+  onSelectFold: (foldId: string) => void;
+  activePartitions: Set<string>;
+  onTogglePartition: (partition: string) => void;
+  arraysByPredictionId: Record<string, PredictionArraysResponse>;
+  loadingArrays: boolean;
+}) {
+  const [normalize, setNormalize] = useState<ConfusionMatrixNormalize>("none");
+
+  const foldRows = useMemo(
+    () => partitionRows.filter((row) => row.fold_id === selectedFoldId),
+    [partitionRows, selectedFoldId],
+  );
+
+  const sortedPartitions = useMemo(
+    () => sortPartitions(foldRows.map((row) => row.partition)),
+    [foldRows],
+  );
+
+  const selectedPartitions = useMemo(
+    () => sortedPartitions.filter((partition) => activePartitions.has(partition)),
+    [activePartitions, sortedPartitions],
+  );
+
+  const confusionData = useMemo<ConfusionMatrixResponse>(
+    () => buildConfusionMatrixData({
+      rows: foldRows,
+      arraysByPredictionId,
+      activePartitions,
+      normalize,
+      partitionLabel: formatPartitionLabel(selectedPartitions),
+    }),
+    [activePartitions, arraysByPredictionId, foldRows, normalize, selectedPartitions],
+  );
+
+  if (partitionRows.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+        No prediction data available
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex items-center gap-2 flex-wrap shrink-0">
+        <Select value={selectedFoldId || undefined} onValueChange={onSelectFold}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <SelectValue placeholder="Select fold" />
+          </SelectTrigger>
+          <SelectContent>
+            {foldIds.map((foldId) => (
+              <SelectItem key={foldId} value={foldId}>
+                {foldId === "final" ? "final (refit)" : foldId}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-1 flex-wrap">
+          {sortedPartitions.map((partition) => {
+            const active = activePartitions.has(partition);
+            return (
+              <Button
+                key={partition}
+                size="sm"
+                variant={active ? "default" : "outline"}
+                className="h-7 text-[10px] px-2"
+                onClick={() => onTogglePartition(partition)}
+              >
+                {partition}
+              </Button>
+            );
+          })}
+        </div>
+
+        <Select value={normalize} onValueChange={(value) => setNormalize(value as ConfusionMatrixNormalize)}>
+          <SelectTrigger className="w-[150px] h-8 text-xs ml-auto">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Raw counts</SelectItem>
+            <SelectItem value="row">Normalize rows</SelectItem>
+            <SelectItem value="column">Normalize columns</SelectItem>
+            <SelectItem value="all">Normalize all</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="min-h-0 flex-1 rounded-lg border border-border/60 bg-card/30 p-3">
+        <ConfusionMatrixChart data={confusionData} isLoading={loadingArrays} />
+      </div>
     </div>
   );
 }

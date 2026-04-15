@@ -735,17 +735,28 @@
           {
             "label": "Quick (1-10)",
             "type": "range",
-            "values": { "from": 1, "to": 10, "step": 1 }
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
           },
           {
             "label": "Extended (1-20)",
             "type": "range",
-            "values": { "from": 1, "to": 20, "step": 2 }
+            "values": {
+              "from": 1,
+              "to": 20,
+              "step": 2
+            }
           }
         ],
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       },
       {
         "name": "n_orth",
@@ -795,7 +806,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       },
       {
         "name": "n_orth",
@@ -846,12 +860,19 @@
           {
             "label": "Quick (1-10)",
             "type": "range",
-            "values": { "from": 1, "to": 10, "step": 1 }
+            "values": {
+              "from": 1,
+              "to": 10,
+              "step": 1
+            }
           }
         ],
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       },
       {
         "name": "n_orth",
@@ -900,7 +921,10 @@
         "sweepable": true,
         "finetunable": true,
         "finetuneType": "int",
-        "finetuneRange": [1, 30]
+        "finetuneRange": [
+          1,
+          30
+        ]
       },
       {
         "name": "n_orth",

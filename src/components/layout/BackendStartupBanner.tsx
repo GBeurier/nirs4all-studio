@@ -1,8 +1,17 @@
+import { useEffect, useState } from "react";
+import { useIsFetching } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useMlReadiness } from "@/context/MlReadinessContext";
+import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
 import { Progress } from "@/components/ui/progress";
 import { NirsSplashLoader } from "./NirsSplashLoader";
+
+// Minimum time the banner stays visible after mount. Without this, a fast
+// Electron start (ML already warm, workspace tiny) flips readiness in the
+// same frame AppLayout mounts and the banner disappears before the user can
+// perceive it.
+const MIN_VISIBLE_MS = 1500;
 
 type StartupStepState = "done" | "loading" | "waiting" | "error";
 
@@ -54,11 +63,57 @@ function StepCard({ label, detail, state }: StartupStep) {
 
 export function BackendStartupBanner() {
   const { t } = useTranslation();
-  const { coreReady, mlReady, workspaceReady, mlError } = useMlReadiness();
+  const { coreReady, mlReady, workspaceReady, datasetsPrimed, mlError } =
+    useMlReadiness();
 
-  if (workspaceReady) {
+  // Live fetch counters for the two queries that drive the Datasets landing
+  // page. React Query increments these as soon as a fetch starts and
+  // decrements when it settles, so they track the post-workspace refetch
+  // window that used to leave only the in-card spinner visible.
+  const fetchingDatasets = useIsFetching({ queryKey: datasetQueryKeys.list() });
+  const fetchingWorkspaces = useIsFetching({
+    queryKey: datasetQueryKeys.linkedWorkspaces(),
+  });
+
+  const [minVisibleElapsed, setMinVisibleElapsed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setMinVisibleElapsed(true), MIN_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // One-way latch: once startup is fully quiet (backend ready + caches primed
+  // + nothing fetching), the banner stays hidden for the rest of the session.
+  // This stops routine background refetches (user-initiated refresh, focus
+  // revalidation) from re-showing the banner after the initial startup.
+  const [hasSettled, setHasSettled] = useState(false);
+  useEffect(() => {
+    if (hasSettled) return;
+    if (
+      workspaceReady &&
+      datasetsPrimed &&
+      fetchingDatasets === 0 &&
+      fetchingWorkspaces === 0
+    ) {
+      setHasSettled(true);
+    }
+  }, [
+    hasSettled,
+    workspaceReady,
+    datasetsPrimed,
+    fetchingDatasets,
+    fetchingWorkspaces,
+  ]);
+
+  if (hasSettled && minVisibleElapsed) {
     return null;
   }
+
+  const workspacePhase =
+    !workspaceReady ||
+    !datasetsPrimed ||
+    fetchingDatasets > 0 ||
+    fetchingWorkspaces > 0;
+  const workspaceDone = !workspacePhase;
 
   const title = !coreReady
     ? t("layout.backendStartup.connectingTitle", "Connecting to backend...")
@@ -66,7 +121,7 @@ export function BackendStartupBanner() {
       ? t("layout.backendStartup.errorTitle", "Backend startup stalled")
       : !mlReady
         ? t("layout.backendStartup.loadingTitle", "Loading analysis backend...")
-        : t("layout.backendStartup.workspaceTitle", "Restoring workspace...");
+        : t("layout.backendStartup.workspaceTitle", "Loading workspace...");
 
   const description = !coreReady
     ? t(
@@ -82,10 +137,10 @@ export function BackendStartupBanner() {
           )
         : t(
             "layout.backendStartup.workspaceDescription",
-          "The backend is restoring the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes."
+          "The backend is loading the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes."
           );
 
-  const progressValue = !coreReady ? 18 : !mlReady ? 52 : 84;
+  const progressValue = !coreReady ? 18 : !mlReady ? 52 : workspaceDone ? 100 : 84;
   const badgeLabel = mlError
     ? t("layout.backendStartup.errorBadge", "Startup issue")
     : t("layout.backendStartup.badge", "Backend loading");
@@ -113,12 +168,18 @@ export function BackendStartupBanner() {
       label: t("layout.backendStartup.workspaceLabel", "Workspace"),
       detail: mlError
         ? t("layout.backendStartup.workspaceBlocked", "Blocked until backend recovers")
-        : workspaceReady
+        : workspaceDone
           ? t("layout.backendStartup.workspaceReady", "Ready")
           : mlReady
-            ? t("layout.backendStartup.workspaceLoading", "Restoring datasets and run state")
+            ? t("layout.backendStartup.workspaceLoading", "Loading datasets and run state")
             : t("layout.backendStartup.workspaceWaiting", "Queued behind ML startup"),
-      state: mlError ? "error" : workspaceReady ? "done" : mlReady ? "loading" : "waiting",
+      state: mlError
+        ? "error"
+        : workspaceDone
+          ? "done"
+          : mlReady
+            ? "loading"
+            : "waiting",
     },
   ];
 
@@ -126,7 +187,7 @@ export function BackendStartupBanner() {
     <section
       role="status"
       aria-live="polite"
-      aria-busy={!workspaceReady}
+      aria-busy={workspacePhase}
       className="shrink-0 border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 md:px-6"
     >
       <div className="mx-auto flex max-w-7xl flex-col gap-4 rounded-2xl border border-primary/15 bg-card/90 p-4 shadow-sm">

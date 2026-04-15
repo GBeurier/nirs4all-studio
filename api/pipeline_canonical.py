@@ -45,6 +45,12 @@ FUNCTION_MODEL_CLASS_PATHS = {
     "nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
     "cnn1d": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
 }
+MODEL_CLASS_PATH_ALIASES = {
+    "xgboost": "xgboost.XGBRegressor",
+    "xgboostclassifier": "xgboost.XGBClassifier",
+    "lightgbm": "lightgbm.LGBMRegressor",
+    "lightgbmclassifier": "lightgbm.LGBMClassifier",
+}
 KNOWN_FINETUNE_KEYS = {
     "n_trials",
     "approach",
@@ -346,6 +352,10 @@ def resolve_editor_class_path(
         function_model_path = FUNCTION_MODEL_CLASS_PATHS.get(normalized_name.lower())
         if function_model_path:
             return function_model_path
+
+        model_class_path = MODEL_CLASS_PATH_ALIASES.get(normalized_name.lower())
+        if model_class_path:
+            return model_class_path
 
     if class_path:
         return str(class_path)

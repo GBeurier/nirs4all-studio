@@ -1,7 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./AppSidebar";
-import { AppHeader } from "./AppHeader";
 import { BackendStartupBanner } from "./BackendStartupBanner";
 import { FloatingRunWidget } from "./FloatingRunWidget";
 import { OfflineIndicator } from "./OfflineIndicator";
@@ -18,7 +17,6 @@ export function AppLayout() {
           <AppSidebar />
         </div>
         <div className="flex flex-1 flex-col overflow-hidden">
-          <AppHeader />
           <BackendStartupBanner />
           <div className="fixed right-4 top-3 z-50">
             <OfflineIndicator />

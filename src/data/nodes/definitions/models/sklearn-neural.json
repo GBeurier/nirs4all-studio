@@ -183,7 +183,7 @@
       {
         "name": "epsilon",
         "type": "float",
-        "default": 1e-8,
+        "default": 1e-08,
         "finetunable": true,
         "finetuneType": "float",
         "finetuneRange": [

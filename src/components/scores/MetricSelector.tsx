@@ -8,6 +8,7 @@ import {
   getAvailableMetrics,
   getPresetsForTaskType,
   getDefaultSelectedMetrics,
+  groupMetricDefinitions,
   orderMetricKeys,
 } from "@/lib/scores";
 
@@ -23,16 +24,17 @@ function normalizeMetricSelection(
   availableMetricKeys?: readonly string[],
 ): string[] {
   if (!metrics) return [];
-  if (!availableMetricKeys) return [...metrics];
+  if (!availableMetricKeys || availableMetricKeys.length === 0) return orderMetricKeys(metrics);
 
   const available = new Set(orderMetricKeys(availableMetricKeys));
   const seen = new Set<string>();
-
-  return metrics.filter((metric) => {
+  const filtered = metrics.filter((metric) => {
     if (!available.has(metric) || seen.has(metric)) return false;
     seen.add(metric);
     return true;
   });
+
+  return orderMetricKeys(filtered);
 }
 
 function resolveDefaultMetricSelection(
@@ -41,6 +43,9 @@ function resolveDefaultMetricSelection(
   availableMetricKeys?: readonly string[],
 ): string[] {
   const baseline = defaultMetrics ?? getDefaultSelectedMetrics(taskType);
+  if (availableMetricKeys && availableMetricKeys.length === 0 && baseline.length > 0) {
+    return orderMetricKeys(baseline);
+  }
   const filteredBaseline = normalizeMetricSelection(baseline, availableMetricKeys);
 
   if (filteredBaseline.length > 0 || baseline.length === 0) {
@@ -60,6 +65,7 @@ export function MetricSelector({
   const available = availableMetricKeys
     ? getMetricDefinitions(availableMetricKeys)
     : getAvailableMetrics(taskType);
+  const availableSections = groupMetricDefinitions(available.map(metric => metric.key));
   const availableSet = new Set(available.map(metric => metric.key));
   const presets = taskType == null && availableMetricKeys
     ? []
@@ -106,18 +112,25 @@ export function MetricSelector({
                 ))}
               </div>
             )}
-            <div className="border-t pt-2 space-y-1 max-h-48 overflow-y-auto">
-              {available.map(metric => (
-                <label key={metric.key} className="flex items-center gap-2 text-xs py-0.5 cursor-pointer hover:bg-muted/50 px-1 rounded">
-                  <Checkbox
-                    checked={selectedMetrics.includes(metric.key)}
-                    onCheckedChange={() => toggleMetric(metric.key)}
-                    className="h-3.5 w-3.5"
-                  />
-                  <span className="font-mono text-[10px] text-muted-foreground w-10">{metric.abbreviation}</span>
-                  <span>{metric.label}</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">{metric.direction === "higher" ? "↑" : metric.direction === "lower" ? "↓" : "~0"}</span>
-                </label>
+            <div className="border-t pt-2 space-y-2 max-h-64 overflow-y-auto">
+              {availableSections.map(section => (
+                <div key={section.group} className="space-y-1">
+                  <div className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
+                    {section.label}
+                  </div>
+                  {section.metrics.map(metric => (
+                    <label key={metric.key} className="flex items-center gap-2 text-xs py-0.5 cursor-pointer hover:bg-muted/50 px-1 rounded">
+                      <Checkbox
+                        checked={selectedMetrics.includes(metric.key)}
+                        onCheckedChange={() => toggleMetric(metric.key)}
+                        className="h-3.5 w-3.5"
+                      />
+                      <span className="font-mono text-[10px] text-muted-foreground w-10">{metric.abbreviation}</span>
+                      <span>{metric.label}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">{metric.direction === "higher" ? "↑" : metric.direction === "lower" ? "↓" : "~0"}</span>
+                    </label>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
@@ -141,6 +154,10 @@ function metricKeySetSignature(metricKeys?: readonly string[]): string {
   return orderMetricKeys(metricKeys ?? []).join("\u001f");
 }
 
+function metricSelectionCandidatesSignature(metricGroups?: ReadonlyArray<readonly string[]>): string {
+  return metricGroups?.map(group => metricSelectionSignature(orderMetricKeys(group))).join("\u001e") ?? "";
+}
+
 function useStableMetricList(metrics?: readonly string[], treatAsSet = false): readonly string[] | undefined {
   const signature = treatAsSet
     ? metricKeySetSignature(metrics)
@@ -156,6 +173,39 @@ function useStableMetricList(metrics?: readonly string[], treatAsSet = false): r
   return stableMetricsRef.current;
 }
 
+function useStableMetricSelectionCandidates(
+  metricGroups?: ReadonlyArray<readonly string[]>,
+): ReadonlyArray<readonly string[]> | undefined {
+  const signature = metricSelectionCandidatesSignature(metricGroups);
+  const stableGroupsRef = useRef<ReadonlyArray<readonly string[]> | undefined>(
+    metricGroups ? metricGroups.map(group => [...group]) : undefined,
+  );
+  const stableSignatureRef = useRef<string | null>(null);
+
+  if (stableSignatureRef.current !== signature) {
+    stableGroupsRef.current = metricGroups ? metricGroups.map(group => [...group]) : undefined;
+    stableSignatureRef.current = signature;
+  }
+
+  return stableGroupsRef.current;
+}
+
+function normalizeMetricSelectionCandidates(
+  candidates: ReadonlyArray<readonly string[]> | undefined,
+  availableMetricKeys?: readonly string[],
+): string[][] {
+  return (candidates ?? [])
+    .map(candidate => normalizeMetricSelection(candidate, availableMetricKeys))
+    .filter(candidate => candidate.length > 0);
+}
+
+function matchesMetricSelectionCandidate(
+  metrics: string[],
+  candidates: ReadonlyArray<readonly string[]> | undefined,
+): boolean {
+  return (candidates ?? []).some(candidate => isSameMetricSelection(metrics, candidate));
+}
+
 /** Hook to persist metric selection per page in localStorage. */
 export function useMetricSelection(
   storageKey: string,
@@ -164,12 +214,14 @@ export function useMetricSelection(
   legacyDefaultMetrics?: readonly string[],
   storageVersion?: string,
   availableMetricKeys?: readonly string[],
+  upgradeDefaultCandidates?: ReadonlyArray<readonly string[]>,
 ) {
   const legacyStorageKey = `metrics-${storageKey}`;
   const versionedStorageKey = storageVersion ? `${legacyStorageKey}-${storageVersion}` : legacyStorageKey;
   const stableAvailableMetricKeys = useStableMetricList(availableMetricKeys, true);
   const stableDefaultMetrics = useStableMetricList(defaultMetrics);
   const stableLegacyDefaultMetrics = useStableMetricList(legacyDefaultMetrics);
+  const stableUpgradeDefaultCandidates = useStableMetricSelectionCandidates(upgradeDefaultCandidates);
 
   const normalizedDefaults = useMemo(
     () => resolveDefaultMetricSelection(taskType, stableDefaultMetrics, stableAvailableMetricKeys),
@@ -178,6 +230,10 @@ export function useMetricSelection(
   const normalizedLegacyDefaults = useMemo(
     () => normalizeMetricSelection(stableLegacyDefaultMetrics, stableAvailableMetricKeys),
     [stableAvailableMetricKeys, stableLegacyDefaultMetrics],
+  );
+  const normalizedUpgradeDefaultCandidates = useMemo(
+    () => normalizeMetricSelectionCandidates(stableUpgradeDefaultCandidates, stableAvailableMetricKeys),
+    [stableAvailableMetricKeys, stableUpgradeDefaultCandidates],
   );
 
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>(() => {
@@ -190,8 +246,14 @@ export function useMetricSelection(
           if (isSameMetricSelection(normalized, normalizedLegacyDefaults)) {
             return normalizedDefaults;
           }
-          if (normalized.length > 0 || parsed.length === 0) {
+          if (matchesMetricSelectionCandidate(normalized, normalizedUpgradeDefaultCandidates)) {
+            return normalizedDefaults;
+          }
+          if (normalized.length > 0) {
             return normalized;
+          }
+          if (parsed.length === 0) {
+            return normalizedDefaults.length > 0 ? normalizedDefaults : [];
           }
         }
       }
@@ -235,10 +297,16 @@ export function useMetricSelection(
         syncSelection(normalizedDefaults, parsed);
         return;
       }
+      if (matchesMetricSelectionCandidate(normalized, normalizedUpgradeDefaultCandidates)) {
+        syncSelection(normalizedDefaults, parsed);
+        return;
+      }
 
-      const nextSelection = normalized.length > 0 || parsed.length === 0
+      const nextSelection = normalized.length > 0
         ? normalized
-        : normalizedDefaults;
+        : parsed.length === 0
+          ? (normalizedDefaults.length > 0 ? normalizedDefaults : [])
+          : normalizedDefaults;
 
       syncSelection(nextSelection, parsed);
     } catch { /* ignore */ }
@@ -247,6 +315,7 @@ export function useMetricSelection(
     legacyStorageKey,
     normalizedDefaults,
     normalizedLegacyDefaults,
+    normalizedUpgradeDefaultCandidates,
     storageVersion,
     versionedStorageKey,
   ]);

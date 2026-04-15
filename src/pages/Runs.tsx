@@ -15,9 +15,12 @@ import { NoWorkspaceState, EmptyState, CardSkeleton } from "@/components/ui/stat
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import {
   collectPresentMetricKeys,
-  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
-  LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+  getAvailableMetricKeysForTaskTypes,
+  getDefaultSelectedMetricsForTaskTypes,
+  getDefaultSelectionUpgradeCandidatesForTaskTypes,
+  getLegacySelectedMetricsForTaskTypes,
   isClassificationTaskType,
+  orderMetricKeys,
 } from "@/lib/scores";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import {
@@ -128,17 +131,22 @@ export default function Runs() {
 
     return {
       taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
-      availableMetricKeys: [...availableMetricKeys],
+      taskTypes: [...taskTypes],
+      availableMetricKeys: orderMetricKeys([
+        ...availableMetricKeys,
+        ...getAvailableMetricKeysForTaskTypes(taskTypes),
+      ]),
     };
   }, [runs]);
 
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
     "runs",
     metricContext.taskType,
-    isClassificationTaskType(metricContext.taskType) ? undefined : DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
-    isClassificationTaskType(metricContext.taskType) ? undefined : LEGACY_DATASET_ITEM_REGRESSION_METRICS,
-    "defaults-reset-v1",
+    getDefaultSelectedMetricsForTaskTypes(metricContext.taskTypes),
+    getLegacySelectedMetricsForTaskTypes(metricContext.taskTypes),
+    "task-aware-defaults-v1",
     metricContext.availableMetricKeys,
+    getDefaultSelectionUpgradeCandidatesForTaskTypes(metricContext.taskTypes),
   );
 
   const runningCount = runs.filter(r => r.status === "running").length;

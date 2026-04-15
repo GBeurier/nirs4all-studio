@@ -166,6 +166,59 @@ def test_shared_separation_branch_roundtrips_to_list_steps():
     assert editor_to_canonical(editor_steps) == source
 
 
+def test_editor_runtime_canonical_resolves_boosting_classifier_names_without_classpath():
+    steps = [
+        {
+            "id": "xgb-clf",
+            "type": "model",
+            "name": "XGBoostClassifier",
+            "params": {"n_estimators": 10},
+        },
+        {
+            "id": "lgbm-clf",
+            "type": "model",
+            "name": "LightGBMClassifier",
+            "params": {"n_estimators": 10},
+        },
+    ]
+
+    canonical = editor_steps_to_runtime_canonical(steps)
+
+    assert canonical == [
+        {
+            "model": {
+                "class": "xgboost.XGBClassifier",
+                "params": {"n_estimators": 10},
+            }
+        },
+        {
+            "model": {
+                "class": "lightgbm.LGBMClassifier",
+                "params": {"n_estimators": 10},
+            }
+        },
+    ]
+
+
+def test_import_check_accepts_boosting_classifier_names_without_classpath():
+    steps = [
+        {
+            "id": "xgb-clf",
+            "type": "model",
+            "name": "XGBoostClassifier",
+            "params": {"n_estimators": 10},
+        },
+        {
+            "id": "lgbm-clf",
+            "type": "model",
+            "name": "LightGBMClassifier",
+            "params": {"n_estimators": 10},
+        },
+    ]
+
+    assert check_pipeline_imports(steps) == []
+
+
 def test_create_pipeline_from_advanced_preset_preserves_generators_and_search_space(
     pipelines_workspace,
 ):

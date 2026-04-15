@@ -30,25 +30,25 @@
       {
         "name": "alpha_1",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
         "name": "alpha_2",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
         "name": "lambda_1",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
         "name": "lambda_2",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
@@ -102,25 +102,25 @@
       {
         "name": "alpha_1",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
         "name": "alpha_2",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
         "name": "lambda_1",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
         "name": "lambda_2",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {
@@ -383,7 +383,7 @@
       {
         "name": "tol",
         "type": "float",
-        "default": 0.00001,
+        "default": 1e-05,
         "isAdvanced": true
       }
     ],
@@ -833,7 +833,7 @@
       {
         "name": "tol",
         "type": "float",
-        "default": 0.000001,
+        "default": 1e-06,
         "isAdvanced": true
       },
       {

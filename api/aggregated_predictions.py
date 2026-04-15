@@ -146,9 +146,9 @@ class PredictionArraysResponse(BaseModel):
     prediction_id: str
     y_true: list[float] | None = None
     y_pred: list[float] | None = None
-    y_proba: list[float] | None = None
+    y_proba: list[float] | list[list[float]] | None = None
     sample_indices: list[int] | None = None
-    weights: list[float] | None = None
+    weights: list[float | None] | None = None
     n_samples: int = 0
 
 
@@ -829,16 +829,29 @@ async def get_prediction_arrays(prediction_id: str):
             if value is None:
                 return None
             if isinstance(value, np.ndarray):
-                return value.tolist()
+                value = value.tolist()
+            if isinstance(value, np.generic):
+                value = value.item()
             if isinstance(value, (list, tuple)):
-                return list(value)
-            return None
+                sanitized = []
+                for item in value:
+                    converted = _to_list(item)
+                    if isinstance(converted, float):
+                        converted = _sanitize_float(converted)
+                    sanitized.append(converted)
+                return sanitized
+            if isinstance(value, float):
+                return _sanitize_float(value)
+            return value
 
         y_true = _to_list(arrays.get("y_true"))
         y_pred = _to_list(arrays.get("y_pred"))
         y_proba = _to_list(arrays.get("y_proba"))
         weights = _to_list(arrays.get("weights"))
         sample_indices = _to_list(arrays.get("sample_indices"))
+
+        if isinstance(weights, list) and all(item is None for item in weights):
+            weights = None
 
         n_samples = 0
         for value in (y_true, y_pred, sample_indices, weights, y_proba):
