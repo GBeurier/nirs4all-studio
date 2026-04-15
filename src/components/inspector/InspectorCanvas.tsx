@@ -67,6 +67,9 @@ const FIELD_LABELS = {
   pipeline_id: "Pipeline",
 } as const;
 
+type HeatmapAxisField = "dataset_name" | "model_class" | "preprocessings";
+const HEATMAP_AXIS_OPTIONS: HeatmapAxisField[] = ["dataset_name", "model_class", "preprocessings"];
+
 function isClassificationTask(taskType: string | null | undefined): boolean {
   return taskType === "classification" || taskType === "binary_classification" || taskType === "multiclass_classification";
 }
@@ -269,6 +272,8 @@ export function InspectorCanvas() {
 
   const [selectedHyperParam, setSelectedHyperParam] = useState("");
   const [biasVarianceGroupBy, setBiasVarianceGroupBy] = useState("model_class");
+  const [heatmapXAxis, setHeatmapXAxis] = useState<HeatmapAxisField | null>(null);
+  const [heatmapYAxis, setHeatmapYAxis] = useState<HeatmapAxisField | null>(null);
 
   const visibleGroups = useMemo(
     () => intersectGroups(groups, filteredChainIds),
@@ -336,10 +341,19 @@ export function InspectorCanvas() {
     () => buildHistogramData(filteredChains, scoreColumn),
     [filteredChains, scoreColumn],
   );
-  const heatmapAxes = useMemo(
-    () => chooseHeatmapAxes(filteredChains),
-    [filteredChains],
-  );
+  const heatmapAxes = useMemo(() => {
+    const auto = chooseHeatmapAxes(filteredChains);
+    const x: HeatmapAxisField = heatmapXAxis ?? (HEATMAP_AXIS_OPTIONS.includes(auto.xVariable as HeatmapAxisField)
+      ? (auto.xVariable as HeatmapAxisField)
+      : "dataset_name");
+    let y: HeatmapAxisField = heatmapYAxis ?? (HEATMAP_AXIS_OPTIONS.includes(auto.yVariable as HeatmapAxisField)
+      ? (auto.yVariable as HeatmapAxisField)
+      : "model_class");
+    if (y === x) {
+      y = HEATMAP_AXIS_OPTIONS.find(opt => opt !== x) ?? y;
+    }
+    return { xVariable: x, yVariable: y };
+  }, [filteredChains, heatmapXAxis, heatmapYAxis]);
   const heatmapData = useMemo(
     () => buildHeatmapData(filteredChains, scoreColumn, heatmapAxes.xVariable, heatmapAxes.yVariable, "median"),
     [filteredChains, scoreColumn, heatmapAxes],
@@ -532,7 +546,39 @@ export function InspectorCanvas() {
             {...commonProps}
             minHeight="420px"
             itemCount={filteredChains.length}
-            headerContent={<Badge variant="outline">{FIELD_LABELS[heatmapAxes.xVariable]} × {FIELD_LABELS[heatmapAxes.yVariable]}</Badge>}
+            headerContent={
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">X</span>
+                <Select
+                  value={heatmapAxes.xVariable}
+                  onValueChange={(val) => setHeatmapXAxis(val as HeatmapAxisField)}
+                >
+                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HEATMAP_AXIS_OPTIONS.map(opt => (
+                      <SelectItem key={opt} value={opt}>{FIELD_LABELS[opt]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-muted-foreground">×</span>
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Y</span>
+                <Select
+                  value={heatmapAxes.yVariable}
+                  onValueChange={(val) => setHeatmapYAxis(val as HeatmapAxisField)}
+                >
+                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HEATMAP_AXIS_OPTIONS.map(opt => (
+                      <SelectItem key={opt} value={opt}>{FIELD_LABELS[opt]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            }
           >
             <PerformanceHeatmap data={heatmapData} isLoading={false} />
           </InspectorPanel>

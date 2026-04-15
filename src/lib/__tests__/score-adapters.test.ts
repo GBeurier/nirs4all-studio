@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildFoldTrainCards,
+  chainSummaryToRow,
   collapseStandaloneRefitSummaries,
   datasetChainsToRows,
   enrichCrossvalRow,
@@ -25,6 +26,7 @@ function makeChain(overrides: Partial<TopChainResult>): TopChainResult {
     avg_train_score: overrides.avg_train_score ?? null,
     fold_count: overrides.fold_count ?? 0,
     scores: overrides.scores ?? { val: {}, test: {} },
+    cv_source_chain_id: overrides.cv_source_chain_id ?? null,
     final_test_score: overrides.final_test_score ?? null,
     final_train_score: overrides.final_train_score ?? null,
     final_scores: overrides.final_scores ?? {},
@@ -76,6 +78,43 @@ function makePartitionPrediction(overrides: Partial<PartitionPrediction>): Parti
 }
 
 describe("datasetChainsToRows", () => {
+  it("preserves extended regression metrics from final score payloads", () => {
+    const row = datasetChainsToRows([
+      makeChain({
+        chain_id: "refit-extended",
+        final_test_score: 0.19,
+        final_scores: {
+          test: {
+            rmse: 0.19,
+            nrmse: 0.04,
+            sep: 0.17,
+            rpd: 5.1,
+            pearson_r: 0.93,
+            spearman_r: 0.91,
+            explained_variance: 0.88,
+            max_error: 0.42,
+            median_ae: 0.11,
+            nmse: 0.02,
+            nmae: 0.03,
+            consistency: 0.81,
+          },
+        },
+      }),
+    ], "rmse", "regression")[0];
+
+    expect(row?.testScores.nrmse).toBe(0.04);
+    expect(row?.testScores.sep).toBe(0.17);
+    expect(row?.testScores.rpd).toBe(5.1);
+    expect(row?.testScores.pearson_r).toBe(0.93);
+    expect(row?.testScores.spearman_r).toBe(0.91);
+    expect(row?.testScores.explained_variance).toBe(0.88);
+    expect(row?.testScores.max_error).toBe(0.42);
+    expect(row?.testScores.median_ae).toBe(0.11);
+    expect(row?.testScores.nmse).toBe(0.02);
+    expect(row?.testScores.nmae).toBe(0.03);
+    expect(row?.testScores.consistency).toBe(0.81);
+  });
+
   it("pairs refit rows with the matching CV variant even when preprocessing spacing differs", () => {
     const rows = datasetChainsToRows([
       makeChain({
@@ -249,6 +288,34 @@ describe("datasetChainsToRows", () => {
     expect(rows[0]?.foldCount).toBe(0);
     expect(rows[0]?.primaryValScore).toBeNull();
   });
+
+  it("reuses the backend CV source chain id when only the refit summary is present", () => {
+    const rows = datasetChainsToRows([
+      makeChain({
+        chain_id: "refit-only",
+        cv_source_chain_id: "cv-chain",
+        model_name: "PLSRegression",
+        model_class: "PLSRegression",
+        preprocessings: "SNV",
+        avg_val_score: 0.24,
+        avg_test_score: 0.25,
+        fold_count: 7,
+        scores: { val: { rmse: 0.24 }, test: { rmse: 0.25 } },
+        final_test_score: 0.21,
+        final_train_score: 0.11,
+        final_scores: { test: { rmse: 0.21 }, train: { rmse: 0.11 } },
+        final_agg_test_score: 0.2,
+        final_agg_train_score: 0.1,
+        final_agg_scores: { test: { rmse: 0.2 }, train: { rmse: 0.1 } },
+      }),
+    ], "rmse", "regression");
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.children?.[0]?.chainId).toBe("cv-chain");
+    expect(rows[0]?.children?.[0]?.foldId).toBe("avg");
+    expect(rows[1]?.children?.[0]?.chainId).toBe("cv-chain");
+    expect(rows[1]?.children?.[0]?.foldId).toBe("avg_agg");
+  });
 });
 
 function makeChainSummary(overrides: Partial<ChainSummary>): ChainSummary {
@@ -271,6 +338,7 @@ function makeChainSummary(overrides: Partial<ChainSummary>): ChainSummary {
     cv_train_score: overrides.cv_train_score ?? null,
     cv_fold_count: overrides.cv_fold_count ?? 0,
     cv_scores: overrides.cv_scores ?? null,
+    cv_source_chain_id: overrides.cv_source_chain_id ?? null,
     final_test_score: overrides.final_test_score ?? null,
     final_train_score: overrides.final_train_score ?? null,
     final_scores: overrides.final_scores ?? null,
@@ -314,6 +382,25 @@ describe("collapseStandaloneRefitSummaries", () => {
     expect(rows[0]?.cv_val_score).toBeNull();
     expect(rows[0]?.cv_fold_count).toBe(0);
     expect(rows[0]?.cv_scores).toBeNull();
+  });
+});
+
+describe("chainSummaryToRow", () => {
+  it("uses the matched CV source chain id for refit summaries", () => {
+    const row = chainSummaryToRow(makeChainSummary({
+      chain_id: "refit-only",
+      cv_source_chain_id: "cv-chain",
+      cv_val_score: 0.24,
+      cv_test_score: 0.25,
+      cv_fold_count: 7,
+      cv_scores: { val: { rmse: 0.24 }, test: { rmse: 0.25 } },
+      final_test_score: 0.21,
+      final_train_score: 0.11,
+      final_scores: { test: { rmse: 0.21 }, train: { rmse: 0.11 } },
+    }));
+
+    expect(row.cardType).toBe("refit");
+    expect(row.children?.[0]?.chainId).toBe("cv-chain");
   });
 });
 

@@ -27,6 +27,7 @@ export interface ChainSummary {
   cv_train_score: number | null;
   cv_fold_count: number;
   cv_scores: Record<string, Record<string, number>> | null;
+  cv_source_chain_id?: string | null;
   // Final/refit scores
   final_test_score: number | null;
   final_train_score: number | null;

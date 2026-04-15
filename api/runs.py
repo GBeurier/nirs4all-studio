@@ -136,6 +136,49 @@ def _sanitize_metrics(metrics: dict) -> dict:
     """Sanitize all float values in a metrics dict for JSON serialization."""
     return {k: _sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
 
+
+def _count_tested_pipeline_variants(result: Any, fallback: int = 1) -> int:
+    """Count actual CV pipeline variants rather than prediction rows."""
+    safe_fallback = max(int(fallback or 1), 1)
+    predictions = getattr(result, "predictions", None)
+    if predictions is None:
+        return safe_fallback
+
+    try:
+        entries = predictions.filter_predictions(load_arrays=False)
+    except TypeError:
+        try:
+            entries = predictions.filter_predictions()
+        except Exception:
+            return safe_fallback
+    except Exception:
+        return safe_fallback
+
+    if not entries:
+        return safe_fallback
+
+    variant_ids: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        fold_id = str(entry.get("fold_id") or "").lower()
+        if fold_id.startswith("final"):
+            continue
+        if entry.get("refit_context") is not None:
+            continue
+
+        variant_id = (
+            entry.get("pipeline_id")
+            or entry.get("pipeline_uid")
+            or entry.get("config_path")
+            or entry.get("config_name")
+        )
+        if variant_id:
+            variant_ids.add(str(variant_id))
+
+    return len(variant_ids) if variant_ids else safe_fallback
+
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
@@ -1274,14 +1317,10 @@ async def _execute_pipeline_training(
         # Sanitize all metrics to handle NaN/Inf values
         metrics = _sanitize_metrics(metrics)
 
-        # Get count of variants tested
-        num_predictions = 1
-        if hasattr(result, 'num_predictions'):
-            num_predictions = result.num_predictions
-        elif hasattr(result, 'predictions') and result.predictions:
-            num_predictions = len(result.predictions)
+        # Count actual pipeline variants, not fold/partition/refit prediction rows.
+        variants_tested = _count_tested_pipeline_variants(result, fallback=estimated_variants)
 
-        log(f"[INFO] Tested {num_predictions} pipeline variant(s)")
+        log(f"[INFO] Tested {variants_tested} pipeline variant(s)")
         r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
         rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
         log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
@@ -1338,7 +1377,7 @@ async def _execute_pipeline_training(
             "metrics": metrics,
             "model_path": model_path,
             "logs": thread_logs,
-            "variants_tested": num_predictions,
+            "variants_tested": variants_tested,
             "store_run_id": result_store_run_id,
         }
 

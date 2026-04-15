@@ -9,7 +9,12 @@ import type { ScoreCardRow } from "@/types/score-cards";
 import type { TopChainResult } from "@/types/enriched-runs";
 import type { ChainSummary, PartitionPrediction } from "@/types/aggregated-predictions";
 import type { PredictionRecord } from "@/types/linked-workspaces";
-import { extractScoreValue, isLowerBetter } from "@/lib/scores";
+import {
+  ALL_CLASSIFICATION_METRICS,
+  ALL_REGRESSION_METRICS,
+  extractScoreValue,
+  isLowerBetter,
+} from "@/lib/scores";
 import { foldIdBase, safeNumber } from "@/lib/fold-utils";
 
 // ============================================================================
@@ -17,6 +22,13 @@ import { foldIdBase, safeNumber } from "@/lib/fold-utils";
 // ============================================================================
 
 type FoldVariant = "raw" | "aggregated";
+
+const KNOWN_SCORE_METRIC_KEYS = [
+  ...new Set([
+    ...ALL_REGRESSION_METRICS.map(metric => metric.key),
+    ...ALL_CLASSIFICATION_METRICS.map(metric => metric.key),
+  ]),
+];
 
 /** Extract multi-metric scores from a {partition: {metric: value}} structure. */
 function extractNestedScores(
@@ -104,6 +116,10 @@ function hasAggregatedRefitData(chain: TopChainResult): boolean {
 
 function isStandaloneRefitChain(chain: Pick<TopChainResult, "is_refit_only"> | null | undefined): boolean {
   return chain?.is_refit_only === true;
+}
+
+function cvSourceChainId(chain: Pick<TopChainResult, "chain_id" | "cv_source_chain_id">): string {
+  return chain.cv_source_chain_id ?? chain.chain_id;
 }
 
 function foldVariantSuffix(variant: FoldVariant): string {
@@ -327,15 +343,35 @@ export function collapseStandaloneRefitSummaries(summaries: ChainSummary[]): Cha
   });
 }
 
+function appendMetricKeys(
+  keys: Set<string>,
+  map: Record<string, unknown> | null | undefined,
+): void {
+  if (!map) return;
+
+  for (const [key, value] of Object.entries(map)) {
+    if (
+      (key === "test" || key === "val" || key === "train")
+      && value
+      && typeof value === "object"
+      && !Array.isArray(value)
+    ) {
+      for (const nestedKey of Object.keys(value as Record<string, unknown>)) {
+        keys.add(nestedKey);
+      }
+      continue;
+    }
+
+    keys.add(key);
+  }
+}
+
 function collectKnownMetricKeys(
-  ...maps: Array<Record<string, number | null | number> | null | undefined>
+  ...maps: Array<Record<string, unknown> | null | undefined>
 ): string[] {
-  const keys = new Set([
-    "rmse", "r2", "mae", "sep", "rpd", "bias", "nrmse", "mse", "mape",
-  ]);
+  const keys = new Set(KNOWN_SCORE_METRIC_KEYS);
   for (const map of maps) {
-    if (!map) continue;
-    for (const key of Object.keys(map)) keys.add(key);
+    appendMetricKeys(keys, map);
   }
   return [...keys];
 }
@@ -355,8 +391,8 @@ function buildCrossvalRow(
     : {};
 
   return {
-    id: `cv-${chain.chain_id}${foldVariantSuffix(variant)}`,
-    chainId: chain.chain_id,
+    id: `cv-${cvSourceChainId(chain)}${foldVariantSuffix(variant)}`,
+    chainId: cvSourceChainId(chain),
     runId: chain.run_id,
     pipelineId: chain.pipeline_id,
     modelName: chain.model_name,
@@ -400,7 +436,11 @@ function buildRefitRow(
   const cvTestScores = effectiveCvSource?.scores?.test
     ? Object.fromEntries(Object.entries(effectiveCvSource.scores.test).map(([k, v]) => [k, safeNumber(v)]))
     : {};
-  const finalMetricKeys = collectKnownMetricKeys(cvValScores, cvTestScores);
+  const finalMetricKeys = collectKnownMetricKeys(
+    cvValScores,
+    cvTestScores,
+    chain.final_scores as Record<string, unknown> | null | undefined,
+  );
   const finalTestScores: Record<string, number | null> = {};
   const finalTrainScores: Record<string, number | null> = {};
 
@@ -452,11 +492,12 @@ function buildAggregatedRefitRow(
   const bestParams = hasMeaningfulBestParams(chainParams)
     ? chainParams
     : (hasMeaningfulBestParams(cvParams) ? cvParams : null);
+  const aggSource = chain.final_agg_scores as Record<string, unknown> | null | undefined;
   const finalMetricKeys = collectKnownMetricKeys(
     effectiveCvSource?.scores?.val as Record<string, number | null> | undefined,
     effectiveCvSource?.scores?.test as Record<string, number | null> | undefined,
+    aggSource,
   );
-  const aggSource = chain.final_agg_scores as Record<string, unknown> | null | undefined;
   const finalTestScores: Record<string, number | null> = {};
   const finalTrainScores: Record<string, number | null> = {};
 
@@ -888,10 +929,12 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
   const cvTestScores = extractNestedScores(summary.cv_scores, "test");
 
   // Use all known keys for final_scores extraction
-  const allKeys = new Set([
-    ...Object.keys(cvValScores), ...Object.keys(cvTestScores),
-    "rmse", "r2", "mae", "sep", "rpd", "bias", "nrmse", "mse", "mape",
-  ]);
+  const allKeys = collectKnownMetricKeys(
+    cvValScores,
+    cvTestScores,
+    summary.final_scores as Record<string, unknown> | null | undefined,
+    summary.final_agg_scores as Record<string, unknown> | null | undefined,
+  );
   const finalTestScores: Record<string, number | null> = {};
   const finalTrainScores: Record<string, number | null> = {};
   if (summary.final_scores) {
@@ -903,8 +946,8 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
 
   // Build CROSSVAL card
   const crossvalRow: ScoreCardRow = {
-    id: `cv-${summary.chain_id}`,
-    chainId: summary.chain_id,
+    id: `cv-${summary.cv_source_chain_id ?? summary.chain_id}`,
+    chainId: summary.cv_source_chain_id ?? summary.chain_id,
     runId: summary.run_id,
     pipelineId: summary.pipeline_id,
     datasetName: summary.dataset_name ?? undefined,

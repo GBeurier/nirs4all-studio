@@ -15,7 +15,6 @@ import {
   Sparkles,
   Brain,
   FileOutput,
-  ChevronRight,
   type LucideIcon,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -244,35 +243,31 @@ function StepRow({
         !isEnabled && "opacity-50"
       )}
     >
-      <AccordionTrigger className="px-2 py-1.5 hover:no-underline [&[data-state=open]>svg]:rotate-90">
-        <div className="flex items-center gap-2 flex-1">
-          <Checkbox
-            checked={true}
-            className="h-4 w-4"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleAdd();
-            }}
-          />
-          <span className={cn("text-sm font-medium", definition.color.text)}>
-            {definition.name}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            .{definition.method}()
-          </span>
-        </div>
-        <div
-          className="flex items-center gap-2 mr-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Switch
-            checked={isEnabled}
-            onCheckedChange={onToggleEnabled}
-            className="h-4 w-7"
-          />
-        </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
-      </AccordionTrigger>
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <Checkbox
+          checked={true}
+          className="h-4 w-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAdd();
+          }}
+        />
+        <AccordionTrigger className="flex-1 py-0 hover:no-underline">
+          <div className="flex items-center gap-2 flex-1">
+            <span className={cn("text-sm font-medium", definition.color.text)}>
+              {definition.name}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              .{definition.method}()
+            </span>
+          </div>
+        </AccordionTrigger>
+        <Switch
+          checked={isEnabled}
+          onCheckedChange={onToggleEnabled}
+          className="h-4 w-7"
+        />
+      </div>
       <AccordionContent className="px-3 pb-3 pt-1">
         <StepConfig
           step={addedStep}

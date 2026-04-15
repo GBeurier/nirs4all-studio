@@ -20,7 +20,7 @@ import {
   ChevronDown, ChevronRight, Award, Box, Zap, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatMetricValue } from "@/lib/scores";
+import { formatMetricValue, getMetricAbbreviation, isClassificationTaskType } from "@/lib/scores";
 import { foldBadgeClasses, foldLabel, foldLabelShort, safeNumber } from "@/lib/fold-utils";
 import { formatBestParams } from "@/lib/score-adapters";
 import { cardTypeBorderClass } from "./ScoreColumns";
@@ -87,23 +87,115 @@ function getAnyScore(row: ScoreCardRow, key: string): number | null {
 
 /** REFIT: RMSEP | Train_RMSE | R² | SEP | RPD | BIAS | MAE | NRMSE */
 function RefitScores({ row }: { row: ScoreCardRow }) {
+  const primaryMetric = (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+
+  if (isClassificationTaskType(row.taskType)) {
+    const secondaryMetrics = [
+      { key: "f1", label: "F1" },
+      { key: "roc_auc", label: "AUC" },
+      { key: "balanced_accuracy", label: "BalAcc" },
+      { key: "precision", label: "Prec" },
+      { key: "recall", label: "Recall" },
+      { key: "matthews_corrcoef", label: "MCC" },
+    ].filter(metric => metric.key !== primaryMetric);
+
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <ScorePair
+          label={getMetricAbbreviation(primaryMetric)}
+          value={row.primaryTestScore ?? getTestScore(row, primaryMetric)}
+          metric={primaryMetric}
+          colorClass="text-emerald-500 font-semibold"
+        />
+        <ScorePair
+          label="Train"
+          value={row.primaryTrainScore ?? getTrainScore(row, primaryMetric)}
+          metric={primaryMetric}
+          colorClass="text-orange-400"
+        />
+        {secondaryMetrics.map(metric => (
+          <ScorePair key={metric.key} label={metric.label} value={getTestScore(row, metric.key)} metric={metric.key} />
+        ))}
+      </div>
+    );
+  }
+
+  const secondaryMetrics = [
+    { key: "r2", label: "R²" },
+    { key: "sep", label: "SEP" },
+    { key: "rpd", label: "RPD" },
+    { key: "bias", label: "BIAS" },
+    { key: "mae", label: "MAE" },
+    { key: "nrmse", label: "NRMSE" },
+  ].filter(metric => metric.key !== primaryMetric);
+  const primaryLabel = primaryMetric === "rmse" || primaryMetric === "rmsep"
+    ? "RMSEP"
+    : getMetricAbbreviation(primaryMetric);
+
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <ScorePair label="RMSEP" value={row.primaryTestScore ?? getTestScore(row, "rmse")} metric="rmse" colorClass="text-emerald-500 font-semibold" />
-      <ScorePair label="Train" value={row.primaryTrainScore ?? getTrainScore(row, "rmse")} metric="rmse" colorClass="text-orange-400" />
-      <ScorePair label="R²" value={getTestScore(row, "r2")} metric="r2" />
-      <ScorePair label="SEP" value={getTestScore(row, "sep")} metric="sep" />
-      <ScorePair label="RPD" value={getTestScore(row, "rpd")} metric="rpd" />
-      <ScorePair label="BIAS" value={getTestScore(row, "bias")} metric="bias" />
-      <ScorePair label="MAE" value={getTestScore(row, "mae")} metric="mae" />
-      <ScorePair label="NRMSE" value={getTestScore(row, "nrmse")} metric="nrmse" />
+      <ScorePair
+        label={primaryLabel}
+        value={row.primaryTestScore ?? getTestScore(row, primaryMetric)}
+        metric={primaryMetric}
+        colorClass="text-emerald-500 font-semibold"
+      />
+      <ScorePair
+        label="Train"
+        value={row.primaryTrainScore ?? getTrainScore(row, primaryMetric)}
+        metric={primaryMetric}
+        colorClass="text-orange-400"
+      />
+      {secondaryMetrics.map(metric => (
+        <ScorePair key={metric.key} label={metric.label} value={getTestScore(row, metric.key)} metric={metric.key} />
+      ))}
     </div>
   );
 }
 
 /** CROSSVAL: RMSECV | Mean_Val | Min_Val | Max_Val | RMSEP_Avg | RMSEP_W-Avg | Mean_RMSEP | Min_Test | Max_Test */
 function CrossvalScores({ row }: { row: ScoreCardRow }) {
-  const primaryMetric = (row.metric || "rmse").toLowerCase();
+  const primaryMetric = (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+
+  if (isClassificationTaskType(row.taskType)) {
+    const secondaryMetrics = [
+      { key: "roc_auc", label: "AUC" },
+      { key: "f1", label: "F1" },
+      { key: "balanced_accuracy", label: "BalAcc" },
+      { key: "precision", label: "Prec" },
+      { key: "recall", label: "Recall" },
+    ].filter(metric => metric.key !== primaryMetric);
+    const primaryLabel = getMetricAbbreviation(primaryMetric);
+
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <ScorePair
+          label={`${primaryLabel} CV`}
+          value={row.primaryValScore ?? safeNumber(row.avgValScores?.[primaryMetric])}
+          metric={primaryMetric}
+          colorClass="text-chart-1 font-semibold"
+        />
+        <ScorePair label="Mean Val" value={safeNumber(row.meanValScores?.[primaryMetric])} metric={primaryMetric} colorClass="text-blue-400" />
+        <ScorePair label="Min Val" value={safeNumber(row.minValScores?.[primaryMetric])} metric={primaryMetric} colorClass="text-blue-400" />
+        <ScorePair label="Max Val" value={safeNumber(row.maxValScores?.[primaryMetric])} metric={primaryMetric} colorClass="text-blue-400" />
+        <ScorePair
+          label={`${primaryLabel} Test`}
+          value={row.primaryTestScore ?? safeNumber(row.avgTestScores?.[primaryMetric])}
+          metric={primaryMetric}
+        />
+        {secondaryMetrics.map(metric => (
+          <ScorePair
+            key={metric.key}
+            label={metric.label}
+            value={safeNumber(row.avgValScores?.[metric.key]) ?? safeNumber(row.avgTestScores?.[metric.key])}
+            metric={metric.key}
+            colorClass="text-green-400"
+          />
+        ))}
+      </div>
+    );
+  }
+
   const rmseLike = primaryMetric === "rmse" || primaryMetric === "rmsecv" || primaryMetric === "rmsep";
   const primaryKey = row.metric || "rmse";
   const meanVal = safeNumber(row.meanValScores?.[primaryMetric]) ?? safeNumber(row.meanValScores?.rmse);
@@ -132,16 +224,68 @@ function CrossvalScores({ row }: { row: ScoreCardRow }) {
 
 /** TRAIN (fold): RMSEP | Val_RMSE | R² | SEP | RPD | BIAS | MAE | NRMSE */
 function TrainScores({ row }: { row: ScoreCardRow }) {
+  const primaryMetric = (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+
+  if (isClassificationTaskType(row.taskType)) {
+    const secondaryMetrics = [
+      { key: "f1", label: "F1" },
+      { key: "roc_auc", label: "AUC" },
+      { key: "balanced_accuracy", label: "BalAcc" },
+      { key: "precision", label: "Prec" },
+      { key: "recall", label: "Recall" },
+      { key: "matthews_corrcoef", label: "MCC" },
+    ].filter(metric => metric.key !== primaryMetric);
+
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <ScorePair
+          label={getMetricAbbreviation(primaryMetric)}
+          value={row.primaryTestScore ?? getAnyScore(row, primaryMetric)}
+          metric={primaryMetric}
+          colorClass="font-semibold"
+        />
+        <ScorePair
+          label="Val"
+          value={row.primaryValScore ?? getValScore(row, primaryMetric)}
+          metric={primaryMetric}
+          colorClass="text-blue-400"
+        />
+        {secondaryMetrics.map(metric => (
+          <ScorePair key={metric.key} label={metric.label} value={getAnyScore(row, metric.key)} metric={metric.key} />
+        ))}
+      </div>
+    );
+  }
+
+  const secondaryMetrics = [
+    { key: "r2", label: "R²" },
+    { key: "sep", label: "SEP" },
+    { key: "rpd", label: "RPD" },
+    { key: "bias", label: "BIAS" },
+    { key: "mae", label: "MAE" },
+    { key: "nrmse", label: "NRMSE" },
+  ].filter(metric => metric.key !== primaryMetric);
+  const primaryLabel = primaryMetric === "rmse" || primaryMetric === "rmsep"
+    ? "RMSEP"
+    : getMetricAbbreviation(primaryMetric);
+
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <ScorePair label="RMSEP" value={row.primaryTestScore ?? getTestScore(row, "rmse")} metric="rmse" colorClass="font-semibold" />
-      <ScorePair label="Val" value={row.primaryValScore ?? getValScore(row, "rmse")} metric="rmse" colorClass="text-blue-400" />
-      <ScorePair label="R²" value={getAnyScore(row, "r2")} metric="r2" />
-      <ScorePair label="SEP" value={getAnyScore(row, "sep")} metric="sep" />
-      <ScorePair label="RPD" value={getAnyScore(row, "rpd")} metric="rpd" />
-      <ScorePair label="BIAS" value={getAnyScore(row, "bias")} metric="bias" />
-      <ScorePair label="MAE" value={getAnyScore(row, "mae")} metric="mae" />
-      <ScorePair label="NRMSE" value={getAnyScore(row, "nrmse")} metric="nrmse" />
+      <ScorePair
+        label={primaryLabel}
+        value={row.primaryTestScore ?? getTestScore(row, primaryMetric)}
+        metric={primaryMetric}
+        colorClass="font-semibold"
+      />
+      <ScorePair
+        label="Val"
+        value={row.primaryValScore ?? getValScore(row, primaryMetric)}
+        metric={primaryMetric}
+        colorClass="text-blue-400"
+      />
+      {secondaryMetrics.map(metric => (
+        <ScorePair key={metric.key} label={metric.label} value={getAnyScore(row, metric.key)} metric={metric.key} />
+      ))}
     </div>
   );
 }

@@ -75,6 +75,7 @@ class ChainSummary(BaseModel):
     cv_train_score: float | None = None
     cv_fold_count: int = 0
     cv_scores: Any | None = None
+    cv_source_chain_id: str | None = None
     # Final/refit scores
     final_test_score: float | None = None
     final_train_score: float | None = None
@@ -311,15 +312,20 @@ def _mark_refit_only_records(records: list[dict]) -> list[dict]:
             or record.get("final_train_score") is not None
             or bool(_parse_json_maybe(record.get("final_scores")))
         )
-        has_native_cv = (
-            record.get("cv_val_score") is not None
-            or record.get("cv_test_score") is not None
-            or record.get("cv_train_score") is not None
-            or bool(record.get("cv_fold_count"))
-            or bool(_parse_json_maybe(record.get("cv_scores")))
-        )
+        has_native_cv = _has_cv_summary_payload(record)
         record["is_refit_only"] = bool(record.get("is_refit_only")) or (has_final and not has_native_cv)
     return records
+
+
+def _has_cv_summary_payload(record: dict[str, Any]) -> bool:
+    """Return ``True`` when a summary row already has usable CV data."""
+    return (
+        record.get("cv_val_score") is not None
+        or record.get("cv_test_score") is not None
+        or record.get("cv_train_score") is not None
+        or bool(record.get("cv_fold_count"))
+        or bool(_parse_json_maybe(record.get("cv_scores")))
+    )
 
 
 def _stable_serialize(value: Any) -> str:
@@ -440,7 +446,6 @@ def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
         if (
             r.get("final_test_score") is not None
             and r.get("cv_val_score") is None
-            and not r.get("is_refit_only")
         )
     ]
     if not refit_records:
@@ -499,8 +504,19 @@ def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
         if match is None:
             continue
         for field in cv_fields:
-            if refit.get(field) is None:
+            current = refit.get(field)
+            if field == "cv_fold_count":
+                missing = not current
+            elif field == "cv_scores":
+                missing = not _parse_json_maybe(current)
+            else:
+                missing = current is None
+            if missing:
                 refit[field] = match.get(field)
+        if match.get("chain_id"):
+            refit["cv_source_chain_id"] = match.get("chain_id")
+        if _has_cv_summary_payload(refit):
+            refit["is_refit_only"] = False
 
     return records
 

@@ -409,7 +409,7 @@ class TestGetAggregatedPredictions:
         assert "cv_train_score" in pred
         assert "pipeline_status" in pred
 
-    def test_standalone_refit_chain_keeps_cv_fields_empty(self, client, patched_endpoints, mock_polars_df):
+    def test_matched_refit_chain_inherits_cv_fields(self, client, patched_endpoints, mock_polars_df):
         rows = [
             {
                 "run_id": "run-001",
@@ -529,10 +529,11 @@ class TestGetAggregatedPredictions:
         assert resp.status_code == 200
 
         predictions = {row["chain_id"]: row for row in resp.json()["predictions"]}
-        assert predictions["chain-pls-refit"]["cv_val_score"] is None
-        assert predictions["chain-pls-refit"]["cv_test_score"] is None
-        assert predictions["chain-pls-refit"]["cv_fold_count"] == 0
-        assert predictions["chain-pls-refit"]["is_refit_only"] is True
+        assert predictions["chain-pls-refit"]["cv_val_score"] == pytest.approx(12.811)
+        assert predictions["chain-pls-refit"]["cv_test_score"] == pytest.approx(10.615)
+        assert predictions["chain-pls-refit"]["cv_fold_count"] == 3
+        assert predictions["chain-pls-refit"]["cv_source_chain_id"] == "chain-pls-6"
+        assert predictions["chain-pls-refit"]["is_refit_only"] is not True
 
     def test_cv_only_chain_gets_synthetic_refit_payload(self, client, patched_endpoints, mock_polars_df):
         rows = [

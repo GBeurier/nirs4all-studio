@@ -594,15 +594,18 @@ async def get_inspector_data(
                     filtered.append(r)
             records = filtered
 
-        # Extract unique values for filter bar dropdowns
-        metrics_set = sorted({r.get("metric") for r in records if r.get("metric")})
-        models = sorted({r.get("model_class") for r in records if r.get("model_class")})
-        datasets = sorted({r.get("dataset_name") for r in records if r.get("dataset_name")})
-        runs = sorted({r.get("run_id") for r in records if r.get("run_id")})
+        # Facet lists for filter bar dropdowns must reflect the *unfiltered* chain pool,
+        # otherwise selecting one value collapses the dropdown to just that value and the
+        # user cannot add a second selection.
+        facet_df = store.query_chain_summaries()
+        facet_records = _normalize_chain_records(store, facet_df)
+        metrics_set = sorted({r.get("metric") for r in facet_records if r.get("metric")})
+        models = sorted({r.get("model_class") for r in facet_records if r.get("model_class")})
+        datasets = sorted({r.get("dataset_name") for r in facet_records if r.get("dataset_name")})
+        runs = sorted({r.get("run_id") for r in facet_records if r.get("run_id")})
 
-        # Extract unique preprocessing step names (split by " | ")
         prep_steps: set[str] = set()
-        for r in records:
+        for r in facet_records:
             for step in (r.get("preprocessing_steps") or []):
                 prep_steps.add(str(step))
 

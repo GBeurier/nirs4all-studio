@@ -13,6 +13,12 @@ import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
 import { ProjectFilter } from "@/components/runs/ProjectFilter";
 import { NoWorkspaceState, EmptyState, CardSkeleton } from "@/components/ui/state-display";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
+import {
+  collectPresentMetricKeys,
+  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
+  LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+  isClassificationTaskType,
+} from "@/lib/scores";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import {
   listRuns,
@@ -25,9 +31,6 @@ export default function Runs() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [detailRun, setDetailRun] = useState<EnrichedRun | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-
-  // Metric selection (persisted)
-  const [selectedMetrics, setSelectedMetrics] = useMetricSelection("runs", "regression");
 
   const { data: workspacesData } = useLinkedWorkspacesQuery();
 
@@ -77,6 +80,67 @@ export default function Runs() {
   const isLoading = isLoadingEnriched;
   const hasActiveWorkspace = !!activeWorkspaceId;
 
+  const metricContext = useMemo(() => {
+    const taskTypes = new Set<string>();
+    const availableMetricKeys = new Set<string>();
+
+    for (const run of runs) {
+      for (const dataset of run.datasets) {
+        if (isClassificationTaskType(dataset.task_type)) {
+          taskTypes.add("classification");
+        } else if (dataset.task_type) {
+          taskTypes.add("regression");
+        }
+
+        if (dataset.metric && (
+          dataset.best_final_score != null
+          || dataset.best_avg_val_score != null
+          || dataset.best_avg_test_score != null
+        )) {
+          availableMetricKeys.add(dataset.metric);
+        }
+
+        for (const chain of dataset.top_5) {
+          for (const key of collectPresentMetricKeys(
+            chain.scores?.val as Record<string, unknown> | undefined,
+            chain.scores?.test as Record<string, unknown> | undefined,
+            chain.final_scores as Record<string, unknown> | undefined,
+            chain.final_agg_scores as Record<string, unknown> | undefined,
+          )) {
+            availableMetricKeys.add(key);
+          }
+
+          if (
+            dataset.metric
+            && (
+              chain.avg_val_score != null
+              || chain.avg_test_score != null
+              || chain.avg_train_score != null
+              || chain.final_test_score != null
+              || chain.final_train_score != null
+            )
+          ) {
+            availableMetricKeys.add(dataset.metric);
+          }
+        }
+      }
+    }
+
+    return {
+      taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
+      availableMetricKeys: [...availableMetricKeys],
+    };
+  }, [runs]);
+
+  const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
+    "runs",
+    metricContext.taskType,
+    isClassificationTaskType(metricContext.taskType) ? undefined : DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
+    isClassificationTaskType(metricContext.taskType) ? undefined : LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+    "defaults-reset-v1",
+    metricContext.availableMetricKeys,
+  );
+
   const runningCount = runs.filter(r => r.status === "running").length;
   const queuedCount = runs.filter(r => r.status === "queued").length;
   const completedCount = runs.filter(r => r.status === "completed").length;
@@ -97,7 +161,12 @@ export default function Runs() {
           <p className="text-muted-foreground text-sm">{t("runs.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <MetricSelector taskType="regression" selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
+          <MetricSelector
+            taskType={metricContext.taskType}
+            selectedMetrics={selectedMetrics}
+            onSelectedMetricsChange={setSelectedMetrics}
+            availableMetricKeys={metricContext.availableMetricKeys}
+          />
           <ProjectFilter selectedProjectId={selectedProjectId} onProjectChange={setSelectedProjectId} />
           <Button asChild>
             <Link to="/editor"><Plus className="h-4 w-4 mr-2" />{t("runs.newRun")}</Link>

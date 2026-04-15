@@ -31,7 +31,12 @@ import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
 import { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-adapters";
 import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { getMetricAbbreviation, isLowerBetter } from "@/lib/scores";
+import {
+  collectPresentMetricKeys,
+  getMetricAbbreviation,
+  isClassificationTaskType,
+  isLowerBetter,
+} from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
@@ -157,7 +162,6 @@ function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow
 
 export default function Predictions() {
   const { t } = useTranslation();
-  const [selectedMetrics, setSelectedMetrics] = useMetricSelection("predictions", "regression");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterDataset, setFilterDataset] = useState("all");
   const [filterModel, setFilterModel] = useState("all");
@@ -278,6 +282,64 @@ export default function Predictions() {
       return sortOrder === "asc" ? cmp : -cmp;
     });
   }, [allRows, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
+
+  const metricContext = useMemo(() => {
+    const taskTypes = new Set<string>();
+    const availableMetricKeys = new Set<string>();
+    const sourceRows = filteredRows.length > 0 ? filteredRows : allRows;
+
+    for (const row of sourceRows) {
+      if (isClassificationTaskType(row.taskType)) {
+        taskTypes.add("classification");
+      } else if (row.taskType) {
+        taskTypes.add("regression");
+      }
+
+      if (
+        row.metric
+        && (
+          row.primaryTestScore != null
+          || row.primaryValScore != null
+          || row.primaryTrainScore != null
+        )
+      ) {
+        availableMetricKeys.add(row.metric);
+      }
+
+      for (const key of collectPresentMetricKeys(
+        row.testScores as Record<string, unknown>,
+        row.valScores as Record<string, unknown>,
+        row.trainScores as Record<string, unknown>,
+        row.avgValScores as Record<string, unknown> | undefined,
+        row.avgTestScores as Record<string, unknown> | undefined,
+        row.wAvgTestScores as Record<string, unknown> | undefined,
+        row.meanValScores as Record<string, unknown> | undefined,
+        row.meanTestScores as Record<string, unknown> | undefined,
+        row.minValScores as Record<string, unknown> | undefined,
+        row.maxValScores as Record<string, unknown> | undefined,
+        row.minTestScores as Record<string, unknown> | undefined,
+        row.maxTestScores as Record<string, unknown> | undefined,
+        row.aggregatedTestScores as Record<string, unknown> | undefined,
+        row.aggregatedTrainScores as Record<string, unknown> | undefined,
+      )) {
+        availableMetricKeys.add(key);
+      }
+    }
+
+    return {
+      taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
+      availableMetricKeys: [...availableMetricKeys],
+    };
+  }, [allRows, filteredRows]);
+
+  const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
+    "predictions",
+    metricContext.taskType,
+    undefined,
+    undefined,
+    undefined,
+    metricContext.availableMetricKeys,
+  );
 
   const totalCount = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -451,6 +513,11 @@ export default function Predictions() {
     );
   }
 
+  const primaryMetricKey = filteredRows.find(row => row.metric)?.metric
+    || selectedMetrics[0]
+    || (isClassificationTaskType(metricContext.taskType) ? "accuracy" : "rmse");
+  const primaryMetricLabel = getMetricAbbreviation(primaryMetricKey);
+
   return (
     <motion.div className="space-y-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div className="flex items-center justify-between">
@@ -462,7 +529,12 @@ export default function Predictions() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <MetricSelector taskType="regression" selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
+          <MetricSelector
+            taskType={metricContext.taskType}
+            selectedMetrics={selectedMetrics}
+            onSelectedMetricsChange={setSelectedMetrics}
+            availableMetricKeys={metricContext.availableMetricKeys}
+          />
           <Button variant="outline" onClick={handleRefresh} size="sm">
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
@@ -584,7 +656,7 @@ export default function Predictions() {
                   <SortableHeader field="model_name">Model</SortableHeader>
                   <SortableHeader field="dataset_name">Dataset</SortableHeader>
                   <TableHead>Preproc</TableHead>
-                  <SortableHeader field="test_score">RMSEP</SortableHeader>
+                  <SortableHeader field="test_score">{primaryMetricLabel}</SortableHeader>
                   <SortableHeader field="val_score">Val</SortableHeader>
                   <SortableHeader field="fold">Fold</SortableHeader>
                   {selectedMetrics.slice(0, 4).map(metric => (

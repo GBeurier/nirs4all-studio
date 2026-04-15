@@ -17,6 +17,25 @@ export const REGRESSION_METRICS = ["r2", "rmse", "rpd"] as const;
 /** Classification display metrics (compact). */
 export const CLASSIFICATION_METRICS = ["accuracy", "f1", "auc"] as const;
 
+/** Requested default metric set for dataset-item summaries on runs/results pages. */
+export const DEFAULT_DATASET_ITEM_REGRESSION_METRICS = [
+  "rmse",
+  "r2",
+  "nrmse",
+  "sep",
+  "rpd",
+  "pearson_r",
+] as const;
+
+export const LEGACY_DATASET_ITEM_REGRESSION_METRICS = [
+  "rmse",
+  "r2",
+  "sep",
+  "rpd",
+  "bias",
+  "mae",
+] as const;
+
 export function getMetricsForTaskType(taskType: string | null): readonly string[] {
   if (taskType === "classification") return CLASSIFICATION_METRICS;
   return REGRESSION_METRICS;
@@ -32,6 +51,12 @@ export interface MetricDefinition {
   abbreviation: string;
   direction: "higher" | "lower" | "zero";
 }
+
+const CLASSIFICATION_TASK_TYPES = new Set([
+  "classification",
+  "binary_classification",
+  "multiclass_classification",
+]);
 
 export const ALL_REGRESSION_METRICS: MetricDefinition[] = [
   { key: "r2", label: "R²", abbreviation: "R²", direction: "higher" },
@@ -68,9 +93,71 @@ export const ALL_CLASSIFICATION_METRICS: MetricDefinition[] = [
   { key: "jaccard", label: "Jaccard", abbreviation: "Jaccard", direction: "higher" },
 ];
 
+export const ALL_SCORE_METRICS: MetricDefinition[] = [
+  ...ALL_REGRESSION_METRICS,
+  ...ALL_CLASSIFICATION_METRICS,
+];
+
+const METRIC_DEFINITIONS_BY_KEY = new Map(
+  ALL_SCORE_METRICS.map(metric => [metric.key, metric] as const),
+);
+
+export function isClassificationTaskType(taskType: string | null | undefined): boolean {
+  return CLASSIFICATION_TASK_TYPES.has((taskType || "").toLowerCase());
+}
+
+export function orderMetricKeys(metricKeys: readonly string[]): string[] {
+  const requested = new Set(metricKeys);
+  return ALL_SCORE_METRICS
+    .map(metric => metric.key)
+    .filter(key => requested.has(key));
+}
+
+export function getMetricDefinitions(metricKeys: readonly string[]): MetricDefinition[] {
+  return orderMetricKeys(metricKeys)
+    .map(key => METRIC_DEFINITIONS_BY_KEY.get(key))
+    .filter((metric): metric is MetricDefinition => !!metric);
+}
+
+export function collectPresentMetricKeys(
+  ...maps: Array<Record<string, unknown> | null | undefined>
+): string[] {
+  const keys = new Set<string>();
+
+  const visit = (map: Record<string, unknown> | null | undefined) => {
+    if (!map) return;
+
+    for (const [key, value] of Object.entries(map)) {
+      if (
+        (key === "test" || key === "val" || key === "train")
+        && value
+        && typeof value === "object"
+        && !Array.isArray(value)
+      ) {
+        visit(value as Record<string, unknown>);
+        continue;
+      }
+
+      const num = typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? Number.parseFloat(value)
+          : Number.NaN;
+
+      if (Number.isFinite(num) && METRIC_DEFINITIONS_BY_KEY.has(key)) {
+        keys.add(key);
+      }
+    }
+  };
+
+  for (const map of maps) visit(map);
+
+  return orderMetricKeys([...keys]);
+}
+
 /** Get all available metrics for a task type. */
 export function getAvailableMetrics(taskType: string | null): MetricDefinition[] {
-  if (taskType === "classification" || taskType === "binary_classification" || taskType === "multiclass_classification") {
+  if (isClassificationTaskType(taskType)) {
     return ALL_CLASSIFICATION_METRICS;
   }
   return ALL_REGRESSION_METRICS;
@@ -96,7 +183,7 @@ export const CLASSIFICATION_PRESETS: MetricPreset[] = [
 ];
 
 export function getPresetsForTaskType(taskType: string | null): MetricPreset[] {
-  if (taskType === "classification" || taskType === "binary_classification" || taskType === "multiclass_classification") {
+  if (isClassificationTaskType(taskType)) {
     return CLASSIFICATION_PRESETS;
   }
   return REGRESSION_PRESETS;
@@ -104,7 +191,7 @@ export function getPresetsForTaskType(taskType: string | null): MetricPreset[] {
 
 /** Get the default selected metrics for a task type. */
 export function getDefaultSelectedMetrics(taskType: string | null): string[] {
-  if (taskType === "classification" || taskType === "binary_classification" || taskType === "multiclass_classification") {
+  if (isClassificationTaskType(taskType)) {
     return ["accuracy", "balanced_accuracy", "f1", "roc_auc"];
   }
   return ["rmse", "r2", "sep", "rpd", "bias", "mae"];
@@ -112,8 +199,7 @@ export function getDefaultSelectedMetrics(taskType: string | null): string[] {
 
 /** Get the abbreviation for a metric key. */
 export function getMetricAbbreviation(key: string): string {
-  const all = [...ALL_REGRESSION_METRICS, ...ALL_CLASSIFICATION_METRICS];
-  return all.find(m => m.key === key)?.abbreviation ?? key.toUpperCase();
+  return METRIC_DEFINITIONS_BY_KEY.get(key)?.abbreviation ?? key.toUpperCase();
 }
 
 /**

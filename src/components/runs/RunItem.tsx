@@ -28,6 +28,7 @@ import {
   formatMetricName,
   formatMetricValue,
   isBetterScore,
+  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
 } from "@/lib/scores";
 import { runStatusConfig } from "@/types/runs";
 import type { EnrichedRun, EnrichedDatasetRun } from "@/types/enriched-runs";
@@ -95,7 +96,12 @@ function primaryRefitLabel(metric: string | null): string {
 // RunItem — main component
 // ============================================================================
 
-export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["rmse", "r2", "sep", "rpd", "bias", "mae"] }: RunItemProps) {
+export function RunItem({
+  run,
+  onViewDetails,
+  workspaceId,
+  selectedMetrics = [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS],
+}: RunItemProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);

@@ -12,11 +12,15 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  collectPresentMetricKeys,
   isBetterScore,
   formatScore,
   formatMetricName,
   getBestCvEntry,
   getBestFinalEntry,
+  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
+  LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+  isClassificationTaskType,
 } from "@/lib/scores";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
 import { getWorkspaceResultsSummary } from "@/api/client";
@@ -55,9 +59,6 @@ function adaptToEnrichedDataset(d: DatasetTopChains): EnrichedDatasetRun {
 export default function Results() {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Detect task type from data for metric selector
-  const [selectedMetrics, setSelectedMetrics] = useMetricSelection("results", "regression");
 
   const { data: workspacesData } = useLinkedWorkspacesQuery();
   const activeWorkspace = workspacesData?.workspaces.find(w => w.is_active) ?? null;
@@ -104,6 +105,58 @@ export default function Results() {
     [datasets, searchQuery],
   );
 
+  const metricSourceDatasets = filteredDatasets.length > 0 ? filteredDatasets : datasets;
+  const metricContext = useMemo(() => {
+    const taskTypes = new Set<string>();
+    const availableMetricKeys = new Set<string>();
+
+    for (const dataset of metricSourceDatasets) {
+      if (isClassificationTaskType(dataset.task_type)) {
+        taskTypes.add("classification");
+      } else if (dataset.task_type) {
+        taskTypes.add("regression");
+      }
+
+      if (dataset.metric) {
+        const hasPrimaryScore = dataset.top_chains.some(chain =>
+          chain.avg_val_score != null
+          || chain.avg_test_score != null
+          || chain.avg_train_score != null
+          || chain.final_test_score != null
+          || chain.final_train_score != null,
+        );
+        if (hasPrimaryScore) {
+          availableMetricKeys.add(dataset.metric);
+        }
+      }
+
+      for (const chain of dataset.top_chains) {
+        for (const key of collectPresentMetricKeys(
+          chain.scores?.val as Record<string, unknown> | undefined,
+          chain.scores?.test as Record<string, unknown> | undefined,
+          chain.final_scores as Record<string, unknown> | undefined,
+          chain.final_agg_scores as Record<string, unknown> | undefined,
+        )) {
+          availableMetricKeys.add(key);
+        }
+      }
+    }
+
+    return {
+      taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
+      availableMetricKeys: [...availableMetricKeys],
+    };
+  }, [metricSourceDatasets]);
+
+  const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
+    "results",
+    metricContext.taskType,
+    isClassificationTaskType(metricContext.taskType) ? undefined : DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
+    isClassificationTaskType(metricContext.taskType) ? undefined : LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+    "defaults-reset-v1",
+    metricContext.availableMetricKeys,
+  );
+
   // Loading
   if (isLoading) {
     return (
@@ -143,7 +196,12 @@ export default function Results() {
           <p className="text-muted-foreground text-sm">Workspace: {activeWorkspace.name}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <MetricSelector taskType={datasets[0]?.task_type || "regression"} selectedMetrics={selectedMetrics} onSelectedMetricsChange={setSelectedMetrics} />
+          <MetricSelector
+            taskType={metricContext.taskType}
+            selectedMetrics={selectedMetrics}
+            onSelectedMetricsChange={setSelectedMetrics}
+            availableMetricKeys={metricContext.availableMetricKeys}
+          />
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>

@@ -207,16 +207,21 @@ def _has_meaningful_final_payload(row: dict[str, Any]) -> bool:
 def _mark_refit_only_entries_inplace(rows: list[dict[str, Any]]) -> None:
     """Mark standalone refit chains before any synthetic CV enrichment happens."""
     for row in rows:
-        has_native_cv = (
-            row.get("cv_val_score") is not None
-            or row.get("cv_test_score") is not None
-            or row.get("cv_train_score") is not None
-            or bool(row.get("cv_fold_count"))
-            or bool(_parse_json_maybe(row.get("cv_scores")))
-        )
+        has_native_cv = _has_cv_summary_payload(row)
         row["is_refit_only"] = bool(row.get("is_refit_only")) or (
             _has_meaningful_final_payload(row) and not has_native_cv
         )
+
+
+def _has_cv_summary_payload(row: dict[str, Any]) -> bool:
+    """Return ``True`` when a row already carries usable CV summary data."""
+    return (
+        row.get("cv_val_score") is not None
+        or row.get("cv_test_score") is not None
+        or row.get("cv_train_score") is not None
+        or bool(row.get("cv_fold_count"))
+        or bool(_parse_json_maybe(row.get("cv_scores")))
+    )
 
 
 def _build_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]:
@@ -248,13 +253,7 @@ def _apply_synthetic_refit_fallback_inplace(row: dict[str, Any]) -> None:
         row["synthetic_refit"] = bool(row.get("synthetic_refit"))
         return
 
-    has_cv = (
-        row.get("cv_val_score") is not None
-        or row.get("cv_test_score") is not None
-        or row.get("cv_train_score") is not None
-        or bool(row.get("cv_fold_count"))
-        or bool(_parse_json_maybe(row.get("cv_scores")))
-    )
+    has_cv = _has_cv_summary_payload(row)
     if not has_cv:
         row["synthetic_refit"] = bool(row.get("synthetic_refit"))
         return
@@ -299,7 +298,6 @@ def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
         if (
             r.get("final_test_score") is not None
             and r.get("cv_val_score") is None
-            and not r.get("is_refit_only")
         )
     ]
     if not refits:
@@ -328,8 +326,19 @@ def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
         if match is None:
             continue
         for field in _CV_FALLBACK_FIELDS:
-            if refit.get(field) is None:
+            current = refit.get(field)
+            if field == "cv_fold_count":
+                missing = not current
+            elif field == "cv_scores":
+                missing = not _parse_json_maybe(current)
+            else:
+                missing = current is None
+            if missing:
                 refit[field] = match.get(field)
+        if match.get("chain_id"):
+            refit["cv_source_chain_id"] = match.get("chain_id")
+        if _has_cv_summary_payload(refit):
+            refit["is_refit_only"] = False
 
 
 class StoreAdapter:
@@ -1532,6 +1541,7 @@ class StoreAdapter:
             "cv_train_score": _sanitize_float(entry.get("cv_train_score")),
             "cv_fold_count": entry.get("cv_fold_count", 0),
             "cv_scores": cv_scores,
+            "cv_source_chain_id": entry.get("cv_source_chain_id"),
             "final_test_score": _sanitize_float(entry.get("final_test_score")),
             "final_train_score": _sanitize_float(entry.get("final_train_score")),
             "final_scores": final_scores,
@@ -1816,6 +1826,7 @@ class StoreAdapter:
                     "avg_train_score": chain.get("cv_train_score"),
                     "fold_count": chain.get("cv_fold_count", 0),
                     "scores": chain.get("cv_scores", {}),
+                    "cv_source_chain_id": chain.get("cv_source_chain_id"),
                     "final_test_score": chain.get("final_test_score"),
                     "final_train_score": chain.get("final_train_score"),
                     "final_scores": chain.get("final_scores", {}),

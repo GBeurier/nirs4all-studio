@@ -85,10 +85,15 @@ interface InlineScoreDisplayProps {
 
 export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineScoreDisplayProps) {
   const scores = extractDisplayScores(row, selectedMetrics);
+  const visibleMetrics = selectedMetrics.filter(metric => scores[metric] != null);
+
+  if (visibleMetrics.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex items-center gap-2.5 flex-wrap">
-      {selectedMetrics.map(k => {
+      {visibleMetrics.map(k => {
         const val = scores[k];
         const safeVal = val != null && Number.isFinite(val) ? val : null;
         return (

@@ -59,6 +59,7 @@ import { cn } from "@/lib/utils";
 import {
   formatScore, formatMetricName, formatMetricValue,
   isLowerBetter,
+  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
 } from "@/lib/scores";
 import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { RunStatus, runStatusConfig } from "@/types/runs";
@@ -129,7 +130,7 @@ export function RunDetailSheet({
   open,
   onOpenChange,
   workspaceId,
-  selectedMetrics = ["rmse", "r2", "sep", "rpd", "bias", "mae"],
+  selectedMetrics = [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS],
 }: RunDetailSheetProps) {
   const [activeTab, setActiveTab] = useState("overview");
 

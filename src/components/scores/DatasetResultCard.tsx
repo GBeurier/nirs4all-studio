@@ -73,6 +73,7 @@ function normalizeAllChainEntry(chain: AllChainEntry, runId?: string): TopChainR
       val: chain.cv_scores?.val ?? {},
       test: chain.cv_scores?.test ?? {},
     },
+    cv_source_chain_id: chain.cv_source_chain_id ?? null,
     final_test_score: chain.final_test_score,
     final_train_score: chain.final_train_score,
     final_scores: (chain.final_scores as Record<string, unknown>) ?? {},

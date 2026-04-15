@@ -311,7 +311,7 @@ class TestStoreAdapter:
         assert cv_chain.get("is_refit_only") is not True
 
     def test_get_dataset_top_chains_matches_refit_to_cv_by_variant_params(self, mock_polars_df):
-        """Refit-only chains must inherit CV scores from the matching fixed-parameter variant."""
+        """Matched refit chains must inherit CV scores from the matching fixed-parameter variant."""
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df([
             {
@@ -411,13 +411,15 @@ class TestStoreAdapter:
 
         top_chains = result["datasets"][0]["top_chains"]
         refit_chain = next(chain for chain in top_chains if chain["chain_id"] == "chain-pls-refit")
-        assert refit_chain["avg_val_score"] is None
-        assert refit_chain["avg_test_score"] is None
-        assert refit_chain["is_refit_only"] is True
+        assert refit_chain["avg_val_score"] == pytest.approx(12.811)
+        assert refit_chain["avg_test_score"] == pytest.approx(10.615)
+        assert refit_chain["fold_count"] == 3
+        assert refit_chain["cv_source_chain_id"] == "chain-pls-6"
+        assert refit_chain.get("is_refit_only") is not True
         assert refit_chain["variant_params"] == {"n_components": 6}
 
-    def test_get_all_chains_for_dataset_keeps_standalone_refit_unpaired(self, mock_polars_df):
-        """Full dataset chain history must keep standalone refits free of synthetic CV data."""
+    def test_get_all_chains_for_dataset_pairs_refit_with_matching_cv_chain(self, mock_polars_df):
+        """Full dataset chain history must expose CV data for matched refit chains."""
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df([
             {
@@ -516,10 +518,11 @@ class TestStoreAdapter:
         result = adapter.get_all_chains_for_dataset("run-001", "dataset_a")
 
         refit_chain = next(chain for chain in result["chains"] if chain["chain_id"] == "chain-pls-refit")
-        assert refit_chain["cv_val_score"] is None
-        assert refit_chain["cv_test_score"] is None
-        assert refit_chain["cv_fold_count"] == 0
-        assert refit_chain["is_refit_only"] is True
+        assert refit_chain["cv_val_score"] == pytest.approx(12.811)
+        assert refit_chain["cv_test_score"] == pytest.approx(10.615)
+        assert refit_chain["cv_fold_count"] == 3
+        assert refit_chain["cv_source_chain_id"] == "chain-pls-6"
+        assert refit_chain["is_refit_only"] is not True
         assert refit_chain["variant_params"] == {"n_components": 6}
 
     def test_get_dataset_top_chains_only_loads_metadata_for_selected(self, mock_polars_df):
