@@ -171,7 +171,7 @@ export default function Predictions() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const [visibleFoldTypes, setVisibleFoldTypes] = useState<FoldVisibility[]>([...ALL_FOLD_TYPES]);
+  const [visibleFoldTypes, setVisibleFoldTypes] = useState<FoldVisibility[]>(["refits"]);
   const [visibleDataKinds, setVisibleDataKinds] = useState<DataVisibility[]>([...ALL_DATA_KINDS]);
 
   const {

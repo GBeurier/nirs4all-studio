@@ -1,6 +1,5 @@
 # Backlog
 
-> Group selection in run and playground
 > Presets + page presets
 > Review delete predictions
 
