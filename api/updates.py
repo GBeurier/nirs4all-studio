@@ -455,6 +455,8 @@ class UpdateSettings(BaseModel):
     github_repo: str = DEFAULT_GITHUB_REPO
     pypi_package: str = DEFAULT_PYPI_PACKAGE
     dismissed_versions: list[str] = []
+    # "auto": probe network on startup; "on": force offline; "off": force online
+    offline_mode: str = "auto"
 
 
 class WebappUpdateInfo(BaseModel):
@@ -646,16 +648,24 @@ class UpdateManager:
         return venv_manager.get_nirs4all_version()
 
     async def _fetch_url(self, url: str, headers: dict[str, str] | None = None) -> tuple[int, str]:
-        """Fetch a URL and return (status_code, content)."""
+        """Fetch a URL and return (status_code, content).
+
+        Raises ``OfflineError`` if the app is offline — callers must treat this
+        as a non-fatal condition and fall back to cached/bundled data.
+        """
+        from .network_state import OfflineError, is_online
+        if not await is_online():
+            raise OfflineError(f"Skipping fetch (offline): {url}")
+
         if HTTPX_AVAILABLE:
             async with httpx.AsyncClient(follow_redirects=True) as client:
-                response = await client.get(url, headers=headers, timeout=30.0)
+                response = await client.get(url, headers=headers, timeout=3.0)
                 return response.status_code, response.text
         else:
             # Fallback to synchronous urllib
             req = urllib.request.Request(url, headers=headers or {})
             try:
-                with urllib.request.urlopen(req, timeout=30) as response:
+                with urllib.request.urlopen(req, timeout=3) as response:
                     return response.status, response.read().decode("utf-8")
             except urllib.error.HTTPError as e:
                 return e.code, ""

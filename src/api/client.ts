@@ -1922,6 +1922,23 @@ export interface UpdateSettings {
   github_repo: string;
   pypi_package: string;
   dismissed_versions: string[];
+  /** "auto" = probe network, "on" = force offline, "off" = force online */
+  offline_mode?: "auto" | "on" | "off";
+}
+
+export interface NetworkState {
+  online: boolean;
+  forced: boolean;
+  mode: "auto" | "on" | "off";
+  env_forced: boolean;
+  probe_age_s: number | null;
+}
+
+/**
+ * Get current network reachability state from the backend.
+ */
+export async function getNetworkState(): Promise<NetworkState> {
+  return api.get("/system/network");
 }
 
 export interface WebappUpdateInfo {

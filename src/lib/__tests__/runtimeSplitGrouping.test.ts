@@ -67,6 +67,24 @@ describe("runtimeSplitGrouping", () => {
     expect(state.blockingMessage).toBe(RUNTIME_GROUPING_COPY.requiredBlocking);
   });
 
+  it("keeps runtime group_by optional for optional splitters without repetition", () => {
+    const state = evaluateDatasetRuntimeGrouping(
+      { metadata_columns: ["batch", "year"], repetitionColumn: null },
+      {
+        hasSplitters: true,
+        hasRequiredSplitters: false,
+        hasOptionalSplitters: true,
+        hasPersistedGroupConflict: false,
+        conflictingPipelines: [],
+      },
+      null,
+    );
+
+    expect(state.requiresExplicitGroup).toBe(false);
+    expect(state.hasBlockingError).toBe(false);
+    expect(state.blockingMessage).toBeNull();
+  });
+
   it("warns when repetition alone satisfies required grouping", () => {
     const state = evaluateDatasetRuntimeGrouping(
       {

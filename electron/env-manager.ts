@@ -60,6 +60,98 @@ const ENSUREPIP_TIMEOUT_MS = 60_000;
 const PIP_INSTALL_TIMEOUT_MS = 180_000;
 const COMPILEALL_TIMEOUT_MS = 180_000;
 
+// --- Network probe (shared with backend network_state.py) ---
+// Multiple URLs raced in parallel — first response wins. Diversified providers
+// so a single blocked host (corporate proxy, GeoDNS) does not flip offline.
+const NETWORK_PROBE_URLS = [
+  "https://www.cloudflare.com",
+  "https://pypi.org",
+  "https://api.github.com",
+  "https://www.google.com",
+];
+const NETWORK_PROBE_TIMEOUT_MS = 4_000;
+const NETWORK_PROBE_TTL_MS = 60_000;
+
+let networkProbeCache: { at: number; online: boolean } | null = null;
+let networkProbeInFlight: Promise<boolean> | null = null;
+
+function isOfflineForced(): boolean {
+  const v = (process.env.NIRS4ALL_OFFLINE || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+function probeOne(url: string, timeoutMs: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(t);
+      resolve(result);
+    };
+    const t = setTimeout(() => done(false), timeoutMs + 250);
+    try {
+      const req = https.request(
+        url,
+        { method: "HEAD", timeout: timeoutMs },
+        (res) => {
+          // Any HTTP response (incl. 4xx redirect) means we reached the server.
+          done((res.statusCode ?? 0) < 600);
+          res.resume();
+        },
+      );
+      req.on("error", () => done(false));
+      req.on("timeout", () => { req.destroy(); done(false); });
+      req.end();
+    } catch {
+      done(false);
+    }
+  });
+}
+
+/**
+ * Probe network reachability. Races multiple URLs and caches the result
+ * for 60 s. Returns `false` whenever `NIRS4ALL_OFFLINE` is set, without
+ * attempting any outbound connection. Never throws. Concurrent callers
+ * share the same in-flight probe.
+ */
+export async function probeNetworkOnline(): Promise<boolean> {
+  if (isOfflineForced()) return false;
+  const now = Date.now();
+  if (networkProbeCache && now - networkProbeCache.at < NETWORK_PROBE_TTL_MS) {
+    return networkProbeCache.online;
+  }
+  if (networkProbeInFlight) return networkProbeInFlight;
+
+  networkProbeInFlight = (async () => {
+    try {
+      const online = await new Promise<boolean>((resolve) => {
+        let resolved = false;
+        const finish = (v: boolean) => {
+          if (resolved) return;
+          resolved = true;
+          resolve(v);
+        };
+        let pending = NETWORK_PROBE_URLS.length;
+        for (const url of NETWORK_PROBE_URLS) {
+          probeOne(url, NETWORK_PROBE_TIMEOUT_MS).then((ok) => {
+            if (ok) finish(true);
+            pending -= 1;
+            if (pending === 0) finish(false);
+          });
+        }
+      });
+      networkProbeCache = { at: Date.now(), online };
+      console.log(`[EnvManager] Network probe: ${online ? "ONLINE" : "OFFLINE"}`);
+      return online;
+    } finally {
+      networkProbeInFlight = null;
+    }
+  })();
+
+  return networkProbeInFlight;
+}
+
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 
 export type ProgressCallback = (percent: number, step: string, detail: string) => void;
@@ -592,6 +684,21 @@ export class EnvManager {
       // without paying the heavier import if the env is obviously broken.
       const hasRuntime = await this.verifyBackendRuntime();
       if (!hasRuntime) {
+        if (!(await probeNetworkOnline())) {
+          // Offline: don't blindly mark ready. Confirm the heavier
+          // verifyBackendPackages succeeds before claiming the env works,
+          // otherwise leave a clear error so the UI can surface it.
+          const hasBackendPackages = await this.verifyBackendPackages();
+          if (hasBackendPackages) {
+            console.warn("Runtime check failed but backend packages OK and offline — proceeding without repair");
+            this.lastError = null;
+            this.status = "ready";
+            return false;
+          }
+          this.status = "error";
+          this.lastError = "Backend runtime packages missing and the app is offline. Connect to the internet once to repair, or install the required packages manually (fastapi, uvicorn, nirs4all).";
+          throw new Error(this.lastError);
+        }
         console.log("Backend runtime packages missing, installing core packages...");
         await this.installCorePackages(pythonPath, {
           timeoutMs: options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS,
@@ -605,6 +712,14 @@ export class EnvManager {
       // trust or persist this environment state.
       let hasBackendPackages = await this.verifyBackendPackages();
       if (!hasBackendPackages) {
+        if (!(await probeNetworkOnline())) {
+          // Offline and packages don't import. The runtime check passed so
+          // the backend may still serve a degraded experience; surface the
+          // problem rather than claim "ready".
+          this.status = "error";
+          this.lastError = "Some backend packages are not importable and the app is offline. Connect to the internet to repair the environment.";
+          throw new Error(this.lastError);
+        }
         if (!repaired) {
           console.log("Backend packages incomplete, reinstalling core packages...");
           await this.installCorePackages(pythonPath, {
@@ -805,6 +920,13 @@ export class EnvManager {
 
     // Install missing core packages (nirs4all, fastapi, etc.)
     if (!info.hasNirs4all) {
+      if (!(await probeNetworkOnline())) {
+        this.pythonPath = prevPythonPath;
+        return {
+          success: false,
+          message: `Python ${info.pythonVersion} found but nirs4all is not installed and the app is offline. Connect to the internet once to complete setup, or install nirs4all manually (pip install nirs4all) and retry.`,
+        };
+      }
       try {
         await this.installCorePackages(pythonPath);
       } catch (e) {
@@ -842,6 +964,13 @@ export class EnvManager {
 
     // Install missing core packages (nirs4all, fastapi, etc.)
     if (!info.hasNirs4all) {
+      if (!(await probeNetworkOnline())) {
+        this.pythonPath = prevPythonPath;
+        return {
+          success: false,
+          message: `Python ${info.pythonVersion} found but nirs4all is not installed and the app is offline. Connect to the internet once to complete setup, or install nirs4all manually (pip install nirs4all) and retry.`,
+        };
+      }
       try {
         await this.installCorePackages(pythonPath);
       } catch (e) {

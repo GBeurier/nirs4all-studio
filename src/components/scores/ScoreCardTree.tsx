@@ -40,6 +40,7 @@ interface ScoreCardTreeProps {
   onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
   showNonRefitSection?: boolean;
   maxTableMetrics?: number;
+  startCollapsed?: boolean;
 }
 
 // ============================================================================
@@ -91,7 +92,7 @@ function CrossvalExpandable({
       bestParams: row.bestParams,
       metric: row.metric,
       taskType: row.taskType,
-    });
+    }, row.foldId?.endsWith("_agg") ? "aggregated" : "raw");
   }, [foldData, row]);
 
   const displayRow = useMemo(() => {
@@ -315,6 +316,7 @@ export function ScoreCardTree({
   onViewPrediction,
   showNonRefitSection = true,
   maxTableMetrics,
+  startCollapsed = false,
 }: ScoreCardTreeProps) {
   const [nonRefitExpanded, setNonRefitExpanded] = useState(false);
 
@@ -346,7 +348,7 @@ export function ScoreCardTree({
                 onViewDetails={onViewDetails}
                 onViewPrediction={onViewPrediction}
                 maxTableMetrics={maxTableMetrics}
-                defaultExpanded
+                defaultExpanded={!startCollapsed}
               />
             ))}
           </div>

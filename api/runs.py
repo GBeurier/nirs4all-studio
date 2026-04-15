@@ -32,11 +32,11 @@ from .pipeline_canonical import (
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
 )
+from .shared.logger import get_logger
 from .shared.runtime_grouping import (
     normalize_split_group_by_mapping,
     prepare_pipeline_steps_with_runtime_grouping,
 )
-from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
@@ -740,8 +740,10 @@ async def _execute_run(run_id: str):
         total_pipelines = run.total_pipelines or 1
 
         # Pre-create a single store run so all pipelines are grouped together
+        # and the persisted store entry keeps the wizard-provided run name even
+        # for simple one-pipeline runs.
         shared_store_run_id: str | None = None
-        if total_pipelines > 1 and run.workspace_path:
+        if run.workspace_path:
             try:
                 from nirs4all.pipeline.storage import WorkspaceStore
                 _pre_store = WorkspaceStore(Path(run.workspace_path))

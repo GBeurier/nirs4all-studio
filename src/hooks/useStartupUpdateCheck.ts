@@ -14,8 +14,10 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useUpdateStatus, useUpdateSettings } from "./useUpdates";
 import { useSetupStatus, useIsConfigAligned } from "./useRecommendedConfig";
+import { useNetworkState } from "./useNetworkState";
 
 export function useStartupUpdateCheck() {
+  const { online, isLoading: networkLoading } = useNetworkState();
   const { data: status } = useUpdateStatus();
   const { data: settings } = useUpdateSettings();
   const { data: setupStatus } = useSetupStatus();
@@ -39,6 +41,7 @@ export function useStartupUpdateCheck() {
   // Check for updates
   useEffect(() => {
     if (hasNotified.current) return;
+    if (networkLoading || !online) return;
     if (!status || !settings) return;
     if (!settings.auto_check) return;
 
@@ -65,10 +68,11 @@ export function useStartupUpdateCheck() {
         onClick: () => navigate("/settings?tab=advanced"),
       },
     });
-  }, [status, settings, navigate]);
+  }, [online, networkLoading, status, settings, navigate]);
 
   // Config drift notification
   useEffect(() => {
+    if (networkLoading || !online) return;
     if (!setupStatus?.setup_completed) return;
     if (isAligned) return;
     if (misalignedCount === 0) return;
@@ -81,5 +85,5 @@ export function useStartupUpdateCheck() {
         onClick: () => navigate("/settings?tab=advanced"),
       },
     });
-  }, [isAligned, misalignedCount, setupStatus, navigate]);
+  }, [online, networkLoading, isAligned, misalignedCount, setupStatus, navigate]);
 }

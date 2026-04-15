@@ -247,16 +247,20 @@ def _load_bundled_config() -> dict[str, Any]:
 
 
 async def _fetch_remote_config() -> dict[str, Any] | None:
-    """Fetch recommended config from GitHub."""
+    """Fetch recommended config from GitHub. Returns None when offline or on any error."""
+    from .network_state import is_online
+    if not await is_online():
+        logger.debug("Offline — skipping remote recommended config fetch")
+        return None
     try:
         if HTTPX_AVAILABLE:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=3.0) as client:
                 response = await client.get(GITHUB_RAW_URL)
                 if response.status_code == 200:
                     return response.json()
         else:
             req = urllib.request.Request(GITHUB_RAW_URL, headers={"User-Agent": "nirs4all-webapp"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 return json.loads(resp.read().decode())
     except Exception as e:
         logger.debug("Could not fetch remote recommended config: %s", e)

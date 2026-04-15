@@ -76,9 +76,13 @@ function normalizeAllChainEntry(chain: AllChainEntry, runId?: string): TopChainR
     final_test_score: chain.final_test_score,
     final_train_score: chain.final_train_score,
     final_scores: (chain.final_scores as Record<string, unknown>) ?? {},
+    final_agg_test_score: chain.final_agg_test_score ?? null,
+    final_agg_train_score: chain.final_agg_train_score ?? null,
+    final_agg_scores: (chain.final_agg_scores as Record<string, unknown>) ?? {},
     best_params: displayParams,
     variant_params: chain.variant_params ?? null,
-    is_refit_only: chain.final_test_score != null && chain.cv_fold_count <= 0 && chain.cv_val_score == null,
+    is_refit_only: chain.is_refit_only ?? (chain.final_test_score != null && chain.cv_fold_count <= 0 && chain.cv_val_score == null),
+    synthetic_refit: chain.synthetic_refit ?? false,
   };
 }
 
@@ -136,6 +140,12 @@ export function DatasetResultCard({
     return datasetChainsToRows(chains, dataset.metric, dataset.task_type);
   }, [chains, dataset.metric, dataset.task_type]);
 
+  const primaryRows = useMemo(
+    () => scoreRows.filter((row) => row.foldId !== "final_agg"),
+    [scoreRows],
+  );
+  const summaryRows = primaryRows.length > 0 ? primaryRows : scoreRows;
+
   const handleViewDetails = (row: ScoreCardRow) => {
     const chain = chains.find(c => c.chain_id === row.chainId);
     if (chain) {
@@ -156,13 +166,13 @@ export function DatasetResultCard({
   };
 
   // Best row for header summary
-  const bestRow = scoreRows[0];
+  const bestRow = summaryRows[0];
   const bestContext = bestRow?.cardType === "refit" ? "refit" as const : "crossval" as const;
   const bestSummaryLabel = bestContext === "refit"
     ? `Best Refit ${getScoreContextLabel(dataset.metric || "score", "refit", dataset.metric)}`
     : `Best CV ${getScoreContextLabel(dataset.metric || "score", "crossval", dataset.metric)}`;
 
-  const topRefitRow = scoreRows.find(row => row.cardType === "refit");
+  const topRefitRow = summaryRows.find(row => row.cardType === "refit");
   const pairedCvRow = topRefitRow?.children?.find(child => child.cardType === "crossval");
   const delta = topRefitRow?.primaryTestScore != null && pairedCvRow?.primaryValScore != null
     ? (isLowerBetter(dataset.metric)
@@ -171,8 +181,8 @@ export function DatasetResultCard({
     : null;
 
   const topChain = bestRow ? chains.find(chain => chain.chain_id === bestRow.chainId) ?? null : null;
-  const refitCount = scoreRows.filter(row => row.cardType === "refit").length;
-  const visibleModelCount = scoreRows.length;
+  const refitCount = summaryRows.filter(row => row.cardType === "refit").length;
+  const visibleModelCount = summaryRows.length;
 
   const handleDeleteDataset = async () => {
     if (!workspaceId) {
@@ -304,6 +314,7 @@ export function DatasetResultCard({
                 onViewDetails={handleViewDetails}
                 onViewPrediction={handleViewPrediction}
                 showNonRefitSection
+                startCollapsed={!defaultExpanded}
               />
             </CardContent>
           </CollapsibleContent>

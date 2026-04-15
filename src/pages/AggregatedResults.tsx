@@ -62,6 +62,7 @@ import {
   LoadingState,
   EmptyState,
 } from "@/components/ui/state-display";
+import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
 import { ModelTreeView } from "@/components/scores/ModelTreeView";
 import { ModelActionMenu } from "@/components/scores/ModelActionMenu";
@@ -153,6 +154,11 @@ export default function AggregatedResults() {
     // (the first call may race the backend's workspace restoration phase).
   }, [workspaceReady]);
 
+  const displayPredictions = useMemo(
+    () => collapseStandaloneRefitSummaries(predictions),
+    [predictions],
+  );
+
   const handleDownloadDataset = async (datasetName: string, event: React.MouseEvent) => {
     event.stopPropagation();
     try {
@@ -192,7 +198,7 @@ export default function AggregatedResults() {
     const datasets = new Set<string>();
     const modelClasses = new Set<string>();
     const metrics = new Set<string>();
-    for (const p of predictions) {
+    for (const p of displayPredictions) {
       if (p.dataset_name) datasets.add(p.dataset_name);
       modelClasses.add(p.model_class);
       if (p.metric) metrics.add(p.metric);
@@ -202,11 +208,11 @@ export default function AggregatedResults() {
       modelClasses: Array.from(modelClasses).sort(),
       metrics: Array.from(metrics).sort(),
     };
-  }, [predictions]);
+  }, [displayPredictions]);
 
   // Filter and sort
   const filtered = useMemo(() => {
-    let items = predictions;
+    let items = displayPredictions;
 
     // Text search
     if (search) {
@@ -255,7 +261,7 @@ export default function AggregatedResults() {
     });
 
     return sorted;
-  }, [predictions, search, datasetFilter, modelClassFilter, metricFilter, sortKey, sortAsc]);
+  }, [displayPredictions, search, datasetFilter, modelClassFilter, metricFilter, sortKey, sortAsc]);
 
   // Split into refit / CV sections
   const { refitFiltered, cvFiltered } = useMemo(() => {
@@ -271,11 +277,11 @@ export default function AggregatedResults() {
 
   // Stats
   const stats = useMemo(() => ({
-    total: predictions.length,
-    datasets: new Set(predictions.map((p) => p.dataset_name).filter(Boolean)).size,
-    models: new Set(predictions.map((p) => p.model_class)).size,
-    metrics: new Set(predictions.map((p) => p.metric).filter(Boolean)).size,
-  }), [predictions]);
+    total: displayPredictions.length,
+    datasets: new Set(displayPredictions.map((p) => p.dataset_name).filter(Boolean)).size,
+    models: new Set(displayPredictions.map((p) => p.model_class)).size,
+    metrics: new Set(displayPredictions.map((p) => p.metric).filter(Boolean)).size,
+  }), [displayPredictions]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -297,7 +303,7 @@ export default function AggregatedResults() {
   };
 
   // Error state
-  if (error && predictions.length === 0) {
+  if (error && displayPredictions.length === 0) {
     // If it's a 409 (no workspace), show workspace state
     if (error.includes("No workspace") || error.includes("409")) {
       return <NoWorkspaceState />;
@@ -329,7 +335,7 @@ export default function AggregatedResults() {
       </motion.div>
 
       {/* Stats bar */}
-      {!loading && predictions.length > 0 && (
+      {!loading && displayPredictions.length > 0 && (
         <motion.div variants={itemVariants} className="grid grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4 pb-3">
@@ -371,7 +377,7 @@ export default function AggregatedResults() {
       )}
 
       {/* Filters */}
-      {!loading && predictions.length > 0 && (
+      {!loading && displayPredictions.length > 0 && (
         <motion.div variants={itemVariants} className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -440,7 +446,7 @@ export default function AggregatedResults() {
       {loading && <LoadingState message={t("aggregatedResults.loading", "Loading aggregated results...")} />}
 
       {/* Empty */}
-      {!loading && predictions.length === 0 && !error && (
+      {!loading && displayPredictions.length === 0 && !error && (
         <EmptyState
           icon={BarChart3}
           title={t("aggregatedResults.empty", "No aggregated results yet")}
@@ -518,7 +524,7 @@ export default function AggregatedResults() {
             <CardHeader className="pb-2 pt-4 px-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  {filtered.length} of {predictions.length} chains
+                  {filtered.length} of {displayPredictions.length} chains
                 </span>
               </div>
             </CardHeader>
@@ -700,7 +706,7 @@ export default function AggregatedResults() {
       )}
 
       {/* No matches after filtering */}
-      {!loading && predictions.length > 0 && filtered.length === 0 && (
+      {!loading && displayPredictions.length > 0 && filtered.length === 0 && (
         <motion.div variants={itemVariants}>
           <EmptyState
             icon={Search}

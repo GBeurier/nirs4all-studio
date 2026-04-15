@@ -404,7 +404,7 @@ class PlaygroundExecutor:
             total_rows = X_original.shape[0]
             orig_n_train = int(source_partitions.get("n_train", 0) or 0)
             orig_n_test = int(source_partitions.get("n_test", 0) or 0)
-            if 0 < orig_n_train and orig_n_train + orig_n_test == total_rows:
+            if orig_n_train > 0 and orig_n_train + orig_n_test == total_rows:
                 in_train = sample_indices < orig_n_train
                 in_test = (sample_indices >= orig_n_train) & (sample_indices < total_rows)
                 n_train_sampled = int(in_train.sum())
@@ -762,7 +762,7 @@ class PlaygroundExecutor:
                     X=X_processed,
                     pca_result=pca_result,
                     wavelengths=np.array(wavelengths),
-                    requested_metrics=options.get("metrics", None),  # None = fast metrics
+                    requested_metrics=options.get("metrics"),  # None = fast metrics
                 )
             except Exception as e:
                 metrics_result = {"error": str(e)}
@@ -1054,9 +1054,9 @@ class PlaygroundExecutor:
             Tuple of (fold information dict, non-blocking warnings)
         """
         import inspect
+
         import numpy as np
         import pandas as pd
-
         from nirs4all.controllers.splitters.split import resolve_split_groups
         from nirs4all.data.dataset import SpectroDataset
         from nirs4all.operators.splitters import GroupedSplitterWrapper
@@ -1194,9 +1194,7 @@ class PlaygroundExecutor:
 
         kwargs: dict[str, Any] = {}
         sig = inspect.signature(operator.split)
-        if split_y is not None and "y" in sig.parameters:
-            kwargs["y"] = split_y
-        elif groups is not None and split_y is not None:
+        if split_y is not None and "y" in sig.parameters or groups is not None and split_y is not None:
             kwargs["y"] = split_y
         if groups is not None:
             kwargs["groups"] = groups

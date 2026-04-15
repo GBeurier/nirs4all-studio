@@ -71,6 +71,7 @@ export interface TopChainResult {
   best_params?: Record<string, unknown> | null;
   variant_params?: Record<string, unknown> | null;
   is_refit_only?: boolean;
+  synthetic_refit?: boolean;
 }
 
 export interface ScoreDistribution {
@@ -122,4 +123,6 @@ export interface AllChainEntry {
   final_agg_scores?: Record<string, unknown> | null;
   metric: string | null;
   task_type: string | null;
+  is_refit_only?: boolean;
+  synthetic_refit?: boolean;
 }

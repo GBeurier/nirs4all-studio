@@ -51,9 +51,10 @@ export function useUpdateStatus() {
   return useQuery({
     queryKey: updateKeys.status(),
     queryFn: getUpdateStatus,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
-    retry: 1, // Only retry once on failure
+    retry: false,
+    networkMode: "offlineFirst",
   });
 }
 
@@ -80,6 +81,8 @@ export function useUpdateSettings() {
     queryKey: updateKeys.settings(),
     queryFn: getUpdateSettings,
     staleTime: 10 * 60 * 1000, // 10 minutes
+    retry: false,
+    networkMode: "offlineFirst",
   });
 }
 

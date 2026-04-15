@@ -7,6 +7,7 @@ layer -- all data operations are delegated to ``WorkspaceStore``.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import re
@@ -79,6 +80,33 @@ def _parse_json_maybe(value: Any) -> Any:
         except Exception:
             return value
     return value
+
+
+def _normalize_prediction_record(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normalize store prediction rows to the frontend PredictionRecord shape."""
+    record = dict(raw)
+
+    for json_field in ("best_params", "scores"):
+        record[json_field] = _parse_json_maybe(record.get(json_field))
+
+    record = _sanitize_dict(record)
+
+    if "prediction_id" in record and "id" not in record:
+        record["id"] = record.pop("prediction_id")
+
+    if "chain_id" in record and "trace_id" not in record:
+        record["trace_id"] = record.get("chain_id")
+
+    record.setdefault("source_dataset", record.get("dataset_name"))
+    record.setdefault("source_file", "")
+    record.setdefault("pipeline_uid", record.get("pipeline_id"))
+    record.setdefault("model_classname", record.get("model_class"))
+    record.setdefault("config_name", None)
+    record.setdefault("step_idx", None)
+    record.setdefault("op_counter", None)
+    record.setdefault("model_artifact_id", None)
+
+    return record
 
 
 def _extract_model_params_from_expanded_config(
@@ -168,6 +196,75 @@ def _chain_match_signature(record: dict[str, Any]) -> tuple[str, str, str, str]:
 _CV_FALLBACK_FIELDS = ("cv_val_score", "cv_test_score", "cv_train_score", "cv_fold_count", "cv_scores")
 
 
+def _has_meaningful_final_payload(row: dict[str, Any]) -> bool:
+    """Return ``True`` when a row already carries explicit refit/final data."""
+    if row.get("final_test_score") is not None or row.get("final_train_score") is not None:
+        return True
+    final_scores = _parse_json_maybe(row.get("final_scores"))
+    return isinstance(final_scores, dict) and bool(final_scores)
+
+
+def _mark_refit_only_entries_inplace(rows: list[dict[str, Any]]) -> None:
+    """Mark standalone refit chains before any synthetic CV enrichment happens."""
+    for row in rows:
+        has_native_cv = (
+            row.get("cv_val_score") is not None
+            or row.get("cv_test_score") is not None
+            or row.get("cv_train_score") is not None
+            or bool(row.get("cv_fold_count"))
+            or bool(_parse_json_maybe(row.get("cv_scores")))
+        )
+        row["is_refit_only"] = bool(row.get("is_refit_only")) or (
+            _has_meaningful_final_payload(row) and not has_native_cv
+        )
+
+
+def _build_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]:
+    """Reuse CV summary scores as a synthetic final-score payload."""
+    cv_scores = _parse_json_maybe(row.get("cv_scores"))
+    if isinstance(cv_scores, dict) and cv_scores:
+        return copy.deepcopy(cv_scores)
+
+    metric = _coerce_metric_name(row.get("metric"), default=None)
+    if metric is None:
+        return {}
+
+    scores: dict[str, dict[str, float]] = {}
+    for partition, value in (
+        ("val", row.get("cv_val_score")),
+        ("test", row.get("cv_test_score")),
+        ("train", row.get("cv_train_score")),
+    ):
+        score = _sanitize_float(value)
+        if score is None:
+            continue
+        scores.setdefault(partition, {})[metric] = float(score)
+    return scores
+
+
+def _apply_synthetic_refit_fallback_inplace(row: dict[str, Any]) -> None:
+    """Materialize a webapp-only refit fallback from CV summaries when needed."""
+    if _has_meaningful_final_payload(row):
+        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
+        return
+
+    has_cv = (
+        row.get("cv_val_score") is not None
+        or row.get("cv_test_score") is not None
+        or row.get("cv_train_score") is not None
+        or bool(row.get("cv_fold_count"))
+        or bool(_parse_json_maybe(row.get("cv_scores")))
+    )
+    if not has_cv:
+        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
+        return
+
+    row["final_test_score"] = _sanitize_float(row.get("cv_test_score"))
+    row["final_train_score"] = _sanitize_float(row.get("cv_train_score"))
+    row["final_scores"] = _build_synthetic_final_scores(row)
+    row["synthetic_refit"] = True
+
+
 def _attach_variant_params_inplace(
     rows: list[dict[str, Any]],
     pipeline_map: dict[str, dict[str, Any]],
@@ -199,7 +296,11 @@ def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
     """
     refits = [
         r for r in rows
-        if r.get("final_test_score") is not None and r.get("cv_val_score") is None
+        if (
+            r.get("final_test_score") is not None
+            and r.get("cv_val_score") is None
+            and not r.get("is_refit_only")
+        )
     ]
     if not refits:
         return
@@ -528,15 +629,7 @@ class StoreAdapter:
             )
             records = []
             for row in df.iter_rows(named=True):
-                d = _sanitize_dict(dict(row))
-                # Rename prediction_id → id for frontend compatibility
-                if "prediction_id" in d and "id" not in d:
-                    d["id"] = d.pop("prediction_id")
-                # Expose chain_id under trace_id for legacy frontend consumers
-                # that key the pipeline-editor link off ``trace_id``.
-                if "chain_id" in d and "trace_id" not in d:
-                    d["trace_id"] = d.get("chain_id")
-                records.append(d)
+                records.append(_normalize_prediction_record(dict(row)))
 
             # Total count (without limit) for the frontend pagination display.
             total_df = self._store.query_predictions(
@@ -641,31 +734,6 @@ class StoreAdapter:
         """
         count_sql = f"SELECT COUNT(*) FROM predictions p WHERE {where_sql}"
 
-        def normalize_record(raw: dict[str, Any]) -> dict[str, Any]:
-            record = _sanitize_dict(dict(raw))
-
-            if "prediction_id" in record and "id" not in record:
-                record["id"] = record.pop("prediction_id")
-
-            for json_field in ("best_params", "scores"):
-                value = record.get(json_field)
-                if isinstance(value, str):
-                    try:
-                        record[json_field] = json.loads(value)
-                    except Exception:
-                        pass
-
-            record["source_dataset"] = record.get("dataset_name")
-            record["source_file"] = ""
-            record["pipeline_uid"] = record.get("pipeline_id")
-            record["model_classname"] = record.get("model_class")
-            record["trace_id"] = record.get("chain_id")
-            record.setdefault("config_name", None)
-            record.setdefault("step_idx", None)
-            record.setdefault("op_counter", None)
-            record.setdefault("model_artifact_id", None)
-            return record
-
         sqlite_path = self._workspace_path / "store.sqlite"
         if sqlite_path.exists():
             import sqlite3
@@ -675,7 +743,7 @@ class StoreAdapter:
             try:
                 rows = con.execute(select_sql, [*params, limit, offset]).fetchall()
                 total = int(con.execute(count_sql, params).fetchone()[0])
-                return [normalize_record(dict(row)) for row in rows], total
+                return [_normalize_prediction_record(dict(row)) for row in rows], total
             finally:
                 con.close()
 
@@ -688,7 +756,7 @@ class StoreAdapter:
                 rows = con.execute(select_sql, [*params, limit, offset]).fetchall()
                 columns = [desc[0] for desc in con.description]
                 total = int(con.execute(count_sql, params).fetchone()[0])
-                return [normalize_record(dict(zip(columns, row, strict=False))) for row in rows], total
+                return [_normalize_prediction_record(dict(zip(columns, row, strict=False))) for row in rows], total
             finally:
                 con.close()
 
@@ -897,12 +965,19 @@ class StoreAdapter:
                     pass
 
             # Get pipeline stats for this run
-            pipelines_df = store.list_pipelines(run_id=run_id)
-            pipeline_count = len(pipelines_df)
+            pipeline_rows = list(store.list_pipelines(run_id=run_id).iter_rows(named=True))
+            pipeline_count = len(pipeline_rows)
+            pipeline_map = {
+                prow.get("pipeline_id", ""): dict(prow)
+                for prow in pipeline_rows
+                if prow.get("pipeline_id")
+            }
 
             # Get chain summaries for this run (uses v_chain_summary view)
             agg_df = store.query_aggregated_predictions(run_id=run_id)
             agg_rows = list(agg_df.iter_rows(named=True)) if len(agg_df) > 0 else []
+            if agg_rows:
+                _attach_variant_params_inplace(agg_rows, pipeline_map)
 
             # Group by dataset_name, filtering out parasitic calibration/validation subsets
             _PARASITIC_DS_RE = re.compile(r"_X_?(?:cal|val)$", re.IGNORECASE)
@@ -954,6 +1029,8 @@ class StoreAdapter:
             # Build per-dataset enriched data
             enriched_datasets = []
             for ds_name, agg_list in datasets_map.items():
+                for agg in agg_list:
+                    _apply_synthetic_refit_fallback_inplace(agg)
                 ds_meta = datasets_meta_map.get(ds_name, {})
                 pred_row: dict[str, Any] | None = None
                 task_type = None
@@ -1027,6 +1104,11 @@ class StoreAdapter:
                 # Top 5 chains with final (refit) scores
                 top_5_entries = sorted_agg[:5]
                 top_5_chain_ids = {e.get("chain_id", "") for e in top_5_entries}
+                agg_entry_by_chain_id = {
+                    agg.get("chain_id", ""): agg
+                    for agg in agg_list
+                    if agg.get("chain_id")
+                }
 
                 # Find ALL refit predictions for this run+dataset (used as fallback
                 # when v_chain_summary hasn't been backfilled yet, and to detect
@@ -1048,35 +1130,27 @@ class StoreAdapter:
                 except Exception:
                     pass
 
-                # Load chain summary data (cv_scores + final scores already precomputed)
                 refit_only_chain_ids = {cid for cid in refit_predictions_map if cid not in top_5_chain_ids}
-                all_chain_ids = list(top_5_chain_ids | refit_only_chain_ids)
-                chain_summary_map: dict[str, dict[str, Any]] = {}
-                if all_chain_ids:
-                    try:
-                        ph = ", ".join(f"${i + 1}" for i in range(len(all_chain_ids)))
-                        cs_df = store._fetch_pl(
-                            f"SELECT chain_id, cv_scores, final_test_score, final_train_score, final_scores, best_params "
-                            f"FROM v_chain_summary WHERE chain_id IN ({ph})",
-                            all_chain_ids,
-                        )
-                        for cs_row in cs_df.iter_rows(named=True):
-                            cid = cs_row.get("chain_id", "")
-                            chain_summary_map[cid] = dict(cs_row)
-                    except Exception:
-                        pass
 
                 top_5 = []
                 best_final_score = None
                 for entry in top_5_entries:
                     chain_id = entry.get("chain_id", "")
-                    cs = chain_summary_map.get(chain_id, {})
-                    cv_scores_raw = cs.get("cv_scores")
+                    agg_entry = agg_entry_by_chain_id.get(chain_id, entry)
+                    cv_scores_raw = agg_entry.get("cv_scores")
                     scores_detail = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
-                    final_ts = _sanitize_float(cs.get("final_test_score"))
-                    final_trs = _sanitize_float(cs.get("final_train_score"))
-                    final_scores_raw = cs.get("final_scores")
+                    final_ts = _sanitize_float(agg_entry.get("final_test_score"))
+                    final_trs = _sanitize_float(agg_entry.get("final_train_score"))
+                    final_scores_raw = agg_entry.get("final_scores")
                     final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+                    final_agg_ts = _sanitize_float(agg_entry.get("final_agg_test_score"))
+                    final_agg_trs = _sanitize_float(agg_entry.get("final_agg_train_score"))
+                    final_agg_scores_raw = agg_entry.get("final_agg_scores")
+                    final_agg_scores = (
+                        json.loads(final_agg_scores_raw)
+                        if isinstance(final_agg_scores_raw, str)
+                        else (final_agg_scores_raw or {})
+                    )
 
                     # Fallback: if chain_summary not backfilled, use refit prediction directly
                     refit_pred = refit_predictions_map.get(chain_id)
@@ -1091,33 +1165,48 @@ class StoreAdapter:
                             best_final_score = final_ts
 
                     # Parse best_params from chain summary or aggregated entry
-                    bp_raw = cs.get("best_params") or entry.get("best_params")
+                    bp_raw = agg_entry.get("best_params") or entry.get("best_params")
                     best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
 
                     top_5.append(_sanitize_dict({
                         "chain_id": chain_id,
-                        "model_name": entry.get("model_name", ""),
-                        "model_class": entry.get("model_class", ""),
-                        "preprocessings": entry.get("preprocessings", ""),
-                        "avg_val_score": entry.get("cv_val_score"),
-                        "avg_test_score": entry.get("cv_test_score"),
-                        "avg_train_score": entry.get("cv_train_score"),
-                        "fold_count": entry.get("cv_fold_count", 0),
+                        "model_name": agg_entry.get("model_name", entry.get("model_name", "")),
+                        "model_class": agg_entry.get("model_class", entry.get("model_class", "")),
+                        "preprocessings": agg_entry.get("preprocessings", entry.get("preprocessings", "")),
+                        "avg_val_score": agg_entry.get("cv_val_score", entry.get("cv_val_score")),
+                        "avg_test_score": agg_entry.get("cv_test_score", entry.get("cv_test_score")),
+                        "avg_train_score": agg_entry.get("cv_train_score", entry.get("cv_train_score")),
+                        "fold_count": agg_entry.get("cv_fold_count", entry.get("cv_fold_count", 0)),
                         "scores": scores_detail,
                         "final_test_score": final_ts,
                         "final_train_score": final_trs,
                         "final_scores": final_scores,
                         "best_params": best_params,
+                        "variant_params": agg_entry.get("variant_params"),
+                        "final_agg_test_score": final_agg_ts,
+                        "final_agg_train_score": final_agg_trs,
+                        "final_agg_scores": final_agg_scores,
+                        "synthetic_refit": bool(agg_entry.get("synthetic_refit")),
                     }))
 
                 # Add refit-only chains not in top_5
                 for rchain_id in refit_only_chain_ids:
                     rchain = refit_predictions_map[rchain_id]
-                    cs = chain_summary_map.get(rchain_id, {})
-                    rts = _sanitize_float(cs.get("final_test_score") or rchain.get("test_score"))
-                    rtrs = _sanitize_float(cs.get("final_train_score") or rchain.get("train_score"))
-                    rfinal_scores_raw = cs.get("final_scores") or rchain.get("scores")
+                    agg_entry = agg_entry_by_chain_id.get(rchain_id, {})
+                    rts = _sanitize_float(agg_entry.get("final_test_score") or rchain.get("test_score"))
+                    rtrs = _sanitize_float(agg_entry.get("final_train_score") or rchain.get("train_score"))
+                    rfinal_scores_raw = agg_entry.get("final_scores") or rchain.get("scores")
                     rfinal_scores = json.loads(rfinal_scores_raw) if isinstance(rfinal_scores_raw, str) else (rfinal_scores_raw or {})
+                    rfinal_agg_ts = _sanitize_float(agg_entry.get("final_agg_test_score"))
+                    rfinal_agg_trs = _sanitize_float(agg_entry.get("final_agg_train_score"))
+                    rfinal_agg_scores_raw = agg_entry.get("final_agg_scores")
+                    rfinal_agg_scores = (
+                        json.loads(rfinal_agg_scores_raw)
+                        if isinstance(rfinal_agg_scores_raw, str)
+                        else (rfinal_agg_scores_raw or {})
+                    )
+                    rbp_raw = agg_entry.get("best_params")
+                    rbest_params = json.loads(rbp_raw) if isinstance(rbp_raw, str) else (rbp_raw or None)
 
                     if rts is not None:
                         if best_final_score is None or higher_is_better and rts > best_final_score or not higher_is_better and rts < best_final_score:
@@ -1125,9 +1214,9 @@ class StoreAdapter:
 
                     top_5.append(_sanitize_dict({
                         "chain_id": rchain_id,
-                        "model_name": rchain.get("model_name", ""),
-                        "model_class": rchain.get("model_class", ""),
-                        "preprocessings": rchain.get("preprocessings", ""),
+                        "model_name": agg_entry.get("model_name", rchain.get("model_name", "")),
+                        "model_class": agg_entry.get("model_class", rchain.get("model_class", "")),
+                        "preprocessings": agg_entry.get("preprocessings", rchain.get("preprocessings", "")),
                         "avg_val_score": None,
                         "avg_test_score": None,
                         "avg_train_score": None,
@@ -1136,7 +1225,13 @@ class StoreAdapter:
                         "final_test_score": rts,
                         "final_train_score": rtrs,
                         "final_scores": rfinal_scores,
+                        "best_params": rbest_params,
+                        "variant_params": agg_entry.get("variant_params"),
+                        "final_agg_test_score": rfinal_agg_ts,
+                        "final_agg_train_score": rfinal_agg_trs,
+                        "final_agg_scores": rfinal_agg_scores,
                         "is_refit_only": True,
+                        "synthetic_refit": bool(agg_entry.get("synthetic_refit")),
                     }))
 
                 # Dataset sample/feature counts from metadata, fallback to prediction data
@@ -1179,7 +1274,9 @@ class StoreAdapter:
                 folds_df = store._fetch_pl(
                     "SELECT COUNT(DISTINCT fold_id) as cnt FROM predictions "
                     "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND refit_context IS NULL AND fold_id != 'avg'",
+                    "AND refit_context IS NULL "
+                    "AND fold_id NOT IN ('avg', 'w_avg') "
+                    "AND fold_id NOT LIKE '%_agg'",
                     [run_id]
                 )
                 if len(folds_df) > 0:
@@ -1189,7 +1286,9 @@ class StoreAdapter:
                 models_df = store._fetch_pl(
                     "SELECT COUNT(*) as cnt FROM predictions "
                     "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND partition = 'val' AND refit_context IS NULL",
+                    "AND partition = 'val' AND refit_context IS NULL "
+                    "AND fold_id NOT IN ('avg', 'w_avg') "
+                    "AND fold_id NOT LIKE '%_agg'",
                     [run_id]
                 )
                 if len(models_df) > 0:
@@ -1227,7 +1326,9 @@ class StoreAdapter:
                     "FIRST(metric) as metric "
                     "FROM predictions "
                     "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND refit_context IS NULL AND fold_id != 'avg'",
+                    "AND refit_context IS NULL "
+                    "AND fold_id NOT IN ('avg', 'w_avg') "
+                    "AND fold_id NOT LIKE '%_agg'",
                     [run_id]
                 )
                 if len(cv_info_df) > 0:
@@ -1254,9 +1355,31 @@ class StoreAdapter:
                 or "r2"
             )
 
+            run_name = row.get("name", "")
+            if not isinstance(run_name, str):
+                run_name = ""
+            run_name = run_name.strip()
+            if run_name.lower() in {"", "run"}:
+                base_pipeline_names: list[str] = []
+                seen_pipeline_names: set[str] = set()
+                for pipeline_row in pipeline_rows:
+                    pipeline_name = str(pipeline_row.get("name") or "").strip()
+                    if not pipeline_name:
+                        continue
+                    if pipeline_name.endswith("_refit"):
+                        pipeline_name = pipeline_name[:-len("_refit")]
+                    if pipeline_name in seen_pipeline_names:
+                        continue
+                    seen_pipeline_names.add(pipeline_name)
+                    base_pipeline_names.append(pipeline_name)
+                if len(base_pipeline_names) == 1:
+                    run_name = base_pipeline_names[0]
+                elif len(base_pipeline_names) > 1:
+                    run_name = f"{base_pipeline_names[0]} (+{len(base_pipeline_names) - 1})"
+
             enriched_runs.append(_sanitize_dict({
                 "run_id": run_id,
-                "name": row.get("name", ""),
+                "name": run_name,
                 "status": row.get("status", "unknown"),
                 "project_id": row.get("project_id"),
                 "created_at": created_at or "",
@@ -1381,6 +1504,12 @@ class StoreAdapter:
         cv_scores = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
         final_scores_raw = entry.get("final_scores")
         final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
+        final_agg_scores_raw = entry.get("final_agg_scores")
+        final_agg_scores = (
+            json.loads(final_agg_scores_raw)
+            if isinstance(final_agg_scores_raw, str)
+            else (final_agg_scores_raw or {})
+        )
         bp_raw = entry.get("best_params")
         best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
         step_params = _extract_model_params_from_expanded_config(
@@ -1388,8 +1517,7 @@ class StoreAdapter:
             entry.get("model_step_idx"),
         )
         variant_params = _merge_variant_params(step_params, best_params)
-
-        return _sanitize_dict({
+        payload = {
             "chain_id": entry.get("chain_id", ""),
             "run_id": entry.get("run_id", ""),
             "pipeline_id": pipeline_id,
@@ -1407,9 +1535,16 @@ class StoreAdapter:
             "final_test_score": _sanitize_float(entry.get("final_test_score")),
             "final_train_score": _sanitize_float(entry.get("final_train_score")),
             "final_scores": final_scores,
+            "final_agg_test_score": _sanitize_float(entry.get("final_agg_test_score")),
+            "final_agg_train_score": _sanitize_float(entry.get("final_agg_train_score")),
+            "final_agg_scores": final_agg_scores,
             "metric": entry.get("metric"),
             "task_type": entry.get("task_type"),
-        })
+            "synthetic_refit": bool(entry.get("synthetic_refit")),
+            "is_refit_only": bool(entry.get("is_refit_only")),
+        }
+        _apply_synthetic_refit_fallback_inplace(payload)
+        return _sanitize_dict(payload)
 
     def get_all_chains_for_dataset(self, run_id: str, dataset_name: str) -> dict[str, Any]:
         """Get ALL chain summaries for a run+dataset, sorted by primary metric.
@@ -1430,7 +1565,10 @@ class StoreAdapter:
         pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
         _attach_variant_params_inplace(rows, pipeline_map)
+        _mark_refit_only_entries_inplace(rows)
         _enrich_refit_with_cv_inplace(rows)
+        for row in rows:
+            _apply_synthetic_refit_fallback_inplace(row)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
 
         from nirs4all.pipeline.run import get_metric_info
@@ -1463,7 +1601,10 @@ class StoreAdapter:
         pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
         _attach_variant_params_inplace(rows, pipeline_map)
+        _mark_refit_only_entries_inplace(rows)
         _enrich_refit_with_cv_inplace(rows)
+        for row in rows:
+            _apply_synthetic_refit_fallback_inplace(row)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
 
         from nirs4all.pipeline.run import get_metric_info
@@ -1552,6 +1693,7 @@ class StoreAdapter:
 
         # Inherit CV scores from sibling CV chains for refit-only entries.
         for ds_chains in datasets.values():
+            _mark_refit_only_entries_inplace(ds_chains)
             has_refit_only = any(
                 chain.get("final_test_score") is not None and chain.get("cv_val_score") is None
                 for chain in ds_chains
@@ -1561,6 +1703,8 @@ class StoreAdapter:
                 ds_pipeline_map = self._get_pipeline_metadata_map(ds_pipeline_ids)
                 _attach_variant_params_inplace(ds_chains, ds_pipeline_map)
             _enrich_refit_with_cv_inplace(ds_chains)
+            for chain in ds_chains:
+                _apply_synthetic_refit_fallback_inplace(chain)
 
         # Phase 1: rank per dataset and collect ONLY the rows we will emit.
         # We defer pipeline-metadata loading and JSON deserialization until
@@ -1675,8 +1819,12 @@ class StoreAdapter:
                     "final_test_score": chain.get("final_test_score"),
                     "final_train_score": chain.get("final_train_score"),
                     "final_scores": chain.get("final_scores", {}),
+                    "final_agg_test_score": chain.get("final_agg_test_score"),
+                    "final_agg_train_score": chain.get("final_agg_train_score"),
+                    "final_agg_scores": chain.get("final_agg_scores", {}),
                     "best_params": chain.get("best_params"),
                     "variant_params": chain.get("variant_params"),
+                    "synthetic_refit": bool(chain.get("synthetic_refit")),
                 }
                 if is_refit_only:
                     payload["is_refit_only"] = True

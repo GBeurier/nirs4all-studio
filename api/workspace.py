@@ -81,6 +81,80 @@ def _set_cached_runs(workspace_path: str, source: str, result: Any) -> None:
     _workspace_runs_cache[key] = (time.time(), result)
 
 
+def _extract_dataset_metadata_columns(dataset_info: dict[str, Any]) -> list[str] | None:
+    """Best-effort metadata column extraction for globally linked datasets."""
+    dataset_path = Path(str(dataset_info.get("path", "")))
+    if not dataset_path.exists():
+        return None
+
+    try:
+        from nirs4all.data import DatasetConfigs
+
+        from .spectra import _build_nirs4all_config_from_stored
+
+        nirs4all_config = _build_nirs4all_config_from_stored(dataset_info)
+        if "train_x" not in nirs4all_config:
+            return None
+
+        dataset_configs = DatasetConfigs(nirs4all_config)
+        datasets = dataset_configs.get_datasets()
+        if not datasets:
+            return None
+
+        dataset = datasets[0]
+        if not getattr(dataset, "_metadata", None):
+            return []
+
+        metadata_columns = getattr(dataset, "metadata_columns", []) or []
+        return [
+            column
+            for column in metadata_columns
+            if isinstance(column, str) and column
+        ]
+    except Exception as exc:
+        logger.debug(
+            "Failed to extract metadata columns for dataset %s: %s",
+            dataset_info.get("id"),
+            exc,
+        )
+        return None
+
+
+def _maybe_enrich_dataset_metadata_columns(dataset_info: dict[str, Any]) -> dict[str, Any]:
+    """Ensure dataset list payloads carry metadata columns for runtime grouping."""
+    existing = dataset_info.get("metadata_columns")
+    normalized_existing = (
+        [column for column in existing if isinstance(column, str) and column]
+        if isinstance(existing, list)
+        else []
+    )
+
+    if normalized_existing:
+        if normalized_existing != existing:
+            dataset_info["metadata_columns"] = normalized_existing
+        return dataset_info
+
+    extracted = _extract_dataset_metadata_columns(dataset_info)
+    if extracted is None:
+        dataset_info["metadata_columns"] = normalized_existing
+        return dataset_info
+
+    dataset_info["metadata_columns"] = extracted
+    if extracted != normalized_existing:
+        dataset_id = dataset_info.get("id")
+        if isinstance(dataset_id, str) and dataset_id:
+            try:
+                app_config.update_dataset(dataset_id, {"metadata_columns": extracted})
+            except Exception as exc:
+                logger.debug(
+                    "Failed to persist metadata columns for dataset %s: %s",
+                    dataset_id,
+                    exc,
+                )
+
+    return dataset_info
+
+
 def invalidate_workspace_cache(workspace_path: str = None) -> None:
     """Invalidate cache for a workspace or all workspaces."""
     if workspace_path is None:
@@ -321,8 +395,12 @@ async def list_datasets():
     try:
         datasets = app_config.get_datasets()
         groups = app_config.get_dataset_groups()
+        dataset_payloads = [
+            _maybe_enrich_dataset_metadata_columns(d.to_dict())
+            for d in datasets
+        ]
         return {
-            "datasets": [d.to_dict() for d in datasets],
+            "datasets": dataset_payloads,
             "groups": [g.to_dict() for g in groups],
             "total": len(datasets),
         }
@@ -367,6 +445,16 @@ async def link_dataset(request: LinkDatasetRequest):
                         if ds.signal_types:
                             dataset_info["signal_types"] = [st.value for st in ds.signal_types]
 
+                        dataset_info["metadata_columns"] = (
+                            [
+                                column
+                                for column in (ds.metadata_columns or [])
+                                if isinstance(column, str) and column
+                            ]
+                            if ds._metadata
+                            else []
+                        )
+
                         # Detect/set targets if not already configured
                         config = dataset_info.get("config", {})
                         if "targets" not in config and ds._targets is not None:
@@ -399,6 +487,7 @@ async def link_dataset(request: LinkDatasetRequest):
                         "n_sources": dataset_info.get("n_sources", 1),
                         "task_type": dataset_info.get("task_type"),
                         "signal_types": dataset_info.get("signal_types", []),
+                        "metadata_columns": dataset_info.get("metadata_columns", []),
                         "targets": dataset_info.get("targets", []),
                         "default_target": dataset_info.get("default_target"),
                     }
@@ -453,6 +542,14 @@ async def refresh_dataset(dataset_id: str):
         if not dataset_info:
             raise HTTPException(
                 status_code=404, detail="Dataset not found or refresh failed"
+            )
+
+        metadata_columns = _extract_dataset_metadata_columns(dataset_info)
+        if metadata_columns is not None:
+            dataset_info["metadata_columns"] = metadata_columns
+            workspace_manager.update_dataset(
+                dataset_id,
+                {"metadata_columns": metadata_columns},
             )
 
         return {

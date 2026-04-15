@@ -90,7 +90,7 @@ const baseOptions = {
 //     breaking change purges all stale on-disk caches.
 // ---------------------------------------------------------------------------
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const STORAGE_KEYS = {
   datasets: "n4a:cache:datasets:list",
   linkedWorkspaces: "n4a:cache:workspaces:linked",

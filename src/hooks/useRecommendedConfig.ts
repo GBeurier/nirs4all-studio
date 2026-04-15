@@ -43,7 +43,8 @@ export function useRecommendedConfig() {
     queryFn: () => getRecommendedConfig(),
     staleTime: 24 * 60 * 60 * 1000, // 24 hours
     refetchOnWindowFocus: false,
-    retry: 1,
+    retry: false,
+    networkMode: "offlineFirst",
   });
 }
 
@@ -56,7 +57,8 @@ export function useConfigDiff(profile?: string, includeOptional?: boolean) {
     queryFn: () => getConfigDiff(profile, includeOptional),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
-    retry: 1,
+    retry: false,
+    networkMode: "offlineFirst",
   });
 }
 
@@ -127,7 +129,8 @@ export function useGPUDetection() {
     queryFn: detectGPU,
     staleTime: Infinity, // GPU hardware doesn't change during runtime
     refetchOnWindowFocus: false,
-    retry: 1,
+    retry: false,
+    networkMode: "offlineFirst",
   });
 }
 

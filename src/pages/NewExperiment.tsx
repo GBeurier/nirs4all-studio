@@ -437,6 +437,9 @@ export default function NewExperiment() {
                         {groupingState.hasBlockingError && <p className="text-xs text-destructive">{groupingState.blockingMessage}</p>}
                         {groupingState.repetitionOnlyWarning && <p className="text-xs text-amber-700 dark:text-amber-400">{groupingState.repetitionOnlyWarning}</p>}
                         {groupingState.optionalPropagationWarning && <p className="text-xs text-amber-700 dark:text-amber-400">{groupingState.optionalPropagationWarning}</p>}
+                        {!groupingState.hasBlockingError && groupingState.metadataColumns.length === 0 && (
+                          <p className="text-xs text-muted-foreground">No metadata columns are available on this dataset.</p>
+                        )}
                       </div>
                     );
                   })}

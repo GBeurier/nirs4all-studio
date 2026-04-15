@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Database, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getScoreDistribution, getAggregatedPredictions } from "@/api/client";
+import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { ScoreHistogram } from "./ScoreHistogram";
 
 interface RunQuickViewProps {
@@ -54,7 +55,10 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
     staleTime: 60000,
   });
 
-  const predictions = predictionsData?.predictions || [];
+  const predictions = useMemo(
+    () => collapseStandaloneRefitSummaries(predictionsData?.predictions || []),
+    [predictionsData],
+  );
 
   // Only show partition buttons for partitions that have data
   const availablePartitions = useMemo(() => {

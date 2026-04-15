@@ -28,17 +28,22 @@ import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspace
 import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import { ScoreCardRowView } from "@/components/scores/ScoreCardRowView";
-import { predictionRecordToRow } from "@/lib/score-adapters";
-import { FOLD_ORDER, isFinalFold, isAggFold, isNumberedFold, isRepAggFold } from "@/lib/fold-utils";
+import { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-adapters";
+import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getMetricAbbreviation, isLowerBetter } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 const FETCH_PAGE_SIZE = 1000;
+const ALL_FOLD_TYPES = ["folds", "refits", "averages"] as const;
+const ALL_DATA_KINDS = ["raw", "aggregated"] as const;
+const toggleItemClass = "h-7 px-2 text-[11px] border-border/60 hover:bg-muted/60 hover:text-foreground data-[state=on]:border-primary/40 data-[state=on]:bg-primary/10 data-[state=on]:text-primary";
 
 type SortField = "model_name" | "dataset_name" | "fold" | "val_score" | "test_score" | "n_samples";
 type SortOrder = "asc" | "desc";
+type FoldVisibility = typeof ALL_FOLD_TYPES[number];
+type DataVisibility = typeof ALL_DATA_KINDS[number];
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -76,9 +81,23 @@ function predictionGroupKey(pred: PredictionRecord): string {
 
 function foldSortValue(foldId?: string): number {
   if (!foldId) return Number.MAX_SAFE_INTEGER;
-  if (foldId in FOLD_ORDER) return FOLD_ORDER[foldId];
-  const parsed = Number.parseInt(foldId, 10);
-  return Number.isFinite(parsed) ? 100 + parsed : 1000;
+  const baseFoldId = foldIdBase(foldId);
+  const aggOffset = foldId === baseFoldId ? 0 : 0.5;
+  if (baseFoldId in FOLD_ORDER) return FOLD_ORDER[baseFoldId] + aggOffset;
+  const parsed = Number.parseInt(baseFoldId, 10);
+  return Number.isFinite(parsed) ? 100 + parsed + aggOffset : 1000 + aggOffset;
+}
+
+function rowFoldVisibility(row: ScoreCardRow): FoldVisibility {
+  if (row.cardType === "refit") return "refits";
+  if (row.cardType === "crossval") return "averages";
+  return "folds";
+}
+
+function rowDataVisibility(row: ScoreCardRow): DataVisibility {
+  const foldId = row.foldId;
+  if (!foldId) return "raw";
+  return foldId === foldIdBase(foldId) ? "raw" : "aggregated";
 }
 
 function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow[] {
@@ -121,7 +140,11 @@ function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow
     row.modelName = primary.model_name || row.modelName;
     row.modelClass = primary.model_classname || row.modelClass;
     row.preprocessings = primary.preprocessings || row.preprocessings;
-    row.bestParams = primary.best_params ?? valPred?.best_params ?? testPred?.best_params ?? trainPred?.best_params ?? row.bestParams;
+    row.bestParams = predictionRecordBestParams(primary)
+      ?? (valPred ? predictionRecordBestParams(valPred) : null)
+      ?? (testPred ? predictionRecordBestParams(testPred) : null)
+      ?? (trainPred ? predictionRecordBestParams(trainPred) : null)
+      ?? row.bestParams;
     row.foldId = primary.fold_id;
     row.partition = undefined;
     row.nSamplesEval = testPred?.n_samples ?? valPred?.n_samples ?? primary.n_samples ?? row.nSamplesEval;
@@ -148,7 +171,8 @@ export default function Predictions() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportSelection, setExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const [visibleFoldTypes, setVisibleFoldTypes] = useState<string[]>(["folds", "refits", "averages", "aggregated"]);
+  const [visibleFoldTypes, setVisibleFoldTypes] = useState<FoldVisibility[]>([...ALL_FOLD_TYPES]);
+  const [visibleDataKinds, setVisibleDataKinds] = useState<DataVisibility[]>([...ALL_DATA_KINDS]);
 
   const {
     data: workspacesData,
@@ -216,16 +240,10 @@ export default function Predictions() {
     if (filterModel !== "all") rows = rows.filter(row => row.modelName === filterModel || row.modelClass === filterModel);
     if (filterTaskType !== "all") rows = rows.filter(row => row.taskType === filterTaskType);
 
-    if (visibleFoldTypes.length < 4) {
-      rows = rows.filter(row => {
-        const fid = row.foldId || "";
-        if (isRepAggFold(fid)) return visibleFoldTypes.includes("aggregated");
-        if (isFinalFold(fid)) return visibleFoldTypes.includes("refits");
-        if (isAggFold(fid)) return visibleFoldTypes.includes("averages");
-        if (isNumberedFold(fid)) return visibleFoldTypes.includes("folds");
-        return true;
-      });
-    }
+    rows = rows.filter(row =>
+      visibleFoldTypes.includes(rowFoldVisibility(row))
+      && visibleDataKinds.includes(rowDataVisibility(row)),
+    );
 
     const referenceMetric = rows.find(row => row.metric)?.metric || "rmse";
     const naturalScoreOrder: SortOrder = isLowerBetter(referenceMetric) ? "asc" : "desc";
@@ -259,7 +277,7 @@ export default function Predictions() {
       }
       return sortOrder === "asc" ? cmp : -cmp;
     });
-  }, [allRows, filterDataset, filterModel, filterTaskType, visibleFoldTypes, searchQuery, sortField, sortOrder]);
+  }, [allRows, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
 
   const totalCount = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -272,7 +290,7 @@ export default function Predictions() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterDataset, filterModel, filterTaskType, visibleFoldTypes, sortField, sortOrder]);
+  }, [searchQuery, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, sortField, sortOrder]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -303,10 +321,18 @@ export default function Predictions() {
     setFilterModel("all");
     setFilterTaskType("all");
     setSearchQuery("");
-    setVisibleFoldTypes(["folds", "refits", "averages"]);
+    setVisibleFoldTypes([...ALL_FOLD_TYPES]);
+    setVisibleDataKinds([...ALL_DATA_KINDS]);
   };
 
-  const hasActiveFilters = filterDataset !== "all" || filterModel !== "all" || filterTaskType !== "all" || !!searchQuery || visibleFoldTypes.length < 3;
+  const hasActiveFilters = (
+    filterDataset !== "all"
+    || filterModel !== "all"
+    || filterTaskType !== "all"
+    || !!searchQuery
+    || visibleFoldTypes.length < ALL_FOLD_TYPES.length
+    || visibleDataKinds.length < ALL_DATA_KINDS.length
+  );
 
   const openExportDialog = (names?: string[]) => {
     setExportSelection(new Set(names && names.length > 0 ? names : datasets));
@@ -512,19 +538,35 @@ export default function Predictions() {
             {taskTypes.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
           </SelectContent>
         </Select>
-        <ToggleGroup
-          type="multiple"
-          value={visibleFoldTypes}
-          onValueChange={value => { if (value.length > 0) setVisibleFoldTypes(value); }}
-          variant="outline"
-          size="sm"
-          className="h-8"
-        >
-          <ToggleGroupItem value="folds" className="h-7 px-2 text-[11px]">Folds</ToggleGroupItem>
-          <ToggleGroupItem value="refits" className="h-7 px-2 text-[11px]">Refits</ToggleGroupItem>
-          <ToggleGroupItem value="averages" className="h-7 px-2 text-[11px]">Averages</ToggleGroupItem>
-          <ToggleGroupItem value="aggregated" className="h-7 px-2 text-[11px]">Aggregated</ToggleGroupItem>
-        </ToggleGroup>
+        <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-1 py-1">
+          <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Type</span>
+          <ToggleGroup
+            type="multiple"
+            value={visibleFoldTypes}
+            onValueChange={value => { if (value.length > 0) setVisibleFoldTypes(value as FoldVisibility[]); }}
+            variant="outline"
+            size="sm"
+            className="h-7"
+          >
+            <ToggleGroupItem value="folds" className={toggleItemClass}>Folds</ToggleGroupItem>
+            <ToggleGroupItem value="refits" className={toggleItemClass}>Refits</ToggleGroupItem>
+            <ToggleGroupItem value="averages" className={toggleItemClass}>Averages</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-1 py-1">
+          <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Data</span>
+          <ToggleGroup
+            type="multiple"
+            value={visibleDataKinds}
+            onValueChange={value => { if (value.length > 0) setVisibleDataKinds(value as DataVisibility[]); }}
+            variant="outline"
+            size="sm"
+            className="h-7"
+          >
+            <ToggleGroupItem value="raw" className={toggleItemClass}>Raw</ToggleGroupItem>
+            <ToggleGroupItem value="aggregated" className={toggleItemClass}>Aggregated</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs text-muted-foreground">
             Clear

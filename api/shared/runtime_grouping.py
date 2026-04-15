@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
-import warnings
 
 from nirs4all.controllers.splitters.split import (
     get_split_grouping_capability,

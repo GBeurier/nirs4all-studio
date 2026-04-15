@@ -35,6 +35,8 @@ export interface ChainSummary {
   final_agg_test_score?: number | null;
   final_agg_train_score?: number | null;
   final_agg_scores?: unknown | null;
+  synthetic_refit?: boolean;
+  is_refit_only?: boolean;
   // Pipeline status from JOIN
   pipeline_status: string | null;
   // Artifact info (enriched from chains table)

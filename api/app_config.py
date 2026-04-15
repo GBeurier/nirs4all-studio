@@ -56,6 +56,7 @@ class DatasetLink:
     n_sources: int = 1
     task_type: str | None = None
     signal_types: list[str] = field(default_factory=list)
+    metadata_columns: list[str] = field(default_factory=list)
     targets: list[dict[str, Any]] = field(default_factory=list)
     default_target: str | None = None
     description: str | None = None
@@ -84,6 +85,7 @@ class DatasetLink:
             n_sources=data.get("n_sources", 1),
             task_type=data.get("task_type"),
             signal_types=data.get("signal_types", []),
+            metadata_columns=data.get("metadata_columns", []),
             targets=data.get("targets", []),
             default_target=data.get("default_target"),
             description=data.get("description"),
@@ -538,7 +540,7 @@ class AppConfigManager:
                 allowed_fields = [
                     "name", "config", "group_ids", "stats", "description",
                     "num_samples", "train_samples", "test_samples", "num_features", "n_sources", "task_type",
-                    "signal_types", "targets", "default_target",
+                    "signal_types", "metadata_columns", "targets", "default_target",
                     "hash", "version", "version_status", "last_verified", "last_refreshed",
                 ]
                 for key in allowed_fields:

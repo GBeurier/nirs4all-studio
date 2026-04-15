@@ -212,13 +212,13 @@ export default function Results() {
         />
       ) : (
         <div className="space-y-3">
-          {filteredDatasets.map((dataset, idx) => (
+          {filteredDatasets.map((dataset) => (
             <motion.div key={dataset.dataset_name} variants={itemVariants}>
               <DatasetResultCard
                 dataset={adaptToEnrichedDataset(dataset)}
                 selectedMetrics={selectedMetrics}
                 workspaceId={activeWorkspace.id}
-                defaultExpanded={idx === 0}
+                defaultExpanded={false}
               />
             </motion.div>
           ))}

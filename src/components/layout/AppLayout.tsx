@@ -4,6 +4,7 @@ import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { BackendStartupBanner } from "./BackendStartupBanner";
 import { FloatingRunWidget } from "./FloatingRunWidget";
+import { OfflineIndicator } from "./OfflineIndicator";
 import { useStartupUpdateCheck } from "@/hooks/useStartupUpdateCheck";
 
 export function AppLayout() {
@@ -19,6 +20,9 @@ export function AppLayout() {
         <div className="flex flex-1 flex-col overflow-hidden">
           <AppHeader />
           <BackendStartupBanner />
+          <div className="fixed right-4 top-3 z-50">
+            <OfflineIndicator />
+          </div>
           <main className="flex-1 overflow-auto p-4 md:p-6">
             <div className="h-full">
               <Outlet />

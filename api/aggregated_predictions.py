@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .store_adapter import (
+    _apply_synthetic_refit_fallback_inplace,
     _extract_model_params_from_expanded_config,
     _get_workspace_store_cls,
     _merge_variant_params,
@@ -82,6 +83,10 @@ class ChainSummary(BaseModel):
     final_agg_test_score: float | None = None
     final_agg_train_score: float | None = None
     final_agg_scores: Any | None = None
+    # Webapp-only fallback when the store has no explicit final chain
+    synthetic_refit: bool = False
+    # Standalone refit chain with no native CV/fold data
+    is_refit_only: bool = False
     # Pipeline status from JOIN
     pipeline_status: str | None = None
     # Artifact info (enriched from chains table)
@@ -298,6 +303,25 @@ def _enrich_with_fold_artifacts(records: list[dict], store: Any) -> list[dict]:
     return records
 
 
+def _mark_refit_only_records(records: list[dict]) -> list[dict]:
+    """Mark standalone refit rows before any synthetic CV enrichment happens."""
+    for record in records:
+        has_final = (
+            record.get("final_test_score") is not None
+            or record.get("final_train_score") is not None
+            or bool(_parse_json_maybe(record.get("final_scores")))
+        )
+        has_native_cv = (
+            record.get("cv_val_score") is not None
+            or record.get("cv_test_score") is not None
+            or record.get("cv_train_score") is not None
+            or bool(record.get("cv_fold_count"))
+            or bool(_parse_json_maybe(record.get("cv_scores")))
+        )
+        record["is_refit_only"] = bool(record.get("is_refit_only")) or (has_final and not has_native_cv)
+    return records
+
+
 def _stable_serialize(value: Any) -> str:
     """Stable serialization for params signature comparison."""
     import json as _json
@@ -413,7 +437,11 @@ def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
     """
     refit_records = [
         r for r in records
-        if r.get("final_test_score") is not None and r.get("cv_val_score") is None
+        if (
+            r.get("final_test_score") is not None
+            and r.get("cv_val_score") is None
+            and not r.get("is_refit_only")
+        )
     ]
     if not refit_records:
         return records
@@ -518,8 +546,11 @@ async def get_aggregated_predictions(
             metric=metric,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        _mark_refit_only_records(records)
         _enrich_with_fold_artifacts(records, store)
         _enrich_refit_with_cv(records, store)
+        for record in records:
+            _apply_synthetic_refit_fallback_inplace(record)
         return ChainSummariesResponse(
             predictions=records,
             total=len(records),
@@ -556,8 +587,11 @@ async def get_top_aggregated_predictions(
             model_class=model_class,
         )
         records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        _mark_refit_only_records(records)
         _enrich_with_fold_artifacts(records, store)
         _enrich_refit_with_cv(records, store)
+        for record in records:
+            _apply_synthetic_refit_fallback_inplace(record)
         return {
             "predictions": records,
             "total": len(records),
@@ -592,8 +626,10 @@ async def get_chain_detail(
         summary = None
         if len(agg_df) > 0:
             summary = _sanitize_dict(dict(agg_df.row(0, named=True)))
+            _mark_refit_only_records([summary])
             _enrich_with_fold_artifacts([summary], store)
             _enrich_refit_with_cv([summary], store)
+            _apply_synthetic_refit_fallback_inplace(summary)
 
         # Get individual prediction rows
         pred_df = store.get_chain_predictions(chain_id)

@@ -275,14 +275,14 @@ export function RunItem({ run, onViewDetails, workspaceId, selectedMetrics = ["r
             )}
 
             {/* Per-dataset cards */}
-            {datasets.map((ds, idx) => (
+            {datasets.map((ds) => (
               <DatasetResultCard
                 key={ds.dataset_name}
                 dataset={ds}
                 selectedMetrics={selectedMetrics}
                 runId={run.run_id}
                 workspaceId={workspaceId}
-                defaultExpanded={idx === 0}
+                defaultExpanded={false}
               />
             ))}
 

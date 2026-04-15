@@ -88,6 +88,14 @@ const DIST_PATH = path.join(__dirname, "../dist");
 const isDev = VITE_DEV_SERVER_URL !== undefined;
 const devMode = isDev || app.commandLine.hasSwitch("dev");
 
+// --offline: forces offline mode for this process and the spawned Python backend.
+// The env var is inherited by backend-manager's spawn calls (they splat process.env),
+// so the Python side reads NIRS4ALL_OFFLINE via api/network_state.py.
+if (app.commandLine.hasSwitch("offline") || process.argv.includes("--offline")) {
+  process.env.NIRS4ALL_OFFLINE = "1";
+  console.log("[main] --offline flag detected; forcing offline mode");
+}
+
 function createSplashWindow(): BrowserWindow {
   const splash = new BrowserWindow({
     width: 460,

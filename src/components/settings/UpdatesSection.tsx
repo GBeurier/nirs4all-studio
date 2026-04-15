@@ -212,6 +212,10 @@ export function UpdatesSection() {
     });
   };
 
+  const handleOfflineModeChange = (value: "auto" | "on" | "off") => {
+    settingsMutation.mutate({ offline_mode: value });
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -602,6 +606,25 @@ export function UpdatesSection() {
                 onCheckedChange={handlePrereleaseToggle}
                 disabled={settingsMutation.isPending}
               />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="offline-mode">Network mode</Label>
+                <p className="text-xs text-muted-foreground">
+                  Auto probes on startup, Offline disables all network calls
+                </p>
+              </div>
+              <select
+                id="offline-mode"
+                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={settings?.offline_mode ?? "auto"}
+                onChange={(e) => handleOfflineModeChange(e.target.value as "auto" | "on" | "off")}
+                disabled={settingsMutation.isPending}
+              >
+                <option value="auto">Auto (detect)</option>
+                <option value="off">Always online</option>
+                <option value="on">Offline</option>
+              </select>
             </div>
           </CollapsibleContent>
         </Collapsible>

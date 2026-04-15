@@ -60,6 +60,7 @@ import {
   formatScore, formatMetricName, formatMetricValue,
   isLowerBetter,
 } from "@/lib/scores";
+import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { RunStatus, runStatusConfig } from "@/types/runs";
 import type { EnrichedRun, EnrichedDatasetRun } from "@/types/enriched-runs";
 import type { ChainSummary } from "@/types/aggregated-predictions";
@@ -504,10 +505,10 @@ function LeaderboardTab({ run, datasets, open, activeTab }: {
 
   const allowedDatasets = useMemo(() => new Set(datasets.map((ds) => ds.dataset_name)), [datasets]);
   const predictions = useMemo(
-    () => (data?.predictions || []).filter((pred) => {
+    () => collapseStandaloneRefitSummaries((data?.predictions || []).filter((pred) => {
       if (!pred.dataset_name) return false;
       return allowedDatasets.has(pred.dataset_name);
-    }),
+    })),
     [data, allowedDatasets],
   );
 

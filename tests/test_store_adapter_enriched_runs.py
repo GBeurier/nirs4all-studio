@@ -113,3 +113,196 @@ def test_get_enriched_runs_recovers_from_missing_aggregated_metric():
     assert dataset["metric"] == "rmse"
     assert dataset["task_type"] == "regression"
     assert run["config"]["metric"] == "rmse"
+
+
+def test_get_enriched_runs_falls_back_to_pipeline_name_and_keeps_final_agg_scores():
+    from api.store_adapter import StoreAdapter
+
+    mock_store = MagicMock()
+    mock_store.list_runs.return_value = _frame(
+        [
+            {
+                "run_id": "run-agg-001",
+                "name": "run",
+                "status": "completed",
+                "project_id": None,
+                "created_at": datetime(2026, 4, 2, 9, 0, tzinfo=UTC),
+                "completed_at": datetime(2026, 4, 2, 9, 5, tzinfo=UTC),
+                "datasets": '[{"name":"dataset_a","n_samples":20,"n_features":6}]',
+                "config": '{"n_pipelines": 1}',
+                "error": None,
+            }
+        ]
+    )
+    mock_store.list_pipelines.return_value = _frame(
+        [
+            {
+                "pipeline_id": "pipe-agg-001",
+                "name": "wizard-run-name",
+                "expanded_config": None,
+            }
+        ]
+    )
+    mock_store.query_aggregated_predictions.return_value = _frame(
+        [
+            {
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "cv_val_score": 0.12,
+                "cv_test_score": 0.14,
+                "cv_train_score": 0.1,
+                "cv_scores": {"val": {"rmse": 0.12}, "test": {"rmse": 0.14}},
+                "chain_id": "chain-agg-001",
+                "pipeline_id": "pipe-agg-001",
+                "model_name": "PLS(10)",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_fold_count": 5,
+                "best_params": None,
+                "final_test_score": 0.11,
+                "final_train_score": 0.09,
+                "final_scores": {"test": {"rmse": 0.11}},
+                "final_agg_test_score": 0.08,
+                "final_agg_train_score": 0.07,
+                "final_agg_scores": {"test": {"rmse": 0.08}, "train": {"rmse": 0.07}},
+            }
+        ]
+    )
+    mock_store.query_predictions.return_value = _frame(
+        [
+            {
+                "task_type": "regression",
+                "n_samples": 20,
+                "n_features": 6,
+                "metric": "rmse",
+            }
+        ]
+    )
+
+    def _fetch_pl(query, params):
+        if "SELECT p.chain_id, p.model_name, p.model_class, p.test_score, p.train_score" in query:
+            return _frame([])
+        if "COUNT(DISTINCT chain_id) as cnt" in query:
+            return _frame([{"cnt": 1}])
+        if "COUNT(DISTINCT fold_id) as cnt" in query:
+            return _frame([{"cnt": 5}])
+        if "COUNT(*) as cnt FROM predictions" in query:
+            return _frame([{"cnt": 5}])
+        if "COUNT(DISTINCT fold_id) as fold_count" in query:
+            return _frame([{"fold_count": 5, "metric": "rmse"}])
+        if "GROUP BY c.model_class ORDER BY count DESC" in query:
+            return _frame([{"model_class": "PLSRegression", "count": 1}])
+        return _frame([])
+
+    mock_store._fetch_pl.side_effect = _fetch_pl
+
+    adapter = StoreAdapter.__new__(StoreAdapter)
+    adapter._store = mock_store
+    adapter._get_run_artifact_size = MagicMock(return_value=0)
+    adapter._get_dataset_historical_best = MagicMock(return_value=None)
+
+    result = adapter.get_enriched_runs()
+
+    assert result["total"] == 1
+    run = result["runs"][0]
+    dataset = run["datasets"][0]
+    top_chain = dataset["top_5"][0]
+
+    assert run["name"] == "wizard-run-name"
+    assert top_chain["final_agg_test_score"] == 0.08
+    assert top_chain["final_agg_train_score"] == 0.07
+    assert top_chain["final_agg_scores"] == {"test": {"rmse": 0.08}, "train": {"rmse": 0.07}}
+
+
+def test_get_enriched_runs_synthesizes_refit_from_cv_when_final_is_missing():
+    from api.store_adapter import StoreAdapter
+
+    mock_store = MagicMock()
+    mock_store.list_runs.return_value = _frame(
+        [
+            {
+                "run_id": "run-synth-001",
+                "name": "Synthetic Refit Run",
+                "status": "completed",
+                "project_id": None,
+                "created_at": datetime(2026, 4, 15, 9, 0, tzinfo=UTC),
+                "completed_at": datetime(2026, 4, 15, 9, 5, tzinfo=UTC),
+                "datasets": '[{"name":"dataset_a","n_samples":20,"n_features":6}]',
+                "config": '{"n_pipelines": 1}',
+                "error": None,
+            }
+        ]
+    )
+    mock_store.list_pipelines.return_value = _frame(
+        [
+            {
+                "pipeline_id": "pipe-synth-001",
+                "name": "Basic PLS Pipeline",
+                "expanded_config": None,
+            }
+        ]
+    )
+    mock_store.query_aggregated_predictions.return_value = _frame(
+        [
+            {
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "cv_val_score": 19.94,
+                "cv_test_score": 13.12,
+                "cv_train_score": 4.06,
+                "cv_scores": {"val": {"rmse": 19.94}, "test": {"rmse": 13.12}, "train": {"rmse": 4.06}},
+                "chain_id": "chain-synth-001",
+                "pipeline_id": "pipe-synth-001",
+                "model_name": "PLSRegression",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_fold_count": 5,
+                "best_params": None,
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": None,
+            }
+        ]
+    )
+    mock_store.query_predictions.return_value = _frame(
+        [
+            {
+                "task_type": "regression",
+                "n_samples": 20,
+                "n_features": 6,
+                "metric": "rmse",
+            }
+        ]
+    )
+
+    def _fetch_pl(query, _params):
+        if "SELECT p.chain_id, p.model_name, p.model_class, p.test_score, p.train_score" in query:
+            return _frame([])
+        if "COUNT(DISTINCT chain_id) as cnt" in query:
+            return _frame([{"cnt": 0}])
+        if "COUNT(DISTINCT fold_id) as cnt" in query:
+            return _frame([{"cnt": 5}])
+        if "COUNT(*) as cnt FROM predictions" in query:
+            return _frame([{"cnt": 5}])
+        if "COUNT(DISTINCT fold_id) as fold_count" in query:
+            return _frame([{"fold_count": 5, "metric": "rmse"}])
+        if "GROUP BY c.model_class ORDER BY count DESC" in query:
+            return _frame([{"model_class": "PLSRegression", "count": 1}])
+        return _frame([])
+
+    mock_store._fetch_pl.side_effect = _fetch_pl
+
+    adapter = StoreAdapter.__new__(StoreAdapter)
+    adapter._store = mock_store
+    adapter._get_run_artifact_size = MagicMock(return_value=0)
+    adapter._get_dataset_historical_best = MagicMock(return_value=None)
+
+    result = adapter.get_enriched_runs()
+
+    top_chain = result["runs"][0]["datasets"][0]["top_5"][0]
+    assert top_chain["final_test_score"] == 13.12
+    assert top_chain["final_train_score"] == 4.06
+    assert top_chain["final_scores"] == {"val": {"rmse": 19.94}, "test": {"rmse": 13.12}, "train": {"rmse": 4.06}}
+    assert top_chain["synthetic_refit"] is True

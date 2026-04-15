@@ -147,6 +147,56 @@ class TestDatasetsEndpoints:
             assert "total" in data
             assert isinstance(data["datasets"], list)
 
+    def test_list_datasets_includes_persisted_metadata_columns(self, client, tmp_path):
+        """Persisted metadata columns must be exposed to runtime-grouping UIs."""
+        from api.app_config import app_config
+
+        dataset_dir = tmp_path / "metadata_columns_dataset"
+        dataset_dir.mkdir()
+
+        linked = app_config.link_dataset(str(dataset_dir))
+        app_config.update_dataset(
+            linked.id,
+            {"metadata_columns": ["batch", "sample_id"]},
+        )
+
+        response = client.get("/api/datasets")
+        assert response.status_code == 200
+
+        datasets = response.json()["datasets"]
+        dataset = next(item for item in datasets if item["id"] == linked.id)
+        assert dataset["metadata_columns"] == ["batch", "sample_id"]
+
+    def test_list_datasets_backfills_metadata_columns_for_legacy_links(
+        self,
+        client,
+        monkeypatch,
+        tmp_path,
+    ):
+        """Legacy linked datasets without stored metadata columns should be enriched on read."""
+        import api.workspace as workspace_api
+        from api.app_config import app_config
+
+        dataset_dir = tmp_path / "legacy_grouping_dataset"
+        dataset_dir.mkdir()
+
+        linked = app_config.link_dataset(str(dataset_dir))
+        assert linked.metadata_columns == []
+
+        monkeypatch.setattr(
+            workspace_api,
+            "_extract_dataset_metadata_columns",
+            lambda dataset_info: ["batch", "sample_id"],
+        )
+
+        response = client.get("/api/datasets")
+        assert response.status_code == 200
+
+        datasets = response.json()["datasets"]
+        dataset = next(item for item in datasets if item["id"] == linked.id)
+        assert dataset["metadata_columns"] == ["batch", "sample_id"]
+        assert app_config.get_dataset(linked.id).metadata_columns == ["batch", "sample_id"]
+
     def test_list_datasets_with_verify(self, client):
         """Test listing datasets with integrity verification."""
         response = client.get("/api/datasets?verify_integrity=true")

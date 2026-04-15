@@ -109,8 +109,8 @@ export interface PredictionRecord {
   n_samples?: number;
   n_features?: number;
   preprocessings?: string;
-  best_params?: Record<string, unknown>;
-  scores?: Record<string, Record<string, number>>;
+  best_params?: Record<string, unknown> | string | null;
+  scores?: Record<string, Record<string, number>> | string | null;
   branch_id?: number | null;
   branch_name?: string | null;
   exclusion_count?: number | null;

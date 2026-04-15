@@ -12,6 +12,10 @@ import { useState, useCallback, useEffect } from "react";
 import { useJobUpdates } from "./useWebSocket";
 import { apiClient, listDatasets } from "@/api/client";
 import type { Dataset as DatasetInfo } from "@/types/datasets";
+import {
+  getDatasetMetadataColumns,
+  getDatasetRepetitionColumn,
+} from "@/lib/runtimeSplitGrouping";
 
 // ============================================================================
 // Types
@@ -306,11 +310,8 @@ export function useDatasetSelection() {
         numSamples: dataset.num_samples,
         numFeatures: dataset.num_features,
         hasTarget: dataset.has_targets,
-        metadataColumns: dataset.metadata_columns ?? [],
-        repetitionColumn:
-          dataset.config?.aggregation?.enabled && dataset.config.aggregation.column
-            ? dataset.config.aggregation.column
-            : dataset.config?.repetition ?? null,
+        metadataColumns: getDatasetMetadataColumns(dataset),
+        repetitionColumn: getDatasetRepetitionColumn(dataset),
       })));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load datasets";

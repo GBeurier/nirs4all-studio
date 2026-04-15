@@ -87,6 +87,7 @@ from api.training import router as training_router
 from api.transfer import router as transfer_router
 from api.updates import router as updates_router
 from api.workspace import router as workspace_router
+from api.network_state import router as network_state_router
 from websocket import ws_manager
 
 _t4 = time.perf_counter()
@@ -211,6 +212,7 @@ async def lifespan(_app: FastAPI):
 
     # Other background tasks
     _background_tasks.append(asyncio.create_task(cleanup_old_updates_background()))
+
     if update_manager.settings.auto_check:
         _background_tasks.append(asyncio.create_task(check_updates_background()))
     _background_tasks.append(asyncio.create_task(cache_recommended_config_background()))
@@ -323,6 +325,7 @@ app.include_router(aggregated_predictions_router, prefix="/api", tags=["aggregat
 app.include_router(predict_router, prefix="/api", tags=["predict"])
 app.include_router(predictions_router, prefix="/api", tags=["predictions"])
 app.include_router(system_router, prefix="/api", tags=["system"])
+app.include_router(network_state_router, prefix="/api", tags=["system"])
 app.include_router(spectra_router, prefix="/api", tags=["spectra"])
 app.include_router(preprocessing_router, prefix="/api", tags=["preprocessing"])
 app.include_router(training_router, prefix="/api", tags=["training"])

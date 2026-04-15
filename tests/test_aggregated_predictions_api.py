@@ -409,7 +409,7 @@ class TestGetAggregatedPredictions:
         assert "cv_train_score" in pred
         assert "pipeline_status" in pred
 
-    def test_refit_chain_inherits_cv_scores_from_matching_variant(self, client, patched_endpoints, mock_polars_df):
+    def test_standalone_refit_chain_keeps_cv_fields_empty(self, client, patched_endpoints, mock_polars_df):
         rows = [
             {
                 "run_id": "run-001",
@@ -529,8 +529,60 @@ class TestGetAggregatedPredictions:
         assert resp.status_code == 200
 
         predictions = {row["chain_id"]: row for row in resp.json()["predictions"]}
-        assert predictions["chain-pls-refit"]["cv_val_score"] == pytest.approx(12.811)
-        assert predictions["chain-pls-refit"]["cv_test_score"] == pytest.approx(10.615)
+        assert predictions["chain-pls-refit"]["cv_val_score"] is None
+        assert predictions["chain-pls-refit"]["cv_test_score"] is None
+        assert predictions["chain-pls-refit"]["cv_fold_count"] == 0
+        assert predictions["chain-pls-refit"]["is_refit_only"] is True
+
+    def test_cv_only_chain_gets_synthetic_refit_payload(self, client, patched_endpoints, mock_polars_df):
+        rows = [
+            {
+                "run_id": "run-001",
+                "pipeline_id": "pipe-pls-6",
+                "chain_id": "chain-pls-6",
+                "model_name": "PLS",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "branch_path": None,
+                "source_index": None,
+                "model_step_idx": 3,
+                "metric": "rmse",
+                "task_type": "regression",
+                "dataset_name": "dataset_a",
+                "best_params": None,
+                "cv_val_score": 12.811,
+                "cv_test_score": 10.615,
+                "cv_train_score": 11.432,
+                "cv_fold_count": 3,
+                "cv_scores": {"val": {"rmse": 12.811}, "test": {"rmse": 10.615}, "train": {"rmse": 11.432}},
+                "final_test_score": None,
+                "final_train_score": None,
+                "final_scores": None,
+                "pipeline_status": "completed",
+            },
+        ]
+
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(rows)
+
+        def _fetch_pl(sql, _params):
+            if "SELECT chain_id, fold_artifacts FROM chains" in sql:
+                return mock_polars_df([])
+            return mock_polars_df([])
+
+        patched_endpoints._fetch_pl.side_effect = _fetch_pl
+
+        resp = client.get("/api/aggregated-predictions")
+        assert resp.status_code == 200
+
+        prediction = resp.json()["predictions"][0]
+        assert prediction["final_test_score"] == pytest.approx(10.615)
+        assert prediction["final_train_score"] == pytest.approx(11.432)
+        assert prediction["final_scores"] == {
+            "val": {"rmse": 12.811},
+            "test": {"rmse": 10.615},
+            "train": {"rmse": 11.432},
+        }
+        assert prediction["synthetic_refit"] is True
 
     def test_filter_by_run_id(self, client, patched_endpoints):
         resp = client.get("/api/aggregated-predictions?run_id=run-001")
