@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DatasetStatusBadge } from "./DatasetStatusBadge";
 import { openFolderInExplorer } from "@/api/client";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { formatScore } from "@/lib/scores";
 import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";
 
@@ -194,11 +195,10 @@ export function DatasetCard({
         <div className="text-center min-w-[80px]">
           <p className="text-muted-foreground text-xs">Task</p>
           <p className="font-medium text-foreground truncate max-w-[80px]">
-            {dataset.task_type === "regression"
-              ? "Reg"
-              : dataset.task_type === "classification"
-                ? (dataset.num_classes && dataset.num_classes > 2 ? "Multi" : "Classif")
-                : "--"}
+            {getDatasetTaskLabel(dataset.task_type, {
+              short: true,
+              numClasses: dataset.num_classes,
+            })}
           </p>
         </div>
       </div>

@@ -10,6 +10,7 @@ import { TargetHistogram } from "../charts";
 import { buildTargetHistogramData } from "../charts/TargetHistogram";
 import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import type { Dataset, PartitionKey, PreviewDataResponse, TargetDistribution } from "@/types/datasets";
 
 interface DatasetTargetsTabProps {
@@ -113,8 +114,8 @@ export function DatasetTargetsTab({
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="capitalize text-xs">
-                      {target.type || "auto"}
+                    <Badge variant="outline" className="text-xs">
+                      {getDatasetTaskLabel(target.type, { fallback: "Auto" })}
                     </Badge>
                     {target.unit && (
                       <span className="text-sm text-muted-foreground">

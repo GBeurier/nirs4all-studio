@@ -112,6 +112,76 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
 }
 
+type ApiValidationIssue = {
+  loc?: unknown[];
+  msg?: unknown;
+};
+
+function formatValidationPath(loc: unknown[] | undefined): string | null {
+  if (!Array.isArray(loc) || loc.length === 0) {
+    return null;
+  }
+
+  const path = loc
+    .filter((part) => part !== "body")
+    .map((part) => String(part));
+
+  return path.length > 0 ? path.join(".") : null;
+}
+
+function formatValidationIssue(issue: unknown): string | null {
+  if (typeof issue === "string" && issue.trim()) {
+    return issue;
+  }
+
+  if (!issue || typeof issue !== "object") {
+    return null;
+  }
+
+  const { loc, msg } = issue as ApiValidationIssue;
+  const message = typeof msg === "string" && msg.trim() ? msg : null;
+  if (!message) {
+    return null;
+  }
+
+  const path = formatValidationPath(loc);
+  return path ? `${path}: ${message}` : message;
+}
+
+export function formatApiErrorDetail(detail: unknown, status?: number): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((issue) => formatValidationIssue(issue))
+      .filter((message): message is string => Boolean(message));
+
+    if (messages.length > 0) {
+      return messages.join("\n");
+    }
+  }
+
+  if (detail && typeof detail === "object") {
+    const message = formatValidationIssue(detail);
+    if (message) {
+      return message;
+    }
+
+    try {
+      const serialized = JSON.stringify(detail);
+      if (serialized && serialized !== "{}") {
+        return serialized;
+      }
+    } catch {
+      // Fall through to generic HTTP fallback below.
+    }
+  }
+
+  return status ? `HTTP error ${status}` : "Network error";
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -136,7 +206,7 @@ class ApiClient {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const error: ApiError = {
-          detail: errorData.detail || `HTTP error ${response.status}`,
+          detail: formatApiErrorDetail(errorData.detail ?? errorData, response.status),
           status: response.status,
         };
         throw error;
@@ -209,10 +279,10 @@ class ApiClient {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const error: ApiError = {
-          detail: errorData.detail || `HTTP error ${response.status}`,
+          detail: formatApiErrorDetail(errorData.detail ?? errorData, response.status),
           status: response.status,
         };
-        logger.error(`[postMsgpack] ${response.status} ${endpoint}:`, errorData.detail || errorData);
+        logger.error(`[postMsgpack] ${response.status} ${endpoint}:`, error.detail);
         throw error;
       }
 
@@ -280,7 +350,7 @@ async function requestBinary(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const detail = errorData.detail || `HTTP error ${response.status}`;
+    const detail = formatApiErrorDetail(errorData.detail ?? errorData, response.status);
     throw { detail, status: response.status } as ApiError;
   }
 

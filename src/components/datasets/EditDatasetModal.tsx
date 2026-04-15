@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Info, FolderOpen } from "lucide-react";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import type { Dataset, DatasetConfig } from "@/types/datasets";
 
 interface EditDatasetModalProps {
@@ -321,8 +322,10 @@ export function EditDatasetModal({
                 </div>
                 <div className="p-3 bg-muted/30 rounded-lg">
                   <p className="text-sm text-muted-foreground">Task</p>
-                  <p className="text-lg font-semibold capitalize">
-                    {dataset.task_type ?? "--"}
+                  <p className="text-lg font-semibold">
+                    {getDatasetTaskLabel(dataset.task_type, {
+                      numClasses: dataset.num_classes,
+                    })}
                   </p>
                 </div>
               </div>

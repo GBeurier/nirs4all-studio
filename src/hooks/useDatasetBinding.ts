@@ -88,7 +88,7 @@ function datasetToBoundDataset(
     shape,
     targets: dataset.targets,
     selectedTarget: selectedTarget || dataset.default_target,
-    taskType: dataset.task_type as "regression" | "classification" | undefined,
+    taskType: dataset.task_type ?? undefined,
   };
 }
 

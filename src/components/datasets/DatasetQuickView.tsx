@@ -31,6 +31,7 @@ import { getPartitionTheme } from "./partitionTheme";
 import { useDatasetPreviewQuery } from "@/hooks/useDatasetQueries";
 import { useMlReadiness } from "@/context/MlReadinessContext";
 import { formatWavelengthUnit } from "@/components/playground/visualizations/chartConfig";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import type { Dataset, PartitionKey } from "@/types/datasets";
 
 interface DatasetQuickViewProps {
@@ -236,7 +237,12 @@ export function DatasetQuickView({
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="px-3 pb-3">
-                            <p className="font-semibold text-sm capitalize mb-1">{dataset.task_type || 'auto'}</p>
+                            <p className="font-semibold text-sm mb-1">
+                              {getDatasetTaskLabel(dataset.task_type, {
+                                numClasses: dataset.num_classes,
+                                fallback: "Auto",
+                              })}
+                            </p>
                             <div className="flex flex-wrap gap-1 mt-1.5">
                               {dataset.targets && dataset.targets.length > 0 ? (
                                 dataset.targets.map((target) => (

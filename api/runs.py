@@ -198,6 +198,8 @@ class RunMetrics(BaseModel):
     mae: float | None = None
     rpd: float | None = None
     nrmse: float | None = None
+    score: float | None = None
+    score_metric: str | None = None
 
 
 class PipelineRun(BaseModel):
@@ -273,7 +275,7 @@ class InlinePipeline(BaseModel):
 
 class ExperimentConfig(BaseModel):
     """Configuration for creating a new experiment."""
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1)
     description: str | None = None
     dataset_ids: list[str] = Field(..., min_length=1)
     pipeline_ids: list[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
@@ -865,17 +867,31 @@ async def _execute_run(run_id: str):
 
                     # Log summary based on variants tested
                     variants_info = f" ({pipeline.tested_variants} variants tested)" if pipeline.tested_variants > 1 else ""
-                    r2_val = result.get('metrics', {}).get('r2') or 0
-                    pipeline.logs.append(f"[INFO] Training complete{variants_info}. Best R²: {r2_val:.4f}")
+                    result_metrics = result.get("metrics", {})
+                    score_metric = result_metrics.get("score_metric")
+                    score_val = result_metrics.get("score")
+                    r2_val = result_metrics.get("r2")
+
+                    if score_metric and score_val is not None and r2_val is None:
+                        pipeline.logs.append(
+                            f"[INFO] Training complete{variants_info}. Best {score_metric}: {float(score_val):.4f}"
+                        )
+                        await send_log(
+                            f"[INFO] Completed {pipeline.pipeline_name}{variants_info}: "
+                            f"{score_metric}={float(score_val):.4f}"
+                        )
+                    else:
+                        safe_r2 = float(r2_val or 0)
+                        pipeline.logs.append(f"[INFO] Training complete{variants_info}. Best R²: {safe_r2:.4f}")
+                        await send_log(f"[INFO] Completed {pipeline.pipeline_name}{variants_info}: R²={safe_r2:.4f}")
 
                     if run.completed_pipelines is not None:
                         run.completed_pipelines += 1
 
-                    await send_log(f"[INFO] Completed {pipeline.pipeline_name}{variants_info}: R²={r2_val:.4f}")
                     await send_progress(
                         ((pipeline_index + 1) / total_pipelines) * 100,
                         f"Completed {pipeline.pipeline_name}",
-                        result.get("metrics"),
+                        result_metrics,
                     )
 
                 except Exception as e:
@@ -1276,6 +1292,29 @@ async def _execute_pipeline_training(
 
         log("[INFO] Training completed, extracting metrics...")
 
+        primary_metric: str | None = None
+        result_task_type: str | None = None
+        best_entry_score: float | None = None
+        try:
+            if hasattr(result, "predictions") and result.predictions:
+                best_entries = result.predictions.top(n=1)
+                if best_entries:
+                    best_entry = best_entries[0]
+                    if isinstance(best_entry, dict):
+                        raw_metric = best_entry.get("metric")
+                        raw_task_type = best_entry.get("task_type")
+                        raw_score = best_entry.get("test_score")
+                        if raw_score is None:
+                            raw_score = best_entry.get("val_score")
+                        primary_metric = str(raw_metric) if raw_metric is not None else None
+                        result_task_type = str(raw_task_type) if raw_task_type is not None else None
+                        if isinstance(raw_score, (int, float)) and not math.isnan(raw_score):
+                            best_entry_score = float(raw_score)
+        except Exception:
+            pass
+
+        is_classification_run = "classification" in str(result_task_type or "").lower()
+
         # Extract metrics using RunResult properties
         # Note: best_rmse/best_r2 return float('nan') when unavailable, not None
         metrics = {}
@@ -1291,9 +1330,13 @@ async def _execute_pipeline_training(
             score_val = result.best_score
             if score_val is not None and not math.isnan(score_val):
                 metrics['score'] = float(score_val)
+        if 'score' not in metrics and best_entry_score is not None:
+            metrics['score'] = best_entry_score
+        if primary_metric:
+            metrics['score_metric'] = primary_metric
 
-        # Compute RPD if we have rmse
-        if 'rmse' in metrics and metrics['rmse'] > 0:
+        # Compute RPD if we have regression RMSE
+        if not is_classification_run and 'rmse' in metrics and metrics['rmse'] > 0:
             try:
                 if hasattr(result, 'predictions') and result.predictions:
                     best_pred = result.predictions.best()
@@ -1304,15 +1347,17 @@ async def _execute_pipeline_training(
             except Exception:
                 pass
 
-        # Ensure required metrics exist with defaults
-        if 'r2' not in metrics or metrics['r2'] is None:
-            metrics['r2'] = 0.0
-        if 'rmse' not in metrics or metrics['rmse'] is None:
-            metrics['rmse'] = 999.0
-        if 'mae' not in metrics or metrics['mae'] is None:
-            metrics['mae'] = metrics.get('rmse', 0.0)
-        if 'rpd' not in metrics or metrics['rpd'] is None:
-            metrics['rpd'] = 0.0
+        # Preserve regression defaults for legacy UI summaries, but avoid
+        # publishing fake regression metrics for classification runs.
+        if not is_classification_run:
+            if 'r2' not in metrics or metrics['r2'] is None:
+                metrics['r2'] = 0.0
+            if 'rmse' not in metrics or metrics['rmse'] is None:
+                metrics['rmse'] = 999.0
+            if 'mae' not in metrics or metrics['mae'] is None:
+                metrics['mae'] = metrics.get('rmse', 0.0)
+            if 'rpd' not in metrics or metrics['rpd'] is None:
+                metrics['rpd'] = 0.0
 
         # Sanitize all metrics to handle NaN/Inf values
         metrics = _sanitize_metrics(metrics)
@@ -1321,9 +1366,13 @@ async def _execute_pipeline_training(
         variants_tested = _count_tested_pipeline_variants(result, fallback=estimated_variants)
 
         log(f"[INFO] Tested {variants_tested} pipeline variant(s)")
-        r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
-        rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
-        log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
+        if is_classification_run and metrics.get("score") is not None:
+            metric_label = primary_metric or "score"
+            log(f"[INFO] Best {metric_label} = {metrics['score']:.4f}")
+        else:
+            r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
+            rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
+            log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
 
         # Fold summary (if available)
         try:

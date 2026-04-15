@@ -9,11 +9,13 @@ export type RunStatus = "queued" | "running" | "completed" | "failed" | "paused"
 export type RunFormat = "v1" | "v2" | "parquet_derived";
 
 export interface RunMetrics {
-  r2: number;
-  rmse: number;
+  r2?: number | null;
+  rmse?: number | null;
   mae?: number;
   rpd?: number;
   nrmse?: number;
+  score?: number | null;
+  score_metric?: string | null;
 }
 
 /**

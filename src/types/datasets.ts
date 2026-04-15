@@ -215,7 +215,7 @@ export interface Dataset {
   num_features?: number;
   n_sources?: number;
   is_multi_source?: boolean;
-  task_type?: "regression" | "classification" | null;
+  task_type?: TaskType | "classification" | null;
   num_classes?: number;
   has_targets?: boolean;
   has_metadata?: boolean;

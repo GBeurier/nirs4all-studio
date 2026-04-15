@@ -46,7 +46,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { TargetSelector, TargetBadge } from "@/components/datasets/TargetSelector";
-import type { Dataset, TargetConfig } from "@/types/datasets";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
+import type { Dataset, TargetConfig, TaskType } from "@/types/datasets";
 
 /**
  * Shape information for data flowing through the pipeline
@@ -68,7 +69,7 @@ export interface BoundDataset {
   shape: DataShape;
   targets?: TargetConfig[];
   selectedTarget?: string;
-  taskType?: "regression" | "classification";
+  taskType?: TaskType | "classification";
 }
 
 /**
@@ -238,7 +239,7 @@ export function DatasetBinding({
                         </div>
                         {dataset.task_type && (
                           <Badge variant="outline" className="text-xs">
-                            {dataset.task_type}
+                            {getDatasetTaskLabel(dataset.task_type)}
                           </Badge>
                         )}
                       </div>

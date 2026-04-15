@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 import { Target, Info, FileSpreadsheet, Clock, GitBranch } from "lucide-react";
 import { TargetHistogram } from "../charts";
@@ -170,7 +171,7 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                     <Badge variant="default" className="text-xs">Default</Badge>
                   )}
                   <Badge variant="outline" className="text-xs capitalize">
-                    {target.type || "auto"}
+                    {getDatasetTaskLabel(target.type, { fallback: "Auto" })}
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -199,7 +200,9 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
                     <>
                       <div>
                         <p className="text-muted-foreground">Type</p>
-                        <p className="font-medium capitalize">{target.type || "auto"}</p>
+                        <p className="font-medium">
+                          {getDatasetTaskLabel(target.type, { fallback: "Auto" })}
+                        </p>
                       </div>
                       {target.unit && (
                         <div>
@@ -264,8 +267,11 @@ export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
             <div>
               <p className="text-sm text-muted-foreground">Task Type</p>
-              <Badge variant="outline" className="capitalize mt-1">
-                {dataset.task_type || "auto"}
+              <Badge variant="outline" className="mt-1">
+                {getDatasetTaskLabel(dataset.task_type, {
+                  numClasses: dataset.num_classes,
+                  fallback: "Auto",
+                })}
               </Badge>
             </div>
             {testCount != null && testCount > 0 && (

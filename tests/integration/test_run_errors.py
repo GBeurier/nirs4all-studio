@@ -205,18 +205,19 @@ class TestValidationErrors:
 
         assert response.status_code == 422
 
-    def test_experiment_name_too_long(self, workspace_client: TestClient):
-        """Experiment name exceeding max length fails validation."""
+    def test_experiment_name_can_be_long(self, workspace_client: TestClient, mock_nirs4all):
+        """Experiment names are no longer capped at 100 characters."""
         response = workspace_client.post("/api/runs", json={
             "config": {
-                "name": "A" * 200,  # max_length=100
+                "name": "A" * 300,
                 "dataset_ids": ["test_dataset"],
                 "pipeline_ids": ["test_pls"],
                 "cv_folds": 5,
             }
         })
 
-        assert response.status_code == 422
+        assert response.status_code in (200, 201)
+        assert response.json()["name"] == "A" * 300
 
     def test_experiment_invalid_cv_strategy(self, workspace_client: TestClient):
         """Invalid cv_strategy fails validation."""

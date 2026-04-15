@@ -42,6 +42,7 @@ import {
   useDatasetPreviewQuery,
 } from "@/hooks/useDatasetQueries";
 import { getConfiguredRepetitionColumn } from "@/lib/datasetConfig";
+import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 
 const containerVariants = {
@@ -134,13 +135,10 @@ export default function DatasetDetail() {
 
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
   const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
-  const taskLabel = dataset.task_type === "regression"
-    ? "Regression"
-    : dataset.task_type === "classification"
-      ? dataset.num_classes && dataset.num_classes > 2
-        ? "Multiclass"
-        : "Classification"
-      : "Auto";
+  const taskLabel = getDatasetTaskLabel(dataset.task_type, {
+    numClasses: dataset.num_classes,
+    fallback: "Auto",
+  });
 
   const statCards = [
     {
