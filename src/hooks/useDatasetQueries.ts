@@ -91,6 +91,7 @@ const baseOptions = {
 // ---------------------------------------------------------------------------
 
 const CACHE_VERSION = 2;
+const READABLE_CACHE_VERSIONS = new Set([1, CACHE_VERSION]);
 const STORAGE_KEYS = {
   datasets: "n4a:cache:datasets:list",
   linkedWorkspaces: "n4a:cache:workspaces:linked",
@@ -108,7 +109,9 @@ function readCache<T>(key: string): CachedEntry<T> | null {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedEntry<T>;
-    if (parsed?.v !== CACHE_VERSION) return null;
+    // v2 did not change the on-disk payload shape, so keep honoring the
+    // original v1 entries instead of dropping every persisted cache on upgrade.
+    if (!READABLE_CACHE_VERSIONS.has(parsed?.v)) return null;
     return parsed;
   } catch {
     return null;

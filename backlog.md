@@ -2,7 +2,9 @@
 
 > Presets + page presets
 > Review delete predictions
-
+> starting backend progress bar on bottom
+> Verifier suppression qui laisse des traces
+> ajouter Y et Y bins dans les groups potentiels
 
 - limiter les datasets au tasktype du pipeline dans le wizard
 - Code signing for app stores

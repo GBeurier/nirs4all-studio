@@ -41,6 +41,10 @@ TYPE_PRIORITY = {
     "y_processing": 5,
 }
 SAMPLER_KEYS = {"sample", "sampler"}
+FUNCTION_MODEL_CLASS_PATHS = {
+    "nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
+    "cnn1d": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
+}
 KNOWN_FINETUNE_KEYS = {
     "n_trials",
     "approach",
@@ -177,6 +181,28 @@ def _class_name_from_path(class_path: str) -> str:
     if not class_path:
         return ""
     return class_path.rsplit(".", 1)[-1]
+
+
+def _looks_like_function_model_path(reference: str | None) -> bool:
+    if not isinstance(reference, str) or "." not in reference:
+        return False
+
+    leaf_name = _class_name_from_path(reference)
+    return bool(leaf_name) and leaf_name[0].islower()
+
+
+def _infer_model_framework_from_path(reference: str | None) -> str | None:
+    if not isinstance(reference, str):
+        return None
+
+    normalized = reference.lower()
+    if ".pytorch." in normalized or ".torch." in normalized:
+        return "pytorch"
+    if ".tensorflow." in normalized or ".keras." in normalized:
+        return "tensorflow"
+    if ".jax." in normalized or ".flax." in normalized:
+        return "jax"
+    return None
 
 
 @lru_cache(maxsize=1)
@@ -316,6 +342,11 @@ def resolve_editor_class_path(
     if candidate:
         return candidate
 
+    if step_type == "model":
+        function_model_path = FUNCTION_MODEL_CLASS_PATHS.get(normalized_name.lower())
+        if function_model_path:
+            return function_model_path
+
     if class_path:
         return str(class_path)
 
@@ -379,6 +410,14 @@ def _hydrate_editor_step(step: dict[str, Any]) -> dict[str, Any]:
         )
         if "." in resolved:
             hydrated["classPath"] = resolved
+
+    if step_type == "model" and not hydrated.get("functionPath"):
+        class_path = hydrated.get("classPath")
+        if _looks_like_function_model_path(class_path):
+            hydrated["functionPath"] = class_path
+            framework = _infer_model_framework_from_path(class_path)
+            if framework and not hydrated.get("framework"):
+                hydrated["framework"] = framework
 
     branches = hydrated.get("branches")
     if isinstance(branches, list):

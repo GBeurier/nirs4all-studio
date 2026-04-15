@@ -70,6 +70,7 @@ from api.datasets import router as datasets_router
 from api.evaluation import router as evaluation_router
 from api.inspector import router as inspector_router
 from api.models import router as models_router
+from api.network_state import router as network_state_router
 from api.pipelines import router as pipelines_router
 from api.playground import router as playground_router
 from api.predict import router as predict_router
@@ -87,7 +88,6 @@ from api.training import router as training_router
 from api.transfer import router as transfer_router
 from api.updates import router as updates_router
 from api.workspace import router as workspace_router
-from api.network_state import router as network_state_router
 from websocket import ws_manager
 
 _t4 = time.perf_counter()

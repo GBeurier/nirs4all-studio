@@ -299,6 +299,35 @@ describe("pipelineConverter", () => {
       expect(hydrated[0].classPath).toBe("nirs4all.operators.models.OPLS");
     });
 
+    it("should promote NICoN class paths to PyTorch function models", () => {
+      const editorSteps: EditorPipelineStep[] = [
+        {
+          id: "step-nicon",
+          type: "model",
+          name: "NICoN",
+          classPath: "nirs4all.operators.models.pytorch.nicon.nicon",
+          params: { dropout: 0.2 },
+        } as EditorPipelineStep,
+      ];
+
+      const hydrated = hydrateEditorPipelineSteps(editorSteps);
+      expect(hydrated[0].functionPath).toBe("nirs4all.operators.models.pytorch.nicon.nicon");
+      expect(hydrated[0].framework).toBe("pytorch");
+
+      const exported = exportToNirs4all(hydrated) as Nirs4allStep[];
+      const modelStep = exported[0] as {
+        model: {
+          function: string;
+          framework?: string;
+          params?: Record<string, unknown>;
+        };
+      };
+
+      expect(modelStep.model.function).toBe("nirs4all.operators.models.pytorch.nicon.nicon");
+      expect(modelStep.model.framework).toBe("pytorch");
+      expect(modelStep.model.params).toEqual({ dropout: 0.2 });
+    });
+
     it("should reject unresolved model definitions during export", () => {
       const editorSteps: EditorPipelineStep[] = [
         {

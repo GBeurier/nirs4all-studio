@@ -16,6 +16,7 @@ Phase 5 (Native Format):
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +55,8 @@ MODEL_ALIASES = {
     "RandomForest": "RandomForestRegressor",
     "LightGBM": "LGBMRegressor",
     "XGBoost": "XGBRegressor",
+    "nicon": "nicon",
+    "cnn1d": "customizable_nicon",
 }
 
 SKLEARN_PREPROCESSING_MODULES = [
@@ -89,6 +92,7 @@ NIRS4ALL_SPLITTER_MODULES = [
 
 NIRS4ALL_MODEL_MODULES = [
     "nirs4all.operators.models",
+    "nirs4all.operators.models.pytorch.nicon",
 ]
 
 
@@ -235,14 +239,133 @@ def _normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _resolve_class(name: str, module_candidates: Iterable[str]) -> Any | None:
+def _resolve_alias(aliases: dict[str, str], name: str) -> str:
+    if name in aliases:
+        return aliases[name]
+
+    lowered = name.lower()
+    for alias, target in aliases.items():
+        if alias.lower() == lowered:
+            return target
+
+    return name
+
+
+def _is_supported_operator_candidate(
+    obj: Any,
+    *,
+    allow_callables: bool = False,
+) -> bool:
+    return inspect.isclass(obj) or (allow_callables and callable(obj))
+
+
+def _lookup_operator_member(
+    module: Any,
+    name: str,
+    *,
+    allow_callables: bool = False,
+) -> Any | None:
+    obj = getattr(module, name, None)
+    if _is_supported_operator_candidate(obj, allow_callables=allow_callables):
+        return obj
+
+    lowered = name.lower()
+    for attr_name in dir(module):
+        if attr_name.lower() != lowered:
+            continue
+        candidate = getattr(module, attr_name, None)
+        if _is_supported_operator_candidate(candidate, allow_callables=allow_callables):
+            return candidate
+
+    return None
+
+
+def _looks_like_function_model_path(reference: Any) -> bool:
+    if not isinstance(reference, str) or "." not in reference:
+        return False
+
+    leaf_name = reference.rsplit(".", 1)[-1]
+    return bool(leaf_name) and leaf_name[0].islower()
+
+
+def _infer_model_framework(reference_or_callable: Any) -> str | None:
+    if isinstance(reference_or_callable, str):
+        normalized = reference_or_callable.lower()
+        if ".pytorch." in normalized or ".torch." in normalized:
+            return "pytorch"
+        if ".tensorflow." in normalized or ".keras." in normalized:
+            return "tensorflow"
+        if ".jax." in normalized or ".flax." in normalized:
+            return "jax"
+        return None
+
+    framework = getattr(reference_or_callable, "framework", None)
+    return str(framework) if framework else None
+
+
+def _build_function_model_payload(
+    model_function: Any,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "function": _class_path_from_operator(model_function),
+    }
+
+    framework = _infer_model_framework(model_function)
+    if framework:
+        payload["framework"] = framework
+
+    if params:
+        payload["params"] = dict(params)
+
+    return payload
+
+
+def _import_operator_reference(reference: str, step_type: str) -> Any:
+    module_path, _, attr_name = reference.rpartition(".")
+    if not module_path:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported {step_type} operator '{reference}'",
+        )
+
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    obj = _lookup_operator_member(
+        module,
+        attr_name,
+        allow_callables=step_type == "model",
+    )
+    if obj is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported {step_type} operator '{reference}'",
+        )
+
+    return obj
+
+
+def _resolve_class(
+    name: str,
+    module_candidates: Iterable[str],
+    *,
+    allow_callables: bool = False,
+) -> Any | None:
     for module_path in module_candidates:
         try:
             module = importlib.import_module(module_path)
         except ImportError:
             continue
-        if hasattr(module, name):
-            return getattr(module, name)
+        obj = _lookup_operator_member(
+            module,
+            name,
+            allow_callables=allow_callables,
+        )
+        if obj is not None:
+            return obj
     return None
 
 
@@ -256,25 +379,40 @@ NIRS4ALL_AUGMENTATION_MODULES = [
 
 
 def _resolve_operator_class(name: str, step_type: str) -> Any:
+    if step_type == "model" and "." in name:
+        return _import_operator_reference(name, step_type)
+
     lookup_name = name
 
     if step_type == "preprocessing":
-        lookup_name = PREPROCESSING_ALIASES.get(name, name)
+        lookup_name = _resolve_alias(PREPROCESSING_ALIASES, name)
         cls = _resolve_class(lookup_name, NIRS4ALL_PREPROCESSING_MODULES)
         if cls is None:
             cls = _resolve_class(lookup_name, SKLEARN_PREPROCESSING_MODULES)
     elif step_type == "splitting":
-        lookup_name = SPLITTER_ALIASES.get(name, name)
+        lookup_name = _resolve_alias(SPLITTER_ALIASES, name)
         cls = _resolve_class(lookup_name, NIRS4ALL_SPLITTER_MODULES)
         if cls is None:
             cls = _resolve_class(lookup_name, SKLEARN_SPLITTER_MODULES)
     elif step_type == "model":
-        lookup_name = MODEL_ALIASES.get(name, name)
-        cls = _resolve_class(lookup_name, NIRS4ALL_MODEL_MODULES)
+        lookup_name = _resolve_alias(MODEL_ALIASES, name)
+        cls = _resolve_class(
+            lookup_name,
+            NIRS4ALL_MODEL_MODULES,
+            allow_callables=True,
+        )
         if cls is None:
-            cls = _resolve_class(lookup_name, SKLEARN_MODEL_MODULES)
+            cls = _resolve_class(
+                lookup_name,
+                SKLEARN_MODEL_MODULES,
+                allow_callables=True,
+            )
         if cls is None:
-            cls = _resolve_class(lookup_name, THIRDPARTY_MODEL_MODULES)
+            cls = _resolve_class(
+                lookup_name,
+                THIRDPARTY_MODEL_MODULES,
+                allow_callables=True,
+            )
     elif step_type == "filter":
         cls = _resolve_class(lookup_name, NIRS4ALL_FILTER_MODULES)
         if cls is None:
@@ -314,17 +452,34 @@ def build_pipeline_steps(steps: list[dict[str, Any]]) -> PipelineBuildResult:
             params,
         )
 
-        try:
-            instance = operator_class(**normalized_params)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid parameters for {step_name}: {exc}",
-            )
-
         if step_type == "model":
-            pipeline_steps.append({"model": instance, "name": step_name})
+            if inspect.isclass(operator_class):
+                try:
+                    instance = operator_class(**normalized_params)
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid parameters for {step_name}: {exc}",
+                    )
+                pipeline_steps.append({"model": instance, "name": step_name})
+            else:
+                pipeline_steps.append(
+                    {
+                        "model": _build_function_model_payload(
+                            operator_class,
+                            normalized_params,
+                        ),
+                        "name": step_name,
+                    }
+                )
         else:
+            try:
+                instance = operator_class(**normalized_params)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid parameters for {step_name}: {exc}",
+                )
             pipeline_steps.append(instance)
 
     if not pipeline_steps:
@@ -774,12 +929,20 @@ def build_full_step(step: dict[str, Any]) -> Any:
         class_path = _class_path_from_operator(operator_class)
 
         if step_type == "model":
-            step_dict = {
-                "model": {
-                    "class": class_path,
-                    "params": base_params,
+            if inspect.isclass(operator_class):
+                step_dict = {
+                    "model": {
+                        "class": class_path,
+                        "params": base_params,
+                    }
                 }
-            }
+            else:
+                step_dict = {
+                    "model": _build_function_model_payload(
+                        operator_class,
+                        base_params,
+                    )
+                }
             if step.get("name_alias"):
                 step_dict["name"] = step["name_alias"]
 
@@ -793,16 +956,23 @@ def build_full_step(step: dict[str, Any]) -> Any:
         }
 
     # No sweeps - simple operator
-    try:
-        instance = operator_class(**normalized_params)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid parameters for {step_name}: {exc}",
-        )
-
     if step_type == "model":
-        result = {"model": instance}
+        if inspect.isclass(operator_class):
+            try:
+                instance = operator_class(**normalized_params)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid parameters for {step_name}: {exc}",
+                )
+            result = {"model": instance}
+        else:
+            result = {
+                "model": _build_function_model_payload(
+                    operator_class,
+                    normalized_params,
+                )
+            }
         if step.get("name_alias"):
             result["name"] = step["name_alias"]
 
@@ -811,6 +981,14 @@ def build_full_step(step: dict[str, Any]) -> Any:
             result["finetune_params"] = _build_finetuning_params(finetune)
 
         return result
+
+    try:
+        instance = operator_class(**normalized_params)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid parameters for {step_name}: {exc}",
+        )
 
     return instance
 
@@ -1835,8 +2013,17 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str]]) -> N
         resolve_type = step_type
         if resolve_type == "y_processing":
             resolve_type = "preprocessing"
+
+        reference = step_name
+        if resolve_type == "model":
+            function_path = step.get("functionPath")
+            class_path = step.get("classPath")
+            if isinstance(function_path, str) and "." in function_path:
+                reference = function_path
+            elif _looks_like_function_model_path(class_path):
+                reference = class_path
         try:
-            _resolve_operator_class(step_name, resolve_type)
+            _resolve_operator_class(reference, resolve_type)
         except HTTPException as exc:
             issues.append({
                 "step_name": step_name,

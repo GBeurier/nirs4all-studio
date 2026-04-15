@@ -56,9 +56,7 @@ async def is_online() -> bool:
     """
     if _env_forces_offline():
         return False
-    if _settings_offline_mode() == "on":
-        return False
-    return True
+    return _settings_offline_mode() != "on"
 
 
 def is_offline_sync() -> bool:
@@ -70,9 +68,7 @@ def is_offline_sync() -> bool:
     """
     if _env_forces_offline():
         return True
-    if _settings_offline_mode() == "on":
-        return True
-    return False
+    return _settings_offline_mode() == "on"
 
 
 class OfflineError(RuntimeError):

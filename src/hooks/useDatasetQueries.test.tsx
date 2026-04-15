@@ -48,6 +48,7 @@ const STORAGE_KEYS = {
   linkedWorkspaces: "n4a:cache:workspaces:linked",
   scores: (workspaceId: string) => `n4a:cache:workspaces:${workspaceId}:scores`,
 };
+const CURRENT_CACHE_VERSION = 2;
 
 function createQueryClient() {
   return new QueryClient({
@@ -180,6 +181,26 @@ describe("useDatasetQueries", () => {
     ).toBe(workspacesCached.ts);
   });
 
+  it("hydrates dataset caches written with the current cache version", () => {
+    const cached = {
+      v: CURRENT_CACHE_VERSION,
+      ts: 2468,
+      data: {
+        datasets: [{ id: "dataset-current", name: "Current cache dataset" }],
+        groups: [],
+      },
+    };
+    localStorage.setItem(STORAGE_KEYS.datasets, JSON.stringify(cached));
+
+    const queryClient = createQueryClient();
+    hydrateDatasetCachesFromStorage(queryClient);
+
+    expect(queryClient.getQueryData(datasetQueryKeys.list())).toEqual(cached.data);
+    expect(queryClient.getQueryState(datasetQueryKeys.list())?.dataUpdatedAt).toBe(
+      cached.ts,
+    );
+  });
+
   it("does not re-stamp hydrated dataset cache entries as fresh until a real refetch succeeds", async () => {
     const cachedTs = 1111;
     const cachedPayload = {
@@ -210,6 +231,9 @@ describe("useDatasetQueries", () => {
         freshPayload,
       );
     });
+    expect(readStored<typeof freshPayload>(STORAGE_KEYS.datasets)?.v).toBe(
+      CURRENT_CACHE_VERSION,
+    );
     expect(readStored<typeof freshPayload>(STORAGE_KEYS.datasets)?.ts).toBeGreaterThan(
       cachedTs,
     );
@@ -261,6 +285,9 @@ describe("useDatasetQueries", () => {
         freshScores,
       );
     });
+    expect(readStored<typeof freshScores>(STORAGE_KEYS.scores(workspaceId))?.v).toBe(
+      CURRENT_CACHE_VERSION,
+    );
 
     await mounted.unmount();
   });

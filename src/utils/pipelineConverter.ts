@@ -266,6 +266,8 @@ const CLASS_PATH_MAPPINGS: Record<string, { name: string; type: StepType }> = {
   "nirs4all.operators.models.IKPLS": { name: "IKPLS", type: "model" },
   "nirs4all.operators.models.pls.LWPLS": { name: "LWPLS", type: "model" },
   "nirs4all.operators.models.LWPLS": { name: "LWPLS", type: "model" },
+  "nirs4all.operators.models.pytorch.nicon.nicon": { name: "NICoN", type: "model" },
+  "nirs4all.operators.models.pytorch.nicon.customizable_nicon": { name: "CNN1D", type: "model" },
   "nirs4all.operators.models.tensorflow.nicon.customizable_nicon": { name: "nicon", type: "model" },
 };
 
@@ -322,7 +324,9 @@ const NAME_TO_CLASS_PATH: Record<string, string> = {
   "model:OPLS": "nirs4all.operators.models.OPLS",
   "model:IKPLS": "nirs4all.operators.models.IKPLS",
   "model:LWPLS": "nirs4all.operators.models.LWPLS",
-  "model:nicon": "nirs4all.operators.models.tensorflow.nicon.customizable_nicon",
+  "model:nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
+  "model:NICoN": "nirs4all.operators.models.pytorch.nicon.nicon",
+  "model:CNN1D": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
 
   // Augmentation
   "augmentation:GaussianNoise": "nirs4all.operators.transforms.GaussianAdditiveNoise",
@@ -363,6 +367,33 @@ const CLASS_REFERENCE_LOOKUP = buildClassReferenceLookup();
 function getClassNameFromPath(classPath: string): string {
   const parts = classPath.split(".");
   return parts[parts.length - 1];
+}
+
+function isFunctionModelPath(reference?: string): boolean {
+  if (!reference || !reference.includes(".")) {
+    return false;
+  }
+
+  const leafName = getClassNameFromPath(reference);
+  return leafName.length > 0 && leafName[0] === leafName[0].toLowerCase();
+}
+
+function inferFunctionModelFramework(reference?: string): string | undefined {
+  if (!reference) {
+    return undefined;
+  }
+
+  const normalized = reference.toLowerCase();
+  if (normalized.includes(".pytorch.") || normalized.includes(".torch.")) {
+    return "pytorch";
+  }
+  if (normalized.includes(".tensorflow.") || normalized.includes(".keras.")) {
+    return "tensorflow";
+  }
+  if (normalized.includes(".jax.") || normalized.includes(".flax.")) {
+    return "jax";
+  }
+  return undefined;
 }
 
 function buildClassReferenceLookup(): Map<string, ResolvedClassInfo> {
@@ -534,6 +565,14 @@ function hydrateEditorStep(step: EditorPipelineStep): EditorPipelineStep {
     if (classPath.includes(".")) {
       hydrated = { ...hydrated, classPath };
     }
+  }
+
+  if (hydrated.type === "model" && !hydrated.functionPath && isFunctionModelPath(hydrated.classPath)) {
+    hydrated = {
+      ...hydrated,
+      functionPath: hydrated.classPath,
+      framework: hydrated.framework || inferFunctionModelFramework(hydrated.classPath),
+    };
   }
 
   if (hydrated.branches) {

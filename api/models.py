@@ -964,6 +964,17 @@ async def instantiate_model(model_name: str, params: dict[str, Any] | None = Non
 
         model_class = _resolve_operator_class(model_name, "model")
         normalized_params = _normalize_params(model_name, params)
+
+        if callable(model_class) and not inspect.isclass(model_class):
+            return {
+                "success": True,
+                "model_name": model_name,
+                "model_type": "function",
+                "framework": getattr(model_class, "framework", None),
+                "params": params,
+                "message": "Model function resolved successfully; it will be built at training time once input_shape is known.",
+            }
+
         model = model_class(**normalized_params)
 
         return {

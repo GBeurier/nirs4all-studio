@@ -9,7 +9,7 @@ import yaml
 from nirs4all.pipeline.config.generator import count_combinations
 
 import api.pipelines as pipelines_api
-from api.nirs4all_adapter import expand_pipeline_variants
+from api.nirs4all_adapter import check_pipeline_imports, expand_pipeline_variants
 from api.pipeline_canonical import (
     canonical_to_editor,
     count_runtime_variants,
@@ -329,6 +329,48 @@ def test_create_pipeline_canonicalizes_incorrect_known_model_classpath(pipelines
     assert class_path.startswith("nirs4all.operators.models")
     assert class_path.endswith("OPLS")
     assert "cross_decomposition" not in class_path
+
+
+def test_editor_to_canonical_serializes_function_models_from_classpath():
+    editor_steps = [
+        {
+            "id": "step-nicon",
+            "type": "model",
+            "name": "NICoN",
+            "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
+            "params": {"dropout": 0.2},
+        }
+    ]
+
+    canonical = editor_to_canonical(editor_steps)
+
+    model_payload = canonical[0]["model"]
+    assert model_payload["function"] == "nirs4all.operators.models.pytorch.nicon.nicon"
+    assert model_payload["framework"] == "pytorch"
+    assert model_payload["params"] == {"dropout": 0.2}
+
+
+def test_check_pipeline_imports_prefers_function_model_classpath(monkeypatch):
+    seen: list[tuple[str, str]] = []
+
+    def fake_resolve(name: str, step_type: str):
+        seen.append((name, step_type))
+        return object()
+
+    monkeypatch.setattr("api.nirs4all_adapter._resolve_operator_class", fake_resolve)
+
+    issues = check_pipeline_imports([
+        {
+            "id": "step-nicon",
+            "type": "model",
+            "name": "NICoN",
+            "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
+            "params": {},
+        }
+    ])
+
+    assert issues == []
+    assert seen == [("nirs4all.operators.models.pytorch.nicon.nicon", "model")]
 
 
 def test_render_canonical_pipeline_rejects_unknown_model_definition():
